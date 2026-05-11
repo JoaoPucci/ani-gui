@@ -16,8 +16,11 @@ import { describePlayFailure } from './error-copy';
  *  perspective ("the click did something, watch the next window
  *  open"). */
 export function syncplayLaunchSuccessToast(args: { episode: number }): PushArgs {
-	void args;
-	throw new Error('test(red): syncplayLaunchSuccessToast lands in the paired feat(green) commit');
+	return {
+		kind: 'success',
+		message: m.play_syncplay_sent_toast({ episode: args.episode }),
+		duration: 4000
+	};
 }
 
 /** User-facing copy for a Syncplay launch failure. The common case
@@ -30,10 +33,17 @@ export function syncplayLaunchSuccessToast(args: { episode: number }): PushArgs 
  *  Returns the body text only — the modal's headline and action
  *  link live on the play page (i18n keys + the syncplay.pl href). */
 export function describeSyncplayLaunchFailure(e: unknown): string {
-	void e;
-	void m;
-	void describePlayFailure;
-	throw new Error(
-		'test(red): describeSyncplayLaunchFailure lands in the paired feat(green) commit'
-	);
+	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	if (
+		obj &&
+		obj.kind === 'syncplay_spawn_failed' &&
+		typeof obj.binary === 'string' &&
+		obj.binary.length > 0
+	) {
+		return m.play_syncplay_spawn_failed_named({ binary: obj.binary });
+	}
+	// Resolve-step failures (scraper / timeout / network) — reuse
+	// the embedded play path's copy so the user sees a polished
+	// message instead of a debug-y "Syncplay failed: <kind>".
+	return describePlayFailure(e);
 }
