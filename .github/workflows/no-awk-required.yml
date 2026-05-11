@@ -1,0 +1,30 @@
+name: 'no-awk (required)'
+# Owns the `No Awk Allowed` required-check name on every PR/push.
+#
+# Upstream `ani-cli.yml` already runs the same grep, but its `paths:`
+# filter (`**ani-cli`) makes it skip on PRs that don't touch the
+# script — leaving the required check name unsatisfied. We can't
+# edit upstream workflow files (that would conflict on every sync
+# from pystardust/ani-cli), so this ours-owned workflow re-exposes
+# the check independently. The grep itself is ~1 second; running it
+# every PR is cheaper than juggling inverse twins.
+#
+# If we ever rewrite ani-cli in Rust and drop the script, delete
+# this file.
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  check-no-awk:
+    name: No Awk Allowed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: verify that no awk usage snuck into ani-cli
+        run: '! grep awk "./ani-cli"'
