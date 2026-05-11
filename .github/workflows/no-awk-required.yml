@@ -1,13 +1,18 @@
 name: 'no-awk (required)'
 # Owns the `No Awk Allowed` required-check name on every PR/push.
 #
-# Upstream `ani-cli.yml` already runs the same grep, but its `paths:`
-# filter (`**ani-cli`) makes it skip on PRs that don't touch the
-# script — leaving the required check name unsatisfied. We can't
-# edit upstream workflow files (that would conflict on every sync
-# from pystardust/ani-cli), so this ours-owned workflow re-exposes
-# the check independently. The grep itself is ~1 second; running it
-# every PR is cheaper than juggling inverse twins.
+# Upstream `ani-cli.yml` already runs the same grep, but its
+# `pull_request.paths: '**ani-cli'` filter makes it skip on PRs that
+# don't touch the script — leaving the required check name
+# unsatisfied. We can't edit upstream workflow files (that would
+# conflict on every sync from pystardust/ani-cli), so this
+# ours-owned workflow re-exposes the check independently.
+#
+# To avoid double-reporting the same check name on PRs that DO
+# touch ani-cli, we defer to upstream in those cases: the filter
+# below detects when upstream's check-no-awk will fire and short-
+# circuits ours to a no-op echo. Net effect: exactly one
+# `No Awk Allowed` status report per SHA.
 #
 # If we ever rewrite ani-cli in Rust and drop the script, delete
 # this file.
@@ -26,5 +31,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: verify that no awk usage snuck into ani-cli
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # On push to master, upstream's ani-cli.yml runs unconditionally
+          # (no paths filter on push), so always defer to it.
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "ours_responsible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # On PRs that touch ani-cli, upstream's check-no-awk fires
+          # under the same name. Defer so we don't double-report.
+          # Here-string avoids the pipefail+SIGPIPE pitfall (see
+          # rust.yml's filter for the same pattern).
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          if grep -qE '(^|/)ani-cli$' <<<"$changed"; then
+            echo "ours_responsible=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ours_responsible=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.detect.outputs.ours_responsible == 'false'
+        run: 'echo "Not required: upstream ani-cli.yml runs the check on this SHA"'
+      - if: steps.detect.outputs.ours_responsible == 'true'
+        name: verify that no awk usage snuck into ani-cli
         run: '! grep awk "./ani-cli"'
