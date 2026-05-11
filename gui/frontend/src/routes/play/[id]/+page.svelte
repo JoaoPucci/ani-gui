@@ -603,11 +603,14 @@
 
 	function onScrubberPointerUp(event: PointerEvent) {
 		if (!scrubberDragging) return;
-		// Final seek at the release position, regardless of throttle
-		// state during the drag — guarantees the playhead lands where
-		// the user let go even if the last pointermove was skipped.
+		// Final seek at the release position — but ONLY on a real
+		// pointerup. pointercancel reaches this same handler when the
+		// browser/OS yanks the gesture out from under us (context menu,
+		// capture loss, system swipe), and the user didn't release
+		// intentionally there; preserve wherever the last allowed live
+		// seek landed instead of committing the cancel-event coords.
 		// Must run before clearing scrubberDragRect.
-		if (scrubberDragRect) {
+		if (event.type === 'pointerup' && scrubberDragRect) {
 			const finalFraction = clientXToFraction(event.clientX, scrubberDragRect);
 			seekToFraction(finalFraction);
 		}
