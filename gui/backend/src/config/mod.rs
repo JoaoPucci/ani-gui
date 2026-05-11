@@ -35,6 +35,15 @@ pub struct Config {
     /// time — see `commands::external_player::build_argv_custom`.
     /// Default empty (triggers the bare-URL fallback).
     pub external_player_custom_args: String,
+    /// Path to the user's locally-installed [Syncplay](https://syncplay.pl)
+    /// binary, used by the play page's "Watch together" hamburger
+    /// entry. Per-OS default: `"syncplay"` on Linux + Windows, the
+    /// macOS .app inner executable path on macOS. We don't bundle
+    /// Syncplay (heavyweight PyQt5 app; `apt install syncplay` is
+    /// broken on Ubuntu 24.04 Noble) — when the spawn fails the
+    /// frontend's ErrorOverlay links the user to syncplay.pl.
+    #[serde(default = "default_syncplay_binary")]
+    pub syncplay_binary: String,
     /// Hard cap on the on-disk image cache, in megabytes.
     pub image_cache_cap_mb: u64,
     /// When `true`, the player auto-advances to the next episode at
@@ -88,6 +97,7 @@ impl Default for Config {
             external_player: "mpv".into(),
             external_player_kind: ExternalPlayerKind::Mpv,
             external_player_custom_args: String::new(),
+            syncplay_binary: default_syncplay_binary(),
             image_cache_cap_mb: 500,
             auto_play_next: false,
             download_bottom_bar_enabled: true,
@@ -98,6 +108,18 @@ impl Default for Config {
             auto_update_anicli: true,
         }
     }
+}
+
+/// Per-OS default Syncplay binary path. Linux + Windows fall back to
+/// `"syncplay"` and rely on PATH; macOS resolves to the standard
+/// Syncplay.app inner executable. Used by the `Config::syncplay_binary`
+/// serde default so old configs decode with a sensible value.
+#[must_use]
+pub fn default_syncplay_binary() -> String {
+    // TODO(test-red): the per-OS values land in the paired feat(green)
+    // commit. Today this returns a placeholder so the
+    // `default_syncplay_binary_per_os` test fails.
+    "FIXME-syncplay-binary".into()
 }
 
 /// Read the config file at `path`. Missing-file returns
@@ -225,6 +247,43 @@ mod tests {
         let s = toml::to_string(&c).unwrap();
         let parsed: Config = toml::from_str(&s).unwrap();
         assert_eq!(c, parsed);
+    }
+
+    #[test]
+    fn syncplay_binary_default_per_os() {
+        // Per-OS defaults: Linux/Windows assume Syncplay is on PATH
+        // and use the bare command; macOS uses the .app inner
+        // executable since macOS GUI apps don't drop into PATH.
+        let got = default_syncplay_binary();
+        #[cfg(target_os = "macos")]
+        assert_eq!(got, "/Applications/Syncplay.app/Contents/MacOS/syncplay");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(got, "syncplay");
+    }
+
+    #[test]
+    fn syncplay_binary_round_trips_through_toml() {
+        // User can override the binary path in settings (Windows
+        // users often install Syncplay outside PATH). The override
+        // must survive a TOML round-trip or the user's choice resets
+        // every launch.
+        let c = Config {
+            syncplay_binary: "/opt/syncplay/syncplay".into(),
+            ..Config::default()
+        };
+        let s = toml::to_string(&c).unwrap();
+        let parsed: Config = toml::from_str(&s).unwrap();
+        assert_eq!(parsed.syncplay_binary, "/opt/syncplay/syncplay");
+    }
+
+    #[test]
+    fn syncplay_binary_absent_in_old_config_decodes_with_default() {
+        // Pre-Syncplay-feature config.toml files don't have this
+        // field — they must decode with the per-OS default so
+        // existing users don't get a sudden "missing setting" error.
+        let body = "external_player = \"mpv\"\n";
+        let cfg: Config = toml::from_str(body).unwrap();
+        assert_eq!(cfg.syncplay_binary, default_syncplay_binary());
     }
 
     #[test]

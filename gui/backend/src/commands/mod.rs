@@ -20,6 +20,7 @@ pub mod play_select;
 pub mod proxy_url;
 pub mod session;
 pub mod settings;
+pub mod syncplay;
 
 pub use app_info::app_info;
 pub use external_player::{open_external_player, LaunchArgs};

@@ -53,6 +53,7 @@ impl IntoResponse for AniError {
             | AniError::BashMissing
             | AniError::FfmpegMissing
             | AniError::PlayerSpawnFailed { .. }
+            | AniError::SyncplaySpawnFailed { .. }
             | AniError::Cache
             | AniError::Io
             | AniError::Config
