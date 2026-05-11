@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img width="2751" height="1300" alt="image" src="https://github.com/user-attachments/assets/ee2e3d80-01e8-46cb-afa0-a132cd3e3273" />
+  <img width="2751" height="1300" alt="home image" src="https://github.com/user-attachments/assets/ee2e3d80-01e8-46cb-afa0-a132cd3e3273" />
 </p>
 
 ani-gui is a graphical front-end for [pystardust/ani-cli](https://github.com/pystardust/ani-cli). It embeds the upstream Bash scraper unmodified and wraps it in a Rust + SvelteKit desktop application — discovery, search, an embedded player, downloads, persistent watch history, Picture-in-Picture, and OP/ED skip on top of the same scraping engine.
@@ -39,6 +39,7 @@ Platform support tiers:
 | 1 | Linux | Actively tested on Ubuntu. Other distros work via AppImage. |
 | 2 | Windows | Most features verified end-to-end. Edge cases may surface. |
 | 3 | macOS | Untested. Builds the same way; should work — please file an issue if it doesn't. |
+<img width="2758" height="1310" alt="Screenshot from 2026-05-12 03-54-07" src="https://github.com/user-attachments/assets/5d6d1eca-e54b-4bb5-a929-2311a2e3c24a" />
 
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
@@ -90,7 +91,7 @@ On first launch the app:
 After that, click anything that looks clickable. The app routes the click through Kitsu / AniList for metadata, `ani-cli` for the actual stream resolution, and the embedded player for playback.
 
 <p align="center">
-  <img width="2751" height="1300" alt="image" src="https://github.com/user-attachments/assets/b68c7c26-e536-4c01-a711-6f44ed8cd57a" />
+  <img width="2751" height="1300" alt="player image" src="https://github.com/user-attachments/assets/db9f1816-d622-40ab-aa15-88a86f14f1d1" />
 </p>
 
 ## Configuration
