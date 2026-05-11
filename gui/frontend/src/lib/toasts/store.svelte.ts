@@ -37,20 +37,39 @@ export const TOAST_MAX_STACK = 3;
 
 const DEFAULT_DURATION_MS = 4000;
 
+let nextId = 1;
+
 class ToastStore {
 	items: ToastItem[] = $state([]);
 
 	push(args: PushArgs): string {
-		void args;
-		throw new Error('test(red): toastStore.push() lands in the paired feat(green) commit');
+		const id = `toast-${nextId++}`;
+		const duration = args.duration === undefined ? DEFAULT_DURATION_MS : args.duration;
+		const row: ToastItem = {
+			id,
+			kind: args.kind,
+			message: args.message,
+			duration,
+			actionLabel: args.actionLabel ?? null,
+			onAction: args.onAction ?? null
+		};
+		// Trim oldest entries if a push would exceed the cap. Slice +
+		// concat rather than splice so the assignment triggers
+		// reactivity (matches download/store.svelte.ts's pattern).
+		const trimmed = this.items.slice(-(TOAST_MAX_STACK - 1));
+		this.items = [...trimmed, row];
+		if (duration !== null) {
+			// dismiss(id) is a no-op when the row has already been
+			// trimmed by a later push — see the store test.
+			setTimeout(() => this.dismiss(id), duration);
+		}
+		return id;
 	}
 
 	dismiss(id: string): void {
-		void id;
-		throw new Error('test(red): toastStore.dismiss() lands in the paired feat(green) commit');
+		const next = this.items.filter((i) => i.id !== id);
+		if (next.length !== this.items.length) this.items = next;
 	}
 }
 
 export const toastStore = new ToastStore();
-
-void DEFAULT_DURATION_MS;

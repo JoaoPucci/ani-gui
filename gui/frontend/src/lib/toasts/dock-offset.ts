@@ -25,6 +25,6 @@ export interface DockOffsetInput {
 }
 
 export function computeToastBottomOffset(input: DockOffsetInput): number {
-	void input;
-	throw new Error('test(red): computeToastBottomOffset lands in the paired feat(green) commit');
+	if (!input.dockVisible) return input.baseRem;
+	return input.baseRem + input.dockHeightRem + input.gapRem;
 }

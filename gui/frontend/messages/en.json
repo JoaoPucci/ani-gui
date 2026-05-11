@@ -418,5 +418,6 @@
 	"strip_arrow_previous_aria_label": "Previous",
 	"strip_arrow_next_aria_label": "Next",
 	"strip_card_episodes_suffix": "ep",
-	"strip_card_no_date": "—"
+	"strip_card_no_date": "—",
+	"toast_dismiss_aria": "Dismiss notification"
 }
