@@ -39,7 +39,6 @@ Platform support tiers:
 | 1 | Linux | Actively tested on Ubuntu. Other distros work via AppImage. |
 | 2 | Windows | Most features verified end-to-end. Edge cases may surface. |
 | 3 | macOS | Untested. Builds the same way; should work — please file an issue if it doesn't. |
-<img width="2758" height="1310" alt="Screenshot from 2026-05-12 03-54-07" src="https://github.com/user-attachments/assets/5d6d1eca-e54b-4bb5-a929-2311a2e3c24a" />
 
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
