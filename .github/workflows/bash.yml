@@ -32,7 +32,7 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(tests/bash/|tests/fixtures/|ani-cli$)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/fixtures/|ani-cli$|\.github/workflows/bash\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
