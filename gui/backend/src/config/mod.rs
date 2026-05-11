@@ -112,14 +112,20 @@ impl Default for Config {
 
 /// Per-OS default Syncplay binary path. Linux + Windows fall back to
 /// `"syncplay"` and rely on PATH; macOS resolves to the standard
-/// Syncplay.app inner executable. Used by the `Config::syncplay_binary`
-/// serde default so old configs decode with a sensible value.
+/// Syncplay.app inner executable since macOS GUI .app bundles don't
+/// drop their executable into PATH. Used by the
+/// `Config::syncplay_binary` serde default so old configs decode with
+/// a sensible per-platform value.
 #[must_use]
 pub fn default_syncplay_binary() -> String {
-    // TODO(test-red): the per-OS values land in the paired feat(green)
-    // commit. Today this returns a placeholder so the
-    // `default_syncplay_binary_per_os` test fails.
-    "FIXME-syncplay-binary".into()
+    #[cfg(target_os = "macos")]
+    {
+        "/Applications/Syncplay.app/Contents/MacOS/syncplay".into()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "syncplay".into()
+    }
 }
 
 /// Read the config file at `path`. Missing-file returns

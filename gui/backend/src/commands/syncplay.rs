@@ -44,8 +44,7 @@ pub struct SyncplayLaunchArgs {
 /// Pure: no spawn happens here so unit tests can lock the contract.
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
-    void_args(args);
-    unimplemented!("test(red): build_argv lands in the paired feat(green) commit");
+    vec![args.stream_url.clone()]
 }
 
 /// Launch the configured Syncplay binary against the resolved stream
@@ -59,13 +58,22 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
 ///   the failed command in the error dialog and link the user to
 ///   <https://syncplay.pl/download/>.
 pub fn open_syncplay(args: &SyncplayLaunchArgs) -> Result<()> {
-    void_args(args);
-    unimplemented!("test(red): open_syncplay lands in the paired feat(green) commit");
-}
-
-fn void_args(args: &SyncplayLaunchArgs) {
-    let _ = &args.stream_url;
-    let _ = &args.binary;
+    if args.binary.trim().is_empty() {
+        return Err(AniError::SyncplaySpawnFailed {
+            binary: args.binary.clone(),
+        });
+    }
+    let argv = build_argv(args);
+    let mut cmd = std::process::Command::new(&args.binary);
+    cmd.args(&argv)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|_| AniError::SyncplaySpawnFailed {
+            binary: args.binary.clone(),
+        })
 }
 
 #[cfg(test)]

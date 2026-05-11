@@ -127,6 +127,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/download/stream", get(get_download_stream))
         .route("/api/download/default-dir", get(get_download_default_dir))
         .route("/api/play/external", post(post_play_external))
+        .route("/api/play/syncplay", post(post_play_syncplay))
         .route("/api/play/cache/evict", post(post_play_cache_evict))
         .route("/api/play/mark-watched", post(post_play_mark_watched))
         .route(
@@ -514,6 +515,20 @@ async fn post_play_external(
     Json(args): Json<play_inner::PlayArgs>,
 ) -> Result<StatusCode, AniError> {
     play_inner::play_external(&state, &args).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Sister of `post_play_external` — same resolution chain, but the
+/// resolved URL goes to the user's Syncplay binary instead of mpv.
+/// Returns 202 Accepted because Syncplay launches in a detached
+/// process and we don't wait for it. A failed spawn surfaces as
+/// `AniError::SyncplaySpawnFailed { binary }`; the frontend's
+/// ErrorOverlay names the binary and links to syncplay.pl.
+async fn post_play_syncplay(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<play_inner::PlayArgs>,
+) -> Result<StatusCode, AniError> {
+    play_inner::play_syncplay(&state, &args).await?;
     Ok(StatusCode::ACCEPTED)
 }
 

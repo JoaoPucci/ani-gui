@@ -25,6 +25,7 @@ use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::{
     external_player::{self, LaunchArgs},
     session::{create_session_with_kind, CreateSessionArgs, CreateSessionResponse},
+    syncplay::{self, SyncplayLaunchArgs},
 };
 use crate::config::read_config;
 use crate::error::{AniError, Result};
@@ -543,6 +544,50 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         custom_args_template: Some(cfg.external_player_custom_args),
     };
     external_player::open_external_player(&launch)
+}
+
+/// Resolve `args` against ani-cli and hand the upstream URL to the
+/// user's locally-installed Syncplay binary. Behaves like
+/// `play_external` (same resolution chain, same cache reuse, same
+/// referer-inference) but the terminal action is a Syncplay spawn
+/// instead of a direct player spawn. Syncplay handles its own
+/// wrapped-player flags internally — the argv we pass is just the
+/// URL.
+///
+/// # Errors
+/// Inherits from [`run_debug`] and
+/// [`syncplay::open_syncplay`] (missing binary, spawn failure).
+pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
+    let quality = args.quality.as_deref().unwrap_or("best");
+    let cfg = read_config(&state.config_path).unwrap_or_default();
+
+    // Reuse the long-term cache the same way play_external does — the
+    // embedded player likely just resolved this exact (title, mode,
+    // quality, episode) tuple. Without it, the user waits another
+    // ~30s for ani-cli to spin up a fresh fetch.
+    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
+        return syncplay::open_syncplay(&SyncplayLaunchArgs {
+            stream_url: launch.stream_url,
+            binary: cfg.syncplay_binary,
+        });
+    }
+
+    let opts = debug_options_for(state, None);
+    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
+    let resolved = run_debug(
+        &opts,
+        &search_title,
+        &args.episode,
+        quality,
+        &args.mode,
+        select_index,
+    )
+    .await?;
+
+    syncplay::open_syncplay(&SyncplayLaunchArgs {
+        stream_url: resolved.selected_url,
+        binary: cfg.syncplay_binary,
+    })
 }
 
 #[cfg(test)]
