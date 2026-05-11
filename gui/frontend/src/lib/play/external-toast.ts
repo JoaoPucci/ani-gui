@@ -14,14 +14,21 @@
 
 import type { ExternalPlayerKind } from '$lib/api';
 import type { PushArgs } from '$lib/toasts/store.svelte';
+import { m } from '$lib/paraglide/messages';
+
+const BRAND_LABELS: Record<Exclude<ExternalPlayerKind, 'custom'>, string> = {
+	mpv: 'mpv',
+	vlc: 'VLC',
+	iina: 'IINA'
+};
 
 /** Human-readable label for an external-player kind. Brand names
  *  stay literal (proper nouns); the `custom` fallback gets a
  *  localized "external player" phrase since there's no product
  *  name to surface. */
 export function playerKindLabel(kind: ExternalPlayerKind): string {
-	void kind;
-	throw new Error('test(red): playerKindLabel lands in the paired feat(green) commit');
+	if (kind === 'custom') return m.play_external_player_custom_label();
+	return BRAND_LABELS[kind];
 }
 
 /** Build the `PushArgs` for the success toast that announces an
@@ -32,6 +39,12 @@ export function externalLaunchSuccessToast(args: {
 	episode: number;
 	kind: ExternalPlayerKind;
 }): PushArgs {
-	void args;
-	throw new Error('test(red): externalLaunchSuccessToast lands in the paired feat(green) commit');
+	return {
+		kind: 'success',
+		message: m.play_external_sent_toast({
+			episode: args.episode,
+			player: playerKindLabel(args.kind)
+		}),
+		duration: 4000
+	};
 }
