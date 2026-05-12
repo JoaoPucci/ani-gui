@@ -49,6 +49,14 @@ pub struct SyncplayLaunchArgs {
     /// Old payloads without this field decode as `None`.
     #[serde(default)]
     pub referer: Option<String>,
+    /// Optional sidecar subtitle URL (`.vtt`) when ani-cli surfaces a
+    /// soft-subtitle track separately from the stream. Forwarded to
+    /// the wrapped mpv via `--sub-file=`. Without this, Syncplay's
+    /// wrapped player opens the video but drops the subtitles even
+    /// though the embedded and external-player paths show them.
+    /// Old payloads without this field decode as `None`.
+    #[serde(default)]
+    pub subtitle_url: Option<String>,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -111,6 +119,7 @@ mod tests {
             stream_url: stream.into(),
             binary: binary.into(),
             referer: None,
+            subtitle_url: None,
         }
     }
 
@@ -167,6 +176,61 @@ mod tests {
         let a: SyncplayLaunchArgs =
             serde_json::from_str(json).expect("decodes with default referer");
         assert!(a.referer.is_none());
+        assert!(a.subtitle_url.is_none());
+    }
+
+    #[test]
+    fn argv_forwards_subtitle_after_separator() {
+        // Soft-subtitle streams: ani-cli's parser surfaces a sidecar
+        // `.vtt` URL alongside the stream. play_external forwards it
+        // as `--sub-file=`; Syncplay's wrapped mpv needs the same
+        // flag past the `--` separator, or the user sees the video
+        // play but loses subtitles.
+        let mut a = args("https://example.com/master.m3u8", "syncplay");
+        a.subtitle_url = Some("https://example.com/subs.vtt".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "https://example.com/master.m3u8".to_string(),
+                "--".to_string(),
+                "--sub-file=https://example.com/subs.vtt".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_forwards_referer_and_subtitle_together() {
+        // Both flags share one `--` separator. Order matches mpv's
+        // typical argv shape: title-y flags first (none here), then
+        // sub-file, then referrer, then the URL — but here the URL
+        // is the file argument BEFORE `--`, so post-separator order
+        // is what counts: referrer then sub-file (stable across CDN
+        // shapes that supply both).
+        let mut a = args("https://example.com/master.m3u8", "syncplay");
+        a.referer = Some("https://allmanga.to".into());
+        a.subtitle_url = Some("https://example.com/subs.vtt".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "https://example.com/master.m3u8".to_string(),
+                "--".to_string(),
+                "--referrer=https://allmanga.to".to_string(),
+                "--sub-file=https://example.com/subs.vtt".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_drops_empty_subtitle() {
+        // Defensive: an empty `subtitle_url` falls through the same
+        // way an empty `referer` does — emitting `--sub-file=` with
+        // nothing after the equals just makes mpv complain.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.subtitle_url = Some(String::new());
+        let v = build_argv(&a);
+        assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
     }
 
     #[test]

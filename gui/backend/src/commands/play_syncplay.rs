@@ -46,6 +46,10 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
             referer: launch.referer,
+            // test(red): subtitle threading lands in the paired
+            // fix(green) commit; today soft-subtitle streams play
+            // under Syncplay but lose subtitles.
+            subtitle_url: None,
         });
     }
 
@@ -67,5 +71,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         stream_url: resolved.selected_url,
         binary: cfg.syncplay_binary,
         referer,
+        // test(red): see comment above.
+        subtitle_url: None,
     })
 }
