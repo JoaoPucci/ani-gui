@@ -132,20 +132,95 @@ pub fn pick_by_ep_count(
     Some(best_idx + 1)
 }
 
-/// V2 picker stub — placeholder for the red commit. Currently
-/// delegates to [`pick_by_ep_count`] and ignores the year hint; the
-/// paired green commit replaces this body with the layered (year-
-/// filter → ep-count threshold → exact-name tie-break) logic the
-/// new tests pin.
+/// Layered allmanga picker: year filter → ep-count threshold →
+/// exact-name tie-break. Same return shape as [`pick_by_ep_count`]
+/// (1-based index, `None` for "no good match") but with two extra
+/// rejection paths that stop the disambiguator from silently picking
+/// a sibling when the show isn't on allmanga (the
+/// Mobile-Suit-Gundam-1979-vs-Wing repro).
+///
+///   1. If `expected_year` is `Some` AND at least one candidate has a
+///      `aired_start.year` within ±1 of it, restrict the working pool
+///      to those candidates. Otherwise the full pool is used (so
+///      shows where allmanga omits the year still resolve).
+///   2. Pick by ep-count distance within the working pool.
+///   3. Reject the pick when `best_dist > max(3, expected * 10%)`.
+///      Long-running shows get proportional slack (One Piece-shaped
+///      drift of 60+ episodes against an `expected` near 1100 still
+///      lands inside the 110-ep tolerance); short shows get a hard
+///      floor of 3 so sibling-distance-6 picks like Wing-for-1979
+///      can't slip through.
+///   4. Exact-name tie-break stays — among candidates at `best_dist`
+///      in the working pool, prefer one whose name matches
+///      `search_title` (case-insensitive, trimmed).
 #[must_use]
 pub fn pick_by_ep_count_v2(
     candidates: &[Candidate],
     expected: u32,
-    _expected_year: Option<u32>,
+    expected_year: Option<u32>,
     mode: &str,
     search_title: &str,
 ) -> Option<usize> {
-    pick_by_ep_count(candidates, expected, mode, search_title)
+    if candidates.is_empty() {
+        return None;
+    }
+    // 1) Year filter — pool is indices into the full slice so the
+    //    1-based return value still points at the right candidate.
+    let pool: Vec<usize> = match expected_year {
+        Some(want) => {
+            let in_range: Vec<usize> = (0..candidates.len())
+                .filter(|&i| {
+                    AiredStart::year_value(candidates[i].aired_start.as_ref())
+                        .is_some_and(|y| y.abs_diff(want) <= 1)
+                })
+                .collect();
+            if in_range.is_empty() {
+                (0..candidates.len()).collect()
+            } else {
+                in_range
+            }
+        }
+        None => (0..candidates.len()).collect(),
+    };
+
+    // 2) Ep-count pick within the pool.
+    let mut best_i = pool[0];
+    let mut best_dist = u32::MAX;
+    for &i in &pool {
+        let got = candidates[i].available_episodes.for_mode(mode);
+        let dist = got.abs_diff(expected);
+        if dist < best_dist {
+            best_i = i;
+            best_dist = dist;
+        }
+    }
+
+    // 3) Threshold — proportional slack for long shows, fixed floor
+    //    for short ones. Saturating math keeps the calc cheap and
+    //    correct on u32; the floor ensures sibling-distance-6 picks
+    //    are rejected for short series.
+    let tolerance = std::cmp::max(3, expected / 10);
+    if best_dist > tolerance {
+        return None;
+    }
+
+    // 4) Exact-name tie-break, scoped to the pool + min-distance bucket.
+    let needle = search_title.trim().to_lowercase();
+    if !needle.is_empty() {
+        for &i in &pool {
+            let dist = candidates[i]
+                .available_episodes
+                .for_mode(mode)
+                .abs_diff(expected);
+            if dist != best_dist {
+                continue;
+            }
+            if candidates[i].name.trim().to_lowercase() == needle {
+                return Some(i + 1);
+            }
+        }
+    }
+    Some(best_i + 1)
 }
 
 const ALLANIME_API: &str = "https://api.allanime.day";
@@ -337,7 +412,13 @@ pub async fn fetch_show(
 pub fn encode_query_for_allanime(s: &str) -> String {
     s.replace(' ', "+")
 }
-const SEARCH_GQL: &str = "query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes __typename } }}";
+// `airedStart` is an Object whose subfields the GraphQL schema
+// rejects in a sub-selection ("must not have a selection since type
+// 'Object' has no subfields") — same shape as `availableEpisodes`.
+// Selecting the bare field gets us the whole `{year, month, date,
+// hour, minute}` object back, which our `AiredStart` struct trims
+// down to the `year` we actually consume.
+const SEARCH_GQL: &str = "query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes airedStart __typename } }}";
 
 /// Hit allanime's GraphQL `shows.search` endpoint with the same
 /// payload ani-cli would send and return the candidate list. `mode`

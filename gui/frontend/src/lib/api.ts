@@ -334,6 +334,26 @@ export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): strin
 	return out;
 }
 
+/**
+ * Pull the start year out of a Kitsu `start_date` string
+ * (ISO 8601 `"YYYY-MM-DD"`). Returns `null` when the ref or its
+ * `start_date` is missing or the prefix can't parse — callers feed
+ * the result straight to PlayArgs/DownloadArgs/AvailabilityArgs, all
+ * of which accept `null` and degrade to ep-count-only disambiguation.
+ *
+ * Why this matters: allmanga's `airedStart.year` is much more
+ * discriminative than ep-count for franchise overlap (Mobile Suit
+ * Gundam 1979 vs Gundam Wing 1995). The backend's
+ * `pick_by_ep_count_v2` uses the year as a primary filter — but only
+ * when we send it.
+ */
+export function yearFromKitsuRef(ref: KitsuAnimeRef | null | undefined): number | null {
+	const s = ref?.start_date;
+	if (typeof s !== 'string' || s.length < 4) return null;
+	const n = Number(s.slice(0, 4));
+	return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function appInfo(): Promise<AppInfo> {
 	return getJson<AppInfo>('/api/app-info');
 }
@@ -384,6 +404,11 @@ export interface PlayArgs {
 	 *  1-ep side story. Optional: if missing, the backend falls back
 	 *  to allanime's first match. */
 	episode_count?: number | null;
+	/** Kitsu's start year (parsed from `start_date`, e.g.
+	 *  `"1995-04-07"` → `1995`). The backend uses it as a stronger
+	 *  tie-break than ep-count for franchise-overlap cases (Mobile
+	 *  Suit Gundam Wing 1995 vs Mobile Suit Gundam 1979). */
+	year?: number | null;
 	/** Fallback titles to try when the canonical title returns no
 	 *  allanime hits. Build with {@link altTitlesFromKitsu}. The
 	 *  backend walks them in order and stops at the first non-empty
@@ -490,6 +515,7 @@ export function playStream(
 	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
+	if (typeof args.year === 'number') params.set('year', String(args.year));
 	// alt_titles is a Vec<String> on the backend. serde_urlencoded can't
 	// decode that from repeated keys, so we join with `\n` and the
 	// backend's custom deserializer splits on the same separator.
@@ -573,6 +599,7 @@ export interface DownloadArgs {
 	mode: string;
 	quality?: string;
 	episode_count?: number;
+	year?: number;
 	alt_titles?: string[];
 	kitsu_id?: string;
 	download_dir?: string;
@@ -612,6 +639,7 @@ export function downloadStream(
 	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
+	if (typeof args.year === 'number') params.set('year', String(args.year));
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
@@ -687,6 +715,7 @@ export interface AvailabilityArgs {
 	mode: string;
 	alt_titles?: string[];
 	episode_count?: number;
+	year?: number;
 	kitsu_id?: string;
 	/** Kitsu's airing status — one of "current", "finished",
 	 *  "upcoming", "tba", "unreleased". Branches the positive cache

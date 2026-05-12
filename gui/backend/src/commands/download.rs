@@ -36,6 +36,10 @@ pub struct DownloadArgs {
     /// disambiguator the play path uses.
     #[serde(default)]
     pub episode_count: Option<u32>,
+    /// Year the show first aired (Kitsu `start_date` year). Plumbed
+    /// to the picker as the year tie-break; see [`PlayArgs::year`].
+    #[serde(default)]
+    pub year: Option<u32>,
     /// Fallback titles tried when the canonical title returns no
     /// allanime hits. Same wire forms as [`PlayArgs::alt_titles`].
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
@@ -167,6 +171,7 @@ fn play_args_view(args: &DownloadArgs) -> PlayArgs {
         mode: args.mode.clone(),
         quality: args.quality.clone(),
         episode_count: args.episode_count,
+        year: args.year,
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
@@ -249,6 +254,7 @@ mod tests {
             mode: "sub".into(),
             quality: None,
             episode_count: None,
+            year: None,
             alt_titles: vec![],
             kitsu_id: None,
             download_dir: Some("/tmp/explicit".into()),

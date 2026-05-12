@@ -98,21 +98,29 @@ pub fn select_first_with_hits(
     expected: u32,
     mode: &str,
 ) -> (String, usize) {
-    select_first_with_hits_opt(primary, results, Some(expected), mode)
+    select_first_with_hits_opt(primary, results, Some(expected), None, mode)
 }
 
 /// `select_first_with_hits` variant where `expected` may be unknown.
 /// When `expected` is `None`, returns the first non-empty list with
 /// candidate index 1 (allanime's own ranking — same as ani-cli's
 /// default `-S 1`). When `Some`, behaves identically to the v1 helper.
+///
+/// `expected_year` is the Kitsu start_date year (when known). The
+/// underlying [`scraper::pick_by_ep_count_v2`] uses it as a primary
+/// tie-break before ep-count distance — fixes the
+/// Mobile-Suit-Gundam-1979-vs-Wing case where ep-count distance alone
+/// silently picked a sibling.
 #[must_use]
 pub fn select_first_with_hits_opt(
     primary: &str,
     results: &[(String, Vec<Candidate>)],
     expected: Option<u32>,
+    expected_year: Option<u32>,
     mode: &str,
 ) -> (String, usize) {
-    let (title, idx, _) = select_first_with_hits_with_candidate(primary, results, expected, mode);
+    let (title, idx, _) =
+        select_first_with_hits_with_candidate(primary, results, expected, expected_year, mode);
     (title, idx)
 }
 
@@ -120,11 +128,15 @@ pub fn select_first_with_hits_opt(
 /// chosen [`Candidate`] (the row whose `id` + `name` we'll cache for
 /// the history-write feedback path). `None` for the candidate when no
 /// list had hits — the caller falls back to writing nothing.
+///
+/// `expected_year` plumbs through to the picker the same way
+/// `expected` does; see [`select_first_with_hits_opt`] for rationale.
 #[must_use]
 pub fn select_first_with_hits_with_candidate(
     primary: &str,
     results: &[(String, Vec<Candidate>)],
     expected: Option<u32>,
+    expected_year: Option<u32>,
     mode: &str,
 ) -> (String, usize, Option<Candidate>) {
     for (title, cands) in results {
@@ -132,7 +144,9 @@ pub fn select_first_with_hits_with_candidate(
             continue;
         }
         let pick = match expected {
-            Some(n) => scraper::pick_by_ep_count(cands, n, mode, title).unwrap_or(1),
+            Some(n) => {
+                scraper::pick_by_ep_count_v2(cands, n, expected_year, mode, title).unwrap_or(1)
+            }
             None => 1,
         };
         // `pick` is 1-based; clamp into the slice in case
@@ -277,7 +291,7 @@ mod tests {
             "alt".into(),
             vec![cand("a", 12), cand("b", 24), cand("c", 36)],
         )];
-        let (title, pick) = select_first_with_hits_opt("Primary", &results, None, "sub");
+        let (title, pick) = select_first_with_hits_opt("Primary", &results, None, None, "sub");
         assert_eq!(title, "alt");
         assert_eq!(pick, 1);
     }
@@ -292,7 +306,7 @@ mod tests {
             vec![cand("KO_GAKUEN", 1), cand("NARUTO_SHIPPUUDEN", 500)],
         )];
         let (title, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(500), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(500), None, "sub");
         assert_eq!(title, "Naruto Shippuuden");
         assert_eq!(pick, 2);
         assert_eq!(chosen.expect("candidate").id, "NARUTO_SHIPPUUDEN");
@@ -302,7 +316,7 @@ mod tests {
     fn with_candidate_returns_none_when_every_list_is_empty() {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), vec![])];
         let (_, _, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(12), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
         assert!(chosen.is_none());
     }
 
@@ -315,7 +329,7 @@ mod tests {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), one)];
         // Force pick=1 via expected == 1 (closest match).
         let (_, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(1), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(1), None, "sub");
         assert_eq!(pick, 1);
         assert_eq!(chosen.expect("candidate").id, "only");
     }
@@ -342,7 +356,7 @@ mod tests {
                 .map(|i| (format!("title-{i}"), Vec::<Candidate>::new()))
                 .collect();
             let (title, pick, chosen) =
-                select_first_with_hits_with_candidate("Primary", &results, Some(12), "sub");
+                select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
             proptest::prop_assert_eq!(title, "Primary");
             proptest::prop_assert_eq!(pick, 1);
             proptest::prop_assert!(chosen.is_none());
@@ -388,7 +402,7 @@ mod tests {
             }
 
             let (title, pick, chosen) = select_first_with_hits_with_candidate(
-                "Primary", &results, Some(expected), "sub",
+                "Primary", &results, Some(expected), None, "sub",
             );
 
             // The chosen title must be the first non-empty list's

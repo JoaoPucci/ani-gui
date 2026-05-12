@@ -54,6 +54,16 @@ pub struct PlayArgs {
     /// behaviour.
     #[serde(default)]
     pub episode_count: Option<u32>,
+    /// Year the show first aired, parsed from Kitsu's `start_date`
+    /// (`"1995-04-07"` → `1995`). The disambiguator uses it as the
+    /// primary tie-break against allmanga's `airedStart.year` — much
+    /// more discriminative than ep-count for franchise-overlap cases
+    /// (Mobile Suit Gundam 1979 vs Gundam Wing 1995). `None` when the
+    /// caller doesn't know the year (legacy SSE path, prefetch
+    /// without metadata, etc.); picker degrades gracefully to pure
+    /// ep-count + threshold.
+    #[serde(default)]
+    pub year: Option<u32>,
     /// Fallback titles to try when the canonical title returns no
     /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
@@ -158,8 +168,13 @@ pub(super) async fn pick_title_and_index(
         }
     }
 
-    let (chosen_title, pick, chosen) =
-        select_first_with_hits_with_candidate(&primary, &results, args.episode_count, mode);
+    let (chosen_title, pick, chosen) = select_first_with_hits_with_candidate(
+        &primary,
+        &results,
+        args.episode_count,
+        args.year,
+        mode,
+    );
     tracing::info!(
         primary = %primary,
         alt_count = args.alt_titles.len(),
@@ -722,6 +737,7 @@ mod tests {
             mode: "sub".into(),
             quality: Some("best".into()),
             episode_count: None,
+            year: None,
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
@@ -968,6 +984,7 @@ mod tests {
             mode: "sub".into(),
             quality: None,
             episode_count: None,
+            year: None,
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
@@ -1140,6 +1157,7 @@ mod tests {
         let (title, idx) = select_first_with_hits_opt(
             "JoJo's Bizarre Adventure: Stone Ocean",
             &results,
+            None,
             None,
             "sub",
         );

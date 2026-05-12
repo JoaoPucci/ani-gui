@@ -53,6 +53,11 @@ pub struct AvailabilityArgs {
     /// even when the actual show isn't on allmanga.
     #[serde(default)]
     pub episode_count: Option<u32>,
+    /// Year the show first aired, parsed from Kitsu's `start_date`.
+    /// Plumbed through the picker as the primary tie-break against
+    /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
+    #[serde(default)]
+    pub year: Option<u32>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
     /// check still runs but its result isn't persisted.
     #[serde(default)]
@@ -172,6 +177,7 @@ pub async fn check_availability(
         mode: mode.into(),
         quality: None,
         episode_count: args.episode_count,
+        year: args.year,
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),

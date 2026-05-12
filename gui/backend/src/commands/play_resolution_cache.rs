@@ -47,7 +47,14 @@ use crate::proxy::MediaKind;
 ///   `ani-hsts` / Continue Watching. v1 rows had no metadata to write
 ///   the history line with — bumping forces a re-resolve so the new
 ///   fields populate naturally.
-const SCHEMA: &str = "v2";
+/// - v3: disambiguator started using allmanga's `airedStart.year` as a
+///   primary tie-break and added an ep-count distance threshold. The
+///   poisoned `play:v2:Mobile Suit Gundam:*` rows (which mapped to
+///   Gundam Wing's allmanga id because v2's picker silently picked
+///   the closest sibling on ep-count) must NOT survive into v3 —
+///   bumping evicts them and forces a re-resolve through the new
+///   layered picker.
+const SCHEMA: &str = "v3";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -178,7 +185,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1");
-        assert!(k.starts_with("play:v2:"), "got {k}");
+        assert!(k.starts_with("play:v3:"), "got {k}");
     }
 
     #[test]
@@ -193,7 +200,7 @@ mod tests {
     #[test]
     fn get_returns_none_on_miss() {
         let pool = pool();
-        let got = get(&pool, "play:v2:Nope:sub:best:1").expect("ok");
+        let got = get(&pool, "play:v3:Nope:sub:best:1").expect("ok");
         assert!(got.is_none());
     }
 
@@ -216,8 +223,8 @@ mod tests {
         // Eviction by frontend feedback may race the natural
         // eviction-on-HEAD-fail in the backend. Both callers should
         // be safe to invoke even when the row is already gone.
-        evict(&pool, "play:v2:Never:Cached:best:1");
-        assert!(get(&pool, "play:v2:Never:Cached:best:1")
+        evict(&pool, "play:v3:Never:Cached:best:1");
+        assert!(get(&pool, "play:v3:Never:Cached:best:1")
             .expect("ok")
             .is_none());
     }
@@ -230,7 +237,7 @@ mod tests {
         // are blank. Without this, the bump to v2 of CachedResolution
         // would silently invalidate every row.
         let pool = pool();
-        let key = "play:v2:Legacy:sub:best:1";
+        let key = "play:v3:Legacy:sub:best:1";
         let legacy = r#"{"upstream_url":"https://x/y.mp4","referer":"","subtitle_url":null,"media_kind":"mp4"}"#;
         meta_cache_put(&pool, key, legacy, 60).unwrap();
         let got = get(&pool, key).expect("ok").expect("hit");
@@ -245,7 +252,7 @@ mod tests {
         // edited row, shouldn't permanently mask the show — the play
         // flow should fall through to ani-cli and overwrite the row.
         let pool = pool();
-        let key = "play:v2:Garbage:sub:best:1";
+        let key = "play:v3:Garbage:sub:best:1";
         meta_cache_put(&pool, key, "{ not valid json", 60).unwrap();
         assert!(get(&pool, key).expect("ok").is_none());
     }

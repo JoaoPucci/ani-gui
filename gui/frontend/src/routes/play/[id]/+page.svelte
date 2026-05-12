@@ -37,6 +37,7 @@
 	import { settle } from '$lib/transitions/settle';
 	import {
 		altTitlesFromKitsu,
+		yearFromKitsuRef,
 		aniskipGet,
 		downloadDefaultDir as downloadDefaultDirApi,
 		evictPlayCache,
@@ -1274,6 +1275,7 @@
 					mode: 'sub',
 					alt_titles: altTitlesFromKitsu(d),
 					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
 					kitsu_id: d.id,
 					status: d.status ?? undefined
 				})
@@ -1356,6 +1358,7 @@
 						mode,
 						quality,
 						episode_count: detail?.episode_count ?? null,
+						year: yearFromKitsuRef(detail),
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
@@ -1397,6 +1400,7 @@
 							mode,
 							quality,
 							episode_count: detail?.episode_count ?? null,
+							year: yearFromKitsuRef(detail),
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1422,6 +1426,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -1467,6 +1472,7 @@
 				mode,
 				quality,
 				episode_count: detail.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 		} catch {
@@ -1614,6 +1620,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -1667,6 +1674,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			toastStore.push(syncplayLaunchSuccessToast({ episode: episodeNum }));
@@ -1713,6 +1721,7 @@
 			mode,
 			quality,
 			episode_count: detail.episode_count ?? undefined,
+			year: yearFromKitsuRef(detail) ?? undefined,
 			alt_titles: altTitlesFromKitsu(detail),
 			kitsu_id: id
 		};
