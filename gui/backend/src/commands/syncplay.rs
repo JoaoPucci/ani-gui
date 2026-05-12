@@ -24,6 +24,7 @@
 
 use serde::Deserialize;
 
+use crate::commands::external_player::ExternalPlayerKind;
 use crate::error::{AniError, Result};
 
 /// Arguments to the command. Caller supplies the resolved stream URL
@@ -51,12 +52,28 @@ pub struct SyncplayLaunchArgs {
     pub referer: Option<String>,
     /// Optional sidecar subtitle URL (`.vtt`) when ani-cli surfaces a
     /// soft-subtitle track separately from the stream. Forwarded to
-    /// the wrapped mpv via `--sub-file=`. Without this, Syncplay's
-    /// wrapped player opens the video but drops the subtitles even
-    /// though the embedded and external-player paths show them.
-    /// Old payloads without this field decode as `None`.
+    /// the wrapped player via the kind-appropriate `--sub-file=` /
+    /// equivalent flag. Without this, Syncplay's wrapped player
+    /// opens the video but drops the subtitles even though the
+    /// embedded and external-player paths show them. Old payloads
+    /// without this field decode as `None`.
     #[serde(default)]
     pub subtitle_url: Option<String>,
+    /// Which media player Syncplay wraps. Drives the flag syntax
+    /// emitted past `--`: mpv takes `--referrer=`, VLC takes
+    /// `--http-referrer=`, IINA takes `--mpv-referrer=` (the
+    /// passthrough to its embedded mpv). `Custom` emits no
+    /// player-specific flags — the wrapped player's own config
+    /// carries them, same escape hatch the external-player path's
+    /// Custom kind uses.
+    ///
+    /// Reuses `Config::external_player_kind` directly: most users
+    /// have one media player installed and Syncplay defaults to
+    /// wrapping the same one they picked for "Open in external".
+    /// Old payloads without this field decode as `Mpv` (the
+    /// upstream Syncplay default).
+    #[serde(default)]
+    pub player_kind: ExternalPlayerKind,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -125,6 +142,7 @@ mod tests {
             binary: binary.into(),
             referer: None,
             subtitle_url: None,
+            player_kind: ExternalPlayerKind::Mpv,
         }
     }
 
@@ -236,6 +254,82 @@ mod tests {
         a.subtitle_url = Some(String::new());
         let v = build_argv(&a);
         assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
+    }
+
+    #[test]
+    fn argv_for_vlc_uses_http_referrer() {
+        // VLC's flag for the Referer header is `--http-referrer=`,
+        // not mpv's `--referrer=`. Codex flagged on PR #12 that a
+        // Syncplay→VLC user gets either an "unknown option" error
+        // or a silent fall-through to no-Referer with the mpv flag,
+        // breaking fast4speed.rsvp streams that play fine under
+        // Syncplay→mpv.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_kind = ExternalPlayerKind::Vlc;
+        a.referer = Some("https://allmanga.to".into());
+        a.subtitle_url = Some("https://example.com/subs.vtt".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "https://example.com/v.mp4".to_string(),
+                "--".to_string(),
+                "--http-referrer=https://allmanga.to".to_string(),
+                "--sub-file=https://example.com/subs.vtt".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_for_iina_uses_mpv_prefixed_referrer() {
+        // IINA wraps mpv on macOS and forwards flags through
+        // `--mpv-` prefixes. Mirror what external_player.rs's
+        // Iina branch emits so a Syncplay→IINA setup carries the
+        // same headers a direct IINA launch would.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_kind = ExternalPlayerKind::Iina;
+        a.referer = Some("https://allmanga.to".into());
+        a.subtitle_url = Some("https://example.com/subs.vtt".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "https://example.com/v.mp4".to_string(),
+                "--".to_string(),
+                "--mpv-referrer=https://allmanga.to".to_string(),
+                "--sub-file=https://example.com/subs.vtt".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_for_custom_emits_no_player_specific_flags() {
+        // Custom is the escape hatch — we don't know what flag
+        // shape the user's player accepts, so passing anything
+        // would risk an "unknown option" error. The user is
+        // expected to configure referer / sub-file in their own
+        // player's config (~/.config/mpv/mpv.conf etc.).
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_kind = ExternalPlayerKind::Custom;
+        a.referer = Some("https://allmanga.to".into());
+        a.subtitle_url = Some("https://example.com/subs.vtt".into());
+        let v = build_argv(&a);
+        assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
+    }
+
+    #[test]
+    fn launch_args_decode_without_player_kind_defaults_to_mpv() {
+        // Old payloads (pre-player-kind threading) don't include
+        // `player_kind`. They must still decode and default to Mpv
+        // — that's the upstream Syncplay default and matches the
+        // pre-merge syncplay path's behaviour.
+        let json = r#"{
+            "stream_url": "https://example.com/v.mp4",
+            "binary": "syncplay"
+        }"#;
+        let a: SyncplayLaunchArgs =
+            serde_json::from_str(json).expect("decodes with default player_kind");
+        assert_eq!(a.player_kind, ExternalPlayerKind::Mpv);
     }
 
     #[test]

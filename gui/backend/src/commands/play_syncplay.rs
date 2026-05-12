@@ -41,13 +41,18 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         // Reuse the cached referer + subtitle —
         // try_launch_args_from_cache already pulls both from the
         // cache row (same shape play_external receives), so
-        // Syncplay's wrapped mpv gets the same Referer + sub-file
+        // Syncplay's wrapped player gets the same Referer + sub-file
         // it would have under play_external.
         return open_syncplay(&SyncplayLaunchArgs {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
             referer: launch.referer,
             subtitle_url: launch.subtitle_url,
+            // test(red): player-kind threading lands in the paired
+            // fix(green) commit; today Syncplay→VLC users get
+            // mpv-style flags and either an "unknown option"
+            // complaint or silent fall-through to no referer.
+            player_kind: crate::commands::external_player::ExternalPlayerKind::Mpv,
         });
     }
 
@@ -70,5 +75,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         binary: cfg.syncplay_binary,
         referer,
         subtitle_url: resolved.subtitle_url,
+        // test(red): see comment above.
+        player_kind: crate::commands::external_player::ExternalPlayerKind::Mpv,
     })
 }
