@@ -2452,6 +2452,68 @@
 								</svg>
 								<span>{m.play_controls_menu_download()}</span>
 							</button>
+
+							<!-- "Watch together" lives here in addition to the
+							     in-player hamburger (pc-menu) because the
+							     hamburger is gated on use_custom_player_controls.
+							     When the user opts into Chromium's native
+							     controls the hamburger disappears, and the
+							     more-menu becomes the only reachable surface
+							     for Syncplay launches. -->
+							<button
+								type="button"
+								class="more-item"
+								role="menuitem"
+								disabled={syncplayBusy}
+								onclick={() => {
+									closeMore();
+									void onSyncplay();
+								}}
+							>
+								<svg
+									class="more-icon"
+									viewBox="0 0 24 24"
+									width="18"
+									height="18"
+									aria-hidden="true"
+								>
+									<circle
+										cx="9"
+										cy="8"
+										r="3"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.25"
+									/>
+									<path
+										d="M3 19c0-3 3-5 6-5s6 2 6 5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.25"
+										stroke-linecap="round"
+									/>
+									<circle
+										cx="17"
+										cy="9"
+										r="2.4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.25"
+									/>
+									<path
+										d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.25"
+										stroke-linecap="round"
+									/>
+								</svg>
+								<span>
+									{syncplayBusy
+										? m.play_hamburger_syncplay_busy_label()
+										: m.play_hamburger_syncplay_label()}
+								</span>
+							</button>
 						</div>
 					{/if}
 				</div>
