@@ -82,6 +82,7 @@
 	"hamburger_syncplay_busy_label": "Iniciando…",
 	"syncplay_sent_toast": "Syncplay iniciado para el episodio {episode}.",
 	"syncplay_spawn_failed_named": "No se pudo abrir {binary}. Instala Syncplay o revisa la ruta en Configuración.",
+	"syncplay_spawn_failed_unnamed": "No se pudo abrir Syncplay — no hay una ruta de binario configurada. Instala Syncplay o elige el ejecutable en Configuración.",
 	"episodes_range_of": "{epStart}–{epEnd} de {total}",
 	"play_failure_no_results": "No se encontró este título en la fuente de streaming. El episodio puede no estar disponible — inténtalo más tarde.",
 	"play_failure_scraper": "No se pudo resolver una transmisión válida ahora mismo. La fuente de streaming parece tener problemas — vuelve a intentarlo en unos minutos.",

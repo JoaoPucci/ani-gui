@@ -82,6 +82,7 @@
 	"hamburger_syncplay_busy_label": "Starting…",
 	"syncplay_sent_toast": "Started Syncplay for episode {episode}.",
 	"syncplay_spawn_failed_named": "Couldn't launch {binary}. Install Syncplay or check the path in Settings.",
+	"syncplay_spawn_failed_unnamed": "Couldn't launch Syncplay — no binary path is set. Install Syncplay or pick its executable in Settings.",
 	"episodes_range_of": "{epStart}–{epEnd} of {total}",
 	"play_failure_no_results": "Couldn't find this title on the streaming source. The episode may not be available — try again later.",
 	"play_failure_scraper": "Couldn't resolve a working stream right now. The streaming source looks unhappy — try again in a few minutes.",

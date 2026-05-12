@@ -34,13 +34,14 @@ export function syncplayLaunchSuccessToast(args: { episode: number }): PushArgs 
  *  link live on the play page (i18n keys + the syncplay.pl href). */
 export function describeSyncplayLaunchFailure(e: unknown): string {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (
-		obj &&
-		obj.kind === 'syncplay_spawn_failed' &&
-		typeof obj.binary === 'string' &&
-		obj.binary.length > 0
-	) {
-		return m.play_syncplay_spawn_failed_named({ binary: obj.binary });
+	if (obj && obj.kind === 'syncplay_spawn_failed' && typeof obj.binary === 'string') {
+		// Empty-string is the "user cleared the path in Settings"
+		// case the backend explicitly classifies as a spawn failure;
+		// surface dedicated copy that points at Settings rather than
+		// naming an empty quoted string.
+		return obj.binary.length > 0
+			? m.play_syncplay_spawn_failed_named({ binary: obj.binary })
+			: m.play_syncplay_spawn_failed_unnamed();
 	}
 	// Resolve-step failures (scraper / timeout / network) — reuse
 	// the embedded play path's copy so the user sees a polished
@@ -59,7 +60,8 @@ export function describeSyncplayLaunchFailure(e: unknown): string {
 export function isSyncplaySpawnFailure(e: unknown): boolean {
 	if (typeof e !== 'object' || e === null) return false;
 	const obj = e as Record<string, unknown>;
-	return (
-		obj.kind === 'syncplay_spawn_failed' && typeof obj.binary === 'string' && obj.binary.length > 0
-	);
+	// Empty-string binary is the cleared-Settings case the backend
+	// emits as a spawn failure — recovery (install / set path) is
+	// the same as for a named binary, so keep the affordance visible.
+	return obj.kind === 'syncplay_spawn_failed' && typeof obj.binary === 'string';
 }
