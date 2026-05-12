@@ -5,7 +5,11 @@
 // happy-dom isn't strictly needed — the helpers are pure — but
 // mirrors `external-toast.test.ts`.
 import { describe, expect, it } from 'vitest';
-import { describeSyncplayLaunchFailure, syncplayLaunchSuccessToast } from './syncplay-toast';
+import {
+	describeSyncplayLaunchFailure,
+	isSyncplaySpawnFailure,
+	syncplayLaunchSuccessToast
+} from './syncplay-toast';
 
 describe('syncplayLaunchSuccessToast', () => {
 	it('returns a success-kind toast naming the episode', () => {
@@ -61,5 +65,53 @@ describe('describeSyncplayLaunchFailure', () => {
 		const got = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed', binary: '' });
 		expect(got.length).toBeGreaterThan(0);
 		expect(got).not.toContain(' ""');
+	});
+});
+
+describe('isSyncplaySpawnFailure', () => {
+	// Drives the play page's "Get Syncplay" affordance: link to
+	// syncplay.pl/download/ only when the failure is a spawn error.
+	// For resolve-step errors (scraper, timeout, network) installing
+	// Syncplay won't help, so the action is suppressed.
+
+	it('returns true for well-formed syncplay_spawn_failed payloads', () => {
+		expect(
+			isSyncplaySpawnFailure({
+				kind: 'syncplay_spawn_failed',
+				binary: '/opt/syncplay/syncplay'
+			})
+		).toBe(true);
+	});
+
+	it('returns false for scraper / resolve-step errors', () => {
+		expect(isSyncplaySpawnFailure({ kind: 'scraper', key: 'error.scraper.parse_failed' })).toBe(
+			false
+		);
+		expect(isSyncplaySpawnFailure({ kind: 'timeout' })).toBe(false);
+		expect(isSyncplaySpawnFailure({ kind: 'network' })).toBe(false);
+		expect(isSyncplaySpawnFailure({ kind: 'no_results' })).toBe(false);
+	});
+
+	it('returns false for player_spawn_failed (external player, not syncplay)', () => {
+		// PlayerSpawnFailed is the external-player variant; if it
+		// somehow surfaces on the syncplay code path, we shouldn't
+		// confuse it with a Syncplay-binary problem.
+		expect(isSyncplaySpawnFailure({ kind: 'player_spawn_failed', binary: 'mpv' })).toBe(false);
+	});
+
+	it('returns false on malformed / empty syncplay_spawn_failed payloads', () => {
+		// Defensive: a payload tagged syncplay_spawn_failed but
+		// without a non-empty binary string is too uncertain to
+		// surface the install affordance on. Treat as resolve error.
+		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed' })).toBe(false);
+		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed', binary: '' })).toBe(false);
+		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed', binary: 42 })).toBe(false);
+	});
+
+	it('returns false for unknown error shapes (plain Error, undefined, null)', () => {
+		expect(isSyncplaySpawnFailure(new Error('boom'))).toBe(false);
+		expect(isSyncplaySpawnFailure(undefined)).toBe(false);
+		expect(isSyncplaySpawnFailure(null)).toBe(false);
+		expect(isSyncplaySpawnFailure('a string')).toBe(false);
 	});
 });

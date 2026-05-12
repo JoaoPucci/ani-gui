@@ -47,3 +47,16 @@ export function describeSyncplayLaunchFailure(e: unknown): string {
 	// message instead of a debug-y "Syncplay failed: <kind>".
 	return describePlayFailure(e);
 }
+
+/** Predicate that gates the play page's "Get Syncplay" affordance.
+ *  True only for well-formed `syncplay_spawn_failed` payloads
+ *  carrying a non-empty `binary` string — the situations where
+ *  installing Syncplay or fixing the binary path will actually
+ *  recover the launch. Resolve-step errors (scraper / network /
+ *  timeout / no_results) get false because installing Syncplay
+ *  won't help — the upstream resolution failed before Syncplay
+ *  ever ran. */
+export function isSyncplaySpawnFailure(e: unknown): boolean {
+	void e;
+	throw new Error('test(red): isSyncplaySpawnFailure lands in the paired fix(green) commit');
+}
