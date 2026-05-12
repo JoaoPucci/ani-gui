@@ -226,13 +226,20 @@ checkCrap(baseline.crap);
 
 if (update || updateCrap) {
 	const next = { ...baseline };
-	if (measured.rust) next.rust = measured.rust;
-	if (measured.frontend) next.frontend = measured.frontend;
-	if (measured.bash) {
-		next.bash = {
-			pure_covered_min: measured.bash.pure?.covered ?? baseline.bash.pure_covered_min,
-			network_covered_min: measured.bash.network?.covered ?? baseline.bash.network_covered_min
-		};
+	// Only `--update` rewrites the coverage floors. `--update-crap`
+	// is for tightening the CRAP ceilings after a complexity-only
+	// refactor and must leave rust / frontend / bash alone — otherwise
+	// re-running coverage to land a tighter ceiling silently shifts
+	// the floor too.
+	if (update) {
+		if (measured.rust) next.rust = measured.rust;
+		if (measured.frontend) next.frontend = measured.frontend;
+		if (measured.bash) {
+			next.bash = {
+				pure_covered_min: measured.bash.pure?.covered ?? baseline.bash.pure_covered_min,
+				network_covered_min: measured.bash.network?.covered ?? baseline.bash.network_covered_min
+			};
+		}
 	}
 	// CRAP ceilings stay firm under plain `--update`. The
 	// `--update-crap` opt-in tightens them when the codebase
