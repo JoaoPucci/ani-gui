@@ -154,6 +154,7 @@ mod tests {
             id: id.into(),
             name: id.into(),
             available_episodes: AvailableEpisodes { sub, dub: 0 },
+            aired_start: None,
         }
     }
 

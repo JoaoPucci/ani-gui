@@ -7,7 +7,8 @@ use crate::error::{AniError, Result};
 
 /// One candidate row from allanime's search response. Mirrors the
 /// fields ani-cli pulls in `search_anime` (`_id`, `name`,
-/// `availableEpisodes`).
+/// `availableEpisodes`) plus `airedStart` for the year tie-break the
+/// disambiguator runs alongside ep-count.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Candidate {
     /// allanime's internal show id.
@@ -19,6 +20,33 @@ pub struct Candidate {
     /// default mode reads; dub is also exposed for `--dub` plays.
     #[serde(default, rename = "availableEpisodes")]
     pub available_episodes: AvailableEpisodes,
+    /// Premier-date object from allmanga. We only consume `year`, but
+    /// keep the wrapper so the deserialiser can grow other fields
+    /// later (month/day/hour/minute also come down the wire).
+    /// `None` when allmanga omits airedStart — happens on older shows
+    /// and on stub entries where the metadata never got populated.
+    #[serde(default, rename = "airedStart")]
+    pub aired_start: Option<AiredStart>,
+}
+
+/// `airedStart` object on allmanga's `Show` type. Flat fields, no
+/// sub-selection (the GraphQL schema explicitly rejects subfields).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct AiredStart {
+    /// Calendar year of the show's premiere. `None` when allmanga
+    /// has the airedStart object but the year slot is null.
+    #[serde(default)]
+    pub year: Option<u32>,
+}
+
+impl AiredStart {
+    /// Convenience accessor that flattens `Option<AiredStart>`'s nested
+    /// `year` field to a single `Option<u32>` for the picker's filter
+    /// predicate.
+    #[must_use]
+    pub fn year_value(this: Option<&Self>) -> Option<u32> {
+        this.and_then(|a| a.year)
+    }
 }
 
 /// `availableEpisodes` object from allanime's response. Both fields
@@ -102,6 +130,22 @@ pub fn pick_by_ep_count(
         }
     }
     Some(best_idx + 1)
+}
+
+/// V2 picker stub — placeholder for the red commit. Currently
+/// delegates to [`pick_by_ep_count`] and ignores the year hint; the
+/// paired green commit replaces this body with the layered (year-
+/// filter → ep-count threshold → exact-name tie-break) logic the
+/// new tests pin.
+#[must_use]
+pub fn pick_by_ep_count_v2(
+    candidates: &[Candidate],
+    expected: u32,
+    _expected_year: Option<u32>,
+    mode: &str,
+    search_title: &str,
+) -> Option<usize> {
+    pick_by_ep_count(candidates, expected, mode, search_title)
 }
 
 const ALLANIME_API: &str = "https://api.allanime.day";
@@ -382,6 +426,16 @@ mod tests {
             id: id.into(),
             name: name.into(),
             available_episodes: AvailableEpisodes { sub, dub: 0 },
+            aired_start: None,
+        }
+    }
+
+    fn cand_with_year(id: &str, name: &str, sub: u32, year: Option<u32>) -> Candidate {
+        Candidate {
+            id: id.into(),
+            name: name.into(),
+            available_episodes: AvailableEpisodes { sub, dub: 0 },
+            aired_start: year.map(|y| AiredStart { year: Some(y) }),
         }
     }
 
@@ -452,6 +506,83 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_year_filter_excludes_wrong_year_sibling() {
+        // The Mobile Suit Gundam (1979, 43 eps) vs Gundam Wing
+        // (1995, 49 eps) repro: allmanga doesn't index the 1979
+        // series, so the only candidate close on ep-count is Wing
+        // (distance 6). With the user-confirmed year tie-break,
+        // Wing's 1995 airing is rejected against Kitsu's 1979 →
+        // function returns None (caller surfaces "not on allmanga")
+        // instead of silently playing the wrong show.
+        let cands = vec![
+            cand_with_year("wing", "Mobile Suit Gundam Wing", 49, Some(1995)),
+            cand_with_year("seed", "Mobile Suit Gundam SEED", 50, Some(2002)),
+        ];
+        // expected_year=1979, expected_eps=43, search_title="Mobile
+        // Suit Gundam" — no candidate within year±1, so the pool
+        // empties out and the picker yields None.
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 43, Some(1979), "sub", "Mobile Suit Gundam"),
+            None,
+            "no allmanga candidate within ±1 year of 1979 → no match",
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_year_filter_keeps_matching_year_within_one() {
+        // BNHA repro: Kitsu says 13 eps + 2016. allmanga has a
+        // 13-ep 2026 spinoff (current picker bites on its exact-ep
+        // match) AND the original 14-ep 2016 series (distance 1).
+        // Year-filter restricts to the 2016 pool; ep-count within
+        // tolerance picks the original.
+        let cands = vec![
+            cand_with_year("spinoff", "Vigilante: BNHA Illegals S2", 13, Some(2026)),
+            cand_with_year("og", "Boku no Hero Academia", 14, Some(2016)),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 13, Some(2016), "sub", "Boku no Hero Academia"),
+            Some(2),
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_threshold_rejects_far_off_only_match() {
+        // No year, just ep_count, and the closest candidate is well
+        // outside the tolerance window (max(3, expected*10%)).
+        // expected=20 → tolerance=3; closest at distance 10 → reject.
+        let cands = vec![cand_with_year("far", "Some Other Show", 30, None)];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 20, None, "sub", "Whatever"),
+            None
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_threshold_scales_with_expected() {
+        // Long-running shows: tolerance = 10% of expected, so One-
+        // Piece-shaped drift (1100 expected vs 1162 measured = 62)
+        // sits well inside 110 and accepts.
+        let cands = vec![cand_with_year("op", "1P", 1162, Some(1999))];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 1100, Some(1999), "sub", "One Piece"),
+            Some(1),
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_year_missing_on_one_side_falls_back_to_ep_count() {
+        // Allmanga sometimes omits airedStart (older shows or stub
+        // entries). When the candidate's year is unknown but Kitsu's
+        // is, we can't apply the filter — fall back to plain ep-count
+        // picking so we don't strand legitimate matches.
+        let cands = vec![cand_with_year("only", "Mushishi", 26, None)];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 26, Some(2005), "sub", "Mushishi"),
+            Some(1),
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_ignores_exact_name_when_distance_differs() {
         // Tie-break only applies AMONG min-distance candidates. A
         // distant exact-name match shouldn't beat a closer non-exact
@@ -479,11 +610,13 @@ mod tests {
                 id: "a".into(),
                 name: "A".into(),
                 available_episodes: AvailableEpisodes { sub: 500, dub: 1 },
+                aired_start: None,
             },
             Candidate {
                 id: "b".into(),
                 name: "B".into(),
                 available_episodes: AvailableEpisodes { sub: 1, dub: 500 },
+                aired_start: None,
             },
         ];
         // Looking for 500 dub-eps: B wins (dub=500), even though A
@@ -737,6 +870,7 @@ mod tests {
                     id: format!("c{i}"),
                     name: format!("c{i}"),
                     available_episodes: AvailableEpisodes { sub: n, dub: 0 },
+                    aired_start: None,
                 })
                 .collect();
             let pick = pick_by_ep_count(&cands, expected, "sub", "").expect("non-empty");
