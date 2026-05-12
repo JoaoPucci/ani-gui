@@ -66,32 +66,35 @@ fn argv_omits_player_path_when_player_binary_empty() {
 }
 
 #[test]
-fn argv_omits_player_path_for_bare_command_names() {
-    // Syncplay's `--player-path` validates the argument with
-    // `os.path.isfile`, so bare PATH-only commands ("mpv",
-    // "vlc") are rejected even though `Command::new("mpv")`
-    // works for the direct external-player path. Falling back
-    // to Syncplay's own .ini is the right move here: the user
-    // never set an explicit path, and Syncplay's default for
-    // bare-command setups usually matches what they have on
-    // PATH anyway.
+fn argv_emits_player_path_for_bare_command_names() {
+    // Syncplay's player classes resolve bare names by walking
+    // `os.environ['PATH']` via `getExpandedPath` (see e.g.
+    // syncplay/players/mpv.py — `for path in
+    // os.environ['PATH'].split(':'): ... os.access(...)`), so a
+    // value like "mpv" or "vlc" still pins the wrapped binary
+    // and keeps the .ini-mismatch guarantee. Skipping the flag
+    // for bare commands — which an earlier attempt did — broke
+    // the mismatch scenario (ani-gui VLC, Syncplay .ini mpv).
     for bare in ["mpv", "vlc", "iina"] {
         let mut a = args("https://example.com/v.mp4", "syncplay");
         a.player_binary = bare.into();
         let v = build_argv(&a);
         assert_eq!(
             v,
-            vec!["https://example.com/v.mp4".to_string()],
-            "bare command {bare:?} must not emit --player-path",
+            vec![
+                format!("--player-path={bare}"),
+                "https://example.com/v.mp4".to_string(),
+            ],
+            "bare command {bare:?} must still pin via --player-path",
         );
     }
 }
 
 #[test]
 fn argv_emits_player_path_for_relative_path_with_separator() {
-    // A relative path is still a path — Syncplay's `os.path.
-    // isfile` resolves it against its CWD. Anything with a `/`
-    // (or `\` on Windows) is intent to override.
+    // A relative path is still a path — Syncplay resolves it
+    // against its CWD (its player classes call `os.access` after
+    // the PATH-walk fallback).
     let mut a = args("https://example.com/v.mp4", "syncplay");
     a.player_binary = "./vendor/mpv".into();
     let v = build_argv(&a);
