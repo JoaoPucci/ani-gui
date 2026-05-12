@@ -58,13 +58,36 @@ describe('describeSyncplayLaunchFailure', () => {
 		expect(got).not.toContain('syncplay');
 	});
 
-	it('falls back when binary field is missing or empty', () => {
-		// Defensive: a malformed payload (`kind: syncplay_spawn_failed`
-		// without the binary field) shouldn't crash; it should drop
-		// to the generic resolve-failure copy.
+	it('uses Syncplay copy on empty-binary spawn failures (cleared Settings field)', () => {
+		// The backend emits `syncplay_spawn_failed { binary: "" }`
+		// when the user has cleared the Syncplay path in Settings —
+		// see commands/syncplay.rs::open_syncplay. Treating this as a
+		// generic resolve-step error would point users at the wrong
+		// recovery (retry / wait for upstream) when the real fix is
+		// "go set a binary path". Use the unnamed Syncplay-spawn copy
+		// instead so the surrounding modal still surfaces the Get
+		// Syncplay affordance with the matching messaging.
 		const got = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed', binary: '' });
 		expect(got.length).toBeGreaterThan(0);
+		// Brand name appears literal in every locale; pin that the
+		// helper hit the Syncplay branch, not describePlayFailure.
+		expect(got.toLowerCase()).toContain('syncplay');
 		expect(got).not.toContain(' ""');
+	});
+
+	it('still falls back to describePlayFailure when binary field is missing or wrong type', () => {
+		// Defensive: a malformed payload (no binary field, or
+		// non-string) shouldn't crash and shouldn't claim to be a
+		// spawn failure. Empty-string is the user-cleared-Settings
+		// path and lives in the test above; this one covers genuine
+		// shape errors.
+		const noBinary = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed' });
+		const wrongType = describeSyncplayLaunchFailure({
+			kind: 'syncplay_spawn_failed',
+			binary: 42
+		});
+		expect(noBinary.length).toBeGreaterThan(0);
+		expect(wrongType.length).toBeGreaterThan(0);
 	});
 });
 
@@ -99,12 +122,19 @@ describe('isSyncplaySpawnFailure', () => {
 		expect(isSyncplaySpawnFailure({ kind: 'player_spawn_failed', binary: 'mpv' })).toBe(false);
 	});
 
-	it('returns false on malformed / empty syncplay_spawn_failed payloads', () => {
-		// Defensive: a payload tagged syncplay_spawn_failed but
-		// without a non-empty binary string is too uncertain to
-		// surface the install affordance on. Treat as resolve error.
+	it('returns true on empty-binary syncplay_spawn_failed (cleared Settings)', () => {
+		// Mirrors describeSyncplayLaunchFailure: the backend emits
+		// this exact payload when the user has cleared the Syncplay
+		// binary in Settings. The recovery — install Syncplay or set
+		// the path — is the same whether binary is named or blank,
+		// so the install affordance must stay visible.
+		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed', binary: '' })).toBe(true);
+	});
+
+	it('returns false on truly malformed syncplay_spawn_failed payloads', () => {
+		// Defensive: missing field or wrong type — too uncertain to
+		// claim it's a spawn failure. Treat as resolve error.
 		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed' })).toBe(false);
-		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed', binary: '' })).toBe(false);
 		expect(isSyncplaySpawnFailure({ kind: 'syncplay_spawn_failed', binary: 42 })).toBe(false);
 	});
 
