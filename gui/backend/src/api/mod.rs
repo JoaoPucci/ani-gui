@@ -528,7 +528,7 @@ async fn post_play_syncplay(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> Result<StatusCode, AniError> {
-    play_inner::play_syncplay(&state, &args).await?;
+    crate::commands::syncplay::play_syncplay(&state, &args).await?;
     Ok(StatusCode::ACCEPTED)
 }
 
