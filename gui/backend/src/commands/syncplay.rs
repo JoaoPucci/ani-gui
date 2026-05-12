@@ -240,6 +240,63 @@ mod tests {
     }
 
     #[test]
+    fn argv_omits_player_path_for_bare_command_names() {
+        // Syncplay's `--player-path` validates the argument with
+        // `os.path.isfile`, so bare PATH-only commands ("mpv",
+        // "vlc") are rejected even though `Command::new("mpv")`
+        // works for the direct external-player path. Falling back
+        // to Syncplay's own .ini is the right move here: the user
+        // never set an explicit path, and Syncplay's default for
+        // bare-command setups usually matches what they have on
+        // PATH anyway.
+        for bare in ["mpv", "vlc", "iina"] {
+            let mut a = args("https://example.com/v.mp4", "syncplay");
+            a.player_binary = bare.into();
+            let v = build_argv(&a);
+            assert_eq!(
+                v,
+                vec!["https://example.com/v.mp4".to_string()],
+                "bare command {bare:?} must not emit --player-path",
+            );
+        }
+    }
+
+    #[test]
+    fn argv_emits_player_path_for_relative_path_with_separator() {
+        // A relative path is still a path — Syncplay's `os.path.
+        // isfile` resolves it against its CWD. Anything with a `/`
+        // (or `\` on Windows) is intent to override.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_binary = "./vendor/mpv".into();
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "--player-path=./vendor/mpv".to_string(),
+                "https://example.com/v.mp4".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_emits_player_path_for_windows_style_path() {
+        // Windows paths use `\` as the separator. The default
+        // installer location for Syncplay-targeted mpv on Windows
+        // lives under `C:\Program Files\...`, so backslashes are
+        // the live case we have to cover.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_binary = r"C:\Program Files\mpv\mpv.exe".into();
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                r"--player-path=C:\Program Files\mpv\mpv.exe".to_string(),
+                "https://example.com/v.mp4".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn launch_args_decode_without_player_binary_for_back_compat() {
         // Old payloads (pre-player-path) don't include the field.
         // They must decode and default to empty-string so build_argv
