@@ -38,18 +38,16 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // quality, episode) tuple. Without it, the user waits another
     // ~30s for ani-cli to spin up a fresh fetch.
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        // Reuse the cached referer — try_launch_args_from_cache
-        // already pulls it from the cache row. fast4speed.rsvp cache
-        // rows carry `Referer: https://allmanga.to` so Syncplay's
-        // wrapped mpv gets the same header play_external would.
+        // Reuse the cached referer + subtitle —
+        // try_launch_args_from_cache already pulls both from the
+        // cache row (same shape play_external receives), so
+        // Syncplay's wrapped mpv gets the same Referer + sub-file
+        // it would have under play_external.
         return open_syncplay(&SyncplayLaunchArgs {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
             referer: launch.referer,
-            // test(red): subtitle threading lands in the paired
-            // fix(green) commit; today soft-subtitle streams play
-            // under Syncplay but lose subtitles.
-            subtitle_url: None,
+            subtitle_url: launch.subtitle_url,
         });
     }
 
@@ -71,7 +69,6 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         stream_url: resolved.selected_url,
         binary: cfg.syncplay_binary,
         referer,
-        // test(red): see comment above.
-        subtitle_url: None,
+        subtitle_url: resolved.subtitle_url,
     })
 }

@@ -72,10 +72,15 @@ pub struct SyncplayLaunchArgs {
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     let mut argv = vec![args.stream_url.clone()];
-    if let Some(referer) = args.referer.as_deref() {
-        if !referer.is_empty() {
-            argv.push("--".to_string());
-            argv.push(format!("--referrer={referer}"));
+    let referer = args.referer.as_deref().filter(|s| !s.is_empty());
+    let subtitle = args.subtitle_url.as_deref().filter(|s| !s.is_empty());
+    if referer.is_some() || subtitle.is_some() {
+        argv.push("--".to_string());
+        if let Some(r) = referer {
+            argv.push(format!("--referrer={r}"));
+        }
+        if let Some(s) = subtitle {
+            argv.push(format!("--sub-file={s}"));
         }
     }
     argv
