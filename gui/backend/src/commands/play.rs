@@ -566,14 +566,15 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // quality, episode) tuple. Without it, the user waits another
     // ~30s for ani-cli to spin up a fresh fetch.
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
+        // Reuse the cached referer — try_launch_args_from_cache
+        // already pulls it from the cache row (same shape
+        // play_external receives). fast4speed.rsvp cache rows
+        // carry `Referer: https://allmanga.to` so Syncplay's
+        // wrapped mpv gets the same header play_external would.
         return syncplay::open_syncplay(&SyncplayLaunchArgs {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
-            // test(red): referer threading lands in the paired
-            // fix(green) commit; today fast4speed.rsvp streams 403
-            // out from under Syncplay's mpv because the wrapped
-            // player doesn't see a Referer header.
-            referer: None,
+            referer: launch.referer,
         });
     }
 
@@ -589,11 +590,27 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     )
     .await?;
 
+    // Same Referer-inference as the embedded + play_external paths
+    // — ani-cli's debug output doesn't surface the header it sets
+    // internally, so fast4speed.rsvp hosts fall back to the
+    // explicit allmanga.to default. Without this, Syncplay's mpv
+    // 403s on cache-miss paths even though the embedded player
+    // would have succeeded.
+    let referer = match resolved.referer.as_ref() {
+        Some(r) if !r.is_empty() => Some(r.clone()),
+        _ => match url::Url::parse(&resolved.selected_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+        {
+            Some(h) if h.ends_with("fast4speed.rsvp") => Some("https://allmanga.to".to_string()),
+            _ => None,
+        },
+    };
+
     syncplay::open_syncplay(&SyncplayLaunchArgs {
         stream_url: resolved.selected_url,
         binary: cfg.syncplay_binary,
-        // test(red): see comment above.
-        referer: None,
+        referer,
     })
 }
 

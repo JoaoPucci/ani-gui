@@ -63,10 +63,14 @@ pub struct SyncplayLaunchArgs {
 /// stays out of scope (see `.planning/follow-ups.md`).
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
-    // test(red): the referer-forwarding behaviour lands in the
-    // paired fix(green) commit. Today this drops the referer
-    // entirely so build_argv_forwards_referer_after_separator fails.
-    vec![args.stream_url.clone()]
+    let mut argv = vec![args.stream_url.clone()];
+    if let Some(referer) = args.referer.as_deref() {
+        if !referer.is_empty() {
+            argv.push("--".to_string());
+            argv.push(format!("--referrer={referer}"));
+        }
+    }
+    argv
 }
 
 /// Launch the configured Syncplay binary against the resolved stream
