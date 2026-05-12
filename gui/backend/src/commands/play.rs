@@ -569,6 +569,11 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         return syncplay::open_syncplay(&SyncplayLaunchArgs {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
+            // test(red): referer threading lands in the paired
+            // fix(green) commit; today fast4speed.rsvp streams 403
+            // out from under Syncplay's mpv because the wrapped
+            // player doesn't see a Referer header.
+            referer: None,
         });
     }
 
@@ -587,6 +592,8 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     syncplay::open_syncplay(&SyncplayLaunchArgs {
         stream_url: resolved.selected_url,
         binary: cfg.syncplay_binary,
+        // test(red): see comment above.
+        referer: None,
     })
 }
 

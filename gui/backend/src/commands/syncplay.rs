@@ -27,9 +27,12 @@ use serde::Deserialize;
 use crate::error::{AniError, Result};
 
 /// Arguments to the command. Caller supplies the resolved stream URL
-/// (the play flow's same URL the embedded player would consume) and
-/// the configured Syncplay binary path. Frontend reads the binary
-/// from `Config::syncplay_binary`.
+/// (the play flow's same URL the embedded player would consume), the
+/// configured Syncplay binary path, and an optional `Referer:` value
+/// that gets forwarded to Syncplay's wrapped mpv. Frontend reads the
+/// binary from `Config::syncplay_binary`; the referer is inferred by
+/// `play_syncplay` from the resolved upstream (mirrors the
+/// `play_external` path's fast4speed.rsvp → allmanga.to fallback).
 #[derive(Debug, Deserialize)]
 pub struct SyncplayLaunchArgs {
     /// The resolved stream URL (mp4 or m3u8). Syncplay's positional
@@ -38,12 +41,31 @@ pub struct SyncplayLaunchArgs {
     /// Syncplay binary path. Resolved from `Config::syncplay_binary`
     /// (per-OS default; user-overridable in settings).
     pub binary: String,
+    /// Optional `Referer:` header value the upstream CDN requires.
+    /// Forwarded to Syncplay's wrapped player via the mpv-style
+    /// `--referrer=` flag after the `--` separator. fast4speed.rsvp
+    /// 403s without `Referer: https://allmanga.to`, so the same
+    /// inference logic `play_external` uses applies to Syncplay too.
+    /// Old payloads without this field decode as `None`.
+    #[serde(default)]
+    pub referer: Option<String>,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
 /// Pure: no spawn happens here so unit tests can lock the contract.
+///
+/// Syncplay's CLI grammar is `syncplay [options] [file] -- [player
+/// options]`. The `--` separator forwards everything after it to the
+/// wrapped player (mpv by default). When `referer` is set, we emit
+/// the mpv-style `--referrer=` flag past the `--`; this is the
+/// minimum needed so fast4speed.rsvp's referer-required CDNs don't
+/// 403 out from under Syncplay's mpv. Title / sub-file forwarding
+/// stays out of scope (see `.planning/follow-ups.md`).
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
+    // test(red): the referer-forwarding behaviour lands in the
+    // paired fix(green) commit. Today this drops the referer
+    // entirely so build_argv_forwards_referer_after_separator fails.
     vec![args.stream_url.clone()]
 }
 
@@ -84,18 +106,63 @@ mod tests {
         SyncplayLaunchArgs {
             stream_url: stream.into(),
             binary: binary.into(),
+            referer: None,
         }
     }
 
     #[test]
-    fn argv_is_just_the_url() {
-        // Syncplay's command line accepts the file (URL) as a single
-        // positional argument. We don't pass referer / title / sub
-        // because Syncplay's wrapped-player flag shape varies by
-        // player + version — users who need that should configure
-        // their player's own defaults.
+    fn argv_with_no_referer_is_just_the_url() {
+        // Bare URL is the no-referer baseline. Most catalogues work
+        // this way; only referer-required CDNs (fast4speed.rsvp)
+        // exercise the forwarding path.
         let v = build_argv(&args("https://example.com/master.m3u8", "syncplay"));
         assert_eq!(v, vec!["https://example.com/master.m3u8".to_string()]);
+    }
+
+    #[test]
+    fn argv_forwards_referer_after_separator() {
+        // Syncplay's CLI grammar is `syncplay [options] [file] --
+        // [player options]`. The `--` separator hands the rest to
+        // the wrapped player (mpv by default), so the mpv-style
+        // `--referrer=` flag is what reaches the upstream CDN.
+        // Without this, fast4speed.rsvp 403s under Syncplay's mpv
+        // even though play_external can play the same URL.
+        let mut a = args("https://example.com/master.m3u8", "syncplay");
+        a.referer = Some("https://allmanga.to".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "https://example.com/master.m3u8".to_string(),
+                "--".to_string(),
+                "--referrer=https://allmanga.to".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_drops_empty_referer() {
+        // An empty-string referer is no better than no referer at
+        // all — emitting `--referrer=` with nothing after it would
+        // make mpv complain. Drop the whole `--` block in that case.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.referer = Some(String::new());
+        let v = build_argv(&a);
+        assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
+    }
+
+    #[test]
+    fn launch_args_decode_without_referer_for_back_compat() {
+        // Old client payloads (pre-referer-forwarding) don't include
+        // the `referer` field. They must still decode and default to
+        // None.
+        let json = r#"{
+            "stream_url": "https://example.com/v.mp4",
+            "binary": "syncplay"
+        }"#;
+        let a: SyncplayLaunchArgs =
+            serde_json::from_str(json).expect("decodes with default referer");
+        assert!(a.referer.is_none());
     }
 
     #[test]
