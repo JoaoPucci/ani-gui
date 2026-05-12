@@ -67,6 +67,16 @@
 
 	let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 	async function persist(next: Config) {
+		// Cancel any pending debounced write before the explicit
+		// save lands. Otherwise a user who types into a text input
+		// (queuing persistDebounced) and then clicks a Browse /
+		// segmented-button / switch within the 300ms window would
+		// see the explicit save get clobbered seconds later by the
+		// stale typed value firing through the trailing timeout.
+		if (debounceHandle) {
+			clearTimeout(debounceHandle);
+			debounceHandle = null;
+		}
 		cfg = next;
 		try {
 			await settingsPut(next);
