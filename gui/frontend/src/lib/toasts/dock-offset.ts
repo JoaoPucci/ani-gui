@@ -48,6 +48,7 @@ export interface DockHeightInput {
  *  clearance was the original bug (Codex PR-11 review). Returns 0
  *  for non-positive row counts; the formula is linear in `rows`. */
 export function dockHeightForRows(input: DockHeightInput): number {
-	void input;
-	throw new Error('test(red): dockHeightForRows lands in the paired fix(green) commit');
+	const rows = input.rows;
+	if (rows <= 0) return 0;
+	return rows * input.rowRem + (rows - 1) * input.interRowGapRem;
 }

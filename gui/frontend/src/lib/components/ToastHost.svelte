@@ -18,7 +18,14 @@
 	import Toast from './Toast.svelte';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
-	import { computeToastBottomOffset } from '$lib/toasts/dock-offset';
+	import { computeToastBottomOffset, dockHeightForRows } from '$lib/toasts/dock-offset';
+
+	// Calibrated against DownloadBar's `.dl-bar-row` geometry — see
+	// dock-offset.ts. One row ≈ 2.6rem (padding-block + progress
+	// strip + caption line-box + 1px border × 2); the dl-bar's flex
+	// `gap: var(--space-2)` is 0.5rem between rows.
+	const DOCK_ROW_REM = 2.6;
+	const DOCK_INTER_ROW_GAP_REM = 0.5;
 
 	let { downloadBarEnabled = true } = $props<{
 		/** Mirrors the layout's `config.download_bottom_bar_enabled`.
@@ -30,12 +37,20 @@
 		downloadBarEnabled?: boolean;
 	}>();
 
-	const dockVisible = $derived(downloadBarEnabled && downloadStore.hasActive);
+	const dockRows = $derived(downloadBarEnabled ? downloadStore.active.length : 0);
+	const dockVisible = $derived(dockRows > 0);
+	const dockHeightRem = $derived(
+		dockHeightForRows({
+			rows: dockRows,
+			rowRem: DOCK_ROW_REM,
+			interRowGapRem: DOCK_INTER_ROW_GAP_REM
+		})
+	);
 	const offsetRem = $derived(
 		computeToastBottomOffset({
 			dockVisible,
 			baseRem: 0.75,
-			dockHeightRem: 3.5,
+			dockHeightRem,
 			gapRem: 0.75
 		})
 	);
