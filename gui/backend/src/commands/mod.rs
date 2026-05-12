@@ -18,6 +18,7 @@ pub mod play_cache;
 pub mod play_referer;
 pub mod play_resolution_cache;
 pub mod play_select;
+pub mod play_syncplay;
 pub mod proxy_url;
 pub mod session;
 pub mod settings;

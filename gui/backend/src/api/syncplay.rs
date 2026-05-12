@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::Json;
 
 use crate::app::AppState;
-use crate::commands::{play::PlayArgs, syncplay};
+use crate::commands::{play::PlayArgs, play_syncplay};
 use crate::error::AniError;
 
 /// Sister of `post_play_external` — same resolution chain, but the
@@ -27,6 +27,6 @@ pub(super) async fn post_play_syncplay(
     State(state): State<Arc<AppState>>,
     Json(args): Json<PlayArgs>,
 ) -> Result<StatusCode, AniError> {
-    syncplay::play_syncplay(&state, &args).await?;
+    play_syncplay::play_syncplay(&state, &args).await?;
     Ok(StatusCode::ACCEPTED)
 }
