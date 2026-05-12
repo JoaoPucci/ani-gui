@@ -96,6 +96,7 @@
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
 		describeSyncplayLaunchFailure,
+		isSyncplaySpawnFailure,
 		syncplayLaunchSuccessToast
 	} from '$lib/play/syncplay-toast';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -1546,7 +1547,16 @@
 	// from externalBusy/Error so the user can in principle retry one
 	// while the other is busy or failed.
 	let syncplayBusy = $state(false);
-	let syncplayError = $state<{ episode: number; message: string } | null>(null);
+	// `isSpawnFailure` gates the ErrorOverlay's "Get Syncplay"
+	// action affordance — true only when the binary itself was the
+	// problem. Resolve-step failures (scraper / network / timeout)
+	// suppress the install link, since pointing the user at
+	// syncplay.pl wouldn't recover those.
+	let syncplayError = $state<{
+		episode: number;
+		message: string;
+		isSpawnFailure: boolean;
+	} | null>(null);
 
 	// Overflow menu (the "..." button) housing the secondary actions
 	// Open in external + Download. They were demoted from the np-actions
@@ -1665,9 +1675,13 @@
 			// missing-binary failures can't be missed. Body shaped
 			// by describeSyncplayLaunchFailure (spawn-fail names the
 			// binary; resolve-step failures reuse describePlayFailure).
+			// `isSpawnFailure` drives whether the modal renders the
+			// "Get Syncplay" install link — only when the binary
+			// itself was the problem.
 			syncplayError = {
 				episode: episodeNum,
-				message: describeSyncplayLaunchFailure(e)
+				message: describeSyncplayLaunchFailure(e),
+				isSpawnFailure: isSyncplaySpawnFailure(e)
 			};
 		} finally {
 			syncplayBusy = false;
@@ -2678,8 +2692,10 @@
 	<ErrorOverlay
 		headline={m.play_error_syncplay_headline({ episode: String(syncplayError.episode) })}
 		body={syncplayError.message}
-		actionLabel={m.play_error_syncplay_get_action_label()}
-		actionHref="https://syncplay.pl/download/"
+		actionLabel={syncplayError.isSpawnFailure
+			? m.play_error_syncplay_get_action_label()
+			: undefined}
+		actionHref={syncplayError.isSpawnFailure ? 'https://syncplay.pl/download/' : undefined}
 		onDismiss={() => (syncplayError = null)}
 	/>
 {/if}

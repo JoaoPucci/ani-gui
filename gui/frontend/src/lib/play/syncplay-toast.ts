@@ -57,6 +57,9 @@ export function describeSyncplayLaunchFailure(e: unknown): string {
  *  won't help — the upstream resolution failed before Syncplay
  *  ever ran. */
 export function isSyncplaySpawnFailure(e: unknown): boolean {
-	void e;
-	throw new Error('test(red): isSyncplaySpawnFailure lands in the paired fix(green) commit');
+	if (typeof e !== 'object' || e === null) return false;
+	const obj = e as Record<string, unknown>;
+	return (
+		obj.kind === 'syncplay_spawn_failed' && typeof obj.binary === 'string' && obj.binary.length > 0
+	);
 }
