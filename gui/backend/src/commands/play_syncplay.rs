@@ -56,6 +56,11 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             referer: launch.referer,
             subtitle_url: launch.subtitle_url,
             player_kind,
+            // test(red): player_binary threading lands in the paired
+            // green commit. Empty string here means build_argv won't
+            // emit `--player-path=`, so the test for that flag fails
+            // on the assertion as required.
+            player_binary: String::new(),
         });
     }
 
@@ -79,5 +84,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         referer,
         subtitle_url: resolved.subtitle_url,
         player_kind,
+        // test(red): see comment above.
+        player_binary: String::new(),
     })
 }

@@ -75,6 +75,16 @@ pub struct SyncplayLaunchArgs {
     /// upstream Syncplay default).
     #[serde(default)]
     pub player_kind: ExternalPlayerKind,
+    /// Path to the media-player binary Syncplay should wrap.
+    /// Forwarded via Syncplay's `--player-path=` flag, which
+    /// overrides Syncplay's own `syncplay.ini` setting. Pinning the
+    /// wrapped binary here means `player_kind` is guaranteed to
+    /// match what Syncplay actually launches — no more "ani-gui says
+    /// mpv but Syncplay's .ini was last set to VLC" mismatches.
+    /// Empty / missing skips the flag (defers to Syncplay's own
+    /// config, same back-compat behavior pre-PR).
+    #[serde(default)]
+    pub player_binary: String,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -161,7 +171,76 @@ mod tests {
             referer: None,
             subtitle_url: None,
             player_kind: ExternalPlayerKind::Mpv,
+            player_binary: String::new(),
         }
+    }
+
+    #[test]
+    fn argv_emits_player_path_before_stream_when_set() {
+        // Syncplay's `--player-path=` is a Syncplay option, not a
+        // player option, so it lives BEFORE the file/positional and
+        // BEFORE any `--` separator. Setting it overrides Syncplay's
+        // own .ini config — that's the whole point: guarantee the
+        // wrapped binary matches the player_kind we picked flags for.
+        let mut a = args("https://example.com/master.m3u8", "syncplay");
+        a.player_binary = "/usr/bin/vlc".into();
+        a.player_kind = ExternalPlayerKind::Vlc;
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "--player-path=/usr/bin/vlc".to_string(),
+                "https://example.com/master.m3u8".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_emits_player_path_alongside_post_separator_flags() {
+        // The Syncplay option and the post-`--` player options can
+        // both be present in the same argv. Order: `--player-path=`
+        // first (Syncplay option), then the URL (positional), then
+        // `--` separator, then the player-kind-specific referrer.
+        let mut a = args("https://example.com/master.m3u8", "syncplay");
+        a.player_binary = "/usr/bin/vlc".into();
+        a.player_kind = ExternalPlayerKind::Vlc;
+        a.referer = Some("https://allmanga.to".into());
+        let v = build_argv(&a);
+        assert_eq!(
+            v,
+            vec![
+                "--player-path=/usr/bin/vlc".to_string(),
+                "https://example.com/master.m3u8".to_string(),
+                "--".to_string(),
+                "--http-referrer=https://allmanga.to".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_omits_player_path_when_player_binary_empty() {
+        // Empty player_binary = back-compat path: don't emit the
+        // flag, let Syncplay's own config pick. Old IPC payloads
+        // that pre-date this field decode as empty-string by serde
+        // default, so this also covers the schema-rollforward case.
+        let mut a = args("https://example.com/v.mp4", "syncplay");
+        a.player_binary = String::new();
+        let v = build_argv(&a);
+        assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
+    }
+
+    #[test]
+    fn launch_args_decode_without_player_binary_for_back_compat() {
+        // Old payloads (pre-player-path) don't include the field.
+        // They must decode and default to empty-string so build_argv
+        // skips the `--player-path=` emission.
+        let json = r#"{
+            "stream_url": "https://example.com/v.mp4",
+            "binary": "syncplay"
+        }"#;
+        let a: SyncplayLaunchArgs =
+            serde_json::from_str(json).expect("decodes with default player_binary");
+        assert!(a.player_binary.is_empty());
     }
 
     #[test]
