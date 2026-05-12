@@ -483,43 +483,31 @@ where
 // module rather than calling sibling functions.
 use crate::commands::play_cache::{try_launch_args_from_cache, try_serve_cached};
 
-/// Outcome of `resolve_for_terminal`. Cached hits already carry a
-/// fully-built `LaunchArgs` shaped for the external-player path;
-/// the syncplay handler reuses just `stream_url` + `referer`. Fresh
-/// resolutions hand back the raw fields so each terminal can build
-/// its own player-specific argv.
-enum TerminalResolution {
-    /// Long-term cache hit — `LaunchArgs` came pre-built from the
-    /// cache row (referer / subtitle / title already populated).
-    Cached(LaunchArgs),
-    /// Cache miss — ani-cli resolved fresh. Carries the raw fields
-    /// the cache-hit path would have populated, leaving the
-    /// terminal handler to map them to its own argv shape.
-    Fresh {
-        stream_url: String,
-        referer: Option<String>,
-        subtitle_url: Option<String>,
-    },
-}
-
-/// Shared cache-then-fresh-resolve pipeline used by both terminal
-/// handlers (external player, Syncplay). The two handlers were
-/// near-identical line-for-line; collapsing into one helper keeps
-/// the play.rs CRAP score from climbing every time we add a new
-/// terminal target.
+/// Resolve `args` against ani-cli and hand the upstream URL straight
+/// to the user's external player (default `mpv`). No session is
+/// registered — the player streams from the upstream directly with
+/// the `Referer:` flag.
 ///
 /// # Errors
-/// Inherits from [`run_debug`].
-async fn resolve_for_terminal(
-    state: &AppState,
-    args: &PlayArgs,
-    cfg: &crate::config::Config,
-) -> Result<TerminalResolution> {
-    if let Some(launch) = try_launch_args_from_cache(state, args, cfg).await {
-        return Ok(TerminalResolution::Cached(launch));
+/// Inherits from [`run_debug`] and
+/// [`external_player::open_external_player`] (missing binary,
+/// non-zero spawn status).
+pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
+    let quality = args.quality.as_deref().unwrap_or("best");
+    let cfg = read_config(&state.config_path).unwrap_or_default();
+
+    // Long-term cache reuse — same shape as play_with_progress. The
+    // embedded player likely just resolved this exact (title, mode,
+    // quality, episode) tuple seconds ago; without this the user
+    // would wait another 30s for ani-cli to spin up a fresh fetch.
+    // HEAD-validate so a stale/dead URL falls through to the fresh
+    // path instead of handing mpv a 403.
+    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
+        return external_player::open_external_player(&launch);
     }
 
-    let quality = args.quality.as_deref().unwrap_or("best");
+    // play_external is always a click — never a prefetch — so no
+    // hist_dir override needed.
     let opts = debug_options_for(state, None);
     let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
     let resolved = run_debug(
@@ -532,43 +520,18 @@ async fn resolve_for_terminal(
     )
     .await?;
 
-    Ok(TerminalResolution::Fresh {
-        referer: infer_referer(&resolved),
-        stream_url: resolved.selected_url,
-        subtitle_url: resolved.subtitle_url,
-    })
-}
+    let referer = infer_referer(&resolved);
 
-/// Resolve `args` against ani-cli and hand the upstream URL straight
-/// to the user's external player (default `mpv`). No session is
-/// registered — the player streams from the upstream directly with
-/// the `Referer:` flag.
-///
-/// # Errors
-/// Inherits from [`run_debug`] and
-/// [`external_player::open_external_player`] (missing binary,
-/// non-zero spawn status).
-pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
-    let cfg = read_config(&state.config_path).unwrap_or_default();
-    match resolve_for_terminal(state, args, &cfg).await? {
-        TerminalResolution::Cached(launch) => external_player::open_external_player(&launch),
-        TerminalResolution::Fresh {
-            stream_url,
-            referer,
-            subtitle_url,
-        } => {
-            let launch = LaunchArgs {
-                stream_url,
-                referer,
-                subtitle_url,
-                title: Some(format!("{} · ep {}", args.title, args.episode)),
-                player_command: cfg.external_player,
-                player_kind: cfg.external_player_kind,
-                custom_args_template: Some(cfg.external_player_custom_args),
-            };
-            external_player::open_external_player(&launch)
-        }
-    }
+    let launch = LaunchArgs {
+        stream_url: resolved.selected_url,
+        referer,
+        subtitle_url: resolved.subtitle_url,
+        title: Some(format!("{} · ep {}", args.title, args.episode)),
+        player_command: cfg.external_player,
+        player_kind: cfg.external_player_kind,
+        custom_args_template: Some(cfg.external_player_custom_args),
+    };
+    external_player::open_external_player(&launch)
 }
 
 /// Resolve `args` against ani-cli and hand the upstream URL to the
@@ -577,23 +540,48 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// referer-inference) but the terminal action is a Syncplay spawn
 /// instead of a direct player spawn. Syncplay handles its own
 /// wrapped-player flags internally — the argv we pass is just the
-/// URL plus an optional `--referrer=` after the `--` separator.
+/// URL.
 ///
 /// # Errors
 /// Inherits from [`run_debug`] and
 /// [`syncplay::open_syncplay`] (missing binary, spawn failure).
 pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
+    let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
-    let (stream_url, referer) = match resolve_for_terminal(state, args, &cfg).await? {
-        TerminalResolution::Cached(launch) => (launch.stream_url, launch.referer),
-        TerminalResolution::Fresh {
-            stream_url,
-            referer,
-            ..
-        } => (stream_url, referer),
-    };
+
+    // Reuse the long-term cache the same way play_external does — the
+    // embedded player likely just resolved this exact (title, mode,
+    // quality, episode) tuple. Without it, the user waits another
+    // ~30s for ani-cli to spin up a fresh fetch.
+    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
+        // Reuse the cached referer — try_launch_args_from_cache
+        // already pulls it from the cache row (same shape
+        // play_external receives). fast4speed.rsvp cache rows
+        // carry `Referer: https://allmanga.to` so Syncplay's
+        // wrapped mpv gets the same header play_external would.
+        return syncplay::open_syncplay(&SyncplayLaunchArgs {
+            stream_url: launch.stream_url,
+            binary: cfg.syncplay_binary,
+            referer: launch.referer,
+        });
+    }
+
+    let opts = debug_options_for(state, None);
+    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
+    let resolved = run_debug(
+        &opts,
+        &search_title,
+        &args.episode,
+        quality,
+        &args.mode,
+        select_index,
+    )
+    .await?;
+
+    let referer = infer_referer(&resolved);
+
     syncplay::open_syncplay(&SyncplayLaunchArgs {
-        stream_url,
+        stream_url: resolved.selected_url,
         binary: cfg.syncplay_binary,
         referer,
     })
