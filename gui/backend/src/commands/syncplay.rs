@@ -101,7 +101,17 @@ pub struct SyncplayLaunchArgs {
 /// Custom kind uses.
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
-    let mut argv = vec![args.stream_url.clone()];
+    let mut argv = Vec::new();
+    // `--player-path=` is a Syncplay option (NOT a player option),
+    // so it goes before the file/positional and before any `--`.
+    // Syncplay's CLI args take precedence over its .ini, so naming
+    // the wrapped binary here guarantees player_kind matches what
+    // Syncplay actually launches.
+    let player_binary = args.player_binary.trim();
+    if !player_binary.is_empty() {
+        argv.push(format!("--player-path={player_binary}"));
+    }
+    argv.push(args.stream_url.clone());
     if matches!(args.player_kind, ExternalPlayerKind::Custom) {
         // Custom: defer all per-stream args to the wrapped player's
         // own config. Forwarding anything risks an "unknown option"
