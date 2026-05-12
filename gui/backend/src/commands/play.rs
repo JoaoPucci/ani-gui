@@ -520,19 +520,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     )
     .await?;
 
-    // Same Referer-inference as the embedded path — fast4speed.rsvp
-    // 403s without `Referer: https://allmanga.to` and ani-cli's debug
-    // output doesn't surface the header it sets internally.
-    let referer = match resolved.referer.as_ref() {
-        Some(r) if !r.is_empty() => Some(r.clone()),
-        _ => match url::Url::parse(&resolved.selected_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
-        {
-            Some(h) if h.ends_with("fast4speed.rsvp") => Some("https://allmanga.to".to_string()),
-            _ => None,
-        },
-    };
+    let referer = infer_referer(&resolved);
 
     let launch = LaunchArgs {
         stream_url: resolved.selected_url,
@@ -590,22 +578,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     )
     .await?;
 
-    // Same Referer-inference as the embedded + play_external paths
-    // — ani-cli's debug output doesn't surface the header it sets
-    // internally, so fast4speed.rsvp hosts fall back to the
-    // explicit allmanga.to default. Without this, Syncplay's mpv
-    // 403s on cache-miss paths even though the embedded player
-    // would have succeeded.
-    let referer = match resolved.referer.as_ref() {
-        Some(r) if !r.is_empty() => Some(r.clone()),
-        _ => match url::Url::parse(&resolved.selected_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
-        {
-            Some(h) if h.ends_with("fast4speed.rsvp") => Some("https://allmanga.to".to_string()),
-            _ => None,
-        },
-    };
+    let referer = infer_referer(&resolved);
 
     syncplay::open_syncplay(&SyncplayLaunchArgs {
         stream_url: resolved.selected_url,
@@ -623,24 +596,32 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// referer on cache-hit and only hits this helper on cache-miss.
 #[must_use]
 fn infer_referer(resolved: &crate::anicli::parser::DebugOutput) -> Option<String> {
-    void_use(resolved);
-    unimplemented!("test(red): infer_referer lands in the paired fix(green) commit")
+    if let Some(r) = resolved.referer.as_ref() {
+        if !r.is_empty() {
+            return Some(r.clone());
+        }
+    }
+    let host = url::Url::parse(&resolved.selected_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))?;
+    if host.ends_with("fast4speed.rsvp") {
+        Some("https://allmanga.to".to_string())
+    } else {
+        None
+    }
 }
-
-#[inline]
-fn void_use<T>(_t: &T) {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::anicli::parser::DebugOutput;
 
-    /// `play()` and `play_external()` are thin wrappers around
-    /// `run_debug` + the relevant terminal action; the integration
-    /// test in `tests/api_play.rs` exercises the full flow against a
-    /// real ani-cli with a curl shim. These unit tests pin the
-    /// mapping from `DebugOutput` → `CreateSessionArgs` /
-    /// `LaunchArgs` so a future refactor of the field names is loud.
+    // `play()` and `play_external()` are thin wrappers around
+    // `run_debug` + the relevant terminal action; the integration
+    // test in `tests/api_play.rs` exercises the full flow against a
+    // real ani-cli with a curl shim. These unit tests pin the
+    // mapping from `DebugOutput` → `CreateSessionArgs` /
+    // `LaunchArgs` so a future refactor of the field names is loud.
 
     fn debug(selected_url: &str, referer: Option<&str>) -> DebugOutput {
         DebugOutput {
