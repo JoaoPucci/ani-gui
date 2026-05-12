@@ -19,7 +19,7 @@
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Tipo de reproductor",
-	"field_external_player_kind_hint": "Cada reproductor usa una sintaxis de flags distinta. Elige el más cercano — Personalizado te deja escribir tu propio template.",
+	"field_external_player_kind_hint": "Cada reproductor usa una sintaxis de flags distinta. Elige el más cercano — Personalizado te deja escribir tu propio template. Esta elección también define las flags del reproductor envuelto cuando usás Ver juntos por Syncplay.",
 	"external_player_kind_aria_label": "Tipo de reproductor",
 	"external_player_kind_mpv": "mpv",
 	"external_player_kind_vlc": "VLC",

@@ -19,7 +19,7 @@
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Tipo de player",
-	"field_external_player_kind_hint": "Cada player aceita uma sintaxe de flags diferente. Escolha o mais próximo — Personalizado deixa você escrever o próprio template.",
+	"field_external_player_kind_hint": "Cada player aceita uma sintaxe de flags diferente. Escolha o mais próximo — Personalizado deixa você escrever o próprio template. Esta escolha também define as flags do player envolvido quando você Assistir junto via Syncplay.",
 	"external_player_kind_aria_label": "Tipo de player",
 	"external_player_kind_mpv": "mpv",
 	"external_player_kind_vlc": "VLC",

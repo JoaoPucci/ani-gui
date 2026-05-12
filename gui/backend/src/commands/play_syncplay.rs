@@ -37,6 +37,13 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // embedded player likely just resolved this exact (title, mode,
     // quality, episode) tuple. Without it, the user waits another
     // ~30s for ani-cli to spin up a fresh fetch.
+    // Syncplay wraps whichever player the user already configured
+    // for "Open in external" — most users have one media player
+    // installed, and routing both flows through the same kind keeps
+    // the per-stream flag shapes (referer, sub-file) consistent
+    // between the two surfaces.
+    let player_kind = cfg.external_player_kind;
+
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
         // Reuse the cached referer + subtitle —
         // try_launch_args_from_cache already pulls both from the
@@ -48,11 +55,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             binary: cfg.syncplay_binary,
             referer: launch.referer,
             subtitle_url: launch.subtitle_url,
-            // test(red): player-kind threading lands in the paired
-            // fix(green) commit; today Syncplay→VLC users get
-            // mpv-style flags and either an "unknown option"
-            // complaint or silent fall-through to no referer.
-            player_kind: crate::commands::external_player::ExternalPlayerKind::Mpv,
+            player_kind,
         });
     }
 
@@ -75,7 +78,6 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         binary: cfg.syncplay_binary,
         referer,
         subtitle_url: resolved.subtitle_url,
-        // test(red): see comment above.
-        player_kind: crate::commands::external_player::ExternalPlayerKind::Mpv,
+        player_kind,
     })
 }

@@ -19,7 +19,7 @@
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Тип плеера",
-	"field_external_player_kind_hint": "Разные плееры принимают разный синтаксис флагов. Выберите ближайший — «Свой» позволяет задать собственный шаблон.",
+	"field_external_player_kind_hint": "Разные плееры принимают разный синтаксис флагов. Выберите ближайший — «Свой» позволяет задать собственный шаблон. Этот выбор также задаёт флаги обёрнутого плеера при совместном просмотре через Syncplay.",
 	"external_player_kind_aria_label": "Тип плеера",
 	"external_player_kind_mpv": "mpv",
 	"external_player_kind_vlc": "VLC",

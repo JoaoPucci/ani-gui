@@ -8,12 +8,13 @@
 //! everything else (room dialog, server connection, wrapped-player
 //! flags) in its own UI.
 //!
-//! Unlike the external-player escape hatch, the user does NOT pick a
-//! "kind" — Syncplay's argv shape is uniform across platforms. We
-//! also don't forward `--referer` / `--sub-file` / `--title`:
-//! Syncplay's own command line for the wrapped player varies by
-//! player + version, so users who need those should configure them
-//! in their player's own config (`~/.config/mpv/mpv.conf`, etc.).
+//! Player-kind flag mapping past `--` mirrors what
+//! `external_player::build_argv` emits for the direct-spawn path,
+//! so a user who configured `external_player_kind = Vlc` gets the
+//! same `--http-referrer=` flag whether they click "Open in
+//! external" or "Watch together". Custom kind bypasses the
+//! forwarding — the wrapped player's own config carries the
+//! per-stream args.
 //!
 //! Bundling is intentionally out of scope — Syncplay is a heavyweight
 //! PyQt5 app and `apt install syncplay` is broken on Ubuntu 24.04
@@ -81,20 +82,37 @@ pub struct SyncplayLaunchArgs {
 ///
 /// Syncplay's CLI grammar is `syncplay [options] [file] -- [player
 /// options]`. The `--` separator forwards everything after it to the
-/// wrapped player (mpv by default). When `referer` is set, we emit
-/// the mpv-style `--referrer=` flag past the `--`; this is the
-/// minimum needed so fast4speed.rsvp's referer-required CDNs don't
-/// 403 out from under Syncplay's mpv. Title / sub-file forwarding
-/// stays out of scope (see `.planning/follow-ups.md`).
+/// wrapped player. We pick the referer flag based on `player_kind`
+/// so Syncplay→VLC gets VLC's `--http-referrer=` instead of mpv's
+/// `--referrer=`. `--sub-file=` is the same flag on mpv, VLC, and
+/// IINA, so no branching needed for subtitle. Custom kind emits no
+/// player-specific flags — the wrapped player's own config carries
+/// referer / sub-file, same escape hatch the external-player path's
+/// Custom kind uses.
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     let mut argv = vec![args.stream_url.clone()];
+    if matches!(args.player_kind, ExternalPlayerKind::Custom) {
+        // Custom: defer all per-stream args to the wrapped player's
+        // own config. Forwarding anything risks an "unknown option"
+        // complaint from a player whose flag shape we don't know.
+        return argv;
+    }
+    let referrer_flag = match args.player_kind {
+        ExternalPlayerKind::Mpv => "--referrer=",
+        ExternalPlayerKind::Vlc => "--http-referrer=",
+        ExternalPlayerKind::Iina => "--mpv-referrer=",
+        // Custom is short-circuited above; this arm is unreachable
+        // but the compiler can't see that without the explicit
+        // matches!() above, so keep the explicit arm.
+        ExternalPlayerKind::Custom => "--referrer=",
+    };
     let referer = args.referer.as_deref().filter(|s| !s.is_empty());
     let subtitle = args.subtitle_url.as_deref().filter(|s| !s.is_empty());
     if referer.is_some() || subtitle.is_some() {
         argv.push("--".to_string());
         if let Some(r) = referer {
-            argv.push(format!("--referrer={r}"));
+            argv.push(format!("{referrer_flag}{r}"));
         }
         if let Some(s) = subtitle {
             argv.push(format!("--sub-file={s}"));

@@ -19,7 +19,7 @@
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Player flavour",
-	"field_external_player_kind_hint": "Different players want different flag syntax. Pick the closest match — Custom lets you write your own argv template.",
+	"field_external_player_kind_hint": "Different players want different flag syntax. Pick the closest match — Custom lets you write your own argv template. This kind also drives the wrapped player flags when you Watch together via Syncplay.",
 	"external_player_kind_aria_label": "Player flavour",
 	"external_player_kind_mpv": "mpv",
 	"external_player_kind_vlc": "VLC",
