@@ -107,8 +107,14 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     // Syncplay's CLI args take precedence over its .ini, so naming
     // the wrapped binary here guarantees player_kind matches what
     // Syncplay actually launches.
+    //
+    // Gate the emission on "looks like a path": bare PATH-only
+    // commands (the default "mpv" / "vlc") would be rejected by
+    // Syncplay's own `os.path.isfile` check, so for those we fall
+    // back to Syncplay's .ini. Anything with a path separator is
+    // intent to override.
     let player_binary = args.player_binary.trim();
-    if !player_binary.is_empty() {
+    if !player_binary.is_empty() && looks_like_path(player_binary) {
         argv.push(format!("--player-path={player_binary}"));
     }
     argv.push(args.stream_url.clone());
@@ -139,6 +145,17 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
         }
     }
     argv
+}
+
+/// Whether `s` is a path (absolute or relative) as opposed to a
+/// bare command name. Syncplay's `--player-path` validates with
+/// `os.path.isfile`, which rejects PATH-only commands, so this
+/// gates whether we hand the value to Syncplay or defer to its
+/// own .ini. A separator (`/` on Unix, `\` on Windows) is the
+/// reliable signal — `Path::is_absolute` alone wouldn't catch
+/// `./vendor/mpv`-style relative overrides.
+fn looks_like_path(s: &str) -> bool {
+    s.contains('/') || s.contains('\\')
 }
 
 /// Launch the configured Syncplay binary against the resolved stream
