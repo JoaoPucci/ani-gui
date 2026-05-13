@@ -1345,6 +1345,34 @@ mod tests {
     }
 
     #[test]
+    fn classify_picker_miss_returns_network_on_partial_search_failure() {
+        // Codex P2 #3236... : the embedded play path used to surface
+        // NoResults when one search errored alongside a success that
+        // produced no safe match. The verdict is incomplete in that
+        // case — the failed search may have been the one with the
+        // canonical hit — so the embedded surface should agree with
+        // download / play_external / play_syncplay / availability and
+        // return transient Network instead.
+        let state = state_with_proxy_origin();
+        let args = PlayArgs {
+            title: "X".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        let err = classify_picker_miss(&state, &args, &picked_miss(true, true));
+        assert!(
+            matches!(err, AniError::Network),
+            "partial failure should surface Network, got {err:?}",
+        );
+    }
+
+    #[test]
     fn select_first_with_hits_picks_by_ep_count_within_chosen_list() {
         // Naruto: Shippuden case — multiple candidates under one title;
         // the disambiguator chooses by episode count.
