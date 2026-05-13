@@ -610,6 +610,44 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_rejects_when_years_present_but_none_match() {
+        // Closest sibling on ep-count would slip past the threshold
+        // (45 eps vs expected 43 → distance 2 inside tolerance 4),
+        // but its year (1995) disagrees with Kitsu's (1979) by 16.
+        // The current v2 picker falls back to the full pool when no
+        // candidate is in the ±1 year band — that's exactly the
+        // case Codex flagged where ep-count alone re-admits a known
+        // wrong show. With all candidates carrying year info,
+        // year-mismatch must be a hard reject (None), not a
+        // fallback.
+        let cands = vec![
+            cand_with_year("wrong-1", "Mobile Suit Gundam Wing", 45, Some(1995)),
+            cand_with_year("wrong-2", "Mobile Suit Gundam SEED", 50, Some(2002)),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 43, Some(1979), "sub", "Mobile Suit Gundam"),
+            None,
+            "candidates have years but none in ±1 of expected → reject, don't fall back",
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_still_falls_back_when_no_candidate_has_year() {
+        // Old shows where allmanga's airedStart is null all around.
+        // The year signal is genuinely missing, not just mismatched,
+        // so the picker must degrade to ep-count + tolerance instead
+        // of silently rejecting everything.
+        let cands = vec![
+            cand_with_year("a", "Some Show", 12, None),
+            cand_with_year("b", "Some Show 2", 24, None),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2005), "sub", "Some Show"),
+            Some(1),
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_year_filter_keeps_matching_year_within_one() {
         // BNHA repro: Kitsu says 13 eps + 2016. allmanga has a
         // 13-ep 2026 spinoff (current picker bites on its exact-ep
