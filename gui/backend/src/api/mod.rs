@@ -516,7 +516,7 @@ async fn post_play_external(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> Result<StatusCode, AniError> {
-    play_inner::play_external(&state, &args).await?;
+    crate::commands::play_external_command::play_external(&state, &args).await?;
     Ok(StatusCode::ACCEPTED)
 }
 
