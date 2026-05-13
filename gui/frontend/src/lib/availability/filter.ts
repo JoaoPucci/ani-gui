@@ -10,7 +10,8 @@ import {
 	altTitlesFromKitsu,
 	availabilityBatch,
 	availabilityWarm,
-	checkAvailability
+	checkAvailability,
+	yearFromKitsuRef
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
 
@@ -44,6 +45,7 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 			mode,
 			alt_titles: altTitlesFromKitsu(i),
 			episode_count: i.episode_count ?? undefined,
+			year: yearFromKitsuRef(i) ?? undefined,
 			kitsu_id: i.id,
 			status: i.status ?? undefined
 		}));
@@ -88,6 +90,7 @@ export async function filterAvailableStrict<T extends KitsuAnimeRef>(
 						mode,
 						alt_titles: altTitlesFromKitsu(item),
 						episode_count: item.episode_count ?? undefined,
+						year: yearFromKitsuRef(item) ?? undefined,
 						kitsu_id: item.id,
 						status: item.status ?? undefined
 					});

@@ -7,6 +7,9 @@ const apiMock = vi.hoisted(() => ({
 	checkAvailability: vi.fn(),
 	altTitlesFromKitsu: vi.fn((ref: { id: string } | null | undefined) =>
 		ref ? [`alt-${ref.id}`] : []
+	),
+	yearFromKitsuRef: vi.fn((ref: { start_date: string | null } | null | undefined) =>
+		ref?.start_date ? Number(ref.start_date.slice(0, 4)) : null
 	)
 }));
 vi.mock('$lib/api', () => apiMock);
@@ -75,6 +78,22 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		});
 	});
 
+	it('forwards the Kitsu start year to availability warm so the backend picker can use it', async () => {
+		// Without year, the backend writes an availability:v4 row that
+		// was decided without the year discriminator — leaving the
+		// same wrong-show decision cached for the home-strip warm
+		// payload. Pin that the warm call forwards year so list-view
+		// availability matches what the detail page would resolve.
+		const items = [ref('wing', { start_date: '1995-04-07', episode_count: 49 })];
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
+		await filterAvailable(items, 'sub');
+		expect(apiMock.availabilityWarm.mock.calls[0][0][0]).toMatchObject({
+			kitsu_id: 'wing',
+			year: 1995
+		});
+	});
+
 	it('skips the warm call when nothing is uncached', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
 		await filterAvailable([ref('a'), ref('b')], 'sub');
@@ -122,6 +141,19 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
 		// Two probes, one per uncached id.
 		expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2);
+	});
+
+	it('forwards the Kitsu start year to inline probes', async () => {
+		// Same symmetry rule as the lazy warm path: the strict probe
+		// must hand the backend picker the year so list-view cards
+		// resolve to the same allmanga show as the detail page.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		await filterAvailableStrict([ref('wing', { start_date: '1995-04-07' })], 'sub');
+		expect(apiMock.checkAvailability.mock.calls[0][0]).toMatchObject({
+			kitsu_id: 'wing',
+			year: 1995
+		});
 	});
 
 	it('keeps an item when its inline probe throws (defer to lazy path)', async () => {
