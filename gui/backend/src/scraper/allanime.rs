@@ -737,6 +737,38 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_accepts_partial_season_inside_year_filtered_pool() {
+        // Codex P2 #3236... : currently-airing 12-ep show, allmanga
+        // only has 4 subbed eps released so far. Year matches
+        // (2026). The threshold (max(3, 12/10) = 3) rejects because
+        // best_dist = 8 > 3, telling the user "not in catalog" even
+        // though eps 1-4 stream fine. Year filter already
+        // disambiguated wrong-show siblings — inside that pool, the
+        // upper distance check is too strict.
+        let cands = vec![cand_with_year("current", "Some Airing Show", 4, Some(2026))];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Airing Show"),
+            Some(1),
+            "partial-season candidate inside year-filtered pool should accept",
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_keeps_threshold_when_year_filter_did_not_engage() {
+        // Guard the conservative path: no year info available (caller
+        // passed expected_year=None), so the year filter never
+        // narrowed the pool. The threshold still applies, otherwise
+        // a 1-ep side-story would re-admit itself for a long-running
+        // show.
+        let cands = vec![cand_with_year("undated", "Some Show", 4, None)];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, None, "sub", "Some Show"),
+            None,
+            "no year info → upper threshold still rejects far-off candidate",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_threshold_rejects_far_off_only_match() {
         // No year, just ep_count, and the closest candidate is well
         // outside the tolerance window (max(3, expected*10%)).
