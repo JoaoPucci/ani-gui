@@ -166,6 +166,17 @@ pub fn pick_by_ep_count_v2(
     }
     // 1) Year filter — pool is indices into the full slice so the
     //    1-based return value still points at the right candidate.
+    //
+    //    Three cases when expected_year is Some:
+    //      • At least one candidate has a year in ±1 → restrict pool
+    //        to those.
+    //      • Every candidate has a year, none in range → hard reject
+    //        (return None). The year signal disproves the match, so
+    //        falling back to ep-count would re-admit a known-wrong
+    //        sibling. Codex flagged this in #3228864278.
+    //      • No candidate has a year at all → year signal is genuinely
+    //        missing (older shows where allmanga omits airedStart).
+    //        Degrade to pure ep-count + threshold.
     let pool: Vec<usize> = match expected_year {
         Some(want) => {
             let in_range: Vec<usize> = (0..candidates.len())
@@ -174,10 +185,15 @@ pub fn pick_by_ep_count_v2(
                         .is_some_and(|y| y.abs_diff(want) <= 1)
                 })
                 .collect();
-            if in_range.is_empty() {
-                (0..candidates.len()).collect()
-            } else {
+            if !in_range.is_empty() {
                 in_range
+            } else {
+                let any_has_year = (0..candidates.len())
+                    .any(|i| AiredStart::year_value(candidates[i].aired_start.as_ref()).is_some());
+                if any_has_year {
+                    return None;
+                }
+                (0..candidates.len()).collect()
             }
         }
         None => (0..candidates.len()).collect(),
