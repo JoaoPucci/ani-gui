@@ -144,9 +144,16 @@ pub fn select_first_with_hits_with_candidate(
             continue;
         }
         let pick = match expected {
-            Some(n) => {
-                scraper::pick_by_ep_count_v2(cands, n, expected_year, mode, title).unwrap_or(1)
-            }
+            // Picker may explicitly reject the pool (year mismatch
+            // or ep-count distance over the tolerance) — when it
+            // does, skip this list and try the next alt-title.
+            // Falling through to .unwrap_or(1) would silently feed
+            // ani-cli candidate #1 and reintroduce the wrong-show
+            // bug the picker was added to fix.
+            Some(n) => match scraper::pick_by_ep_count_v2(cands, n, expected_year, mode, title) {
+                Some(p) => p,
+                None => continue,
+            },
             None => 1,
         };
         // `pick` is 1-based; clamp into the slice in case
@@ -465,18 +472,32 @@ mod tests {
                 "Primary", &results, Some(expected), None, "sub",
             );
 
-            // The chosen title must be the first non-empty list's
-            // title — never a later list, never the primary.
-            let first_non_empty_idx = empty_prefix_len;
-            proptest::prop_assert_eq!(&title, &results[first_non_empty_idx].0);
-            // pick is 1-based and within the chosen list.
-            let chosen_list = &results[first_non_empty_idx].1;
-            proptest::prop_assert!(pick >= 1);
-            proptest::prop_assert!(pick <= chosen_list.len());
-            // Chosen candidate must be from the chosen list (id
-            // matches one of the entries).
-            let chosen = chosen.expect("candidate");
-            proptest::prop_assert!(chosen_list.iter().any(|c| c.id == chosen.id));
+            // Three cases now that the picker may reject a pool:
+            //   • Picker accepted some list — `chosen` is from that
+            //     list and the title matches one of the results
+            //     titles (not necessarily the first non-empty one;
+            //     a rejection on the first pool walks to the next).
+            //   • Picker rejected every non-empty pool — helper
+            //     returns `(primary, 1, None)`.
+            //
+            // Either branch must keep the 1-based pick + list
+            // boundary invariants the play path depends on.
+            match chosen {
+                None => {
+                    proptest::prop_assert_eq!(&title, &"Primary".to_string());
+                    proptest::prop_assert_eq!(pick, 1);
+                }
+                Some(c) => {
+                    let chosen_list = &results
+                        .iter()
+                        .find(|(t, _)| t == &title)
+                        .expect("chosen title must be one of the results titles")
+                        .1;
+                    proptest::prop_assert!(pick >= 1);
+                    proptest::prop_assert!(pick <= chosen_list.len());
+                    proptest::prop_assert!(chosen_list.iter().any(|x| x.id == c.id));
+                }
+            }
         }
     }
 }

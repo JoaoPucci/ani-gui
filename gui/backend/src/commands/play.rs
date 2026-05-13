@@ -317,6 +317,24 @@ where
     // is the English form). See pick_title_and_index().
     let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
 
+    // `chosen_candidate` is None when allmanga returned no hits OR the
+    // year/ep-count threshold rejected every pool as wrong-show.
+    // Either way, running ani-cli on `args.title` would let it pick a
+    // sibling on its own and reintroduce the silent-wrong-show bug —
+    // surface NoResults instead so the play page shows a real
+    // "not on allmanga" error.
+    if chosen_candidate.is_none() {
+        tracing::info!(
+            search_title = %search_title,
+            kitsu_id = ?args.kitsu_id,
+            "play: picker found no safe allmanga match; surfacing NoResults",
+        );
+        if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+            crate::commands::availability::write_cache(state, id, &args.mode, false);
+        }
+        return Err(AniError::NoResults);
+    }
+
     tracing::info!(
         search_title = %search_title,
         episode = %args.episode,
@@ -524,7 +542,10 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // play_external is always a click — never a prefetch — so no
     // hist_dir override needed.
     let opts = debug_options_for(state, None);
-    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
+    let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
+    if chosen_candidate.is_none() {
+        return Err(AniError::NoResults);
+    }
     let resolved = run_debug(
         &opts,
         &search_title,

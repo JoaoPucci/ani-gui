@@ -113,7 +113,10 @@ where
     // Reuse play's disambiguator so a download started from the player
     // grabs the same allanime show ani-cli would have streamed.
     let play_view = play_args_view(args);
-    let (search_title, select_index, _chosen) = pick_title_and_index(state, &play_view).await;
+    let (search_title, select_index, chosen) = pick_title_and_index(state, &play_view).await;
+    if chosen.is_none() {
+        return Err(crate::error::AniError::NoResults);
+    }
 
     tracing::info!(
         search_title = %search_title,

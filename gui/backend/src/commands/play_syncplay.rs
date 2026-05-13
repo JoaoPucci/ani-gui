@@ -61,7 +61,10 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     }
 
     let opts = debug_options_for(state, None);
-    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
+    let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
+    if chosen_candidate.is_none() {
+        return Err(crate::error::AniError::NoResults);
+    }
     let resolved = run_debug(
         &opts,
         &search_title,
