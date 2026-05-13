@@ -142,20 +142,29 @@ pub(super) async fn pick_title_and_index(
     // episode_count to disambiguate with — alt_titles is also the
     // recovery path when canonical doesn't appear in allmanga's index
     // (Stone Ocean Part 6 reproduces this even though its
-    // episode_count is null on Kitsu). Stop at the first non-empty
-    // list so we don't make three GraphQL calls when canonical worked.
+    // episode_count is null on Kitsu).
+    //
+    // We interleave fetch + pick: after each non-empty pool lands,
+    // re-run the picker against the accumulated `results`. If it
+    // accepts, we stop and skip the remaining alt-title GraphQL
+    // calls (the common case for unambiguous canonical hits). If
+    // the picker rejects (year mismatch, ep-count over tolerance),
+    // we keep walking — the picker's None on this pool is what
+    // makes "canonical returned only wrong-year siblings, but
+    // romanized alt returned the real show" recoverable. Without
+    // this, the early break on the first non-empty pool would lock
+    // us into the wrong show. Codex P2 #3231391353.
     let mut results: Vec<(String, Vec<Candidate>)> = Vec::new();
+    let mut chosen_so_far: Option<Candidate> = None;
+    let mut chosen_title_so_far = primary.clone();
+    let mut chosen_pick_so_far = 1usize;
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
         match scraper::search(&state.proxy_http, title, mode, None).await {
             Ok(cands) => {
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
-                let was_empty = cands.is_empty();
                 results.push((title.to_string(), cands));
-                if !was_empty {
-                    break;
-                }
             }
             Err(e) => {
                 tracing::warn!(
@@ -164,17 +173,28 @@ pub(super) async fn pick_title_and_index(
                     "play: allanime search failed; trying next candidate",
                 );
                 results.push((title.to_string(), Vec::new()));
+                continue;
             }
+        }
+        // Try to pick from what we have. If accepted, stop and skip
+        // any remaining alt-title fetches. If still None, keep
+        // walking — later alt titles may yield a valid candidate.
+        let (t, p, c) = select_first_with_hits_with_candidate(
+            &primary,
+            &results,
+            args.episode_count,
+            args.year,
+            mode,
+        );
+        if c.is_some() {
+            chosen_so_far = c;
+            chosen_title_so_far = t;
+            chosen_pick_so_far = p;
+            break;
         }
     }
 
-    let (chosen_title, pick, chosen) = select_first_with_hits_with_candidate(
-        &primary,
-        &results,
-        args.episode_count,
-        args.year,
-        mode,
-    );
+    let (chosen_title, pick, chosen) = (chosen_title_so_far, chosen_pick_so_far, chosen_so_far);
     tracing::info!(
         primary = %primary,
         alt_count = args.alt_titles.len(),
