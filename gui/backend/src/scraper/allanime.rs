@@ -178,7 +178,15 @@ pub fn pick_by_ep_count_v2(
     //         re-admit a known-wrong sibling.
     //      3. Else (all undated, or no candidate had any year value)
     //         → keep all and degrade to pure ep-count + threshold.
-    let pool: Vec<usize> = match expected_year {
+    // `year_filtered` is true when the pool below was narrowed to
+    // candidates whose aired-year matched `expected_year` (i.e. we
+    // hit the in-range branch). The threshold step downstream
+    // relaxes its upper bound in that case so a partial-season
+    // candidate (allmanga has fewer eps released than Kitsu's
+    // planned total) still survives — year already disambiguated
+    // wrong-show siblings, so the distance check is no longer the
+    // safety net it is in the no-year path. Codex P2 #3236... .
+    let (pool, year_filtered): (Vec<usize>, bool) = match expected_year {
         Some(want) => {
             let in_range: Vec<usize> = (0..candidates.len())
                 .filter(|&i| {
@@ -187,7 +195,7 @@ pub fn pick_by_ep_count_v2(
                 })
                 .collect();
             if !in_range.is_empty() {
-                in_range
+                (in_range, true)
             } else {
                 let any_has_year = (0..candidates.len())
                     .any(|i| AiredStart::year_value(candidates[i].aired_start.as_ref()).is_some());
@@ -201,14 +209,17 @@ pub fn pick_by_ep_count_v2(
                 // already returned None above). In practice this is
                 // the "all undated" or "mixed wrong-year + undated"
                 // shape — the undated ones become the working pool.
-                (0..candidates.len())
+                // year_filtered stays false: we landed here BECAUSE
+                // the year signal couldn't narrow the pool.
+                let undated: Vec<usize> = (0..candidates.len())
                     .filter(|&i| {
                         AiredStart::year_value(candidates[i].aired_start.as_ref()).is_none()
                     })
-                    .collect()
+                    .collect();
+                (undated, false)
             }
         }
-        None => (0..candidates.len()).collect(),
+        None => ((0..candidates.len()).collect(), false),
     };
     if pool.is_empty() {
         return None;
@@ -230,9 +241,18 @@ pub fn pick_by_ep_count_v2(
     //    for short ones. Saturating math keeps the calc cheap and
     //    correct on u32; the floor ensures sibling-distance-6 picks
     //    are rejected for short series.
-    let tolerance = std::cmp::max(3, expected / 10);
-    if best_dist > tolerance {
-        return None;
+    //
+    //    Skipped when `year_filtered` is true: the year filter
+    //    already narrowed the pool to the matching show, so a
+    //    `got < expected` partial-release count (currently-airing
+    //    show with N of M eps released so far, or a partial dub)
+    //    must not be rejected as a wrong-show match. Codex P2
+    //    #3236... .
+    if !year_filtered {
+        let tolerance = std::cmp::max(3, expected / 10);
+        if best_dist > tolerance {
+            return None;
+        }
     }
 
     // 4) Exact-name tie-break, scoped to the pool + min-distance bucket.
