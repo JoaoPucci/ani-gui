@@ -234,11 +234,10 @@ async fn enrich_availability_after_success(
 /// surfaces. Returns `NoResults` only when every search call
 /// completed (no errors) and still nothing matched — any error in
 /// the mix is treated as transient and surfaced as `Network`.
-/// Differs from [`classify_picker_miss`] (which treats partial
-/// failures as `NoResults` so `play_with_progress` can still write
-/// a "not on allmanga" verdict for the resolved-with-hits case)
-/// — the non-play callers don't touch the availability cache, so
-/// the conservative "any error = transient" is the safer surface.
+/// Same policy as [`classify_picker_miss`] (which additionally
+/// stamps the availability negative-cache on the all-completed
+/// branch); the non-play callers don't touch that cache so this
+/// pure variant is enough for them.
 pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
     if picked.any_search_succeeded && !picked.any_search_errored {
         AniError::NoResults
@@ -260,12 +259,17 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
         return AniError::Network;
     }
     if picked.any_search_errored {
+        // Verdict is incomplete: the failed search may have been the
+        // canonical with the right hit, so surface transient Network
+        // (no negative cache write) and let the next attempt retry —
+        // same policy as availability / download / play_external /
+        // play_syncplay. Codex P2 #3236... .
         tracing::info!(
             search_title = %picked.title,
             kitsu_id = ?args.kitsu_id,
-            "play: partial search failure + no safe match; skipping negative cache write",
+            "play: partial search failure + no safe match; surfacing Network",
         );
-        return AniError::NoResults;
+        return AniError::Network;
     }
     tracing::info!(
         search_title = %picked.title,
