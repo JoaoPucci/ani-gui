@@ -868,6 +868,7 @@
 			// streamable. Falls through to Kitsu's announced number for
 			// the cold-cache window before availability resolves.
 			episode_count: episodeCap ?? undefined,
+			year: yearFromKitsuRef(detail) ?? undefined,
 			alt_titles: altTitlesFromKitsu(detail),
 			kitsu_id: id
 		};
