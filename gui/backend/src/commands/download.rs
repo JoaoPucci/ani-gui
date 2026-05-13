@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::anicli::process::{spawn_download, DownloadRequest};
 use crate::app::AppState;
-use crate::commands::play::{debug_options_for, pick_title_and_index, PlayArgs};
+use crate::commands::play::{
+    debug_options_for, pick_title_and_index, picker_miss_caller_error, PlayArgs,
+};
 use crate::error::{AniError, Result};
 
 /// Wire payload for the download endpoint. A near-clone of [`PlayArgs`]
@@ -114,25 +116,17 @@ where
     // grabs the same allanime show ani-cli would have streamed.
     let play_view = play_args_view(args);
     let picked = pick_title_and_index(state, &play_view).await;
-    let search_title = picked.title;
-    let select_index = picked.index;
-    let chosen = picked.candidate;
-    if chosen.is_none() {
+    if picked.candidate.is_none() {
         // Partial-failure case (some search errored alongside a
         // completed one with no chosen candidate) is treated as
-        // transient/non-authoritative — same policy as
-        // play_with_progress / availability. Returning NoResults
-        // here would tell the user "not in catalog" when the
-        // canonical lookup never actually completed. Codex P2
-        // #3235184271.
-        return Err(
-            if picked.any_search_succeeded && !picked.any_search_errored {
-                crate::error::AniError::NoResults
-            } else {
-                crate::error::AniError::Network
-            },
-        );
+        // transient/non-authoritative — same policy as availability.
+        // Returning NoResults here would tell the user "not in
+        // catalog" when the canonical lookup never actually
+        // completed. Codex P2 #3235184271.
+        return Err(picker_miss_caller_error(&picked));
     }
+    let search_title = picked.title;
+    let select_index = picked.index;
 
     tracing::info!(
         search_title = %search_title,

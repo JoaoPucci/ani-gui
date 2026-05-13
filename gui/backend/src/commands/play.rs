@@ -229,6 +229,24 @@ async fn enrich_availability_after_success(
     );
 }
 
+/// Caller-side picker-miss error policy used by the sibling
+/// `play_external` / `play_syncplay` / `download_with_progress`
+/// surfaces. Returns `NoResults` only when every search call
+/// completed (no errors) and still nothing matched — any error in
+/// the mix is treated as transient and surfaced as `Network`.
+/// Differs from [`classify_picker_miss`] (which treats partial
+/// failures as `NoResults` so `play_with_progress` can still write
+/// a "not on allmanga" verdict for the resolved-with-hits case)
+/// — the non-play callers don't touch the availability cache, so
+/// the conservative "any error = transient" is the safer surface.
+pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
+    if picked.any_search_succeeded && !picked.any_search_errored {
+        AniError::NoResults
+    } else {
+        AniError::Network
+    }
+}
+
 /// Map a "no chosen candidate" outcome to the right `AniError`,
 /// optionally stamping the availability cache. Three branches —
 /// see the comments inside for the policy. Extracted out of
@@ -1292,6 +1310,38 @@ mod tests {
         // 38-ep candidate is index 1 (closer to expected 38 than the
         // 1-ep side story).
         assert_eq!(idx, 1);
+    }
+
+    fn picked_miss(any_success: bool, any_error: bool) -> PickedTitle {
+        PickedTitle {
+            title: "X".into(),
+            index: 0,
+            candidate: None,
+            any_search_succeeded: any_success,
+            any_search_errored: any_error,
+        }
+    }
+
+    #[test]
+    fn picker_miss_caller_error_treats_partial_failure_as_network() {
+        // Mixed: at least one search succeeded but another errored.
+        // Sibling callers (download/syncplay/external) prefer the
+        // transient surface — the failed search may have been the
+        // one with the right match. Codex P2 #3235184271.
+        let err = picker_miss_caller_error(&picked_miss(true, true));
+        assert!(matches!(err, AniError::Network));
+    }
+
+    #[test]
+    fn picker_miss_caller_error_returns_no_results_only_when_all_searches_completed() {
+        let err = picker_miss_caller_error(&picked_miss(true, false));
+        assert!(matches!(err, AniError::NoResults));
+    }
+
+    #[test]
+    fn picker_miss_caller_error_treats_all_errored_as_network() {
+        let err = picker_miss_caller_error(&picked_miss(false, true));
+        assert!(matches!(err, AniError::Network));
     }
 
     #[test]
