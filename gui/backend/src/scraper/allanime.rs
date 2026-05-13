@@ -167,34 +167,52 @@ pub fn pick_by_ep_count_v2(
     // 1) Year filter — pool is indices into the full slice so the
     //    1-based return value still points at the right candidate.
     //
-    //    When expected_year is Some, build the pool from candidates
-    //    we can't disprove on year: either dated within ±1 OR undated
-    //    (the year signal is missing for them, so they remain
-    //    plausible). Dated wrong-year siblings drop out.
-    //
-    //      • Mixed pool → drop wrong-year, keep right-year + undated.
-    //      • All dated, all wrong year → empty → hard reject (the
-    //        year signal disproves the match; falling back to
-    //        ep-count would re-admit a known-wrong sibling).
-    //      • All undated → everyone stays, picker degrades to pure
-    //        ep-count + threshold.
+    //    When expected_year is Some, build the pool by preference:
+    //      1. If any candidate is dated and in ±1 of expected_year,
+    //         the pool is JUST those — a positive year signal beats
+    //         an unknown one, so dated wrong-year siblings AND
+    //         undated entries both drop out.
+    //      2. Else if any candidate has a year (so we know they're
+    //         all wrong-year, no undated either) → return None.
+    //         Year disproves the match; ep-count fallback would
+    //         re-admit a known-wrong sibling.
+    //      3. Else (all undated, or no candidate had any year value)
+    //         → keep all and degrade to pure ep-count + threshold.
     let pool: Vec<usize> = match expected_year {
         Some(want) => {
-            let kept: Vec<usize> = (0..candidates.len())
-                .filter(
-                    |&i| match AiredStart::year_value(candidates[i].aired_start.as_ref()) {
-                        Some(y) => y.abs_diff(want) <= 1,
-                        None => true,
-                    },
-                )
+            let in_range: Vec<usize> = (0..candidates.len())
+                .filter(|&i| {
+                    AiredStart::year_value(candidates[i].aired_start.as_ref())
+                        .is_some_and(|y| y.abs_diff(want) <= 1)
+                })
                 .collect();
-            if kept.is_empty() {
-                return None;
+            if !in_range.is_empty() {
+                in_range
+            } else {
+                let any_has_year = (0..candidates.len())
+                    .any(|i| AiredStart::year_value(candidates[i].aired_start.as_ref()).is_some());
+                let any_undated = (0..candidates.len())
+                    .any(|i| AiredStart::year_value(candidates[i].aired_start.as_ref()).is_none());
+                if any_has_year && !any_undated {
+                    return None;
+                }
+                // Fall back: include undated candidates (and any
+                // wrong-year ones, since the wrong-year-only branch
+                // already returned None above). In practice this is
+                // the "all undated" or "mixed wrong-year + undated"
+                // shape — the undated ones become the working pool.
+                (0..candidates.len())
+                    .filter(|&i| {
+                        AiredStart::year_value(candidates[i].aired_start.as_ref()).is_none()
+                    })
+                    .collect()
             }
-            kept
         }
         None => (0..candidates.len()).collect(),
     };
+    if pool.is_empty() {
+        return None;
+    }
 
     // 2) Ep-count pick within the pool.
     let mut best_i = pool[0];

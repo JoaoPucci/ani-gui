@@ -154,7 +154,15 @@ pub fn select_first_with_hits_with_candidate(
                 Some(p) => p,
                 None => continue,
             },
-            None => 1,
+            // No ep-count from Kitsu (ongoing/upcoming shows). Apply
+            // the year filter on its own so an older same-title
+            // sibling doesn't win when allmanga returns it first.
+            // Codex P2 #3231422658. When expected_year is also None
+            // we keep the legacy `pick = 1` fallback.
+            None => match pick_first_by_year(cands, expected_year) {
+                Some(p) => p,
+                None => continue,
+            },
         };
         // `pick` is 1-based; clamp into the slice in case
         // pick_by_ep_count ever returns out-of-bounds (defence in
@@ -163,6 +171,42 @@ pub fn select_first_with_hits_with_candidate(
         return (title.clone(), pick, Some(cands[idx0].clone()));
     }
     (primary.to_string(), 1, None)
+}
+
+/// Year-only fallback for the ep-count-less path. Mirrors the
+/// preference order of `pick_by_ep_count_v2`'s year filter — dated
+/// in-range beats undated; all-dated-wrong-year hard-rejects;
+/// all-undated (or no year at all) falls through to candidate #1
+/// preserving the legacy positional behavior.
+///
+/// Returns a 1-based index (matches the rest of the picker family),
+/// or `None` if every candidate has a year and none match — same
+/// "skip this pool, try alt titles" semantic the ep-count path uses.
+fn pick_first_by_year(cands: &[Candidate], expected_year: Option<u32>) -> Option<usize> {
+    let want = match expected_year {
+        Some(y) => y,
+        None => return Some(1),
+    };
+    let in_range = (0..cands.len()).find(|&i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref())
+            .is_some_and(|y| y.abs_diff(want) <= 1)
+    });
+    if let Some(i) = in_range {
+        return Some(i + 1);
+    }
+    let any_has_year = (0..cands.len()).any(|i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_some()
+    });
+    let any_undated = (0..cands.len()).any(|i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_none()
+    });
+    if any_has_year && !any_undated {
+        return None;
+    }
+    let first_undated = (0..cands.len()).find(|&i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_none()
+    });
+    Some(first_undated.map_or(1, |i| i + 1))
 }
 
 #[cfg(test)]
