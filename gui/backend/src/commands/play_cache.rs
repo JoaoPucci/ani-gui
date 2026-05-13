@@ -85,8 +85,14 @@ pub(crate) async fn try_launch_args_from_cache(
     cfg: &crate::config::Config,
 ) -> Option<LaunchArgs> {
     let quality = args.quality.as_deref().unwrap_or("best");
-    let cache_key =
-        play_resolution_cache::cache_key(&args.title, &args.mode, quality, &args.episode);
+    let cache_key = play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        quality,
+        &args.episode,
+        args.year,
+        args.episode_count,
+    );
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     let parsed = url::Url::parse(&cached.upstream_url).ok()?;
     if !upstream_head_ok(&state.proxy_http, &parsed, &cached.referer).await {

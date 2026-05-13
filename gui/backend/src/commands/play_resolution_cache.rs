@@ -54,7 +54,14 @@ use crate::proxy::MediaKind;
 ///   the closest sibling on ep-count) must NOT survive into v3 —
 ///   bumping evicts them and forces a re-resolve through the new
 ///   layered picker.
-const SCHEMA: &str = "v3";
+/// - v4: `cache_key` now includes `year` + `episode_count` so two
+///   Kitsu entries with the same canonical title (different release
+///   years) can't poison each other's cache row. Closes Codex P2
+///   #3228940641. v3 rows were keyed only by
+///   `(title, mode, quality, episode)`, so a single "Mobile Suit
+///   Gundam" cache row applied to every Gundam re-cut sharing that
+///   canonical — bumping evicts them.
+const SCHEMA: &str = "v4";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -84,21 +91,37 @@ pub struct CachedResolution {
     pub show_title: String,
 }
 
-/// Build the SQLite key for a play resolution. Deterministic per
-/// `(title, mode, quality, episode)` — alt_titles are intentionally
-/// excluded because the cache is keyed on what the *frontend* asks
-/// for, not the title that ultimately matched allmanga. Same query →
-/// same key on the next visit, even after we've fixed Kitsu cache
-/// schemas etc.
+/// Build the SQLite key for a play resolution. Keyed on what the
+/// *frontend* asks for — `(title, mode, quality, episode, year,
+/// episode_count)`. alt_titles are intentionally excluded because
+/// the cache is keyed on the request shape, not the title that
+/// ultimately matched allmanga.
+///
+/// `year` + `episode_count` segments distinguish two Kitsu entries
+/// sharing the same canonical title (e.g. franchise remakes); the
+/// disambiguator now consumes both, so the cache must too — without
+/// them, the first successful resolve poisons the row for every
+/// other Kitsu entry with the same title. `None` segments emit a
+/// `-` placeholder so the key shape stays uniform for ongoing shows
+/// (Kitsu episode_count null) and pre-Kitsu legacy callers.
 #[must_use]
-pub fn cache_key(title: &str, mode: &str, quality: &str, episode: &str) -> String {
+pub fn cache_key(
+    title: &str,
+    mode: &str,
+    quality: &str,
+    episode: &str,
+    year: Option<u32>,
+    episode_count: Option<u32>,
+) -> String {
     // `:` is the table convention. The fields don't contain it
     // (mode/quality are enums, episode is digits), so no escaping
     // needed for them. Title can contain `:` (Stone Ocean Part 2
     // canonical has one). It's still unambiguous given the field
     // count, and serde_json never tries to parse this — it's only a
     // SQLite text key.
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}")
+    let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
+    let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
+    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}")
 }
 
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.
@@ -163,18 +186,51 @@ mod tests {
 
     #[test]
     fn cache_key_is_deterministic_for_the_same_inputs() {
-        let a = cache_key("One Piece", "sub", "best", "1");
-        let b = cache_key("One Piece", "sub", "best", "1");
+        let a = cache_key("One Piece", "sub", "best", "1", None, None);
+        let b = cache_key("One Piece", "sub", "best", "1", None, None);
         assert_eq!(a, b);
     }
 
     #[test]
     fn cache_key_differs_across_each_axis() {
-        let base = cache_key("One Piece", "sub", "best", "1");
-        assert_ne!(cache_key("Naruto", "sub", "best", "1"), base);
-        assert_ne!(cache_key("One Piece", "dub", "best", "1"), base);
-        assert_ne!(cache_key("One Piece", "sub", "1080", "1"), base);
-        assert_ne!(cache_key("One Piece", "sub", "best", "2"), base);
+        let base = cache_key("One Piece", "sub", "best", "1", None, None);
+        assert_ne!(cache_key("Naruto", "sub", "best", "1", None, None), base);
+        assert_ne!(cache_key("One Piece", "dub", "best", "1", None, None), base);
+        assert_ne!(cache_key("One Piece", "sub", "1080", "1", None, None), base);
+        assert_ne!(cache_key("One Piece", "sub", "best", "2", None, None), base);
+        // Year + ep-count axes — different Kitsu entries sharing a
+        // title must map to different keys so the first resolve
+        // doesn't poison the row for the other entry.
+        assert_ne!(
+            cache_key(
+                "Mobile Suit Gundam",
+                "sub",
+                "best",
+                "1",
+                Some(1979),
+                Some(43)
+            ),
+            cache_key(
+                "Mobile Suit Gundam",
+                "sub",
+                "best",
+                "1",
+                Some(1995),
+                Some(49)
+            ),
+        );
+        // Just-year-different is enough — Codex's concern was two
+        // Kitsu entries with same title differing by year. Episode
+        // count is the secondary discriminator; pin both axes
+        // independently so a regression on either drops a test.
+        assert_ne!(
+            cache_key("Show", "sub", "best", "1", Some(2020), None),
+            cache_key("Show", "sub", "best", "1", Some(2021), None),
+        );
+        assert_ne!(
+            cache_key("Show", "sub", "best", "1", None, Some(12)),
+            cache_key("Show", "sub", "best", "1", None, Some(13)),
+        );
     }
 
     #[test]
@@ -184,14 +240,24 @@ mod tests {
         // become misses on first access. This test pins the prefix
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
-        let k = cache_key("X", "sub", "best", "1");
-        assert!(k.starts_with("play:v3:"), "got {k}");
+        let k = cache_key("X", "sub", "best", "1", None, None);
+        assert!(k.starts_with("play:v4:"), "got {k}");
+    }
+
+    #[test]
+    fn cache_key_emits_dash_placeholder_for_missing_year_and_eps() {
+        // Legacy callers and ongoing shows have year=None /
+        // episode_count=None. The key must stay well-formed (no
+        // adjacent colons) so the SQLite text doesn't drift across
+        // None/Some shapes — `-` is the chosen placeholder.
+        let k = cache_key("Show", "sub", "best", "1", None, None);
+        assert!(k.ends_with(":-:-"), "got {k}");
     }
 
     #[test]
     fn put_then_get_round_trips_the_resolution() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1");
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
         put(&pool, &key, &sample_resolution());
         let got = get(&pool, &key).expect("ok").expect("hit");
         assert_eq!(got, sample_resolution());
@@ -200,14 +266,14 @@ mod tests {
     #[test]
     fn get_returns_none_on_miss() {
         let pool = pool();
-        let got = get(&pool, "play:v3:Nope:sub:best:1").expect("ok");
+        let got = get(&pool, "play:v4:Nope:sub:best:1:-:-").expect("ok");
         assert!(got.is_none());
     }
 
     #[test]
     fn evict_removes_a_row_so_subsequent_get_misses() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1");
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
         put(&pool, &key, &sample_resolution());
         assert!(get(&pool, &key).expect("ok").is_some());
         evict(&pool, &key);
@@ -223,8 +289,8 @@ mod tests {
         // Eviction by frontend feedback may race the natural
         // eviction-on-HEAD-fail in the backend. Both callers should
         // be safe to invoke even when the row is already gone.
-        evict(&pool, "play:v3:Never:Cached:best:1");
-        assert!(get(&pool, "play:v3:Never:Cached:best:1")
+        evict(&pool, "play:v4:Never:Cached:best:1:-:-");
+        assert!(get(&pool, "play:v4:Never:Cached:best:1:-:-")
             .expect("ok")
             .is_none());
     }
@@ -237,7 +303,7 @@ mod tests {
         // are blank. Without this, the bump to v2 of CachedResolution
         // would silently invalidate every row.
         let pool = pool();
-        let key = "play:v3:Legacy:sub:best:1";
+        let key = "play:v4:Legacy:sub:best:1:-:-";
         let legacy = r#"{"upstream_url":"https://x/y.mp4","referer":"","subtitle_url":null,"media_kind":"mp4"}"#;
         meta_cache_put(&pool, key, legacy, 60).unwrap();
         let got = get(&pool, key).expect("ok").expect("hit");
@@ -252,7 +318,7 @@ mod tests {
         // edited row, shouldn't permanently mask the show — the play
         // flow should fall through to ani-cli and overwrite the row.
         let pool = pool();
-        let key = "play:v3:Garbage:sub:best:1";
+        let key = "play:v4:Garbage:sub:best:1:-:-";
         meta_cache_put(&pool, key, "{ not valid json", 60).unwrap();
         assert!(get(&pool, key).expect("ok").is_none());
     }

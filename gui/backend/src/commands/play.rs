@@ -265,8 +265,14 @@ where
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
     // ~50ms; ani-cli is ~30s. Worth the round-trip.
-    let cache_key =
-        play_resolution_cache::cache_key(&args.title, &args.mode, quality, &args.episode);
+    let cache_key = play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        quality,
+        &args.episode,
+        args.year,
+        args.episode_count,
+    );
     if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
         if let Some(resp) = try_serve_cached(state, &cached).await {
             tracing::info!(
@@ -778,6 +784,8 @@ mod tests {
             &args.mode,
             args.quality.as_deref().unwrap_or("best"),
             &args.episode,
+            args.year,
+            args.episode_count,
         );
         play_resolution_cache::put(
             &state.cache_pool,
@@ -872,7 +880,14 @@ mod tests {
         let r = play_with_progress(&state, &args, |_| {}).await;
         assert!(r.is_err(), "ani-cli fallback must error in the test env");
         // Cache row should be gone.
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
                 .ok()
@@ -939,7 +954,14 @@ mod tests {
         assert!(result.is_none());
 
         // Cache row should be gone; a fresh attempt would re-resolve.
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
                 .ok()
@@ -961,7 +983,14 @@ mod tests {
             .await;
         let state = state_with_proxy_origin();
         let args = external_args("Fast4", "3");
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         play_resolution_cache::put(
             &state.cache_pool,
             &key,
