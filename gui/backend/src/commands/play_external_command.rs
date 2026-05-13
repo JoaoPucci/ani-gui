@@ -48,11 +48,17 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     let select_index = picked.index;
     let chosen_candidate = picked.candidate;
     if chosen_candidate.is_none() {
-        return Err(if picked.any_search_succeeded {
-            AniError::NoResults
-        } else {
-            AniError::Network
-        });
+        // Partial-failure case (some search errored alongside a
+        // completed one with no chosen candidate) is treated as
+        // transient — same policy as play_with_progress /
+        // availability / download. Codex P2 #3235184271.
+        return Err(
+            if picked.any_search_succeeded && !picked.any_search_errored {
+                AniError::NoResults
+            } else {
+                AniError::Network
+            },
+        );
     }
     let resolved = run_debug(
         &opts,

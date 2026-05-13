@@ -118,11 +118,20 @@ where
     let select_index = picked.index;
     let chosen = picked.candidate;
     if chosen.is_none() {
-        return Err(if picked.any_search_succeeded {
-            crate::error::AniError::NoResults
-        } else {
-            crate::error::AniError::Network
-        });
+        // Partial-failure case (some search errored alongside a
+        // completed one with no chosen candidate) is treated as
+        // transient/non-authoritative — same policy as
+        // play_with_progress / availability. Returning NoResults
+        // here would tell the user "not in catalog" when the
+        // canonical lookup never actually completed. Codex P2
+        // #3235184271.
+        return Err(
+            if picked.any_search_succeeded && !picked.any_search_errored {
+                crate::error::AniError::NoResults
+            } else {
+                crate::error::AniError::Network
+            },
+        );
     }
 
     tracing::info!(
