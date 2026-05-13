@@ -200,6 +200,14 @@ pub async fn check_availability(
     if chosen_candidate.is_none() && !picked.any_search_succeeded {
         return Err(crate::error::AniError::Network);
     }
+    // Partial failure: at least one search errored alongside the
+    // ones that returned Ok. The verdict is incomplete (the failed
+    // canonical may actually have a hit), so surface Network too
+    // and let the next probe re-attempt — same handling as the
+    // all-errored case for cache hygiene. Codex P2 #3233658501.
+    if chosen_candidate.is_none() && picked.any_search_errored {
+        return Err(crate::error::AniError::Network);
+    }
     let available = chosen_candidate.is_some();
 
     // For the cap we need the actual episode-tag list (allmanga's

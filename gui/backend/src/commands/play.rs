@@ -144,10 +144,18 @@ pub(super) struct PickedTitle {
     /// True when at least one `scraper::search` call returned `Ok`
     /// (with any number of hits — including zero). False only when
     /// every search call hit a network / upstream / parse error.
-    /// Callers should suppress availability cache writes (and
-    /// surface `AniError::Network` instead of `NoResults`) when
-    /// this is false AND `candidate.is_none()`.
+    /// When this is false AND `candidate.is_none()`, callers should
+    /// surface `AniError::Network` rather than `NoResults`.
     pub any_search_succeeded: bool,
+    /// True when at least one `scraper::search` call returned `Err`.
+    /// Distinct from `any_search_succeeded`: a run can have some
+    /// errors AND some successes, in which case the verdict
+    /// is incomplete — the canonical lookup may have failed while
+    /// only an alt-title returned `Ok` with zero hits. Codex P2
+    /// #3233658501. Callers should suppress availability cache
+    /// writes (no `write_cache(false)`) when this is true even if
+    /// `any_search_succeeded` is also true.
+    pub any_search_errored: bool,
 }
 
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
@@ -175,6 +183,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     let mut chosen_title_so_far = primary.clone();
     let mut chosen_pick_so_far = 1usize;
     let mut any_search_succeeded = false;
+    let mut any_search_errored = false;
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
@@ -191,6 +200,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
                     "play: allanime search failed; trying next candidate",
                 );
                 results.push((title.to_string(), Vec::new()));
+                any_search_errored = true;
                 continue;
             }
         }
@@ -228,6 +238,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
         index: pick,
         candidate: chosen,
         any_search_succeeded,
+        any_search_errored,
     }
 }
 
@@ -372,11 +383,15 @@ where
 
     // `chosen_candidate` is None when allmanga returned no hits OR the
     // year/ep-count threshold rejected every pool as wrong-show OR
-    // every preflight search errored. The first two prove the show
-    // isn't on allmanga (negative cache write is correct). The third
-    // doesn't — it's transient network/upstream/parse, so surface
-    // AniError::Network and keep the availability cache untouched.
-    // Codex P2 #3233589818.
+    // some/all preflight searches errored. Three cases:
+    //   • Every search errored → transient, surface Network, no
+    //     cache write (Codex P2 #3233589818).
+    //   • Some search errored AND chosen.is_none() → verdict is
+    //     incomplete; the failed canonical may have hit and we just
+    //     don't know. Surface NoResults but DON'T cache it (Codex
+    //     P2 #3233658501).
+    //   • Every search completed and chosen is still None → real
+    //     "not on allmanga" miss; cache it + NoResults.
     if chosen_candidate.is_none() {
         if !picked.any_search_succeeded {
             tracing::warn!(
@@ -384,6 +399,14 @@ where
                 "play: every allanime search errored; surfacing transient Network",
             );
             return Err(AniError::Network);
+        }
+        if picked.any_search_errored {
+            tracing::info!(
+                search_title = %search_title,
+                kitsu_id = ?args.kitsu_id,
+                "play: partial search failure + no safe match; skipping negative cache write",
+            );
+            return Err(AniError::NoResults);
         }
         tracing::info!(
             search_title = %search_title,
