@@ -179,6 +179,15 @@ mod tests {
         }
     }
 
+    fn cand_with_year_local(id: &str, sub: u32, year: Option<u32>) -> Candidate {
+        Candidate {
+            id: id.into(),
+            name: id.into(),
+            available_episodes: AvailableEpisodes { sub, dub: 0 },
+            aired_start: year.map(|y| crate::scraper::allanime::AiredStart { year: Some(y) }),
+        }
+    }
+
     // — Deserializer tests ———————————————————————————————
 
     #[derive(Deserialize)]
@@ -354,6 +363,30 @@ mod tests {
         assert!(
             chosen.is_none(),
             "picker rejected the candidate; helper must propagate that as no-match",
+        );
+    }
+
+    #[test]
+    fn with_candidate_applies_year_filter_when_episode_count_is_none() {
+        // Codex P2 #3231422658. Ongoing/upcoming shows often have a
+        // Kitsu start_date but no episode_count (the count is `null`
+        // until the run finishes). Today the helper bypasses the
+        // picker entirely when expected is None and grabs candidate
+        // #1 — which means the freshly plumbed year is ignored on
+        // exactly the franchise-collision case we care about
+        // (clicked entry has year but no count; allmanga returns
+        // the older same-title result first).
+        let cands = vec![
+            cand_with_year_local("older", 12, Some(1995)),
+            cand_with_year_local("right", 12, Some(2025)),
+        ];
+        let results: Vec<(String, Vec<Candidate>)> = vec![("Show".into(), cands)];
+        let (_, _, chosen) =
+            select_first_with_hits_with_candidate("Show", &results, None, Some(2025), "sub");
+        assert_eq!(
+            chosen.expect("year filter picks the in-range candidate").id,
+            "right",
+            "expected_year must narrow the pool even when expected ep-count is missing",
         );
     }
 

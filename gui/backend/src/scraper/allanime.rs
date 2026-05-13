@@ -645,6 +645,26 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_prefers_dated_year_match_over_undated_with_better_ep_count() {
+        // Codex P2 #3231422652. Mixed pool with one dated year-match
+        // and one undated sibling. Today's filter keeps both, then
+        // ep-count distance picks the undated sibling whose count is
+        // exact while the year-match drifts by 2. The undated entry
+        // can't be disproved on year, but it also can't be CONFIRMED
+        // on year — the dated match has a positive signal we should
+        // prefer.
+        let cands = vec![
+            cand_with_year("dated-match", "Show", 49, Some(2020)),
+            cand_with_year("undated-exact-eps", "Show: Spinoff", 51, None),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 51, Some(2020), "sub", "Show"),
+            Some(1),
+            "dated year-match must beat undated even when undated has closer ep-count",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_keeps_undated_candidates_among_wrong_year_siblings() {
         // Mixed metadata: an undated allmanga entry alongside a
         // wrong-year franchise sibling. The undated candidate can't
