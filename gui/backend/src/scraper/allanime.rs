@@ -648,6 +648,27 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_keeps_undated_candidates_among_wrong_year_siblings() {
+        // Mixed metadata: an undated allmanga entry alongside a
+        // wrong-year franchise sibling. The undated candidate can't
+        // be disproved on year, so it must stay in the working pool;
+        // the wrong-year sibling drops out. ep-count + name tie-break
+        // then picks among the survivors. Codex P2 #3231391358 — the
+        // previous code rejected the whole pool the moment any dated
+        // candidate disagreed, stranding the legitimate undated
+        // match.
+        let cands = vec![
+            cand_with_year("undated", "Some Show", 12, None),
+            cand_with_year("wrong-year", "Some Show: Sequel", 12, Some(2030)),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2005), "sub", "Some Show"),
+            Some(1),
+            "undated candidate should survive even when a dated sibling has the wrong year",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_still_falls_back_when_no_candidate_has_year() {
         // Old shows where allmanga's airedStart is null all around.
         // The year signal is genuinely missing, not just mismatched,
