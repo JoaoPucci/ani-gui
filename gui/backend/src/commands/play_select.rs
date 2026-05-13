@@ -321,6 +321,66 @@ mod tests {
     }
 
     #[test]
+    fn with_candidate_returns_none_when_picker_rejected_only_list() {
+        // Pre-existing v2 behavior was `unwrap_or(1)` — when
+        // pick_by_ep_count_v2 said "no safe match" the helper still
+        // returned `Some(cands[0])`. That defeats the point of the
+        // year/ep-count threshold: the play flow ignores the
+        // rejection and feeds ani-cli candidate #1 anyway. Pin the
+        // new contract: when the picker rejects every list, the
+        // helper returns `None` so callers can surface a real
+        // "not on allmanga" error instead of silently playing a
+        // sibling.
+        //
+        // Repro shape: a 43-ep show (Mobile Suit Gundam 1979) whose
+        // only allmanga candidate is a 49-ep sibling (Wing); the new
+        // picker rejects it (best_dist=6 > tolerance=4).
+        let cands = vec![cand("wing-style", 49)];
+        let results: Vec<(String, Vec<Candidate>)> = vec![("Mobile Suit Gundam".into(), cands)];
+        let (_, _, chosen) = select_first_with_hits_with_candidate(
+            "Mobile Suit Gundam",
+            &results,
+            Some(43),
+            Some(1979),
+            "sub",
+        );
+        assert!(
+            chosen.is_none(),
+            "picker rejected the candidate; helper must propagate that as no-match",
+        );
+    }
+
+    #[test]
+    fn with_candidate_skips_to_next_alt_title_when_picker_rejects_first_pool() {
+        // Same rejection signal, but a later alt_titles list yields
+        // an exact match. The helper should walk past the rejected
+        // pool and return the good one rather than collapsing to
+        // None after the first reject. (Mirrors alt-title recovery
+        // for shows where canonical doesn't index but alt does.)
+        let cands_bad = vec![cand("wing", 49)];
+        let cands_good = vec![cand("the-right-one", 43)];
+        let results: Vec<(String, Vec<Candidate>)> = vec![
+            ("Mobile Suit Gundam".into(), cands_bad),
+            ("Kidou Senshi Gundam".into(), cands_good),
+        ];
+        let (title, _, chosen) = select_first_with_hits_with_candidate(
+            "Mobile Suit Gundam",
+            &results,
+            Some(43),
+            Some(1979),
+            "sub",
+        );
+        assert_eq!(
+            title, "Kidou Senshi Gundam",
+            "skipping the rejected pool means the chosen title is from the alt list",
+        );
+        assert_eq!(
+            chosen.expect("alt list yields a candidate").id,
+            "the-right-one"
+        );
+    }
+
+    #[test]
     fn picker_clamps_an_out_of_bounds_pick_into_the_slice_defensively() {
         // pick_by_ep_count's contract is 1..=len, but the picker
         // applies a saturating clamp so a future contract drift
