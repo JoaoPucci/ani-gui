@@ -131,10 +131,26 @@ const RUN_DEBUG_TIMEOUT: Duration = Duration::from_secs(60);
 /// `pick_by_ep_count` over the winner. Falls through to
 /// `(args.title, 1)` (legacy behaviour) on every-list-empty or when
 /// `episode_count` is unknown.
-pub(super) async fn pick_title_and_index(
-    state: &AppState,
-    args: &PlayArgs,
-) -> (String, usize, Option<Candidate>) {
+/// Result of [`pick_title_and_index`]. Adds a transient-error
+/// indicator alongside the picker's (title, index, candidate)
+/// triple so callers can tell "we have no safe match" apart from
+/// "we couldn't ask allmanga." A negative-availability cache write
+/// is correct in the first case and wrong in the second — Codex
+/// flagged the difference in P2 #3233589818.
+pub(super) struct PickedTitle {
+    pub title: String,
+    pub index: usize,
+    pub candidate: Option<Candidate>,
+    /// True when at least one `scraper::search` call returned `Ok`
+    /// (with any number of hits — including zero). False only when
+    /// every search call hit a network / upstream / parse error.
+    /// Callers should suppress availability cache writes (and
+    /// surface `AniError::Network` instead of `NoResults`) when
+    /// this is false AND `candidate.is_none()`.
+    pub any_search_succeeded: bool,
+}
+
+pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
@@ -158,6 +174,7 @@ pub(super) async fn pick_title_and_index(
     let mut chosen_so_far: Option<Candidate> = None;
     let mut chosen_title_so_far = primary.clone();
     let mut chosen_pick_so_far = 1usize;
+    let mut any_search_succeeded = false;
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
@@ -165,6 +182,7 @@ pub(super) async fn pick_title_and_index(
             Ok(cands) => {
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
+                any_search_succeeded = true;
             }
             Err(e) => {
                 tracing::warn!(
@@ -202,9 +220,15 @@ pub(super) async fn pick_title_and_index(
         expected_eps = ?args.episode_count,
         pick = pick,
         chosen_show_id = chosen.as_ref().map(|c| c.id.as_str()).unwrap_or(""),
+        any_search_succeeded = any_search_succeeded,
         "play: chose ani-cli search title",
     );
-    (chosen_title, pick, chosen)
+    PickedTitle {
+        title: chosen_title,
+        index: pick,
+        candidate: chosen,
+        any_search_succeeded,
+    }
 }
 
 /// Build the spawn options for an ani-cli invocation. When
@@ -341,15 +365,26 @@ where
     // may differ from args.title when alt_titles produced the winning
     // hit (e.g. romanized fallback for shows whose Kitsu canonicalTitle
     // is the English form). See pick_title_and_index().
-    let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
+    let picked = pick_title_and_index(state, args).await;
+    let search_title = picked.title;
+    let select_index = picked.index;
+    let chosen_candidate = picked.candidate;
 
     // `chosen_candidate` is None when allmanga returned no hits OR the
-    // year/ep-count threshold rejected every pool as wrong-show.
-    // Either way, running ani-cli on `args.title` would let it pick a
-    // sibling on its own and reintroduce the silent-wrong-show bug —
-    // surface NoResults instead so the play page shows a real
-    // "not on allmanga" error.
+    // year/ep-count threshold rejected every pool as wrong-show OR
+    // every preflight search errored. The first two prove the show
+    // isn't on allmanga (negative cache write is correct). The third
+    // doesn't — it's transient network/upstream/parse, so surface
+    // AniError::Network and keep the availability cache untouched.
+    // Codex P2 #3233589818.
     if chosen_candidate.is_none() {
+        if !picked.any_search_succeeded {
+            tracing::warn!(
+                kitsu_id = ?args.kitsu_id,
+                "play: every allanime search errored; surfacing transient Network",
+            );
+            return Err(AniError::Network);
+        }
         tracing::info!(
             search_title = %search_title,
             kitsu_id = ?args.kitsu_id,
@@ -568,9 +603,16 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // play_external is always a click — never a prefetch — so no
     // hist_dir override needed.
     let opts = debug_options_for(state, None);
-    let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
+    let picked = pick_title_and_index(state, args).await;
+    let search_title = picked.title;
+    let select_index = picked.index;
+    let chosen_candidate = picked.candidate;
     if chosen_candidate.is_none() {
-        return Err(AniError::NoResults);
+        return Err(if picked.any_search_succeeded {
+            AniError::NoResults
+        } else {
+            AniError::Network
+        });
     }
     let resolved = run_debug(
         &opts,

@@ -189,7 +189,17 @@ pub async fn check_availability(
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
     };
-    let (_chosen_title, _select, chosen_candidate) = pick_title_and_index(state, &play_view).await;
+    let picked = pick_title_and_index(state, &play_view).await;
+    let chosen_candidate = picked.candidate;
+    // Transient: every allanime preflight search errored. Don't
+    // poison the availability row with `available=false` — the show
+    // may well be there, we just couldn't ask. Surface a Network
+    // error so the API handler returns a non-200; the frontend's
+    // probe logic already keeps unset entries unset on error.
+    // Codex P2 #3233589818.
+    if chosen_candidate.is_none() && !picked.any_search_succeeded {
+        return Err(crate::error::AniError::Network);
+    }
     let available = chosen_candidate.is_some();
 
     // For the cap we need the actual episode-tag list (allmanga's
