@@ -122,6 +122,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v4: picker uses Kitsu start_date year as the primary tie-break
+    //     and rejects pools outside max(3, expected*10%) ep-count
+    //     distance (see pick_by_ep_count_v2). v3 rows were decided by
+    //     the old ep-count-only picker and could be true-positive
+    //     "available" for the wrong allmanga show — bumping evicts
+    //     them so list filters re-derive from the new picker. Closes
+    //     Codex P2 #3228864283.
     // v3: SHOW_GQL fix — availableEpisodesDetail is a scalar, not
     //     an object; the v2-rollout query subselected `{ sub dub }`
     //     and got empty lists back, so episode_count fell through
@@ -130,7 +137,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v3:{kitsu_id}:{m}")
+    format!("availability:v4:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -549,14 +556,14 @@ mod tests {
         assert_eq!(resp.cached.get("kid-4"), Some(&true));
     }
 
-    /// `cache_key` is what makes the v2-rollout self-heal possible —
-    /// the v3 prefix supersedes any v1/v2 row with the same
-    /// (kitsu_id, mode). Pin both shapes (sub/dub) so a typo in the
-    /// key generator gets caught immediately.
+    /// `cache_key` is what makes the schema bumps self-heal possible —
+    /// each bump's new prefix supersedes any prior-version row with
+    /// the same (kitsu_id, mode). Pin both shapes (sub/dub) so a typo
+    /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v3:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v3:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v4:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v4:kid-1:dub");
     }
 
     #[test]
