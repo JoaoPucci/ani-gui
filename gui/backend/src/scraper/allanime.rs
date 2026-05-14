@@ -242,13 +242,18 @@ pub fn pick_by_ep_count_v2(
     //    correct on u32; the floor ensures sibling-distance-6 picks
     //    are rejected for short series.
     //
-    //    Skipped when `year_filtered` is true: the year filter
-    //    already narrowed the pool to the matching show, so a
-    //    `got < expected` partial-release count (currently-airing
-    //    show with N of M eps released so far, or a partial dub)
-    //    must not be rejected as a wrong-show match. Codex P2
-    //    #3236... .
-    if !year_filtered {
+    //    Relaxed only for *plausibly partial* year-matched candidates:
+    //    year_filtered + got in the partial direction (got < expected)
+    //    + at least 1/4 of the expected count released. That covers
+    //    currently-airing shows (N of M eps released) and partial
+    //    dubs, but still rejects a same-year 1-ep OVA/movie/special
+    //    masquerading as a 12-ep series — without this gate the
+    //    relaxation would accept any year-matched row, no matter
+    //    how small. Codex P2 #3236031635.
+    let best_got = candidates[best_i].available_episodes.for_mode(mode);
+    let plausible_partial =
+        year_filtered && best_got < expected && best_got.saturating_mul(4) >= expected;
+    if !plausible_partial {
         let tolerance = std::cmp::max(3, expected / 10);
         if best_dist > tolerance {
             return None;
