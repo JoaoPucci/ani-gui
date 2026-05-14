@@ -926,6 +926,44 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_skips_format_rejected_candidate_to_keep_real_show() {
+        // Codex P2 #3243194264: identity filters must drop invalid
+        // candidates from the pool BEFORE scoring by ep-count
+        // distance, not after. Otherwise a same-year OVA with
+        // available=12 (movie/special bundle, OVA series) lands
+        // closer to Kitsu's expected=12 than a real TV show in
+        // its first week (available=1), wins best_i, fails the
+        // format/planned-count check, and rejects the whole pool —
+        // leaving the legitimate TV row stranded even though it's
+        // right there in the same search result.
+        let cands = vec![
+            Candidate {
+                id: "ova".into(),
+                name: "Some Show: OVA Collection".into(),
+                available_episodes: AvailableEpisodes { sub: 12, dub: 0 },
+                aired_start: Some(AiredStart { year: Some(2026) }),
+                show_type: Some("OVA".into()),
+                episode_count: Some(1),
+                status: Some("Finished".into()),
+            },
+            Candidate {
+                id: "tv".into(),
+                name: "Some Show".into(),
+                available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+                aired_start: Some(AiredStart { year: Some(2026) }),
+                show_type: Some("TV".into()),
+                episode_count: Some(12),
+                status: Some("Releasing".into()),
+            },
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Show"),
+            Some(2),
+            "TV row must be picked when the closer-by-distance OVA is identity-rejected",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_accepts_tv_in_early_release_with_matching_planned_count() {
         // Codex P2 #3242661503 main fix: a currently-airing TV show
         // whose planned count agrees with Kitsu (12 vs 12) but has
