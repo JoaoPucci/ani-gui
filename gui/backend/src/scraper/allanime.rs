@@ -798,6 +798,75 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_rejects_ova_format_for_multi_ep_series() {
+        // Codex P2 #3242661503 partial fix: when allmanga's own `type`
+        // tags the candidate as OVA/Movie/Special and Kitsu's expected
+        // is multi-ep, the format mismatch is a hard reject. This
+        // catches the wrong-show case BEFORE we'd otherwise be tempted
+        // to accept a partial-release count.
+        let cands = vec![Candidate {
+            id: "ova".into(),
+            name: "Some Show: OVA".into(),
+            available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+            aired_start: Some(AiredStart { year: Some(2026) }),
+            show_type: Some("OVA".into()),
+            episode_count: Some(1),
+            status: Some("Finished".into()),
+        }];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Show"),
+            None,
+            "OVA-typed candidate must not be accepted as a 12-ep series",
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_rejects_when_planned_count_diverges_from_kitsu() {
+        // Hard-reject filter: allmanga's own `episodeCount` (planned
+        // total, not yet-released count) must agree with Kitsu's
+        // `expected` within the same tolerance the available-eps
+        // threshold uses. A 1-ep planned show is not a 12-ep series
+        // regardless of format tag.
+        let cands = vec![Candidate {
+            id: "wrong-planned".into(),
+            name: "Some Show".into(),
+            available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+            aired_start: Some(AiredStart { year: Some(2026) }),
+            show_type: None,
+            episode_count: Some(1),
+            status: None,
+        }];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Show"),
+            None,
+            "candidate whose planned count diverges from Kitsu's must be rejected",
+        );
+    }
+
+    #[test]
+    fn pick_by_ep_count_v2_accepts_tv_in_early_release_with_matching_planned_count() {
+        // Codex P2 #3242661503 main fix: a currently-airing TV show
+        // whose planned count agrees with Kitsu (12 vs 12) but has
+        // only ep 1 released so far must NOT be rejected. The
+        // planned-count match is a strong "same show, mid-release"
+        // signal that overrides the upper distance threshold.
+        let cands = vec![Candidate {
+            id: "airing".into(),
+            name: "Some Airing Show".into(),
+            available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+            aired_start: Some(AiredStart { year: Some(2026) }),
+            show_type: Some("TV".into()),
+            episode_count: Some(12),
+            status: Some("Releasing".into()),
+        }];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Airing Show"),
+            Some(1),
+            "week-1 airing show with matching planned count must be accepted",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_keeps_threshold_when_year_filter_did_not_engage() {
         // Guard the conservative path: no year info available (caller
         // passed expected_year=None), so the year filter never
@@ -931,6 +1000,59 @@ mod tests {
         assert_eq!(cands[0].id, "abc");
         assert_eq!(cands[0].available_episodes.sub, 500);
         assert_eq!(cands[1].available_episodes.sub, 1);
+    }
+
+    #[tokio::test]
+    async fn search_parses_show_type_status_and_planned_episode_count() {
+        // Codex P2 #3242661503 fix: SEARCH_GQL now pulls `type`,
+        // `status`, and `episodeCount` so the picker can distinguish
+        // a 1-ep OVA (planned=1, type=OVA) from a TV show in week 1
+        // of release (planned=12, type=TV, available=1). Nulls in
+        // any of the three fields decode to None.
+        let server = wiremock::MockServer::start().await;
+        let body = serde_json::json!({
+            "data": {
+                "shows": {
+                    "edges": [
+                        {
+                            "_id": "tv",
+                            "name": "Sousou no Frieren",
+                            "type": "TV",
+                            "status": "Finished",
+                            "episodeCount": "28",
+                            "availableEpisodes": {"sub": 28, "dub": 0, "raw": 0},
+                            "__typename": "Show"
+                        },
+                        {
+                            "_id": "nulls",
+                            "name": "Some Show",
+                            "type": null,
+                            "status": null,
+                            "episodeCount": null,
+                            "availableEpisodes": {"sub": 12, "dub": 0, "raw": 0},
+                            "__typename": "Show"
+                        }
+                    ]
+                }
+            }
+        });
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let cands = search(&client, "Frieren", "sub", Some(&server.uri()))
+            .await
+            .expect("search ok");
+        assert_eq!(cands.len(), 2);
+        assert_eq!(cands[0].show_type.as_deref(), Some("TV"));
+        assert_eq!(cands[0].status.as_deref(), Some("Finished"));
+        assert_eq!(cands[0].episode_count, Some(28));
+        assert_eq!(cands[1].show_type, None);
+        assert_eq!(cands[1].status, None);
+        assert_eq!(cands[1].episode_count, None);
     }
 
     #[test]
