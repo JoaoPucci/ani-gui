@@ -9,7 +9,7 @@ use crate::error::{AniError, Result};
 /// fields ani-cli pulls in `search_anime` (`_id`, `name`,
 /// `availableEpisodes`) plus `airedStart` for the year tie-break the
 /// disambiguator runs alongside ep-count.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct Candidate {
     /// allanime's internal show id.
     #[serde(rename = "_id")]
@@ -27,6 +27,52 @@ pub struct Candidate {
     /// and on stub entries where the metadata never got populated.
     #[serde(default, rename = "airedStart")]
     pub aired_start: Option<AiredStart>,
+    /// allmanga's own format tag: `"TV"`, `"Movie"`, `"OVA"`,
+    /// `"Special"`, `"ONA"`, etc. Used by the picker to hard-reject
+    /// a same-year 1-ep OVA/Movie/Special when Kitsu's expected
+    /// implies a multi-ep TV series. `None` when allmanga returns
+    /// `null` for the field (common on partially-imported rows).
+    #[serde(default, rename = "type")]
+    pub show_type: Option<String>,
+    /// Planned total episode count from allmanga (BigInt on the wire,
+    /// arrives as a string for compatibility — see the custom
+    /// deserialiser). Distinct from [`AvailableEpisodes`], which is
+    /// the *released-so-far* count. The picker compares this to
+    /// Kitsu's expected to confirm same-show identity even when
+    /// fewer eps are out yet (the "real airing show, week 1" case).
+    /// `None` when allmanga returns `null`.
+    #[serde(
+        default,
+        rename = "episodeCount",
+        deserialize_with = "deserialize_bigint_u32"
+    )]
+    pub episode_count: Option<u32>,
+    /// allmanga's airing status — `"Releasing"`, `"Finished"`,
+    /// `"Upcoming"`. Currently unused by the picker but pulled so the
+    /// disambiguator can grow status-aware heuristics without another
+    /// schema bump on the search query. `None` when allmanga omits.
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+/// Custom deserialiser for allmanga's `episodeCount` field. The
+/// schema exposes it as `BigInt`, which the JSON layer renders as a
+/// string (`"28"`) or `null`. Plain `Option<u32>` would fail to parse
+/// the string form, so we accept either shape.
+fn deserialize_bigint_u32<'de, D>(d: D) -> std::result::Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Wire {
+        Str(String),
+        Num(u64),
+    }
+    Ok(Option::<Wire>::deserialize(d)?.and_then(|w| match w {
+        Wire::Str(s) => s.parse().ok(),
+        Wire::Num(n) => u32::try_from(n).ok(),
+    }))
 }
 
 /// `airedStart` object on allmanga's `Show` type. Flat fields, no
@@ -237,25 +283,60 @@ pub fn pick_by_ep_count_v2(
         }
     }
 
-    // 3) Threshold — proportional slack for long shows, fixed floor
-    //    for short ones. Saturating math keeps the calc cheap and
-    //    correct on u32; the floor ensures sibling-distance-6 picks
-    //    are rejected for short series.
-    //
-    //    Relaxed only for *plausibly partial* year-matched candidates:
-    //    year_filtered + got in the partial direction (got < expected)
-    //    + at least 1/4 of the expected count released. That covers
-    //    currently-airing shows (N of M eps released) and partial
-    //    dubs, but still rejects a same-year 1-ep OVA/movie/special
-    //    masquerading as a 12-ep series — without this gate the
-    //    relaxation would accept any year-matched row, no matter
-    //    how small. Codex P2 #3236031635.
+    // 3) Same-show identity filters. Codex P2 #3242661503 made it
+    //    clear that the previous 1/4 gate couldn't tell a 1-ep
+    //    same-year OVA apart from a real currently-airing TV show
+    //    whose first episode just dropped. allmanga's own `type`
+    //    (TV/Movie/OVA/Special/ONA) and `episodeCount` (planned
+    //    total) are the discriminator: the OVA has planned=1, the
+    //    airing TV show has planned=12 matching Kitsu's expected.
+    //    Pulled into the search query alongside `availableEpisodes`
+    //    so the picker gets them without a second round-trip.
+    let tolerance = std::cmp::max(3, expected / 10);
     let best_got = candidates[best_i].available_episodes.for_mode(mode);
-    let plausible_partial =
-        year_filtered && best_got < expected && best_got.saturating_mul(4) >= expected;
-    if !plausible_partial {
-        let tolerance = std::cmp::max(3, expected / 10);
-        if best_dist > tolerance {
+    let best_type = candidates[best_i].show_type.as_deref();
+    let best_planned = candidates[best_i].episode_count;
+
+    // 3a. Format hard-reject. When Kitsu expects a multi-ep series,
+    //     allmanga's "OVA"/"Movie"/"Special" tag is a strong
+    //     not-the-same-show signal. Skipped when `expected <= 1` so
+    //     a legitimate OVA/Movie request from Kitsu still resolves.
+    //     Only applied when planned-count is unknown — when
+    //     planned-count IS known, 3b handles the wrong-show case more
+    //     precisely (a 12-ep OVA tagged TV-adjacent would still pass
+    //     planned-count, and we'd rather accept than over-filter).
+    if expected > 1
+        && best_planned.is_none()
+        && matches!(best_type, Some("OVA" | "Movie" | "Special"))
+    {
+        return None;
+    }
+
+    // 3b. Planned-count hard-reject. allmanga's own `episodeCount`
+    //     must agree with Kitsu's `expected` within the same
+    //     tolerance the available-eps threshold uses, otherwise
+    //     it's not the same show regardless of release progress.
+    //     This catches the OVA case even when type is null.
+    if best_planned.is_some_and(|p| p.abs_diff(expected) > tolerance) {
+        return None;
+    }
+
+    // 3c. Available-eps threshold. The standard `best_dist >
+    //     tolerance` reject still applies, but relaxes when we have
+    //     a strong "same show, mid-release" signal: either a
+    //     matching planned-count, or year-filtered + TV/ONA format.
+    //     Without those signals (allmanga returned nulls for both),
+    //     fall back to the 1/4 gate from the prior round so the
+    //     legacy partial-season acceptance test stays green.
+    if best_dist > tolerance {
+        let in_partial_direction = best_got < expected;
+        let strong_signal = best_planned.is_some_and(|p| p.abs_diff(expected) <= tolerance);
+        let medium_signal = year_filtered && matches!(best_type, Some("TV" | "ONA"));
+        let null_fallback = year_filtered
+            && best_planned.is_none()
+            && best_type.is_none()
+            && best_got.saturating_mul(4) >= expected;
+        if !(in_partial_direction && (strong_signal || medium_signal || null_fallback)) {
             return None;
         }
     }
@@ -474,7 +555,7 @@ pub fn encode_query_for_allanime(s: &str) -> String {
 // Selecting the bare field gets us the whole `{year, month, date,
 // hour, minute}` object back, which our `AiredStart` struct trims
 // down to the `year` we actually consume.
-const SEARCH_GQL: &str = "query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes airedStart __typename } }}";
+const SEARCH_GQL: &str = "query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes airedStart type status episodeCount __typename } }}";
 
 /// Hit allanime's GraphQL `shows.search` endpoint with the same
 /// payload ani-cli would send and return the candidate list. `mode`
@@ -563,7 +644,7 @@ mod tests {
             id: id.into(),
             name: name.into(),
             available_episodes: AvailableEpisodes { sub, dub: 0 },
-            aired_start: None,
+            ..Default::default()
         }
     }
 
@@ -573,6 +654,7 @@ mod tests {
             name: name.into(),
             available_episodes: AvailableEpisodes { sub, dub: 0 },
             aired_start: year.map(|y| AiredStart { year: Some(y) }),
+            ..Default::default()
         }
     }
 
@@ -946,13 +1028,13 @@ mod tests {
                 id: "a".into(),
                 name: "A".into(),
                 available_episodes: AvailableEpisodes { sub: 500, dub: 1 },
-                aired_start: None,
+                ..Default::default()
             },
             Candidate {
                 id: "b".into(),
                 name: "B".into(),
                 available_episodes: AvailableEpisodes { sub: 1, dub: 500 },
-                aired_start: None,
+                ..Default::default()
             },
         ];
         // Looking for 500 dub-eps: B wins (dub=500), even though A
@@ -1259,7 +1341,7 @@ mod tests {
                     id: format!("c{i}"),
                     name: format!("c{i}"),
                     available_episodes: AvailableEpisodes { sub: n, dub: 0 },
-                    aired_start: None,
+                    ..Default::default()
                 })
                 .collect();
             let pick = pick_by_ep_count(&cands, expected, "sub", "").expect("non-empty");

@@ -1231,11 +1231,11 @@ mod tests {
         Candidate {
             id: id.into(),
             name: name.into(),
-            aired_start: None,
             available_episodes: crate::scraper::allanime::AvailableEpisodes {
                 sub: sub_eps,
                 dub: 0,
             },
+            ..Default::default()
         }
     }
 
