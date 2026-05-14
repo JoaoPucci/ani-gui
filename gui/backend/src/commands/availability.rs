@@ -122,6 +122,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v5: picker now reads allmanga's `type`/`status`/`episodeCount`
+    //     (b629127, Codex P2 #3242661503) and hard-rejects same-year
+    //     OVA/Movie/Special and planned-count divergence. v4 rows
+    //     could be true-positive "available" for a 1-ep OVA that the
+    //     new picker correctly rejects — bumping forces a re-probe
+    //     through the disambiguator so list filters self-heal.
     // v4: picker uses Kitsu start_date year as the primary tie-break
     //     and rejects pools outside max(3, expected*10%) ep-count
     //     distance (see pick_by_ep_count_v2). v3 rows were decided by
@@ -137,7 +143,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v4:{kitsu_id}:{m}")
+    format!("availability:v5:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache

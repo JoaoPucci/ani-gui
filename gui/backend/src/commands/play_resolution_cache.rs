@@ -61,7 +61,14 @@ use crate::proxy::MediaKind;
 ///   `(title, mode, quality, episode)`, so a single "Mobile Suit
 ///   Gundam" cache row applied to every Gundam re-cut sharing that
 ///   canonical — bumping evicts them.
-const SCHEMA: &str = "v4";
+/// - v5: picker now reads allmanga's `type`/`status`/`episodeCount`
+///   (b629127, Codex P2 #3242661503) and hard-rejects same-year
+///   OVA/Movie/Special candidates and planned-count divergence. A
+///   v4 row whose stream_url came from one of those OVA picks would
+///   stay served on cache hit even though the new picker would now
+///   resolve to a different show (or to NoResults). Bumping evicts
+///   them so the next play re-resolves through the disambiguator.
+const SCHEMA: &str = "v5";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
