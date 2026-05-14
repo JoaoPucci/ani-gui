@@ -271,7 +271,46 @@ pub fn pick_by_ep_count_v2(
         return None;
     }
 
-    // 2) Ep-count pick within the pool.
+    // 2) Same-show identity filter on the pool. Codex P2 #3242661503
+    //    introduced these checks; Codex P2 #3243194264 surfaced that
+    //    they MUST run before the ep-count scoring step. A same-year
+    //    OVA with available=12 (movie/special bundle) would otherwise
+    //    win best_i by distance, fail this filter, and reject the
+    //    whole pool — even with a real TV show sitting one slot away
+    //    with available=1 (week 1 of airing).
+    //
+    //    Two hard-rejects per candidate:
+    //    - Format mismatch: when planned-count is unknown, the
+    //      `type` field alone speaks — OVA/Movie/Special against a
+    //      multi-ep Kitsu expected is the wrong show. Skipped when
+    //      `expected <= 1` so legit OVA/Movie Kitsu entries resolve.
+    //    - Planned-count divergence: when allmanga's own
+    //      `episodeCount` is far from Kitsu's expected, it's a
+    //      different show regardless of release progress.
+    let tolerance = std::cmp::max(3, expected / 10);
+    let pool: Vec<usize> = pool
+        .into_iter()
+        .filter(|&i| {
+            let c = &candidates[i];
+            if expected > 1
+                && c.episode_count.is_none()
+                && matches!(c.show_type.as_deref(), Some("OVA" | "Movie" | "Special"))
+            {
+                return false;
+            }
+            if c.episode_count
+                .is_some_and(|p| p.abs_diff(expected) > tolerance)
+            {
+                return false;
+            }
+            true
+        })
+        .collect();
+    if pool.is_empty() {
+        return None;
+    }
+
+    // 3) Ep-count pick within the identity-filtered pool.
     let mut best_i = pool[0];
     let mut best_dist = u32::MAX;
     for &i in &pool {
@@ -283,54 +322,20 @@ pub fn pick_by_ep_count_v2(
         }
     }
 
-    // 3) Same-show identity filters. Codex P2 #3242661503 made it
-    //    clear that the previous 1/4 gate couldn't tell a 1-ep
-    //    same-year OVA apart from a real currently-airing TV show
-    //    whose first episode just dropped. allmanga's own `type`
-    //    (TV/Movie/OVA/Special/ONA) and `episodeCount` (planned
-    //    total) are the discriminator: the OVA has planned=1, the
-    //    airing TV show has planned=12 matching Kitsu's expected.
-    //    Pulled into the search query alongside `availableEpisodes`
-    //    so the picker gets them without a second round-trip.
-    let tolerance = std::cmp::max(3, expected / 10);
-    let best_got = candidates[best_i].available_episodes.for_mode(mode);
-    let best_type = candidates[best_i].show_type.as_deref();
-    let best_planned = candidates[best_i].episode_count;
-
-    // 3a. Format hard-reject. When Kitsu expects a multi-ep series,
-    //     allmanga's "OVA"/"Movie"/"Special" tag is a strong
-    //     not-the-same-show signal. Skipped when `expected <= 1` so
-    //     a legitimate OVA/Movie request from Kitsu still resolves.
-    //     Only applied when planned-count is unknown — when
-    //     planned-count IS known, 3b handles the wrong-show case more
-    //     precisely (a 12-ep OVA tagged TV-adjacent would still pass
-    //     planned-count, and we'd rather accept than over-filter).
-    if expected > 1
-        && best_planned.is_none()
-        && matches!(best_type, Some("OVA" | "Movie" | "Special"))
-    {
-        return None;
-    }
-
-    // 3b. Planned-count hard-reject. allmanga's own `episodeCount`
-    //     must agree with Kitsu's `expected` within the same
-    //     tolerance the available-eps threshold uses, otherwise
-    //     it's not the same show regardless of release progress.
-    //     This catches the OVA case even when type is null.
-    if best_planned.is_some_and(|p| p.abs_diff(expected) > tolerance) {
-        return None;
-    }
-
-    // 3c. Available-eps threshold. The standard `best_dist >
-    //     tolerance` reject still applies, but relaxes when we have
-    //     a strong "same show, mid-release" signal: either a
-    //     matching planned-count, or year-filtered + TV/ONA format.
-    //     Without those signals (allmanga returned nulls for both),
-    //     fall back to the 1/4 gate from the prior round so the
-    //     legacy partial-season acceptance test stays green.
+    // 4) Available-eps threshold. The standard `best_dist > tolerance`
+    //    reject still applies, but relaxes when we have a strong
+    //    "same show, mid-release" signal: a planned-count match
+    //    (already validated in step 2 — survivors with planned Some
+    //    are within tolerance), OR year-filtered + TV/ONA format.
+    //    Without those signals (allmanga returned nulls for both),
+    //    fall back to the 1/4 gate from the prior round so the
+    //    legacy partial-season acceptance test stays green.
     if best_dist > tolerance {
+        let best_got = candidates[best_i].available_episodes.for_mode(mode);
+        let best_type = candidates[best_i].show_type.as_deref();
+        let best_planned = candidates[best_i].episode_count;
         let in_partial_direction = best_got < expected;
-        let strong_signal = best_planned.is_some_and(|p| p.abs_diff(expected) <= tolerance);
+        let strong_signal = best_planned.is_some();
         let medium_signal = year_filtered && matches!(best_type, Some("TV" | "ONA"));
         let null_fallback = year_filtered
             && best_planned.is_none()
