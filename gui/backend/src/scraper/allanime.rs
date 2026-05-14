@@ -931,6 +931,47 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_tie_break_does_not_pick_unverified_stub() {
+        // Codex P2 #3243312178: when the chosen best_i passes the
+        // relaxed partial-season threshold via a strong signal
+        // (planned-count match), the exact-name tie-break must not
+        // silently swap to a same-distance stub that wouldn't pass
+        // the threshold on its own. Repro shape: the real TV row
+        // has the planned-count match but its name carries a
+        // variant suffix; a same-year stub at the same distance
+        // exact-matches Kitsu's canonical title but its all-nulls
+        // metadata fails the null-fallback's 1/4 gate. The picker
+        // must keep the real TV row even though the stub looks more
+        // "name-correct" — the stub would have been rejected
+        // standalone.
+        let cands = vec![
+            Candidate {
+                id: "real".into(),
+                name: "Some Show: Season 1".into(),
+                available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+                aired_start: Some(AiredStart { year: Some(2026) }),
+                show_type: Some("TV".into()),
+                episode_count: Some(12),
+                status: Some("Releasing".into()),
+            },
+            Candidate {
+                id: "stub".into(),
+                name: "Some Show".into(),
+                available_episodes: AvailableEpisodes { sub: 1, dub: 0 },
+                aired_start: Some(AiredStart { year: Some(2026) }),
+                show_type: None,
+                episode_count: None,
+                status: None,
+            },
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Show"),
+            Some(1),
+            "tie-break must not swap to an exact-name stub that fails the partial-season check",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_skips_format_rejected_candidate_to_keep_real_show() {
         // Codex P2 #3243194264: identity filters must drop invalid
         // candidates from the pool BEFORE scoring by ep-count
