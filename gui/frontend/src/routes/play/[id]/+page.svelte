@@ -60,6 +60,7 @@
 		type SkipInterval
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
+	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
@@ -1715,16 +1716,13 @@
 		if (!detail) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
-		downloadArgs = {
-			title: detail.canonical_title,
-			episode: String(episodeNum),
+		downloadArgs = buildDownloadArgs({
+			detail,
+			episode: episodeNum,
 			mode,
 			quality,
-			episode_count: detail.episode_count ?? undefined,
-			year: yearFromKitsuRef(detail) ?? undefined,
-			alt_titles: altTitlesFromKitsu(detail),
-			kitsu_id: id
-		};
+			kitsuId: id
+		});
 		downloadModalOpen = true;
 	}
 
