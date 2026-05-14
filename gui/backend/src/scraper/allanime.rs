@@ -310,7 +310,51 @@ pub fn pick_by_ep_count_v2(
         return None;
     }
 
-    // 3) Ep-count pick within the identity-filtered pool.
+    // 3) Acceptability filter. Each candidate must independently
+    //    satisfy the available-eps threshold (or the partial-season
+    //    relaxation) — same predicate the previous round applied only
+    //    to best_i, now applied per-candidate. Codex P2 #3243312178
+    //    surfaced that the old shape let the exact-name tie-break
+    //    return a same-distance stub whose null-fallback gate would
+    //    have rejected it on its own. Scoping both the scoring and
+    //    the tie-break to candidates that pass standalone closes
+    //    that gap.
+    //
+    //    Relaxation signals when `dist > tolerance` and the
+    //    candidate is in the partial-release direction:
+    //    - strong: planned-count Some (step 2 invariant guarantees
+    //      Some implies within tolerance).
+    //    - medium: year-filtered + TV/ONA format.
+    //    - null fallback: year-filtered + planned None + type None +
+    //      at least 1/4 of expected eps available (the gate from
+    //      Codex P2 #3236031635 — kept for shows where allmanga
+    //      returns nulls for both type and episodeCount).
+    let pool: Vec<usize> = pool
+        .into_iter()
+        .filter(|&i| {
+            let c = &candidates[i];
+            let got = c.available_episodes.for_mode(mode);
+            let dist = got.abs_diff(expected);
+            if dist <= tolerance {
+                return true;
+            }
+            if got >= expected {
+                return false;
+            }
+            if c.episode_count.is_some() {
+                return true;
+            }
+            if year_filtered && matches!(c.show_type.as_deref(), Some("TV" | "ONA")) {
+                return true;
+            }
+            year_filtered && c.show_type.is_none() && got.saturating_mul(4) >= expected
+        })
+        .collect();
+    if pool.is_empty() {
+        return None;
+    }
+
+    // 4) Ep-count pick within the acceptable pool.
     let mut best_i = pool[0];
     let mut best_dist = u32::MAX;
     for &i in &pool {
@@ -322,31 +366,10 @@ pub fn pick_by_ep_count_v2(
         }
     }
 
-    // 4) Available-eps threshold. The standard `best_dist > tolerance`
-    //    reject still applies, but relaxes when we have a strong
-    //    "same show, mid-release" signal: a planned-count match
-    //    (already validated in step 2 — survivors with planned Some
-    //    are within tolerance), OR year-filtered + TV/ONA format.
-    //    Without those signals (allmanga returned nulls for both),
-    //    fall back to the 1/4 gate from the prior round so the
-    //    legacy partial-season acceptance test stays green.
-    if best_dist > tolerance {
-        let best_got = candidates[best_i].available_episodes.for_mode(mode);
-        let best_type = candidates[best_i].show_type.as_deref();
-        let best_planned = candidates[best_i].episode_count;
-        let in_partial_direction = best_got < expected;
-        let strong_signal = best_planned.is_some();
-        let medium_signal = year_filtered && matches!(best_type, Some("TV" | "ONA"));
-        let null_fallback = year_filtered
-            && best_planned.is_none()
-            && best_type.is_none()
-            && best_got.saturating_mul(4) >= expected;
-        if !(in_partial_direction && (strong_signal || medium_signal || null_fallback)) {
-            return None;
-        }
-    }
-
-    // 4) Exact-name tie-break, scoped to the pool + min-distance bucket.
+    // 5) Exact-name tie-break, scoped to the acceptable pool +
+    //    min-distance bucket. Candidates outside `pool` have already
+    //    been rejected on their own merits and must not re-enter via
+    //    a name match.
     let needle = search_title.trim().to_lowercase();
     if !needle.is_empty() {
         for &i in &pool {
