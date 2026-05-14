@@ -774,6 +774,25 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_rejects_implausibly_small_same_year_candidate() {
+        // Codex P2 #3236031635: the year-filtered relaxation must not
+        // be a free pass for same-year OVAs/movies/specials. Kitsu
+        // says 12-ep series, allmanga's only year-matching hit has
+        // 1 episode — almost certainly a 1-ep special, not the
+        // currently-airing main series. Returning Some(1) here would
+        // hand play/download/availability a wrong-show pick. The
+        // partial-season relaxation should only apply when `got` is
+        // a plausible fraction of `expected` (at least 1/4), not for
+        // every year-matched row.
+        let cands = vec![cand_with_year("ova", "Some Show: OVA", 1, Some(2026))];
+        assert_eq!(
+            pick_by_ep_count_v2(&cands, 12, Some(2026), "sub", "Some Show"),
+            None,
+            "1-ep same-year hit should not be accepted as a 12-ep show",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_keeps_threshold_when_year_filter_did_not_engage() {
         // Guard the conservative path: no year info available (caller
         // passed expected_year=None), so the year filter never
