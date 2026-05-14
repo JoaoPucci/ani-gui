@@ -241,7 +241,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v4:"), "got {k}");
+        assert!(k.starts_with("play:v5:"), "got {k}");
     }
 
     #[test]
