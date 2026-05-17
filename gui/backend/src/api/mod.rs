@@ -516,7 +516,7 @@ async fn post_play_external(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> Result<StatusCode, AniError> {
-    play_inner::play_external(&state, &args).await?;
+    crate::commands::play_external_command::play_external(&state, &args).await?;
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -542,6 +542,8 @@ async fn post_play_mark_watched(
         &args.mode,
         quality,
         &args.episode,
+        args.year,
+        args.episode_count,
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
@@ -649,6 +651,8 @@ async fn post_play_cache_evict(
         &args.mode,
         quality,
         &args.episode,
+        args.year,
+        args.episode_count,
     );
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
@@ -1242,7 +1246,7 @@ mod tests {
         let history_path = state.history_path.clone();
         // Seed a v2 cache row with the show_id explicitly empty —
         // the on-disk shape a legacy v1 row would deserialize into.
-        let key = cache_key("Legacy Show", "sub", "best", "3");
+        let key = cache_key("Legacy Show", "sub", "best", "3", None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1286,7 +1290,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150");
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1338,7 +1342,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150");
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1434,7 +1438,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150");
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1561,7 +1565,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Some Show", "sub", "best", "5");
+        let key = cache_key("Some Show", "sub", "best", "5", None, None);
         put(
             &state.cache_pool,
             &key,

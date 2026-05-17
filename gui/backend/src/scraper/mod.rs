@@ -32,4 +32,4 @@
 
 pub mod allanime;
 
-pub use allanime::{pick_by_ep_count, search, Candidate};
+pub use allanime::{pick_by_ep_count, pick_by_ep_count_v2, search, Candidate};

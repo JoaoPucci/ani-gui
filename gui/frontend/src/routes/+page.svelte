@@ -15,6 +15,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		altTitlesFromKitsu,
+		yearFromKitsuRef,
 		historyList,
 		imageProxyUrl,
 		kitsuEpisodes,
@@ -284,6 +285,7 @@
 							mode,
 							quality,
 							episode_count: match.episode_count ?? null,
+							year: yearFromKitsuRef(match),
 							alt_titles: altTitlesFromKitsu(match),
 							kitsu_id: match.id
 						},
@@ -300,6 +302,7 @@
 				mode,
 				quality,
 				episode_count: match.episode_count ?? null,
+				year: yearFromKitsuRef(match),
 				alt_titles: altTitlesFromKitsu(match),
 				kitsu_id: match.id
 			}).catch(() => {});

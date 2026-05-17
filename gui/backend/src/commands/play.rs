@@ -19,15 +19,12 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::anicli::parser::{parse_progress_line, ProgressLine};
-use crate::anicli::process::{run_debug, run_debug_streaming, DebugOptions};
+use crate::anicli::process::{run_debug_streaming, DebugOptions};
 use crate::app::AppState;
-use crate::commands::play_referer::infer_referer;
 use crate::commands::play_resolution_cache::{self, CachedResolution};
-use crate::commands::{
-    external_player::{self, LaunchArgs},
-    session::{create_session_with_kind, CreateSessionArgs, CreateSessionResponse},
+use crate::commands::session::{
+    create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
-use crate::config::read_config;
 use crate::error::{AniError, Result};
 use crate::proxy::{upstream, MediaKind};
 use crate::scraper;
@@ -54,6 +51,16 @@ pub struct PlayArgs {
     /// behaviour.
     #[serde(default)]
     pub episode_count: Option<u32>,
+    /// Year the show first aired, parsed from Kitsu's `start_date`
+    /// (`"1995-04-07"` → `1995`). The disambiguator uses it as the
+    /// primary tie-break against allmanga's `airedStart.year` — much
+    /// more discriminative than ep-count for franchise-overlap cases
+    /// (Mobile Suit Gundam 1979 vs Gundam Wing 1995). `None` when the
+    /// caller doesn't know the year (legacy SSE path, prefetch
+    /// without metadata, etc.); picker degrades gracefully to pure
+    /// ep-count + threshold.
+    #[serde(default)]
+    pub year: Option<u32>,
     /// Fallback titles to try when the canonical title returns no
     /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
@@ -121,10 +128,161 @@ const RUN_DEBUG_TIMEOUT: Duration = Duration::from_secs(60);
 /// `pick_by_ep_count` over the winner. Falls through to
 /// `(args.title, 1)` (legacy behaviour) on every-list-empty or when
 /// `episode_count` is unknown.
-pub(super) async fn pick_title_and_index(
+/// Result of [`pick_title_and_index`]. Adds a transient-error
+/// indicator alongside the picker's (title, index, candidate)
+/// triple so callers can tell "we have no safe match" apart from
+/// "we couldn't ask allmanga." A negative-availability cache write
+/// is correct in the first case and wrong in the second — Codex
+/// flagged the difference in P2 #3233589818.
+pub(super) struct PickedTitle {
+    pub title: String,
+    pub index: usize,
+    pub candidate: Option<Candidate>,
+    /// True when at least one `scraper::search` call returned `Ok`
+    /// (with any number of hits — including zero). False only when
+    /// every search call hit a network / upstream / parse error.
+    /// When this is false AND `candidate.is_none()`, callers should
+    /// surface `AniError::Network` rather than `NoResults`.
+    pub any_search_succeeded: bool,
+    /// True when at least one `scraper::search` call returned `Err`.
+    /// Distinct from `any_search_succeeded`: a run can have some
+    /// errors AND some successes, in which case the verdict
+    /// is incomplete — the canonical lookup may have failed while
+    /// only an alt-title returned `Ok` with zero hits. Codex P2
+    /// #3233658501. Callers should suppress availability cache
+    /// writes (no `write_cache(false)`) when this is true even if
+    /// `any_search_succeeded` is also true.
+    pub any_search_errored: bool,
+}
+
+/// Update Continue Watching on a play-cache hit. The cache-miss
+/// path gets history for free via ani-cli's `update_history`; we
+/// don't run ani-cli on a hit, so write the row directly. No-op
+/// on prefetch calls (the page-mount loop fires concurrently and
+/// whichever finishes last would otherwise overwrite the user's
+/// real click) and on legacy rows missing show_id.
+fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &CachedResolution) {
+    if args.prefetch || cached.show_id.is_empty() {
+        return;
+    }
+    let entry = crate::history::HistoryEntry {
+        ep_no: args.episode.clone(),
+        id: cached.show_id.clone(),
+        title: cached.show_title.clone(),
+    };
+    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+        tracing::warn!(
+            title = %args.title,
+            episode = %args.episode,
+            error = ?e,
+            "play: history write failed on cache hit",
+        );
+    }
+}
+
+/// Stamp the availability cache after a successful ani-cli resolve.
+/// One extra GraphQL round-trip (`fetch_show`) gets the truthful
+/// episode cap + recap-extras list so the next detail/play visit
+/// doesn't re-probe; failure falls through to the simple
+/// `write_cache(true)` so the row at least records availability.
+/// No-op when the caller didn't supply a kitsu_id.
+async fn enrich_availability_after_success(
     state: &AppState,
     args: &PlayArgs,
-) -> (String, usize, Option<Candidate>) {
+    chosen_candidate: Option<&Candidate>,
+) {
+    let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let Some(c) = chosen_candidate else {
+        crate::commands::availability::write_cache(state, id, &args.mode, true);
+        return;
+    };
+    let mode_str = args.mode.as_str();
+    let (episode_count, extras) =
+        match crate::scraper::allanime::fetch_show(&state.proxy_http, &c.id, None).await {
+            Ok(detail) => {
+                let cap = detail.max_integer_episode(mode_str);
+                let ex: Vec<String> = detail
+                    .available_episodes_detail
+                    .for_mode(mode_str)
+                    .iter()
+                    .filter(|t| t.parse::<u32>().is_err())
+                    .cloned()
+                    .collect();
+                (cap, ex)
+            }
+            Err(_) => (None, Vec::new()),
+        };
+    // Status unknown at this layer (PlayArgs doesn't carry it).
+    // None → write_cache_full uses the conservative ongoing TTL
+    // (24h); the next detail-page probe knows status and will
+    // overwrite with the right TTL.
+    crate::commands::availability::write_cache_full(
+        state,
+        id,
+        mode_str,
+        true,
+        episode_count,
+        extras,
+        None,
+    );
+}
+
+/// Caller-side picker-miss error policy used by the sibling
+/// `play_external` / `play_syncplay` / `download_with_progress`
+/// surfaces. Returns `NoResults` only when every search call
+/// completed (no errors) and still nothing matched — any error in
+/// the mix is treated as transient and surfaced as `Network`.
+/// Same policy as [`classify_picker_miss`] (which additionally
+/// stamps the availability negative-cache on the all-completed
+/// branch); the non-play callers don't touch that cache so this
+/// pure variant is enough for them.
+pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
+    if picked.any_search_succeeded && !picked.any_search_errored {
+        AniError::NoResults
+    } else {
+        AniError::Network
+    }
+}
+
+/// Map a "no chosen candidate" outcome to the right `AniError`,
+/// optionally stamping the availability cache. Three branches —
+/// see the comments inside for the policy. Extracted out of
+/// `play_with_progress` to keep its ccn under the firm CRAP ceiling.
+fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle) -> AniError {
+    if !picked.any_search_succeeded {
+        tracing::warn!(
+            kitsu_id = ?args.kitsu_id,
+            "play: every allanime search errored; surfacing transient Network",
+        );
+        return AniError::Network;
+    }
+    if picked.any_search_errored {
+        // Verdict is incomplete: the failed search may have been the
+        // canonical with the right hit, so surface transient Network
+        // (no negative cache write) and let the next attempt retry —
+        // same policy as availability / download / play_external /
+        // play_syncplay. Codex P2 #3236... .
+        tracing::info!(
+            search_title = %picked.title,
+            kitsu_id = ?args.kitsu_id,
+            "play: partial search failure + no safe match; surfacing Network",
+        );
+        return AniError::Network;
+    }
+    tracing::info!(
+        search_title = %picked.title,
+        kitsu_id = ?args.kitsu_id,
+        "play: picker found no safe allmanga match; surfacing NoResults",
+    );
+    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+        crate::commands::availability::write_cache(state, id, &args.mode, false);
+    }
+    AniError::NoResults
+}
+
+pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
@@ -132,20 +290,32 @@ pub(super) async fn pick_title_and_index(
     // episode_count to disambiguate with — alt_titles is also the
     // recovery path when canonical doesn't appear in allmanga's index
     // (Stone Ocean Part 6 reproduces this even though its
-    // episode_count is null on Kitsu). Stop at the first non-empty
-    // list so we don't make three GraphQL calls when canonical worked.
+    // episode_count is null on Kitsu).
+    //
+    // We interleave fetch + pick: after each non-empty pool lands,
+    // re-run the picker against the accumulated `results`. If it
+    // accepts, we stop and skip the remaining alt-title GraphQL
+    // calls (the common case for unambiguous canonical hits). If
+    // the picker rejects (year mismatch, ep-count over tolerance),
+    // we keep walking — the picker's None on this pool is what
+    // makes "canonical returned only wrong-year siblings, but
+    // romanized alt returned the real show" recoverable. Without
+    // this, the early break on the first non-empty pool would lock
+    // us into the wrong show. Codex P2 #3231391353.
     let mut results: Vec<(String, Vec<Candidate>)> = Vec::new();
+    let mut chosen_so_far: Option<Candidate> = None;
+    let mut chosen_title_so_far = primary.clone();
+    let mut chosen_pick_so_far = 1usize;
+    let mut any_search_succeeded = false;
+    let mut any_search_errored = false;
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
         match scraper::search(&state.proxy_http, title, mode, None).await {
             Ok(cands) => {
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
-                let was_empty = cands.is_empty();
                 results.push((title.to_string(), cands));
-                if !was_empty {
-                    break;
-                }
+                any_search_succeeded = true;
             }
             Err(e) => {
                 tracing::warn!(
@@ -154,12 +324,29 @@ pub(super) async fn pick_title_and_index(
                     "play: allanime search failed; trying next candidate",
                 );
                 results.push((title.to_string(), Vec::new()));
+                any_search_errored = true;
+                continue;
             }
+        }
+        // Try to pick from what we have. If accepted, stop and skip
+        // any remaining alt-title fetches. If still None, keep
+        // walking — later alt titles may yield a valid candidate.
+        let (t, p, c) = select_first_with_hits_with_candidate(
+            &primary,
+            &results,
+            args.episode_count,
+            args.year,
+            mode,
+        );
+        if c.is_some() {
+            chosen_so_far = c;
+            chosen_title_so_far = t;
+            chosen_pick_so_far = p;
+            break;
         }
     }
 
-    let (chosen_title, pick, chosen) =
-        select_first_with_hits_with_candidate(&primary, &results, args.episode_count, mode);
+    let (chosen_title, pick, chosen) = (chosen_title_so_far, chosen_pick_so_far, chosen_so_far);
     tracing::info!(
         primary = %primary,
         alt_count = args.alt_titles.len(),
@@ -167,9 +354,16 @@ pub(super) async fn pick_title_and_index(
         expected_eps = ?args.episode_count,
         pick = pick,
         chosen_show_id = chosen.as_ref().map(|c| c.id.as_str()).unwrap_or(""),
+        any_search_succeeded = any_search_succeeded,
         "play: chose ani-cli search title",
     );
-    (chosen_title, pick, chosen)
+    PickedTitle {
+        title: chosen_title,
+        index: pick,
+        candidate: chosen,
+        any_search_succeeded,
+        any_search_errored,
+    }
 }
 
 /// Build the spawn options for an ani-cli invocation. When
@@ -250,8 +444,14 @@ where
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
     // ~50ms; ani-cli is ~30s. Worth the round-trip.
-    let cache_key =
-        play_resolution_cache::cache_key(&args.title, &args.mode, quality, &args.episode);
+    let cache_key = play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        quality,
+        &args.episode,
+        args.year,
+        args.episode_count,
+    );
     if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
         if let Some(resp) = try_serve_cached(state, &cached).await {
             tracing::info!(
@@ -260,27 +460,7 @@ where
                 upstream = cached.upstream_url.as_str(),
                 "play: cache hit (HEAD ok)",
             );
-            // Update Continue Watching: the cache-miss path got history
-            // for free via ani-cli's `update_history`. We don't run
-            // ani-cli on a hit, so we do it ourselves. Skipped silently
-            // for legacy rows (show_id empty) and for prefetch calls
-            // (background warming must not bump the user's last-played
-            // episode — prefetches resolve in arbitrary order).
-            if !args.prefetch && !cached.show_id.is_empty() {
-                let entry = crate::history::HistoryEntry {
-                    ep_no: args.episode.clone(),
-                    id: cached.show_id.clone(),
-                    title: cached.show_title.clone(),
-                };
-                if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-                    tracing::warn!(
-                        title = %args.title,
-                        episode = %args.episode,
-                        error = ?e,
-                        "play: history write failed on cache hit",
-                    );
-                }
-            }
+            write_history_on_cache_hit(state, args, &cached);
             return Ok(resp);
         }
         // HEAD failed — the cached URL is dead. Evict the row and
@@ -300,7 +480,13 @@ where
     // may differ from args.title when alt_titles produced the winning
     // hit (e.g. romanized fallback for shows whose Kitsu canonicalTitle
     // is the English form). See pick_title_and_index().
-    let (search_title, select_index, chosen_candidate) = pick_title_and_index(state, args).await;
+    let picked = pick_title_and_index(state, args).await;
+    if picked.candidate.is_none() {
+        return Err(classify_picker_miss(state, args, &picked));
+    }
+    let search_title = picked.title;
+    let select_index = picked.index;
+    let chosen_candidate = picked.candidate;
 
     tracing::info!(
         search_title = %search_title,
@@ -351,49 +537,7 @@ where
             }
         }
     })?;
-    // Successful resolve = available. Enrich the cache row with the
-    // playable episode count + recap extras so the next detail/play
-    // visit doesn't have to re-probe. fetch_show is one extra
-    // GraphQL round-trip against allmanga (~200ms) — invisible
-    // here because the user is past ani-cli's multi-second
-    // resolution and about to navigate to /play. Failure falls
-    // through to the simple write so the row at least records
-    // `available=true`.
-    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-        if let Some(c) = chosen_candidate.as_ref() {
-            let mode_str = args.mode.as_str();
-            let (episode_count, extras) =
-                match crate::scraper::allanime::fetch_show(&state.proxy_http, &c.id, None).await {
-                    Ok(detail) => {
-                        let cap = detail.max_integer_episode(mode_str);
-                        let ex: Vec<String> = detail
-                            .available_episodes_detail
-                            .for_mode(mode_str)
-                            .iter()
-                            .filter(|t| t.parse::<u32>().is_err())
-                            .cloned()
-                            .collect();
-                        (cap, ex)
-                    }
-                    Err(_) => (None, Vec::new()),
-                };
-            // Status unknown at this layer (PlayArgs doesn't carry
-            // it). None → write_cache_full uses the conservative
-            // ongoing TTL (24h); the next detail-page probe knows
-            // status and will overwrite with the right TTL.
-            crate::commands::availability::write_cache_full(
-                state,
-                id,
-                mode_str,
-                true,
-                episode_count,
-                extras,
-                None,
-            );
-        } else {
-            crate::commands::availability::write_cache(state, id, &args.mode, true);
-        }
-    }
+    enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
     // Decide media kind: cheap path-extension first, HEAD fallback
     // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
@@ -481,58 +625,9 @@ where
 // per-file limit. The tests in this file's `#[cfg(test)]` module
 // still drive them via wiremock; they just import from the new
 // module rather than calling sibling functions.
-use crate::commands::play_cache::{try_launch_args_from_cache, try_serve_cached};
-
-/// Resolve `args` against ani-cli and hand the upstream URL straight
-/// to the user's external player (default `mpv`). No session is
-/// registered — the player streams from the upstream directly with
-/// the `Referer:` flag.
-///
-/// # Errors
-/// Inherits from [`run_debug`] and
-/// [`external_player::open_external_player`] (missing binary,
-/// non-zero spawn status).
-pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let cfg = read_config(&state.config_path).unwrap_or_default();
-
-    // Long-term cache reuse — same shape as play_with_progress. The
-    // embedded player likely just resolved this exact (title, mode,
-    // quality, episode) tuple seconds ago; without this the user
-    // would wait another 30s for ani-cli to spin up a fresh fetch.
-    // HEAD-validate so a stale/dead URL falls through to the fresh
-    // path instead of handing mpv a 403.
-    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        return external_player::open_external_player(&launch);
-    }
-
-    // play_external is always a click — never a prefetch — so no
-    // hist_dir override needed.
-    let opts = debug_options_for(state, None);
-    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
-    let resolved = run_debug(
-        &opts,
-        &search_title,
-        &args.episode,
-        quality,
-        &args.mode,
-        select_index,
-    )
-    .await?;
-
-    let referer = infer_referer(&resolved);
-
-    let launch = LaunchArgs {
-        stream_url: resolved.selected_url,
-        referer,
-        subtitle_url: resolved.subtitle_url,
-        title: Some(format!("{} · ep {}", args.title, args.episode)),
-        player_command: cfg.external_player,
-        player_kind: cfg.external_player_kind,
-        custom_args_template: Some(cfg.external_player_custom_args),
-    };
-    external_player::open_external_player(&launch)
-}
+#[cfg(test)]
+use crate::commands::play_cache::try_launch_args_from_cache;
+use crate::commands::play_cache::try_serve_cached;
 
 #[cfg(test)]
 mod tests {
@@ -722,6 +817,7 @@ mod tests {
             mode: "sub".into(),
             quality: Some("best".into()),
             episode_count: None,
+            year: None,
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
@@ -741,6 +837,8 @@ mod tests {
             &args.mode,
             args.quality.as_deref().unwrap_or("best"),
             &args.episode,
+            args.year,
+            args.episode_count,
         );
         play_resolution_cache::put(
             &state.cache_pool,
@@ -835,7 +933,14 @@ mod tests {
         let r = play_with_progress(&state, &args, |_| {}).await;
         assert!(r.is_err(), "ani-cli fallback must error in the test env");
         // Cache row should be gone.
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
                 .ok()
@@ -902,7 +1007,14 @@ mod tests {
         assert!(result.is_none());
 
         // Cache row should be gone; a fresh attempt would re-resolve.
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
                 .ok()
@@ -924,7 +1036,14 @@ mod tests {
             .await;
         let state = state_with_proxy_origin();
         let args = external_args("Fast4", "3");
-        let key = play_resolution_cache::cache_key(&args.title, &args.mode, "best", &args.episode);
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
         play_resolution_cache::put(
             &state.cache_pool,
             &key,
@@ -968,6 +1087,7 @@ mod tests {
             mode: "sub".into(),
             quality: None,
             episode_count: None,
+            year: None,
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
@@ -1115,6 +1235,7 @@ mod tests {
                 sub: sub_eps,
                 dub: 0,
             },
+            ..Default::default()
         }
     }
 
@@ -1139,6 +1260,7 @@ mod tests {
         let (title, idx) = select_first_with_hits_opt(
             "JoJo's Bizarre Adventure: Stone Ocean",
             &results,
+            None,
             None,
             "sub",
         );
@@ -1192,6 +1314,66 @@ mod tests {
         // 38-ep candidate is index 1 (closer to expected 38 than the
         // 1-ep side story).
         assert_eq!(idx, 1);
+    }
+
+    fn picked_miss(any_success: bool, any_error: bool) -> PickedTitle {
+        PickedTitle {
+            title: "X".into(),
+            index: 0,
+            candidate: None,
+            any_search_succeeded: any_success,
+            any_search_errored: any_error,
+        }
+    }
+
+    #[test]
+    fn picker_miss_caller_error_treats_partial_failure_as_network() {
+        // Mixed: at least one search succeeded but another errored.
+        // Sibling callers (download/syncplay/external) prefer the
+        // transient surface — the failed search may have been the
+        // one with the right match. Codex P2 #3235184271.
+        let err = picker_miss_caller_error(&picked_miss(true, true));
+        assert!(matches!(err, AniError::Network));
+    }
+
+    #[test]
+    fn picker_miss_caller_error_returns_no_results_only_when_all_searches_completed() {
+        let err = picker_miss_caller_error(&picked_miss(true, false));
+        assert!(matches!(err, AniError::NoResults));
+    }
+
+    #[test]
+    fn picker_miss_caller_error_treats_all_errored_as_network() {
+        let err = picker_miss_caller_error(&picked_miss(false, true));
+        assert!(matches!(err, AniError::Network));
+    }
+
+    #[test]
+    fn classify_picker_miss_returns_network_on_partial_search_failure() {
+        // Codex P2 #3236... : the embedded play path used to surface
+        // NoResults when one search errored alongside a success that
+        // produced no safe match. The verdict is incomplete in that
+        // case — the failed search may have been the one with the
+        // canonical hit — so the embedded surface should agree with
+        // download / play_external / play_syncplay / availability and
+        // return transient Network instead.
+        let state = state_with_proxy_origin();
+        let args = PlayArgs {
+            title: "X".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        let err = classify_picker_miss(&state, &args, &picked_miss(true, true));
+        assert!(
+            matches!(err, AniError::Network),
+            "partial failure should surface Network, got {err:?}",
+        );
     }
 
     #[test]

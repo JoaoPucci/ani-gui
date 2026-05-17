@@ -18,6 +18,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		altTitlesFromKitsu,
+		yearFromKitsuRef,
 		checkAvailability,
 		historyByKitsu,
 		imageProxyUrl,
@@ -46,6 +47,7 @@
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import type { DownloadArgs } from '$lib/api';
+	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
 	import { breadcrumb } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
@@ -442,6 +444,7 @@
 					mode,
 					alt_titles: altTitlesFromKitsu(d),
 					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
 					kitsu_id: d.id,
 					status: d.status ?? undefined
 				})
@@ -523,6 +526,7 @@
 						mode,
 						quality,
 						episode_count: detail?.episode_count ?? null,
+						year: yearFromKitsuRef(detail),
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching — the
 						// 12 calls fired here resolve in arbitrary order, so
@@ -787,6 +791,7 @@
 							mode,
 							quality,
 							episode_count: detail?.episode_count ?? null,
+							year: yearFromKitsuRef(detail),
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -815,6 +820,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -853,19 +859,18 @@
 		if (!detail) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
-		downloadArgs = {
-			title: detail.canonical_title,
-			episode: String(defaultEpisode()),
+		// `episode_count` must stay Kitsu's announced total — that's
+		// what the backend picker compares against allmanga's planned
+		// `episodeCount`. The modal's range cap (allmanga's released-
+		// so-far count) is a separate concern, passed via DownloadConfirm's
+		// `availableEpisodes` prop. Codex P2 #3243357083.
+		downloadArgs = buildDownloadArgs({
+			detail,
+			episode: defaultEpisode(),
 			mode,
 			quality,
-			// Hand the modal allmanga's authoritative count when we have
-			// it, so Download All / range cap reflect what's actually
-			// streamable. Falls through to Kitsu's announced number for
-			// the cold-cache window before availability resolves.
-			episode_count: episodeCap ?? undefined,
-			alt_titles: altTitlesFromKitsu(detail),
-			kitsu_id: id
-		};
+			kitsuId: id
+		});
 		downloadModalOpen = true;
 	}
 	function onPickEpisode(n: number) {

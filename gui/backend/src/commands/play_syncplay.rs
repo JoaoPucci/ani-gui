@@ -10,7 +10,9 @@
 
 use crate::anicli::process::run_debug;
 use crate::app::AppState;
-use crate::commands::play::{debug_options_for, pick_title_and_index, PlayArgs};
+use crate::commands::play::{
+    debug_options_for, pick_title_and_index, picker_miss_caller_error, PlayArgs,
+};
 use crate::commands::play_cache::try_launch_args_from_cache;
 use crate::commands::play_referer::infer_referer;
 use crate::commands::syncplay::{open_syncplay, SyncplayLaunchArgs};
@@ -61,7 +63,16 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     }
 
     let opts = debug_options_for(state, None);
-    let (search_title, select_index, _chosen_candidate) = pick_title_and_index(state, args).await;
+    let picked = pick_title_and_index(state, args).await;
+    if picked.candidate.is_none() {
+        // Partial-failure case (some search errored alongside a
+        // completed one with no chosen candidate) is treated as
+        // transient — same policy as availability / download. Codex
+        // P2 #3235184271.
+        return Err(picker_miss_caller_error(&picked));
+    }
+    let search_title = picked.title;
+    let select_index = picked.index;
     let resolved = run_debug(
         &opts,
         &search_title,

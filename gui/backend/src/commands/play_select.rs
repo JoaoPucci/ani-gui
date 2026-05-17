@@ -98,21 +98,29 @@ pub fn select_first_with_hits(
     expected: u32,
     mode: &str,
 ) -> (String, usize) {
-    select_first_with_hits_opt(primary, results, Some(expected), mode)
+    select_first_with_hits_opt(primary, results, Some(expected), None, mode)
 }
 
 /// `select_first_with_hits` variant where `expected` may be unknown.
 /// When `expected` is `None`, returns the first non-empty list with
 /// candidate index 1 (allanime's own ranking — same as ani-cli's
 /// default `-S 1`). When `Some`, behaves identically to the v1 helper.
+///
+/// `expected_year` is the Kitsu start_date year (when known). The
+/// underlying [`scraper::pick_by_ep_count_v2`] uses it as a primary
+/// tie-break before ep-count distance — fixes the
+/// Mobile-Suit-Gundam-1979-vs-Wing case where ep-count distance alone
+/// silently picked a sibling.
 #[must_use]
 pub fn select_first_with_hits_opt(
     primary: &str,
     results: &[(String, Vec<Candidate>)],
     expected: Option<u32>,
+    expected_year: Option<u32>,
     mode: &str,
 ) -> (String, usize) {
-    let (title, idx, _) = select_first_with_hits_with_candidate(primary, results, expected, mode);
+    let (title, idx, _) =
+        select_first_with_hits_with_candidate(primary, results, expected, expected_year, mode);
     (title, idx)
 }
 
@@ -120,11 +128,15 @@ pub fn select_first_with_hits_opt(
 /// chosen [`Candidate`] (the row whose `id` + `name` we'll cache for
 /// the history-write feedback path). `None` for the candidate when no
 /// list had hits — the caller falls back to writing nothing.
+///
+/// `expected_year` plumbs through to the picker the same way
+/// `expected` does; see [`select_first_with_hits_opt`] for rationale.
 #[must_use]
 pub fn select_first_with_hits_with_candidate(
     primary: &str,
     results: &[(String, Vec<Candidate>)],
     expected: Option<u32>,
+    expected_year: Option<u32>,
     mode: &str,
 ) -> (String, usize, Option<Candidate>) {
     for (title, cands) in results {
@@ -132,8 +144,25 @@ pub fn select_first_with_hits_with_candidate(
             continue;
         }
         let pick = match expected {
-            Some(n) => scraper::pick_by_ep_count(cands, n, mode, title).unwrap_or(1),
-            None => 1,
+            // Picker may explicitly reject the pool (year mismatch
+            // or ep-count distance over the tolerance) — when it
+            // does, skip this list and try the next alt-title.
+            // Falling through to .unwrap_or(1) would silently feed
+            // ani-cli candidate #1 and reintroduce the wrong-show
+            // bug the picker was added to fix.
+            Some(n) => match scraper::pick_by_ep_count_v2(cands, n, expected_year, mode, title) {
+                Some(p) => p,
+                None => continue,
+            },
+            // No ep-count from Kitsu (ongoing/upcoming shows). Apply
+            // the year filter on its own so an older same-title
+            // sibling doesn't win when allmanga returns it first.
+            // Codex P2 #3231422658. When expected_year is also None
+            // we keep the legacy `pick = 1` fallback.
+            None => match pick_first_by_year(cands, expected_year) {
+                Some(p) => p,
+                None => continue,
+            },
         };
         // `pick` is 1-based; clamp into the slice in case
         // pick_by_ep_count ever returns out-of-bounds (defence in
@@ -142,6 +171,42 @@ pub fn select_first_with_hits_with_candidate(
         return (title.clone(), pick, Some(cands[idx0].clone()));
     }
     (primary.to_string(), 1, None)
+}
+
+/// Year-only fallback for the ep-count-less path. Mirrors the
+/// preference order of `pick_by_ep_count_v2`'s year filter — dated
+/// in-range beats undated; all-dated-wrong-year hard-rejects;
+/// all-undated (or no year at all) falls through to candidate #1
+/// preserving the legacy positional behavior.
+///
+/// Returns a 1-based index (matches the rest of the picker family),
+/// or `None` if every candidate has a year and none match — same
+/// "skip this pool, try alt titles" semantic the ep-count path uses.
+fn pick_first_by_year(cands: &[Candidate], expected_year: Option<u32>) -> Option<usize> {
+    let want = match expected_year {
+        Some(y) => y,
+        None => return Some(1),
+    };
+    let in_range = (0..cands.len()).find(|&i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref())
+            .is_some_and(|y| y.abs_diff(want) <= 1)
+    });
+    if let Some(i) = in_range {
+        return Some(i + 1);
+    }
+    let any_has_year = (0..cands.len()).any(|i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_some()
+    });
+    let any_undated = (0..cands.len()).any(|i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_none()
+    });
+    if any_has_year && !any_undated {
+        return None;
+    }
+    let first_undated = (0..cands.len()).find(|&i| {
+        crate::scraper::allanime::AiredStart::year_value(cands[i].aired_start.as_ref()).is_none()
+    });
+    Some(first_undated.map_or(1, |i| i + 1))
 }
 
 #[cfg(test)]
@@ -154,6 +219,17 @@ mod tests {
             id: id.into(),
             name: id.into(),
             available_episodes: AvailableEpisodes { sub, dub: 0 },
+            ..Default::default()
+        }
+    }
+
+    fn cand_with_year_local(id: &str, sub: u32, year: Option<u32>) -> Candidate {
+        Candidate {
+            id: id.into(),
+            name: id.into(),
+            available_episodes: AvailableEpisodes { sub, dub: 0 },
+            aired_start: year.map(|y| crate::scraper::allanime::AiredStart { year: Some(y) }),
+            ..Default::default()
         }
     }
 
@@ -276,7 +352,7 @@ mod tests {
             "alt".into(),
             vec![cand("a", 12), cand("b", 24), cand("c", 36)],
         )];
-        let (title, pick) = select_first_with_hits_opt("Primary", &results, None, "sub");
+        let (title, pick) = select_first_with_hits_opt("Primary", &results, None, None, "sub");
         assert_eq!(title, "alt");
         assert_eq!(pick, 1);
     }
@@ -291,7 +367,7 @@ mod tests {
             vec![cand("KO_GAKUEN", 1), cand("NARUTO_SHIPPUUDEN", 500)],
         )];
         let (title, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(500), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(500), None, "sub");
         assert_eq!(title, "Naruto Shippuuden");
         assert_eq!(pick, 2);
         assert_eq!(chosen.expect("candidate").id, "NARUTO_SHIPPUUDEN");
@@ -301,8 +377,92 @@ mod tests {
     fn with_candidate_returns_none_when_every_list_is_empty() {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), vec![])];
         let (_, _, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(12), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
         assert!(chosen.is_none());
+    }
+
+    #[test]
+    fn with_candidate_returns_none_when_picker_rejected_only_list() {
+        // Pre-existing v2 behavior was `unwrap_or(1)` — when
+        // pick_by_ep_count_v2 said "no safe match" the helper still
+        // returned `Some(cands[0])`. That defeats the point of the
+        // year/ep-count threshold: the play flow ignores the
+        // rejection and feeds ani-cli candidate #1 anyway. Pin the
+        // new contract: when the picker rejects every list, the
+        // helper returns `None` so callers can surface a real
+        // "not on allmanga" error instead of silently playing a
+        // sibling.
+        //
+        // Repro shape: a 43-ep show (Mobile Suit Gundam 1979) whose
+        // only allmanga candidate is a 49-ep sibling (Wing); the new
+        // picker rejects it (best_dist=6 > tolerance=4).
+        let cands = vec![cand("wing-style", 49)];
+        let results: Vec<(String, Vec<Candidate>)> = vec![("Mobile Suit Gundam".into(), cands)];
+        let (_, _, chosen) = select_first_with_hits_with_candidate(
+            "Mobile Suit Gundam",
+            &results,
+            Some(43),
+            Some(1979),
+            "sub",
+        );
+        assert!(
+            chosen.is_none(),
+            "picker rejected the candidate; helper must propagate that as no-match",
+        );
+    }
+
+    #[test]
+    fn with_candidate_applies_year_filter_when_episode_count_is_none() {
+        // Codex P2 #3231422658. Ongoing/upcoming shows often have a
+        // Kitsu start_date but no episode_count (the count is `null`
+        // until the run finishes). Today the helper bypasses the
+        // picker entirely when expected is None and grabs candidate
+        // #1 — which means the freshly plumbed year is ignored on
+        // exactly the franchise-collision case we care about
+        // (clicked entry has year but no count; allmanga returns
+        // the older same-title result first).
+        let cands = vec![
+            cand_with_year_local("older", 12, Some(1995)),
+            cand_with_year_local("right", 12, Some(2025)),
+        ];
+        let results: Vec<(String, Vec<Candidate>)> = vec![("Show".into(), cands)];
+        let (_, _, chosen) =
+            select_first_with_hits_with_candidate("Show", &results, None, Some(2025), "sub");
+        assert_eq!(
+            chosen.expect("year filter picks the in-range candidate").id,
+            "right",
+            "expected_year must narrow the pool even when expected ep-count is missing",
+        );
+    }
+
+    #[test]
+    fn with_candidate_skips_to_next_alt_title_when_picker_rejects_first_pool() {
+        // Same rejection signal, but a later alt_titles list yields
+        // an exact match. The helper should walk past the rejected
+        // pool and return the good one rather than collapsing to
+        // None after the first reject. (Mirrors alt-title recovery
+        // for shows where canonical doesn't index but alt does.)
+        let cands_bad = vec![cand("wing", 49)];
+        let cands_good = vec![cand("the-right-one", 43)];
+        let results: Vec<(String, Vec<Candidate>)> = vec![
+            ("Mobile Suit Gundam".into(), cands_bad),
+            ("Kidou Senshi Gundam".into(), cands_good),
+        ];
+        let (title, _, chosen) = select_first_with_hits_with_candidate(
+            "Mobile Suit Gundam",
+            &results,
+            Some(43),
+            Some(1979),
+            "sub",
+        );
+        assert_eq!(
+            title, "Kidou Senshi Gundam",
+            "skipping the rejected pool means the chosen title is from the alt list",
+        );
+        assert_eq!(
+            chosen.expect("alt list yields a candidate").id,
+            "the-right-one"
+        );
     }
 
     #[test]
@@ -314,7 +474,7 @@ mod tests {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), one)];
         // Force pick=1 via expected == 1 (closest match).
         let (_, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(1), "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(1), None, "sub");
         assert_eq!(pick, 1);
         assert_eq!(chosen.expect("candidate").id, "only");
     }
@@ -341,7 +501,7 @@ mod tests {
                 .map(|i| (format!("title-{i}"), Vec::<Candidate>::new()))
                 .collect();
             let (title, pick, chosen) =
-                select_first_with_hits_with_candidate("Primary", &results, Some(12), "sub");
+                select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
             proptest::prop_assert_eq!(title, "Primary");
             proptest::prop_assert_eq!(pick, 1);
             proptest::prop_assert!(chosen.is_none());
@@ -387,21 +547,35 @@ mod tests {
             }
 
             let (title, pick, chosen) = select_first_with_hits_with_candidate(
-                "Primary", &results, Some(expected), "sub",
+                "Primary", &results, Some(expected), None, "sub",
             );
 
-            // The chosen title must be the first non-empty list's
-            // title — never a later list, never the primary.
-            let first_non_empty_idx = empty_prefix_len;
-            proptest::prop_assert_eq!(&title, &results[first_non_empty_idx].0);
-            // pick is 1-based and within the chosen list.
-            let chosen_list = &results[first_non_empty_idx].1;
-            proptest::prop_assert!(pick >= 1);
-            proptest::prop_assert!(pick <= chosen_list.len());
-            // Chosen candidate must be from the chosen list (id
-            // matches one of the entries).
-            let chosen = chosen.expect("candidate");
-            proptest::prop_assert!(chosen_list.iter().any(|c| c.id == chosen.id));
+            // Three cases now that the picker may reject a pool:
+            //   • Picker accepted some list — `chosen` is from that
+            //     list and the title matches one of the results
+            //     titles (not necessarily the first non-empty one;
+            //     a rejection on the first pool walks to the next).
+            //   • Picker rejected every non-empty pool — helper
+            //     returns `(primary, 1, None)`.
+            //
+            // Either branch must keep the 1-based pick + list
+            // boundary invariants the play path depends on.
+            match chosen {
+                None => {
+                    proptest::prop_assert_eq!(&title, &"Primary".to_string());
+                    proptest::prop_assert_eq!(pick, 1);
+                }
+                Some(c) => {
+                    let chosen_list = &results
+                        .iter()
+                        .find(|(t, _)| t == &title)
+                        .expect("chosen title must be one of the results titles")
+                        .1;
+                    proptest::prop_assert!(pick >= 1);
+                    proptest::prop_assert!(pick <= chosen_list.len());
+                    proptest::prop_assert!(chosen_list.iter().any(|x| x.id == c.id));
+                }
+            }
         }
     }
 }

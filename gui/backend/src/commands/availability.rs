@@ -53,6 +53,11 @@ pub struct AvailabilityArgs {
     /// even when the actual show isn't on allmanga.
     #[serde(default)]
     pub episode_count: Option<u32>,
+    /// Year the show first aired, parsed from Kitsu's `start_date`.
+    /// Plumbed through the picker as the primary tie-break against
+    /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
+    #[serde(default)]
+    pub year: Option<u32>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
     /// check still runs but its result isn't persisted.
     #[serde(default)]
@@ -117,6 +122,19 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v5: picker now reads allmanga's `type`/`status`/`episodeCount`
+    //     (b629127, Codex P2 #3242661503) and hard-rejects same-year
+    //     OVA/Movie/Special and planned-count divergence. v4 rows
+    //     could be true-positive "available" for a 1-ep OVA that the
+    //     new picker correctly rejects — bumping forces a re-probe
+    //     through the disambiguator so list filters self-heal.
+    // v4: picker uses Kitsu start_date year as the primary tie-break
+    //     and rejects pools outside max(3, expected*10%) ep-count
+    //     distance (see pick_by_ep_count_v2). v3 rows were decided by
+    //     the old ep-count-only picker and could be true-positive
+    //     "available" for the wrong allmanga show — bumping evicts
+    //     them so list filters re-derive from the new picker. Closes
+    //     Codex P2 #3228864283.
     // v3: SHOW_GQL fix — availableEpisodesDetail is a scalar, not
     //     an object; the v2-rollout query subselected `{ sub dub }`
     //     and got empty lists back, so episode_count fell through
@@ -125,7 +143,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v3:{kitsu_id}:{m}")
+    format!("availability:v5:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -172,11 +190,30 @@ pub async fn check_availability(
         mode: mode.into(),
         quality: None,
         episode_count: args.episode_count,
+        year: args.year,
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
     };
-    let (_chosen_title, _select, chosen_candidate) = pick_title_and_index(state, &play_view).await;
+    let picked = pick_title_and_index(state, &play_view).await;
+    let chosen_candidate = picked.candidate;
+    // Transient: every allanime preflight search errored. Don't
+    // poison the availability row with `available=false` — the show
+    // may well be there, we just couldn't ask. Surface a Network
+    // error so the API handler returns a non-200; the frontend's
+    // probe logic already keeps unset entries unset on error.
+    // Codex P2 #3233589818.
+    if chosen_candidate.is_none() && !picked.any_search_succeeded {
+        return Err(crate::error::AniError::Network);
+    }
+    // Partial failure: at least one search errored alongside the
+    // ones that returned Ok. The verdict is incomplete (the failed
+    // canonical may actually have a hit), so surface Network too
+    // and let the next probe re-attempt — same handling as the
+    // all-errored case for cache hygiene. Codex P2 #3233658501.
+    if chosen_candidate.is_none() && picked.any_search_errored {
+        return Err(crate::error::AniError::Network);
+    }
     let available = chosen_candidate.is_some();
 
     // For the cap we need the actual episode-tag list (allmanga's
@@ -543,14 +580,14 @@ mod tests {
         assert_eq!(resp.cached.get("kid-4"), Some(&true));
     }
 
-    /// `cache_key` is what makes the v2-rollout self-heal possible —
-    /// the v3 prefix supersedes any v1/v2 row with the same
-    /// (kitsu_id, mode). Pin both shapes (sub/dub) so a typo in the
-    /// key generator gets caught immediately.
+    /// `cache_key` is what makes the schema bumps self-heal possible —
+    /// each bump's new prefix supersedes any prior-version row with
+    /// the same (kitsu_id, mode). Pin both shapes (sub/dub) so a typo
+    /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v3:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v3:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v5:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v5:kid-1:dub");
     }
 
     #[test]

@@ -39,6 +39,7 @@ import {
 	settingsGet,
 	settingsPut,
 	watchedAtAll,
+	yearFromKitsuRef,
 	type Config,
 	type CreateSessionResponse,
 	type DownloadProgress,
@@ -739,6 +740,25 @@ describe('altTitlesFromKitsu', () => {
 			titles: { en: 'Show', en_jp: '', ja_jp: 'ja' }
 		});
 		expect(altTitlesFromKitsu(ref)).toEqual(['ja']);
+	});
+
+	it('parses the start_date year out of a Kitsu ref (yearFromKitsuRef)', () => {
+		// The disambiguator's primary tie-break consumes the integer
+		// year. Pin the happy path, the null-coalescing edges, and a
+		// few of the malformed-input branches so the helper stays
+		// covered even when callers drift.
+		expect(yearFromKitsuRef(baseRef({ start_date: '1995-04-07' }))).toBe(1995);
+		// Year-only string is enough — Kitsu rarely emits this but
+		// the slice(0,4) shape accepts it.
+		expect(yearFromKitsuRef(baseRef({ start_date: '2023' }))).toBe(2023);
+		expect(yearFromKitsuRef(baseRef({ start_date: null }))).toBeNull();
+		expect(yearFromKitsuRef(null)).toBeNull();
+		expect(yearFromKitsuRef(undefined)).toBeNull();
+		// Malformed dates — too short, non-numeric prefix, leading
+		// minus — all degrade to null so PlayArgs.year stays valid.
+		expect(yearFromKitsuRef(baseRef({ start_date: '199' }))).toBeNull();
+		expect(yearFromKitsuRef(baseRef({ start_date: 'abcd-01-01' }))).toBeNull();
+		expect(yearFromKitsuRef(baseRef({ start_date: '0000-01-01' }))).toBeNull();
 	});
 
 	it('preserves priority order en_jp → ja_jp → en → en_us', () => {

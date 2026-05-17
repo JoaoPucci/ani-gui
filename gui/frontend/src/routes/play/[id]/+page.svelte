@@ -37,6 +37,7 @@
 	import { settle } from '$lib/transitions/settle';
 	import {
 		altTitlesFromKitsu,
+		yearFromKitsuRef,
 		aniskipGet,
 		downloadDefaultDir as downloadDefaultDirApi,
 		evictPlayCache,
@@ -59,6 +60,7 @@
 		type SkipInterval
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
+	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
@@ -1274,6 +1276,7 @@
 					mode: 'sub',
 					alt_titles: altTitlesFromKitsu(d),
 					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
 					kitsu_id: d.id,
 					status: d.status ?? undefined
 				})
@@ -1356,6 +1359,7 @@
 						mode,
 						quality,
 						episode_count: detail?.episode_count ?? null,
+						year: yearFromKitsuRef(detail),
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
@@ -1397,6 +1401,7 @@
 							mode,
 							quality,
 							episode_count: detail?.episode_count ?? null,
+							year: yearFromKitsuRef(detail),
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1422,6 +1427,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -1467,6 +1473,7 @@
 				mode,
 				quality,
 				episode_count: detail.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 		} catch {
@@ -1614,6 +1621,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -1667,6 +1675,7 @@
 				mode,
 				quality,
 				episode_count: detail?.episode_count ?? null,
+				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			toastStore.push(syncplayLaunchSuccessToast({ episode: episodeNum }));
@@ -1707,15 +1716,13 @@
 		if (!detail) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
-		downloadArgs = {
-			title: detail.canonical_title,
-			episode: String(episodeNum),
+		downloadArgs = buildDownloadArgs({
+			detail,
+			episode: episodeNum,
 			mode,
 			quality,
-			episode_count: detail.episode_count ?? undefined,
-			alt_titles: altTitlesFromKitsu(detail),
-			kitsu_id: id
-		};
+			kitsuId: id
+		});
 		downloadModalOpen = true;
 	}
 
