@@ -73,6 +73,7 @@ Tested on Linux. The dev loop (step 5) works the same on macOS and Windows; the 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
 2. **Install Node 20+ and pnpm** (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
