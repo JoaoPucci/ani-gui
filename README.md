@@ -12,21 +12,23 @@ ani-gui is a graphical front-end for [pystardust/ani-cli](https://github.com/pys
 
 The CLI still exists. The GUI does not replace it; the two share the script and coexist in this repository. See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
-## What you get
+## Features
 
-- **Discovery landing page** — Trending, Popular This Season, Top Rated, and Recently Released rows, mixing AniList trending data with Kitsu metadata.
-- **Search** — full-text against Kitsu, with instant results as you type.
-- **Detail view per show** — synopsis, episode list with thumbnails, similar-titles strip.
-- **Embedded HLS / MP4 player** — built in, no separate `mpv` window required. Quality switching, native or custom controls.
-- **Subtitles** — rendered via `<track kind="subtitles">` from the same `.vtt` upstream provides.
-- **Skip OP / ED via aniskip** — community-submitted intervals; one-click button or fully automatic via a settings toggle.
-- **Picture-in-Picture across navigation** — keep watching while you browse the rest of the app.
-- **Background prefetch** — adjacent episodes warm in advance so episode-to-episode boundaries don't stutter.
-- **Downloads** — per-episode or ranged, with a progress dock at the bottom of the window. ffmpeg + aria2c are bundled where required.
-- **Persistent history** — shared with the CLI. The history file is `$XDG_STATE_HOME/ani-cli/ani-hsts`, the same path `ani-cli` writes to, so your progress survives a switch between the two.
-- **External-player escape hatch** — one click to launch your configured player (`mpv` by default; VLC / IINA / a custom command also supported) with the resolved stream URL.
-- **Localised UI** — English, Brazilian Portuguese, Latin American Spanish, Russian.
-- **No telemetry** — the app makes only the requests required to fetch metadata and stream chosen episodes. No phone-home, no analytics, no account.
+|  | |
+|---|---|
+| **Discovery** | Trending, This Season, Top Rated, Recently Released — AniList + Kitsu. |
+| **Search** | Full-text against Kitsu, instant as you type. |
+| **Detail page** | Synopsis, episodes with thumbnails, similar-titles strip. |
+| **Embedded player** | HLS / MP4, quality switch, native or custom controls — no `mpv` window. |
+| **Subtitles** | Upstream `.vtt` via `<track kind="subtitles">`. |
+| **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
+| **Picture-in-Picture** | Persists across navigation. |
+| **Background prefetch** | Adjacent episodes warm in advance. |
+| **Downloads** | Per-episode or ranged, progress dock. ffmpeg + aria2c bundled. |
+| **Shared history** | Reads/writes `$XDG_STATE_HOME/ani-cli/ani-hsts` — same file as the CLI. |
+| **External player** | One click to mpv / VLC / IINA / custom. |
+| **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
+| **No telemetry** | Only the requests required for metadata + the stream you picked. Localhost-only listener on a kernel-assigned port. |
 
 ## Install
 
@@ -64,19 +66,43 @@ A `.dmg` is produced by the same `electron-builder` config and should install vi
 
 </details>
 
-<details>
-<summary><strong>Build from source</strong> — any platform</summary>
+## Build from source
 
-See [`docs/development.md`](./docs/development.md). Short version: Rust toolchain, Node 24+, pnpm, then:
+Tested on Linux. Same steps on macOS / Windows modulo the system packages in step 3.
 
-```bash
-cd gui/frontend && pnpm install
-cd ../electron && pnpm install
-pnpm run package          # Linux AppImage + .deb
-pnpm run package:win      # Windows NSIS installer (cross-builds on Linux)
-```
+1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+2. **Install Node 20+ and pnpm**:
+   ```sh
+   nvm install 20 && nvm use 20
+   corepack enable && corepack prepare pnpm@latest --activate
+   ```
+3. **System build deps** (Linux):
+   ```sh
+   sudo apt install -y build-essential libssl-dev pkg-config
+   ```
+4. **Clone and install JS deps**:
+   ```sh
+   git clone https://github.com/JoaoPucci/ani-gui.git && cd ani-gui
+   (cd gui/frontend && pnpm install)
+   (cd gui/electron && pnpm install)
+   ```
+5. **Run the dev app** — three terminals:
+   ```sh
+   cd gui/frontend && pnpm dev                          # Vite (HMR) on :5173
+   cd gui/backend  && cargo build --bin ani-gui-backend # rebuild on each Rust change
+   cd gui/electron && pnpm dev                          # Electron shell + sidecar
+   ```
+6. **Build a distributable bundle**:
+   ```sh
+   cd gui/electron
+   pnpm package          # AppImage — fast iteration
+   pnpm package:release  # AppImage + .deb
+   ```
 
-</details>
+For Windows / macOS specifics, lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
 ## First run
 
@@ -116,29 +142,6 @@ Allmanga (the catalogue `ani-cli` scrapes) changes its API often, and upstream `
 ani-gui handles this for you: on every launch a background task runs `bash <cached-ani-cli> -U`, captures the outcome, and persists the last few attempts. The app itself isn't blocked by the update — startup proceeds normally; the script is patched in place by the next time you trigger a search or a play.
 
 The flow is gated by the **Auto-update ani-cli** setting (default ON). When it's off, the bundle just keeps using whatever script is in your cache, indefinitely. The latest update outcome is visible on the **/diagnostics** page.
-
-## Privacy
-
-ani-gui is a localhost daemon plus a renderer — there is no server-side component. The only outbound traffic the app makes:
-
-- Kitsu and AniList for metadata.
-- aniskip for OP/ED intervals.
-- The streaming providers `ani-cli` already talks to, plus their referer-required CDNs (proxied through the localhost binary so the renderer can `fetch()` past CORS).
-- Image hosts for poster / banner thumbnails.
-
-No telemetry, no analytics, no account, no remote control. The localhost listener binds to `127.0.0.1` only, on a kernel-assigned port that changes every launch.
-
-## Troubleshooting
-
-**"missing bash.exe (install Git for Windows)"** on first launch — install [Git for Windows](https://gitforwindows.org/) and relaunch. ani-gui locates `bash.exe` automatically once it's on PATH or in the standard install location.
-
-**"Download needs ffmpeg"** dialog — the installer normally fetches ffmpeg during setup (~80 MB). If your install was offline, re-run the installer with internet, or drop `ffmpeg.exe` into `<install dir>\resources\bin\` manually.
-
-**"Couldn't launch <player>"** when you click *Open in external* — the configured external player isn't on PATH. Open Settings and either pick a different player kind or browse to the binary's full path.
-
-**No results / playback fails right away** — the most common cause is upstream catalogue drift. The bundled scraper auto-updates on launch; if it's too soon after a fresh install, give it a minute and retry, or visit the **/diagnostics** page to see the last update attempt.
-
-**Stale "no episode N yet" on a currently-airing show** — availability is cached for 24 hours on ongoing shows. The cache self-invalidates the next time the worker runs; the diagnostics page shows the cached row's age.
 
 ## How it works
 
