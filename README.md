@@ -151,7 +151,7 @@ For the long version — diagrams, cache TTLs, the title-resolution bridge, the 
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`docs/development.md`](./docs/development.md). The repository carries one upstream patch (a single source-guard line in `ani-cli` for testability) and otherwise mirrors `pystardust/ani-cli` so script-side fixes flow in without conflict.
+See [`docs/development.md`](./docs/development.md). The repository carries one upstream patch (a single source-guard line in `ani-cli` for testability) and otherwise mirrors `pystardust/ani-cli` so script-side fixes flow in without conflict.
 
 ## Acknowledgements
 
