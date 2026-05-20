@@ -68,7 +68,7 @@ A `.dmg` is produced by the same `electron-builder` config and should install vi
 
 ## Build from source
 
-Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) are Linux-host-only. See [`docs/development.md`](./docs/development.md) for Windows / macOS packaging.
+Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) build per-host artifacts — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -107,11 +107,18 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows;
 7. **Build a distributable bundle**:
    ```sh
    cd gui/electron
-   pnpm package           # Linux AppImage — fast iteration
-   pnpm package:release   # Linux AppImage + .deb
-   ```
 
-For lints, git hooks, the bash test toolchain, and Windows / macOS packaging see [`docs/development.md`](./docs/development.md).
+   # Linux host
+   pnpm package           # .AppImage — fast iteration
+   pnpm package:release   # .AppImage + .deb
+
+   # Windows host (Git Bash / PowerShell, with Rust + Node + pnpm installed natively;
+   # `fetch:win-deps` needs `bsdtar`, which Git for Windows already ships)
+   pnpm package:win       # NSIS installer
+   ```
+   macOS `.dmg` is produced by CI on a `macos-*` runner — for local mac builds see [`docs/development.md`](./docs/development.md).
+
+For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
 ## First run
 
