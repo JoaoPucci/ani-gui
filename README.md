@@ -68,7 +68,7 @@ A `.dmg` is produced by the same `electron-builder` config and should install vi
 
 ## Build from source
 
-Tested on Linux. The dev loop (step 5) works the same on macOS and Windows; the packaging scripts (step 6) run on a Linux host and produce Linux and (via cross-build) Windows artifacts.
+Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) are Linux-host-only. See [`docs/development.md`](./docs/development.md) for Windows / macOS packaging.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -92,22 +92,26 @@ Tested on Linux. The dev loop (step 5) works the same on macOS and Windows; the 
    (cd gui/frontend && pnpm install)
    (cd gui/electron && pnpm install)
    ```
-5. **Run the dev app** — three terminals:
+5. **Build the backend binary** (required before the first run, and after every Rust change):
    ```sh
-   cd gui/frontend && pnpm dev                          # Vite (HMR) on :5173
-   cd gui/backend  && cargo build --bin ani-gui-backend # rebuild on each Rust change
-   cd gui/electron && pnpm dev                          # Electron shell + sidecar
+   cd gui/backend && cargo build --bin ani-gui-backend
    ```
-6. **Build a distributable bundle** (run on a Linux host):
+6. **Run the dev app** — two terminals, started in this order:
+   ```sh
+   # Terminal A — Vite dev server, HMR on :5173
+   cd gui/frontend && pnpm dev
+
+   # Terminal B — Electron shell, spawns the backend binary from step 5
+   cd gui/electron && pnpm dev
+   ```
+7. **Build a distributable bundle**:
    ```sh
    cd gui/electron
    pnpm package           # Linux AppImage — fast iteration
    pnpm package:release   # Linux AppImage + .deb
-   pnpm package:win       # Windows NSIS installer (cross-builds on Linux)
    ```
-   macOS `.dmg` is produced by CI on a `macos-*` runner — for local mac builds see [`docs/development.md`](./docs/development.md).
 
-For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
+For lints, git hooks, the bash test toolchain, and Windows / macOS packaging see [`docs/development.md`](./docs/development.md).
 
 ## First run
 
