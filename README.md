@@ -74,8 +74,10 @@ Tested on Linux. Same steps on macOS / Windows modulo the system packages in ste
    ```sh
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
-2. **Install Node 20+ and pnpm**:
+2. **Install Node 20+ and pnpm** (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+   # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
    nvm install 20 && nvm use 20
    corepack enable && corepack prepare pnpm@latest --activate
    ```
