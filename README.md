@@ -68,7 +68,7 @@ A `.dmg` is produced by the same `electron-builder` config and should install vi
 
 ## Build from source
 
-Tested on Linux. Same steps on macOS / Windows modulo the system packages in step 3.
+Tested on Linux. The dev loop (step 5) works the same on macOS and Windows; the packaging scripts (step 6) run on a Linux host and produce Linux and (via cross-build) Windows artifacts.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -97,14 +97,16 @@ Tested on Linux. Same steps on macOS / Windows modulo the system packages in ste
    cd gui/backend  && cargo build --bin ani-gui-backend # rebuild on each Rust change
    cd gui/electron && pnpm dev                          # Electron shell + sidecar
    ```
-6. **Build a distributable bundle**:
+6. **Build a distributable bundle** (run on a Linux host):
    ```sh
    cd gui/electron
-   pnpm package          # AppImage — fast iteration
-   pnpm package:release  # AppImage + .deb
+   pnpm package           # Linux AppImage — fast iteration
+   pnpm package:release   # Linux AppImage + .deb
+   pnpm package:win       # Windows NSIS installer (cross-builds on Linux)
    ```
+   macOS `.dmg` is produced by CI on a `macos-*` runner — for local mac builds see [`docs/development.md`](./docs/development.md).
 
-For Windows / macOS specifics, lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
+For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
 ## First run
 
