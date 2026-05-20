@@ -24,7 +24,7 @@ The CLI still exists. The GUI does not replace it; the two share the script and 
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Persists across navigation. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. ffmpeg + aria2c bundled. |
+| **Downloads** | Per-episode or ranged, progress dock. aria2c bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
 | **Shared history** | Reads/writes `$XDG_STATE_HOME/ani-cli/ani-hsts` — same file as the CLI. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
