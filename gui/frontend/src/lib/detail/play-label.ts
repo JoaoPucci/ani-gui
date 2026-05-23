@@ -12,32 +12,33 @@
  *   - Kitsu subtype `"movie"` always — a movie is one video by
  *     definition, regardless of episode_count or airing status.
  *   - Other subtypes (`OVA`, `special`, `ONA`, etc.) only when
- *     `episodeCount === 1` AND `status` is an explicit non-current
- *     value (`finished` / `upcoming` / `tba` / `unreleased`).
+ *     `episodeCount === 1` AND `status === "finished"`.
  *
- * The status check is an *allowlist* rather than `!= "current"`.
- * Kitsu can leave `status` null on titles with incomplete metadata;
- * treating null as "definitively non-current" would re-introduce
- * the false positive the guard is meant to avoid (an ongoing TV
- * series with one aired episode could mis-label as a single-video
- * work). Better to err toward the multi-episode default — "Play
- * episode 1" reads fine for any show — than to mislabel a TV show
- * as a movie.
+ * Only `finished` guarantees `episodeCount` is final. The other
+ * non-current values (`upcoming` / `tba` / `unreleased`) describe
+ * pre-airing states where Kitsu's count is an announcement, not a
+ * confirmed total — a future multi-episode OVA could be listed
+ * with just one announced episode today and mis-label as a single-
+ * video work. `current` has the same problem with an aired-so-far
+ * count. Movies bypass all of this via the first branch (`movie`
+ * is one video by definition, even before release).
+ *
+ * Failure mode of this strict rule: a not-yet-finished single-
+ * episode OVA reads as "Play episode 1" until Kitsu marks it
+ * finished. That's the right tradeoff — TV-style copy works on
+ * any show; "Watch" mislabels a TV show.
  *
  * Inputs are typed as `string | null | undefined` because Kitsu
  * fields commonly arrive as `Option<String>` from the backend and
  * flow into the frontend's `detail` view-model unchanged.
  */
-const NON_CURRENT_STATUSES = new Set(['finished', 'upcoming', 'tba', 'unreleased']);
-
 export function isSingleVideo(
 	subtype: string | null | undefined,
 	episodeCount: number | null | undefined,
 	status: string | null | undefined
 ): boolean {
 	if (subtype === 'movie') return true;
-	if (episodeCount === 1 && typeof status === 'string' && NON_CURRENT_STATUSES.has(status))
-		return true;
+	if (episodeCount === 1 && status === 'finished') return true;
 	return false;
 }
 

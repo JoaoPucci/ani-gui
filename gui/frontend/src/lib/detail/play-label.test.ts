@@ -24,13 +24,23 @@ describe('isSingleVideo', () => {
 		expect(isSingleVideo('movie', 1, 'current')).toBe(true);
 	});
 
-	it('returns true for OVA/special/ONA with episode_count==1 and a non-current status', () => {
+	it('returns true for OVA/special/ONA only when episode_count==1 AND status===finished', () => {
+		// Only `finished` guarantees Kitsu's episodeCount is final.
 		expect(isSingleVideo('OVA', 1, 'finished')).toBe(true);
 		expect(isSingleVideo('special', 1, 'finished')).toBe(true);
 		expect(isSingleVideo('ONA', 1, 'finished')).toBe(true);
-		expect(isSingleVideo('OVA', 1, 'upcoming')).toBe(true);
-		expect(isSingleVideo('special', 1, 'tba')).toBe(true);
-		expect(isSingleVideo('ONA', 1, 'unreleased')).toBe(true);
+	});
+
+	it('returns false for pre-airing single-episode OVA/special/ONA (count not final)', () => {
+		// upcoming / tba / unreleased describe pre-airing states where
+		// Kitsu's episodeCount is an announcement, not a confirmed
+		// total. A 12-episode OVA could be listed today with just one
+		// announced episode; mis-labeling it as a single-video work
+		// would be wrong. Better to default to multi-episode copy
+		// ("Play episode 1") until status flips to `finished`.
+		expect(isSingleVideo('OVA', 1, 'upcoming')).toBe(false);
+		expect(isSingleVideo('special', 1, 'tba')).toBe(false);
+		expect(isSingleVideo('ONA', 1, 'unreleased')).toBe(false);
 	});
 
 	it('returns false for an ongoing TV show that currently has one aired episode', () => {
@@ -64,23 +74,16 @@ describe('isSingleVideo', () => {
 		expect(isSingleVideo(undefined, undefined, undefined)).toBe(false);
 	});
 
-	it('returns false when episode_count==1 but status is missing', () => {
-		// Codex P2 (#18): treating null/undefined status as
-		// "definitively non-current" re-introduces the false positive
-		// the guard is meant to avoid — a TV show with incomplete
-		// Kitsu metadata (one aired episode, status omitted) would
-		// otherwise mis-label as a single-video work. The allowlist is
-		// explicit; unknown status falls through to multi-episode.
+	it('returns false when episode_count==1 but status is missing or unrecognized', () => {
+		// Only `finished` confirms the count is final. Null /
+		// undefined / arbitrary strings all fall through to the
+		// multi-episode default — better to read "Play episode 1" on
+		// a movie with missing metadata than to mis-label a TV show
+		// as a single-video work.
 		expect(isSingleVideo('OVA', 1, null)).toBe(false);
 		expect(isSingleVideo('special', 1, undefined)).toBe(false);
 		expect(isSingleVideo('ONA', 1, null)).toBe(false);
 		expect(isSingleVideo('TV', 1, null)).toBe(false);
-	});
-
-	it('returns false for unrecognized status values with episode_count==1', () => {
-		// Defensive: if Kitsu ever adds a new status enum value, fail
-		// closed (treat as ongoing) rather than open. Only the four
-		// documented non-current values trigger single-video.
 		expect(isSingleVideo('OVA', 1, 'something-new')).toBe(false);
 		expect(isSingleVideo('special', 1, '')).toBe(false);
 	});
