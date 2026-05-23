@@ -1376,7 +1376,7 @@ mod tests {
         // Verify the reverse mapping was persisted by reading the
         // cache row directly. The frontend will read this via the
         // GET /api/allmanga-kitsu-map/:show_id endpoint.
-        let key = "allmanga2kitsu:v1:vDTSJHSpYnrkZnAvG";
+        let key = "allmanga2kitsu:v2:vDTSJHSpYnrkZnAvG";
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
     }

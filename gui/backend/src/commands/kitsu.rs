@@ -358,8 +358,26 @@ pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str)
 /// the home-page Continue Watching strip can look up the right
 /// Kitsu entry by show_id instead of fuzzy-text-searching the
 /// possibly-typo'd allmanga title.
+///
+/// Schema versions:
+/// - v1: original — populated whenever `resolve_allmanga_show_id`
+///   landed on a Kitsu candidate. The resolver leans on the same
+///   alias-walk + title-match path as the picker, so its output
+///   tracked every picker-rule change without the cache key being
+///   aware of it. v1 rows stamped under the old multi-cour picker /
+///   pre-year-tie-break / pre-`type`/`status`/`episodeCount`
+///   disambiguation logic could resolve to the wrong Kitsu entry —
+///   visible on the home page as duplicated Continue Watching cards
+///   pointing at sibling shows.
+/// - v2: cosmetic version bump to invalidate every existing row on
+///   first launch after upgrade. The picker logic at the read site
+///   re-resolves on miss and writes a fresh row under v2, so all
+///   pre-fix mappings are replaced inside one cache TTL of normal
+///   use (or immediately the first time the user opens a card).
+const ALLMANGA_KITSU_VERSION: u32 = 2;
+
 fn allmanga_kitsu_key(show_id: &str) -> String {
-    format!("allmanga2kitsu:v1:{show_id}")
+    format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
 }
 
 /// Read the cached `allmanga show_id → kitsu_id` mapping. Returns
