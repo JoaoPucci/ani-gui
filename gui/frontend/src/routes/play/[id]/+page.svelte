@@ -66,6 +66,7 @@
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
+	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -647,6 +648,15 @@
 		scrubberDragging = false;
 		scrubberDragRect = null;
 		lastSeekAt = null;
+		// Release pointer-acquired focus on the scrubber so the
+		// fullscreen idle-hide can take over again. Without this, the
+		// `focus-within` keep-alive at `fullscreenControlsHidden`
+		// pins the bar visible indefinitely after a click — the
+		// user's original complaint. Keyboard navigation to the
+		// scrubber (Tab) doesn't fire pointerup, so screen-reader
+		// users keep the focus they need to seek.
+		const t = event.currentTarget;
+		if (t instanceof HTMLElement) t.blur();
 		// Defer clearing dragPreviewFraction until the video reports
 		// the seek complete (`seeked`). Also sync `currentTime` from
 		// the video in the same step — `timeupdate` lags `seeked`
@@ -1738,28 +1748,55 @@
 		downloadModalOpen = true;
 	}
 
-	// Keyboard shortcuts: `n` / `p` step episodes, `f` toggles
-	// fullscreen on the player frame. Arrow keys are left to the
-	// <video> element for seek control. Modifier presses (Ctrl/Cmd/
-	// Alt) are ignored so we don't shadow browser shortcuts like
-	// Ctrl+F (find).
+	// Page-level keyboard shortcuts. The custom controls render the
+	// <video> with `controls={false}` and it never carries focus,
+	// so the browser's built-in space/arrow defaults never fire —
+	// the page-level listener is the only path. Modifier presses
+	// (Ctrl/Cmd/Alt) are passed through so we don't shadow browser
+	// shortcuts (Ctrl+F find, Alt+ArrowLeft history-back), and
+	// Space is gated on focus so it doesn't steal activation from
+	// buttons. Decision logic lives in $lib/play/keyboard.ts for
+	// testability.
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
 			const inField =
-				t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-			if (inField) return;
-			if (e.ctrlKey || e.metaKey || e.altKey) return;
-			if (e.key === 'n' || e.key === 'N') {
-				e.preventDefault();
-				onNext();
-			} else if (e.key === 'p' || e.key === 'P') {
-				e.preventDefault();
-				onPrev();
-			} else if (e.key === 'f' || e.key === 'F') {
-				e.preventDefault();
-				toggleFullscreen();
+				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+			const inButton =
+				!!t &&
+				(t.tagName === 'BUTTON' ||
+					t.tagName === 'A' ||
+					t.tagName === 'SELECT' ||
+					t.getAttribute('role') === 'button');
+			const action = decidePlayerKeyAction({
+				key: e.key,
+				inField,
+				inButton,
+				modifier: e.ctrlKey || e.metaKey || e.altKey
+			});
+			if (!action) return;
+			// All player shortcuts swallow the default browser action:
+			//   Space → page scroll; arrows → page scroll; n/p/f → none.
+			e.preventDefault();
+			switch (action.kind) {
+				case 'togglePlay':
+					togglePlay();
+					break;
+				case 'seek':
+					if (videoEl && duration > 0) {
+						seekToFraction((videoEl.currentTime + action.deltaSeconds) / duration);
+					}
+					break;
+				case 'next':
+					onNext();
+					break;
+				case 'prev':
+					onPrev();
+					break;
+				case 'fullscreen':
+					toggleFullscreen();
+					break;
 			}
 		};
 		window.addEventListener('keydown', onKey);
@@ -2242,10 +2279,6 @@
 							onpointercancel={onScrubberPointerUp}
 							onmouseenter={() => (scrubberHover = true)}
 							onmouseleave={() => (scrubberHover = false)}
-							onkeydown={(e) => {
-								if (e.key === 'ArrowRight') seekToFraction((currentTime + 5) / duration);
-								else if (e.key === 'ArrowLeft') seekToFraction((currentTime - 5) / duration);
-							}}
 						>
 							<div class="pc-scrubber-track">
 								<div
