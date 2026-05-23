@@ -44,6 +44,7 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
+	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import type { DownloadArgs } from '$lib/api';
@@ -729,16 +730,35 @@
 		return next;
 	}
 
-	/** Label for the primary action button. Reads "Continue · Episode N"
-	 *  when defaultEpisode() points past episode 1, "Replay · Episode N"
-	 *  when we capped at the last episode, otherwise "Play episode 1". */
+	/** Label for the primary action button. Five-state machine
+	 *  resolved by `computePlayLabel`: single-video shows (movies,
+	 *  one-episode finished OVAs/specials) read "Watch" / "Watch
+	 *  again" with no episode number; multi-episode shows read
+	 *  "Play episode 1" / "Continue · Episode N" / "Replay ·
+	 *  Episode N" based on the resume entry and the capped
+	 *  defaultEpisode. */
 	const playLabel = $derived.by(() => {
-		const ep = defaultEpisode();
-		if (!resumeEntry) return m.detail_play_button_episode_one();
-		const last = parseInt(resumeEntry.ep_no, 10);
-		if (Number.isFinite(last) && ep === last)
-			return m.detail_play_button_replay({ episode: String(ep) });
-		return m.detail_play_button_resume({ episode: String(ep) });
+		const state = computePlayLabel({
+			isSingleVideo: isSingleVideo(
+				detail?.subtype ?? null,
+				detail?.episode_count ?? null,
+				detail?.status ?? null
+			),
+			resumeEntry,
+			defaultEpisode: defaultEpisode()
+		});
+		switch (state.kind) {
+			case 'watch':
+				return m.detail_play_button_watch();
+			case 'watch_again':
+				return m.detail_play_button_watch_again();
+			case 'episode_one':
+				return m.detail_play_button_episode_one();
+			case 'resume':
+				return m.detail_play_button_resume({ episode: String(state.episode) });
+			case 'replay':
+				return m.detail_play_button_replay({ episode: String(state.episode) });
+		}
 	});
 
 	async function startPlay(ep: number) {

@@ -16,6 +16,8 @@
 	"notify_no_title": "Nenhum título disponível para reprodução ainda.",
 	"play_button_episode_one": "Assistir episódio 1",
 	"play_button_replay": "Rever · Episódio {episode}",
+	"play_button_watch": "Assistir",
+	"play_button_watch_again": "Assistir de novo",
 	"error_load_headline": "Não foi possível carregar este título.",
 	"error_play_no_results": "Este título não está no catálogo de streaming. O allmanga não o indexa.",
 	"error_play_scraper": "Não foi possível resolver um stream agora. A fonte de streaming parece instável — tente de novo em alguns minutos.",

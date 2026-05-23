@@ -67,9 +67,9 @@ describe('isSingleVideo', () => {
 
 describe('computePlayLabel', () => {
 	it('returns watch when single-video and no resume entry', () => {
-		expect(
-			computePlayLabel({ isSingleVideo: true, resumeEntry: null, defaultEpisode: 1 })
-		).toEqual({ kind: 'watch' });
+		expect(computePlayLabel({ isSingleVideo: true, resumeEntry: null, defaultEpisode: 1 })).toEqual(
+			{ kind: 'watch' }
+		);
 	});
 
 	it('returns watch_again when single-video and a resume entry exists', () => {
