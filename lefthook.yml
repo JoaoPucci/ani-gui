@@ -41,12 +41,23 @@ pre-commit:
       root: "gui/backend/"
       run: cargo fmt --all -- --check
 
-    shellcheck:
-      # No root: shellcheck is invoked from the repo root with the file
-      # list, so the glob and the {staged_files} substitution both stay
-      # at repo-root scope.
-      glob: "{ani-cli,tests/bash/**/*.{sh,bats},tests/arch/*.sh,tools/*.sh}"
-      run: shellcheck {staged_files}
+    # Two shellcheck passes mirror .github/workflows/bash.yml so local
+    # runs disagree with CI as little as possible. The disable lists are
+    # documented there — same noise (unused globals, subshell-scoped
+    # exports) the bats / sourced-script pattern legitimately produces.
+    shellcheck-sh:
+      # ani-cli and the POSIX-sh helpers run under /bin/sh.
+      glob: "{ani-cli,tests/bash/helpers/**/*.sh,tests/arch/*.sh,tools/*.sh}"
+      run: shellcheck -s sh -o all -e 2250 -e SC2034 -e SC2086 -e SC2312 {staged_files}
+
+    shellcheck-bash:
+      # *.bats and *.bash helpers run under bash with the loader's globals.
+      glob: "tests/bash/**/*.{bats,bash}"
+      run: |
+        shellcheck -s bash \
+          -e SC2034 -e SC2086 -e SC2154 -e SC2317 \
+          -e SC2030 -e SC2031 -e SC2163 -e SC2181 -e SC2016 \
+          {staged_files}
 
 pre-push:
   parallel: true
