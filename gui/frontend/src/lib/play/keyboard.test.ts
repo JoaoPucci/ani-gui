@@ -5,7 +5,8 @@ const baseCtx: PlayerKeyContext = {
 	key: '',
 	inField: false,
 	inButton: false,
-	modifier: false
+	modifier: false,
+	repeat: false
 };
 
 describe('decidePlayerKeyAction', () => {
@@ -98,6 +99,35 @@ describe('decidePlayerKeyAction', () => {
 		});
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', inButton: true })).toEqual({
 			kind: 'fullscreen'
+		});
+	});
+
+	it('suppresses auto-repeat for toggle-style actions (Space / n / p / f)', () => {
+		// Codex P2 (PR #20 review): KeyboardEvent.keydown auto-repeats
+		// while the key is held. Without a `repeat` gate, holding
+		// Space would flip play/pause every few ms; holding `f`
+		// would toggle fullscreen continuously. Toggle-style actions
+		// must only fire on the initial press.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: ' ', repeat: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'Spacebar', repeat: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'n', repeat: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'p', repeat: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', repeat: true })).toBeNull();
+		// Capitals share the same suppression.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'F', repeat: true })).toBeNull();
+	});
+
+	it('still seeks on auto-repeat for arrow keys (continuous scrub)', () => {
+		// Holding `→` should scrub forward continuously, matching the
+		// YouTube shortcut habit. Seek is the only repeat-friendly
+		// action in the surface.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowRight', repeat: true })).toEqual({
+			kind: 'seek',
+			deltaSeconds: PLAYER_SEEK_STEP_SECONDS
+		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowLeft', repeat: true })).toEqual({
+			kind: 'seek',
+			deltaSeconds: -PLAYER_SEEK_STEP_SECONDS
 		});
 	});
 });

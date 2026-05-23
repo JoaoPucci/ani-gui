@@ -29,6 +29,11 @@
  *     activation key for those, so the player must not steal it.
  *     Arrow keys are safe to intercept here because buttons don't
  *     react to arrows by default.
+ *   - The `KeyboardEvent.repeat` auto-repeat firings for the
+ *     toggle-style actions (`Space`, `n`, `p`, `f`) — holding the
+ *     key would otherwise flicker the state every few ms. Arrow
+ *     seeks intentionally still fire on repeat so holding `→`
+ *     scrubs forward continuously, matching the YouTube habit.
  */
 
 export type PlayerKeyAction =
@@ -54,6 +59,12 @@ export interface PlayerKeyContext {
 	inButton: boolean;
 	/** True if any of Ctrl / Cmd / Alt is held. */
 	modifier: boolean;
+	/** `KeyboardEvent.repeat` — true once the OS starts auto-firing
+	 *  `keydown` while the key is held (typically after ~500 ms).
+	 *  Toggle-style actions ignore repeats so a long hold doesn't
+	 *  flicker the state; arrow seeks let repeats through for
+	 *  continuous scrubbing. */
+	repeat: boolean;
 }
 
 export function decidePlayerKeyAction(ctx: PlayerKeyContext): PlayerKeyAction | null {
@@ -65,19 +76,26 @@ export function decidePlayerKeyAction(ctx: PlayerKeyContext): PlayerKeyAction | 
 		case 'Spacebar':
 			// Don't shadow native button-activation Space.
 			if (ctx.inButton) return null;
+			// Auto-repeat would flicker play/pause on a long hold.
+			if (ctx.repeat) return null;
 			return { kind: 'togglePlay' };
 		case 'ArrowLeft':
+			// Repeated seeks while holding the arrow are useful
+			// (continuous scrub) — let them through.
 			return { kind: 'seek', deltaSeconds: -PLAYER_SEEK_STEP_SECONDS };
 		case 'ArrowRight':
 			return { kind: 'seek', deltaSeconds: PLAYER_SEEK_STEP_SECONDS };
 		case 'n':
 		case 'N':
+			if (ctx.repeat) return null;
 			return { kind: 'next' };
 		case 'p':
 		case 'P':
+			if (ctx.repeat) return null;
 			return { kind: 'prev' };
 		case 'f':
 		case 'F':
+			if (ctx.repeat) return null;
 			return { kind: 'fullscreen' };
 		default:
 			return null;

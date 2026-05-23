@@ -1773,7 +1773,8 @@
 				key: e.key,
 				inField,
 				inButton,
-				modifier: e.ctrlKey || e.metaKey || e.altKey
+				modifier: e.ctrlKey || e.metaKey || e.altKey,
+				repeat: e.repeat
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
