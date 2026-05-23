@@ -14,11 +14,18 @@ import { describePlayFailure } from './error-copy';
  *  Syncplay launch on `episode`. Same 4s duration as the external-
  *  player success toast — both events feel the same from the user's
  *  perspective ("the click did something, watch the next window
- *  open"). */
-export function syncplayLaunchSuccessToast(args: { episode: number }): PushArgs {
+ *  open"). For single-video shows the episode number drops out of
+ *  the message — "Started Syncplay." reads cleaner than "Started
+ *  Syncplay for episode 1." when there's only one episode. */
+export function syncplayLaunchSuccessToast(args: {
+	episode: number;
+	isSingleVideo?: boolean;
+}): PushArgs {
 	return {
 		kind: 'success',
-		message: m.play_syncplay_sent_toast({ episode: args.episode }),
+		message: args.isSingleVideo
+			? m.play_syncplay_sent_toast_single()
+			: m.play_syncplay_sent_toast({ episode: args.episode }),
 		duration: 4000
 	};
 }

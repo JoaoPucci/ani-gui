@@ -55,4 +55,14 @@ describe('externalLaunchSuccessToast', () => {
 		const toast = externalLaunchSuccessToast({ episode: 7, kind: 'custom' });
 		expect(toast.message).toContain('external player');
 	});
+
+	it('omits the episode number when isSingleVideo is true', () => {
+		// Movies and single-episode finished OVAs/specials shouldn't
+		// surface "episode 1" in the toast — the episode number is
+		// meaningless when there's only one video to open.
+		const toast = externalLaunchSuccessToast({ episode: 1, kind: 'mpv', isSingleVideo: true });
+		expect(toast.message).toContain('mpv');
+		expect(toast.message).not.toContain('1');
+		expect(toast.message).not.toMatch(/episode/i);
+	});
 });

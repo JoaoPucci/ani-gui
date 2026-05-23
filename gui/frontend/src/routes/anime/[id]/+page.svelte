@@ -1425,7 +1425,13 @@
 
 {#if playFailure}
 	<ErrorOverlay
-		headline={m.detail_error_play_headline({ episode: String(playFailure.episode) })}
+		headline={isSingleVideo(
+			detail?.subtype ?? null,
+			detail?.episode_count ?? null,
+			detail?.status ?? null
+		)
+			? m.detail_error_play_headline_single()
+			: m.detail_error_play_headline({ episode: String(playFailure.episode) })}
 		body={playFailure.message}
 		onDismiss={() => (playFailure = null)}
 	/>

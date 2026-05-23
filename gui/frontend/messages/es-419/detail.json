@@ -63,6 +63,7 @@
 	"similar_strip_eyebrow": "Títulos similares",
 	"similar_strip_caption": "vía búsqueda en Kitsu",
 	"error_play_headline": "No se pudo reproducir el episodio {episode}",
+	"error_play_headline_single": "No se pudo reproducir",
 	"play_button_play": "Reproducir",
 	"play_button_resume": "Continuar · Episodio {episode}",
 	"play_button_resolving": "Resolviendo…",

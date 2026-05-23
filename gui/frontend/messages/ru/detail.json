@@ -63,6 +63,7 @@
 	"similar_strip_eyebrow": "Похожие тайтлы",
 	"similar_strip_caption": "по поиску Kitsu",
 	"error_play_headline": "Не удалось включить эпизод {episode}",
+	"error_play_headline_single": "Не удалось воспроизвести",
 	"play_button_play": "Смотреть",
 	"play_button_resume": "Продолжить · Эпизод {episode}",
 	"play_button_resolving": "Получение потока…",

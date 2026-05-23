@@ -63,6 +63,7 @@
 	"similar_strip_eyebrow": "Similar titles",
 	"similar_strip_caption": "via Kitsu search",
 	"error_play_headline": "Couldn't play episode {episode}",
+	"error_play_headline_single": "Couldn't play this",
 	"play_button_play": "Play",
 	"play_button_resume": "Continue · Episode {episode}",
 	"play_button_resolving": "Resolving…",

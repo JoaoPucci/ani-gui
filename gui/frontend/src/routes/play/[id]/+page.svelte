@@ -101,6 +101,7 @@
 		isSyncplaySpawnFailure,
 		syncplayLaunchSuccessToast
 	} from '$lib/play/syncplay-toast';
+	import { isSingleVideo } from '$lib/detail/play-label';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { breadcrumb } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
@@ -128,6 +129,14 @@
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
 	let detail = $state<KitsuAnimeRef | null>(null);
+	// True when Kitsu marks this show as a one-video work (movie
+	// unconditionally, or OVA/special/ONA with a finished
+	// episode_count of 1). Drives the suppression of "Episode N"
+	// in the now-playing header, tab title, error headlines, and
+	// success toasts — see lib/detail/play-label.ts.
+	const singleVideo = $derived(
+		isSingleVideo(detail?.subtype ?? null, detail?.episode_count ?? null, detail?.status ?? null)
+	);
 	// Raw Kitsu data for the current page, before padding. Initial
 	// fetch can land BEFORE episodeCap (which depends on detail +
 	// availability) — using a derived `episodes` lets the strip
@@ -1632,7 +1641,8 @@
 			toastStore.push(
 				externalLaunchSuccessToast({
 					episode: episodeNum,
-					kind: config.external_player_kind
+					kind: config.external_player_kind,
+					isSingleVideo: singleVideo
 				})
 			);
 		} catch (e) {
@@ -1678,7 +1688,9 @@
 				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail)
 			});
-			toastStore.push(syncplayLaunchSuccessToast({ episode: episodeNum }));
+			toastStore.push(
+				syncplayLaunchSuccessToast({ episode: episodeNum, isSingleVideo: singleVideo })
+			);
 		} catch (e) {
 			// Same routing as onOpenExternal — ErrorOverlay modal so
 			// missing-binary failures can't be missed. Body shaped
@@ -1758,7 +1770,9 @@
 <svelte:head>
 	<title>
 		{detail
-			? `${m.play_head_title_episode_prefix({ episode: String(episodeNum) })}${currentEpisodeMeta?.canonical_title ? ` · ${currentEpisodeMeta.canonical_title}` : ''} · ${detail.canonical_title} · ani-gui`
+			? singleVideo
+				? `${currentEpisodeMeta?.canonical_title ? `${currentEpisodeMeta.canonical_title} · ` : ''}${detail.canonical_title} · ani-gui`
+				: `${m.play_head_title_episode_prefix({ episode: String(episodeNum) })}${currentEpisodeMeta?.canonical_title ? ` · ${currentEpisodeMeta.canonical_title}` : ''} · ${detail.canonical_title} · ani-gui`
 			: m.play_head_title_loading()}
 	</title>
 </svelte:head>
@@ -2285,14 +2299,29 @@
 						>{detail?.canonical_title ?? m.play_now_playing_show_loading()}</span
 					>
 					<span class="np-meta">
-						<span class="np-ep"
-							>{m.play_now_playing_episode_label({ episode: String(episodeNum) })}</span
-						>
-						{#if currentEpisodeMeta?.canonical_title}
-							<span class="np-em-dash" aria-hidden="true">—</span>
-							<span class="np-ep-title" title={currentEpisodeMeta.canonical_title}
-								>{currentEpisodeMeta.canonical_title}</span
+						{#if singleVideo}
+							<!-- Single-video shows (movies, finished one-ep
+							     OVAs/specials) skip the "Episode N" label —
+							     "Now watching" reads cleanly when there's no
+							     episode number to surface. The em-dash + ep
+							     title still appear when Kitsu has them. -->
+							{#if currentEpisodeMeta?.canonical_title}
+								<span class="np-ep-title" title={currentEpisodeMeta.canonical_title}
+									>{currentEpisodeMeta.canonical_title}</span
+								>
+							{:else}
+								<span class="np-ep">{m.play_now_playing_single_label()}</span>
+							{/if}
+						{:else}
+							<span class="np-ep"
+								>{m.play_now_playing_episode_label({ episode: String(episodeNum) })}</span
 							>
+							{#if currentEpisodeMeta?.canonical_title}
+								<span class="np-em-dash" aria-hidden="true">—</span>
+								<span class="np-ep-title" title={currentEpisodeMeta.canonical_title}
+									>{currentEpisodeMeta.canonical_title}</span
+								>
+							{/if}
 						{/if}
 					</span>
 				</span>
@@ -2734,7 +2763,9 @@
 
 {#if playFailure}
 	<ErrorOverlay
-		headline={m.play_error_play_headline({ episode: String(playFailure.episode) })}
+		headline={singleVideo
+			? m.play_error_play_headline_single()
+			: m.play_error_play_headline({ episode: String(playFailure.episode) })}
 		body={playFailure.message}
 		onDismiss={() => (playFailure = null)}
 	/>
@@ -2742,7 +2773,9 @@
 
 {#if externalError}
 	<ErrorOverlay
-		headline={m.play_error_external_headline({ episode: String(externalError.episode) })}
+		headline={singleVideo
+			? m.play_error_external_headline_single()
+			: m.play_error_external_headline({ episode: String(externalError.episode) })}
 		body={externalError.message}
 		onDismiss={() => (externalError = null)}
 	/>
@@ -2759,7 +2792,9 @@
 -->
 {#if syncplayError}
 	<ErrorOverlay
-		headline={m.play_error_syncplay_headline({ episode: String(syncplayError.episode) })}
+		headline={singleVideo
+			? m.play_error_syncplay_headline_single()
+			: m.play_error_syncplay_headline({ episode: String(syncplayError.episode) })}
 		body={syncplayError.message}
 		actionLabel={syncplayError.isSpawnFailure
 			? m.play_error_syncplay_get_action_label()
