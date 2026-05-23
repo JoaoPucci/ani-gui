@@ -44,6 +44,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import { isSingleVideo } from '$lib/detail/play-label';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -474,6 +475,11 @@
 			{@const image = epThumb ?? animePoster}
 			{@const resumable = match && target.kitsuEpisode !== null}
 			{@const isResuming = resumeBusy === match?.id}
+			{@const singleVideo = isSingleVideo(
+				match?.subtype ?? null,
+				match?.episode_count ?? null,
+				match?.status ?? null
+			)}
 			<!-- Card is a button when we can resume (Kitsu match + an
 			     episode to play); else falls through to /search as a
 			     plain link. The href on the search-fallback path is
@@ -498,16 +504,26 @@
 								{target.displayTitle.slice(0, 2).toUpperCase()}
 							</span>
 						{/if}
-						<span class="resume-ep-tag" aria-hidden="true">
-							<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-							<span class="resume-ep-num">{target.displayEpisode}</span>
-						</span>
+						{#if !singleVideo}
+							<!-- Suppress the "EP N" overlay for single-video
+							     shows (movies + finished 1-ep OVAs/specials);
+							     the poster IS the video, no episode number
+							     to surface. -->
+							<span class="resume-ep-tag" aria-hidden="true">
+								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+								<span class="resume-ep-num">{target.displayEpisode}</span>
+							</span>
+						{/if}
 					</span>
 					<span class="resume-body">
 						<span class="resume-show">{target.displayTitle}</span>
 						{#if ep?.canonical_title}
 							<span class="resume-title">{ep.canonical_title}</span>
-						{:else}
+						{:else if !singleVideo}
+							<!-- Single-video shows don't need an "Episode N"
+							     fallback subtitle — the show title above is
+							     enough, and the card is unambiguously a
+							     "continue this movie" affordance. -->
 							<span class="resume-title resume-title-faint"
 								>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
 							>
@@ -529,16 +545,26 @@
 								{target.displayTitle.slice(0, 2).toUpperCase()}
 							</span>
 						{/if}
-						<span class="resume-ep-tag" aria-hidden="true">
-							<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-							<span class="resume-ep-num">{target.displayEpisode}</span>
-						</span>
+						{#if !singleVideo}
+							<!-- Suppress the "EP N" overlay for single-video
+							     shows (movies + finished 1-ep OVAs/specials);
+							     the poster IS the video, no episode number
+							     to surface. -->
+							<span class="resume-ep-tag" aria-hidden="true">
+								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+								<span class="resume-ep-num">{target.displayEpisode}</span>
+							</span>
+						{/if}
 					</span>
 					<span class="resume-body">
 						<span class="resume-show">{target.displayTitle}</span>
 						{#if ep?.canonical_title}
 							<span class="resume-title">{ep.canonical_title}</span>
-						{:else}
+						{:else if !singleVideo}
+							<!-- Single-video shows don't need an "Episode N"
+							     fallback subtitle — the show title above is
+							     enough, and the card is unambiguously a
+							     "continue this movie" affordance. -->
 							<span class="resume-title resume-title-faint"
 								>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
 							>

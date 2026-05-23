@@ -34,17 +34,22 @@ export function playerKindLabel(kind: ExternalPlayerKind): string {
 /** Build the `PushArgs` for the success toast that announces an
  *  external player launched on `episode`. Mirrors the 4s duration
  *  of the legacy inline banner so the surface migrates without
- *  changing how long the message sits on screen. */
+ *  changing how long the message sits on screen. For single-video
+ *  shows (movies, single-episode finished OVAs/specials) the
+ *  episode number is omitted — "Opened in mpv." reads better than
+ *  "Opened episode 1 in mpv." when there's only one episode to
+ *  open. */
 export function externalLaunchSuccessToast(args: {
 	episode: number;
 	kind: ExternalPlayerKind;
+	isSingleVideo?: boolean;
 }): PushArgs {
+	const player = playerKindLabel(args.kind);
 	return {
 		kind: 'success',
-		message: m.play_external_sent_toast({
-			episode: args.episode,
-			player: playerKindLabel(args.kind)
-		}),
+		message: args.isSingleVideo
+			? m.play_external_sent_toast_single({ player })
+			: m.play_external_sent_toast({ episode: args.episode, player }),
 		duration: 4000
 	};
 }

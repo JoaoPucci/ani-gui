@@ -27,6 +27,15 @@ describe('syncplayLaunchSuccessToast', () => {
 		const toast = syncplayLaunchSuccessToast({ episode: 12 });
 		expect(toast.message).toContain('12');
 	});
+
+	it('omits the episode number when isSingleVideo is true', () => {
+		// For movies and single-episode finished OVAs/specials, the
+		// episode number is meaningless — drop it from the toast.
+		const toast = syncplayLaunchSuccessToast({ episode: 1, isSingleVideo: true });
+		expect(toast.message).toContain('Syncplay');
+		expect(toast.message).not.toContain('1');
+		expect(toast.message).not.toMatch(/episode/i);
+	});
 });
 
 describe('describeSyncplayLaunchFailure', () => {
