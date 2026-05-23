@@ -57,6 +57,15 @@
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
 
+	// True when Kitsu marks this show as a one-video work — used by
+	// the CTA derivation (`playLabel`), the play-failure error
+	// headline, AND the structural hide of the Episodes section
+	// below (a movie's "Episodes" strip would show a single tile,
+	// which is pure noise). See lib/detail/play-label.ts.
+	const singleVideo = $derived(
+		isSingleVideo(detail?.subtype ?? null, detail?.episode_count ?? null, detail?.status ?? null)
+	);
+
 	// Availability probe — runs once after detail loads. null = not
 	// yet checked / network error (lazy fallback handles the click);
 	// true = allmanga has at least one candidate; false = the show
@@ -739,11 +748,7 @@
 	 *  defaultEpisode. */
 	const playLabel = $derived.by(() => {
 		const state = computePlayLabel({
-			isSingleVideo: isSingleVideo(
-				detail?.subtype ?? null,
-				detail?.episode_count ?? null,
-				detail?.status ?? null
-			),
+			isSingleVideo: singleVideo,
 			resumeEntry,
 			defaultEpisode: defaultEpisode()
 		});
@@ -1142,88 +1147,140 @@
 					{/if}
 				</div>
 
-				<div class="body-col body-col-episodes">
-					<!-- Episodes toolbar — same layout as /play/[id] for cross-
+				{#if !singleVideo}
+					<!-- Single-video shows (movies, finished one-ep
+					     OVAs/specials) collapse to "the show IS the video":
+					     a one-tile Episodes section adds zero information
+					     and just stretches the page. Hide the entire block;
+					     the play CTA above already says "Watch". -->
+					<div class="body-col body-col-episodes">
+						<!-- Episodes toolbar — same layout as /play/[id] for cross-
 					     page consistency: heading + range on the left, jump
 					     pill + prev/next chevrons on the right. The
 					     editorial scrubber experiment was removed in favour
 					     of this simpler shape; both pages now read the
 					     same. -->
-					<div class="ep-toolbar">
-						<div class="ep-toolbar-left">
-							<h2 class="ep-section-heading">{m.detail_episodes_heading()}</h2>
-							<span class="ep-range">
-								{#if episodes && episodes.length > 0 && detail.episode_count}
-									{#if knownAvailableEpisodes !== null && knownAvailableEpisodes < detail.episode_count}
-										<!-- Currently-airing shows: phrase the gap as
+						<div class="ep-toolbar">
+							<div class="ep-toolbar-left">
+								<h2 class="ep-section-heading">{m.detail_episodes_heading()}</h2>
+								<span class="ep-range">
+									{#if episodes && episodes.length > 0 && detail.episode_count}
+										{#if knownAvailableEpisodes !== null && knownAvailableEpisodes < detail.episode_count}
+											<!-- Currently-airing shows: phrase the gap as
 										     "{N} aired so far · {M} expected" so the count is
 										     read as a release-progress indicator. Other gaps
 										     (Kitsu missing data on a finished show) read as
 										     "{N} of {M} listed". -->
-										{#if detail.status === 'current'}
-											{m.detail_episodes_range_aired_so_far({
-												count: String(knownAvailableEpisodes)
-											})}
-											<span class="ep-range-faint"
-												>{m.detail_episodes_range_expected_suffix({
-													count: String(detail.episode_count)
-												})}</span
-											>
-										{:else if detail.status === 'upcoming'}
-											{m.detail_episodes_range_aired({ count: String(knownAvailableEpisodes) })}
-											<span class="ep-range-faint"
-												>{m.detail_episodes_range_announced_suffix({
-													count: String(detail.episode_count)
-												})}</span
-											>
-										{:else}
-											{m.detail_episodes_range_of({
-												aired: String(knownAvailableEpisodes),
+											{#if detail.status === 'current'}
+												{m.detail_episodes_range_aired_so_far({
+													count: String(knownAvailableEpisodes)
+												})}
+												<span class="ep-range-faint"
+													>{m.detail_episodes_range_expected_suffix({
+														count: String(detail.episode_count)
+													})}</span
+												>
+											{:else if detail.status === 'upcoming'}
+												{m.detail_episodes_range_aired({ count: String(knownAvailableEpisodes) })}
+												<span class="ep-range-faint"
+													>{m.detail_episodes_range_announced_suffix({
+														count: String(detail.episode_count)
+													})}</span
+												>
+											{:else}
+												{m.detail_episodes_range_of({
+													aired: String(knownAvailableEpisodes),
+													total: String(detail.episode_count)
+												})}
+												<span class="ep-range-faint">{m.detail_episodes_range_listed_suffix()}</span
+												>
+											{/if}
+										{:else if totalEpisodePages !== null && totalEpisodePages > 1}
+											{m.detail_episodes_range_pagination({
+												epStart: String(epStart),
+												epEnd: String(epEnd),
 												total: String(detail.episode_count)
 											})}
-											<span class="ep-range-faint">{m.detail_episodes_range_listed_suffix()}</span>
+										{:else}
+											{m.detail_episodes_range_all({ count: String(detail.episode_count) })}
 										{/if}
-									{:else if totalEpisodePages !== null && totalEpisodePages > 1}
-										{m.detail_episodes_range_pagination({
-											epStart: String(epStart),
-											epEnd: String(epEnd),
-											total: String(detail.episode_count)
-										})}
+									{:else if episodes && episodes.length > 0}
+										{m.detail_episodes_range_page({ page: String(episodesPage) })}
+									{:else if episodesError}
+										{m.detail_episodes_range_unavailable()}
 									{:else}
-										{m.detail_episodes_range_all({ count: String(detail.episode_count) })}
+										{m.detail_episodes_range_loading()}
 									{/if}
-								{:else if episodes && episodes.length > 0}
-									{m.detail_episodes_range_page({ page: String(episodesPage) })}
-								{:else if episodesError}
-									{m.detail_episodes_range_unavailable()}
-								{:else}
-									{m.detail_episodes_range_loading()}
-								{/if}
-							</span>
-						</div>
+								</span>
+							</div>
 
-						{#if (totalEpisodePages !== null && totalEpisodePages > 1) || (episodes && episodes.length === UI_PAGE_SIZE)}
-							<div class="ep-toolbar-right">
-								<form class="ep-jump" onsubmit={jumpToEpisode}>
-									<span class="ep-jump-key" aria-hidden="true"
-										>{m.detail_episodes_jump_label()}</span
+							{#if (totalEpisodePages !== null && totalEpisodePages > 1) || (episodes && episodes.length === UI_PAGE_SIZE)}
+								<div class="ep-toolbar-right">
+									<form class="ep-jump" onsubmit={jumpToEpisode}>
+										<span class="ep-jump-key" aria-hidden="true"
+											>{m.detail_episodes_jump_label()}</span
+										>
+										<span class="ep-jump-pill">
+											<input
+												class="jump-input"
+												type="number"
+												min="1"
+												max={detail.episode_count ?? 9999}
+												step="1"
+												placeholder={m.detail_episodes_jump_placeholder()}
+												aria-label={m.detail_episodes_jump_placeholder()}
+												bind:value={jumpInput}
+											/>
+											<button
+												type="submit"
+												class="ep-jump-go"
+												disabled={!jumpInput || episodesLoading}
+												aria-label={m.detail_episodes_jump_submit_aria_label()}
+											>
+												<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+													<path
+														d="M9 5l7 7-7 7"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2.5"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											</button>
+										</span>
+									</form>
+									<div
+										class="ep-pager-mini"
+										role="group"
+										aria-label={m.detail_episodes_pager_aria_label()}
 									>
-									<span class="ep-jump-pill">
-										<input
-											class="jump-input"
-											type="number"
-											min="1"
-											max={detail.episode_count ?? 9999}
-											step="1"
-											placeholder={m.detail_episodes_jump_placeholder()}
-											aria-label={m.detail_episodes_jump_placeholder()}
-											bind:value={jumpInput}
-										/>
 										<button
-											type="submit"
-											class="ep-jump-go"
-											disabled={!jumpInput || episodesLoading}
-											aria-label={m.detail_episodes_jump_submit_aria_label()}
+											type="button"
+											class="ep-pager-mini-btn"
+											onclick={() => gotoPage(episodesPage - 1)}
+											disabled={episodesPage <= 1 || episodesLoading}
+											aria-label={m.detail_episodes_pager_previous_aria_label()}
+										>
+											<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+												<path
+													d="M15 5l-7 7 7 7"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.5"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+												/>
+											</svg>
+										</button>
+										<button
+											type="button"
+											class="ep-pager-mini-btn"
+											onclick={() => gotoPage(episodesPage + 1)}
+											disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
+												episodesLoading ||
+												(episodes !== null && episodes.length < UI_PAGE_SIZE)}
+											aria-label={m.detail_episodes_pager_next_aria_label()}
 										>
 											<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
 												<path
@@ -1236,56 +1293,11 @@
 												/>
 											</svg>
 										</button>
-									</span>
-								</form>
-								<div
-									class="ep-pager-mini"
-									role="group"
-									aria-label={m.detail_episodes_pager_aria_label()}
-								>
-									<button
-										type="button"
-										class="ep-pager-mini-btn"
-										onclick={() => gotoPage(episodesPage - 1)}
-										disabled={episodesPage <= 1 || episodesLoading}
-										aria-label={m.detail_episodes_pager_previous_aria_label()}
-									>
-										<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-											<path
-												d="M15 5l-7 7 7 7"
-												fill="none"
-												stroke="currentColor"
-												stroke-width="2.5"
-												stroke-linecap="round"
-												stroke-linejoin="round"
-											/>
-										</svg>
-									</button>
-									<button
-										type="button"
-										class="ep-pager-mini-btn"
-										onclick={() => gotoPage(episodesPage + 1)}
-										disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
-											episodesLoading ||
-											(episodes !== null && episodes.length < UI_PAGE_SIZE)}
-										aria-label={m.detail_episodes_pager_next_aria_label()}
-									>
-										<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-											<path
-												d="M9 5l7 7-7 7"
-												fill="none"
-												stroke="currentColor"
-												stroke-width="2.5"
-												stroke-linecap="round"
-												stroke-linejoin="round"
-											/>
-										</svg>
-									</button>
+									</div>
 								</div>
-							</div>
-						{/if}
-					</div>
-					<!--
+							{/if}
+						</div>
+						<!--
 				  No {#key episodesPage} wrapping the <ul>: that destroyed
 				  the parent on every page change, taking the children with
 				  it before their out: transitions could run, which is why
@@ -1295,111 +1307,114 @@
 				  in:settle, with a stagger via per-index delay so episodes
 				  land left-to-right, top-to-bottom.
 				-->
-					<ul class="ep-grid">
-						{#if episodes === null}
-							<!-- Skeleton while fetch is in flight -->
-							{#each Array.from({ length: 6 }, (_, k) => k) as i (i)}
-								<li>
-									<div class="ep-tile ep-tile-skel" aria-hidden="true">
-										<div class="ep-thumb ep-thumb-skel"></div>
-										<div class="ep-foot-skel"></div>
-									</div>
-								</li>
-							{/each}
-						{:else if episodes.length > 0}
-							<!-- Real Kitsu data path; per-tile staggered enter for a
+						<ul class="ep-grid">
+							{#if episodes === null}
+								<!-- Skeleton while fetch is in flight -->
+								{#each Array.from({ length: 6 }, (_, k) => k) as i (i)}
+									<li>
+										<div class="ep-tile ep-tile-skel" aria-hidden="true">
+											<div class="ep-thumb ep-thumb-skel"></div>
+											<div class="ep-foot-skel"></div>
+										</div>
+									</li>
+								{/each}
+							{:else if episodes.length > 0}
+								<!-- Real Kitsu data path; per-tile staggered enter for a
 						     premium feel — tiles flow in left-to-right, top-to-bottom. -->
-							{#each episodes as ep, i (ep.id)}
-								{@const thumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
-								{@const num = ep.number ?? ep.relative_number ?? null}
-								<li
-									class:ep-highlight={num !== null && num === highlightEp}
-									data-ep-num={num ?? ''}
-									in:settle={{ duration: 620, delay: i * 45 }}
-									out:settleOut={{ duration: 320, delay: i * 18 }}
-								>
-									<button
-										type="button"
-										class="ep-tile"
-										class:ep-tile-disabled={availability === false}
-										aria-disabled={availability === false}
-										title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-										onclick={() => onPickEpisode(num ?? 0)}
+								{#each episodes as ep, i (ep.id)}
+									{@const thumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
+									{@const num = ep.number ?? ep.relative_number ?? null}
+									<li
+										class:ep-highlight={num !== null && num === highlightEp}
+										data-ep-num={num ?? ''}
+										in:settle={{ duration: 620, delay: i * 45 }}
+										out:settleOut={{ duration: 320, delay: i * 18 }}
 									>
-										<span class="ep-thumb">
-											{#if thumb}
-												<img src={thumb} alt="" loading="lazy" decoding="async" />
-											{:else}
-												<span class="ep-thumb-placeholder" aria-hidden="true">
-													{num ? num.toString().padStart(2, '0') : '·'}
+										<button
+											type="button"
+											class="ep-tile"
+											class:ep-tile-disabled={availability === false}
+											aria-disabled={availability === false}
+											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
+											onclick={() => onPickEpisode(num ?? 0)}
+										>
+											<span class="ep-thumb">
+												{#if thumb}
+													<img src={thumb} alt="" loading="lazy" decoding="async" />
+												{:else}
+													<span class="ep-thumb-placeholder" aria-hidden="true">
+														{num ? num.toString().padStart(2, '0') : '·'}
+													</span>
+												{/if}
+												<span class="ep-frame-num" aria-hidden="true">
+													<span class="ep-frame-num-key">{m.detail_episode_frame_num_key()}</span>
+													<span class="ep-frame-num-val">{num ?? '?'}</span>
 												</span>
-											{/if}
-											<span class="ep-frame-num" aria-hidden="true">
-												<span class="ep-frame-num-key">{m.detail_episode_frame_num_key()}</span>
-												<span class="ep-frame-num-val">{num ?? '?'}</span>
 											</span>
-										</span>
-										<span class="ep-foot">
-											<span class="ep-title">
-												{ep.canonical_title ??
-													m.detail_episode_title_fallback({ num: String(num ?? '') })}
+											<span class="ep-foot">
+												<span class="ep-title">
+													{ep.canonical_title ??
+														m.detail_episode_title_fallback({ num: String(num ?? '') })}
+												</span>
+												<span class="ep-meta">
+													{#if ep.length}<span
+															>{m.detail_episode_length_suffix({
+																minutes: String(ep.length)
+															})}</span
+														>{/if}
+												</span>
 											</span>
-											<span class="ep-meta">
-												{#if ep.length}<span
-														>{m.detail_episode_length_suffix({ minutes: String(ep.length) })}</span
-													>{/if}
-											</span>
-										</span>
-									</button>
-								</li>
-							{/each}
-						{:else if showEpPlaceholders}
-							<!-- Fallback: Kitsu didn't have episode data, but episode_count
+										</button>
+									</li>
+								{/each}
+							{:else if showEpPlaceholders}
+								<!-- Fallback: Kitsu didn't have episode data, but episode_count
 						     gives us a usable count. Render numbered placeholder tiles
 						     so the user isn't blocked from poking the panel. -->
-							{#each Array.from({ length: epPlaceholderCount }, (_, k) => k + 1) as n, i (n)}
-								<li
-									class:ep-highlight={n === highlightEp}
-									data-ep-num={n}
-									in:settle={{ duration: 580, delay: i * 40 }}
-									out:settleOut={{ duration: 300, delay: i * 16 }}
-								>
-									<button
-										type="button"
-										class="ep-tile"
-										class:ep-tile-disabled={availability === false}
-										aria-disabled={availability === false}
-										title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-										onclick={() => onPickEpisode(n)}
+								{#each Array.from({ length: epPlaceholderCount }, (_, k) => k + 1) as n, i (n)}
+									<li
+										class:ep-highlight={n === highlightEp}
+										data-ep-num={n}
+										in:settle={{ duration: 580, delay: i * 40 }}
+										out:settleOut={{ duration: 300, delay: i * 16 }}
 									>
-										<span class="ep-thumb">
-											<span class="ep-thumb-placeholder" aria-hidden="true">
-												{n.toString().padStart(2, '0')}
+										<button
+											type="button"
+											class="ep-tile"
+											class:ep-tile-disabled={availability === false}
+											aria-disabled={availability === false}
+											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
+											onclick={() => onPickEpisode(n)}
+										>
+											<span class="ep-thumb">
+												<span class="ep-thumb-placeholder" aria-hidden="true">
+													{n.toString().padStart(2, '0')}
+												</span>
+												<span class="ep-tag" aria-hidden="true">
+													<span class="ep-tag-key">{m.detail_episode_frame_num_key()}</span>
+													<span class="ep-tag-num">{n}</span>
+												</span>
 											</span>
-											<span class="ep-tag" aria-hidden="true">
-												<span class="ep-tag-key">{m.detail_episode_frame_num_key()}</span>
-												<span class="ep-tag-num">{n}</span>
+											<span class="ep-foot">
+												<span class="ep-title"
+													>{m.detail_episode_placeholder_title({ num: String(n) })}</span
+												>
+												<span class="ep-meta">{m.detail_episode_placeholder_meta()}</span>
 											</span>
-										</span>
-										<span class="ep-foot">
-											<span class="ep-title"
-												>{m.detail_episode_placeholder_title({ num: String(n) })}</span
-											>
-											<span class="ep-meta">{m.detail_episode_placeholder_meta()}</span>
-										</span>
-									</button>
-								</li>
-							{/each}
+										</button>
+									</li>
+								{/each}
+							{/if}
+						</ul>
+						{#if episodesError}
+							<p class="ep-grid-foot ep-grid-foot-warn">
+								{m.detail_episodes_error_message()}
+							</p>
+						{:else if episodes && episodes.length > 0}
+							<p class="ep-grid-foot">{m.detail_episodes_source_credit()}</p>
 						{/if}
-					</ul>
-					{#if episodesError}
-						<p class="ep-grid-foot ep-grid-foot-warn">
-							{m.detail_episodes_error_message()}
-						</p>
-					{:else if episodes && episodes.length > 0}
-						<p class="ep-grid-foot">{m.detail_episodes_source_credit()}</p>
-					{/if}
-				</div>
+					</div>
+				{/if}
 			</section>
 
 			<!-- Similar titles strip — placeholder for AniList recommendations.
@@ -1425,11 +1440,7 @@
 
 {#if playFailure}
 	<ErrorOverlay
-		headline={isSingleVideo(
-			detail?.subtype ?? null,
-			detail?.episode_count ?? null,
-			detail?.status ?? null
-		)
+		headline={singleVideo
 			? m.detail_error_play_headline_single()
 			: m.detail_error_play_headline({ episode: String(playFailure.episode) })}
 		body={playFailure.message}

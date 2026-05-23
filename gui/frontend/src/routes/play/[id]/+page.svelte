@@ -2328,52 +2328,71 @@
 			</a>
 
 			<div class="np-actions">
-				<div class="ep-nav" role="group" aria-label={m.play_episode_nav_aria_label()}>
-					<button
-						type="button"
-						class="ep-btn"
-						onclick={onPrev}
-						disabled={!hasPrev || switchBusy}
-						aria-label={m.play_episode_nav_previous_aria_label()}
-					>
-						<svg class="ep-btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							<path
-								d="M15 5l-7 7 7 7"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.25"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
-						<span>{m.play_episode_nav_prev_label({ episode: String(episodeNum - 1) })}</span>
-					</button>
-					<button type="button" class="ep-btn ep-current-btn" disabled aria-current="true">
-						<span>{m.play_episode_nav_current_label({ episode: String(episodeNum) })}</span>
-						<span class="bars" aria-hidden="true">
-							<span></span><span></span><span></span>
-						</span>
-					</button>
-					<button
-						type="button"
-						class="ep-btn"
-						onclick={onNext}
-						disabled={!hasNext || switchBusy}
-						aria-label={m.play_episode_nav_next_aria_label()}
-					>
-						<span>{m.play_episode_nav_next_label({ episode: String(episodeNum + 1) })}</span>
-						<svg class="ep-btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							<path
-								d="M9 5l7 7-7 7"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.25"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
-					</button>
-				</div>
+				{#if !singleVideo}
+					<!-- Prev / current / next episode jump controls. For
+				     single-video shows (movies, finished one-ep
+				     OVAs/specials) there are no neighbouring episodes,
+				     so the whole nav cluster collapses out — the
+				     player and its controls remain. -->
+					<div class="ep-nav" role="group" aria-label={m.play_episode_nav_aria_label()}>
+						<button
+							type="button"
+							class="ep-btn"
+							onclick={onPrev}
+							disabled={!hasPrev || switchBusy}
+							aria-label={m.play_episode_nav_previous_aria_label()}
+						>
+							<svg
+								class="ep-btn-icon"
+								viewBox="0 0 24 24"
+								width="18"
+								height="18"
+								aria-hidden="true"
+							>
+								<path
+									d="M15 5l-7 7 7 7"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.25"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+							</svg>
+							<span>{m.play_episode_nav_prev_label({ episode: String(episodeNum - 1) })}</span>
+						</button>
+						<button type="button" class="ep-btn ep-current-btn" disabled aria-current="true">
+							<span>{m.play_episode_nav_current_label({ episode: String(episodeNum) })}</span>
+							<span class="bars" aria-hidden="true">
+								<span></span><span></span><span></span>
+							</span>
+						</button>
+						<button
+							type="button"
+							class="ep-btn"
+							onclick={onNext}
+							disabled={!hasNext || switchBusy}
+							aria-label={m.play_episode_nav_next_aria_label()}
+						>
+							<span>{m.play_episode_nav_next_label({ episode: String(episodeNum + 1) })}</span>
+							<svg
+								class="ep-btn-icon"
+								viewBox="0 0 24 24"
+								width="18"
+								height="18"
+								aria-hidden="true"
+							>
+								<path
+									d="M9 5l7 7-7 7"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.25"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+							</svg>
+						</button>
+					</div>
+				{/if}
 
 				<button
 					type="button"
@@ -2562,57 +2581,104 @@
 
 		<!-- Episodes carousel — already a horizontal-scroll strip. Drives
 		     the same paginated data model as the detail page (toolbar
-		     above for jump/seek; cards below). -->
-		<section class="ep-section" aria-label={m.play_episodes_section_aria_label()}>
-			<!-- Single compact toolbar: heading + range on the left, jump
+		     above for jump/seek; cards below). Single-video shows skip
+		     this entirely: a movie's one-tile strip is pure padding. -->
+		{#if !singleVideo}
+			<section class="ep-section" aria-label={m.play_episodes_section_aria_label()}>
+				<!-- Single compact toolbar: heading + range on the left, jump
 			     pill + prev/next chevrons on the right. No scrubber here
 			     (the /play page should stay compact under the player —
 			     scrubber lives on the detail page where the user is
 			     browsing). -->
-			<div class="ep-toolbar">
-				<div class="ep-toolbar-left">
-					<h2 class="ep-section-heading">{m.play_episodes_section_heading()}</h2>
-					<span class="ep-range">
-						{#if episodes && episodes.length > 0 && detail?.episode_count}
-							{#if totalEpisodePages !== null && totalEpisodePages > 1}
-								{m.play_episodes_range_pagination({
-									epStart: String(epStart),
-									epEnd: String(epEnd),
-									total: String(detail.episode_count)
-								})}
+				<div class="ep-toolbar">
+					<div class="ep-toolbar-left">
+						<h2 class="ep-section-heading">{m.play_episodes_section_heading()}</h2>
+						<span class="ep-range">
+							{#if episodes && episodes.length > 0 && detail?.episode_count}
+								{#if totalEpisodePages !== null && totalEpisodePages > 1}
+									{m.play_episodes_range_pagination({
+										epStart: String(epStart),
+										epEnd: String(epEnd),
+										total: String(detail.episode_count)
+									})}
+								{:else}
+									{m.play_episodes_range_all({ count: String(detail.episode_count) })}
+								{/if}
+							{:else if episodes && episodes.length > 0}
+								{m.play_episodes_range_page({ page: String(episodesPage) })}
+							{:else if episodesError}
+								{m.play_episodes_range_unavailable()}
 							{:else}
-								{m.play_episodes_range_all({ count: String(detail.episode_count) })}
+								{m.play_episodes_range_loading()}
 							{/if}
-						{:else if episodes && episodes.length > 0}
-							{m.play_episodes_range_page({ page: String(episodesPage) })}
-						{:else if episodesError}
-							{m.play_episodes_range_unavailable()}
-						{:else}
-							{m.play_episodes_range_loading()}
-						{/if}
-					</span>
-				</div>
+						</span>
+					</div>
 
-				{#if totalEpisodePages !== null ? totalEpisodePages > 1 : (episodes?.length ?? 0) >= UI_PAGE_SIZE}
-					<div class="ep-toolbar-right">
-						<form class="ep-jump" onsubmit={jumpToEpisode}>
-							<span class="ep-jump-key" aria-hidden="true">{m.play_episodes_jump_label()}</span>
-							<span class="ep-jump-pill">
-								<input
-									class="jump-input"
-									type="number"
-									min="1"
-									max={detail?.episode_count ?? 9999}
-									step="1"
-									placeholder={m.play_episodes_jump_placeholder()}
-									aria-label={m.play_episodes_jump_placeholder()}
-									bind:value={jumpInput}
-								/>
+					{#if totalEpisodePages !== null ? totalEpisodePages > 1 : (episodes?.length ?? 0) >= UI_PAGE_SIZE}
+						<div class="ep-toolbar-right">
+							<form class="ep-jump" onsubmit={jumpToEpisode}>
+								<span class="ep-jump-key" aria-hidden="true">{m.play_episodes_jump_label()}</span>
+								<span class="ep-jump-pill">
+									<input
+										class="jump-input"
+										type="number"
+										min="1"
+										max={detail?.episode_count ?? 9999}
+										step="1"
+										placeholder={m.play_episodes_jump_placeholder()}
+										aria-label={m.play_episodes_jump_placeholder()}
+										bind:value={jumpInput}
+									/>
+									<button
+										type="submit"
+										class="ep-jump-go"
+										disabled={!jumpInput || episodesLoading}
+										aria-label={m.play_episodes_jump_submit_aria_label()}
+									>
+										<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+											<path
+												d="M9 5l7 7-7 7"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.5"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+									</button>
+								</span>
+							</form>
+							<div
+								class="ep-pager-mini"
+								role="group"
+								aria-label={m.play_episodes_pager_aria_label()}
+							>
 								<button
-									type="submit"
-									class="ep-jump-go"
-									disabled={!jumpInput || episodesLoading}
-									aria-label={m.play_episodes_jump_submit_aria_label()}
+									type="button"
+									class="ep-pager-mini-btn"
+									onclick={() => gotoPage(episodesPage - 1)}
+									disabled={episodesPage <= 1 || episodesLoading}
+									aria-label={m.play_episodes_pager_previous_aria_label()}
+								>
+									<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+										<path
+											d="M15 5l-7 7 7 7"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</button>
+								<button
+									type="button"
+									class="ep-pager-mini-btn"
+									onclick={() => gotoPage(episodesPage + 1)}
+									disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
+										episodesLoading ||
+										(episodes !== null && episodes.length < UI_PAGE_SIZE)}
+									aria-label={m.play_episodes_pager_next_aria_label()}
 								>
 									<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
 										<path
@@ -2625,124 +2691,86 @@
 										/>
 									</svg>
 								</button>
-							</span>
-						</form>
-						<div class="ep-pager-mini" role="group" aria-label={m.play_episodes_pager_aria_label()}>
-							<button
-								type="button"
-								class="ep-pager-mini-btn"
-								onclick={() => gotoPage(episodesPage - 1)}
-								disabled={episodesPage <= 1 || episodesLoading}
-								aria-label={m.play_episodes_pager_previous_aria_label()}
-							>
-								<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-									<path
-										d="M15 5l-7 7 7 7"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.5"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-							</button>
-							<button
-								type="button"
-								class="ep-pager-mini-btn"
-								onclick={() => gotoPage(episodesPage + 1)}
-								disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
-									episodesLoading ||
-									(episodes !== null && episodes.length < UI_PAGE_SIZE)}
-								aria-label={m.play_episodes_pager_next_aria_label()}
-							>
-								<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-									<path
-										d="M9 5l7 7-7 7"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.5"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-							</button>
+							</div>
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/if}
+				</div>
 
-			{#if episodes && episodes.length > 0}
-				<!-- Single fluid row of 5 cards. No scroll: cards shrink/
+				{#if episodes && episodes.length > 0}
+					<!-- Single fluid row of 5 cards. No scroll: cards shrink/
 				     grow with the container so all 5 are always visible. -->
-				<ol class="ep-row" aria-label={m.play_episodes_section_aria_label()}>
-					{#each episodes as ep, i (ep.id)}
-						{@const n = ep.number ?? ep.relative_number ?? 0}
-						{@const isCurrent = n === episodeNum}
-						{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
-						<!-- in: only, no out:. With a 5-col grid, simultaneously
+					<ol class="ep-row" aria-label={m.play_episodes_section_aria_label()}>
+						{#each episodes as ep, i (ep.id)}
+							{@const n = ep.number ?? ep.relative_number ?? 0}
+							{@const isCurrent = n === episodeNum}
+							{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
+							<!-- in: only, no out:. With a 5-col grid, simultaneously
 						     mounting outgoing + incoming cards wraps to two
 						     rows for ~320ms during a page change, pushing the
 						     strip below down. Letting old cards unmount
 						     instantly keeps the row at one row's height; the
 						     staggered in: still gives the new cards a settle
 						     feel as they land. -->
-						<li
-							class:ep-highlight={n === highlightEp}
-							data-ep-num={n}
-							in:settle={{ duration: 620, delay: i * 45 }}
-						>
-							<button
-								type="button"
-								class="ep-card"
-								class:ep-card-current={isCurrent}
-								disabled={switchBusy && !isCurrent}
-								onclick={() => onPickEpisode(ep)}
+							<li
+								class:ep-highlight={n === highlightEp}
+								data-ep-num={n}
+								in:settle={{ duration: 620, delay: i * 45 }}
 							>
-								<span class="ep-card-thumb">
-									{#if epThumb}
-										<img src={epThumb} alt="" loading="lazy" />
-									{:else}
-										<span class="ep-card-thumb-placeholder" aria-hidden="true">
-											{n.toString().padStart(2, '0')}
+								<button
+									type="button"
+									class="ep-card"
+									class:ep-card-current={isCurrent}
+									disabled={switchBusy && !isCurrent}
+									onclick={() => onPickEpisode(ep)}
+								>
+									<span class="ep-card-thumb">
+										{#if epThumb}
+											<img src={epThumb} alt="" loading="lazy" />
+										{:else}
+											<span class="ep-card-thumb-placeholder" aria-hidden="true">
+												{n.toString().padStart(2, '0')}
+											</span>
+										{/if}
+										<span class="ep-card-thumb-play" aria-hidden="true">
+											<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+												<path d="M8 5v14l11-7z" fill="currentColor" />
+											</svg>
 										</span>
-									{/if}
-									<span class="ep-card-thumb-play" aria-hidden="true">
-										<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
-											<path d="M8 5v14l11-7z" fill="currentColor" />
-										</svg>
-									</span>
-									{#if isCurrent}
-										<span class="ep-card-thumb-flag" aria-hidden="true"
-											>{m.play_episode_now_playing()}</span
-										>
-									{/if}
-								</span>
-								<span class="ep-card-foot">
-									<span class="ep-card-foot-row">
-										<span class="ep-card-foot-num"
-											>{m.play_episode_card_num({ episode: String(n) })}</span
-										>
-										{#if ep.length}
-											<span class="ep-card-foot-dot" aria-hidden="true">·</span>
-											<span class="ep-card-foot-len"
-												>{m.play_episode_card_length_minutes({ minutes: String(ep.length) })}</span
+										{#if isCurrent}
+											<span class="ep-card-thumb-flag" aria-hidden="true"
+												>{m.play_episode_now_playing()}</span
 											>
 										{/if}
 									</span>
-									<span class="ep-card-foot-title">
-										{ep.canonical_title ?? m.play_episode_card_title_fallback({ num: String(n) })}
+									<span class="ep-card-foot">
+										<span class="ep-card-foot-row">
+											<span class="ep-card-foot-num"
+												>{m.play_episode_card_num({ episode: String(n) })}</span
+											>
+											{#if ep.length}
+												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
+												<span class="ep-card-foot-len"
+													>{m.play_episode_card_length_minutes({
+														minutes: String(ep.length)
+													})}</span
+												>
+											{/if}
+										</span>
+										<span class="ep-card-foot-title">
+											{ep.canonical_title ?? m.play_episode_card_title_fallback({ num: String(n) })}
+										</span>
 									</span>
-								</span>
-							</button>
-						</li>
-					{/each}
-				</ol>
-			{:else if episodesError}
-				<p class="ep-list-empty">{m.play_episodes_error_message({ detail: episodesError })}</p>
-			{:else}
-				<p class="ep-list-empty">{m.play_episodes_loading_message()}</p>
-			{/if}
-		</section>
+								</button>
+							</li>
+						{/each}
+					</ol>
+				{:else if episodesError}
+					<p class="ep-list-empty">{m.play_episodes_error_message({ detail: episodesError })}</p>
+				{:else}
+					<p class="ep-list-empty">{m.play_episodes_loading_message()}</p>
+				{/if}
+			</section>
+		{/if}
 
 		<!-- "More like this" strip — recommendations seeded from the
 	     show's first 1-2 title words via Kitsu search. Wrapped to
