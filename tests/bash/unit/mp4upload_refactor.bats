@@ -90,6 +90,15 @@ setup() {
     [ -z "$output" ]
 }
 
+@test "get_links: tools.fast4speed.rsvp URL prints a Yt-tagged link without making a network call" {
+    # The new dispatch in get_links short-circuits the fast4speed.rsvp
+    # case before any curl runs. Verify the resulting stdout contains the
+    # Yt-tagged URL the downstream player pipeline expects.
+    provider_name="fast4speed"
+    output=$(get_links "https://tools.fast4speed.rsvp/abc123" 2>/dev/null)
+    [ "$output" = "Yt >https://tools.fast4speed.rsvp/abc123" ]
+}
+
 @test "provider_init: takes provider_id raw when the matched value lacks the -- prefix" {
     # Old behavior: every matched line was assumed to be `--<hex-encoded>`
     # and run through the hex-to-ascii decode table. The new behavior in
