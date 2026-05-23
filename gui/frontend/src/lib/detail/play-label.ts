@@ -12,22 +12,32 @@
  *   - Kitsu subtype `"movie"` always — a movie is one video by
  *     definition, regardless of episode_count or airing status.
  *   - Other subtypes (`OVA`, `special`, `ONA`, etc.) only when
- *     `episodeCount === 1` AND `status !== "current"`. The status
- *     guard rules out a newly-airing TV-style show that has briefly
- *     released a single episode (Kitsu's `episode_count` updates
- *     incrementally for ongoing series).
+ *     `episodeCount === 1` AND `status` is an explicit non-current
+ *     value (`finished` / `upcoming` / `tba` / `unreleased`).
+ *
+ * The status check is an *allowlist* rather than `!= "current"`.
+ * Kitsu can leave `status` null on titles with incomplete metadata;
+ * treating null as "definitively non-current" would re-introduce
+ * the false positive the guard is meant to avoid (an ongoing TV
+ * series with one aired episode could mis-label as a single-video
+ * work). Better to err toward the multi-episode default — "Play
+ * episode 1" reads fine for any show — than to mislabel a TV show
+ * as a movie.
  *
  * Inputs are typed as `string | null | undefined` because Kitsu
  * fields commonly arrive as `Option<String>` from the backend and
  * flow into the frontend's `detail` view-model unchanged.
  */
+const NON_CURRENT_STATUSES = new Set(['finished', 'upcoming', 'tba', 'unreleased']);
+
 export function isSingleVideo(
 	subtype: string | null | undefined,
 	episodeCount: number | null | undefined,
 	status: string | null | undefined
 ): boolean {
 	if (subtype === 'movie') return true;
-	if (episodeCount === 1 && status !== 'current') return true;
+	if (episodeCount === 1 && typeof status === 'string' && NON_CURRENT_STATUSES.has(status))
+		return true;
 	return false;
 }
 

@@ -63,6 +63,27 @@ describe('isSingleVideo', () => {
 		expect(isSingleVideo(null, null, null)).toBe(false);
 		expect(isSingleVideo(undefined, undefined, undefined)).toBe(false);
 	});
+
+	it('returns false when episode_count==1 but status is missing', () => {
+		// Codex P2 (#18): treating null/undefined status as
+		// "definitively non-current" re-introduces the false positive
+		// the guard is meant to avoid — a TV show with incomplete
+		// Kitsu metadata (one aired episode, status omitted) would
+		// otherwise mis-label as a single-video work. The allowlist is
+		// explicit; unknown status falls through to multi-episode.
+		expect(isSingleVideo('OVA', 1, null)).toBe(false);
+		expect(isSingleVideo('special', 1, undefined)).toBe(false);
+		expect(isSingleVideo('ONA', 1, null)).toBe(false);
+		expect(isSingleVideo('TV', 1, null)).toBe(false);
+	});
+
+	it('returns false for unrecognized status values with episode_count==1', () => {
+		// Defensive: if Kitsu ever adds a new status enum value, fail
+		// closed (treat as ongoing) rather than open. Only the four
+		// documented non-current values trigger single-video.
+		expect(isSingleVideo('OVA', 1, 'something-new')).toBe(false);
+		expect(isSingleVideo('special', 1, '')).toBe(false);
+	});
 });
 
 describe('computePlayLabel', () => {
