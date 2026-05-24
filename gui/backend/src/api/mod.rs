@@ -1517,6 +1517,71 @@ mod tests {
         );
     }
 
+    /// Fetch failure should NOT be treated as a cour mismatch. The
+    /// guard reads `kitsu_anime_detail` to learn the kitsu slug's cour
+    /// suffix; when that call fails (transient network/cache miss),
+    /// we have no signal that the pairing is wrong. Suppressing the
+    /// write on every fetch hiccup permanently breaks Continue
+    /// Watching's deterministic show_id → kitsu_id shortcut for
+    /// multi-cour shows (every Part-N entry would re-resolve from
+    /// scratch on every load). Treat fetch failures as "no evidence
+    /// of disagreement" and let the write proceed.
+    #[tokio::test]
+    async fn mark_watched_writes_reverse_mapping_when_kitsu_detail_fetch_fails_for_multicour_show()
+    {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+
+        // Allmanga show_title carries a trailing "Part 2" (cour 2).
+        // Crucially, we do NOT pre-populate the kitsu detail cache —
+        // the in-process Kitsu client points at 127.0.0.1:1 (an
+        // unreachable port), so `kitsu_anime_detail` returns Err.
+        // Per the guard's docstring, that should be treated as
+        // "agree" and the reverse-mapping write must still happen.
+        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/file.mp4".into(),
+                referer: String::new(),
+                subtitle_url: None,
+                media_kind: MediaKind::Mp4,
+                show_id: "D5ksnsKtYAzzFXeSp".into(),
+                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2".into(),
+            },
+        );
+
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Stone Ocean","episode":"1","mode":"sub","year":2021,"episode_count":12,"kitsu_id":"44295"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let key = "allmanga2kitsu:v2:D5ksnsKtYAzzFXeSp";
+        let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
+        assert_eq!(
+            stored,
+            Some("44295".to_string()),
+            "fetch failure must not suppress the reverse-mapping write"
+        );
+    }
+
     /// Watched-at endpoint: returns the SQLite-stamped per-show_id
     /// last-watched-millis map (GUI-only; CLI plays don't update this).
     /// Home-page Continue Watching strip uses it to sort the strip
