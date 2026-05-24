@@ -93,3 +93,21 @@ jobs:
         with:
           command: file
           target: "**.md"
+
+  # Mirrors inverse-ani.yml::version-bump (the stub-pass variant —
+  # the "real" version.yml has a `paths: "/ani-cli"` typo that
+  # matches nothing and so never fires anywhere). The stub is what
+  # branch protection actually sees on a normal PR: it fires
+  # whenever `paths-ignore: "/ani-cli"` matches, which — because
+  # of the same typo — is "any PR with at least one changed file".
+  # On a zero-diff PR (e.g. a `-s ours` ancestry merge) neither
+  # half of the pair fires and the required `Version Bump` check
+  # name never gets reported. This unconditional stub matches the
+  # established no-op semantics; when an actual ani-cli version
+  # check is wanted in the future, fix version.yml's typo and
+  # decide what behaviour to mirror here.
+  version-bump:
+    name: Version Bump
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "Not required: zero-diff PR or did not modify ani-cli"'
