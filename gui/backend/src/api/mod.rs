@@ -134,7 +134,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/play/mark-watched", post(post_play_mark_watched))
         .route(
             "/api/allmanga-kitsu-map/:show_id",
-            get(get_allmanga_kitsu_map),
+            get(get_allmanga_kitsu_map).delete(delete_allmanga_kitsu_map),
         )
         .route(
             "/api/kitsu/resolve-allmanga/:show_id",
@@ -635,6 +635,18 @@ async fn get_allmanga_kitsu_map(
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
     Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
+}
+
+/// Evict a single reverse-mapping row. Fired by the frontend when
+/// step 0's slug guard catches a cross-cour mapping; the next
+/// successful play rewrites the row through the (guarded) mark-watched
+/// path. 204 on success.
+async fn delete_allmanga_kitsu_map(
+    State(state): State<Arc<AppState>>,
+    Path(show_id): Path<String>,
+) -> Result<StatusCode, AniError> {
+    kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Resolve a history-recorded allmanga show_id to its full

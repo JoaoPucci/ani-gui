@@ -398,6 +398,15 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
+/// Evict a single `allmanga show_id → kitsu_id` mapping. Used by the
+/// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
+/// row when the cached kitsu detail's slug disagrees with the history
+/// entry's cour suffix. SQLite errors propagate; a missing row is not
+/// an error (DELETE on no rows is a no-op).
+pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
+}
+
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
 /// walking allmanga's `Show` GraphQL aliases (`englishName`,
 /// `nativeName`, `altNames`) through Kitsu's text search. Returns the
