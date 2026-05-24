@@ -1381,6 +1381,101 @@ mod tests {
         assert_eq!(body, Some("11061".to_string()));
     }
 
+    /// The reverse-mapping write must REJECT cross-cour pairings.
+    /// The backend's allmanga picker can land on a sibling cour when
+    /// ep-count and year tie (Stone Ocean parts 1/2/3 all 12 eps,
+    /// 2021–2022) and persist the wrong (show_id → kitsu_id)
+    /// pairing. Once persisted, the home-page strip serves the wrong
+    /// Kitsu data for that show forever.
+    ///
+    /// Guard: derive cour from cached.show_title's trailing "Part N"
+    /// suffix AND from the kitsu detail's slug "-part-N" suffix.
+    /// When they disagree, skip the write. (history + watched-at
+    /// still proceed — the play succeeded.)
+    #[tokio::test]
+    async fn mark_watched_rejects_reverse_mapping_when_cour_suffixes_disagree() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::meta::kitsu::KitsuAnimeRef;
+        use crate::proxy::MediaKind;
+        use std::collections::HashMap;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+
+        // Cached resolution: allmanga's Part 2 show, derived from
+        // searching "Stone Ocean" (Part 1's canonical title) — the
+        // picker mis-pick the user reported.
+        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/file.mp4".into(),
+                referer: String::new(),
+                subtitle_url: None,
+                media_kind: MediaKind::Mp4,
+                show_id: "D5ksnsKtYAzzFXeSp".into(),
+                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2".into(),
+            },
+        );
+        // Pre-cache the kitsu detail for Part 1 so the guard reads
+        // its slug without hitting the network. Part 1's slug
+        // doesn't carry a -part-N suffix → cour 1.
+        let detail = KitsuAnimeRef {
+            id: "44294".into(),
+            canonical_title: "Stone Ocean".into(),
+            titles: HashMap::new(),
+            slug: Some("jojo-no-kimyou-na-bouken-stone-ocean".into()),
+            synopsis: None,
+            start_date: Some("2021-12-01".into()),
+            end_date: None,
+            episode_count: Some(12),
+            average_rating: None,
+            subtype: Some("ONA".into()),
+            status: Some("finished".into()),
+            age_rating: None,
+            popularity_rank: None,
+            poster_image: None,
+            cover_image: None,
+        };
+        let body = serde_json::to_string(&detail).expect("ser");
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            "kitsu:v3:anime:44294",
+            &body,
+            60 * 60,
+        )
+        .expect("put");
+
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Stone Ocean","episode":"1","mode":"sub","year":2021,"episode_count":12,"kitsu_id":"44294"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        // Handler still returns 204 — the play itself succeeded; only
+        // the mapping write was suppressed. Surface decisions stay in
+        // tracing::warn for diagnostics.
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let key = "allmanga2kitsu:v2:D5ksnsKtYAzzFXeSp";
+        let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
+        assert_eq!(
+            stored, None,
+            "cross-cour mapping (allmanga Part 2 → kitsu Part 1) must not persist"
+        );
+    }
+
     /// Watched-at endpoint: returns the SQLite-stamped per-show_id
     /// last-watched-millis map (GUI-only; CLI plays don't update this).
     /// Home-page Continue Watching strip uses it to sort the strip
