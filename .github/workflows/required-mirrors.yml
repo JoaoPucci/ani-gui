@@ -1,0 +1,95 @@
+name: 'required-check mirrors (zero-diff safe)'
+# Mirrors four required-check names whose owning workflows are
+# upstream-vendored from pystardust/ani-cli and gate themselves
+# with `pull_request.paths:` / `paths-ignore:`:
+#
+#   - markdown.yml         → Dead Link Checker, Find Trailing Whitespace
+#                            (fires only when **.md changes)
+#   - inverse-md.yml       → same names, stub no-ops
+#                            (fires only when **.md does NOT change)
+#   - ani-cli.yml          → Shellcheck + Shfmt, Executable Bit
+#                            (fires only when **ani-cli changes)
+#   - inverse-ani.yml      → same names, stub no-ops
+#                            (fires only when /ani-cli is NOT changed)
+#
+# Both halves of each pair use file-based path filtering. A pull
+# request with zero file changes (e.g. a `git merge -s ours`
+# ancestry-only sync, or any other no-op merge) matches neither
+# the "real" nor the "inverse" path predicate, so neither workflow
+# fires and the required check name never gets a status report.
+# Branch protection then blocks the PR forever, waiting on a
+# check-run that will never arrive — see PR #23 for the symptom.
+#
+# We can't edit the upstream-vendored workflow files (they would
+# conflict on every sync from pystardust/ani-cli, defeating the
+# vendor model). This ours-owned workflow runs on every PR (and
+# push to master) with no path filter, registers the four required
+# check names unconditionally, and runs the same real checks
+# upstream's pair runs. When upstream's also fires (a PR that
+# does touch the matching paths), both workflows report the same
+# check name on the same SHA with the same outcome — same
+# duplicate-report tradeoff already accepted by no-awk-required.yml.
+#
+# Going forward: if any new required check is added through an
+# upstream workflow gated by `paths:` / `paths-ignore:`, add it
+# here too.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  # Mirrors ani-cli.yml::check-exec.
+  exec-bit:
+    name: Executable Bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: test exec bit
+        run: test -x "./ani-cli"
+
+  # Mirrors ani-cli.yml::sh-checker (the sh-dialect Shellcheck +
+  # Shfmt pass on the vendored ani-cli script). bash.yml's
+  # "Shellcheck + Shfmt (per-file dialect)" is a separate
+  # check covering tests/bash/ — unrelated and already fires
+  # unconditionally via the bash.yml filter pattern.
+  shellcheck-shfmt:
+    name: Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the sh-checker
+        uses: luizm/action-sh-checker@master
+        env:
+          SHELLCHECK_OPTS: -s sh -o all -e 2250
+          SHFMT_OPTS: -i 4 -ci -d
+        with:
+          sh_checker_exclude: "_ani-cli-bash _ani-cli-zsh tests gui"
+
+  # Mirrors markdown.yml::trailing-ws.
+  trailing-ws:
+    name: Find Trailing Whitespace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocular-d/trailing-spaces@0.0.2
+
+  # Mirrors markdown.yml::dead-links. Scans every **.md in the
+  # repo every run; the file count is small and the action is
+  # fast, so we don't bother filtering. On PRs that did touch
+  # **.md, upstream's workflow also fires and runs the same scan.
+  dead-links:
+    name: Dead Link Checker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run DeadFinder
+        uses: hahwul/deadfinder@1.2.4
+        with:
+          command: file
+          target: "**.md"
