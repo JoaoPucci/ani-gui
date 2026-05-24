@@ -409,6 +409,20 @@
 		videoEl.muted = clamped === 0;
 	}
 
+	// Release the volume slider's pointer-acquired focus so the
+	// `.player-controls:focus-within` CSS rule and the fullscreen
+	// idle-hide's `focusWithin` keep-alive can both release. Without
+	// this, a pointer click anywhere on the slider pins the controls
+	// bar visible until the user clicks the video (which toggles
+	// play/pause and is the wrong dismiss path). Mirrors the same
+	// fix on the scrubber — see `onScrubberPointerUp`. Keyboard
+	// tab-in doesn't fire pointerup, so screen-reader users keep the
+	// focus they need for arrow-key volume adjustments.
+	function onVolumePointerRelease(event: PointerEvent) {
+		const t = event.currentTarget;
+		if (t instanceof HTMLElement) t.blur();
+	}
+
 	// Hamburger / kebab overflow menu inside the custom controls
 	// bar. Mirrors Chromium's native pattern: Download, Playback
 	// speed, Picture in picture. Open state is component-local;
@@ -1951,6 +1965,8 @@
 									value={isMuted ? 0 : videoVolume}
 									oninput={(e) =>
 										setVolume(parseFloat((e.currentTarget as HTMLInputElement).value))}
+									onpointerup={onVolumePointerRelease}
+									onpointercancel={onVolumePointerRelease}
 									aria-label={m.play_controls_volume_input_aria_label()}
 								/>
 							</div>
