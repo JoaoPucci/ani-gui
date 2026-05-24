@@ -29,7 +29,6 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -80,6 +79,7 @@
 		setSubtitleTrack
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
+	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
 		decideOnPipCloseOrphanedPrefetch,
@@ -155,7 +155,12 @@
 	// between pages.
 	const UI_PAGE_SIZE = 5;
 	const KITSU_PAGE_SIZE = 20;
-	const kitsuPageCache = new SvelteMap<number, KitsuEpisode[]>();
+	// Per-show — the id-change $effect below drops it on /play/A →
+	// /play/B (defensive: no in-app path triggers that today, but
+	// browser back/forward + URL-bar edits can, and a stale page-1
+	// would serve A's thumbnails for B's first paint). See
+	// lib/detail/episode-page-cache.
+	const kitsuPageCache = createEpisodePageCache();
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
 	let config = $state<Config | null>(null);
@@ -1269,6 +1274,20 @@
 	 *  fails (switchToEpisode catch); the overlay must follow the user
 	 *  even if they've scrolled to the episode strip. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
+
+	// Drop the per-show page-cache when the show id changes. No in-app
+	// path navigates /play/A → /play/B today (PosterCard sends to
+	// /anime/[id], prev/next reuses the same id), so the only way to
+	// land here with a stale cache is browser back/forward or URL-bar
+	// edits — but the defense is one line. Same contract /anime/[id]'s
+	// id-change reset enforces. Episode changes within the same show
+	// keep the cache (id stable → effect doesn't refire), so prev/next
+	// pagination stays instant.
+	$effect(() => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		id;
+		resetEpisodePageCache(kitsuPageCache);
+	});
 
 	onMount(() => {
 		if (!id) {

@@ -34,7 +34,6 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
-	import { SvelteMap } from 'svelte/reactivity';
 	import { settle, settleOut } from '$lib/transitions/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -45,6 +44,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
+	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import type { DownloadArgs } from '$lib/api';
@@ -127,10 +127,10 @@
 	let highlightEp = $state<number | null>(null);
 	const UI_PAGE_SIZE = 12;
 	const KITSU_PAGE_SIZE = 20;
-	// SvelteMap (vs plain Map) keeps the eslint reactivity rule happy.
-	// The cache itself doesn't drive any reactive UI — the windowed slice
-	// gets stored back into `episodes`.
-	const kitsuPageCache = new SvelteMap<number, KitsuEpisode[]>();
+	// Per-show — gets reset in the id-change effect below so a
+	// /anime/A → /anime/B navigation doesn't serve A's cached page 1
+	// thumbnails for the first paint of B. See lib/detail/episode-page-cache.
+	const kitsuPageCache = createEpisodePageCache();
 	// Number of episodes Kitsu actually indexed for this show. When the
 	// user is on page 1 and Kitsu returned fewer than UI_PAGE_SIZE,
 	// that's the entire dataset — Kitsu doesn't have more. Different
@@ -430,6 +430,7 @@
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
+		resetEpisodePageCache(kitsuPageCache);
 		void historyByKitsu(currentId)
 			.then((h) => {
 				if (id !== currentId) return;
