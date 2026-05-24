@@ -565,9 +565,43 @@ async fn post_play_mark_watched(
             // when the frontend supplied kitsu_id. Errors are
             // swallowed (logged) because the play already succeeded;
             // the mapping is opportunistic.
+            //
+            // Cross-cour integrity guard: the play picker
+            // (`pick_by_ep_count_v2`) can land on a sibling cour's
+            // allmanga show_id when ep-count and year tie (e.g.
+            // Stone Ocean Parts 1/2/3 all 12 eps, 2021–2022). The
+            // frontend supplies kitsu_id from the URL or Continue
+            // Watching context, which then doesn't match the chosen
+            // show_id. Detect that by comparing the cour suffix on
+            // cached.show_title against the cour suffix on the Kitsu
+            // detail's slug. On disagreement, skip the write —
+            // history + watched-at still proceed because the play
+            // itself succeeded. The guard reads kitsu_anime_detail
+            // through its 7-day cache; mismatch when the detail
+            // can't be fetched is treated as "agree" so a network
+            // hiccup doesn't suppress legitimate writes.
             if let Some(kid) = args.kitsu_id.as_deref() {
                 if !kid.is_empty() {
-                    if let Err(e) = kitsu_inner::allmanga_kitsu_put(&state, &cached.show_id, kid) {
+                    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
+                    let allmanga_cour = cour_from_title(&cached.show_title);
+                    let kitsu_cour = match kitsu_inner::kitsu_anime_detail(&state, kid).await {
+                        Ok(detail) => detail.slug.as_deref().and_then(cour_from_slug),
+                        Err(_) => None,
+                    };
+                    let mismatch = (allmanga_cour.is_some() || kitsu_cour.is_some())
+                        && !cours_agree(allmanga_cour, kitsu_cour);
+                    if mismatch {
+                        tracing::warn!(
+                            show_id = %cached.show_id,
+                            kitsu_id = %kid,
+                            show_title = %cached.show_title,
+                            allmanga_cour = ?allmanga_cour,
+                            kitsu_cour = ?kitsu_cour,
+                            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
+                        );
+                    } else if let Err(e) =
+                        kitsu_inner::allmanga_kitsu_put(&state, &cached.show_id, kid)
+                    {
                         tracing::warn!(
                             show_id = %cached.show_id,
                             kitsu_id = %kid,
@@ -1439,13 +1473,8 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            "kitsu:v3:anime:44294",
-            &body,
-            60 * 60,
-        )
-        .expect("put");
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:44294", &body, 60 * 60)
+            .expect("put");
 
         let pool = state.cache_pool.clone();
         let router = build_api_router(Arc::new(state));
