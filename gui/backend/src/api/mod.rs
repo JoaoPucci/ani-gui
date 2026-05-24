@@ -1469,7 +1469,8 @@ mod tests {
                 subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
-                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2".into(),
+                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
+                    .into(),
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1559,7 +1560,8 @@ mod tests {
                 subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
-                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2".into(),
+                show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
+                    .into(),
             },
         );
 

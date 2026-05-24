@@ -46,6 +46,26 @@ fn title_cour_returns_none_for_bare_titles() {
     assert_eq!(cour_from_title(""), None);
 }
 
+/// `play_resolution_cache::put` stores `show_title` as
+/// `"<name> (<N> episodes)"` (see `commands/play.rs`). The detector
+/// must strip that trailing count before parsing the cour suffix, or
+/// every production cache row returns None and the integrity guard
+/// becomes a no-op.
+#[test]
+fn title_cour_strips_trailing_episode_count_suffix() {
+    assert_eq!(
+        cour_from_title("JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"),
+        Some(2)
+    );
+    assert_eq!(
+        cour_from_title("Some Show Cour 3 (24 episodes)"),
+        Some(3)
+    );
+    // Bare title with a trailing count still resolves to None — the
+    // count isn't a cour suffix on its own.
+    assert_eq!(cour_from_title("Stone Ocean (12 episodes)"), None);
+}
+
 #[test]
 fn slug_cour_finds_trailing_part_n() {
     assert_eq!(
