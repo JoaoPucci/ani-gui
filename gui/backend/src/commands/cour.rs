@@ -26,6 +26,11 @@ const COUR_KEYWORDS: &[&str] = &["part", "cour", "season"];
 #[must_use]
 pub fn cour_from_title(name: &str) -> Option<u32> {
     let trimmed = name.trim_end();
+    // `play_resolution_cache::put` writes show_title as
+    // "<name> (<N> episodes)" (see commands/play.rs). Strip that
+    // bookkeeping suffix first; otherwise the trailing chars are
+    // "episodes)" and every production cache row returns None.
+    let trimmed = strip_trailing_episode_count(trimmed);
     // Walk back from the end to read a trailing decimal number.
     let (digits_start, _) = trailing_digits(trimmed)?;
     let n: u32 = trimmed[digits_start..].parse().ok()?;
@@ -99,6 +104,26 @@ pub fn cour_from_slug(slug: &str) -> Option<u32> {
 #[must_use]
 pub fn cours_agree(allmanga: Option<u32>, kitsu: Option<u32>) -> bool {
     allmanga.unwrap_or(1) == kitsu.unwrap_or(1)
+}
+
+/// Strip a trailing ` (<digits> episodes)` segment from a title, if
+/// present. Returns the original slice when no suffix matches so the
+/// caller can fall through transparently.
+fn strip_trailing_episode_count(s: &str) -> &str {
+    let Some(inner) = s.strip_suffix(')') else {
+        return s;
+    };
+    let Some(inner) = inner.strip_suffix(" episodes") else {
+        return s;
+    };
+    let Some(open) = inner.rfind('(') else {
+        return s;
+    };
+    let digits = &inner[open + 1..];
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return s;
+    }
+    inner[..open].trim_end()
 }
 
 /// Find the byte index where the trailing ASCII-digit run starts in

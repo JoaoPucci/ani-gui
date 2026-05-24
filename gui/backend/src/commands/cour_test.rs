@@ -57,10 +57,7 @@ fn title_cour_strips_trailing_episode_count_suffix() {
         cour_from_title("JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"),
         Some(2)
     );
-    assert_eq!(
-        cour_from_title("Some Show Cour 3 (24 episodes)"),
-        Some(3)
-    );
+    assert_eq!(cour_from_title("Some Show Cour 3 (24 episodes)"), Some(3));
     // Bare title with a trailing count still resolves to None — the
     // count isn't a cour suffix on its own.
     assert_eq!(cour_from_title("Stone Ocean (12 episodes)"), None);
