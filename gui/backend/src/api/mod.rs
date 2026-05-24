@@ -584,12 +584,20 @@ async fn post_play_mark_watched(
                 if !kid.is_empty() {
                     use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
                     let allmanga_cour = cour_from_title(&cached.show_title);
-                    let kitsu_cour = match kitsu_inner::kitsu_anime_detail(&state, kid).await {
-                        Ok(detail) => detail.slug.as_deref().and_then(cour_from_slug),
-                        Err(_) => None,
-                    };
-                    let mismatch = (allmanga_cour.is_some() || kitsu_cour.is_some())
-                        && !cours_agree(allmanga_cour, kitsu_cour);
+                    // Only reject on positive evidence of disagreement.
+                    // A fetch failure yields no signal — treat as agree
+                    // so a transient Kitsu hiccup doesn't permanently
+                    // suppress the show_id → kitsu_id shortcut.
+                    let (mismatch, kitsu_cour) =
+                        match kitsu_inner::kitsu_anime_detail(&state, kid).await {
+                            Ok(detail) => {
+                                let kc = detail.slug.as_deref().and_then(cour_from_slug);
+                                let m = (allmanga_cour.is_some() || kc.is_some())
+                                    && !cours_agree(allmanga_cour, kc);
+                                (m, kc)
+                            }
+                            Err(_) => (false, None),
+                        };
                     if mismatch {
                         tracing::warn!(
                             show_id = %cached.show_id,
