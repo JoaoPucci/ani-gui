@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	__resetApiBaseForTests,
+	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
 	altTitlesFromKitsu,
 	anicliUpdateLog,
@@ -974,6 +975,17 @@ describe('allmangaKitsuMapGet', () => {
 		await allmangaKitsuMapGet('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/weird%2Fid%20with%20spaces`);
+	});
+});
+
+describe('allmangaKitsuMapDelete', () => {
+	it('DELETEs /api/allmanga-kitsu-map/:show_id with the id URL-encoded', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await allmangaKitsuMapDelete('D5ksnsKtYAzzFXeSp');
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/D5ksnsKtYAzzFXeSp`);
+		expect(init?.method).toBe('DELETE');
 	});
 });
 

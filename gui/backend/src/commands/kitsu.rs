@@ -407,6 +407,49 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
 
+/// Persist the reverse mapping with a cross-cour integrity guard.
+/// Compares the cour suffix on `show_title` against the cour suffix
+/// on the Kitsu detail's slug; on disagreement the write is skipped
+/// and a warning is logged. Fetch failures yield no signal and let
+/// the write proceed (the comment on the call site at
+/// `api::post_play_mark_watched` describes the full rationale).
+pub async fn try_put_allmanga_kitsu_mapping(
+    state: &AppState,
+    show_id: &str,
+    show_title: &str,
+    kitsu_id: &str,
+) {
+    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
+    let allmanga_cour = cour_from_title(show_title);
+    let (mismatch, kitsu_cour) = match kitsu_anime_detail(state, kitsu_id).await {
+        Ok(detail) => {
+            let kc = detail.slug.as_deref().and_then(cour_from_slug);
+            let m = (allmanga_cour.is_some() || kc.is_some()) && !cours_agree(allmanga_cour, kc);
+            (m, kc)
+        }
+        Err(_) => (false, None),
+    };
+    if mismatch {
+        tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %kitsu_id,
+            show_title = %show_title,
+            allmanga_cour = ?allmanga_cour,
+            kitsu_cour = ?kitsu_cour,
+            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
+        );
+        return;
+    }
+    if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
+        tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %kitsu_id,
+            error = ?e,
+            "play: allmanga→kitsu mapping write failed",
+        );
+    }
+}
+
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
 /// walking allmanga's `Show` GraphQL aliases (`englishName`,
 /// `nativeName`, `altNames`) through Kitsu's text search. Returns the

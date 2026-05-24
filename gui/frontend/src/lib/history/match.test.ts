@@ -345,6 +345,35 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSlug).toHaveBeenCalled();
 	});
 
+	it('cour > 1 slug mismatch tolerates a failing eviction call (fire-and-forget)', async () => {
+		// The eviction call is fire-and-forget — the rest of step 1+ must
+		// still complete cleanly even if the cache-delete IPC rejects
+		// (transient backend hiccup, offline, etc.).
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'D5ksnsKtYAzzFXeSp',
+				ep_no: '4',
+				title: 'JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)'
+			},
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('44294');
+		mockedDetail.mockResolvedValueOnce({
+			...stubKitsu('44294', 'Stone Ocean', 12),
+			slug: 'jojo-no-kimyou-na-bouken-stone-ocean'
+		});
+		mockedAllmangaDelete.mockRejectedValue(new Error('cache backend down'));
+		mockedSlug.mockResolvedValue({
+			...stubKitsu('46010', 'JoJo no Kimyou na Bouken: Stone Ocean Part 2', 12),
+			slug: 'jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2'
+		});
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('46010');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('D5ksnsKtYAzzFXeSp');
+	});
+
 	it('cour > 1 reverse-map hit with matching slug keeps the cache + skips re-resolve', async () => {
 		// Negative case: the reverse mapping IS correct (Part 2 →
 		// Part 2's real Kitsu id with the -part-2 slug). Step 0 should

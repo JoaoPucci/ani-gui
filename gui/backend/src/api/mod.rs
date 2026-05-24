@@ -580,44 +580,14 @@ async fn post_play_mark_watched(
             // through its 7-day cache; mismatch when the detail
             // can't be fetched is treated as "agree" so a network
             // hiccup doesn't suppress legitimate writes.
-            if let Some(kid) = args.kitsu_id.as_deref() {
-                if !kid.is_empty() {
-                    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
-                    let allmanga_cour = cour_from_title(&cached.show_title);
-                    // Only reject on positive evidence of disagreement.
-                    // A fetch failure yields no signal — treat as agree
-                    // so a transient Kitsu hiccup doesn't permanently
-                    // suppress the show_id → kitsu_id shortcut.
-                    let (mismatch, kitsu_cour) =
-                        match kitsu_inner::kitsu_anime_detail(&state, kid).await {
-                            Ok(detail) => {
-                                let kc = detail.slug.as_deref().and_then(cour_from_slug);
-                                let m = (allmanga_cour.is_some() || kc.is_some())
-                                    && !cours_agree(allmanga_cour, kc);
-                                (m, kc)
-                            }
-                            Err(_) => (false, None),
-                        };
-                    if mismatch {
-                        tracing::warn!(
-                            show_id = %cached.show_id,
-                            kitsu_id = %kid,
-                            show_title = %cached.show_title,
-                            allmanga_cour = ?allmanga_cour,
-                            kitsu_cour = ?kitsu_cour,
-                            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
-                        );
-                    } else if let Err(e) =
-                        kitsu_inner::allmanga_kitsu_put(&state, &cached.show_id, kid)
-                    {
-                        tracing::warn!(
-                            show_id = %cached.show_id,
-                            kitsu_id = %kid,
-                            error = ?e,
-                            "play: allmanga→kitsu mapping write failed",
-                        );
-                    }
-                }
+            if let Some(kid) = args.kitsu_id.as_deref().filter(|k| !k.is_empty()) {
+                kitsu_inner::try_put_allmanga_kitsu_mapping(
+                    &state,
+                    &cached.show_id,
+                    &cached.show_title,
+                    kid,
+                )
+                .await;
             }
             // Watched-at stamp drives Continue Watching ordering.
             // Only fires on click-side mark-watched (prefetches don't
