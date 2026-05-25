@@ -345,6 +345,31 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSlug).toHaveBeenCalled();
 	});
 
+	it('cour > 1 reverse-map hit with absent slug preserves the cache (no eviction)', async () => {
+		// Codex P2: an absent slug is missing evidence, not proof of
+		// cross-cour poisoning. Evicting on slug=null churns valid rows
+		// whose Kitsu detail payload simply doesn't include the slug.
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'D5ksnsKtYAzzFXeSp',
+				ep_no: '4',
+				title: 'JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)'
+			},
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('46010');
+		mockedDetail.mockResolvedValueOnce({
+			...stubKitsu('46010', 'JoJo no Kimyou na Bouken: Stone Ocean Part 2', 12),
+			slug: null
+		});
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('46010');
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+		expect(mockedSlug).not.toHaveBeenCalled();
+	});
+
 	it('cour > 1 slug mismatch tolerates a failing eviction call (fire-and-forget)', async () => {
 		// The eviction call is fire-and-forget — the rest of step 1+ must
 		// still complete cleanly even if the cache-delete IPC rejects
