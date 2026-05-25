@@ -51,15 +51,15 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 						// count compatibility passes for siblings that share a
 						// cour size (both 12 for Stone Ocean Parts 1/2), so
 						// the slug suffix is the only signal that catches the
-						// mismatch from this side. Evict the poisoned row so
-						// the next successful play rewrites it; fall through
-						// to the live re-resolution.
-						if (preliminary.cour > 1) {
+						// mismatch from this side. Evict the poisoned row on
+						// positive slug-mismatch evidence; an absent slug is
+						// missing evidence and the cached row stays.
+						if (preliminary.cour > 1 && cached.slug) {
 							const courRe = new RegExp(
 								`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
 								'i'
 							);
-							if (cached.slug && courRe.test(cached.slug)) {
+							if (courRe.test(cached.slug)) {
 								return cached;
 							}
 							void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
