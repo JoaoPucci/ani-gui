@@ -19,9 +19,12 @@
  */
 
 /** Default window in milliseconds during which a second click counts
- *  as the second half of a double-click. Tuned slightly under the
- *  OS-typical 500 ms so play/pause feels responsive. */
-export const CLICK_DOUBLE_THRESHOLD_MS = 250;
+ *  as the second half of a double-click. The OS-level default is
+ *  ~250 ms, but play/pause is the dominant single-click action in a
+ *  video player so the perceived lag at that threshold is too long;
+ *  180 ms is the lowest value that still reliably catches a deliberate
+ *  double-click without making single clicks feel sticky. */
+export const CLICK_DOUBLE_THRESHOLD_MS = 180;
 
 export interface ClickDispatcher {
 	/** Feed each native click event into the dispatcher. */
