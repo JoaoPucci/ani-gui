@@ -419,23 +419,11 @@ pub async fn try_put_allmanga_kitsu_mapping(
     show_title: &str,
     kitsu_id: &str,
 ) {
-    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
-    let allmanga_cour = cour_from_title(show_title);
-    let (mismatch, kitsu_cour) = match kitsu_anime_detail(state, kitsu_id).await {
-        Ok(detail) => {
-            let kc = detail.slug.as_deref().and_then(cour_from_slug);
-            let m = (allmanga_cour.is_some() || kc.is_some()) && !cours_agree(allmanga_cour, kc);
-            (m, kc)
-        }
-        Err(_) => (false, None),
-    };
-    if mismatch {
+    if cour_pairing_disagrees(state, show_title, kitsu_id).await {
         tracing::warn!(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
             show_title = %show_title,
-            allmanga_cour = ?allmanga_cour,
-            kitsu_cour = ?kitsu_cour,
             "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
         );
         return;
@@ -448,6 +436,19 @@ pub async fn try_put_allmanga_kitsu_mapping(
             "play: allmanga→kitsu mapping write failed",
         );
     }
+}
+
+/// True when the allmanga `show_title` and the Kitsu detail's slug
+/// carry disagreeing cour suffixes. A Kitsu fetch failure yields no
+/// signal and returns false (no evidence of disagreement).
+async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
+    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
+    let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
+        return false;
+    };
+    let allmanga_cour = cour_from_title(show_title);
+    let kitsu_cour = detail.slug.as_deref().and_then(cour_from_slug);
+    (allmanga_cour.is_some() || kitsu_cour.is_some()) && !cours_agree(allmanga_cour, kitsu_cour)
 }
 
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
