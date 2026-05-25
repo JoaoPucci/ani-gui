@@ -178,6 +178,31 @@ fn slug_cour_short_slug_before_dash_cant_fit_keyword() {
     assert_eq!(cour_from_slug("xy-2"), None);
 }
 
+/// `cour_from_title` walked back from `kw_end = after_kw.len()` by
+/// `kw.len()` bytes and then sliced `after_kw[kw_start..]` directly.
+/// On non-ASCII titles ending in digits with no `Part/Cour/Season`
+/// suffix that offset can land inside a multi-byte UTF-8 codepoint
+/// (`"アニメ123"` → after_kw="アニメ", kw_start=5, byte 5 is inside `ニ`),
+/// crashing `mark-watched` for any non-Latin title.
+#[test]
+fn title_cour_does_not_panic_on_non_ascii_trailing_digits() {
+    // Each of these would panic at `byte index N is not a char
+    // boundary` before the fix. The expected result is `None`
+    // (no trailing cour suffix).
+    assert_eq!(cour_from_title("アニメ123"), None);
+    assert_eq!(cour_from_title("プレイ 2"), None);
+    assert_eq!(cour_from_title("ピアノの森 12"), None);
+}
+
+#[test]
+fn title_cour_accepts_keyword_after_non_ascii_prefix() {
+    // Non-ASCII characters preceding a real cour keyword still
+    // match the trailing suffix. The "preceded by whitespace /
+    // colon" anchor check must walk back by char, not byte.
+    assert_eq!(cour_from_title("アニメ Part 2"), Some(2));
+    assert_eq!(cour_from_title("ピアノの森 Cour 3"), Some(3));
+}
+
 #[test]
 fn title_cour_passes_through_trailing_text_without_episode_count() {
     // strip_trailing_episode_count short-circuits on ANY of:
