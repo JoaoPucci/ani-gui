@@ -66,6 +66,7 @@
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -411,22 +412,16 @@
 
 	// Volume-pill reveal: keyboard volume nudges (ArrowUp/Down) need
 	// to show the slider briefly so the user gets visual feedback the
-	// same way a click would. The hover/focus-within CSS path won't
-	// trigger because the user hasn't pointed at the pill — drive a
-	// class for ~1.2s after each keypress, then auto-hide. Pointer
-	// hover keeps the slider open under its own CSS rule so the two
-	// reveal paths don't fight.
+	// same way a click would. State machine lives in
+	// $lib/play/volume-reveal so the trigger/dispose edges (rapid
+	// retrigger refreshes the timer, dispose clears pending state)
+	// can be unit-tested directly. Pointer hover keeps the slider
+	// open under its own CSS rule so the two reveal paths don't fight.
 	let volumeRevealed = $state(false);
-	let volumeRevealTimer: ReturnType<typeof setTimeout> | null = null;
-	const VOLUME_REVEAL_HOLD_MS = 1200;
-	function revealVolumeBriefly() {
-		volumeRevealed = true;
-		if (volumeRevealTimer) clearTimeout(volumeRevealTimer);
-		volumeRevealTimer = setTimeout(() => {
-			volumeRevealed = false;
-			volumeRevealTimer = null;
-		}, VOLUME_REVEAL_HOLD_MS);
-	}
+	const volumeReveal = createVolumeReveal((visible) => {
+		volumeRevealed = visible;
+	});
+	$effect(() => () => volumeReveal.dispose());
 
 	// Release the volume slider's pointer-acquired focus so the
 	// `.player-controls:focus-within` CSS rule and the fullscreen
@@ -1848,7 +1843,7 @@
 						// against the live value, not whatever snapshot
 						// Svelte has propagated yet.
 						setVolume(videoEl.volume + action.delta);
-						revealVolumeBriefly();
+						volumeReveal.trigger();
 						// In fullscreen the controls bar is governed by
 						// the idle timer; keep it visible while the user
 						// is actively adjusting volume.
