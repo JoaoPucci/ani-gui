@@ -1496,6 +1496,159 @@ mod tests {
         );
     }
 
+    /// One-sided cour evidence must not be treated as disagreement.
+    /// When the allmanga `show_title` has no parseable cour suffix
+    /// (the title format the picker writes for shows without a clean
+    /// `Part N` / `Cour N` / `Season N` token) but Kitsu's slug DOES
+    /// carry one, we have no proof the pairing is wrong — only one
+    /// side speaks. Persisting the row still wins over re-resolving
+    /// every Continue Watching load; if the pairing later turns out
+    /// to be cross-cour, step 0's frontend slug guard catches it.
+    #[tokio::test]
+    async fn mark_watched_writes_reverse_mapping_when_only_kitsu_slug_carries_cour() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::meta::kitsu::KitsuAnimeRef;
+        use crate::proxy::MediaKind;
+        use std::collections::HashMap;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+
+        // show_title has no Part/Cour/Season suffix → cour_from_title=None.
+        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/file.mp4".into(),
+                referer: String::new(),
+                subtitle_url: None,
+                media_kind: MediaKind::Mp4,
+                show_id: "seq-show".into(),
+                show_title: "Some Sequel (12 episodes)".into(),
+            },
+        );
+        // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
+        let detail = KitsuAnimeRef {
+            id: "99001".into(),
+            canonical_title: "Some Sequel".into(),
+            titles: HashMap::new(),
+            slug: Some("some-sequel-part-2".into()),
+            synopsis: None,
+            start_date: None,
+            end_date: None,
+            episode_count: Some(12),
+            average_rating: None,
+            subtype: Some("TV".into()),
+            status: Some("finished".into()),
+            age_rating: None,
+            popularity_rank: None,
+            poster_image: None,
+            cover_image: None,
+        };
+        let body = serde_json::to_string(&detail).expect("ser");
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99001", &body, 60 * 60)
+            .expect("put");
+
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Some Sequel","episode":"1","mode":"sub","year":2024,"episode_count":12,"kitsu_id":"99001"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let stored =
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v2:seq-show").expect("get");
+        assert_eq!(
+            stored,
+            Some("99001".to_string()),
+            "one-sided cour evidence (allmanga None / kitsu Some) is not a mismatch"
+        );
+    }
+
+    /// Symmetric: allmanga title says Part 2 but Kitsu detail's slug
+    /// is absent or doesn't carry a parseable cour suffix. Still
+    /// one-sided; still not proof of disagreement.
+    #[tokio::test]
+    async fn mark_watched_writes_reverse_mapping_when_kitsu_slug_lacks_parseable_cour() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::meta::kitsu::KitsuAnimeRef;
+        use crate::proxy::MediaKind;
+        use std::collections::HashMap;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+
+        // allmanga title carries Part 2 → cour_from_title=Some(2).
+        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/file.mp4".into(),
+                referer: String::new(),
+                subtitle_url: None,
+                media_kind: MediaKind::Mp4,
+                show_id: "seq2-show".into(),
+                show_title: "Some Sequel Part 2 (12 episodes)".into(),
+            },
+        );
+        // Kitsu detail has no slug → cour_from_slug=None.
+        let detail = KitsuAnimeRef {
+            id: "99002".into(),
+            canonical_title: "Some Sequel".into(),
+            titles: HashMap::new(),
+            slug: None,
+            synopsis: None,
+            start_date: None,
+            end_date: None,
+            episode_count: Some(12),
+            average_rating: None,
+            subtype: Some("TV".into()),
+            status: Some("finished".into()),
+            age_rating: None,
+            popularity_rank: None,
+            poster_image: None,
+            cover_image: None,
+        };
+        let body = serde_json::to_string(&detail).expect("ser");
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99002", &body, 60 * 60)
+            .expect("put");
+
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Some Sequel","episode":"1","mode":"sub","year":2024,"episode_count":12,"kitsu_id":"99002"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let stored =
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v2:seq2-show").expect("get");
+        assert_eq!(
+            stored,
+            Some("99002".to_string()),
+            "one-sided cour evidence (allmanga Some / kitsu None) is not a mismatch"
+        );
+    }
+
     /// Fetch failure should NOT be treated as a cour mismatch. The
     /// guard reads `kitsu_anime_detail` to learn the kitsu slug's cour
     /// suffix; when that call fails (transient network/cache miss),
