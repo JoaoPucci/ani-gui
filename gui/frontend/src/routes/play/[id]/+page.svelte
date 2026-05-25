@@ -67,6 +67,7 @@
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
+	import { createClickDispatcher } from '$lib/play/click-dispatcher';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -1051,8 +1052,16 @@
 		const onEnded = () => {
 			onVideoEnded();
 		};
+		// Single-click → play/pause; double-click → toggle fullscreen.
+		// The dispatcher defers the single by ~250 ms so a fast double
+		// doesn't flip play/pause twice before fullscreen kicks in.
+		// See $lib/play/click-dispatcher for the state-machine edges.
+		const clickDispatcher = createClickDispatcher({
+			onSingle: togglePlay,
+			onDouble: toggleFullscreen
+		});
 		const onClick = () => {
-			if (USE_CUSTOM_PLAYER_CONTROLS) togglePlay();
+			if (USE_CUSTOM_PLAYER_CONTROLS) clickDispatcher.click();
 		};
 
 		// Bump the textTracks reactivity ticker when the list shape
@@ -1092,6 +1101,7 @@
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
 			v.removeEventListener('click', onClick);
+			clickDispatcher.dispose();
 			v.textTracks.removeEventListener('addtrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('removetrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('change', onTextTracksMutate);
