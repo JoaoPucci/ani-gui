@@ -117,3 +117,77 @@ fn mappings_agree_rejects_cross_cour_pairing() {
     assert!(!cours_agree(Some(2), Some(1)));
     assert!(!cours_agree(Some(3), Some(2)));
 }
+
+/// Edge cases below pin every short-circuit branch in the parsers so
+/// that future refactors can't regress quietly. Each case exercises a
+/// specific guard inside `cour_from_title`, `cour_from_slug`, or
+/// `strip_trailing_episode_count`.
+
+#[test]
+fn title_cour_rejects_unanchored_keyword_prefix() {
+    // "RePart 2" — keyword preceded by a letter, not start / whitespace
+    // / colon. Must NOT match (otherwise mid-word coincidences would
+    // claim a cour suffix that isn't really there).
+    assert_eq!(cour_from_title("RePart 2"), None);
+    assert_eq!(cour_from_title("xPart 2"), None);
+}
+
+#[test]
+fn title_cour_handles_keyword_at_string_start() {
+    // "Part 2" with no leading text — the `kw_start == 0` branch.
+    assert_eq!(cour_from_title("Part 2"), Some(2));
+    assert_eq!(cour_from_title("Season 5"), Some(5));
+}
+
+#[test]
+fn title_cour_short_strings_dont_match_long_keywords() {
+    // Trailing digit but the leading slice can't fit any cour keyword.
+    // Forces the `kw_end < want` short-circuit inside find_map.
+    assert_eq!(cour_from_title("X 2"), None);
+    assert_eq!(cour_from_title("12 8"), None);
+}
+
+#[test]
+fn slug_cour_rejects_digits_at_start_of_slug() {
+    // Pure-digit slug — no preceding `-(part|cour|season)-` anchor.
+    assert_eq!(cour_from_slug("2"), None);
+    assert_eq!(cour_from_slug("12"), None);
+}
+
+#[test]
+fn slug_cour_rejects_digits_after_non_dash_byte() {
+    // Digits glued directly to the previous segment without a `-`
+    // separator are not a cour segment.
+    assert_eq!(cour_from_slug("partpart2"), None);
+    assert_eq!(cour_from_slug("seasonx2"), None);
+}
+
+#[test]
+fn slug_cour_rejects_unanchored_keyword_inside_segment() {
+    // "x-bypart-2" — keyword exists but isn't preceded by start-of-
+    // string or `-`, so the segment isn't a real cour suffix.
+    assert_eq!(cour_from_slug("x-bypart-2"), None);
+    assert_eq!(cour_from_slug("preseason-3"), None);
+}
+
+#[test]
+fn slug_cour_short_slug_before_dash_cant_fit_keyword() {
+    // Slug shape "<short>-<digits>" where the segment before the dash
+    // is too short to be any keyword. Forces the `before_dash.len()
+    // < want` short-circuit inside find_map.
+    assert_eq!(cour_from_slug("xy-2"), None);
+}
+
+#[test]
+fn title_cour_passes_through_trailing_text_without_episode_count() {
+    // strip_trailing_episode_count short-circuits on ANY of:
+    // - no trailing ")"
+    // - ")" present but not preceded by " episodes"
+    // - " episodes" but no opening "("
+    // - "(<non-digits> episodes)" — non-digit content
+    // Each case below trips one of those guards.
+    assert_eq!(cour_from_title("Foo Part 2)"), None); // suffix is ")" only
+    assert_eq!(cour_from_title("Foo Part 2 (oops)"), None); // not " episodes"
+    assert_eq!(cour_from_title("Foo Part 2 abc episodes)"), None); // no "("
+    assert_eq!(cour_from_title("Foo Part 2 (many episodes)"), None); // non-digits inside parens
+}
