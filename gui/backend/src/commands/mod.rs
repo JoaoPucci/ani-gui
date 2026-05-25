@@ -8,6 +8,7 @@
 pub mod aniskip;
 pub mod app_info;
 pub mod availability;
+pub mod cour;
 pub mod download;
 pub mod external_player;
 pub mod history;

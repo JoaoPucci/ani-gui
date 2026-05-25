@@ -398,6 +398,76 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
+/// Evict a single `allmanga show_id → kitsu_id` mapping. Used by the
+/// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
+/// row when the cached kitsu detail's slug disagrees with the history
+/// entry's cour suffix. SQLite errors propagate; a missing row is not
+/// an error (DELETE on no rows is a no-op).
+pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
+}
+
+/// Persist the reverse mapping with a cross-cour integrity guard.
+/// Compares the cour suffix on `show_title` against the cour suffix
+/// on the Kitsu detail's slug; on disagreement the write is skipped
+/// and a warning is logged. Fetch failures yield no signal and let
+/// the write proceed (the comment on the call site at
+/// `api::post_play_mark_watched` describes the full rationale).
+pub async fn try_put_allmanga_kitsu_mapping(
+    state: &AppState,
+    show_id: &str,
+    show_title: &str,
+    kitsu_id: &str,
+) {
+    if cour_pairing_disagrees(state, show_title, kitsu_id).await {
+        tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %kitsu_id,
+            show_title = %show_title,
+            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
+        );
+        return;
+    }
+    if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
+        tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %kitsu_id,
+            error = ?e,
+            "play: allmanga→kitsu mapping write failed",
+        );
+    }
+}
+
+/// True when both sides carry positive cour evidence AND it
+/// disagrees. Missing evidence (Kitsu fetch failure; an allmanga
+/// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
+/// with `slug = None` entirely) returns false — step 0's frontend
+/// slug guard heals genuinely cross-cour rows on the next read,
+/// and persisting is preferable to forfeiting the deterministic
+/// shortcut every sequel reload.
+///
+/// Note the slug treatment: Kitsu's slug convention encodes Part 1
+/// as no suffix (`jojo-..-stone-ocean`) and Parts ≥ 2 as a
+/// `-part-N` suffix. So a slug that's present but has no suffix is
+/// POSITIVE evidence (cour 1), not missing evidence — that's the
+/// signal that catches the original Stone Ocean Part 2 → Part 1
+/// poison. Only an absent `slug` field counts as no evidence.
+async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
+    use crate::commands::cour::{cour_from_slug, cour_from_title};
+    let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
+        return false;
+    };
+    let allmanga_cour = cour_from_title(show_title);
+    let kitsu_cour = detail
+        .slug
+        .as_deref()
+        .map(|slug| cour_from_slug(slug).unwrap_or(1));
+    match (allmanga_cour, kitsu_cour) {
+        (Some(a), Some(k)) => a != k,
+        _ => false,
+    }
+}
+
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
 /// walking allmanga's `Show` GraphQL aliases (`englishName`,
 /// `nativeName`, `altNames`) through Kitsu's text search. Returns the

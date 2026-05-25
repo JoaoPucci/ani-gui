@@ -871,6 +871,20 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
+ * Evict a single `allmanga show_id → kitsu_id` reverse-mapping row.
+ *
+ * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's
+ * slug disagrees with the history entry's cour suffix. The cached
+ * mapping is wrong (cross-cour poison from an earlier mark-watched
+ * with a sibling-cour show_id); dropping it lets subsequent lookups
+ * fall through to the live slug-fetch and the next successful play
+ * rewrite the mapping correctly.
+ */
+export function allmangaKitsuMapDelete(showId: string): Promise<void> {
+	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);
+}
+
+/**
  * Resolve an allmanga show_id to its full Kitsu entry by walking
  * allmanga's `Show` GraphQL aliases (englishName / nativeName /
  * altNames) through Kitsu's text search. Returns null when no Kitsu

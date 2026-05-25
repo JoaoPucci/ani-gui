@@ -11,6 +11,7 @@
  */
 
 import {
+	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
@@ -42,10 +43,33 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 				try {
 					const cached = await kitsuAnimeDetail(kitsuId);
 					if (isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-						return cached;
+						// Cour-slug guard mirrors step 1's check below. The
+						// reverse cache used to record cross-cour mappings
+						// (Stone Ocean Part 2's allmanga show_id paired with
+						// Part 1's Kitsu id) because the play picker can land
+						// on a sibling cour when ep-count + year tie. Episode-
+						// count compatibility passes for siblings that share a
+						// cour size (both 12 for Stone Ocean Parts 1/2), so
+						// the slug suffix is the only signal that catches the
+						// mismatch from this side. Evict the poisoned row on
+						// positive slug-mismatch evidence; an absent slug is
+						// missing evidence and the cached row stays.
+						if (preliminary.cour > 1 && cached.slug) {
+							const courRe = new RegExp(
+								`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
+								'i'
+							);
+							if (courRe.test(cached.slug)) {
+								return cached;
+							}
+							void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
+						} else {
+							return cached;
+						}
 					}
-					// Count mismatch → cached mapping is wrong; fall
-					// through and let alias enrichment re-resolve.
+					// Count mismatch (or cour > 1 slug mismatch) → cached
+					// mapping is wrong; fall through and let later paths
+					// re-resolve.
 				} catch {
 					// Stale id — fall through to the title-search path.
 				}
