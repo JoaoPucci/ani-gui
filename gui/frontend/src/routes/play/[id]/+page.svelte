@@ -377,8 +377,19 @@
 
 	function togglePlay() {
 		if (!videoEl) return;
-		if (videoEl.paused) void videoEl.play();
-		else videoEl.pause();
+		if (videoEl.paused) {
+			// `play()` returns a promise that can reject with AbortError
+			// when a pause() lands on top of an in-flight play() — the
+			// double-click → fullscreen path hits this every time the
+			// video is paused before the dblclick, since the undo
+			// step pauses immediately. NotAllowedError can also surface
+			// when autoplay is blocked. Both already drive the visible
+			// state via the element's `pause` / `error` events, so
+			// swallow here to avoid the unhandled-rejection noise.
+			videoEl.play().catch(() => {});
+		} else {
+			videoEl.pause();
+		}
 	}
 
 	function toggleMute() {
