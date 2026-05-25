@@ -561,6 +561,24 @@ async fn post_play_mark_watched(
                     "play: history write failed in mark-watched",
                 );
             }
+            // Watched-at stamp drives Continue Watching ordering.
+            // Runs BEFORE the cross-cour guard below because that
+            // guard fetches Kitsu detail on cache miss — letting it
+            // gate this write would stall home ordering whenever
+            // Kitsu is slow, even though the play itself succeeded.
+            // Only fires on click-side mark-watched (prefetches don't
+            // reach this handler). Failure is non-fatal.
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            if let Err(e) = kitsu_inner::watched_at_put(&state, &cached.show_id, now_ms) {
+                tracing::warn!(
+                    show_id = %cached.show_id,
+                    error = ?e,
+                    "play: watched-at stamp write failed",
+                );
+            }
             // Reverse mapping — store (allmanga show_id → kitsu_id)
             // when the frontend supplied kitsu_id. Errors are
             // swallowed (logged) because the play already succeeded;
@@ -574,12 +592,11 @@ async fn post_play_mark_watched(
             // Watching context, which then doesn't match the chosen
             // show_id. Detect that by comparing the cour suffix on
             // cached.show_title against the cour suffix on the Kitsu
-            // detail's slug. On disagreement, skip the write —
-            // history + watched-at still proceed because the play
-            // itself succeeded. The guard reads kitsu_anime_detail
-            // through its 7-day cache; mismatch when the detail
-            // can't be fetched is treated as "agree" so a network
-            // hiccup doesn't suppress legitimate writes.
+            // detail's slug. On disagreement, skip the write. The
+            // guard reads kitsu_anime_detail through its 7-day cache;
+            // mismatch when the detail can't be fetched is treated as
+            // "agree" so a network hiccup doesn't suppress legitimate
+            // writes.
             if let Some(kid) = args.kitsu_id.as_deref().filter(|k| !k.is_empty()) {
                 kitsu_inner::try_put_allmanga_kitsu_mapping(
                     &state,
@@ -588,20 +605,6 @@ async fn post_play_mark_watched(
                     kid,
                 )
                 .await;
-            }
-            // Watched-at stamp drives Continue Watching ordering.
-            // Only fires on click-side mark-watched (prefetches don't
-            // reach this handler). Failure is non-fatal.
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            if let Err(e) = kitsu_inner::watched_at_put(&state, &cached.show_id, now_ms) {
-                tracing::warn!(
-                    show_id = %cached.show_id,
-                    error = ?e,
-                    "play: watched-at stamp write failed",
-                );
             }
         }
     }
