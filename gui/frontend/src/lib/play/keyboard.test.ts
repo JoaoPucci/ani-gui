@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { decidePlayerKeyAction, PLAYER_SEEK_STEP_SECONDS, type PlayerKeyContext } from './keyboard';
+import {
+	decidePlayerKeyAction,
+	PLAYER_SEEK_STEP_SECONDS,
+	PLAYER_VOLUME_STEP,
+	type PlayerKeyContext
+} from './keyboard';
 
 const baseCtx: PlayerKeyContext = {
 	key: '',
@@ -32,6 +37,19 @@ describe('decidePlayerKeyAction', () => {
 		});
 	});
 
+	it('maps ArrowUp / ArrowDown to volume by ±PLAYER_VOLUME_STEP', () => {
+		// Mirrors the YouTube convention: up/down arrows nudge volume
+		// by ~5% per press, distinct from the slider's 1% fine step.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp' })).toEqual({
+			kind: 'volume',
+			delta: PLAYER_VOLUME_STEP
+		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown' })).toEqual({
+			kind: 'volume',
+			delta: -PLAYER_VOLUME_STEP
+		});
+	});
+
 	it('maps n / N to next, p / P to prev, f / F to fullscreen', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'n' })).toEqual({ kind: 'next' });
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'N' })).toEqual({ kind: 'next' });
@@ -45,14 +63,19 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'a' })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'Enter' })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'Escape' })).toBeNull();
-		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp' })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'Home' })).toBeNull();
 	});
 
 	it('returns null when focus is in a text-entry field', () => {
 		// Typing a letter must reach the input, and pressing space in
 		// a search box must insert a space — not toggle the player.
+		// The volume slider itself is type="range" (tagName INPUT), so
+		// the inField guard also hands ArrowUp/Down to the native range
+		// behavior when the user has explicitly focused the slider.
 		expect(decidePlayerKeyAction({ ...baseCtx, key: ' ', inField: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowLeft', inField: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp', inField: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', inField: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'n', inField: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', inField: true })).toBeNull();
 	});
@@ -62,6 +85,8 @@ describe('decidePlayerKeyAction', () => {
 		// browser find; Alt+ArrowLeft is back on most platforms. The
 		// player must never shadow those.
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowLeft', modifier: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp', modifier: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', modifier: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', modifier: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: ' ', modifier: true })).toBeNull();
 	});
@@ -77,9 +102,9 @@ describe('decidePlayerKeyAction', () => {
 	});
 
 	it('still intercepts arrow keys when focus is on an interactive element', () => {
-		// Buttons don't react to arrows by default, so seeking via
-		// arrows works even when focus happens to be on the play
-		// button itself.
+		// Buttons don't react to arrows by default, so seeking +
+		// volume-nudging via arrows works even when focus happens to
+		// be on the play button itself.
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowLeft', inButton: true })).toEqual({
 			kind: 'seek',
 			deltaSeconds: -PLAYER_SEEK_STEP_SECONDS
@@ -87,6 +112,14 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowRight', inButton: true })).toEqual({
 			kind: 'seek',
 			deltaSeconds: PLAYER_SEEK_STEP_SECONDS
+		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp', inButton: true })).toEqual({
+			kind: 'volume',
+			delta: PLAYER_VOLUME_STEP
+		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', inButton: true })).toEqual({
+			kind: 'volume',
+			delta: -PLAYER_VOLUME_STEP
 		});
 	});
 
@@ -128,6 +161,19 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowLeft', repeat: true })).toEqual({
 			kind: 'seek',
 			deltaSeconds: -PLAYER_SEEK_STEP_SECONDS
+		});
+	});
+
+	it('still nudges volume on auto-repeat for ArrowUp / ArrowDown', () => {
+		// Holding `↑` should ramp volume up continuously the same way
+		// `→` scrubs forward — common YouTube/Netflix habit.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp', repeat: true })).toEqual({
+			kind: 'volume',
+			delta: PLAYER_VOLUME_STEP
+		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', repeat: true })).toEqual({
+			kind: 'volume',
+			delta: -PLAYER_VOLUME_STEP
 		});
 	});
 });

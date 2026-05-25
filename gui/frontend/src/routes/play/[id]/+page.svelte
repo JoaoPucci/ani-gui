@@ -66,6 +66,7 @@
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -408,6 +409,19 @@
 		// icon switches to muted-state.
 		videoEl.muted = clamped === 0;
 	}
+
+	// Volume-pill reveal: keyboard volume nudges (ArrowUp/Down) need
+	// to show the slider briefly so the user gets visual feedback the
+	// same way a click would. State machine lives in
+	// $lib/play/volume-reveal so the trigger/dispose edges (rapid
+	// retrigger refreshes the timer, dispose clears pending state)
+	// can be unit-tested directly. Pointer hover keeps the slider
+	// open under its own CSS rule so the two reveal paths don't fight.
+	let volumeRevealed = $state(false);
+	const volumeReveal = createVolumeReveal((visible) => {
+		volumeRevealed = visible;
+	});
+	$effect(() => () => volumeReveal.dispose());
 
 	// Release the volume slider's pointer-acquired focus so the
 	// `.player-controls:focus-within` CSS rule and the fullscreen
@@ -1822,6 +1836,20 @@
 						seekToFraction((videoEl.currentTime + action.deltaSeconds) / duration);
 					}
 					break;
+				case 'volume':
+					if (videoEl) {
+						// Read from the element rather than the reactive
+						// `videoVolume` mirror so rapid repeats compose
+						// against the live value, not whatever snapshot
+						// Svelte has propagated yet.
+						setVolume(videoEl.volume + action.delta);
+						volumeReveal.trigger();
+						// In fullscreen the controls bar is governed by
+						// the idle timer; keep it visible while the user
+						// is actively adjusting volume.
+						if (isFullscreen) resetIdleTimer();
+					}
+					break;
 				case 'next':
 					onNext();
 					break;
@@ -1905,6 +1933,7 @@
 				<div
 					class="player-controls"
 					class:scrubber-hover={scrubberHover}
+					class:volume-revealed={volumeRevealed}
 					onfocusin={() => (controlsFocusWithin = true)}
 					onfocusout={() => (controlsFocusWithin = false)}
 				>
@@ -1939,7 +1968,12 @@
 
 						<span class="pc-spacer"></span>
 
-						<div class="pc-volume" role="group" aria-label={m.play_controls_volume_aria_label()}>
+						<div
+							class="pc-volume"
+							class:is-revealed={volumeRevealed}
+							role="group"
+							aria-label={m.play_controls_volume_aria_label()}
+						>
 							<!-- Native-style: slider on the left of the icon,
 							     both wrapped in a rounded pill that only
 							     appears on hover/focus. The slider is hidden
@@ -3388,7 +3422,8 @@
 	}
 	.player-frame:hover .player-controls,
 	.player-controls:focus-within,
-	.player-controls.scrubber-hover {
+	.player-controls.scrubber-hover,
+	.player-controls.volume-revealed {
 		opacity: 1;
 	}
 	/* Fullscreen idle override: when the JS-side state machine
@@ -3528,7 +3563,8 @@
 			padding-inline-start var(--dur-fast) var(--ease-out-soft);
 	}
 	.pc-volume:hover,
-	.pc-volume:focus-within {
+	.pc-volume:focus-within,
+	.pc-volume.is-revealed {
 		background: rgba(40, 40, 44, 0.85);
 		padding-inline-start: 1rem;
 	}
@@ -3546,7 +3582,8 @@
 			opacity var(--dur-fast) var(--ease-out-soft);
 	}
 	.pc-volume:hover .pc-volume-slider,
-	.pc-volume:focus-within .pc-volume-slider {
+	.pc-volume:focus-within .pc-volume-slider,
+	.pc-volume.is-revealed .pc-volume-slider {
 		inline-size: 4.5rem;
 		margin-inline-start: 0.4rem;
 		margin-inline-end: 0.65rem;

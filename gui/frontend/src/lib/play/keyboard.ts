@@ -13,6 +13,8 @@
  *   Space             → toggle play / pause
  *   ArrowLeft         → seek -5 s
  *   ArrowRight        → seek +5 s
+ *   ArrowUp           → volume +5 %
+ *   ArrowDown         → volume -5 %
  *   n / N             → next episode
  *   p / P             → previous episode
  *   f / F             → toggle fullscreen
@@ -39,6 +41,7 @@
 export type PlayerKeyAction =
 	| { kind: 'togglePlay' }
 	| { kind: 'seek'; deltaSeconds: number }
+	| { kind: 'volume'; delta: number }
 	| { kind: 'next' }
 	| { kind: 'prev' }
 	| { kind: 'fullscreen' };
@@ -46,6 +49,12 @@ export type PlayerKeyAction =
 /** Seconds the arrow keys seek by — matches the previous scrubber-
  *  focused inline handler so muscle memory carries over. */
 export const PLAYER_SEEK_STEP_SECONDS = 5;
+
+/** Volume delta the up/down arrows nudge by, on the [0, 1] scale.
+ *  5 % matches YouTube and Netflix; the slider's `step="0.01"`
+ *  remains the finer-grained path when the user has explicitly
+ *  focused the range input. */
+export const PLAYER_VOLUME_STEP = 0.05;
 
 export interface PlayerKeyContext {
 	/** Pressed key (KeyboardEvent.key). */
@@ -85,6 +94,11 @@ export function decidePlayerKeyAction(ctx: PlayerKeyContext): PlayerKeyAction | 
 			return { kind: 'seek', deltaSeconds: -PLAYER_SEEK_STEP_SECONDS };
 		case 'ArrowRight':
 			return { kind: 'seek', deltaSeconds: PLAYER_SEEK_STEP_SECONDS };
+		case 'ArrowUp':
+			// Repeat-friendly like seek — holding `↑` ramps volume up.
+			return { kind: 'volume', delta: PLAYER_VOLUME_STEP };
+		case 'ArrowDown':
+			return { kind: 'volume', delta: -PLAYER_VOLUME_STEP };
 		case 'n':
 		case 'N':
 			if (ctx.repeat) return null;
