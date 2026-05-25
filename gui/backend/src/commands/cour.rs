@@ -37,13 +37,17 @@ pub fn cour_from_title(name: &str) -> Option<u32> {
     // Skip whitespace between keyword and digits.
     let after_kw = trimmed[..digits_start].trim_end();
     let kw_end = after_kw.len();
+    // `kw_start = kw_end - kw.len()` is a byte offset; non-ASCII
+    // titles ("アニメ123") can land it mid-codepoint, so go through
+    // `str::get` (returns `None` when the index isn't a char
+    // boundary) instead of slicing directly.
     let kw_start = COUR_KEYWORDS.iter().find_map(|kw| {
         let want = kw.len();
         if kw_end < want {
             return None;
         }
         let kw_start = kw_end - want;
-        if after_kw[kw_start..].eq_ignore_ascii_case(kw) {
+        if after_kw.get(kw_start..)?.eq_ignore_ascii_case(kw) {
             Some(kw_start)
         } else {
             None
@@ -52,14 +56,12 @@ pub fn cour_from_title(name: &str) -> Option<u32> {
     // The keyword must be preceded by start-of-string, whitespace, or
     // a colon. This is what keeps "Part 6: Stone Ocean" (mid-title)
     // from matching when the real suffix is e.g. "Stone Ocean" alone.
-    if kw_start == 0 {
-        return Some(n);
-    }
-    let prev_byte = after_kw.as_bytes()[kw_start - 1];
-    if prev_byte == b':' || (prev_byte as char).is_whitespace() {
-        Some(n)
-    } else {
-        None
+    // Walk back by char rather than by byte so non-ASCII prefixes
+    // ("アニメ Part 2") are checked correctly.
+    match after_kw[..kw_start].chars().next_back() {
+        None => Some(n),
+        Some(c) if c == ':' || c.is_whitespace() => Some(n),
+        _ => None,
     }
 }
 
