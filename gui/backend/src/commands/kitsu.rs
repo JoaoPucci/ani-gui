@@ -438,17 +438,34 @@ pub async fn try_put_allmanga_kitsu_mapping(
     }
 }
 
-/// True when the allmanga `show_title` and the Kitsu detail's slug
-/// carry disagreeing cour suffixes. A Kitsu fetch failure yields no
-/// signal and returns false (no evidence of disagreement).
+/// True when both sides carry positive cour evidence AND it
+/// disagrees. Missing evidence (Kitsu fetch failure; an allmanga
+/// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
+/// with `slug = None` entirely) returns false — step 0's frontend
+/// slug guard heals genuinely cross-cour rows on the next read,
+/// and persisting is preferable to forfeiting the deterministic
+/// shortcut every sequel reload.
+///
+/// Note the slug treatment: Kitsu's slug convention encodes Part 1
+/// as no suffix (`jojo-..-stone-ocean`) and Parts ≥ 2 as a
+/// `-part-N` suffix. So a slug that's present but has no suffix is
+/// POSITIVE evidence (cour 1), not missing evidence — that's the
+/// signal that catches the original Stone Ocean Part 2 → Part 1
+/// poison. Only an absent `slug` field counts as no evidence.
 async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
-    use crate::commands::cour::{cour_from_slug, cour_from_title, cours_agree};
+    use crate::commands::cour::{cour_from_slug, cour_from_title};
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
     let allmanga_cour = cour_from_title(show_title);
-    let kitsu_cour = detail.slug.as_deref().and_then(cour_from_slug);
-    (allmanga_cour.is_some() || kitsu_cour.is_some()) && !cours_agree(allmanga_cour, kitsu_cour)
+    let kitsu_cour = detail
+        .slug
+        .as_deref()
+        .map(|slug| cour_from_slug(slug).unwrap_or(1));
+    match (allmanga_cour, kitsu_cour) {
+        (Some(a), Some(k)) => a != k,
+        _ => false,
+    }
 }
 
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
