@@ -1053,11 +1053,16 @@
 			onVideoEnded();
 		};
 		// Single-click → play/pause; double-click → toggle fullscreen.
-		// The dispatcher defers the single by ~250 ms so a fast double
-		// doesn't flip play/pause twice before fullscreen kicks in.
-		// See $lib/play/click-dispatcher for the state-machine edges.
+		// `togglePlay` fires synchronously inside the click gesture so
+		// `video.play()` keeps the transient user activation it needs
+		// on autoplay-restricted browsers; if a second click lands
+		// inside the upgrade window, the dispatcher undoes the toggle
+		// (calling togglePlay again — it's its own inverse) and then
+		// toggles fullscreen. See $lib/play/click-dispatcher for the
+		// state-machine edges.
 		const clickDispatcher = createClickDispatcher({
 			onSingle: togglePlay,
+			onSingleUndo: togglePlay,
 			onDouble: toggleFullscreen
 		});
 		const onClick = () => {
