@@ -1076,8 +1076,10 @@
 			onSingleUndo: togglePlay,
 			onDouble: toggleFullscreen
 		});
-		const onClick = () => {
-			if (USE_CUSTOM_PLAYER_CONTROLS) clickDispatcher.click();
+		const onClick = (ev: MouseEvent) => {
+			if (USE_CUSTOM_PLAYER_CONTROLS) {
+				clickDispatcher.click({ x: ev.clientX, y: ev.clientY });
+			}
 		};
 
 		// Bump the textTracks reactivity ticker when the list shape

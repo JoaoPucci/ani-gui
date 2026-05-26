@@ -14,9 +14,6 @@
  * time (it's its own inverse), so a double-click nets out to a
  * single fullscreen toggle with no perceived play/pause flicker.
  *
- * Matches the pattern used by YouTube and VLC: synchronous play /
- * pause on click, undo + fullscreen on a fast second click.
- *
  * The helper is framework-agnostic — the caller wires its own
  * click-event source (a `<video>` element, a div, whatever) to
  * `click()` and supplies `onSingle` / optional `onSingleUndo` /
@@ -33,9 +30,24 @@
  *  perceived latency to single clicks. */
 export const CLICK_DOUBLE_THRESHOLD_MS = 300;
 
+/** Default max pointer drift between the two clicks of a double,
+ *  in CSS pixels. Beyond this the second click is treated as a
+ *  fresh single — two quick clicks in different parts of the video
+ *  must not accidentally promote to fullscreen. 30px is wider than
+ *  Chromium's touch-tap slop (~8px) so mouse users get a generous
+ *  margin without losing the "same hit area" guarantee. */
+export const CLICK_DOUBLE_MAX_DISTANCE_PX = 30;
+
+export interface ClickPoint {
+	x: number;
+	y: number;
+}
+
 export interface ClickDispatcher {
-	/** Feed each native click event into the dispatcher. */
-	click(): void;
+	/** Feed each native click event into the dispatcher. The point
+	 *  is the event's `clientX` / `clientY` (or any consistent
+	 *  coordinate space — only relative distance matters). */
+	click(point: ClickPoint): void;
 	/** Cancel any pending upgrade window. Idempotent — safe to call
 	 *  from a component-teardown hook even when nothing is pending. */
 	dispose(): void;
@@ -51,41 +63,59 @@ export interface ClickDispatcherOptions {
 	 *  double-click nets out cleanly. When omitted, the single
 	 *  side-effect is left in place. */
 	onSingleUndo?: () => void;
-	/** Fired when a second click lands inside the upgrade window,
-	 *  after `onSingleUndo` (if any) has run. */
+	/** Fired when a second click lands inside the upgrade window
+	 *  *and* within the distance slop, after `onSingleUndo` (if
+	 *  any) has run. */
 	onDouble: () => void;
 	/** Override the default upgrade window. Useful for tests or for
 	 *  tuning per-host (touch devices want a longer window). */
 	thresholdMs?: number;
+	/** Override the default same-hit-area slop. Useful for tests
+	 *  or for tightening when the click target is small. */
+	maxDistancePx?: number;
 }
 
 export function createClickDispatcher(opts: ClickDispatcherOptions): ClickDispatcher {
 	const threshold = opts.thresholdMs ?? CLICK_DOUBLE_THRESHOLD_MS;
+	const maxDistance = opts.maxDistancePx ?? CLICK_DOUBLE_MAX_DISTANCE_PX;
 	let timer: ReturnType<typeof setTimeout> | null = null;
+	let firstPoint: ClickPoint | null = null;
 
 	function clearTimer() {
 		if (timer !== null) {
 			clearTimeout(timer);
 			timer = null;
 		}
+		firstPoint = null;
+	}
+
+	function armWindow(point: ClickPoint) {
+		firstPoint = point;
+		timer = setTimeout(() => {
+			timer = null;
+			firstPoint = null;
+		}, threshold);
 	}
 
 	return {
-		click() {
-			if (timer !== null) {
-				// Second click landed inside the window — undo the
-				// committed single and apply the double.
+		click(point: ClickPoint) {
+			if (timer !== null && firstPoint !== null) {
+				const dx = point.x - firstPoint.x;
+				const dy = point.y - firstPoint.y;
+				const distance = Math.hypot(dx, dy);
+				if (distance <= maxDistance) {
+					// Same hit area, inside the window — promote.
+					clearTimer();
+					opts.onSingleUndo?.();
+					opts.onDouble();
+					return;
+				}
+				// Pointer drifted too far for a real double. Treat this
+				// click as a fresh single and arm a new window from here.
 				clearTimer();
-				opts.onSingleUndo?.();
-				opts.onDouble();
-				return;
 			}
-			// First click — commit the single now (preserving user
-			// activation) and arm the upgrade window.
 			opts.onSingle();
-			timer = setTimeout(() => {
-				timer = null;
-			}, threshold);
+			armWindow(point);
 		},
 		dispose() {
 			clearTimer();
