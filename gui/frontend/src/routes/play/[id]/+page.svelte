@@ -67,7 +67,6 @@
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
-	import { createClickDispatcher } from '$lib/play/click-dispatcher';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -1064,22 +1063,21 @@
 			onVideoEnded();
 		};
 		// Single-click → play/pause; double-click → toggle fullscreen.
-		// `togglePlay` fires synchronously inside the click gesture so
-		// `video.play()` keeps the transient user activation it needs
-		// on autoplay-restricted browsers; if a second click lands
-		// inside the upgrade window, the dispatcher undoes the toggle
-		// (calling togglePlay again — it's its own inverse) and then
-		// toggles fullscreen. See $lib/play/click-dispatcher for the
-		// state-machine edges.
-		const clickDispatcher = createClickDispatcher({
-			onSingle: togglePlay,
-			onSingleUndo: togglePlay,
-			onDouble: toggleFullscreen
-		});
-		const onClick = (ev: MouseEvent) => {
-			if (USE_CUSTOM_PLAYER_CONTROLS) {
-				clickDispatcher.click({ x: ev.clientX, y: ev.clientY });
-			}
+		// We rely on the browser's native `click` + `dblclick` events
+		// rather than a custom timer. `click` fires synchronously
+		// inside the user gesture, which preserves the transient
+		// activation that `video.play()` needs on autoplay-restricted
+		// browsers. `dblclick` is delivered *after* both `click`s have
+		// already fired, so a double-click reads as play→pause→
+		// fullscreen (state ends back where it started, since the two
+		// togglePlays cancel out, plus fullscreen). The play/pause
+		// flicker is the cost of using browser-native timing instead
+		// of a hand-rolled threshold. Matches Video.js and Shaka.
+		const onClick = () => {
+			if (USE_CUSTOM_PLAYER_CONTROLS) togglePlay();
+		};
+		const onDoubleClick = () => {
+			if (USE_CUSTOM_PLAYER_CONTROLS) toggleFullscreen();
 		};
 
 		// Bump the textTracks reactivity ticker when the list shape
@@ -1106,6 +1104,7 @@
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
 		v.addEventListener('click', onClick);
+		v.addEventListener('dblclick', onDoubleClick);
 
 		return () => {
 			v.removeEventListener('timeupdate', onTime);
@@ -1119,7 +1118,7 @@
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
 			v.removeEventListener('click', onClick);
-			clickDispatcher.dispose();
+			v.removeEventListener('dblclick', onDoubleClick);
 			v.textTracks.removeEventListener('addtrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('removetrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('change', onTextTracksMutate);
