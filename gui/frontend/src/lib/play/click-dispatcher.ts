@@ -26,10 +26,12 @@
 /** Default upgrade window in milliseconds. A second click that
  *  arrives inside this window from the first click is promoted to
  *  a double; outside it, the previous single is "committed" and
- *  the new click starts a fresh single. 180 ms is the lowest value
- *  that still catches a deliberate double on mouse + trackpad
- *  without making rapid sequential singles feel paired. */
-export const CLICK_DOUBLE_THRESHOLD_MS = 180;
+ *  the new click starts a fresh single. 300 ms is wide enough to
+ *  catch most users' deliberate doubles — including slower clickers
+ *  and accessibility-tuned OS double-click settings — and because
+ *  the dispatcher is synchronous-first the width doesn't add any
+ *  perceived latency to single clicks. */
+export const CLICK_DOUBLE_THRESHOLD_MS = 300;
 
 export interface ClickDispatcher {
 	/** Feed each native click event into the dispatcher. */
