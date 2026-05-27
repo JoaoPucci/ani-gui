@@ -376,8 +376,19 @@
 
 	function togglePlay() {
 		if (!videoEl) return;
-		if (videoEl.paused) void videoEl.play();
-		else videoEl.pause();
+		if (videoEl.paused) {
+			// `play()` returns a promise that can reject with AbortError
+			// when a pause() lands on top of an in-flight play() — the
+			// double-click → fullscreen path hits this every time the
+			// video is paused before the dblclick, since the undo
+			// step pauses immediately. NotAllowedError can also surface
+			// when autoplay is blocked. Both already drive the visible
+			// state via the element's `pause` / `error` events, so
+			// swallow here to avoid the unhandled-rejection noise.
+			videoEl.play().catch(() => {});
+		} else {
+			videoEl.pause();
+		}
 	}
 
 	function toggleMute() {
@@ -1051,8 +1062,22 @@
 		const onEnded = () => {
 			onVideoEnded();
 		};
+		// Single-click → play/pause; double-click → toggle fullscreen.
+		// We rely on the browser's native `click` + `dblclick` events
+		// rather than a custom timer. `click` fires synchronously
+		// inside the user gesture, which preserves the transient
+		// activation that `video.play()` needs on autoplay-restricted
+		// browsers. `dblclick` is delivered *after* both `click`s have
+		// already fired, so a double-click reads as play→pause→
+		// fullscreen (state ends back where it started, since the two
+		// togglePlays cancel out, plus fullscreen). The play/pause
+		// flicker is the cost of using browser-native timing instead
+		// of a hand-rolled threshold. Matches Video.js and Shaka.
 		const onClick = () => {
 			if (USE_CUSTOM_PLAYER_CONTROLS) togglePlay();
+		};
+		const onDoubleClick = () => {
+			if (USE_CUSTOM_PLAYER_CONTROLS) toggleFullscreen();
 		};
 
 		// Bump the textTracks reactivity ticker when the list shape
@@ -1079,6 +1104,7 @@
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
 		v.addEventListener('click', onClick);
+		v.addEventListener('dblclick', onDoubleClick);
 
 		return () => {
 			v.removeEventListener('timeupdate', onTime);
@@ -1092,6 +1118,7 @@
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
 			v.removeEventListener('click', onClick);
+			v.removeEventListener('dblclick', onDoubleClick);
 			v.textTracks.removeEventListener('addtrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('removetrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('change', onTextTracksMutate);
