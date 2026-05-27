@@ -68,6 +68,10 @@ describe('parseGitHubRelease', () => {
 		expect(parseGitHubRelease(valid({ body: undefined }))?.body).toBe('');
 	});
 
+	it('returns an empty string when published_at is missing', () => {
+		expect(parseGitHubRelease(valid({ published_at: undefined }))?.publishedAt).toBe('');
+	});
+
 	it('returns null for non-object input', () => {
 		expect(parseGitHubRelease(null)).toBeNull();
 		expect(parseGitHubRelease('hi')).toBeNull();

@@ -103,6 +103,18 @@ describe('checkForUpdate', () => {
 		expect(out).toBeNull();
 	});
 
+	it('returns null when the response body is not valid JSON', async () => {
+		// 200 status but body fails to parse — the helper catches and
+		// collapses to null rather than throwing into the caller.
+		const fetcher = vi.fn().mockResolvedValue(new Response('not-json {', { status: 200 }));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
+		expect(out).toBeNull();
+	});
+
 	it('forwards include_prereleases=true to the backend by default', async () => {
 		const fetcher = vi.fn().mockResolvedValue(noContent());
 		await checkForUpdate({

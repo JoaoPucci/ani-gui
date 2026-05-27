@@ -49,6 +49,21 @@ describe('isNewerVersion', () => {
 		expect(isNewerVersion('not-a-version', '0.4.0')).toBe(false);
 	});
 
+	it('returns false for an empty version string on either side', () => {
+		// `v` alone strips to '' and must be rejected — guards against
+		// a phantom badge if the backend ever serves a half-baked tag.
+		expect(isNewerVersion('', '0.4.0')).toBe(false);
+		expect(isNewerVersion('v', '0.4.0')).toBe(false);
+		expect(isNewerVersion('0.4.0', '')).toBe(false);
+	});
+
+	it('returns false when a pre-release suffix is present but empty', () => {
+		// `0.5.0-` parses to a `pre` of length zero, which the parser
+		// treats as malformed (semver requires at least one identifier
+		// after the dash).
+		expect(isNewerVersion('0.4.0', '0.5.0-')).toBe(false);
+	});
+
 	it('treats extra segments as zeros (0.4 == 0.4.0)', () => {
 		expect(isNewerVersion('0.4', '0.4.0')).toBe(false);
 		expect(isNewerVersion('0.4', '0.4.1')).toBe(true);
