@@ -36,7 +36,14 @@
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
+	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import { downloadFailureStore } from '$lib/download/failure-store.svelte';
+	import { checkForUpdate } from '$lib/update/check';
+	import { updateStore } from '$lib/update/store.svelte';
+	import pkg from '../../package.json';
+
+	const appVersion = pkg.version;
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import {
@@ -197,6 +204,24 @@
 		};
 		v.addEventListener('pause', onPause);
 		v.addEventListener('leavepictureinpicture', onLeave);
+
+		// Update notifier — one-shot check on app open. Result lands
+		// in the update store; the badge in the topbar and the modal
+		// dialog react to it. Failures (offline, rate-limited, etc.)
+		// silently resolve to null so nothing surfaces. The
+		// `update_include_prereleases` setting (default true) drives
+		// which GitHub endpoint we hit — see check.ts.
+		void settingsGet()
+			.catch(() => null)
+			.then((c) =>
+				checkForUpdate({
+					currentVersion: appVersion,
+					fetcher: window.fetch.bind(window),
+					includePrereleases: c?.update_include_prereleases ?? true
+				})
+			)
+			.then((release) => updateStore.setAvailable(release));
+
 		return () => {
 			v.removeEventListener('pause', onPause);
 			v.removeEventListener('leavepictureinpicture', onLeave);
@@ -449,7 +474,7 @@
 
 		<footer class="rail-foot" aria-hidden="true">
 			<span class="rail-foot-key">v</span>
-			<span class="rail-foot-val">0.1</span>
+			<span class="rail-foot-val">{appVersion}</span>
 		</footer>
 	</aside>
 
@@ -548,6 +573,7 @@
 					</div>
 				{/if}
 			</form>
+			<UpdateBadge />
 			<DownloadDock />
 		</header>
 		<main class="content">
@@ -568,6 +594,11 @@
   (50 vs 40).
 -->
 <ToastHost downloadBarEnabled={config?.download_bottom_bar_enabled !== false} />
+
+<!-- UpdateDialog — opens when the user clicks the UpdateBadge in
+     the topbar. Lives here at the layout root so the modal sits
+     above any route content. -->
+<UpdateDialog currentVersion={appVersion} />
 
 <!--
   Layout-level modal for blocking download failures (today: ffmpeg

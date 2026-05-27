@@ -406,6 +406,9 @@
 	"settings_field_auto_update_anicli_key": "Keep ani-cli current",
 	"settings_field_auto_update_anicli_hint": "On launch, run the upstream ani-cli script's self-update if the cached copy is older than a day. allmanga's API drifts daily; when this is off, scraper fixes upstream takes hours after they ship don't reach you until the next ani-gui release.",
 	"settings_auto_update_anicli_aria_label": "Keep ani-cli current",
+	"settings_field_update_include_prereleases_key": "Include pre-releases in update check",
+	"settings_field_update_include_prereleases_hint": "When on, the update badge surfaces both stable releases and pre-releases (release candidates, betas). All ani-gui cuts shipped so far are pre-releases — turning this off makes the notifier silent until the first stable cut.",
+	"settings_update_include_prereleases_aria_label": "Include pre-releases in update check",
 	"settings_field_disable_pip_key": "Disable auto Picture-in-Picture",
 	"settings_field_disable_pip_hint": "By default, navigating away from the player while a video is playing pops it into a Picture-in-Picture window so you can keep watching while browsing. Turn this on to pause playback on navigation instead. Episode-to-episode navigation never triggers PiP regardless.",
 	"settings_disable_pip_aria_label": "Disable auto Picture-in-Picture",
@@ -448,5 +451,14 @@
 	"strip_arrow_next_aria_label": "Next",
 	"strip_card_episodes_suffix": "ep",
 	"strip_card_no_date": "—",
-	"toast_dismiss_aria": "Dismiss notification"
+	"toast_dismiss_aria": "Dismiss notification",
+	"update_badge_aria_label": "Update available",
+	"update_badge_tooltip": "Update available: {tag}",
+	"update_dialog_title": "Update available",
+	"update_dialog_intro": "A newer version of ani-gui is available.",
+	"update_dialog_current_label": "Current",
+	"update_dialog_latest_label": "Latest",
+	"update_dialog_close_label": "Close",
+	"update_dialog_open_releases_label": "Open releases page",
+	"update_dialog_open_releases_aria_label": "Open the GitHub releases page in your browser"
 }
