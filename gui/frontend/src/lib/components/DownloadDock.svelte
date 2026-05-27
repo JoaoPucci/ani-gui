@@ -127,6 +127,7 @@
 							<li class="dl-row dl-row-{item.status}" title={item.title}>
 								<span class="dl-row-text">
 									<span class="dl-row-title">{item.title}</span>
+									<span class="dl-row-sep" aria-hidden="true">·</span>
 									<span class="dl-row-ep">{epLabel}</span>
 								</span>
 
@@ -356,6 +357,10 @@
 		align-items: baseline;
 		gap: var(--space-2);
 		overflow: hidden;
+		/* Right-align the whole title-cluster: short titles leave
+		   whitespace on the LEFT instead of dangling space between
+		   the ep marker and the progress bar. */
+		margin-inline-start: auto;
 	}
 	.dl-row-title {
 		font-family: var(--font-body);
@@ -367,18 +372,27 @@
 		white-space: nowrap;
 		max-inline-size: 14rem;
 	}
+	.dl-row-sep {
+		color: var(--bone-400);
+		flex-shrink: 0;
+	}
 	.dl-row-ep {
-		font-family: var(--font-mono);
-		font-size: var(--type-micro);
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		color: var(--bone-300);
+		font-family: var(--font-body);
+		font-size: var(--type-body-s);
+		color: var(--brand);
+		white-space: nowrap;
 		flex-shrink: 0;
 	}
 	.dl-row-bar {
 		position: relative;
-		flex: 1 1 auto;
-		min-inline-size: 2rem;
+		/* Fixed width so every row's bar matches regardless of title
+		   length — previously this was `flex: 1 1 auto`, which made
+		   short-title rows show a wide sweep and truncated-title
+		   rows show a narrow sweep. The text cluster carries the
+		   `margin-inline-start: auto`; the bar sits naturally next
+		   to it on the right. */
+		flex-shrink: 0;
+		inline-size: 5rem;
 		block-size: 2px;
 		background: color-mix(in oklab, var(--ink-200) 60%, transparent);
 		border-radius: 999px;
