@@ -389,7 +389,9 @@
 						<span class="eyebrow-rule" aria-hidden="true"></span>
 						<span class="eyebrow-value">{m.home_hero_eyebrow_value()}</span>
 					</p>
-					<h1 class="hero-title">{featured.canonical_title}</h1>
+					<h1 class="hero-title" title={featured.canonical_title}>
+						{featured.canonical_title}
+					</h1>
 					{#if synopsis}
 						<p class="hero-snippet">{synopsis}</p>
 					{/if}
@@ -722,7 +724,12 @@
 	.hero-empty {
 		position: relative;
 		z-index: 2;
-		max-inline-size: 44rem;
+		/* Widened from 44rem so multi-clause titles
+		   ("X 4th Season: 2-nensei-hen 1 Gakki") get more horizontal
+		   room before the line-clamp on .hero-title kicks in. The
+		   snippet keeps its own narrower 38rem cap, so body copy
+		   stays at a comfortable reading measure. */
+		max-inline-size: 56rem;
 		/* Inline padding aligns hero text with the strips below.
 		   The hero box now extends behind the rail too (margin-inline-
 		   start escapes both .main-area's gutter AND the rail column),
@@ -763,6 +770,19 @@
 		letter-spacing: var(--tracking-display);
 		font-style: italic;
 		color: var(--bone-100);
+		/* Long anime titles (multi-season + cour markers) previously
+		   wrapped to 5+ lines. Because .hero-layer is align-items:
+		   flex-end, the block grew upward and the top of the title
+		   overflowed past .hero's overflow:hidden boundary — the
+		   first word disappeared above the visible region. Clamp to
+		   3 lines with an ellipsis; the full title is reachable via
+		   the native tooltip (title attribute) and via the detail
+		   page (See more). */
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
 	}
 
 	.hero-snippet {
