@@ -55,9 +55,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on non-200 responses', async () => {
-		const fetcher = vi
-			.fn()
-			.mockResolvedValue(new Response('not found', { status: 404 }));
+		const fetcher = vi.fn().mockResolvedValue(new Response('not found', { status: 404 }));
 		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
 		expect(out).toBeNull();
 	});
@@ -69,9 +67,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on malformed JSON body', async () => {
-		const fetcher = vi
-			.fn()
-			.mockResolvedValue(new Response('not-json', { status: 200 }));
+		const fetcher = vi.fn().mockResolvedValue(new Response('not-json', { status: 200 }));
 		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
 		expect(out).toBeNull();
 	});
