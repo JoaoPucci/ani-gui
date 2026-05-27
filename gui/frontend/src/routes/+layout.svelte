@@ -205,22 +205,27 @@
 		v.addEventListener('pause', onPause);
 		v.addEventListener('leavepictureinpicture', onLeave);
 
-		// Update notifier — one-shot check on app open. Result lands
-		// in the update store; the badge in the topbar and the modal
-		// dialog react to it. Failures (offline, rate-limited, etc.)
-		// silently resolve to null so nothing surfaces. The
-		// `update_include_prereleases` setting (default true) drives
-		// which GitHub endpoint we hit — see check.ts.
-		void settingsGet()
-			.catch(() => null)
-			.then((c) =>
-				checkForUpdate({
-					currentVersion: appVersion,
-					fetcher: window.fetch.bind(window),
-					includePrereleases: c?.update_include_prereleases ?? true
-				})
-			)
-			.then((release) => updateStore.setAvailable(release));
+		// Update notifier — one-shot check on app open. Routes
+		// through the local backend (`/api/update-check`); the
+		// renderer never hits api.github.com directly because the
+		// backend is the documented outbound HTTP boundary
+		// (`docs/architecture.md`). The
+		// `update_include_prereleases` setting (default true)
+		// drives which GitHub endpoint the backend hits.
+		const localApiBase = window.aniGui?.apiBase ?? '';
+		if (localApiBase) {
+			void settingsGet()
+				.catch(() => null)
+				.then((c) =>
+					checkForUpdate({
+						currentVersion: appVersion,
+						fetcher: window.fetch.bind(window),
+						apiBase: localApiBase,
+						includePrereleases: c?.update_include_prereleases ?? true
+					})
+				)
+				.then((release) => updateStore.setAvailable(release));
+		}
 
 		return () => {
 			v.removeEventListener('pause', onPause);

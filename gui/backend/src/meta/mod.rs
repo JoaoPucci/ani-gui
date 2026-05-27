@@ -7,5 +7,6 @@
 
 pub mod anilist;
 pub mod aniskip;
+pub mod github;
 pub mod images;
 pub mod kitsu;

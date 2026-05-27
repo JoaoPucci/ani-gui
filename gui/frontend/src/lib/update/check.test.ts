@@ -1,136 +1,126 @@
 /**
- * Tests for `checkForUpdate` — orchestrates fetch + parse + compare.
+ * Tests for `checkForUpdate`.
  *
- * Fetcher is injected so the test doesn't need a network stub. The
- * helper returns the parsed ReleaseInfo when a newer version is
- * available, otherwise null (current matches/older, draft, parse
- * failure, fetch failure — all collapse to null so a single
- * `if (release !== null)` guard in the caller is enough).
- *
- * The `includePrereleases` option drives which endpoint we hit:
- *   - true (default)  → `/releases?per_page=1`, response is an
- *                       ARRAY sorted newest-first INCLUDING
- *                       pre-releases. ani-gui's cuts are all
- *                       marked prerelease=true today, so this is
- *                       the only mode that surfaces anything.
- *   - false           → `/releases/latest`, response is a single
- *                       OBJECT representing the latest non-pre,
- *                       non-draft release. Skips pre-releases.
+ * The helper now hits the local backend (`/api/update-check`)
+ * which proxies GitHub — the renderer never talks to api.github.com
+ * directly. Test fixtures use the backend's camelCase ReleaseInfo
+ * shape (matches `meta::github::ReleaseInfo` in the Rust side).
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import { checkForUpdate } from './check';
 
+const BASE = 'http://127.0.0.1:38123';
+
 function ok(body: unknown): Response {
 	return new Response(JSON.stringify(body), { status: 200 });
 }
 
-function valid(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function noContent(): Response {
+	return new Response(null, { status: 204 });
+}
+
+function release(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
-		tag_name: 'v0.5.0',
+		tag: 'v0.5.0',
 		name: 'v0.5.0 — newer',
-		html_url: 'https://github.com/JoaoPucci/ani-gui/releases/tag/v0.5.0',
-		published_at: '2026-06-01T00:00:00Z',
+		url: 'https://github.com/JoaoPucci/ani-gui/releases/tag/v0.5.0',
+		publishedAt: '2026-06-01T00:00:00Z',
 		body: 'release notes',
-		draft: false,
-		prerelease: false,
 		...overrides
 	};
 }
 
-describe('checkForUpdate (default: includePrereleases=true)', () => {
-	it('returns ReleaseInfo when the latest tag is newer than current', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([valid()]));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
+describe('checkForUpdate', () => {
+	it('returns ReleaseInfo when backend serves a newer release', async () => {
+		const fetcher = vi.fn().mockResolvedValue(ok(release()));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
 		expect(out).not.toBeNull();
 		expect(out?.tag).toBe('v0.5.0');
 	});
 
-	it('returns null when the latest tag is the same as current', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([valid({ tag_name: 'v0.4.0' })]));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
+	it('returns null when backend returns 204 (no release / soft failure)', async () => {
+		const fetcher = vi.fn().mockResolvedValue(noContent());
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
 		expect(out).toBeNull();
 	});
 
-	it('returns null when the latest tag is older than current', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([valid({ tag_name: 'v0.3.0' })]));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
+	it('returns null when the served tag is the same as current', async () => {
+		const fetcher = vi.fn().mockResolvedValue(ok(release({ tag: 'v0.4.0' })));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
 		expect(out).toBeNull();
 	});
 
-	it('returns null when the response is a draft', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([valid({ draft: true })]));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
+	it('returns null when the served tag is older', async () => {
+		const fetcher = vi.fn().mockResolvedValue(ok(release({ tag: 'v0.3.0' })));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
 		expect(out).toBeNull();
 	});
 
-	it('returns null when the array is empty', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([]));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
+	it('returns null on a malformed payload shape', async () => {
+		const fetcher = vi.fn().mockResolvedValue(ok({ unexpected: true }));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
 		expect(out).toBeNull();
 	});
 
-	it('hits the GitHub /releases list endpoint (newest non-draft, includes pre-releases)', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok([valid({ tag_name: 'v0.4.0' })]));
-		await checkForUpdate({ currentVersion: '0.4.0', fetcher });
-		expect(fetcher).toHaveBeenCalledWith(
-			'https://api.github.com/repos/JoaoPucci/ani-gui/releases?per_page=1',
-			expect.any(Object)
-		);
+	it('returns null on non-200 / non-204 responses', async () => {
+		const fetcher = vi.fn().mockResolvedValue(new Response('boom', { status: 500 }));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
+		expect(out).toBeNull();
 	});
-});
 
-describe('checkForUpdate (includePrereleases=false)', () => {
-	it('hits the /releases/latest endpoint (skips pre-releases)', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok(valid({ tag_name: 'v0.5.0' })));
+	it('returns null on fetch rejection (backend unreachable)', async () => {
+		const fetcher = vi.fn().mockRejectedValue(new Error('econnrefused'));
+		const out = await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE
+		});
+		expect(out).toBeNull();
+	});
+
+	it('forwards include_prereleases=true to the backend by default', async () => {
+		const fetcher = vi.fn().mockResolvedValue(noContent());
 		await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
-			includePrereleases: false
+			apiBase: BASE
 		});
-		expect(fetcher).toHaveBeenCalledWith(
-			'https://api.github.com/repos/JoaoPucci/ani-gui/releases/latest',
-			expect.any(Object)
-		);
+		expect(fetcher).toHaveBeenCalledWith(`${BASE}/api/update-check?include_prereleases=true`);
 	});
 
-	it('parses a single-object response (not an array)', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok(valid({ tag_name: 'v0.5.0' })));
-		const out = await checkForUpdate({
+	it('forwards include_prereleases=false when the option is off', async () => {
+		const fetcher = vi.fn().mockResolvedValue(noContent());
+		await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
+			apiBase: BASE,
 			includePrereleases: false
 		});
-		expect(out?.tag).toBe('v0.5.0');
-	});
-
-	it('returns null on 404 (no full release exists yet)', async () => {
-		const fetcher = vi.fn().mockResolvedValue(new Response('not found', { status: 404 }));
-		const out = await checkForUpdate({
-			currentVersion: '0.4.0',
-			fetcher,
-			includePrereleases: false
-		});
-		expect(out).toBeNull();
-	});
-});
-
-describe('checkForUpdate (transport failures)', () => {
-	it('returns null on non-200 responses', async () => {
-		const fetcher = vi.fn().mockResolvedValue(new Response('not found', { status: 404 }));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
-		expect(out).toBeNull();
-	});
-
-	it('returns null on fetch rejection (network error)', async () => {
-		const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
-		expect(out).toBeNull();
-	});
-
-	it('returns null on malformed JSON body', async () => {
-		const fetcher = vi.fn().mockResolvedValue(new Response('not-json', { status: 200 }));
-		const out = await checkForUpdate({ currentVersion: '0.4.0', fetcher });
-		expect(out).toBeNull();
+		expect(fetcher).toHaveBeenCalledWith(`${BASE}/api/update-check?include_prereleases=false`);
 	});
 });
