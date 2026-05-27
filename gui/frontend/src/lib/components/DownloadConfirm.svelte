@@ -517,13 +517,13 @@
 		color: var(--bone-300);
 	}
 	.dl-eyebrow-key {
-		color: var(--accent);
+		color: var(--brand);
 	}
 	.dl-eyebrow-rule {
 		display: inline-block;
 		inline-size: 2rem;
 		block-size: 1px;
-		background: var(--accent);
+		background: var(--brand);
 	}
 	.dl-title {
 		margin: 0;
@@ -588,9 +588,9 @@
 		color: var(--bone-100);
 	}
 	.dl-mode-btn.active {
-		background: color-mix(in oklab, var(--accent) 22%, var(--ink-050));
+		background: color-mix(in oklab, var(--brand) 22%, var(--ink-050));
 		color: var(--bone-100);
-		border-color: color-mix(in oklab, var(--accent) 50%, var(--bone-400));
+		border-color: color-mix(in oklab, var(--brand) 50%, var(--bone-400));
 	}
 	.dl-mode-btn:disabled,
 	.dl-mode-btn-disabled {
@@ -659,7 +659,7 @@
 		color: var(--bone-300);
 	}
 	.dl-mode-btn.active .dl-mode-num {
-		color: color-mix(in oklab, var(--accent) 80%, var(--bone-100));
+		color: color-mix(in oklab, var(--brand) 80%, var(--bone-100));
 	}
 	.dl-input-num {
 		flex: 0 0 5rem;
@@ -678,7 +678,9 @@
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
+		/* No uppercase here — "of {total}" turned into "OF 24" in
+		   mono, where the capital O reads as a zero ("0F 24").
+		   Lowercase "of" reads cleanly. */
 		color: var(--bone-300);
 	}
 	.dl-range-faint {
@@ -698,8 +700,8 @@
 	}
 	.dl-input:focus-visible {
 		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+		border-color: var(--brand);
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--brand) 35%, transparent);
 	}
 	/* Invalid Range input — oxblood border, faint background tint;
 	   keeps the focus halo readable on top via box-shadow stack. */
@@ -758,11 +760,11 @@
 		color: var(--bone-100);
 	}
 	.dl-btn-accent {
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		color: var(--ink-000);
+		background: var(--brand);
+		border: 1px solid var(--brand);
+		color: var(--bone-100);
 	}
 	.dl-btn-accent:hover:not(:disabled) {
-		background: color-mix(in oklab, var(--accent) 80%, var(--bone-100));
+		background: color-mix(in oklab, var(--brand) 80%, var(--bone-100));
 	}
 </style>
