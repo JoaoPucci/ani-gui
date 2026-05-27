@@ -38,6 +38,8 @@
 	"bar_label_multi": "Descargando {count} episodios",
 	"bar_cancel_all_aria_label": "Cancelar todas las descargas",
 	"bar_cancel_all_title": "Cancelar todas las descargas",
+	"bar_cancel_confirm_single": "¿Cancelar la descarga de «{title}»?",
+	"bar_cancel_confirm_multi": "¿Cancelar {count} descargas activas?",
 	"dock_active_label": "{count} descarga(s) en curso",
 	"dock_unseen_label": "{count} descarga(s) finalizadas",
 	"dock_idle_label": "Descargas",

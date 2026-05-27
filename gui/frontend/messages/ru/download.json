@@ -38,6 +38,8 @@
 	"bar_label_multi": "Загрузка {count} серий",
 	"bar_cancel_all_aria_label": "Отменить все загрузки",
 	"bar_cancel_all_title": "Отменить все загрузки",
+	"bar_cancel_confirm_single": "Отменить загрузку «{title}»?",
+	"bar_cancel_confirm_multi": "Отменить {count} активных загрузок?",
 	"dock_active_label": "{count} загрузок в процессе",
 	"dock_unseen_label": "{count} загрузок завершено",
 	"dock_idle_label": "Загрузки",

@@ -31,15 +31,13 @@
 	function cancelAll() {
 		const count = active.length;
 		if (count === 0) return;
-		// Match DownloadDock's per-item confirm pattern — single prompt,
-		// adaptive wording. Phrased in line with the cancel-of-N idiom
-		// the dock uses (intentionally not paraglided to mirror the
-		// existing literal in DownloadDock; revisit when that one
-		// migrates).
+		// Same single-prompt pattern as DownloadDock's per-item cancel
+		// but properly Paraglide-localised (the dock's literal is a
+		// pre-existing miss; this surface ships its translations).
 		const msg =
 			count === 1
-				? `Cancel download of "${active[0].title}"?`
-				: `Cancel ${count} active downloads?`;
+				? m.download_bar_cancel_confirm_single({ title: active[0].title })
+				: m.download_bar_cancel_confirm_multi({ count });
 		const ok = typeof window !== 'undefined' ? window.confirm(msg) : true;
 		if (!ok) return;
 		// Snapshot ids first so the array can mutate during the loop
@@ -113,7 +111,12 @@
 		   at z-index 20; we sit below at 10 so the rail visually
 		   covers our leftmost ~rail-width. Content is right-aligned
 		   via justify-content so the controls live in the
-		   rail-clear zone regardless of viewport width. */
+		   rail-clear zone regardless of viewport width.
+		   `pointer-events: none` on the container so the empty left
+		   half of the strip doesn't intercept clicks meant for the
+		   page underneath (player controls, scroll, etc.) — the
+		   cancel button re-enables pointer events on itself. The
+		   visible black band is purely a paint surface. */
 		position: fixed;
 		inset-inline: 0;
 		inset-block-end: 0;
@@ -125,6 +128,7 @@
 		padding-block: var(--space-2);
 		padding-inline: var(--space-4);
 		min-block-size: 2rem;
+		pointer-events: none;
 		/* Black, slightly transparent. Lets a hint of the page below
 		   bleed through so the bar reads as overlay, not opaque slab. */
 		background: color-mix(in oklab, #000 80%, transparent);
@@ -202,6 +206,10 @@
 		background: transparent;
 		color: var(--bone-300);
 		cursor: pointer;
+		/* Re-enable pointer events — the container disables them so
+		   empty bar space doesn't swallow page clicks; the button
+		   itself still needs to receive them. */
+		pointer-events: auto;
 		transition:
 			background-color 120ms ease,
 			color 120ms ease;
