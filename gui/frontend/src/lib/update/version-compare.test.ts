@@ -53,4 +53,31 @@ describe('isNewerVersion', () => {
 		expect(isNewerVersion('0.4', '0.4.0')).toBe(false);
 		expect(isNewerVersion('0.4', '0.4.1')).toBe(true);
 	});
+
+	describe('pre-release suffixes', () => {
+		it('accepts a candidate with a -rc suffix when its core version is newer', () => {
+			expect(isNewerVersion('0.4.0', '0.5.0-rc1')).toBe(true);
+		});
+
+		it('accepts a -beta suffix the same way', () => {
+			expect(isNewerVersion('0.4.0', 'v0.5.0-beta.1')).toBe(true);
+		});
+
+		it('treats a stable release as newer than its own rc', () => {
+			expect(isNewerVersion('0.5.0-rc1', '0.5.0')).toBe(true);
+		});
+
+		it('treats an rc as older than the stable cut with the same core', () => {
+			expect(isNewerVersion('0.5.0', '0.5.0-rc1')).toBe(false);
+		});
+
+		it('compares rcN suffixes lexically (rc2 > rc1)', () => {
+			expect(isNewerVersion('0.5.0-rc1', '0.5.0-rc2')).toBe(true);
+			expect(isNewerVersion('0.5.0-rc2', '0.5.0-rc1')).toBe(false);
+		});
+
+		it('returns false when the same rc is on both sides', () => {
+			expect(isNewerVersion('0.5.0-rc1', '0.5.0-rc1')).toBe(false);
+		});
+	});
 });
