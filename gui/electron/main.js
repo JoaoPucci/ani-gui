@@ -284,14 +284,44 @@ async function createWindow(apiBase) {
     },
   });
 
-  // Open external links (http/https) in the user's default browser
-  // instead of inside the app window.
+  // New-window requests come from three places:
+  //   1. `window.open(...)` or `<a target="_blank">` to an external
+  //      site (e.g. settings help links, ffmpeg.org from the error
+  //      overlay) — route through shell.openExternal so the user's
+  //      default browser opens it.
+  //   2. Middle-click / ctrl-click / shift-click on any in-app
+  //      `<a href="/route">` — Chromium would normally open a new
+  //      tab. Electron has no tabs and our renderer is a single-
+  //      window app, so allowing this either leaks the dev URL to
+  //      the system browser (dev) or spawns a preload-less, broken
+  //      BrowserWindow (packaged). Deny.
+  //   3. Anything we don't recognise — deny, never spawn windows
+  //      we didn't ask for.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http")) {
-      shell.openExternal(url);
+    let target;
+    try {
+      target = new URL(url);
+    } catch {
       return { action: "deny" };
     }
-    return { action: "allow" };
+    if (target.protocol === "http:" || target.protocol === "https:") {
+      const currentUrl = win.webContents.getURL();
+      let currentOrigin = null;
+      try {
+        currentOrigin = new URL(currentUrl).origin;
+      } catch {
+        currentOrigin = null;
+      }
+      // Same-origin http(s) is the dev server hosting our own
+      // routes (http://localhost:5173/...). Treat it as internal —
+      // a middle-click on a SvelteKit `<a href="/route">` link
+      // shouldn't bounce the URL into the user's system browser.
+      if (currentOrigin && target.origin === currentOrigin) {
+        return { action: "deny" };
+      }
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
   });
 
   // Renderer-side diagnostics surface in the main process log so we
