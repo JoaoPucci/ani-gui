@@ -1,9 +1,7 @@
 // @vitest-environment happy-dom
 //
 // Singleton runes-state store for the update notifier. happy-dom
-// supplies the DOM globals Svelte's runtime asserts on plus a
-// working `localStorage` so the dismissed-tag persistence path is
-// exercised end-to-end.
+// supplies the DOM globals Svelte's runtime asserts on.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { updateStore } from './store.svelte';
 import type { ReleaseInfo } from './release-parse';
@@ -21,74 +19,48 @@ describe('updateStore', () => {
 		// Singleton — reset to a clean slate between tests.
 		updateStore.setAvailable(null);
 		updateStore.closeDialog();
-		updateStore.dismissedTag = null;
-		localStorage.clear();
 	});
 
-	it('starts empty — no update, no glow, dialog closed', () => {
+	it('starts empty — no update, dialog closed', () => {
 		expect(updateStore.available).toBeNull();
 		expect(updateStore.hasUpdate).toBe(false);
-		expect(updateStore.glowing).toBe(false);
 		expect(updateStore.dialogOpen).toBe(false);
 	});
 
-	it('setAvailable(release) flips hasUpdate + glowing on', () => {
+	it('setAvailable(release) flips hasUpdate on', () => {
 		updateStore.setAvailable(release);
 		expect(updateStore.available).toEqual(release);
 		expect(updateStore.hasUpdate).toBe(true);
-		expect(updateStore.glowing).toBe(true);
 	});
 
 	it('setAvailable(null) clears the badge', () => {
 		updateStore.setAvailable(release);
 		updateStore.setAvailable(null);
 		expect(updateStore.hasUpdate).toBe(false);
-		expect(updateStore.glowing).toBe(false);
 	});
 
-	it('openDialog() opens the modal and dismisses the current tag', () => {
+	it('openDialog() opens the modal', () => {
 		updateStore.setAvailable(release);
 		updateStore.openDialog();
 		expect(updateStore.dialogOpen).toBe(true);
-		expect(updateStore.dismissedTag).toBe(release.tag);
-		// Glow off once acknowledged for this tag — but badge still
-		// shows (hasUpdate stays true).
-		expect(updateStore.glowing).toBe(false);
-		expect(updateStore.hasUpdate).toBe(true);
 	});
 
-	it('openDialog() persists the dismissed tag to localStorage', () => {
-		updateStore.setAvailable(release);
-		updateStore.openDialog();
-		expect(localStorage.getItem('ani-gui-update-dismissed-tag')).toBe(release.tag);
-	});
-
-	it('closeDialog() leaves dismissedTag intact', () => {
+	it('closeDialog() closes the modal but leaves the badge alone', () => {
 		updateStore.setAvailable(release);
 		updateStore.openDialog();
 		updateStore.closeDialog();
 		expect(updateStore.dialogOpen).toBe(false);
-		expect(updateStore.dismissedTag).toBe(release.tag);
-		// Re-opening is still possible from the badge.
+		expect(updateStore.hasUpdate).toBe(true);
+		// Re-opening from the badge is still possible.
 		updateStore.openDialog();
 		expect(updateStore.dialogOpen).toBe(true);
 	});
 
-	it('a newer tag re-lights the glow even after a previous dismiss', () => {
+	it('hasUpdate stays true after opening — pulse is ambient, not one-shot', () => {
 		updateStore.setAvailable(release);
 		updateStore.openDialog();
+		expect(updateStore.hasUpdate).toBe(true);
 		updateStore.closeDialog();
-		expect(updateStore.glowing).toBe(false);
-
-		const nextRelease: ReleaseInfo = { ...release, tag: 'v0.6.0' };
-		updateStore.setAvailable(nextRelease);
-		expect(updateStore.glowing).toBe(true);
-	});
-
-	it('openDialog() with no available release is a no-op for dismissedTag', () => {
-		updateStore.setAvailable(null);
-		updateStore.openDialog();
-		expect(updateStore.dialogOpen).toBe(true);
-		expect(updateStore.dismissedTag).toBeNull();
+		expect(updateStore.hasUpdate).toBe(true);
 	});
 });
