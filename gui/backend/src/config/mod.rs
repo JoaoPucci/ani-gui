@@ -89,6 +89,13 @@ pub struct Config {
     /// upstream pushes a hotfix we don't have. Users on metered or
     /// strictly offline setups can flip it off.
     pub auto_update_anicli: bool,
+    /// When `true`, the renderer's update notifier considers GitHub
+    /// pre-releases when checking for a newer version. Defaults to
+    /// `true` because every ani-gui release shipped so far is marked
+    /// prerelease — turning it off makes the notifier silent until
+    /// the first stable cut. Users who want only stable releases can
+    /// flip it off in Settings.
+    pub update_include_prereleases: bool,
 }
 
 impl Default for Config {
@@ -109,6 +116,7 @@ impl Default for Config {
             use_custom_player_controls: true,
             disable_auto_pip_on_leave: true,
             auto_update_anicli: true,
+            update_include_prereleases: true,
         }
     }
 }

@@ -20,7 +20,8 @@
 		| 'download'
 		| 'external'
 		| 'arrow-back'
-		| 'arrow-right';
+		| 'arrow-right'
+		| 'update';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -158,5 +159,26 @@
 	>
 		<path d="M13 5 L20 12 L13 19" />
 		<path d="M4 12 H20" />
+	</svg>
+{:else if name === 'update'}
+	<!-- Download arrow inscribed in a circle — reads as "package
+	     available, click to learn more". Same hand-drawn discipline
+	     as the other glyphs (1.5px stroke, square caps). Distinct
+	     enough from the tray-style 'download' icon next to it that
+	     the two never read as duplicates. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<circle cx="12" cy="12" r="9" />
+		<path d="M12 7 V15" />
+		<path d="M8 12 L12 16 L16 12" />
 	</svg>
 {/if}

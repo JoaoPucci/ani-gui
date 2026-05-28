@@ -220,6 +220,10 @@
 		if (!cfg) return;
 		void persist({ ...cfg, auto_update_anicli: value });
 	}
+	function setUpdateIncludePrereleases(value: boolean) {
+		if (!cfg) return;
+		void persist({ ...cfg, update_include_prereleases: value });
+	}
 
 	async function clearHistory() {
 		clearing = true;
@@ -609,6 +613,30 @@
 					</span>
 					<span class="switch-state"
 						>{cfg.auto_update_anicli
+							? m.settings_switch_state_on()
+							: m.settings_switch_state_off()}</span
+					>
+				</label>
+			</div>
+
+			<div class="field">
+				<div class="field-label">
+					<span class="field-key">{m.settings_field_update_include_prereleases_key()}</span>
+					<span class="field-hint">{m.settings_field_update_include_prereleases_hint()}</span>
+				</div>
+				<label class="switch">
+					<input
+						type="checkbox"
+						checked={cfg.update_include_prereleases}
+						onchange={(e) =>
+							setUpdateIncludePrereleases((e.currentTarget as HTMLInputElement).checked)}
+						aria-label={m.settings_update_include_prereleases_aria_label()}
+					/>
+					<span class="switch-track" aria-hidden="true">
+						<span class="switch-thumb"></span>
+					</span>
+					<span class="switch-state"
+						>{cfg.update_include_prereleases
 							? m.settings_switch_state_on()
 							: m.settings_switch_state_off()}</span
 					>

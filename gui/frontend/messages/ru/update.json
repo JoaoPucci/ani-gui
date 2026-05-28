@@ -1,0 +1,11 @@
+{
+	"badge_aria_label": "Доступно обновление",
+	"badge_tooltip": "Доступно обновление: {tag}",
+	"dialog_title": "Доступно обновление",
+	"dialog_intro": "Доступна новая версия ani-gui.",
+	"dialog_current_label": "Текущая",
+	"dialog_latest_label": "Последняя",
+	"dialog_close_label": "Закрыть",
+	"dialog_open_releases_label": "Открыть страницу релизов",
+	"dialog_open_releases_aria_label": "Открыть страницу релизов GitHub в браузере"
+}

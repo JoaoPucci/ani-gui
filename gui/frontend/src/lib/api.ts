@@ -253,6 +253,7 @@ export interface Config {
 	use_custom_player_controls: boolean;
 	disable_auto_pip_on_leave: boolean;
 	auto_update_anicli: boolean;
+	update_include_prereleases: boolean;
 }
 
 /** Outcome of the most recent ani-cli `-U` run. The backend writes

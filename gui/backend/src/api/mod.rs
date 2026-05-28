@@ -25,6 +25,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tower_http::cors::CorsLayer;
 
 mod syncplay;
+mod update;
 
 use crate::app::AppState;
 use crate::commands::{
@@ -111,6 +112,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             get(get_kitsu_trending_anilist),
         )
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
+        .route("/api/update-check", get(update::get_update_check))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
         .route("/api/kitsu/episodes/:anime_id", get(get_kitsu_episodes))
         .route(
