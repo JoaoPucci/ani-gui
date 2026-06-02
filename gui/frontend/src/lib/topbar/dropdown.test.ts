@@ -290,8 +290,10 @@ describe('freshConfigOrLast', () => {
 		// detail page update their page-local config but the layout's
 		// copy never refreshes; freshConfigOrLast re-pulls so the next
 		// filter call sees the user's current pick.
-		const stale = { mode: 'sub' } as { mode: string };
-		const fresh = { mode: 'dub' } as { mode: string };
+		const stale = { mode: 'sub' } as unknown as Parameters<typeof freshConfigOrLast>[0];
+		const fresh = { mode: 'dub' } as unknown as NonNullable<
+			Parameters<typeof freshConfigOrLast>[0]
+		>;
 		apiMock.settingsGet.mockResolvedValueOnce(fresh);
 		const out = await freshConfigOrLast(stale);
 		expect(out).toBe(fresh);
@@ -301,7 +303,7 @@ describe('freshConfigOrLast', () => {
 		// IPC failure mustn't blank out config — the dropdown still
 		// renders, just with the older mode. The lazy click path
 		// surfaces real backend errors.
-		const last = { mode: 'sub' } as { mode: string };
+		const last = { mode: 'sub' } as unknown as NonNullable<Parameters<typeof freshConfigOrLast>[0]>;
 		apiMock.settingsGet.mockRejectedValueOnce(new Error('ipc down'));
 		const out = await freshConfigOrLast(last);
 		expect(out).toBe(last);
