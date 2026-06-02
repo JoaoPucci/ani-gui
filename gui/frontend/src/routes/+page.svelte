@@ -15,6 +15,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		altTitlesFromKitsu,
+		availabilityBatch,
 		yearFromKitsuRef,
 		historyList,
 		imageProxyUrl,
@@ -72,6 +73,13 @@
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
+	// Per-history-entry allmanga playable episode count, keyed by entry.id.
+	// Read from the shared availability cache via a single batch lookup
+	// after all matches resolve. Lets the Continue card derive the same
+	// pickNextEpisode cap the detail page uses (`playableEpisodeCount` →
+	// allmanga's truthful count, not Kitsu's sometimes-stale announced
+	// total). Falls back to match?.episode_count when absent.
+	let historyPlayableCounts = $state<Record<string, number>>({});
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
 	let scrollY = $state(0);
@@ -139,24 +147,37 @@
 				//      thumbnail + title.
 				// Fire-and-forget per entry; on failure the card
 				// degrades gracefully (anime poster + entry's own title).
-				history.forEach((entry: HistoryEntry) => {
+				// The match promises are collected so we can fire ONE
+				// availabilityBatch for all of them at the end — the
+				// detail page reads `playableEpisodeCount` from a per-
+				// page check_availability probe; the home strip can't
+				// afford an N-call inline probe, but the cached counts
+				// already live in `meta_cache` from prior list-view
+				// warms, so one batch read gets us the same cap for
+				// every card.
+				const matchPromises = history.map((entry: HistoryEntry) => {
 					const preliminary = resolveHistoryEntry(entry, null);
 					// resolveKitsuMatch checks the title-match cache first
 					// (TITLE_MATCH_TTL = 30d), short-circuiting the
 					// kitsuSearch + pickKitsuMatch round-trip on subsequent
 					// loads. On miss it runs the live search + picker and
 					// persists the resolved kitsu_id back into the cache.
-					void resolveKitsuMatch(preliminary)
+					return resolveKitsuMatch(preliminary)
 						.then((match) => {
 							historyMatches = { ...historyMatches, [entry.id]: match };
-							if (!match) return;
+							if (!match) return { entry, match: null };
 							const target = resolveHistoryEntry(entry, match);
-							if (!target.kitsuEpisode) return;
+							if (!target.kitsuEpisode) return { entry, match };
 							// Fetch metadata for the episode the user is ABOUT
 							// to play, not the one they just watched —
 							// pickNextEpisode mirrors the detail page's
 							// defaultEpisode rules so the card shows what
-							// Continue would actually play.
+							// Continue would actually play. The cap here uses
+							// Kitsu's count; the availabilityBatch below
+							// reactively swaps in allmanga's truthful count
+							// once it arrives, so cards whose effective cap
+							// changes (ongoing shows where allmanga is ahead)
+							// re-derive nextEpisode for the badge + click.
 							const nextEpisode = pickNextEpisode(target.kitsuEpisode, match.episode_count ?? null);
 							const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 							void kitsuEpisodes(match.id, kitsuPage)
@@ -170,11 +191,44 @@
 								.catch(() => {
 									historyEpisodes = { ...historyEpisodes, [entry.id]: null };
 								});
+							return { entry, match };
 						})
 						.catch(() => {
 							historyMatches = { ...historyMatches, [entry.id]: null };
+							return { entry, match: null };
 						});
 				});
+
+				// One batch availability lookup once every per-entry
+				// resolve has settled. Reads cached playable_episode_counts
+				// for the resolved kitsu_ids — the same count the detail
+				// page derives its `episodeCap` from. Match-less entries
+				// and uncached rows yield no entry; the per-card cap then
+				// falls back to Kitsu's count. Mode pulls from the layout
+				// config (sub fallback when settings haven't loaded —
+				// matches the rest of the home page's mode source).
+				void Promise.all(matchPromises)
+					.then((settled) => {
+						const ids = settled.map((s) => s.match?.id).filter((id): id is string => Boolean(id));
+						if (ids.length === 0) return;
+						const mode = config?.mode === 'dub' ? 'dub' : 'sub';
+						return availabilityBatch(ids, mode).then((r) => ({ settled, counts: r }));
+					})
+					.then((result) => {
+						if (!result) return;
+						const { settled, counts } = result;
+						const next: Record<string, number> = {};
+						for (const { entry, match } of settled) {
+							if (!match) continue;
+							const count = counts.playable_episode_counts[match.id];
+							if (typeof count === 'number') next[entry.id] = count;
+						}
+						historyPlayableCounts = next;
+					})
+					.catch(() => {
+						// Cache miss / network blip — leave historyPlayableCounts
+						// empty; per-card cap falls back to Kitsu's count.
+					});
 			})
 			.catch(() => {
 				history = [];
@@ -486,7 +540,11 @@
 				match?.episode_count ?? null,
 				match?.status ?? null
 			)}
-			{@const nextEpisode = pickNextEpisode(target.kitsuEpisode, match?.episode_count ?? null)}
+			{@const playableCount = historyPlayableCounts[entry.id]}
+			{@const nextEpisode = pickNextEpisode(
+				target.kitsuEpisode,
+				playableCount ?? match?.episode_count ?? null
+			)}
 			<!-- Card is a button when we can resume (Kitsu match + an
 			     episode to play); else falls through to /search as a
 			     plain link. The href on the search-fallback path is
