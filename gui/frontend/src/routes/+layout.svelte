@@ -82,6 +82,7 @@
 	const isSearch = $derived(routeId.startsWith('/search'));
 	const isSettings = $derived(routeId.startsWith('/settings'));
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
+	const isAbout = $derived(routeId.startsWith('/about'));
 
 	// Back-stack depth tracker. Layout adapter; the rules live in
 	// `$lib/history/nav-depth` so they're unit-testable. We pull
@@ -478,10 +479,21 @@
 			</ul>
 		</nav>
 
-		<footer class="rail-foot" aria-hidden="true">
+		<!-- The version chip doubles as the entry point to /about. Pairing
+		     "what version am I on" with "what is this app" matches OS
+		     conventions (About Firefox / About macOS) and keeps the rail
+		     from growing a fifth nav item. -->
+		<a
+			class="rail-foot"
+			class:active={isAbout}
+			href={resolve('/about')}
+			aria-label={m.app_about_link_aria()}
+			aria-current={isAbout ? 'page' : undefined}
+			title={m.app_about_link_title()}
+		>
 			<span class="rail-foot-key">v</span>
 			<span class="rail-foot-val">{appVersion}</span>
-		</footer>
+		</a>
 	</aside>
 
 	<div class="main-area">
@@ -932,20 +944,60 @@
 	}
 
 	.rail-foot {
+		position: relative;
 		display: grid;
 		justify-items: center;
 		gap: 2px;
+		padding: var(--space-2) var(--space-3);
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
 		color: var(--bone-400);
 		text-transform: uppercase;
+		text-decoration: none;
+		border-radius: var(--radius-card, 4px);
+		transition:
+			color var(--dur-fast) var(--ease-out-soft),
+			background var(--dur-fast) var(--ease-out-soft);
+	}
+	.rail-foot:hover {
+		color: var(--bone-100);
+		background: color-mix(in oklab, var(--bone-100) 4%, transparent);
+	}
+	.rail-foot:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 2px var(--ink-000),
+			0 0 0 4px var(--brand);
+	}
+	.rail-foot.active {
+		color: var(--bone-100);
+		background: color-mix(in oklab, var(--brand) 16%, transparent);
+	}
+	.rail-foot.active::before {
+		content: '';
+		position: absolute;
+		inset-block: var(--space-2);
+		inset-inline-start: 0;
+		inline-size: 3px;
+		background: var(--brand);
+		border-radius: 0 2px 2px 0;
+	}
+	.rail-foot.active .rail-foot-val {
+		color: var(--bone-100);
 	}
 	@media (max-inline-size: 720px) {
 		.rail-foot {
 			margin-inline-start: auto;
 			grid-auto-flow: column;
 			gap: var(--space-1);
+		}
+		.rail-foot.active::before {
+			inset-block-end: 0;
+			inset-block-start: auto;
+			inset-inline: var(--space-2);
+			inline-size: auto;
+			block-size: 2px;
 		}
 	}
 	.rail-foot-val {
