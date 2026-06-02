@@ -45,6 +45,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
+	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -151,15 +152,18 @@
 							if (!match) return;
 							const target = resolveHistoryEntry(entry, match);
 							if (!target.kitsuEpisode) return;
-							const kitsuPage = Math.max(
-								1,
-								Math.ceil(target.kitsuEpisode / EPISODES_KITSU_PAGE_SIZE)
-							);
+							// Fetch metadata for the episode the user is ABOUT
+							// to play, not the one they just watched —
+							// pickNextEpisode mirrors the detail page's
+							// defaultEpisode rules so the card shows what
+							// Continue would actually play.
+							const nextEpisode = pickNextEpisode(target.kitsuEpisode, match.episode_count ?? null);
+							const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 							void kitsuEpisodes(match.id, kitsuPage)
 								.then((eps: KitsuEpisode[]) => {
 									const ep =
-										eps.find((e) => e.number === target.kitsuEpisode) ??
-										eps.find((e) => e.relative_number === target.kitsuEpisode) ??
+										eps.find((e) => e.number === nextEpisode) ??
+										eps.find((e) => e.relative_number === nextEpisode) ??
 										null;
 									historyEpisodes = { ...historyEpisodes, [entry.id]: ep };
 								})
@@ -482,6 +486,7 @@
 				match?.episode_count ?? null,
 				match?.status ?? null
 			)}
+			{@const nextEpisode = pickNextEpisode(target.kitsuEpisode, match?.episode_count ?? null)}
 			<!-- Card is a button when we can resume (Kitsu match + an
 			     episode to play); else falls through to /search as a
 			     plain link. The href on the search-fallback path is
@@ -496,7 +501,7 @@
 					class:resume-card-busy={isResuming}
 					style="--accent: {accent};"
 					disabled={!!resumeBusy && !isResuming}
-					onclick={() => startResume(match, target.kitsuEpisode!)}
+					onclick={() => startResume(match, nextEpisode)}
 				>
 					<span class="resume-poster">
 						{#if image}
@@ -510,10 +515,12 @@
 							<!-- Suppress the "EP N" overlay for single-video
 							     shows (movies + finished 1-ep OVAs/specials);
 							     the poster IS the video, no episode number
-							     to surface. -->
+							     to surface. The number shown matches what
+							     Continue would play — i.e. the episode about
+							     to start, not the one just watched. -->
 							<span class="resume-ep-tag" aria-hidden="true">
 								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-								<span class="resume-ep-num">{target.displayEpisode}</span>
+								<span class="resume-ep-num">{nextEpisode}</span>
 							</span>
 						{/if}
 					</span>
@@ -527,7 +534,7 @@
 							     enough, and the card is unambiguously a
 							     "continue this movie" affordance. -->
 							<span class="resume-title resume-title-faint"
-								>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
+								>{m.home_resume_episode_label({ episode: nextEpisode })}</span
 							>
 						{/if}
 					</span>
