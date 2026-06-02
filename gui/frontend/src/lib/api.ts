@@ -30,6 +30,12 @@ declare global {
 	interface Window {
 		aniGui?: {
 			apiBase?: string;
+			/** Node's `process.platform` value forwarded from the Electron
+			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
+			 *  etc. Used by surfaces whose copy or recovery hints differ
+			 *  per OS (e.g. the FfmpegMissing modal). Absent in browser-
+			 *  only dev. */
+			platform?: string;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {
