@@ -32,6 +32,7 @@
 		type Config,
 		type KitsuAnimeRef
 	} from '$lib/api';
+	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -258,7 +259,23 @@
 				const hits = await kitsuSearch(q);
 				// If the user kept typing past this query, ignore stale results.
 				if (q !== topbarQuery.trim()) return;
-				liveResults = hits.slice(0, LIVE_MAX_HITS);
+				const trimmed = hits.slice(0, LIVE_MAX_HITS);
+				// Drop hits the availability cache already knows aren't on
+				// the streaming source. Cache-only variant — no warm, no
+				// upstream probes — since this path fires per settled
+				// keystroke and the warm should originate from lower-
+				// frequency surfaces (home rows, detail page). Match the
+				// home filter's mode source: per-user config with 'sub'
+				// fallback. The dropdown can briefly show fewer than
+				// LIVE_MAX_HITS rows when filtering trims hits;
+				// over-fetching to backfill is deliberately not done — the
+				// dropdown is a quick-jump, not a complete listing.
+				const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
+				const filtered = await filterAvailableCacheOnly(trimmed, mode);
+				// Re-check after the async filter — the user may have kept
+				// typing while it ran.
+				if (q !== topbarQuery.trim()) return;
+				liveResults = filtered;
 			} catch {
 				liveResults = [];
 				liveError = true;
