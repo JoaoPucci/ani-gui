@@ -119,6 +119,19 @@ pub struct AvailabilityBatchResponse {
     /// a cached value; missing ids should be treated as "unknown,
     /// render normally" by the caller.
     pub cached: HashMap<String, bool>,
+    /// Map of kitsu_id → allmanga's playable episode count, for cached
+    /// rows where the probe found the show. Lets the home Continue
+    /// Watching card cap pickNextEpisode against allmanga's true count
+    /// instead of Kitsu's (sometimes stale) announced total — the
+    /// detail page reads the same value via an inline probe, so home
+    /// and detail end up computing the same defaultEpisode without an
+    /// extra round trip from the home strip.
+    ///
+    /// Absent for rows cached as unavailable, and for legacy rows
+    /// from before episode_count was written into the cache body
+    /// (those parse with episode_count=None).
+    #[serde(default)]
+    pub playable_episode_counts: HashMap<String, u32>,
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
@@ -333,6 +346,7 @@ pub fn write_cache_full(
 pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> AvailabilityBatchResponse {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
     let mut cached = HashMap::with_capacity(args.kitsu_ids.len());
+    let mut playable_episode_counts = HashMap::new();
     for id in &args.kitsu_ids {
         if id.is_empty() {
             continue;
@@ -341,10 +355,22 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
                 cached.insert(id.clone(), parsed.available);
+                // Only surface a count when the probe found the show
+                // AND the cache body carries one. Negative-cached rows
+                // and pre-v2 legacy rows yield no entry — the home
+                // card's cap will fall back to Kitsu's episode_count.
+                if parsed.available {
+                    if let Some(count) = parsed.episode_count {
+                        playable_episode_counts.insert(id.clone(), count);
+                    }
+                }
             }
         }
     }
-    AvailabilityBatchResponse { cached }
+    AvailabilityBatchResponse {
+        cached,
+        playable_episode_counts,
+    }
 }
 
 /// Warm the cache for a set of titles. Each entry carries the data
@@ -665,10 +691,7 @@ mod tests {
             resp.playable_episode_counts.get("ongoing-show"),
             Some(&1107)
         );
-        assert_eq!(
-            resp.playable_episode_counts.get("finished-show"),
-            Some(&12)
-        );
+        assert_eq!(resp.playable_episode_counts.get("finished-show"), Some(&12));
         assert!(!resp.playable_episode_counts.contains_key("blocked-show"));
         assert!(!resp.playable_episode_counts.contains_key("uncached-show"));
     }
