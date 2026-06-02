@@ -80,11 +80,22 @@ function run(cmd, args, opts = {}) {
  *   exec "$BIN" "${args[@]}"
  *
  * Inject `--no-sandbox` between the binary and the user's args on
- * both branches. Idempotent — running twice is a no-op because the
- * source patterns are gone after the first pass.
+ * both branches. Returns true when the file was modified, false when
+ * the patch was already present (idempotent — a stale AppImage left
+ * over in dist/ from a prior build can be picked up and skipped
+ * without crashing the whole script). Throws only when none of the
+ * patterns match AND `--no-sandbox` isn't already present — that
+ * means electron-builder's template actually drifted and the script
+ * needs an update.
  */
 function patchAppRun(appRunPath) {
 	const original = fs.readFileSync(appRunPath, 'utf8');
+	// Already-patched short-circuit. The patched form is unique enough
+	// (`exec "$BIN" --no-sandbox`) that finding it once means both
+	// exec lines were rewritten on a prior pass.
+	if (original.includes('exec "$BIN" --no-sandbox')) {
+		return false;
+	}
 	const patched = original
 		.replace(/^(\s*)exec "\$BIN"$/m, '$1exec "$BIN" --no-sandbox')
 		.replace(/^(\s*)exec "\$BIN" "\$\{args\[@\]\}"$/m, '$1exec "$BIN" --no-sandbox "${args[@]}"');
@@ -94,6 +105,7 @@ function patchAppRun(appRunPath) {
 		);
 	}
 	fs.writeFileSync(appRunPath, patched, { mode: 0o755 });
+	return true;
 }
 
 /**
@@ -113,12 +125,21 @@ async function repack(appimage) {
 	await run(appimage, ['--appimage-extract'], { cwd: tmpRoot });
 	const appDir = path.join(tmpRoot, 'squashfs-root');
 
-	// 2. Patch AppRun.
+	// 2. Patch AppRun. If the AppImage was already repacked on a prior
+	//    build (stale dist/ artifact), short-circuit before the costly
+	//    mksquashfs + runtime-swap steps — saves ~30s per stale file
+	//    and matches electron-builder's "this rebuild has nothing new
+	//    for me" idempotency.
 	const appRunPath = path.join(appDir, 'AppRun');
 	if (!fs.existsSync(appRunPath)) {
 		throw new Error(`expected AppRun at ${appRunPath} after extract`);
 	}
-	patchAppRun(appRunPath);
+	const patched = patchAppRun(appRunPath);
+	if (!patched) {
+		console.log(`[repack] skip already-repacked: ${path.basename(appimage)}`);
+		fs.rmSync(tmpRoot, { recursive: true, force: true });
+		return;
+	}
 	console.log(`[repack] patched AppRun: --no-sandbox added to exec lines`);
 
 	// 3. Repack with mksquashfs. type2-runtime only links zlib + zstd
