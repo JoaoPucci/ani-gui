@@ -1,7 +1,7 @@
 {
 	"name": "ani-gui",
 	"version": "0.6.0",
-	"description": "Electron shell for ani-gui — spawns the Rust backend as a sidecar and renders the SvelteKit frontend",
+	"description": "Browse and watch anime",
 	"homepage": "https://github.com/pucci/ani-gui",
 	"author": {
 		"name": "ani-gui contributors",
@@ -72,6 +72,10 @@
 			"executableName": "ani-gui",
 			"artifactName": "${productName}-${version}-${arch}.${ext}",
 			"maintainer": "ani-gui contributors <dev@thirdmovement.net>",
+			"desktop": {
+				"GenericName": "Anime Viewer",
+				"Keywords": "anime;video;streaming;player;"
+			},
 			"extraResources": [
 				{
 					"from": "build-resources/linux/bin",
