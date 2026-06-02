@@ -18,7 +18,10 @@
 	"page_title_settings": "Настройки · ani-gui",
 	"page_title_search": "Поиск · ani-gui",
 	"page_title_detail": "{title} · ani-gui",
+	"page_title_about": "О приложении · ani-gui",
 	"page_title_loading": "Загрузка",
 	"nav_primary_aria_label": "Основная навигация",
-	"nav_breadcrumb_aria_label": "Хлебные крошки"
+	"nav_breadcrumb_aria_label": "Хлебные крошки",
+	"about_link_aria": "О ani-gui",
+	"about_link_title": "О ani-gui — версия, лицензии, зависимости"
 }

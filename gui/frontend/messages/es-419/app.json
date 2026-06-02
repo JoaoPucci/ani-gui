@@ -18,7 +18,10 @@
 	"page_title_settings": "Ajustes · ani-gui",
 	"page_title_search": "Búsqueda · ani-gui",
 	"page_title_detail": "{title} · ani-gui",
+	"page_title_about": "Acerca de · ani-gui",
 	"page_title_loading": "Cargando",
 	"nav_primary_aria_label": "Navegación principal",
-	"nav_breadcrumb_aria_label": "Ruta"
+	"nav_breadcrumb_aria_label": "Ruta",
+	"about_link_aria": "Acerca de ani-gui",
+	"about_link_title": "Acerca de ani-gui — versión, licencias, dependencias"
 }

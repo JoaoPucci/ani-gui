@@ -18,7 +18,10 @@
 	"page_title_settings": "Settings · ani-gui",
 	"page_title_search": "Search · ani-gui",
 	"page_title_detail": "{title} · ani-gui",
+	"page_title_about": "About · ani-gui",
 	"page_title_loading": "Loading",
 	"nav_primary_aria_label": "Primary navigation",
-	"nav_breadcrumb_aria_label": "Breadcrumb"
+	"nav_breadcrumb_aria_label": "Breadcrumb",
+	"about_link_aria": "About ani-gui",
+	"about_link_title": "About ani-gui — version, licences, dependencies"
 }

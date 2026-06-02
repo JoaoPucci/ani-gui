@@ -66,7 +66,8 @@ function isTranslatable(raw) {
 		'HLS',
 		'PiP',
 		'OP',
-		'ED'
+		'ED',
+		'ETH'
 	]);
 	if (tokenAllowlist.has(value)) return false;
 	return true;
