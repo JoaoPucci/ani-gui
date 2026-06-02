@@ -34,6 +34,7 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
+	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -478,10 +479,22 @@
 				]);
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
+					// Pipe similar-titles through the same availability filter
+					// the home rows use. Cache-only / fire-and-forget — drops
+					// kitsu hits we already know aren't on the streaming source,
+					// warms uncached entries for the next visit. Without this
+					// the strip happily renders dead shows whose detail pages
+					// only dead-end on the Watch click.
 					void kitsuSearch(seed)
 						.then((hits) => {
-							if (id !== currentId) return;
-							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
+							if (id !== currentId) return null;
+							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
+							const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
+							return filterAvailable(trimmed, mode);
+						})
+						.then((filtered) => {
+							if (id !== currentId || filtered === null) return;
+							similar = filtered;
 						})
 						.catch(() => {
 							similar = [];

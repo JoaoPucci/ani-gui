@@ -32,6 +32,7 @@
 		type Config,
 		type KitsuAnimeRef
 	} from '$lib/api';
+	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -50,6 +51,7 @@
 		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
+		freshConfigOrLast,
 		mergeRecents,
 		parseStoredRecents,
 		shouldRenderDropdown
@@ -258,7 +260,23 @@
 				const hits = await kitsuSearch(q);
 				// If the user kept typing past this query, ignore stale results.
 				if (q !== topbarQuery.trim()) return;
-				liveResults = hits.slice(0, LIVE_MAX_HITS);
+				const trimmed = hits.slice(0, LIVE_MAX_HITS);
+				// Drop hits the availability cache already knows aren't on
+				// the streaming source. Cache-only variant — no warm, no
+				// upstream probes — since this path fires per settled
+				// keystroke and the warm should originate from lower-
+				// frequency surfaces (home rows, detail page). Match the
+				// home filter's mode source: per-user config with 'sub'
+				// fallback. The dropdown can briefly show fewer than
+				// LIVE_MAX_HITS rows when filtering trims hits;
+				// over-fetching to backfill is deliberately not done — the
+				// dropdown is a quick-jump, not a complete listing.
+				const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
+				const filtered = await filterAvailableCacheOnly(trimmed, mode);
+				// Re-check after the async filter — the user may have kept
+				// typing while it ran.
+				if (q !== topbarQuery.trim()) return;
+				liveResults = filtered;
 			} catch {
 				liveResults = [];
 				liveError = true;
@@ -313,12 +331,19 @@
 		scheduleLive(topbarQuery.trim());
 	}
 
-	function onInputFocus() {
+	async function onInputFocus() {
 		if (blurDismiss) {
 			clearTimeout(blurDismiss);
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
+		// Re-pull config so the next dropdown filter sees the user's
+		// current Sub/Dub pick. Settings + the detail page mutate their
+		// page-local config but don't push it back here, so without
+		// this refresh the dropdown filters with whatever mode was set
+		// when the layout first mounted. Bounded work: fires once per
+		// focus, not per keystroke.
+		config = await freshConfigOrLast(config);
 	}
 
 	function onInputBlur() {

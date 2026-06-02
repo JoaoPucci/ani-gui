@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fc from 'fast-check';
+
+const apiMock = vi.hoisted(() => ({
+	settingsGet: vi.fn()
+}));
+vi.mock('$lib/api', () => apiMock);
+
 import {
 	RECENT_LIMIT,
 	cycleSelectedIdx,
 	decideEnterAction,
+	freshConfigOrLast,
 	mergeRecents,
 	parseStoredRecents,
 	shouldRenderDropdown
@@ -270,5 +277,44 @@ describe('parseStoredRecents (properties)', () => {
 				return Array.isArray(out);
 			})
 		);
+	});
+});
+
+describe('freshConfigOrLast', () => {
+	beforeEach(() => apiMock.settingsGet.mockReset());
+	afterEach(() => vi.useRealTimers());
+
+	it('returns the freshly fetched config when settingsGet resolves', async () => {
+		// The dropdown reads config?.mode to pick sub vs dub before
+		// filtering hits through the availability cache. Settings + the
+		// detail page update their page-local config but the layout's
+		// copy never refreshes; freshConfigOrLast re-pulls so the next
+		// filter call sees the user's current pick.
+		const stale = { mode: 'sub' } as unknown as Parameters<typeof freshConfigOrLast>[0];
+		const fresh = { mode: 'dub' } as unknown as NonNullable<
+			Parameters<typeof freshConfigOrLast>[0]
+		>;
+		apiMock.settingsGet.mockResolvedValueOnce(fresh);
+		const out = await freshConfigOrLast(stale);
+		expect(out).toBe(fresh);
+	});
+
+	it('falls back to the last-known config when settingsGet rejects', async () => {
+		// IPC failure mustn't blank out config — the dropdown still
+		// renders, just with the older mode. The lazy click path
+		// surfaces real backend errors.
+		const last = { mode: 'sub' } as unknown as NonNullable<Parameters<typeof freshConfigOrLast>[0]>;
+		apiMock.settingsGet.mockRejectedValueOnce(new Error('ipc down'));
+		const out = await freshConfigOrLast(last);
+		expect(out).toBe(last);
+	});
+
+	it('returns null when settingsGet rejects and no last-known config exists', async () => {
+		// First-paint case before settingsGet ever resolved — return
+		// null so the caller's nullish chain (config?.mode) still
+		// works.
+		apiMock.settingsGet.mockRejectedValueOnce(new Error('ipc down'));
+		const out = await freshConfigOrLast(null);
+		expect(out).toBeNull();
 	});
 });

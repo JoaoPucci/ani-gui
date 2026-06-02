@@ -14,7 +14,7 @@ const apiMock = vi.hoisted(() => ({
 }));
 vi.mock('$lib/api', () => apiMock);
 
-import { filterAvailable, filterAvailableStrict } from './filter';
+import { filterAvailable, filterAvailableCacheOnly, filterAvailableStrict } from './filter';
 
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -117,6 +117,48 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		// The function awaits the batch call, then kicks off warm
 		// without await. The rejection must not propagate.
 		await expect(filterAvailable([ref('a')], 'sub')).resolves.toBeDefined();
+	});
+});
+
+describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
+	beforeEach(() => {
+		apiMock.availabilityBatch.mockReset();
+		apiMock.availabilityWarm.mockReset();
+		apiMock.checkAvailability.mockReset();
+	});
+
+	it('returns empty list unchanged without hitting the API', async () => {
+		const out = await filterAvailableCacheOnly([], 'sub');
+		expect(out).toEqual([]);
+		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
+		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
+	});
+
+	it('drops cards the cache marks unavailable, keeps cached-true and uncached', async () => {
+		const items = [ref('a'), ref('b'), ref('c')];
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true, b: false /* c uncached */ }
+		});
+		const out = await filterAvailableCacheOnly(items, 'sub');
+		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
+	});
+
+	it('NEVER calls availabilityWarm — high-frequency surfaces stay cache-only', async () => {
+		// The reason this variant exists. The topbar live-search fires
+		// once per settled keystroke; warming uncached items on each
+		// query enqueues redundant upstream probes for overlapping
+		// hits. The cache-only variant reads the cache and stops.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		await filterAvailableCacheOnly([ref('a'), ref('b')], 'sub');
+		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
+	});
+
+	it('falls back to rendering all items when the batch call throws', async () => {
+		apiMock.availabilityBatch.mockRejectedValueOnce(new Error('offline'));
+		const items = [ref('a'), ref('b')];
+		const out = await filterAvailableCacheOnly(items, 'sub');
+		expect(out).toEqual(items);
+		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
 	});
 });
 

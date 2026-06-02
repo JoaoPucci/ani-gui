@@ -10,6 +10,8 @@
  * component glues together.
  */
 
+import { settingsGet, type Config } from '$lib/api';
+
 /** localStorage key for the last-N user submissions. Public so the
  *  component imports it instead of redeclaring the literal. */
 export const RECENT_STORAGE_KEY = 'ani-gui:recent-searches';
@@ -115,6 +117,20 @@ export interface DropdownVisibilityState {
 	queryTrimmed: string;
 	/** Number of remembered recent searches in localStorage. */
 	recentsCount: number;
+}
+
+/** Re-pull settings before the dropdown's next cache filter pass so
+ *  it sees the user's current Sub/Dub pick. Settings + the detail
+ *  page mutate their page-local config and call settingsPut, but the
+ *  layout's copy never refreshes — without this, the topbar keeps
+ *  filtering with the older mode until a reload. Falls back to the
+ *  last-known config on IPC failure so the dropdown stays usable. */
+export async function freshConfigOrLast(last: Config | null): Promise<Config | null> {
+	try {
+		return await settingsGet();
+	} catch {
+		return last;
+	}
 }
 
 /** Whether the dropdown card has any content to show. The component
