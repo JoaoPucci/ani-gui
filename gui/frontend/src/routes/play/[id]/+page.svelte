@@ -28,7 +28,7 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -64,6 +64,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
+	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
@@ -281,42 +282,46 @@
 		}
 	});
 
-	// Identity of the (show, episode) we last issued an aniskip
-	// fetch for. Aniskip's API rejects requests whose
-	// episodeLength doesn't match the recorded length within a
-	// tolerance, so re-firing the fetch on every `duration` tick
-	// (initial estimate → final value, hls.js manifest updates,
-	// etc.) can flip a successful response into a 404 and clear a
-	// valid `skipIntervals`. Re-fetch only when the episode itself
-	// changes; ignore `duration` updates within the same episode.
-	let aniskipFetchedKey: string | null = null;
+	// Aniskip's API rejects requests whose episodeLength doesn't match
+	// the recorded length within a tolerance, so re-firing the fetch
+	// on every `duration` tick (initial estimate → final value, hls.js
+	// manifest updates, etc.) can flip a successful response into a 404
+	// and clear a valid `skipIntervals`. The trigger collapses both the
+	// "same episode" guard and the "duration ready" gate so the effect
+	// below can subscribe only to the episode key and a stable boolean
+	// — neither of which churns on `timeupdate`. The actual duration
+	// value is read once at fetch time via `untrack` so its sub-µs
+	// tick stream stays off the effect's dependency set.
+	const aniskipFetchKey = $derived(id && episodeNum > 0 ? `${id}|${episodeNum}` : null);
+	const aniskipDurationReady = $derived(Number.isFinite(duration) && duration > 0);
+	const aniskipTrigger = createAniskipFetchTrigger();
 	$effect(() => {
-		const showId = id;
-		const ep = episodeNum ? String(episodeNum) : '';
-		const key = showId && ep ? `${showId}|${ep}` : null;
-		if (!key) {
+		// Subscribing to the fetch-key derived re-runs the effect on
+		// episode boundaries; subscribing to the readiness boolean
+		// re-runs it the moment duration first becomes usable, then
+		// stops propagating since `true === true`. The captured `key`
+		// is reused below to detect an episode change between issuing
+		// and resolving the request.
+		const key = aniskipFetchKey;
+		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
+		if (decision.kind === 'clear') {
 			skipIntervals = [];
-			aniskipFetchedKey = null;
 			return;
 		}
-		if (!Number.isFinite(duration) || duration <= 0) {
-			return;
-		}
-		if (key === aniskipFetchedKey) return;
-		aniskipFetchedKey = key;
+		if (decision.kind !== 'fetch') return;
+		const len = untrack(() => duration);
 		// Clear stale data before the fetch so a previous episode's
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
-		const len = duration;
-		void aniskipGet(showId, ep, len)
+		void aniskipGet(decision.showId, decision.episode, len)
 			.then((v) => {
-				if (aniskipFetchedKey === key) {
+				if (aniskipFetchKey === key) {
 					skipIntervals = v;
 				}
 			})
 			.catch(() => {
-				if (aniskipFetchedKey === key) {
+				if (aniskipFetchKey === key) {
 					skipIntervals = [];
 				}
 			});
