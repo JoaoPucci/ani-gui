@@ -13,12 +13,15 @@
 		kitsuSearch,
 		kitsuTopRated,
 		kitsuTrending,
+		settingsGet,
+		type Config,
 		type KitsuAnimeRef
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { filterAvailable, filterAvailableStrict } from '$lib/availability/filter';
+	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { m } from '$lib/paraglide/messages';
 
 	let submitted = $state(''); // the query whose results are on screen.
@@ -30,6 +33,13 @@
 	// users have something to browse when they arrive without a query.
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
+
+	// User settings — only `mode` matters here, used to scope the
+	// availability filter to the user's sub/dub preference. Settings
+	// are loaded once on mount; navigating back to /search re-mounts
+	// the page so any changes the user made on settings or detail
+	// pages get picked up.
+	let config = $state<Config | null>(null);
 
 	// Client-side sort + filter on the result set. Kitsu returns up
 	// to ~20 hits per query; sorting/filtering is cheap to do here
@@ -77,13 +87,27 @@
 
 	const count = $derived(displayed?.length ?? 0);
 
-	onMount(() => {
+	onMount(async () => {
+		// Resolve settings before kicking off the discovery requests
+		// so the filter calls below see the user's actual mode. Naive
+		// parallel start would race — trending could resolve first
+		// and call filterAvailable(t, pickAvailabilityMode(null))
+		// which falls back to 'sub' and never reflects the real mode.
+		// settingsGet is a single fast IPC; awaiting once on mount is
+		// cheap.
+		try {
+			config = await settingsGet();
+		} catch {
+			// Settings fetch failed — fall through with config null;
+			// pickAvailabilityMode handles that with 'sub' default.
+		}
+		const mode = pickAvailabilityMode(config);
 		kitsuTrending()
-			.then((t) => filterAvailable(t, 'sub'))
+			.then((t) => filterAvailable(t, mode))
 			.then((t) => (trending = t))
 			.catch(() => (trending = []));
 		kitsuTopRated()
-			.then((t) => filterAvailable(t, 'sub'))
+			.then((t) => filterAvailable(t, mode))
 			.then((t) => (topRated = t))
 			.catch(() => (topRated = []));
 	});
@@ -104,11 +128,22 @@
 		busy = true;
 		submitted = q;
 		try {
+			// Same race as onMount: a fast ?q= deeplink can fire this
+			// before settingsGet has resolved on first load. Pull it
+			// inline so the filter never runs with the 'sub' fallback
+			// while the user is on DUB.
+			if (!config) {
+				try {
+					config = await settingsGet();
+				} catch {
+					// Filter falls back to 'sub' via pickAvailabilityMode.
+				}
+			}
 			const raw = await kitsuSearch(q);
 			// Strict: probe uncached items inline so the user never
 			// sees an unavailable card in their results. Capped
 			// concurrency keeps allmanga happy.
-			results = await filterAvailableStrict(raw, 'sub');
+			results = await filterAvailableStrict(raw, pickAvailabilityMode(config));
 		} catch (e) {
 			error = describeError(e);
 			results = null;
