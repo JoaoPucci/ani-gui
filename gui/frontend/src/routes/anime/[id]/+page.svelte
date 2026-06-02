@@ -45,6 +45,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
+	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -745,12 +746,12 @@
 	 *  known episode_count so we don't propose a non-existent ep.
 	 *  Falls back to episode 1. */
 	function defaultEpisode(): number {
-		if (!resumeEntry) return 1;
-		const last = parseInt(resumeEntry.ep_no, 10);
-		if (!Number.isFinite(last) || last < 1) return 1;
-		const next = last + 1;
-		if (episodeCap !== null && next > episodeCap) return last;
-		return next;
+		// Delegated to the shared helper so the home Continue Watching
+		// card and this CTA compute the same answer from the same
+		// inputs. Behaviour is unchanged: no resume entry → 1, mid-
+		// show → last + 1, at cap → last (Replay branch).
+		const last = resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null;
+		return pickNextEpisode(last, episodeCap);
 	}
 
 	/** Label for the primary action button. Five-state machine
