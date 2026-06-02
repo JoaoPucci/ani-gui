@@ -44,8 +44,6 @@
 	<header class="page-head">
 		<p class="eyebrow">
 			<span class="eyebrow-key">{m.about_eyebrow_key()}</span>
-			<span class="eyebrow-rule" aria-hidden="true"></span>
-			<span class="eyebrow-value">{m.about_eyebrow_value()}</span>
 		</p>
 		<div class="brand-row">
 			<svg
@@ -239,12 +237,6 @@
 	}
 	.eyebrow-key {
 		color: var(--brand);
-	}
-	.eyebrow-rule {
-		flex: 1;
-		block-size: 1px;
-		background: linear-gradient(to right, var(--bone-500) 0%, transparent 100%);
-		max-inline-size: 5rem;
 	}
 
 	.brand-row {
@@ -518,33 +510,28 @@
 		}
 	}
 
-	/* License link — pill with the donate-address border treatment but quieter. */
+	/* License link — body-weight inline link with a brand underline on
+	   hover, matching the .credit-name / .dep-name idiom used elsewhere
+	   on this page. A floating border-only pill read as "misaligned
+	   text" in its default state; this treatment is unambiguous as a
+	   link without leaning on a button silhouette. */
 	.license-link {
 		align-self: flex-start;
-		display: inline-flex;
-		padding: var(--space-2) var(--space-5);
-		font-family: var(--font-mono);
-		font-size: var(--type-meta);
+		font-family: var(--font-body);
+		font-size: var(--type-body);
 		font-weight: 600;
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		text-decoration: none;
 		color: var(--bone-100);
-		background: transparent;
-		border: 1px solid var(--bone-500);
-		border-radius: var(--radius-pill, 999px);
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			border-color var(--dur-fast) var(--ease-out-soft);
+		text-decoration: none;
+		border-block-end: 1px solid var(--bone-500);
+		padding-block-end: 1px;
+		transition: border-color var(--dur-fast) var(--ease-out-soft);
 	}
 	.license-link:hover {
-		background: color-mix(in oklab, var(--brand) 8%, transparent);
-		border-color: var(--brand);
+		border-block-end-color: var(--brand);
 	}
 	.license-link:focus-visible {
 		outline: none;
-		box-shadow:
-			0 0 0 2px var(--ink-000),
-			0 0 0 4px var(--brand);
+		border-block-end-color: var(--brand);
+		box-shadow: 0 2px 0 0 var(--brand);
 	}
 </style>

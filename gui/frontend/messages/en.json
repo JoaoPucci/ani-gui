@@ -1,7 +1,6 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"about_eyebrow_key": "About",
-	"about_eyebrow_value": "this app",
 	"about_title": "About ani-gui",
 	"about_tagline": "Browse and watch anime",
 	"about_version_prefix": "Version",
