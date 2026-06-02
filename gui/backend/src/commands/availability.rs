@@ -609,4 +609,67 @@ mod tests {
             );
         }
     }
+
+    /// The home Continue Watching card and the detail page must agree
+    /// on what "Continue" means, which means they must derive the same
+    /// `defaultEpisode` cap. The detail page reads `playableEpisodeCount`
+    /// (allmanga's true count) via an inline `check_availability` probe;
+    /// the home strip can't afford a per-card probe, so the cap has to
+    /// ride out of the batch lookup it already does. The cache body
+    /// already stores `episode_count` per (kitsu_id, mode) — surface
+    /// it through `batch_cached` so the home page can derive the same
+    /// cap without an extra round trip.
+    #[test]
+    fn batch_cached_returns_playable_episode_counts() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = cache_only_state(&td);
+        write_cache_full(
+            &state,
+            "ongoing-show",
+            "sub",
+            true,
+            Some(1107),
+            Vec::new(),
+            Some("current"),
+        );
+        write_cache_full(
+            &state,
+            "finished-show",
+            "sub",
+            true,
+            Some(12),
+            Vec::new(),
+            Some("finished"),
+        );
+        // Cached as unavailable — no playable count to surface.
+        write_cache_full(&state, "blocked-show", "sub", false, None, Vec::new(), None);
+        let resp = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec![
+                    "ongoing-show".into(),
+                    "finished-show".into(),
+                    "blocked-show".into(),
+                    "uncached-show".into(),
+                ],
+                mode: "sub".into(),
+            },
+        );
+        // Existing `cached` map still works for the filter callers.
+        assert_eq!(resp.cached.get("ongoing-show"), Some(&true));
+        assert_eq!(resp.cached.get("finished-show"), Some(&true));
+        assert_eq!(resp.cached.get("blocked-show"), Some(&false));
+        // New field surfaces the playable count for entries that have
+        // one. Unavailable + uncached entries don't appear.
+        assert_eq!(
+            resp.playable_episode_counts.get("ongoing-show"),
+            Some(&1107)
+        );
+        assert_eq!(
+            resp.playable_episode_counts.get("finished-show"),
+            Some(&12)
+        );
+        assert!(!resp.playable_episode_counts.contains_key("blocked-show"));
+        assert!(!resp.playable_episode_counts.contains_key("uncached-show"));
+    }
 }
