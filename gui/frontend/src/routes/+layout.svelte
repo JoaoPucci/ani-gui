@@ -980,9 +980,52 @@
 		inline-size: 3px;
 		background: var(--brand);
 		border-radius: 0 2px 2px 0;
+		z-index: 1;
 	}
 	.rail-foot.active .rail-foot-val {
 		color: var(--bone-100);
+	}
+	/* Match the nav-link's brand-tinted LED bloom so the version chip
+	   feels like one of the primary rail entries on hover/active,
+	   not an oddly-quiet outlier. Same geometry + transitions as
+	   .nav-link::after — just sized to the chip rather than the
+	   icon-sized cell. */
+	.rail-foot::after {
+		content: '';
+		position: absolute;
+		inset: 10% 15%;
+		background: radial-gradient(
+			ellipse 70% 70% at 50% 50%,
+			var(--brand) 0%,
+			color-mix(in oklab, var(--brand) 50%, transparent) 35%,
+			transparent 72%
+		);
+		opacity: 0;
+		filter: blur(10px);
+		transform: scale(0.7);
+		transition:
+			opacity var(--dur-med) var(--ease-out-soft),
+			transform var(--dur-med) var(--ease-out-elastic);
+		z-index: -1;
+		pointer-events: none;
+	}
+	.rail-foot:hover::after {
+		opacity: 0.9;
+		transform: scale(1.05);
+	}
+	.rail-foot.active::after {
+		opacity: 0.85;
+		transform: scale(1);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rail-foot::after {
+			transform: none;
+			transition: opacity var(--dur-fast) linear;
+		}
+		.rail-foot:hover::after,
+		.rail-foot.active::after {
+			transform: none;
+		}
 	}
 	@media (max-inline-size: 720px) {
 		.rail-foot {

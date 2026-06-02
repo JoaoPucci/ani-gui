@@ -41,6 +41,7 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	if (routeId.startsWith('/search')) return [home, { label: m.breadcrumb_search() }];
 	if (routeId.startsWith('/settings')) return [home, { label: m.breadcrumb_settings() }];
 	if (routeId.startsWith('/diagnostics')) return [home, { label: m.breadcrumb_diagnostics() }];
+	if (routeId.startsWith('/about')) return [home, { label: m.breadcrumb_about() }];
 	if (routeId.startsWith('/anime')) return [home, { label: m.breadcrumb_anime() }];
 	if (routeId.startsWith('/play')) return [home, { label: m.breadcrumb_watching() }];
 	return [home];

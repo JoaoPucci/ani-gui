@@ -14,13 +14,39 @@
 	import { m } from '$lib/paraglide/messages';
 	import {
 		ASSETS,
-		BACKEND_DEPS,
 		BUNDLED_TOOLS,
 		DONATION_ETH_ADDRESS,
-		FRONTEND_DEPS
+		type AssetNoteId,
+		type BundledToolNoteId
 	} from '$lib/about/credits';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { APP_VERSION as appVersion } from '$lib/version';
+
+	// Static switches so paraglide compiles each m.* into an actual
+	// callable rather than getting reached by a dynamic indexer (the
+	// build pipeline doesn't allow the latter). Adding an entry to
+	// BUNDLED_TOOLS / ASSETS in credits.ts requires extending the
+	// matching switch — the BundledToolNoteId / AssetNoteId union
+	// keeps that obligation typechecked.
+	function bundledToolNote(id: BundledToolNoteId): string {
+		switch (id) {
+			case 'ani_cli':
+				return m.about_bundled_tool_note_ani_cli();
+			case 'fzf':
+				return m.about_bundled_tool_note_fzf();
+			case 'aria2':
+				return m.about_bundled_tool_note_aria2();
+			case 'ffmpeg':
+				return m.about_bundled_tool_note_ffmpeg();
+		}
+	}
+
+	function assetNote(id: AssetNoteId): string {
+		switch (id) {
+			case 'lottie_loading':
+				return m.about_asset_note_lottie_loading();
+		}
+	}
 
 	async function copyAddress() {
 		try {
@@ -87,11 +113,32 @@
 			<button
 				type="button"
 				class="donate-address"
-				aria-label={m.about_donate_address_label()}
+				aria-label={m.about_donate_copy_button_aria()}
 				title={m.about_donate_copy_label()}
 				onclick={copyAddress}
 			>
-				<span class="donate-address-key">ETH</span>
+				<span class="donate-address-key">
+					<!-- Ethereum diamond mark. Two-shape silhouette using
+					     currentColor so the icon tracks the surrounding
+					     brand-coloured "ETH" text. viewBox is tightened
+					     to the actual glyph bounds (x≈4.58→19.42, y=0→24)
+					     so the icon has zero internal padding — otherwise
+					     the visual left edge of the button drifts ~3px
+					     inward relative to the symmetric box padding. -->
+					<svg
+						class="donate-address-icon"
+						viewBox="4.58 0 14.84 24"
+						width="10"
+						height="16"
+						fill="currentColor"
+						aria-hidden="true"
+					>
+						<path
+							d="M11.944 17.97L4.58 13.62 11.944 24l7.37-10.38-7.376 4.35h.006zM12.056 0L4.69 12.223l7.365 4.354 7.365-4.354L12.056 0z"
+						/>
+					</svg>
+					ETH
+				</span>
 				<span class="donate-address-val">{DONATION_ETH_ADDRESS}</span>
 				<span class="donate-address-action" aria-hidden="true">{m.about_donate_copy_label()}</span>
 			</button>
@@ -116,7 +163,7 @@
 						<span class="credit-license">{asset.license}</span>
 					</div>
 					<p class="credit-note">
-						{asset.note} <span class="credit-author">— {asset.author}</span>
+						{assetNote(asset.noteId)} <span class="credit-author">— {asset.author}</span>
 					</p>
 				</li>
 			{/each}
@@ -138,49 +185,7 @@
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					<span class="dep-version">{dep.version ?? m.about_dep_version_unversioned()}</span>
 					<span class="dep-license">{dep.license}</span>
-					<span class="dep-note">{dep.note}</span>
-				</li>
-			{/each}
-		</ul>
-	</section>
-
-	<!-- FRONTEND DEPS -->
-	<section class="section">
-		<h2 class="section-eyebrow">
-			<span>{m.about_section_frontend_deps_title()}</span>
-			<span class="section-eyebrow-faint">{m.about_section_frontend_deps_hint()}</span>
-		</h2>
-		<ul class="dep-list" aria-label={m.about_section_frontend_deps_title()}>
-			{#each FRONTEND_DEPS as dep (dep.name)}
-				<li class="dep-item">
-					<!-- eslint-disable svelte/no-navigation-without-resolve -->
-					<a class="dep-name" href={dep.url} target="_blank" rel="noopener noreferrer">{dep.name}</a
-					>
-					<!-- eslint-enable svelte/no-navigation-without-resolve -->
-					<span class="dep-version">{dep.version ?? m.about_dep_version_unversioned()}</span>
-					<span class="dep-license">{dep.license}</span>
-					<span class="dep-note">{dep.note}</span>
-				</li>
-			{/each}
-		</ul>
-	</section>
-
-	<!-- BACKEND DEPS -->
-	<section class="section">
-		<h2 class="section-eyebrow">
-			<span>{m.about_section_backend_deps_title()}</span>
-			<span class="section-eyebrow-faint">{m.about_section_backend_deps_hint()}</span>
-		</h2>
-		<ul class="dep-list" aria-label={m.about_section_backend_deps_title()}>
-			{#each BACKEND_DEPS as dep (dep.name)}
-				<li class="dep-item">
-					<!-- eslint-disable svelte/no-navigation-without-resolve -->
-					<a class="dep-name" href={dep.url} target="_blank" rel="noopener noreferrer">{dep.name}</a
-					>
-					<!-- eslint-enable svelte/no-navigation-without-resolve -->
-					<span class="dep-version">{dep.version ?? m.about_dep_version_unversioned()}</span>
-					<span class="dep-license">{dep.license}</span>
-					<span class="dep-note">{dep.note}</span>
+					<span class="dep-note">{bundledToolNote(dep.noteId)}</span>
 				</li>
 			{/each}
 		</ul>
@@ -200,7 +205,23 @@
 			target="_blank"
 			rel="noopener noreferrer"
 		>
-			{m.about_license_link_label()}
+			<!-- GitHub Octocat mark. Inlined as a single SVG path (per
+			     GitHub's logo guidelines: their mark linking to their
+			     site is permitted). Using currentColor so the icon
+			     tracks the label's bone-100 / brand colour. -->
+			<svg
+				class="license-link-icon"
+				viewBox="0 0 16 16"
+				width="16"
+				height="16"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path
+					d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.59 7.59 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+				/>
+			</svg>
+			<span>{m.about_license_link_label()}</span>
 		</a>
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</section>
@@ -359,10 +380,16 @@
 			0 0 0 4px var(--brand);
 	}
 	.donate-address-key {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: var(--tracking-micro);
 		color: var(--brand);
+	}
+	.donate-address-icon {
+		flex: 0 0 auto;
 	}
 	.donate-address-val {
 		font-feature-settings:
@@ -510,28 +537,40 @@
 		}
 	}
 
-	/* License link — body-weight inline link with a brand underline on
-	   hover, matching the .credit-name / .dep-name idiom used elsewhere
-	   on this page. A floating border-only pill read as "misaligned
-	   text" in its default state; this treatment is unambiguous as a
-	   link without leaning on a button silhouette. */
+	/* License link — pill with the donate-address treatment scaled
+	   down (subtle brand-tinted fill + visible brand-tinted border at
+	   rest). The original transparent-bg version read as misaligned
+	   text; an inline underline-only version read as a label. This
+	   sits between: clearly a clickable surface at rest, brand-
+	   coloured on hover. */
 	.license-link {
 		align-self: flex-start;
-		font-family: var(--font-body);
-		font-size: var(--type-body);
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-4);
+		font-family: var(--font-mono);
+		font-size: var(--type-meta);
 		font-weight: 600;
-		color: var(--bone-100);
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
 		text-decoration: none;
-		border-block-end: 1px solid var(--bone-500);
-		padding-block-end: 1px;
-		transition: border-color var(--dur-fast) var(--ease-out-soft);
+		color: var(--bone-100);
+		background: color-mix(in oklab, var(--brand) 6%, var(--ink-100));
+		border: 1px solid color-mix(in oklab, var(--brand) 25%, var(--bone-500));
+		border-radius: var(--radius-pill, 999px);
+		transition:
+			background var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
 	}
 	.license-link:hover {
-		border-block-end-color: var(--brand);
+		background: color-mix(in oklab, var(--brand) 14%, var(--ink-100));
+		border-color: color-mix(in oklab, var(--brand) 50%, var(--bone-500));
 	}
 	.license-link:focus-visible {
 		outline: none;
-		border-block-end-color: var(--brand);
-		box-shadow: 0 2px 0 0 var(--brand);
+		box-shadow:
+			0 0 0 2px var(--ink-000),
+			0 0 0 4px var(--brand);
 	}
 </style>

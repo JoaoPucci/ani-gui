@@ -24,6 +24,7 @@ describe('defaultTrailFor', () => {
 			['/search?q=foo', m.breadcrumb_search()],
 			['/settings', m.breadcrumb_settings()],
 			['/diagnostics', m.breadcrumb_diagnostics()],
+			['/about', m.breadcrumb_about()],
 			['/anime/[id]', m.breadcrumb_anime()],
 			['/play/[id]', m.breadcrumb_watching()]
 		];
