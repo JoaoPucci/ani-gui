@@ -87,10 +87,14 @@ export interface AssetCredit {
 	name: string;
 	/** Author or studio name. */
 	author: string;
+	/** Optional URL pointing at the author's profile / homepage. When
+	 *  present, the page renders the author name as a link — gives
+	 *  the creator a proper backlink in addition to the asset URL. */
+	authorUrl?: string;
 	/** SPDX license id where applicable; free-text where the source
 	 *  uses a custom license. */
 	license: string;
-	/** Canonical source URL. */
+	/** Canonical source URL (the asset itself). */
 	url: string;
 	/** Paraglide-key suffix the page maps to its localized
 	 *  description. */
@@ -104,8 +108,9 @@ export const ASSETS: AssetCredit[] = [
 		// descriptive label here rather than inventing a name; the URL
 		// is the link of record.
 		name: 'Loading animation (LottieFiles)',
-		author: 'LottieFiles community',
-		license: 'LottieFiles Free License',
+		author: 'Pickyourtrail',
+		authorUrl: 'https://lottiefiles.com/pickyourtrail',
+		license: 'Lottie Simple License',
 		url: 'https://lottiefiles.com/free-animation/loading-OkRMnK50fl',
 		noteId: 'lottie_loading'
 	}

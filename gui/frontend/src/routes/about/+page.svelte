@@ -163,7 +163,19 @@
 						<span class="credit-license">{asset.license}</span>
 					</div>
 					<p class="credit-note">
-						{assetNote(asset.noteId)} <span class="credit-author">— {asset.author}</span>
+						{assetNote(asset.noteId)}
+						{#if asset.authorUrl}
+							<!-- eslint-disable svelte/no-navigation-without-resolve -->
+							<a
+								class="credit-author credit-author-link"
+								href={asset.authorUrl}
+								target="_blank"
+								rel="noopener noreferrer">— {asset.author}</a
+							>
+							<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						{:else}
+							<span class="credit-author">— {asset.author}</span>
+						{/if}
 					</p>
 				</li>
 			{/each}
@@ -458,6 +470,17 @@
 	}
 	.credit-author {
 		color: var(--bone-400);
+	}
+	.credit-author-link {
+		text-decoration: none;
+		border-block-end: 1px solid transparent;
+		transition:
+			color var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.credit-author-link:hover {
+		color: var(--bone-200);
+		border-block-end-color: var(--brand);
 	}
 
 	/* Dependency list — table-style grid for scannability. Three
