@@ -51,6 +51,7 @@
 		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
+		freshConfigOrLast,
 		mergeRecents,
 		parseStoredRecents,
 		shouldRenderDropdown
@@ -330,12 +331,19 @@
 		scheduleLive(topbarQuery.trim());
 	}
 
-	function onInputFocus() {
+	async function onInputFocus() {
 		if (blurDismiss) {
 			clearTimeout(blurDismiss);
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
+		// Re-pull config so the next dropdown filter sees the user's
+		// current Sub/Dub pick. Settings + the detail page mutate their
+		// page-local config but don't push it back here, so without
+		// this refresh the dropdown filters with whatever mode was set
+		// when the layout first mounted. Bounded work: fires once per
+		// focus, not per keystroke.
+		config = await freshConfigOrLast(config);
 	}
 
 	function onInputBlur() {
