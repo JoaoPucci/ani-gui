@@ -56,6 +56,31 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 	return filtered;
 }
 
+/** Cache-only variant: same drop-by-cache shape as {@link filterAvailable}
+ *  but skips the fire-and-forget warm entirely. Use on surfaces that
+ *  fire often — the topbar live-search, where every settled keystroke
+ *  would otherwise enqueue redundant upstream probes for overlapping
+ *  hits. The cache fills via other surfaces (home rows, detail page);
+ *  the dropdown is just a quick-jump aid and doesn't need to actively
+ *  prime the cache. */
+export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
+	items: T[],
+	mode: 'sub' | 'dub'
+): Promise<T[]> {
+	if (items.length === 0) return items;
+	const ids = items.map((i) => i.id);
+	let cached: Record<string, boolean> = {};
+	try {
+		const r = await availabilityBatch(ids, mode);
+		cached = r.cached;
+	} catch {
+		// Cache fetch failed — render everything; lazy click path
+		// still surfaces real errors.
+		return items;
+	}
+	return items.filter((i) => cached[i.id] !== false);
+}
+
 /** Strict variant: probes uncached items inline (parallel, capped
  *  concurrency) before returning. Use on surfaces where the user
  *  is actively waiting for results — e.g. search — and would
