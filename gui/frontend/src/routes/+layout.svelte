@@ -39,6 +39,7 @@
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import { downloadFailureStore } from '$lib/download/failure-store.svelte';
+	import { selectFfmpegMissingCopy } from '$lib/download/ffmpeg-missing-copy';
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
 	import pkg from '../../package.json';
@@ -615,11 +616,20 @@
   shell.openExternal because <a target=_blank> is intercepted there.
 -->
 {#if downloadFailureStore.current?.kind === 'ffmpeg_missing'}
+	{@const ffmpegCopy = selectFfmpegMissingCopy(
+		typeof window === 'undefined' ? null : window.aniGui?.platform
+	)}
+	{@const ffmpegBody =
+		ffmpegCopy.bodyKey === 'win32'
+			? m.download_error_ffmpeg_missing_body_win32()
+			: ffmpegCopy.bodyKey === 'darwin'
+				? m.download_error_ffmpeg_missing_body_darwin()
+				: m.download_error_ffmpeg_missing_body_linux()}
 	<ErrorOverlay
 		headline={m.download_error_ffmpeg_missing_headline()}
-		body={m.download_error_ffmpeg_missing_body()}
-		actionLabel={m.download_error_ffmpeg_missing_action_label()}
-		actionHref="https://ffmpeg.org/download.html"
+		body={ffmpegBody}
+		actionLabel={ffmpegCopy.showAction ? m.download_error_ffmpeg_missing_action_label() : undefined}
+		actionHref={ffmpegCopy.showAction ? 'https://ffmpeg.org/download.html' : undefined}
 		onDismiss={() => downloadFailureStore.dismiss()}
 	/>
 {/if}

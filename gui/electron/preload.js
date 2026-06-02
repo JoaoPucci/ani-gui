@@ -25,6 +25,12 @@ if (!apiBase) {
 contextBridge.exposeInMainWorld('aniGui', {
 	apiBase,
 
+	// Surface `process.platform` so renderer-side UI can tailor copy
+	// per OS (Windows installer vs Linux package manager vs macOS
+	// Homebrew). Values match Node's `process.platform`: 'win32',
+	// 'linux', 'darwin', 'freebsd', etc.
+	platform: process.platform,
+
 	// Native folder picker — opens an OS dialog, returns the chosen
 	// absolute path or `null` on cancel. The renderer's download
 	// confirmation modal calls this when the user clicks "Browse…".

@@ -55,6 +55,8 @@
 	"dock_dismiss_aria_label": "Dispensar",
 	"dock_dismiss_title": "Dispensar",
 	"error_ffmpeg_missing_headline": "Download precisa do ffmpeg",
-	"error_ffmpeg_missing_body": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. O instalador normalmente baixa-o durante a configuração — execute o instalador novamente com uma conexão de internet, ou instale o ffmpeg manualmente.",
+	"error_ffmpeg_missing_body_win32": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. O instalador normalmente baixa-o durante a configuração — execute o instalador novamente com uma conexão de internet, ou instale o ffmpeg manualmente.",
+	"error_ffmpeg_missing_body_linux": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. Instale-o pelo gerenciador de pacotes da sua distribuição — por exemplo `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) ou `sudo pacman -S ffmpeg` (Arch).",
+	"error_ffmpeg_missing_body_darwin": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. Instale-o pelo Homebrew com `brew install ffmpeg`, ou baixe um build manualmente.",
 	"error_ffmpeg_missing_action_label": "Baixar ffmpeg"
 }
