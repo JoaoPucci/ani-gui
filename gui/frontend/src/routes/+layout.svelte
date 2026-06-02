@@ -42,9 +42,7 @@
 	import { selectFfmpegMissingCopy } from '$lib/download/ffmpeg-missing-copy';
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
-	import pkg from '../../package.json';
-
-	const appVersion = pkg.version;
+	import { APP_VERSION as appVersion } from '$lib/version';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import {

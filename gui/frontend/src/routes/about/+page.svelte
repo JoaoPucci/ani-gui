@@ -19,12 +19,8 @@
 		DONATION_ETH_ADDRESS,
 		FRONTEND_DEPS
 	} from '$lib/about/credits';
-	import { buildMetamaskSendUrl } from '$lib/about/eth';
 	import { toastStore } from '$lib/toasts/store.svelte';
-	import pkg from '../../../package.json';
-
-	const appVersion = pkg.version;
-	const metamaskUrl = buildMetamaskSendUrl(DONATION_ETH_ADDRESS);
+	import { APP_VERSION as appVersion } from '$lib/version';
 
 	async function copyAddress() {
 		try {
@@ -101,11 +97,6 @@
 				<span class="donate-address-val">{DONATION_ETH_ADDRESS}</span>
 				<span class="donate-address-action" aria-hidden="true">{m.about_donate_copy_label()}</span>
 			</button>
-			<!-- eslint-disable svelte/no-navigation-without-resolve -->
-			<a class="donate-metamask" href={metamaskUrl} target="_blank" rel="noopener noreferrer">
-				{m.about_donate_metamask_label()}
-			</a>
-			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		</div>
 	</section>
 
@@ -395,36 +386,6 @@
 		color: var(--bone-300);
 		font-weight: 600;
 	}
-	.donate-metamask {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-3) var(--space-5);
-		font-family: var(--font-mono);
-		font-size: var(--type-meta);
-		font-weight: 600;
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		text-decoration: none;
-		color: var(--bone-100);
-		background: transparent;
-		border: 1px solid var(--bone-500);
-		border-radius: var(--radius-pill, 999px);
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			border-color var(--dur-fast) var(--ease-out-soft);
-	}
-	.donate-metamask:hover {
-		background: color-mix(in oklab, var(--brand) 10%, transparent);
-		border-color: var(--brand);
-	}
-	.donate-metamask:focus-visible {
-		outline: none;
-		box-shadow:
-			0 0 0 2px var(--ink-000),
-			0 0 0 4px var(--brand);
-	}
-
 	/* Assets credit list */
 	.credit-list {
 		margin: 0;
@@ -557,7 +518,7 @@
 		}
 	}
 
-	/* License link — same pill as donate-metamask but quieter. */
+	/* License link — pill with the donate-address border treatment but quieter. */
 	.license-link {
 		align-self: flex-start;
 		display: inline-flex;

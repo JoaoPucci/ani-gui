@@ -1,18 +1,21 @@
 /**
- * ETH-address helpers for the donation block on the About page.
+ * ETH-address shape guard for the About page donation block.
  *
- * The address itself is hard-coded in the credits module; these
- * helpers exist to defend the surfaces around it:
- *   - `isValidEthAddress` is a sanity guard a future edit might
- *     trip if someone fat-fingers the constant. Strictly: 0x +
- *     exactly 40 hex chars, no case constraint (EIP-55 checksum
- *     casing is a separate concern we don't enforce on display).
- *   - `buildMetamaskSendUrl` produces the universal-link target
- *     used by the "Open in MetaMask" affordance. Mainnet chainId
- *     is appended via the @1 suffix per MetaMask's docs.
+ * The address itself is hard-coded in the credits module; this guard
+ * is a sanity check a future edit might trip if someone fat-fingers
+ * the constant. Strictly: 0x + exactly 40 hex chars, no case
+ * constraint (EIP-55 checksum casing is a separate concern we don't
+ * enforce on display).
+ *
+ * (The page originally also surfaced a `buildMetamaskSendUrl` helper
+ * that produced a metamask.app.link target. That link is a mobile
+ * universal-link only — on desktop it opens a useless landing page
+ * in the system browser since MetaMask Extension intentionally has
+ * no compose-send deep link. Dropped in favour of copy-to-clipboard
+ * which works everywhere.)
  */
 import { describe, it, expect } from 'vitest';
-import { isValidEthAddress, buildMetamaskSendUrl } from './eth';
+import { isValidEthAddress } from './eth';
 
 describe('isValidEthAddress', () => {
 	it('accepts a canonical 0x-prefixed 40-hex-char address', () => {
@@ -47,20 +50,5 @@ describe('isValidEthAddress', () => {
 		expect(isValidEthAddress('')).toBe(false);
 		expect(isValidEthAddress('   ')).toBe(false);
 		expect(isValidEthAddress('0x ')).toBe(false);
-	});
-});
-
-describe('buildMetamaskSendUrl', () => {
-	it('emits the universal-link target with @1 mainnet suffix', () => {
-		// MetaMask's universal link format for a send intent. The @1
-		// pins mainnet so wallets don't open with an arbitrary chain
-		// preselected.
-		expect(buildMetamaskSendUrl('0x097cD53Dc5Dda28c4f6A4431EA014916891beC02')).toBe(
-			'https://metamask.app.link/send/0x097cD53Dc5Dda28c4f6A4431EA014916891beC02@1'
-		);
-	});
-
-	it('refuses to build a URL for an invalid address — fails loud rather than emitting a broken link', () => {
-		expect(() => buildMetamaskSendUrl('not-an-address')).toThrow();
 	});
 });
