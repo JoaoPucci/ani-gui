@@ -754,13 +754,25 @@ export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityR
 
 /** Cached-only batch lookup. List views (home / search) call this
  *  before render to filter out cards whose availability is already
- *  cached as `false`. Missing entries in the response are titles
- *  whose availability is unknown — the caller renders them as-is. */
+ *  cached as `false`. Missing entries in the `cached` map are titles
+ *  whose availability is unknown — the caller renders them as-is.
+ *
+ *  `playable_episode_counts` carries allmanga's truthful per-show
+ *  episode cap (same value the detail page reads via inline
+ *  checkAvailability). The home Continue Watching strip uses it to
+ *  derive its pickNextEpisode cap so home and detail compute the same
+ *  "Continue" episode without home spawning its own probe per card.
+ *  Absent for unavailable rows and pre-v2 legacy rows — call sites
+ *  fall back to Kitsu's announced count in those cases. */
+export interface AvailabilityBatchResponse {
+	cached: Record<string, boolean>;
+	playable_episode_counts: Record<string, number>;
+}
 export function availabilityBatch(
 	kitsu_ids: string[],
 	mode: string
-): Promise<{ cached: Record<string, boolean> }> {
-	return postJson<{ cached: Record<string, boolean> }>('/api/availability/batch', {
+): Promise<AvailabilityBatchResponse> {
+	return postJson<AvailabilityBatchResponse>('/api/availability/batch', {
 		kitsu_ids,
 		mode
 	});

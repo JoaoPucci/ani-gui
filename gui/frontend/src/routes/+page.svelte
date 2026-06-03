@@ -15,6 +15,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		altTitlesFromKitsu,
+		checkAvailability,
 		yearFromKitsuRef,
 		historyList,
 		imageProxyUrl,
@@ -32,7 +33,10 @@
 		type PlayProgress
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
-	import { EPISODES_KITSU_PAGE_SIZE, resolveHistoryEntry } from '$lib/history/resolve';
+	import { resolveHistoryEntry } from '$lib/history/resolve';
+	import { makeFetchAvailability } from '$lib/history/availability-from-match';
+	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
+	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
@@ -40,11 +44,13 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { filterAvailable } from '$lib/availability/filter';
+	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
+	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -71,6 +77,13 @@
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
+	// Per-history-entry allmanga playable episode count, keyed by entry.id.
+	// Read from the shared availability cache via a single batch lookup
+	// after all matches resolve. Lets the Continue card derive the same
+	// pickNextEpisode cap the detail page uses (`playableEpisodeCount` →
+	// allmanga's truthful count, not Kitsu's sometimes-stale announced
+	// total). Falls back to match?.episode_count when absent.
+	let historyPlayableCounts = $state<Record<string, number>>({});
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
 	let scrollY = $state(0);
@@ -112,9 +125,15 @@
 		// Settings drive mode/quality for the Continue Watching click
 		// handler. Default {sub, best} when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
-		settingsGet()
-			.then((c) => (config = c))
-			.catch(() => {});
+		// The shared promise lets the Continue Watching loader await
+		// the configured mode before firing its batch availability
+		// read, so a user with mode='dub' doesn't see the batch query
+		// the sub playable counts (mismatching what startResume reads
+		// at click time).
+		const settingsPromise = settingsGet().catch(() => null as Config | null);
+		void settingsPromise.then((c) => {
+			if (c) config = c;
+		});
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: GUI-stamped rows on top,
@@ -124,52 +143,48 @@
 				// degrades to "treat everything as unstamped," which
 				// just preserves file order for everyone.
 				history = sortByWatchedAt(h, watchedAt);
-				// Two-stage lookup per entry, all routed through the
-				// resolver in lib/history/resolve.ts so cour-split shows
-				// (Stone Ocean Part 2 etc.) hit the right Kitsu episode
-				// instead of collapsing onto Part 1's episode 1.
-				//   1. resolveHistoryEntry(entry, null) — gives us the
-				//      cour-stripped searchTitle + the episode number
-				//      translated into Kitsu numbering.
-				//   2. kitsuSearch(searchTitle) → first hit is the
-				//      parent Kitsu anime (same for every cour).
-				//   3. kitsuEpisodes(kitsuId, kitsuPage) → find the
-				//      Kitsu-numbered episode we want; gives us the real
-				//      thumbnail + title.
-				// Fire-and-forget per entry; on failure the card
-				// degrades gracefully (anime poster + entry's own title).
-				history.forEach((entry: HistoryEntry) => {
-					const preliminary = resolveHistoryEntry(entry, null);
-					// resolveKitsuMatch checks the title-match cache first
-					// (TITLE_MATCH_TTL = 30d), short-circuiting the
-					// kitsuSearch + pickKitsuMatch round-trip on subsequent
-					// loads. On miss it runs the live search + picker and
-					// persists the resolved kitsu_id back into the cache.
-					void resolveKitsuMatch(preliminary)
-						.then((match) => {
-							historyMatches = { ...historyMatches, [entry.id]: match };
-							if (!match) return;
-							const target = resolveHistoryEntry(entry, match);
-							if (!target.kitsuEpisode) return;
-							const kitsuPage = Math.max(
-								1,
-								Math.ceil(target.kitsuEpisode / EPISODES_KITSU_PAGE_SIZE)
-							);
-							void kitsuEpisodes(match.id, kitsuPage)
-								.then((eps: KitsuEpisode[]) => {
-									const ep =
-										eps.find((e) => e.number === target.kitsuEpisode) ??
-										eps.find((e) => e.relative_number === target.kitsuEpisode) ??
-										null;
-									historyEpisodes = { ...historyEpisodes, [entry.id]: ep };
-								})
-								.catch(() => {
-									historyEpisodes = { ...historyEpisodes, [entry.id]: null };
-								});
-						})
-						.catch(() => {
-							historyMatches = { ...historyMatches, [entry.id]: null };
-						});
+				// Per-row load: each card transitions to its resumable
+				// state independently, as ITS match + playable count
+				// both land. A slow Kitsu resolution doesn't gate fast
+				// rows. The page's button-enable gate reads
+				// historyMatches[entry.id] — which is only written from
+				// inside onRowReady — so a card never flips to its
+				// resumable form before its cap is in.
+				//
+				// resolveHistoryEntry is routed through the loader's
+				// resolveMatch path: that pipeline (resolve.ts) handles
+				// cour-split shows (Stone Ocean Part 2 etc.) so we hit
+				// the right Kitsu episode instead of collapsing onto
+				// Part 1's episode 1.
+				const historyById = new Map(history.map((h) => [h.id, h]));
+				void loadContinueWatchingState(history, {
+					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
+					// makeFetchAvailability keeps the args-mapping closure
+					// in a testable lib so no untestable closure lives on
+					// this page. checkAvailability is already cache-first
+					// on the backend; per-row calls are cheap for cached
+					// rows and only pay the allmanga roundtrip on misses.
+					fetchAvailability: makeFetchAvailability(checkAvailability),
+					getMode: () => settingsPromise.then(pickAvailabilityMode),
+					// Per-row state mutations are routed through
+					// makeContinueRowReadyHandler so the bulk of the
+					// imperative logic lives in $lib/history/row-ready.ts
+					// and is unit-tested there. The closures below are
+					// the page-side adapter: each one is a single Svelte
+					// reassignment that keeps reactivity component-scoped.
+					onRowReady: makeContinueRowReadyHandler({
+						historyById,
+						fetchKitsuEpisodes: kitsuEpisodes,
+						setMatch: (id, m) => {
+							historyMatches = { ...historyMatches, [id]: m };
+						},
+						setPlayableCount: (id, c) => {
+							historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
+						},
+						setEpisode: (id, ep) => {
+							historyEpisodes = { ...historyEpisodes, [id]: ep };
+						}
+					})
 				});
 			})
 			.catch(() => {
@@ -482,21 +497,30 @@
 				match?.episode_count ?? null,
 				match?.status ?? null
 			)}
-			<!-- Card is a button when we can resume (Kitsu match + an
-			     episode to play); else falls through to /search as a
-			     plain link. The href on the search-fallback path is
-			     resolve()-produced; the lint rule's pattern matcher
-			     doesn't recognise the ternary, so disabled around it. -->
+			{@const playableCount = historyPlayableCounts[entry.id]}
+			{@const lastWatched = parseInt(entry.ep_no, 10)}
+			{@const nextEpisode = pickNextEpisode(
+				Number.isFinite(lastWatched) ? lastWatched : null,
+				playableCount ?? match?.episode_count ?? null
+			)}
+			<!-- Three states for the Continue card:
+			     - resumable + match : button (the normal case).
+			     - match === undefined : the per-row loader hasn't
+			       fired onRowReady yet. Render as a non-interactive
+			       div so a click during the probe window doesn't
+			       mis-route the user to /search (Codex P2
+			       #3348970892).
+			     - match === null : resolution definitively failed;
+			       the row falls through to /search as a fallback. -->
 			<!-- eslint-disable svelte/no-navigation-without-resolve -->
 			{#if resumable && match}
 				<button
 					type="button"
 					class="resume-card"
-					class:resume-card-loading={match === undefined}
 					class:resume-card-busy={isResuming}
 					style="--accent: {accent};"
 					disabled={!!resumeBusy && !isResuming}
-					onclick={() => startResume(match, target.kitsuEpisode!)}
+					onclick={() => startResume(match, nextEpisode)}
 				>
 					<span class="resume-poster">
 						{#if image}
@@ -510,10 +534,12 @@
 							<!-- Suppress the "EP N" overlay for single-video
 							     shows (movies + finished 1-ep OVAs/specials);
 							     the poster IS the video, no episode number
-							     to surface. -->
+							     to surface. The number shown matches what
+							     Continue would play — i.e. the episode about
+							     to start, not the one just watched. -->
 							<span class="resume-ep-tag" aria-hidden="true">
 								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-								<span class="resume-ep-num">{target.displayEpisode}</span>
+								<span class="resume-ep-num">{nextEpisode}</span>
 							</span>
 						{/if}
 					</span>
@@ -527,18 +553,24 @@
 							     enough, and the card is unambiguously a
 							     "continue this movie" affordance. -->
 							<span class="resume-title resume-title-faint"
-								>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
+								>{m.home_resume_episode_label({ episode: nextEpisode })}</span
 							>
 						{/if}
 					</span>
 				</button>
+			{:else if match === undefined}
+				<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
+					<span class="resume-poster">
+						<span class="resume-poster-placeholder" aria-hidden="true">
+							{target.displayTitle.slice(0, 2).toUpperCase()}
+						</span>
+					</span>
+					<span class="resume-body">
+						<span class="resume-show">{target.displayTitle}</span>
+					</span>
+				</div>
 			{:else}
-				<a
-					class="resume-card"
-					class:resume-card-loading={match === undefined}
-					style="--accent: {accent};"
-					href={resolve('/search')}
-				>
+				<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
 					<span class="resume-poster">
 						{#if image}
 							<img src={image} alt="" loading="lazy" decoding="async" />
