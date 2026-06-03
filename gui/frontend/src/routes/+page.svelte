@@ -516,17 +516,20 @@
 				target.kitsuEpisode,
 				playableCount ?? match?.episode_count ?? null
 			)}
-			<!-- Card is a button when we can resume (Kitsu match + an
-			     episode to play); else falls through to /search as a
-			     plain link. The href on the search-fallback path is
-			     resolve()-produced; the lint rule's pattern matcher
-			     doesn't recognise the ternary, so disabled around it. -->
+			<!-- Three states for the Continue card:
+			     - resumable + match : button (the normal case).
+			     - match === undefined : the per-row loader hasn't
+			       fired onRowReady yet. Render as a non-interactive
+			       div so a click during the probe window doesn't
+			       mis-route the user to /search (Codex P2
+			       #3348970892).
+			     - match === null : resolution definitively failed;
+			       the row falls through to /search as a fallback. -->
 			<!-- eslint-disable svelte/no-navigation-without-resolve -->
 			{#if resumable && match}
 				<button
 					type="button"
 					class="resume-card"
-					class:resume-card-loading={match === undefined}
 					class:resume-card-busy={isResuming}
 					style="--accent: {accent};"
 					disabled={!!resumeBusy && !isResuming}
@@ -568,13 +571,19 @@
 						{/if}
 					</span>
 				</button>
+			{:else if match === undefined}
+				<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
+					<span class="resume-poster">
+						<span class="resume-poster-placeholder" aria-hidden="true">
+							{target.displayTitle.slice(0, 2).toUpperCase()}
+						</span>
+					</span>
+					<span class="resume-body">
+						<span class="resume-show">{target.displayTitle}</span>
+					</span>
+				</div>
 			{:else}
-				<a
-					class="resume-card"
-					class:resume-card-loading={match === undefined}
-					style="--accent: {accent};"
-					href={resolve('/search')}
-				>
+				<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
 					<span class="resume-poster">
 						{#if image}
 							<img src={image} alt="" loading="lazy" decoding="async" />

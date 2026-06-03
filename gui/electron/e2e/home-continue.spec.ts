@@ -177,9 +177,36 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 		});
 	});
 
-	// Click handler fires /api/play. The test hook records the body
-	// and we fulfill with a session response to keep the renderer
-	// out of error-overlay land.
+	// Click handler fires /api/play/stream as an EventSource (SSE) —
+	// playStream's preferred path when window.EventSource exists,
+	// which it always does in Chromium. The test hook records the
+	// resolved query params and we fulfill with a one-shot `done`
+	// event carrying a synthetic session so the renderer's overlay
+	// resolves cleanly. The trailing route still answers POST
+	// /api/play for the EventSource-undefined fallback path.
+	await context.route('**/api/play/stream*', async (r) => {
+		const url = new URL(r.request().url());
+		const body: Record<string, string | null> = {
+			title: url.searchParams.get('title'),
+			episode: url.searchParams.get('episode'),
+			mode: url.searchParams.get('mode'),
+			quality: url.searchParams.get('quality')
+		};
+		opts.onPlay?.(body);
+		const session = {
+			session_id: 'test-session',
+			upstream_url: 'about:blank',
+			referer: '',
+			subtitle_url: null,
+			episode: Number(body.episode),
+			media_kind: 'Hls'
+		};
+		return r.fulfill({
+			status: 200,
+			contentType: 'text/event-stream',
+			body: `event: done\ndata: ${JSON.stringify(session)}\n\n`
+		});
+	});
 	await context.route('**/api/play', async (r) => {
 		const body = JSON.parse(r.request().postData() ?? '{}');
 		opts.onPlay?.(body);
@@ -206,7 +233,7 @@ async function waitForStripVisible(page: Page) {
 }
 
 test('Continue card shows last+1 and clicking it plays that episode', async () => {
-	let playArgs: { episode?: string; title?: string; kitsu_id?: string } | null = null;
+	let playArgs: Record<string, string | null> | null = null;
 	const { app, page } = await launchAppWithContinueStubs({
 		history: continueHistory,
 		onPlay: (body) => {
@@ -229,7 +256,11 @@ test('Continue card shows last+1 and clicking it plays that episode', async () =
 
 		await card.click();
 		await expect.poll(() => playArgs?.episode, { timeout: 10_000 }).toBe('6');
-		expect(playArgs?.kitsu_id).toBe(continueKitsuMatch.id);
+		// playStream encodes title + mode in the SSE query string;
+		// kitsu_id isn't on the wire (the backend reads it from the
+		// reverse cache during resolution), so assert what is.
+		expect(playArgs?.title).toBe(continueKitsuMatch.canonical_title);
+		expect(playArgs?.mode).toBe('sub');
 	} finally {
 		await app.close();
 	}
