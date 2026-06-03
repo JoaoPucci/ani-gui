@@ -30,6 +30,9 @@ function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
 	return { promise, resolve: resolveFn };
 }
 
+const subMode = () => Promise.resolve<'sub' | 'dub'>('sub');
+const noProbe = vi.fn().mockResolvedValue({ episode_count: null });
+
 describe('loadContinueWatchingState', () => {
 	it('does not resolve until the batch availability call settles', async () => {
 		// Codex P2 race: matches arriving per-entry should not flip the
@@ -49,7 +52,8 @@ describe('loadContinueWatchingState', () => {
 		const loaderPromise = loadContinueWatchingState([entry], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		}).then((r) => {
 			resolved = true;
 			return r;
@@ -67,6 +71,45 @@ describe('loadContinueWatchingState', () => {
 		const result = await loaderPromise;
 		expect(result.matches).toEqual({ 'one-piece': match });
 		expect(result.playableCounts).toEqual({ 'one-piece': 1107 });
+	});
+
+	it('waits for getMode to resolve before calling the batch with the configured mode', async () => {
+		// Codex P2 #3348288667 — mode race: the home page bootstraps
+		// settingsGet() in parallel with historyList(). If history
+		// settles first, today the loader is called with mode='sub'
+		// (the fallback) and the batch reads the SUB playable counts.
+		// When the user's real mode is 'dub', startResume later reads
+		// 'dub' from the now-loaded config — so the cap derived from
+		// SUB counts is wrong for the click. Sub releases commonly have
+		// more episodes than dub, so the card can advance to a dubbed
+		// episode that isn't streamable. Resolution: the loader must
+		// hold on the batch until the configured mode is known.
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const modeDeferred = defer<'sub' | 'dub'>();
+
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const fetchAvailabilityBatch = vi
+			.fn()
+			.mockResolvedValue({ playable_episode_counts: { 'k-a': 12 } });
+
+		const loaderPromise = loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailabilityBatch,
+			fetchAvailability: noProbe,
+			getMode: () => modeDeferred.promise
+		});
+
+		// Let microtasks flush; resolveMatch resolves synchronously,
+		// but the batch must not fire yet because getMode is pending.
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+		expect(fetchAvailabilityBatch).not.toHaveBeenCalled();
+
+		modeDeferred.resolve('dub');
+		const result = await loaderPromise;
+		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a'], 'dub');
+		expect(result.matches).toEqual({ 'hist-a': match });
+		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
 	});
 
 	it('keys matches by HistoryEntry.id and surfaces playable counts via kitsu id', async () => {
@@ -87,7 +130,8 @@ describe('loadContinueWatchingState', () => {
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		});
 
 		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a', 'k-b'], 'sub');
@@ -111,7 +155,8 @@ describe('loadContinueWatchingState', () => {
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		});
 
 		expect(result.matches).toEqual({ 'hist-a': m1, 'hist-orphan': null });
@@ -126,7 +171,8 @@ describe('loadContinueWatchingState', () => {
 		const result = await loadContinueWatchingState([e1], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		});
 
 		expect(fetchAvailabilityBatch).not.toHaveBeenCalled();
@@ -150,7 +196,8 @@ describe('loadContinueWatchingState', () => {
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		});
 
 		expect(result.matches).toEqual({ 'hist-a': null, 'hist-b': m2 });
@@ -170,7 +217,8 @@ describe('loadContinueWatchingState', () => {
 		const result = await loadContinueWatchingState([e1], {
 			resolveMatch,
 			fetchAvailabilityBatch,
-			mode: 'sub'
+			fetchAvailability: noProbe,
+			getMode: subMode
 		});
 
 		expect(result.matches).toEqual({ 'hist-a': m1 });
