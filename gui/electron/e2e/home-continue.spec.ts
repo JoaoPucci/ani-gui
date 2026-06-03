@@ -225,22 +225,24 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	});
 
 	const page = await app.firstWindow();
-	// Force a reload AFTER all routes are registered. `_electron.launch()`
-	// already creates the BrowserWindow as part of `app.whenReady()`, so
-	// by the time `firstWindow()` resolves the renderer has often already
-	// fired its onMount `fetch()` batch (history / settings / trending /
-	// top-rated). On warm CI runners those initial requests can land
-	// BEFORE the awaits above finish registering routes, so the renderer
-	// sees real Kitsu data and the Continue strip stays hidden (history
-	// is empty). Reloading replays the entire load against the now-
-	// registered route table — deterministic regardless of how fast the
-	// runner was on the first paint.
+	// `_electron.launch()` already creates the BrowserWindow as part of
+	// `app.whenReady()`, so by the time `firstWindow()` resolves the
+	// renderer has often already fired its onMount `fetch()` batch
+	// (history / settings / trending / top-rated). On warm CI runners
+	// those initial requests can land BEFORE the awaits above finish
+	// registering routes, so the renderer sees real Kitsu data and the
+	// Continue strip stays hidden (history is empty).
 	//
-	// Wait for the initial load to settle first; reloading mid-load
-	// surfaces as `page.reload: net::ERR_ABORTED` because the in-flight
-	// frame gets detached.
-	await page.waitForLoadState('domcontentloaded');
-	await page.reload({ waitUntil: 'domcontentloaded' });
+	// Wait for any in-flight network to settle before replaying the
+	// load: the initial mount fires several /api/* requests; reloading
+	// mid-flight surfaces as `page.reload: net::ERR_ABORTED`. Then
+	// goto() the same URL to replay the whole boot against the now-
+	// registered route table. We use goto() rather than reload() so
+	// the navigation goes through Playwright's standard retry path
+	// (reload's abort-handling on the `app://` protocol is less
+	// forgiving on Xvfb).
+	await page.waitForLoadState('networkidle').catch(() => {});
+	await page.goto(page.url(), { waitUntil: 'domcontentloaded' });
 	return { app, page, context };
 }
 
