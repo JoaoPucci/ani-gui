@@ -235,7 +235,12 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	// is empty). Reloading replays the entire load against the now-
 	// registered route table — deterministic regardless of how fast the
 	// runner was on the first paint.
-	await page.reload();
+	//
+	// Wait for the initial load to settle first; reloading mid-load
+	// surfaces as `page.reload: net::ERR_ABORTED` because the in-flight
+	// frame gets detached.
+	await page.waitForLoadState('domcontentloaded');
+	await page.reload({ waitUntil: 'domcontentloaded' });
 	return { app, page, context };
 }
 

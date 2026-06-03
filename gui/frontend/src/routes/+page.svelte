@@ -33,9 +33,10 @@
 		type PlayProgress
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
-	import { EPISODES_KITSU_PAGE_SIZE, resolveHistoryEntry } from '$lib/history/resolve';
+	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
+	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
@@ -165,40 +166,25 @@
 					// rows and only pay the allmanga roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
-					onRowReady: (entryId, match, playableCount) => {
-						historyMatches = { ...historyMatches, [entryId]: match };
-						if (typeof playableCount === 'number') {
-							historyPlayableCounts = {
-								...historyPlayableCounts,
-								[entryId]: playableCount
-							};
+					// Per-row state mutations are routed through
+					// makeContinueRowReadyHandler so the bulk of the
+					// imperative logic lives in $lib/history/row-ready.ts
+					// and is unit-tested there. The closures below are
+					// the page-side adapter: each one is a single Svelte
+					// reassignment that keeps reactivity component-scoped.
+					onRowReady: makeContinueRowReadyHandler({
+						historyById,
+						fetchKitsuEpisodes: kitsuEpisodes,
+						setMatch: (id, m) => {
+							historyMatches = { ...historyMatches, [id]: m };
+						},
+						setPlayableCount: (id, c) => {
+							historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
+						},
+						setEpisode: (id, ep) => {
+							historyEpisodes = { ...historyEpisodes, [id]: ep };
 						}
-						if (!match) return;
-						const entry = historyById.get(entryId);
-						if (!entry) return;
-						const target = resolveHistoryEntry(entry, match);
-						if (!target.kitsuEpisode) return;
-						// Per-entry kitsu episode metadata (thumbnail +
-						// canonical title) is decorative and streams in
-						// after the resume state lands. Uses the now-
-						// authoritative cap so we fetch metadata for the
-						// episode about to play, not the maybe-stale
-						// Kitsu-cap one.
-						const cap = playableCount ?? match.episode_count ?? null;
-						const nextEpisode = pickNextEpisode(target.kitsuEpisode, cap);
-						const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
-						void kitsuEpisodes(match.id, kitsuPage)
-							.then((eps: KitsuEpisode[]) => {
-								const ep =
-									eps.find((e) => e.number === nextEpisode) ??
-									eps.find((e) => e.relative_number === nextEpisode) ??
-									null;
-								historyEpisodes = { ...historyEpisodes, [entryId]: ep };
-							})
-							.catch(() => {
-								historyEpisodes = { ...historyEpisodes, [entryId]: null };
-							});
-					}
+					})
 				});
 			})
 			.catch(() => {

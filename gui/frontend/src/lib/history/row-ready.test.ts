@@ -40,7 +40,10 @@ interface Spy {
 	fetchKitsuEpisodes: ReturnType<typeof vi.fn>;
 }
 
-function makeSpy(history: HistoryEntry[], fetchImpl?: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>): Spy {
+function makeSpy(
+	history: HistoryEntry[],
+	fetchImpl?: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>
+): Spy {
 	const historyById = new Map(history.map((h) => [h.id, h]));
 	const fetchKitsuEpisodes = vi.fn(fetchImpl ?? (() => Promise.resolve([])));
 	const calls = {
@@ -145,7 +148,13 @@ describe('makeContinueRowReadyHandler', () => {
 		const match = makeMatch('k-a', 12);
 		const spy = makeSpy([entry], () =>
 			Promise.resolve([
-				{ id: 'wrong-1', number: 26, relative_number: 6, canonical_title: 'rel-6', thumbnail: null } as unknown as KitsuEpisode
+				{
+					id: 'wrong-1',
+					number: 26,
+					relative_number: 6,
+					canonical_title: 'rel-6',
+					thumbnail: null
+				} as unknown as KitsuEpisode
 			])
 		);
 		const handle = makeContinueRowReadyHandler(spy.deps);
@@ -154,15 +163,15 @@ describe('makeContinueRowReadyHandler', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ relative_number: 6 })]]);
+		expect(spy.calls.setEpisode).toEqual([
+			['hist-a', expect.objectContaining({ relative_number: 6 })]
+		]);
 	});
 
 	it('falls through to null when the episode list has no matching number', async () => {
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 12);
-		const spy = makeSpy([entry], () =>
-			Promise.resolve([makeKitsuEpisode(99, 99)])
-		);
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(99, 99)]));
 		const handle = makeContinueRowReadyHandler(spy.deps);
 
 		handle('hist-a', match, 12);
@@ -185,23 +194,23 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', null]]);
 	});
 
-	it('match resolved but no target.kitsuEpisode: setMatch + setPlayableCount fire, no episode fetch', async () => {
-		// resolveHistoryEntry returns target.kitsuEpisode = null when
-		// the history ep_no can't be parsed to a finite number. The
-		// row is still resumable to episode 1 via pickNextEpisode's
-		// null-handling, but there's no specific episode to fetch
-		// metadata for.
+	it('unparseable ep_no still fires the fetch using displayEpisode=1 + the cap', async () => {
+		// resolveHistoryEntry falls back to displayEpisode=1 on a
+		// parse failure (parseInt('NaN', 10) || 1 → 1), so the row is
+		// still resumable. pickNextEpisode(1, 12) → 2; the handler
+		// fetches the kitsu page for ep 2.
 		const entry = makeEntry('hist-a', 'NaN', 'Show A');
 		const match = makeMatch('k-a', 12);
-		const spy = makeSpy([entry]);
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(2)]));
 		const handle = makeContinueRowReadyHandler(spy.deps);
 
 		handle('hist-a', match, 12);
 		await Promise.resolve();
+		await Promise.resolve();
 
 		expect(spy.calls.setMatch).toEqual([['hist-a', match]]);
 		expect(spy.calls.setPlayableCount).toEqual([['hist-a', 12]]);
-		expect(spy.fetchKitsuEpisodes).not.toHaveBeenCalled();
-		expect(spy.calls.setEpisode).toEqual([]);
+		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1);
+		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 2 })]]);
 	});
 });
