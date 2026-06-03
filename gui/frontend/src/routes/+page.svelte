@@ -16,6 +16,7 @@
 	import {
 		altTitlesFromKitsu,
 		availabilityBatch,
+		checkAvailability,
 		yearFromKitsuRef,
 		historyList,
 		imageProxyUrl,
@@ -162,6 +163,25 @@
 				void loadContinueWatchingState(history, {
 					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
 					fetchAvailabilityBatch: availabilityBatch,
+					// Cache-miss fallback: when the batch has no cached
+					// playable count for a row (CLI-imported history that
+					// never went through the list-view warm, expired 24h
+					// positive cache on an ongoing show), the loader fires
+					// this live probe — same checkAvailability the detail
+					// page uses for `playableEpisodeCount`. Args mirror the
+					// `playStream` call below so the backend's title-match
+					// disambiguation has the same context it would for a
+					// real play.
+					fetchAvailability: (match, mode) =>
+						checkAvailability({
+							title: match.canonical_title,
+							mode,
+							alt_titles: altTitlesFromKitsu(match),
+							episode_count: match.episode_count ?? undefined,
+							year: yearFromKitsuRef(match) ?? undefined,
+							kitsu_id: match.id,
+							status: match.status ?? undefined
+						}),
 					getMode: () => settingsPromise.then(pickAvailabilityMode)
 				}).then(({ matches, playableCounts }) => {
 					historyMatches = matches;

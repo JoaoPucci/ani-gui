@@ -13,12 +13,12 @@ export interface ContinueWatchingLoaderDeps {
 	) => Promise<{ playable_episode_counts: Record<string, number> }>;
 	/**
 	 * Live availability probe — same call the detail page issues to
-	 * compute `playableEpisodeCount`. Wired here so the loader can
-	 * fall back to a live read when the batch returns no entry for a
-	 * resolved match (introduced in a later pair). Currently unused;
-	 * a no-op stub is acceptable.
+	 * compute `playableEpisodeCount`. Fired for matches the batch
+	 * didn't cover (CLI-imported history, expired 24h positive
+	 * cache). Returning null (or rejecting) is fine: the per-card
+	 * cap then falls back to `match.episode_count`.
 	 */
-	fetchAvailability?: (
+	fetchAvailability: (
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
 	) => Promise<{ episode_count: number | null } | null>;
@@ -57,12 +57,23 @@ export interface ContinueWatchingLoaderDeps {
  * history settled before settings, the batch still reads `dub`
  * playable counts rather than the page-default `sub`.
  *
+ * Cache-miss fallback: when the batch returns no entry for a
+ * resolved match (CLI-imported history that never went through the
+ * list-view warm, expired 24h positive cache on an ongoing show),
+ * `fetchAvailability` is fired for that match — the same live
+ * probe the detail page does — so the home cap matches detail
+ * even in the divergent case. Probes run concurrently; the slowest
+ * gates the strip, but the cache hit rate is high in practice so
+ * this only fires for genuine misses.
+ *
  * Failure modes:
  *   - per-entry resolveMatch rejects → that entry gets `null` match;
  *     no throw escapes.
- *   - batch rejects (cache miss / network blip) → playableCounts is
- *     empty; matches still flow through, so cards still render. Per-
- *     card cap then falls back to `match.episode_count`.
+ *   - batch rejects (cache miss / network blip) → batchCounts is
+ *     empty; every match falls through to the live probe.
+ *   - live probe rejects or returns null → that entry's playable
+ *     count is omitted; per-card cap then falls back to
+ *     `match.episode_count`.
  *   - getMode rejects → defaults to `sub`, same fallback the page
  *     uses today.
  *   - no entry matches → batch is skipped (nothing to look up).
@@ -85,22 +96,43 @@ export async function loadContinueWatchingState(
 
 	const ids = settled.map(({ match }) => match?.id).filter((id): id is string => Boolean(id));
 
-	let counts: Record<string, number> = {};
+	let batchCounts: Record<string, number> = {};
 	if (ids.length > 0) {
 		try {
 			const r = await deps.fetchAvailabilityBatch(ids, mode);
-			counts = r.playable_episode_counts ?? {};
+			batchCounts = r.playable_episode_counts ?? {};
 		} catch {
-			counts = {};
+			batchCounts = {};
 		}
 	}
+
+	// Cache-miss fallback. For each match the batch didn't cover, fire
+	// the live probe — same checkAvailability the detail page uses to
+	// derive `playableEpisodeCount`. Concurrent; cached rows stay
+	// untouched (no wasted IPC).
+	const probeSubjects = settled
+		.map(({ match }) => match)
+		.filter((m): m is KitsuAnimeRef => Boolean(m) && batchCounts[m!.id] === undefined);
+	const probeResults = await Promise.all(
+		probeSubjects.map((match) =>
+			deps
+				.fetchAvailability(match, mode)
+				.then((r) => ({ id: match.id, count: r?.episode_count ?? null }))
+				.catch(() => ({ id: match.id, count: null as number | null }))
+		)
+	);
+	const probeCounts: Record<string, number> = {};
+	for (const { id, count } of probeResults) {
+		if (typeof count === 'number') probeCounts[id] = count;
+	}
+	const allCounts: Record<string, number> = { ...batchCounts, ...probeCounts };
 
 	const matches: Record<string, KitsuAnimeRef | null> = {};
 	const playableCounts: Record<string, number> = {};
 	for (const { entry, match } of settled) {
 		matches[entry.id] = match;
 		if (match) {
-			const c = counts[match.id];
+			const c = allCounts[match.id];
 			if (typeof c === 'number') playableCounts[entry.id] = c;
 		}
 	}

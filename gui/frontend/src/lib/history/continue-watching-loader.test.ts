@@ -285,9 +285,7 @@ describe('loadContinueWatchingState', () => {
 			if (entry.id === 'hist-rejects') return Promise.resolve(m1);
 			return Promise.resolve(m2);
 		});
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: {} });
+		const fetchAvailabilityBatch = vi.fn().mockResolvedValue({ playable_episode_counts: {} });
 		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
 			if (match.id === 'k-rej') return Promise.reject(new Error('network'));
 			return Promise.resolve(null);
