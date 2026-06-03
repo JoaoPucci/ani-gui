@@ -175,6 +175,75 @@ describe('loadContinueWatchingState', () => {
 		expect(fetchAvailability).toHaveBeenCalledTimes(8);
 	});
 
+	it('restarts workers when a row queues after the pool drained', async () => {
+		// Codex P2 #3348906718 — worker-pool restart race. When all
+		// workers exit their while-loop on the same tick (every
+		// in-flight probe just returned), each worker's .finally is
+		// queued AFTER any matchPromise.then that resolves in the same
+		// batch. A 5th match landing in that gap calls ensureWorkers
+		// when workersActive is still at the cap → no spawn. The
+		// .finally then decrements but doesn't re-pump, so the new
+		// job sits in the queue forever and the loader never resolves.
+		// Fix: ensureWorkers() inside the .finally that drops
+		// workersActive.
+		const entries = Array.from({ length: 5 }, (_, i) => makeEntry(`h${i}`, '1', `Show ${i}`));
+		const matches = entries.map((_, i) => makeMatch(`k${i}`, 12));
+
+		const matchDeferreds = matches.map(() => defer<KitsuAnimeRef | null>());
+		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
+			const i = entries.findIndex((e) => e.id === entry.id);
+			return matchDeferreds[i].promise;
+		});
+
+		const probeDeferreds = matches.map(() => defer<{ episode_count: number }>());
+		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
+			const i = matches.findIndex((m) => m.id === match.id);
+			return probeDeferreds[i].promise;
+		});
+
+		const loader = loadContinueWatchingState(entries, {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			probeConcurrency: 4
+		});
+
+		// Resolve first 4 matches. Workers 0-3 spawn and end up
+		// awaiting their respective probes (queue is empty after
+		// each one shifts its job).
+		for (let i = 0; i < 4; i++) matchDeferreds[i].resolve(matches[i]);
+		for (let i = 0; i < 30; i++) await Promise.resolve();
+
+		// Drain all 4 probes in the same synchronous batch, then
+		// queue match 5 BEFORE any worker's .finally runs. The
+		// matchDeferreds[4].resolve and the four probe resolves all
+		// enqueue microtasks; processing them in FIFO order means
+		// every worker's continuation + return runs first, queuing
+		// four .finally callbacks AFTER match 5's .then in the
+		// microtask queue. With the bug, match 5's .then sees
+		// workersActive still at the cap and skips the spawn; with
+		// the fix, the .finally re-runs ensureWorkers and picks up
+		// the orphaned job.
+		for (let i = 0; i < 4; i++) probeDeferreds[i].resolve({ episode_count: 12 });
+		matchDeferreds[4].resolve(matches[4]);
+		// Drain so the bug (if present) settles into its stuck state.
+		for (let i = 0; i < 30; i++) await Promise.resolve();
+
+		// Resolve the 5th probe so the loader CAN complete if the
+		// 5th worker did spawn. With the bug, this never lands
+		// (probe 4 hasn't been requested), so the loader hangs.
+		probeDeferreds[4].resolve({ episode_count: 12 });
+
+		const result = await Promise.race([
+			loader,
+			new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error('loader hung — worker pool did not restart')), 200)
+			)
+		]);
+		expect(Object.keys(result.matches)).toHaveLength(5);
+		expect(fetchAvailability).toHaveBeenCalledTimes(5);
+	});
+
 	it('defaults to sub when getMode rejects', async () => {
 		// getMode reads through settingsGet → pickAvailabilityMode at
 		// the page level. Settings shouldn't reject under normal
