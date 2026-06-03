@@ -330,7 +330,13 @@ test('Continue card during the availability-probe window is not a /search link',
 	// pending.
 	const { app, page } = await launchAppWithContinueStubs({
 		history: continueHistory,
-		availabilityDelayMs: 3_000
+		// Tight enough that the 500ms assertion below lands inside
+		// the probe window AND the button-visibility wait has
+		// headroom under the 10s timeout — the goto-replay in
+		// launchAppWithContinueStubs fires /api/availability twice
+		// (once per render cycle), so a longer delay doubles up
+		// under Xvfb.
+		availabilityDelayMs: 1_500
 	});
 	try {
 		await waitForStripVisible(page);
