@@ -42,6 +42,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { filterAvailable } from '$lib/availability/filter';
+	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -122,9 +123,15 @@
 		// Settings drive mode/quality for the Continue Watching click
 		// handler. Default {sub, best} when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
-		settingsGet()
-			.then((c) => (config = c))
-			.catch(() => {});
+		// The shared promise lets the Continue Watching loader await
+		// the configured mode before firing its batch availability
+		// read, so a user with mode='dub' doesn't see the batch query
+		// the sub playable counts (mismatching what startResume reads
+		// at click time).
+		const settingsPromise = settingsGet().catch(() => null as Config | null);
+		void settingsPromise.then((c) => {
+			if (c) config = c;
+		});
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: GUI-stamped rows on top,
@@ -152,11 +159,10 @@
 				// (resolve.ts) handles cour-split shows (Stone Ocean
 				// Part 2 etc.) so we hit the right Kitsu episode
 				// instead of collapsing onto Part 1's episode 1.
-				const mode = config?.mode === 'dub' ? 'dub' : 'sub';
 				void loadContinueWatchingState(history, {
 					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
 					fetchAvailabilityBatch: availabilityBatch,
-					mode
+					getMode: () => settingsPromise.then(pickAvailabilityMode)
 				}).then(({ matches, playableCounts }) => {
 					historyMatches = matches;
 					historyPlayableCounts = playableCounts;

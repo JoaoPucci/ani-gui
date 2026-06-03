@@ -11,7 +11,25 @@ export interface ContinueWatchingLoaderDeps {
 		ids: string[],
 		mode: 'sub' | 'dub'
 	) => Promise<{ playable_episode_counts: Record<string, number> }>;
-	mode: 'sub' | 'dub';
+	/**
+	 * Live availability probe — same call the detail page issues to
+	 * compute `playableEpisodeCount`. Wired here so the loader can
+	 * fall back to a live read when the batch returns no entry for a
+	 * resolved match (introduced in a later pair). Currently unused;
+	 * a no-op stub is acceptable.
+	 */
+	fetchAvailability?: (
+		match: KitsuAnimeRef,
+		mode: 'sub' | 'dub'
+	) => Promise<{ episode_count: number | null } | null>;
+	/**
+	 * Resolves to the configured availability mode. Async because the
+	 * home page bootstraps settingsGet() in parallel with historyList()
+	 * — the loader must hold on the batch call until the configured
+	 * mode is known, otherwise it would read the wrong (sub vs. dub)
+	 * playable counts while startResume later uses the loaded mode.
+	 */
+	getMode: () => Promise<'sub' | 'dub'>;
 }
 
 /**
@@ -33,34 +51,44 @@ export interface ContinueWatchingLoaderDeps {
  * episode from home while the detail page advances. Holding both
  * writes until the batch returns closes that window.
  *
+ * Mode wait: `getMode` is awaited concurrently with the per-entry
+ * match resolution. The batch is only issued once the configured
+ * mode is known — so when the user's saved mode is `dub` but
+ * history settled before settings, the batch still reads `dub`
+ * playable counts rather than the page-default `sub`.
+ *
  * Failure modes:
  *   - per-entry resolveMatch rejects → that entry gets `null` match;
  *     no throw escapes.
  *   - batch rejects (cache miss / network blip) → playableCounts is
  *     empty; matches still flow through, so cards still render. Per-
- *     card cap then falls back to `match.episode_count` — same
- *     behaviour as before, just no longer racy.
+ *     card cap then falls back to `match.episode_count`.
+ *   - getMode rejects → defaults to `sub`, same fallback the page
+ *     uses today.
  *   - no entry matches → batch is skipped (nothing to look up).
  */
 export async function loadContinueWatchingState(
 	history: HistoryEntry[],
 	deps: ContinueWatchingLoaderDeps
 ): Promise<ContinueWatchingState> {
-	const settled = await Promise.all(
-		history.map((entry) =>
-			deps
-				.resolveMatch(entry)
-				.then((match) => ({ entry, match }))
-				.catch(() => ({ entry, match: null as KitsuAnimeRef | null }))
-		)
-	);
+	const [settled, mode] = await Promise.all([
+		Promise.all(
+			history.map((entry) =>
+				deps
+					.resolveMatch(entry)
+					.then((match) => ({ entry, match }))
+					.catch(() => ({ entry, match: null as KitsuAnimeRef | null }))
+			)
+		),
+		deps.getMode().catch(() => 'sub' as const)
+	]);
 
 	const ids = settled.map(({ match }) => match?.id).filter((id): id is string => Boolean(id));
 
 	let counts: Record<string, number> = {};
 	if (ids.length > 0) {
 		try {
-			const r = await deps.fetchAvailabilityBatch(ids, deps.mode);
+			const r = await deps.fetchAvailabilityBatch(ids, mode);
 			counts = r.playable_episode_counts ?? {};
 		} catch {
 			counts = {};
