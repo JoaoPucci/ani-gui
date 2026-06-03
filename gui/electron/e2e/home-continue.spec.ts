@@ -79,19 +79,22 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 		env: cleanEnv
 	});
 	const context = app.context();
+	const page = await app.firstWindow();
 
 	const watchedAt: Record<string, number> = {};
 	for (const h of opts.history) watchedAt[h.id] = 1_700_000_000;
 
-	// Single consolidated route handler. Multiple `await context.route()`
-	// calls take ~200ms each round-trip on Xvfb; the renderer's initial
-	// onMount `fetch()` batch can finish during that registration window,
-	// so even with the goto-replay below some tests still saw real
-	// Kitsu data (CI run 26892627372 — test #4 screenshot showed the
-	// real-Kitsu hero). One await drops the total registration time to
-	// a single round-trip and forces ALL /api/* traffic through the
-	// fulfill table before the first goto returns.
-	await context.route('**/api/**', async (r) => {
+	// Single consolidated route handler registered on the PAGE (not
+	// the context). page.route() applies to the specific page from the
+	// moment it's registered onward; the bounce below then forces a
+	// fresh navigation whose fetches all flow through this handler.
+	// Earlier attempts to register on context.route before firstWindow
+	// raced the renderer's initial onMount fetch batch (CI runs
+	// 26891889692, 26892237750, 26893103223 — test #4 screenshot
+	// consistently showed real-Kitsu content despite the bounce).
+	// Registering AFTER firstWindow on the page means there's no
+	// pre-page window where the route can be missed.
+	await page.route('**/api/**', async (r) => {
 		const u = new URL(r.request().url());
 		const p = u.pathname;
 		const j = (body: unknown) =>
@@ -171,23 +174,13 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 		return j(null);
 	});
 
-	const page = await app.firstWindow();
-	// `_electron.launch()` already creates the BrowserWindow as part of
-	// `app.whenReady()`, so by the time `firstWindow()` resolves the
-	// renderer has often already fired its onMount `fetch()` batch
-	// (history / settings / trending / top-rated). On warm CI runners
-	// those initial requests can land BEFORE the awaits above finish
-	// registering routes, so the renderer sees real Kitsu data and the
-	// Continue strip stays hidden (history is empty).
-	//
-	// SvelteKit treats a goto() to the same URL as a no-op client-side
-	// navigation, so onMount doesn't re-run and the racing-initial-load
-	// state persists (the screenshot from CI run 26891889692's failure
-	// showed the real-Kitsu hero rendered, confirming the no-op).
-	// Bounce through `about:blank` to drop the SvelteKit runtime, then
-	// navigate back — that's a full hard load against the registered
-	// route table. waitForLoadState first so the in-flight initial
-	// requests settle and the bounce doesn't ABORT them mid-flight.
+	// Bounce through about:blank to force a full SvelteKit remount.
+	// goto() to the same URL is a SPA no-op (SvelteKit treats it as
+	// client-side navigation, onMount doesn't re-run, the racing
+	// initial-load state persists). about:blank drops the runtime
+	// entirely; the goto back to the home URL fires a fresh mount,
+	// and every /api/* it issues now flows through page.route()
+	// because the handler was registered before the bounce.
 	const homeUrl = page.url();
 	await page.waitForLoadState('networkidle').catch(() => {});
 	await page.goto('about:blank');
