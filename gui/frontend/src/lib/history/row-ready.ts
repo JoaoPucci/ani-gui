@@ -1,5 +1,5 @@
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
-import { EPISODES_KITSU_PAGE_SIZE, resolveHistoryEntry } from './resolve';
+import { EPISODES_KITSU_PAGE_SIZE } from './resolve';
 import { pickNextEpisode } from '$lib/play/next-episode';
 
 export interface ContinueRowReadyDeps {
@@ -67,12 +67,17 @@ export function makeContinueRowReadyHandler(
 		if (!match) return;
 		const entry = deps.historyById.get(entryId);
 		if (!entry) return;
-		const target = resolveHistoryEntry(entry, match);
-		// resolveHistoryEntry guarantees kitsuEpisode is a positive
-		// number whenever match is non-null (displayEpisode falls back
-		// to 1 on parse failure), so no null guard is needed here.
+		// Raw ep_no — not resolveHistoryEntry.kitsuEpisode. The resolver
+		// defensively normalizes a malformed ep_no (`'abc'`, `'0'`,
+		// empty) to displayEpisode=1, which would make the handler
+		// advance the row to episode 2 (last+1=1+1) instead of treating
+		// it as a no-history row. The detail page's defaultEpisode reads
+		// `parseInt(resumeEntry.ep_no, 10)` raw and lets pickNextEpisode
+		// collapse NaN/<1 to episode 1 via its own fence; mirror that
+		// here so both Continue surfaces agree on the malformed row.
+		const lastWatched = parseInt(entry.ep_no, 10);
 		const cap = playableCount ?? match.episode_count ?? null;
-		const nextEpisode = pickNextEpisode(target.kitsuEpisode!, cap);
+		const nextEpisode = pickNextEpisode(Number.isFinite(lastWatched) ? lastWatched : null, cap);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 		void deps
 			.fetchKitsuEpisodes(match.id, kitsuPage)

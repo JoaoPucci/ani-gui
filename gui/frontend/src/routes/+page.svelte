@@ -498,8 +498,9 @@
 				match?.status ?? null
 			)}
 			{@const playableCount = historyPlayableCounts[entry.id]}
+			{@const lastWatched = parseInt(entry.ep_no, 10)}
 			{@const nextEpisode = pickNextEpisode(
-				target.kitsuEpisode,
+				Number.isFinite(lastWatched) ? lastWatched : null,
 				playableCount ?? match?.episode_count ?? null
 			)}
 			<!-- Three states for the Continue card:
