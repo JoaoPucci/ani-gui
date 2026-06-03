@@ -194,14 +194,17 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', null]]);
 	});
 
-	it('unparseable ep_no still fires the fetch using displayEpisode=1 + the cap', async () => {
-		// resolveHistoryEntry falls back to displayEpisode=1 on a
-		// parse failure (parseInt('NaN', 10) || 1 → 1), so the row is
-		// still resumable. pickNextEpisode(1, 12) → 2; the handler
-		// fetches the kitsu page for ep 2.
-		const entry = makeEntry('hist-a', 'NaN', 'Show A');
+	it('malformed ep_no (NaN-parse): treats the row as no-history, fetches episode 1', async () => {
+		// Codex P2 #3349231667 — a user-edited or otherwise malformed
+		// ep_no ('abc', '0', empty) must not surface a phantom "watched
+		// episode 1, ready for episode 2" state. The detail page's
+		// defaultEpisode reads raw `parseInt(resumeEntry.ep_no, 10)`
+		// and lets pickNextEpisode collapse NaN/<1 to episode 1. The
+		// home handler must do the same so both Continue surfaces
+		// agree on a malformed row.
+		const entry = makeEntry('hist-a', 'abc', 'Show A');
 		const match = makeMatch('k-a', 12);
-		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(2)]));
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(1)]));
 		const handle = makeContinueRowReadyHandler(spy.deps);
 
 		handle('hist-a', match, 12);
@@ -210,7 +213,22 @@ describe('makeContinueRowReadyHandler', () => {
 
 		expect(spy.calls.setMatch).toEqual([['hist-a', match]]);
 		expect(spy.calls.setPlayableCount).toEqual([['hist-a', 12]]);
+		// pickNextEpisode(NaN, 12) → 1; ceil(1/20) → page 1; setEpisode
+		// receives the ep-1 row, not an ep-2 lookup that would miss.
 		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1);
-		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 2 })]]);
+		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 1 })]]);
+	});
+
+	it('ep_no="0" is treated as no-history (matches pickNextEpisode\'s <1 fence)', async () => {
+		const entry = makeEntry('hist-a', '0', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(1)]));
+		const handle = makeContinueRowReadyHandler(spy.deps);
+
+		handle('hist-a', match, 12);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 1 })]]);
 	});
 });
