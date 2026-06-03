@@ -134,6 +134,12 @@ export async function loadContinueWatchingState(
 			workersActive++;
 			void runProbe().finally(() => {
 				workersActive--;
+				// Re-pump after decrement: a row that queued in the gap
+				// between this worker's exit-while-loop and now would
+				// have been skipped by its own ensureWorkers call
+				// (workersActive was still at the cap). Recheck the
+				// queue here so the orphan picks up a slot.
+				ensureWorkers();
 			});
 		}
 	};
