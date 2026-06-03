@@ -224,4 +224,83 @@ describe('loadContinueWatchingState', () => {
 		expect(result.matches).toEqual({ 'hist-a': m1 });
 		expect(result.playableCounts).toEqual({});
 	});
+
+	it('live-probes matches the batch did not cover and surfaces the probe count', async () => {
+		// Codex P2 #3348288674 — cache-miss fallback: a CLI-imported
+		// history row or an ongoing show whose 24h positive cache
+		// has expired won't appear in the batch's
+		// playable_episode_counts. Without a fallback, the per-card
+		// cap collapses to Kitsu's announced count, which is exactly
+		// the staleness the original P2 was about. Match parity with
+		// the detail page by firing the same live checkAvailability
+		// probe the detail page uses for these cache misses, and
+		// integrate the result into playableCounts.
+		const e1 = makeEntry('hist-cache-hit', '10', 'Cached Show');
+		const e2 = makeEntry('hist-cache-miss', '1100', 'One Piece (CLI import)');
+		const m1 = makeMatch('k-cached', 12);
+		const m2 = makeMatch('k-miss', 1100);
+
+		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
+			if (entry.id === 'hist-cache-hit') return Promise.resolve(m1);
+			return Promise.resolve(m2);
+		});
+		const fetchAvailabilityBatch = vi
+			.fn()
+			.mockResolvedValue({ playable_episode_counts: { 'k-cached': 13 } });
+		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
+			if (match.id === 'k-miss') return Promise.resolve({ episode_count: 1107 });
+			return Promise.resolve(null);
+		});
+
+		const result = await loadContinueWatchingState([e1, e2], {
+			resolveMatch,
+			fetchAvailabilityBatch,
+			fetchAvailability,
+			getMode: subMode
+		});
+
+		// The probe must NOT be re-asked for the cached row — that row
+		// already has authoritative data from the batch and a second
+		// IPC would be wasted work.
+		expect(fetchAvailability).toHaveBeenCalledTimes(1);
+		expect(fetchAvailability).toHaveBeenCalledWith(m2, 'sub');
+		expect(result.matches).toEqual({ 'hist-cache-hit': m1, 'hist-cache-miss': m2 });
+		expect(result.playableCounts).toEqual({
+			'hist-cache-hit': 13,
+			'hist-cache-miss': 1107
+		});
+	});
+
+	it('omits the playable count for matches whose live probe returns null or rejects', async () => {
+		// Probe failure / unavailable response: per-card cap falls back
+		// to match.episode_count (Kitsu's announced cap). Same shape
+		// the original (no-probe) flow had — just no longer racy on
+		// the batch-only side.
+		const e1 = makeEntry('hist-rejects', '5', 'Probe Fails');
+		const e2 = makeEntry('hist-unavailable', '5', 'Returns Null');
+		const m1 = makeMatch('k-rej', 12);
+		const m2 = makeMatch('k-null', 12);
+
+		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
+			if (entry.id === 'hist-rejects') return Promise.resolve(m1);
+			return Promise.resolve(m2);
+		});
+		const fetchAvailabilityBatch = vi
+			.fn()
+			.mockResolvedValue({ playable_episode_counts: {} });
+		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
+			if (match.id === 'k-rej') return Promise.reject(new Error('network'));
+			return Promise.resolve(null);
+		});
+
+		const result = await loadContinueWatchingState([e1, e2], {
+			resolveMatch,
+			fetchAvailabilityBatch,
+			fetchAvailability,
+			getMode: subMode
+		});
+
+		expect(result.matches).toEqual({ 'hist-rejects': m1, 'hist-unavailable': m2 });
+		expect(result.playableCounts).toEqual({});
+	});
 });
