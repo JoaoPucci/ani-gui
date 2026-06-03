@@ -22,162 +22,177 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 
 // Defer helper — returns a promise and its resolver so the test
 // can sequence resolve order across stages.
-function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
 	let resolveFn!: (v: T) => void;
-	const promise = new Promise<T>((res) => {
+	let rejectFn!: (e: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
 		resolveFn = res;
+		rejectFn = rej;
 	});
-	return { promise, resolve: resolveFn };
+	return { promise, resolve: resolveFn, reject: rejectFn };
 }
 
 const subMode = () => Promise.resolve<'sub' | 'dub'>('sub');
-const noProbe = vi.fn().mockResolvedValue({ episode_count: null });
 
 describe('loadContinueWatchingState', () => {
-	it('does not resolve until the batch availability call settles', async () => {
-		// Codex P2 race: matches arriving per-entry should not flip the
-		// card to "resumable" before the playable count is in, because
-		// the click would derive nextEpisode from match.episode_count
-		// (Kitsu's possibly-stale cap) and replay the last episode for
-		// ongoing shows where allmanga has newer episodes.
-		const entry = makeEntry('one-piece', '1100', 'One Piece');
-		const match = makeMatch('kitsu-12', 1100); // Kitsu's stale cap
-		const matchDeferred = defer<KitsuAnimeRef | null>();
-		const batchDeferred = defer<{ playable_episode_counts: Record<string, number> }>();
+	it('emits onRowReady per row as each row resolves, independent of other rows', async () => {
+		// Codex P2 #3348386932 — per-card releases: a slow row must
+		// not gate a fast row. Before this fix the loader awaited
+		// Promise.all on every match before firing the batch, so any
+		// one slow Kitsu resolution held every card in its
+		// search-link fallback state. The per-row callback releases
+		// each card as ITS match + count both land — slow rows fall
+		// behind without dragging fast rows with them.
+		const fast = makeEntry('hist-fast', '5', 'Fast');
+		const slow = makeEntry('hist-slow', '10', 'Slow');
+		const mFast = makeMatch('k-fast', 12);
+		const mSlow = makeMatch('k-slow', 24);
 
-		const resolveMatch = vi.fn(() => matchDeferred.promise);
-		const fetchAvailabilityBatch = vi.fn(() => batchDeferred.promise);
-
-		let resolved = false;
-		const loaderPromise = loadContinueWatchingState([entry], {
-			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: subMode
-		}).then((r) => {
-			resolved = true;
-			return r;
+		const slowMatch = defer<KitsuAnimeRef | null>();
+		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
+			if (entry.id === 'hist-fast') return Promise.resolve(mFast);
+			return slowMatch.promise;
+		});
+		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
+			if (match.id === 'k-fast') return Promise.resolve({ episode_count: 12 });
+			return Promise.resolve({ episode_count: 25 });
 		});
 
-		// Per-entry match arrives — the loader should NOT have
-		// resolved yet because the batch is still pending.
-		matchDeferred.resolve(match);
-		await Promise.resolve();
-		await Promise.resolve();
-		expect(resolved).toBe(false);
+		const ready: { id: string; count: number | null }[] = [];
+		const onRowReady = vi.fn().mockImplementation((id: string, _m, count: number | null) => {
+			ready.push({ id, count });
+		});
 
-		// Batch arrives — now the loader resolves with both maps.
-		batchDeferred.resolve({ playable_episode_counts: { 'kitsu-12': 1107 } });
+		const loaderPromise = loadContinueWatchingState([fast, slow], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady
+		});
+
+		// Let microtasks settle. Fast row's match has resolved + its
+		// per-row probe should also have run; slow row is still
+		// pending. The fast row MUST have been released.
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(ready.find((r) => r.id === 'hist-fast')?.count).toBe(12);
+		expect(ready.find((r) => r.id === 'hist-slow')).toBeUndefined();
+
+		// Now let the slow row through; it releases independently.
+		slowMatch.resolve(mSlow);
 		const result = await loaderPromise;
-		expect(result.matches).toEqual({ 'one-piece': match });
-		expect(result.playableCounts).toEqual({ 'one-piece': 1107 });
+		expect(ready.find((r) => r.id === 'hist-slow')?.count).toBe(25);
+		expect(result.matches).toEqual({ 'hist-fast': mFast, 'hist-slow': mSlow });
+		expect(result.playableCounts).toEqual({ 'hist-fast': 12, 'hist-slow': 25 });
 	});
 
-	it('waits for getMode to resolve before calling the batch with the configured mode', async () => {
-		// Codex P2 #3348288667 — mode race: the home page bootstraps
-		// settingsGet() in parallel with historyList(). If history
-		// settles first, today the loader is called with mode='sub'
-		// (the fallback) and the batch reads the SUB playable counts.
-		// When the user's real mode is 'dub', startResume later reads
-		// 'dub' from the now-loaded config — so the cap derived from
-		// SUB counts is wrong for the click. Sub releases commonly have
-		// more episodes than dub, so the card can advance to a dubbed
-		// episode that isn't streamable. Resolution: the loader must
-		// hold on the batch until the configured mode is known.
-		const entry = makeEntry('hist-a', '5', 'Show A');
-		const match = makeMatch('k-a', 12);
-		const modeDeferred = defer<'sub' | 'dub'>();
+	it('releases no-match rows immediately with onRowReady(null, null)', async () => {
+		// An entry whose Kitsu resolution returns null can't be a
+		// resumable card — it just renders as the /search fallback
+		// link. No need to wait for anything else; release it ASAP.
+		const orphan = makeEntry('hist-orphan', '1', 'Unmatchable');
+		const other = makeEntry('hist-other', '5', 'Other');
+		const mOther = makeMatch('k-other', 12);
+		const otherMatch = defer<KitsuAnimeRef | null>();
 
-		const resolveMatch = vi.fn().mockResolvedValue(match);
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-a': 12 } });
+		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
+			if (entry.id === 'hist-orphan') return Promise.resolve(null);
+			return otherMatch.promise;
+		});
+		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
 
-		const loaderPromise = loadContinueWatchingState([entry], {
+		const ready: { id: string; match: KitsuAnimeRef | null; count: number | null }[] = [];
+		const onRowReady = (id: string, match: KitsuAnimeRef | null, count: number | null) => {
+			ready.push({ id, match, count });
+		};
+
+		const loaderPromise = loadContinueWatchingState([orphan, other], {
 			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: () => modeDeferred.promise
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady
 		});
 
-		// Let microtasks flush; resolveMatch resolves synchronously,
-		// but the batch must not fire yet because getMode is pending.
 		for (let i = 0; i < 5; i++) await Promise.resolve();
-		expect(fetchAvailabilityBatch).not.toHaveBeenCalled();
+		// Orphan released immediately; other still pending its match.
+		expect(ready.find((r) => r.id === 'hist-orphan')).toEqual({
+			id: 'hist-orphan',
+			match: null,
+			count: null
+		});
+		expect(ready.find((r) => r.id === 'hist-other')).toBeUndefined();
 
-		modeDeferred.resolve('dub');
-		const result = await loaderPromise;
-		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a'], 'dub');
-		expect(result.matches).toEqual({ 'hist-a': match });
-		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
+		otherMatch.resolve(mOther);
+		await loaderPromise;
 	});
 
-	it('keys matches by HistoryEntry.id and surfaces playable counts via kitsu id', async () => {
-		const e1 = makeEntry('hist-a', '5', 'Show A');
-		const e2 = makeEntry('hist-b', '2', 'Show B');
-		const m1 = makeMatch('k-a', 12);
-		const m2 = makeMatch('k-b', 24);
+	it('caps concurrent probes at the configured pool size', async () => {
+		// Codex P2 #3348430790 — bounded probe concurrency: a sizable
+		// CLI-imported history with many cache-miss rows shouldn't
+		// fire N concurrent allmanga probes. The backend's `warm`
+		// path spaces equivalent probes by 500ms; filterAvailableStrict
+		// caps inline probes too. Mirror the same default (4) here.
+		const entries = Array.from({ length: 8 }, (_, i) => makeEntry(`h${i}`, '1', `Show ${i}`));
+		const matches = entries.map((e, i) => makeMatch(`k${i}`, 12));
 
 		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-a') return Promise.resolve(m1);
-			if (entry.id === 'hist-b') return Promise.resolve(m2);
-			return Promise.resolve(null);
+			const i = entries.findIndex((e) => e.id === entry.id);
+			return Promise.resolve(matches[i]);
 		});
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-a': 15, 'k-b': 24 } });
 
-		const result = await loadContinueWatchingState([e1, e2], {
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const probeDeferreds = matches.map(() => defer<{ episode_count: number }>());
+		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
+			inFlight++;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			const i = matches.findIndex((m) => m.id === match.id);
+			return probeDeferreds[i].promise.finally(() => {
+				inFlight--;
+			});
+		});
+
+		const loaderPromise = loadContinueWatchingState(entries, {
 			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: subMode
+			fetchAvailability,
+			getMode: subMode,
+			probeConcurrency: 4
 		});
 
-		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a', 'k-b'], 'sub');
-		expect(result.matches).toEqual({ 'hist-a': m1, 'hist-b': m2 });
-		expect(result.playableCounts).toEqual({ 'hist-a': 15, 'hist-b': 24 });
+		// Let matches + initial probe dispatch settle. At most 4 probes
+		// should be in flight; the rest queue.
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(inFlight).toBeLessThanOrEqual(4);
+		expect(maxInFlight).toBe(4);
+
+		// Drain the queue.
+		for (const d of probeDeferreds) d.resolve({ episode_count: 13 });
+		await loaderPromise;
+		expect(maxInFlight).toBe(4);
+		expect(fetchAvailability).toHaveBeenCalledTimes(8);
 	});
 
-	it('handles a no-match entry without throwing and keeps it out of playableCounts', async () => {
+	it('defaults to sub when getMode rejects', async () => {
+		// getMode reads through settingsGet → pickAvailabilityMode at
+		// the page level. Settings shouldn't reject under normal
+		// operation, but a corrupt config file or filesystem error
+		// could surface as a rejection. Match the page's pre-loader
+		// fallback ('sub') so probes still fire with a useful mode
+		// rather than throwing out of the entire load.
 		const e1 = makeEntry('hist-a', '5', 'Show A');
-		const e2 = makeEntry('hist-orphan', '1', 'Unmatchable');
 		const m1 = makeMatch('k-a', 12);
 
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-a') return Promise.resolve(m1);
-			return Promise.resolve(null);
-		});
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-a': 15 } });
-
-		const result = await loadContinueWatchingState([e1, e2], {
-			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: subMode
-		});
-
-		expect(result.matches).toEqual({ 'hist-a': m1, 'hist-orphan': null });
-		expect(result.playableCounts).toEqual({ 'hist-a': 15 });
-	});
-
-	it('skips the batch call entirely when no matches resolve', async () => {
-		const e1 = makeEntry('hist-orphan', '1', 'Unmatchable');
-		const resolveMatch = vi.fn().mockResolvedValue(null);
-		const fetchAvailabilityBatch = vi.fn();
+		const resolveMatch = vi.fn().mockResolvedValue(m1);
+		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
 
 		const result = await loadContinueWatchingState([e1], {
 			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: subMode
+			fetchAvailability,
+			getMode: () => Promise.reject(new Error('config read failed'))
 		});
 
-		expect(fetchAvailabilityBatch).not.toHaveBeenCalled();
-		expect(result.matches).toEqual({ 'hist-orphan': null });
-		expect(result.playableCounts).toEqual({});
+		expect(fetchAvailability).toHaveBeenCalledWith(m1, 'sub');
+		expect(result.matches).toEqual({ 'hist-a': m1 });
+		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
 	});
 
 	it('treats a per-entry resolveMatch rejection as null match (no throw)', async () => {
@@ -189,14 +204,11 @@ describe('loadContinueWatchingState', () => {
 			if (entry.id === 'hist-a') return Promise.reject(new Error('boom'));
 			return Promise.resolve(m2);
 		});
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-b': 24 } });
+		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 24 });
 
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
+			fetchAvailability,
 			getMode: subMode
 		});
 
@@ -204,101 +216,7 @@ describe('loadContinueWatchingState', () => {
 		expect(result.playableCounts).toEqual({ 'hist-b': 24 });
 	});
 
-	it('falls back to empty playableCounts when the batch rejects', async () => {
-		// Cache miss or network blip on the batch endpoint: the page
-		// should still render Continue cards (with Kitsu-cap fallback)
-		// rather than stay stuck in the loading state forever.
-		const e1 = makeEntry('hist-a', '5', 'Show A');
-		const m1 = makeMatch('k-a', 12);
-
-		const resolveMatch = vi.fn().mockResolvedValue(m1);
-		const fetchAvailabilityBatch = vi.fn().mockRejectedValue(new Error('cache miss'));
-
-		const result = await loadContinueWatchingState([e1], {
-			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: subMode
-		});
-
-		expect(result.matches).toEqual({ 'hist-a': m1 });
-		expect(result.playableCounts).toEqual({});
-	});
-
-	it('live-probes matches the batch did not cover and surfaces the probe count', async () => {
-		// Codex P2 #3348288674 — cache-miss fallback: a CLI-imported
-		// history row or an ongoing show whose 24h positive cache
-		// has expired won't appear in the batch's
-		// playable_episode_counts. Without a fallback, the per-card
-		// cap collapses to Kitsu's announced count, which is exactly
-		// the staleness the original P2 was about. Match parity with
-		// the detail page by firing the same live checkAvailability
-		// probe the detail page uses for these cache misses, and
-		// integrate the result into playableCounts.
-		const e1 = makeEntry('hist-cache-hit', '10', 'Cached Show');
-		const e2 = makeEntry('hist-cache-miss', '1100', 'One Piece (CLI import)');
-		const m1 = makeMatch('k-cached', 12);
-		const m2 = makeMatch('k-miss', 1100);
-
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-cache-hit') return Promise.resolve(m1);
-			return Promise.resolve(m2);
-		});
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-cached': 13 } });
-		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
-			if (match.id === 'k-miss') return Promise.resolve({ episode_count: 1107 });
-			return Promise.resolve(null);
-		});
-
-		const result = await loadContinueWatchingState([e1, e2], {
-			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability,
-			getMode: subMode
-		});
-
-		// The probe must NOT be re-asked for the cached row — that row
-		// already has authoritative data from the batch and a second
-		// IPC would be wasted work.
-		expect(fetchAvailability).toHaveBeenCalledTimes(1);
-		expect(fetchAvailability).toHaveBeenCalledWith(m2, 'sub');
-		expect(result.matches).toEqual({ 'hist-cache-hit': m1, 'hist-cache-miss': m2 });
-		expect(result.playableCounts).toEqual({
-			'hist-cache-hit': 13,
-			'hist-cache-miss': 1107
-		});
-	});
-
-	it('defaults to sub when getMode rejects', async () => {
-		// getMode reads through settingsGet → pickAvailabilityMode at
-		// the page level. settingsGet shouldn't reject under normal
-		// operation, but a corrupt config file or filesystem error
-		// could surface as a rejection. Match the page's pre-loader
-		// fallback ('sub') so the batch still fires with a useful
-		// mode rather than throwing out of the entire load.
-		const e1 = makeEntry('hist-a', '5', 'Show A');
-		const m1 = makeMatch('k-a', 12);
-
-		const resolveMatch = vi.fn().mockResolvedValue(m1);
-		const fetchAvailabilityBatch = vi
-			.fn()
-			.mockResolvedValue({ playable_episode_counts: { 'k-a': 12 } });
-
-		const result = await loadContinueWatchingState([e1], {
-			resolveMatch,
-			fetchAvailabilityBatch,
-			fetchAvailability: noProbe,
-			getMode: () => Promise.reject(new Error('config read failed'))
-		});
-
-		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a'], 'sub');
-		expect(result.matches).toEqual({ 'hist-a': m1 });
-		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
-	});
-
-	it('omits the playable count for matches whose live probe returns null or rejects', async () => {
+	it('omits the playable count for matches whose probe returns null or rejects', async () => {
 		// Probe failure / unavailable response: per-card cap falls back
 		// to match.episode_count (Kitsu's announced cap). Same shape
 		// the original (no-probe) flow had — just no longer racy on
@@ -312,7 +230,6 @@ describe('loadContinueWatchingState', () => {
 			if (entry.id === 'hist-rejects') return Promise.resolve(m1);
 			return Promise.resolve(m2);
 		});
-		const fetchAvailabilityBatch = vi.fn().mockResolvedValue({ playable_episode_counts: {} });
 		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
 			if (match.id === 'k-rej') return Promise.reject(new Error('network'));
 			return Promise.resolve(null);
@@ -320,7 +237,6 @@ describe('loadContinueWatchingState', () => {
 
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
-			fetchAvailabilityBatch,
 			fetchAvailability,
 			getMode: subMode
 		});
