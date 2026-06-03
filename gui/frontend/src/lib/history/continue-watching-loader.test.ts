@@ -271,6 +271,33 @@ describe('loadContinueWatchingState', () => {
 		});
 	});
 
+	it('defaults to sub when getMode rejects', async () => {
+		// getMode reads through settingsGet → pickAvailabilityMode at
+		// the page level. settingsGet shouldn't reject under normal
+		// operation, but a corrupt config file or filesystem error
+		// could surface as a rejection. Match the page's pre-loader
+		// fallback ('sub') so the batch still fires with a useful
+		// mode rather than throwing out of the entire load.
+		const e1 = makeEntry('hist-a', '5', 'Show A');
+		const m1 = makeMatch('k-a', 12);
+
+		const resolveMatch = vi.fn().mockResolvedValue(m1);
+		const fetchAvailabilityBatch = vi
+			.fn()
+			.mockResolvedValue({ playable_episode_counts: { 'k-a': 12 } });
+
+		const result = await loadContinueWatchingState([e1], {
+			resolveMatch,
+			fetchAvailabilityBatch,
+			fetchAvailability: noProbe,
+			getMode: () => Promise.reject(new Error('config read failed'))
+		});
+
+		expect(fetchAvailabilityBatch).toHaveBeenCalledWith(['k-a'], 'sub');
+		expect(result.matches).toEqual({ 'hist-a': m1 });
+		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
+	});
+
 	it('omits the playable count for matches whose live probe returns null or rejects', async () => {
 		// Probe failure / unavailable response: per-card cap falls back
 		// to match.episode_count (Kitsu's announced cap). Same shape
