@@ -35,6 +35,7 @@
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { EPISODES_KITSU_PAGE_SIZE, resolveHistoryEntry } from '$lib/history/resolve';
+	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
@@ -168,20 +169,10 @@
 					// never went through the list-view warm, expired 24h
 					// positive cache on an ongoing show), the loader fires
 					// this live probe — same checkAvailability the detail
-					// page uses for `playableEpisodeCount`. Args mirror the
-					// `playStream` call below so the backend's title-match
-					// disambiguation has the same context it would for a
-					// real play.
-					fetchAvailability: (match, mode) =>
-						checkAvailability({
-							title: match.canonical_title,
-							mode,
-							alt_titles: altTitlesFromKitsu(match),
-							episode_count: match.episode_count ?? undefined,
-							year: yearFromKitsuRef(match) ?? undefined,
-							kitsu_id: match.id,
-							status: match.status ?? undefined
-						}),
+					// page uses for `playableEpisodeCount`. makeFetch...
+					// keeps the args-mapping closure in a testable lib so
+					// no untestable closure lives on this page.
+					fetchAvailability: makeFetchAvailability(checkAvailability),
 					getMode: () => settingsPromise.then(pickAvailabilityMode)
 				}).then(({ matches, playableCounts }) => {
 					historyMatches = matches;
