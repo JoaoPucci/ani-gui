@@ -233,16 +233,18 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	// registering routes, so the renderer sees real Kitsu data and the
 	// Continue strip stays hidden (history is empty).
 	//
-	// Wait for any in-flight network to settle before replaying the
-	// load: the initial mount fires several /api/* requests; reloading
-	// mid-flight surfaces as `page.reload: net::ERR_ABORTED`. Then
-	// goto() the same URL to replay the whole boot against the now-
-	// registered route table. We use goto() rather than reload() so
-	// the navigation goes through Playwright's standard retry path
-	// (reload's abort-handling on the `app://` protocol is less
-	// forgiving on Xvfb).
+	// SvelteKit treats a goto() to the same URL as a no-op client-side
+	// navigation, so onMount doesn't re-run and the racing-initial-load
+	// state persists (the screenshot from CI run 26891889692's failure
+	// showed the real-Kitsu hero rendered, confirming the no-op).
+	// Bounce through `about:blank` to drop the SvelteKit runtime, then
+	// navigate back — that's a full hard load against the registered
+	// route table. waitForLoadState first so the in-flight initial
+	// requests settle and the bounce doesn't ABORT them mid-flight.
+	const homeUrl = page.url();
 	await page.waitForLoadState('networkidle').catch(() => {});
-	await page.goto(page.url(), { waitUntil: 'domcontentloaded' });
+	await page.goto('about:blank');
+	await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
 	return { app, page, context };
 }
 
