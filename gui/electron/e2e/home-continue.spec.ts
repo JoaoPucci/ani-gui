@@ -225,6 +225,17 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	});
 
 	const page = await app.firstWindow();
+	// Force a reload AFTER all routes are registered. `_electron.launch()`
+	// already creates the BrowserWindow as part of `app.whenReady()`, so
+	// by the time `firstWindow()` resolves the renderer has often already
+	// fired its onMount `fetch()` batch (history / settings / trending /
+	// top-rated). On warm CI runners those initial requests can land
+	// BEFORE the awaits above finish registering routes, so the renderer
+	// sees real Kitsu data and the Continue strip stays hidden (history
+	// is empty). Reloading replays the entire load against the now-
+	// registered route table — deterministic regardless of how fast the
+	// runner was on the first paint.
+	await page.reload();
 	return { app, page, context };
 }
 
