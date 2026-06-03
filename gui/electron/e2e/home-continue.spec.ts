@@ -80,148 +80,95 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	});
 	const context = app.context();
 
-	// Generic infra stubs — every test needs these.
-	await context.route('**/api/app-info', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(appInfo) })
-	);
-	await context.route('**/api/settings', (r) =>
-		r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify(defaultSettings)
-		})
-	);
-	await context.route('**/api/kitsu/trending-anilist', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(trending) })
-	);
-	await context.route('**/api/kitsu/top-rated', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(topRated) })
-	);
-	// Block image fetches; placeholder takes over.
-	await context.route('**/api/image*', (r) => r.fulfill({ status: 503 }));
-
-	// History endpoints — per-test fixture.
-	await context.route('**/api/history', (r) =>
-		r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify(opts.history)
-		})
-	);
 	const watchedAt: Record<string, number> = {};
 	for (const h of opts.history) watchedAt[h.id] = 1_700_000_000;
-	await context.route('**/api/watched-at', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(watchedAt) })
-	);
 
-	// resolveKitsuMatch step 0: allmanga-kitsu-map short-circuit. The
-	// loader hits this for every history entry; only the "Continue
-	// Test Show" entry resolves; the orphan id deliberately returns
-	// null so the loader falls through to title-match + kitsuSearch.
-	await context.route('**/api/allmanga-kitsu-map/**', (r) => {
-		const url = r.request().url();
-		if (opts.allmangaKitsuMap !== null && url.includes(continueHistory[0].id)) {
-			return r.fulfill({
+	// Single consolidated route handler. Multiple `await context.route()`
+	// calls take ~200ms each round-trip on Xvfb; the renderer's initial
+	// onMount `fetch()` batch can finish during that registration window,
+	// so even with the goto-replay below some tests still saw real
+	// Kitsu data (CI run 26892627372 — test #4 screenshot showed the
+	// real-Kitsu hero). One await drops the total registration time to
+	// a single round-trip and forces ALL /api/* traffic through the
+	// fulfill table before the first goto returns.
+	await context.route('**/api/**', async (r) => {
+		const u = new URL(r.request().url());
+		const p = u.pathname;
+		const j = (body: unknown) =>
+			r.fulfill({
 				status: 200,
 				contentType: 'application/json',
-				body: JSON.stringify(opts.allmangaKitsuMap ?? continueKitsuMatch.id)
+				body: JSON.stringify(body)
 			});
+
+		if (p === '/api/app-info') return j(appInfo);
+		if (p === '/api/settings') return j(defaultSettings);
+		if (p === '/api/kitsu/trending-anilist') return j(trending);
+		if (p === '/api/kitsu/top-rated') return j(topRated);
+		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
+		if (p === '/api/history') return j(opts.history);
+		if (p === '/api/watched-at') return j(watchedAt);
+
+		if (p.startsWith('/api/allmanga-kitsu-map/')) {
+			if (opts.allmangaKitsuMap !== null && p.includes(continueHistory[0].id)) {
+				return j(opts.allmangaKitsuMap ?? continueKitsuMatch.id);
+			}
+			return j(null);
 		}
-		return r.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
-	});
+		if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
+		if (p.startsWith('/api/kitsu/episodes/')) return j([continueKitsuEpisode6]);
+		if (p.startsWith('/api/title-match')) return j(null);
+		if (p === '/api/kitsu/search') return j([]);
 
-	// Kitsu detail used by step 0 once allmanga-kitsu-map resolves.
-	await context.route('**/api/kitsu/anime/**', (r) =>
-		r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify(continueKitsuMatch)
-		})
-	);
-	// Episode metadata fetched inside onRowReady for the decoration
-	// (thumbnail + title). Returning the episode keeps the strip's
-	// resume-title element rendered.
-	await context.route('**/api/kitsu/episodes/**', (r) =>
-		r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify([continueKitsuEpisode6])
-		})
-	);
-
-	// Orphan path fallback stubs — title-match + search both return
-	// nothing, leaving the row with a null match.
-	await context.route('**/api/title-match*', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: 'null' })
-	);
-	await context.route('**/api/kitsu/search', (r) =>
-		r.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
-	);
-
-	// Per-row availability probe — the cap signal for pickNextEpisode.
-	// Returns the same count as the match's announced episode_count so
-	// the at-cap test's pickNextEpisode returns last (replay) and the
-	// last+1 test returns ep+1.
-	await context.route('**/api/availability', async (r) => {
-		if (opts.availabilityDelayMs) {
-			await new Promise((resolve) => setTimeout(resolve, opts.availabilityDelayMs));
-		}
-		return r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({
+		if (p === '/api/availability') {
+			if (opts.availabilityDelayMs) {
+				await new Promise((resolve) => setTimeout(resolve, opts.availabilityDelayMs));
+			}
+			return j({
 				available: true,
 				episode_count: continueKitsuMatch.episode_count,
 				extra_episodes: []
-			})
-		});
-	});
+			});
+		}
 
-	// Click handler fires /api/play/stream as an EventSource (SSE) —
-	// playStream's preferred path when window.EventSource exists,
-	// which it always does in Chromium. The test hook records the
-	// resolved query params and we fulfill with a one-shot `done`
-	// event carrying a synthetic session so the renderer's overlay
-	// resolves cleanly. The trailing route still answers POST
-	// /api/play for the EventSource-undefined fallback path.
-	await context.route('**/api/play/stream*', async (r) => {
-		const url = new URL(r.request().url());
-		const body: Record<string, string | null> = {
-			title: url.searchParams.get('title'),
-			episode: url.searchParams.get('episode'),
-			mode: url.searchParams.get('mode'),
-			quality: url.searchParams.get('quality')
-		};
-		opts.onPlay?.(body);
-		const session = {
-			session_id: 'test-session',
-			upstream_url: 'about:blank',
-			referer: '',
-			subtitle_url: null,
-			episode: Number(body.episode),
-			media_kind: 'Hls'
-		};
-		return r.fulfill({
-			status: 200,
-			contentType: 'text/event-stream',
-			body: `event: done\ndata: ${JSON.stringify(session)}\n\n`
-		});
-	});
-	await context.route('**/api/play', async (r) => {
-		const body = JSON.parse(r.request().postData() ?? '{}');
-		opts.onPlay?.(body);
-		return r.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({
+		if (p === '/api/play/stream') {
+			const body = {
+				title: u.searchParams.get('title'),
+				episode: u.searchParams.get('episode'),
+				mode: u.searchParams.get('mode'),
+				quality: u.searchParams.get('quality')
+			};
+			opts.onPlay?.(body);
+			return r.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: `event: done\ndata: ${JSON.stringify({
+					session_id: 'test-session',
+					upstream_url: 'about:blank',
+					referer: '',
+					subtitle_url: null,
+					episode: Number(body.episode),
+					media_kind: 'Hls'
+				})}\n\n`
+			});
+		}
+		if (p === '/api/play') {
+			const body = JSON.parse(r.request().postData() ?? '{}');
+			opts.onPlay?.(body);
+			return j({
 				session_id: 'test-session',
 				upstream_url: 'about:blank',
 				referer: '',
 				subtitle_url: null,
 				episode: body.episode,
 				media_kind: 'Hls'
-			})
-		});
+			});
+		}
+
+		// Default: empty 200 so unknown probes don't blow up under Xvfb
+		// (the test cares about the home-strip surfaces; everything else
+		// just needs to not error out).
+		return j(null);
 	});
 
 	const page = await app.firstWindow();
