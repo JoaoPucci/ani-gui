@@ -15,7 +15,6 @@
 	import { goto } from '$app/navigation';
 	import {
 		altTitlesFromKitsu,
-		availabilityBatch,
 		checkAvailability,
 		yearFromKitsuRef,
 		historyList,
@@ -143,52 +142,49 @@
 				// degrades to "treat everything as unstamped," which
 				// just preserves file order for everyone.
 				history = sortByWatchedAt(h, watchedAt);
-				// Atomic load: per-entry resolveKitsuMatch + a SINGLE
-				// availabilityBatch lookup, settled together. Writing
-				// matches incrementally would flip each card into its
-				// resumable button form before the batch returns, and
-				// during that window pickNextEpisode would read
-				// match.episode_count (Kitsu's announced cap). For an
-				// ongoing show whose last-watched sits at Kitsu's cap
-				// but allmanga has newer episodes, the click would
-				// replay the last episode from home while the detail
-				// page advanced. Holding both writes until the batch
-				// returns closes the window — matches and playable
-				// counts land in lockstep.
+				// Per-row load: each card transitions to its resumable
+				// state independently, as ITS match + playable count
+				// both land. A slow Kitsu resolution doesn't gate fast
+				// rows. The page's button-enable gate reads
+				// historyMatches[entry.id] — which is only written from
+				// inside onRowReady — so a card never flips to its
+				// resumable form before its cap is in.
 				//
-				// Routing through resolveHistoryEntry still happens
-				// inside the loader's resolveMatch path: that pipeline
-				// (resolve.ts) handles cour-split shows (Stone Ocean
-				// Part 2 etc.) so we hit the right Kitsu episode
-				// instead of collapsing onto Part 1's episode 1.
+				// resolveHistoryEntry is routed through the loader's
+				// resolveMatch path: that pipeline (resolve.ts) handles
+				// cour-split shows (Stone Ocean Part 2 etc.) so we hit
+				// the right Kitsu episode instead of collapsing onto
+				// Part 1's episode 1.
+				const historyById = new Map(history.map((h) => [h.id, h]));
 				void loadContinueWatchingState(history, {
 					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
-					fetchAvailabilityBatch: availabilityBatch,
-					// Cache-miss fallback: when the batch has no cached
-					// playable count for a row (CLI-imported history that
-					// never went through the list-view warm, expired 24h
-					// positive cache on an ongoing show), the loader fires
-					// this live probe — same checkAvailability the detail
-					// page uses for `playableEpisodeCount`. makeFetch...
-					// keeps the args-mapping closure in a testable lib so
-					// no untestable closure lives on this page.
+					// makeFetchAvailability keeps the args-mapping closure
+					// in a testable lib so no untestable closure lives on
+					// this page. checkAvailability is already cache-first
+					// on the backend; per-row calls are cheap for cached
+					// rows and only pay the allmanga roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
-					getMode: () => settingsPromise.then(pickAvailabilityMode)
-				}).then(({ matches, playableCounts }) => {
-					historyMatches = matches;
-					historyPlayableCounts = playableCounts;
-					// Per-entry kitsu episode metadata (thumbnail +
-					// canonical title) is decorative and can stream in
-					// after the resume state is locked. Fire-and-forget
-					// per row, using the now-authoritative cap so we
-					// fetch metadata for the episode about to play —
-					// not the maybe-stale Kitsu-cap one.
-					for (const entry of history!) {
-						const match = matches[entry.id];
-						if (!match) continue;
+					getMode: () => settingsPromise.then(pickAvailabilityMode),
+					onRowReady: (entryId, match, playableCount) => {
+						historyMatches = { ...historyMatches, [entryId]: match };
+						if (typeof playableCount === 'number') {
+							historyPlayableCounts = {
+								...historyPlayableCounts,
+								[entryId]: playableCount
+							};
+						}
+						if (!match) return;
+						const entry = historyById.get(entryId);
+						if (!entry) return;
 						const target = resolveHistoryEntry(entry, match);
-						if (!target.kitsuEpisode) continue;
-						const cap = playableCounts[entry.id] ?? match.episode_count ?? null;
+						if (!target.kitsuEpisode) return;
+						// Per-entry kitsu episode metadata (thumbnail +
+						// canonical title) is decorative and streams in
+						// after the resume state lands. Uses the now-
+						// authoritative cap so we fetch metadata for the
+						// episode about to play, not the maybe-stale
+						// Kitsu-cap one.
+						const cap = playableCount ?? match.episode_count ?? null;
 						const nextEpisode = pickNextEpisode(target.kitsuEpisode, cap);
 						const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 						void kitsuEpisodes(match.id, kitsuPage)
@@ -197,10 +193,10 @@
 									eps.find((e) => e.number === nextEpisode) ??
 									eps.find((e) => e.relative_number === nextEpisode) ??
 									null;
-								historyEpisodes = { ...historyEpisodes, [entry.id]: ep };
+								historyEpisodes = { ...historyEpisodes, [entryId]: ep };
 							})
 							.catch(() => {
-								historyEpisodes = { ...historyEpisodes, [entry.id]: null };
+								historyEpisodes = { ...historyEpisodes, [entryId]: null };
 							});
 					}
 				});

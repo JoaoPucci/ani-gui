@@ -22,7 +22,11 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 
 // Defer helper — returns a promise and its resolver so the test
 // can sequence resolve order across stages.
-function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+function defer<T>(): {
+	promise: Promise<T>;
+	resolve: (v: T) => void;
+	reject: (e: unknown) => void;
+} {
 	let resolveFn!: (v: T) => void;
 	let rejectFn!: (e: unknown) => void;
 	const promise = new Promise<T>((res, rej) => {

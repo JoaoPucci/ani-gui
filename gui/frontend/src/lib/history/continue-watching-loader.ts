@@ -7,16 +7,13 @@ export interface ContinueWatchingState {
 
 export interface ContinueWatchingLoaderDeps {
 	resolveMatch: (entry: HistoryEntry) => Promise<KitsuAnimeRef | null>;
-	fetchAvailabilityBatch: (
-		ids: string[],
-		mode: 'sub' | 'dub'
-	) => Promise<{ playable_episode_counts: Record<string, number> }>;
 	/**
-	 * Live availability probe — same call the detail page issues to
-	 * compute `playableEpisodeCount`. Fired for matches the batch
-	 * didn't cover (CLI-imported history, expired 24h positive
-	 * cache). Returning null (or rejecting) is fine: the per-card
-	 * cap then falls back to `match.episode_count`.
+	 * Per-row availability lookup — same `checkAvailability` the detail
+	 * page issues for `playableEpisodeCount`. Already cache-first on
+	 * the backend (SQLite hit → fast; cache miss → live allmanga
+	 * probe). Drop-in replacement for what was a batch + probe split:
+	 * the per-row contract removes the slowest-match gate that the
+	 * batch previously introduced.
 	 */
 	fetchAvailability: (
 		match: KitsuAnimeRef,
@@ -25,116 +22,144 @@ export interface ContinueWatchingLoaderDeps {
 	/**
 	 * Resolves to the configured availability mode. Async because the
 	 * home page bootstraps settingsGet() in parallel with historyList()
-	 * — the loader must hold on the batch call until the configured
+	 * — the loader must hold on per-row probes until the configured
 	 * mode is known, otherwise it would read the wrong (sub vs. dub)
-	 * playable counts while startResume later uses the loaded mode.
+	 * playable count while startResume later uses the loaded mode.
 	 */
 	getMode: () => Promise<'sub' | 'dub'>;
+	/**
+	 * Fired per entry as that row's match AND playable count both
+	 * become known. The page uses this to write its historyMatches /
+	 * historyPlayableCounts maps incrementally so a fast row's card
+	 * isn't held behind a slow row's match. No-match rows release
+	 * immediately with `(null, null)`. Optional — callers that just
+	 * want the final maps (tests, headless consumers) can skip it.
+	 */
+	onRowReady?: (entryId: string, match: KitsuAnimeRef | null, playableCount: number | null) => void;
+	/**
+	 * Max concurrent live probes. allmanga is rate-limited, and the
+	 * backend's `warm` path spaces equivalent probes by 500ms while
+	 * `filterAvailableStrict` caps inline probes at 4. Default 4 here
+	 * matches both. Bumping it speeds up reveal for users with many
+	 * cards at the cost of higher allmanga load.
+	 */
+	probeConcurrency?: number;
 }
 
 /**
- * Loads the home page's Continue Watching state in a single atomic
- * step: per-entry Kitsu match resolution PLUS the shared
- * availability-batch lookup for playable episode counts. Returns
- * `{matches, playableCounts}` only after both stages settle, so the
- * page can swap both maps into state in lockstep and the card never
- * appears resumable with a stale episode cap visible.
+ * Loads the home page's Continue Watching state with per-row release
+ * semantics. Each row's match + playable count land together (no
+ * stale-cap race), but rows don't gate each other — a slow Kitsu
+ * resolution doesn't hold up cards whose data is already in.
  *
- * Why the wait: the detail page derives its `episodeCap` from the
- * allmanga playable count (more authoritative than Kitsu's
- * announced total — Kitsu often lags by a few episodes on ongoing
- * shows). The home Continue card has to use the same cap, but the
- * batch read can't fire until every per-entry match has resolved
- * (we need the Kitsu ids to query). Writing matches incrementally
- * would briefly let the card derive `nextEpisode` from
- * `match.episode_count` — at-cap rows would replay the last
- * episode from home while the detail page advances. Holding both
- * writes until the batch returns closes that window.
+ * Pipeline per row:
+ *   1. resolveMatch — kitsuSearch + pickKitsuMatch (cache-first at
+ *      30d TTL; usually instant on warm runs).
+ *   2. If null match: fire onRowReady(null, null) immediately. The
+ *      page renders the /search fallback link.
+ *   3. Otherwise: await `getMode` (shared promise, awaited once for
+ *      the whole load), then enqueue a checkAvailability probe.
+ *   4. Probes drain through a bounded worker pool (default 4
+ *      concurrent). As each row's probe lands, fire onRowReady
+ *      with the resolved count (or null on rejection / no count).
  *
- * Mode wait: `getMode` is awaited concurrently with the per-entry
- * match resolution. The batch is only issued once the configured
- * mode is known — so when the user's saved mode is `dub` but
- * history settled before settings, the batch still reads `dub`
- * playable counts rather than the page-default `sub`.
+ * The page's button-enable gate reads `historyMatches[entry.id]` —
+ * which is only written from inside onRowReady — so a card never
+ * flips to its resumable form before its cap is in.
  *
- * Cache-miss fallback: when the batch returns no entry for a
- * resolved match (CLI-imported history that never went through the
- * list-view warm, expired 24h positive cache on an ongoing show),
- * `fetchAvailability` is fired for that match — the same live
- * probe the detail page does — so the home cap matches detail
- * even in the divergent case. Probes run concurrently; the slowest
- * gates the strip, but the cache hit rate is high in practice so
- * this only fires for genuine misses.
+ * The returned `{matches, playableCounts}` is the cumulative view,
+ * useful for callers that don't want to track callbacks (tests, the
+ * page's defensive "in case onRowReady fires after teardown" guard).
  *
  * Failure modes:
- *   - per-entry resolveMatch rejects → that entry gets `null` match;
- *     no throw escapes.
- *   - batch rejects (cache miss / network blip) → batchCounts is
- *     empty; every match falls through to the live probe.
- *   - live probe rejects or returns null → that entry's playable
- *     count is omitted; per-card cap then falls back to
- *     `match.episode_count`.
+ *   - resolveMatch rejects → entry gets `null` match; onRowReady
+ *     fires with (null, null).
  *   - getMode rejects → defaults to `sub`, same fallback the page
  *     uses today.
- *   - no entry matches → batch is skipped (nothing to look up).
+ *   - probe rejects or returns null/null-count → onRowReady fires
+ *     with `(match, null)`; per-card cap then falls back to
+ *     match.episode_count via the page's `playableCount ??
+ *     match?.episode_count` precedence.
  */
 export async function loadContinueWatchingState(
 	history: HistoryEntry[],
 	deps: ContinueWatchingLoaderDeps
 ): Promise<ContinueWatchingState> {
-	const [settled, mode] = await Promise.all([
-		Promise.all(
-			history.map((entry) =>
-				deps
-					.resolveMatch(entry)
-					.then((match) => ({ entry, match }))
-					.catch(() => ({ entry, match: null as KitsuAnimeRef | null }))
-			)
-		),
-		deps.getMode().catch(() => 'sub' as const)
-	]);
-
-	const ids = settled.map(({ match }) => match?.id).filter((id): id is string => Boolean(id));
-
-	let batchCounts: Record<string, number> = {};
-	if (ids.length > 0) {
-		try {
-			const r = await deps.fetchAvailabilityBatch(ids, mode);
-			batchCounts = r.playable_episode_counts ?? {};
-		} catch {
-			batchCounts = {};
-		}
-	}
-
-	// Cache-miss fallback. For each match the batch didn't cover, fire
-	// the live probe — same checkAvailability the detail page uses to
-	// derive `playableEpisodeCount`. Concurrent; cached rows stay
-	// untouched (no wasted IPC).
-	const probeSubjects = settled
-		.map(({ match }) => match)
-		.filter((m): m is KitsuAnimeRef => Boolean(m) && batchCounts[m!.id] === undefined);
-	const probeResults = await Promise.all(
-		probeSubjects.map((match) =>
-			deps
-				.fetchAvailability(match, mode)
-				.then((r) => ({ id: match.id, count: r?.episode_count ?? null }))
-				.catch(() => ({ id: match.id, count: null as number | null }))
-		)
-	);
-	const probeCounts: Record<string, number> = {};
-	for (const { id, count } of probeResults) {
-		if (typeof count === 'number') probeCounts[id] = count;
-	}
-	const allCounts: Record<string, number> = { ...batchCounts, ...probeCounts };
-
+	const concurrency = deps.probeConcurrency ?? 4;
 	const matches: Record<string, KitsuAnimeRef | null> = {};
 	const playableCounts: Record<string, number> = {};
-	for (const { entry, match } of settled) {
-		matches[entry.id] = match;
-		if (match) {
-			const c = allCounts[match.id];
-			if (typeof c === 'number') playableCounts[entry.id] = c;
+	const modePromise = deps.getMode().catch(() => 'sub' as const);
+
+	const queue: { entry: HistoryEntry; match: KitsuAnimeRef }[] = [];
+	let drainResolve!: () => void;
+	const drainSignal = new Promise<void>((resolve) => {
+		drainResolve = resolve;
+	});
+	let pendingProbes = 0;
+	let matchesPending = history.length;
+
+	const finalizeRow = (entryId: string, match: KitsuAnimeRef | null, count: number | null) => {
+		matches[entryId] = match;
+		if (typeof count === 'number') playableCounts[entryId] = count;
+		deps.onRowReady?.(entryId, match, count);
+	};
+
+	const maybeFinishLoad = () => {
+		if (matchesPending === 0 && pendingProbes === 0 && queue.length === 0) {
+			drainResolve();
 		}
-	}
+	};
+
+	const runProbe = async () => {
+		while (queue.length > 0) {
+			const job = queue.shift();
+			if (!job) break;
+			const mode = await modePromise;
+			let count: number | null;
+			try {
+				const r = await deps.fetchAvailability(job.match, mode);
+				count = r?.episode_count ?? null;
+			} catch {
+				count = null;
+			}
+			finalizeRow(job.entry.id, job.match, count);
+			pendingProbes--;
+			maybeFinishLoad();
+		}
+	};
+
+	let workersActive = 0;
+	const ensureWorkers = () => {
+		while (workersActive < concurrency && queue.length > 0) {
+			workersActive++;
+			void runProbe().finally(() => {
+				workersActive--;
+			});
+		}
+	};
+
+	history.forEach((entry) => {
+		deps
+			.resolveMatch(entry)
+			.then((match) => {
+				if (!match) {
+					finalizeRow(entry.id, null, null);
+				} else {
+					pendingProbes++;
+					queue.push({ entry, match });
+					ensureWorkers();
+				}
+			})
+			.catch(() => {
+				finalizeRow(entry.id, null, null);
+			})
+			.finally(() => {
+				matchesPending--;
+				maybeFinishLoad();
+			});
+	});
+
+	if (history.length === 0) drainResolve();
+	await drainSignal;
 	return { matches, playableCounts };
 }
