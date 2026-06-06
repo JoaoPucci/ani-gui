@@ -80,6 +80,26 @@
 		}
 	}
 
+	@media (max-inline-size: 720px) {
+		/* `.shell` collapses to one column at this breakpoint — the
+		   rail moves into normal flow above the main area, so the
+		   topbar is no longer at the viewport's top edge. Fixed
+		   positioning relative to the viewport would land inside
+		   the mobile chrome instead of below the topbar. Switch to
+		   sticky inside `.page` (where the component is rendered)
+		   so the bar rides the topbar's bottom regardless of where
+		   the chrome ended up. Negative margins cancel `.page`'s
+		   padding so the bar spans the route content edge-to-edge. */
+		.search-progress {
+			position: sticky;
+			inset-block-start: 0;
+			inset-inline-start: 0;
+			inset-inline-end: 0;
+			margin-block-start: calc(var(--space-7) * -1);
+			margin-inline: calc(var(--space-8) * -1);
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.search-progress-bar {
 			/* Static accent bar when the OS asks us not to animate.
