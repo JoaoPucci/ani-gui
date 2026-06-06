@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAttemptStaleStreamRetry, shouldResetStaleStreamBudget } from './stale-stream';
+import {
+	canRecoverFromStaleStream,
+	shouldAttemptStaleStreamRetry,
+	shouldResetStaleStreamBudget
+} from './stale-stream';
 
 describe('shouldAttemptStaleStreamRetry', () => {
 	it('allows the first auto-retry for a <video> network error (code 2)', () => {
@@ -127,5 +131,35 @@ describe('shouldResetStaleStreamBudget', () => {
 		// down, regional block, etc.), it spins forever hammering
 		// ani-cli + upstream until a non-network error happens.
 		expect(shouldResetStaleStreamBudget({ currentEpisode: 5, targetEpisode: 5 })).toBe(false);
+	});
+});
+
+describe('canRecoverFromStaleStream', () => {
+	const detail = {} as unknown;
+	const config = {} as unknown;
+
+	it('is true when both detail and config are populated', () => {
+		expect(canRecoverFromStaleStream({ detail, config })).toBe(true);
+	});
+
+	it('is false when detail is null (kitsuAnimeDetail still in flight)', () => {
+		// Codex P2 #3366926564 motivation. playStream can land before
+		// kitsuAnimeDetail does — especially when the prefetch warmed
+		// the session cache. If a network error fires in that window,
+		// the recovery path can't run (it needs detail.canonical_title
+		// + altTitlesFromKitsu(detail) for the eviction payload), so
+		// the caller must short-circuit and surface the error overlay
+		// instead of burning the one-shot budget on a no-op recovery.
+		expect(canRecoverFromStaleStream({ detail: null, config })).toBe(false);
+	});
+
+	it('is false when config is null (settings still in flight or failed)', () => {
+		// Same race on the settings side. Mode + quality are read from
+		// config inside the recovery flow.
+		expect(canRecoverFromStaleStream({ detail, config: null })).toBe(false);
+	});
+
+	it('is false when both are null (initial mount)', () => {
+		expect(canRecoverFromStaleStream({ detail: null, config: null })).toBe(false);
 	});
 });
