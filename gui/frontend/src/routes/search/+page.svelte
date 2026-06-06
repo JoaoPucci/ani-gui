@@ -19,6 +19,7 @@
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import PosterCard from '$lib/components/PosterCard.svelte';
+	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { filterAvailable, filterAvailableStrict } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -198,6 +199,7 @@
 </svelte:head>
 
 <div class="page">
+	<SearchProgress {busy} />
 	<header class="page-header">
 		<h1 class="page-title">{m.search_title()}</h1>
 		{#if !submitted}
