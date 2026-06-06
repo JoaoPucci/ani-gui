@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAttemptStaleStreamRetry } from './stale-stream';
+import { shouldAttemptStaleStreamRetry, shouldResetStaleStreamBudget } from './stale-stream';
 
 describe('shouldAttemptStaleStreamRetry', () => {
 	it('allows the first auto-retry for a <video> network error (code 2)', () => {
@@ -105,5 +105,27 @@ describe('shouldAttemptStaleStreamRetry', () => {
 				hasAutoRetried: false
 			})
 		).toBe(false);
+	});
+});
+
+describe('shouldResetStaleStreamBudget', () => {
+	it('resets when the user switches to a different episode', () => {
+		// Codex P1 #3366915811 motivation. User clicks Next / Prev / a
+		// specific episode → switchToEpisode(targetEp) lands a fresh
+		// session for a different episode. The new episode is a new
+		// session-class, so its own one-shot budget starts here.
+		expect(shouldResetStaleStreamBudget({ currentEpisode: 5, targetEpisode: 6 })).toBe(true);
+		expect(shouldResetStaleStreamBudget({ currentEpisode: 5, targetEpisode: 4 })).toBe(true);
+	});
+
+	it('does NOT reset when the target equals the current episode (internal recovery)', () => {
+		// The bug the P1 caught: the auto-retry calls
+		// switchToEpisode(episodeNum) with the SAME episode to swap the
+		// rotated URL out. Resetting hasAutoRetried here would let the
+		// next stale URL trigger another silent retry, unbounded — if
+		// the resolver keeps handing back expired CDN URLs (provider
+		// down, regional block, etc.), it spins forever hammering
+		// ani-cli + upstream until a non-network error happens.
+		expect(shouldResetStaleStreamBudget({ currentEpisode: 5, targetEpisode: 5 })).toBe(false);
 	});
 });
