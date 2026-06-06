@@ -89,10 +89,18 @@
 		   sticky inside `.page` (where the component is rendered)
 		   so the bar rides the topbar's bottom regardless of where
 		   the chrome ended up. Negative margins cancel `.page`'s
-		   padding so the bar spans the route content edge-to-edge. */
+		   padding so the bar spans the route content edge-to-edge.
+
+		   The sticky offset matches the topbar height so once the
+		   user has scrolled far enough for the layout's own sticky
+		   topbar (`inset-block-start: 0` in +layout.svelte) to pin
+		   itself, this bar lands directly under it instead of
+		   sticking at viewport-top and rendering over it (the bar's
+		   z-index 20 outranks the topbar's 15, so a mismatched
+		   sticky offset would otherwise cover the topbar). */
 		.search-progress {
 			position: sticky;
-			inset-block-start: 0;
+			inset-block-start: var(--topbar-h);
 			inset-inline-start: 0;
 			inset-inline-end: 0;
 			margin-block-start: calc(var(--space-7) * -1);
