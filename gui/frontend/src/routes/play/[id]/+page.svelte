@@ -99,7 +99,10 @@
 		describePlayFailure
 	} from '$lib/play/error-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
-	import { shouldAttemptStaleStreamRetry } from '$lib/play/stale-stream';
+	import {
+		shouldAttemptStaleStreamRetry,
+		shouldResetStaleStreamBudget
+	} from '$lib/play/stale-stream';
 	import {
 		describeSyncplayLaunchFailure,
 		isSyncplaySpawnFailure,
@@ -1518,11 +1521,16 @@
 					switchProgress = progressLabel(p);
 				}
 			);
-			// A fresh session lands here; give the user a new auto-retry
-			// budget. They may have just clicked Reload manually to wash
-			// out a stale URL, in which case the new session needs its
-			// own one-shot guard for any subsequent staleness.
-			hasAutoRetried = false;
+			// Reset the one-shot auto-retry budget only on a real episode
+			// switch — Next/Prev/pick are distinct session-classes, so
+			// each gets its own shot. Resetting on a same-episode landing
+			// (the auto-recovery path, and the manual Reload path) would
+			// let chronically expired CDN URLs loop unbounded through
+			// eviction + resolve, hammering ani-cli and upstream until a
+			// non-network error happens. See Codex P1 #3366915811.
+			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
+				hasAutoRetried = false;
+			}
 			// goto navigates within the same route, so the page doesn't
 			// fully unmount — `$effect` above re-fires with the new
 			// session, and hls.js swaps source. The target is built

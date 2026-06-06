@@ -50,3 +50,22 @@ export function shouldAttemptStaleStreamRetry(args: {
 }): boolean {
 	return !args.hasAutoRetried && isNetworkClassStreamError(args.err);
 }
+
+/** True when a successful switchToEpisode landing should reset the
+ *  one-shot auto-retry budget. Resets only on user-driven episode
+ *  changes (Next/Prev/pick — distinct session-class, distinct budget).
+ *
+ *  Internal auto-recovery calls switchToEpisode with the *current*
+ *  episode to swap the rotated URL — those must NOT reset, otherwise
+ *  the next stale URL re-triggers the silent retry and loops without
+ *  bound. The manual Reload button also targets the current episode,
+ *  so it inherits the no-reset behaviour: the user gets one auto-
+ *  retry per session, then it's manual clicks until they pick a
+ *  different episode (or navigate away).
+ */
+export function shouldResetStaleStreamBudget(args: {
+	currentEpisode: number;
+	targetEpisode: number;
+}): boolean {
+	return args.targetEpisode !== args.currentEpisode;
+}
