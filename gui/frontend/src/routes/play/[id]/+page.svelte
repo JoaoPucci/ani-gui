@@ -1205,7 +1205,7 @@
 			// a recovery that would silently bail.
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail })
+				canRecoverFromStaleStream({ detail, switchBusy })
 			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
@@ -1236,7 +1236,7 @@
 						err: { source: 'hls', type: data.type },
 						hasAutoRetried
 					}) &&
-					canRecoverFromStaleStream({ detail })
+					canRecoverFromStaleStream({ detail, switchBusy })
 				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);

@@ -79,10 +79,18 @@ export function shouldResetStaleStreamBudget(args: {
  *  `config?.quality` pattern), so a permanently null config from a
  *  rejected settingsGet shouldn't disable the Reload button.
  *
+ *  Also blocked while a switchToEpisode is in flight (switchBusy).
+ *  A stale network error from the old video can fire mid-foreground-
+ *  switch; recovery would clearForShow() that switch's prefetch and
+ *  then no-op on switchToEpisode's own switchBusy guard, so the
+ *  user's Next/Prev click would never land. Skip — the foreground
+ *  switch owns the cache for its episode, and if its result also
+ *  fails the next error event triggers recovery normally.
+ *
  *  When this returns false, the auto-retry path falls through to
  *  playerError instead of consuming hasAutoRetried on a no-op
  *  recovery; the user sees the overlay, and clicking Reload once
  *  detail loads runs the recovery successfully. */
-export function canRecoverFromStaleStream(args: { detail: unknown }): boolean {
-	return args.detail !== null;
+export function canRecoverFromStaleStream(args: { detail: unknown; switchBusy: boolean }): boolean {
+	return args.detail !== null && !args.switchBusy;
 }
