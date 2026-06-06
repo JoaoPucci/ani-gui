@@ -36,20 +36,94 @@ describe('dedupeHistoryByKitsuId', () => {
 		expect(dedupeHistoryByKitsuId([a, b, c], matches)).toEqual([a, b, c]);
 	});
 
-	it('keeps the FIRST occurrence of each Kitsu id (sort order wins)', () => {
+	it('keeps the highest-progress occurrence of each Kitsu id, ties broken by first', () => {
 		// The empirical trigger #116 targets: allmanga catalog drift
 		// across ani-cli runs produces two hsts rows whose alias-walk
-		// both land on the same Kitsu entry. The caller (the page)
-		// passes entries in sortByWatchedAt order, so the first
-		// occurrence is the most recently watched — that's the one
-		// the user expects to click to resume.
-		const recent = entry('all-recent');
-		const stale = entry('all-stale');
+		// both land on the same Kitsu entry. The user's true "where
+		// am I?" signal is ep_no — pick the most-advanced row so the
+		// surviving card resumes from their actual progress. Ties on
+		// ep_no fall back to input order (most-recent first under
+		// sortByWatchedAt), which matches the original first-wins
+		// intuition for the common no-drift case.
+		const lo = entry('all-lo', '3');
+		const hi = entry('all-hi', '12');
 		const matches: Record<string, KitsuAnimeRef | null> = {
-			'all-recent': kitsu('k-shared'),
-			'all-stale': kitsu('k-shared')
+			'all-lo': kitsu('k-shared'),
+			'all-hi': kitsu('k-shared')
 		};
-		expect(dedupeHistoryByKitsuId([recent, stale], matches)).toEqual([recent]);
+		// Order in input doesn't matter; the row with the higher ep_no
+		// wins regardless of position.
+		expect(dedupeHistoryByKitsuId([lo, hi], matches)).toEqual([hi]);
+		expect(dedupeHistoryByKitsuId([hi, lo], matches)).toEqual([hi]);
+	});
+
+	it('preserves CLI progress over an older GUI-stamped row when ep_no is higher', () => {
+		// Codex P2 #3367725631 — the regression my first cut hit. User
+		// watched via GUI at ep 5 long ago (stamped, sorted to the
+		// top). Allmanga drifted, they continued via ani-cli to ep 12
+		// (unstamped, sorted below). Previous "first occurrence wins"
+		// dropped the CLI row and the strip would resume from the
+		// stale ep 5. The fix: ep_no comparison wins.
+		const stampedOld = entry('all-stamped-old', '5');
+		const cliCurrent = entry('all-cli-current', '12');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-stamped-old': kitsu('k-shared'),
+			'all-cli-current': kitsu('k-shared')
+		};
+		// sortByWatchedAt would land the stamped row first; the
+		// dedupe still picks the row with the actual current progress.
+		expect(dedupeHistoryByKitsuId([stampedOld, cliCurrent], matches)).toEqual([cliCurrent]);
+	});
+
+	it('falls back to input order when ep_no values are equal', () => {
+		// Two history rows for the same show with identical progress
+		// (e.g., user paused, drift renamed the show, opened it again
+		// before watching anything new). Either could be displayed;
+		// pick the sort-earlier row as a deterministic tie-break so
+		// the test of behavior is stable across runs.
+		const first = entry('all-first', '7');
+		const second = entry('all-second', '7');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-first': kitsu('k-shared'),
+			'all-second': kitsu('k-shared')
+		};
+		expect(dedupeHistoryByKitsuId([first, second], matches)).toEqual([first]);
+	});
+
+	it('treats malformed ep_no as the lowest possible progress', () => {
+		// A user-edited or otherwise broken ep_no (`'abc'`, empty) on
+		// one row shouldn't beat a numeric row. Falling back to a
+		// low sentinel keeps a real numeric row in the lead.
+		const broken = entry('all-broken', 'abc');
+		const good = entry('all-good', '4');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-broken': kitsu('k-shared'),
+			'all-good': kitsu('k-shared')
+		};
+		expect(dedupeHistoryByKitsuId([broken, good], matches)).toEqual([good]);
+		expect(dedupeHistoryByKitsuId([good, broken], matches)).toEqual([good]);
+	});
+
+	it('emits the winner at the position of its group is first encountered', () => {
+		// Position-preservation rule: when the winner row appears later
+		// in the input than its losing sibling, the surviving card
+		// renders at the LOSER's position — so the strip's overall
+		// ordering still tracks the sort the page passed in.
+		const stampedOld = entry('all-stamped-old', '5');
+		const other = entry('all-other', '1');
+		const cliCurrent = entry('all-cli-current', '12');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-stamped-old': kitsu('k-shared'),
+			'all-other': kitsu('k-other'),
+			'all-cli-current': kitsu('k-shared')
+		};
+		// cliCurrent is the dedupe winner for k-shared; it should
+		// emit at index 0 (where stampedOld would have been) so the
+		// "other" row stays at index 1 — same overall strip order.
+		expect(dedupeHistoryByKitsuId([stampedOld, other, cliCurrent], matches)).toEqual([
+			cliCurrent,
+			other
+		]);
 	});
 
 	it('keeps unresolved entries (match === undefined) — they cannot be deduped yet', () => {
