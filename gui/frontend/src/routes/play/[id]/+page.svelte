@@ -100,6 +100,7 @@
 	} from '$lib/play/error-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
+		canRecoverFromStaleStream,
 		shouldAttemptStaleStreamRetry,
 		shouldResetStaleStreamBudget
 	} from '$lib/play/stale-stream';
@@ -1197,7 +1198,15 @@
 			// any code-2 / hls networkError, capped at one auto-retry
 			// per session via hasAutoRetried. Decode / not-supported /
 			// aborted aren't URL-rotation symptoms — surface them.
-			if (shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried })) {
+			// canRecoverFromStaleStream also gates: a fast initial error
+			// can fire before detail/config land, in which case we surface
+			// the overlay (whose Reload button will pick up the work
+			// once the metadata is in) instead of burning the budget on
+			// a recovery that would silently bail.
+			if (
+				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
+				canRecoverFromStaleStream({ detail, config })
+			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
 				return;
@@ -1218,11 +1227,16 @@
 			hls.attachMedia(videoEl);
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
+				// canRecoverFromStaleStream gate mirrors the <video> path —
+				// fast initial fatal errors can land before detail/config
+				// populate; surface the overlay instead of consuming the
+				// budget on a no-op recovery.
 				if (
 					shouldAttemptStaleStreamRetry({
 						err: { source: 'hls', type: data.type },
 						hasAutoRetried
-					})
+					}) &&
+					canRecoverFromStaleStream({ detail, config })
 				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
@@ -1585,6 +1599,11 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail || !config) return;
+		// Clear the error AFTER the readiness check so a manual Reload
+		// click that races detail/config loading doesn't wipe the
+		// overlay into a blank frame. The user keeps the Reload button
+		// to try again once the metadata lands.
+		playerError = null;
 		const title = detail.canonical_title;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
@@ -1612,11 +1631,12 @@
 	}
 
 	/** Wired to the Reload button on the player-error overlay. Bypasses
-	 *  the hasAutoRetried guard — manual recovery is always allowed —
-	 *  and clears the error first so the overlay disappears in favour
-	 *  of the LoadingOverlay that switchToEpisode brings up. */
+	 *  the hasAutoRetried guard — manual recovery is always allowed.
+	 *  recoverFromStaleStream clears playerError itself once it gets
+	 *  past the readiness check, so a click that races detail/config
+	 *  loading leaves the overlay in place to try again rather than
+	 *  flashing into a blank frame. */
 	function onReloadStream() {
-		playerError = null;
 		void recoverFromStaleStream('manual reload');
 	}
 
