@@ -42,7 +42,16 @@ if (configLocale) {
 		// not DOM-backed storage). Writing here lands in time for
 		// Paraglide's bootstrap because the preload runs before any
 		// page-script `import`s resolve.
-		if (window.localStorage.getItem(PARAGLIDE_LOCALE_KEY) !== configLocale) {
+		//
+		// CRITICAL: only seed when localStorage is empty. If it
+		// already has any value, leave it alone — either Paraglide
+		// wrote it during a Settings-page language change (config
+		// is being persisted asynchronously and may still be the
+		// old value at this point) or a prior session's choice is
+		// still authoritative. Overwriting would round-trip the
+		// user's just-picked language back to whatever main.js read
+		// from config.toml at launch.
+		if (!window.localStorage.getItem(PARAGLIDE_LOCALE_KEY)) {
 			window.localStorage.setItem(PARAGLIDE_LOCALE_KEY, configLocale);
 		}
 	} catch (e) {
