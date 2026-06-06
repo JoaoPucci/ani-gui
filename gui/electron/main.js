@@ -29,8 +29,10 @@ const {
 } = require("electron");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
+const os = require("node:os");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
+const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -113,6 +115,71 @@ function resolveBackendBinary() {
     );
   }
   return packaged;
+}
+
+/**
+ * Locate the user's config.toml using the same path the Rust backend
+ * writes to. Mirrors `directories-next`'s ProjectDirs resolution
+ * (`net.thirdmovement.ani-gui`) so we read the same file the user's
+ * Settings page persists to.
+ *
+ *   Linux:   $XDG_CONFIG_HOME (or ~/.config) /ani-gui/config.toml
+ *   macOS:   ~/Library/Application Support/net.thirdmovement.ani-gui/config.toml
+ *   Windows: %APPDATA% (or ~/AppData/Roaming) /thirdmovement/ani-gui/config/config.toml
+ *
+ * Returns null when the home dir can't be resolved — the only
+ * platforms that lack one are headless CI containers, which don't
+ * launch Electron anyway.
+ */
+function resolveUserConfigPath() {
+  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+  if (!home) return null;
+  if (process.platform === "linux" || process.platform === "freebsd") {
+    const base = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+    return path.join(base, "ani-gui", "config.toml");
+  }
+  if (process.platform === "darwin") {
+    return path.join(
+      home,
+      "Library",
+      "Application Support",
+      "net.thirdmovement.ani-gui",
+      "config.toml",
+    );
+  }
+  // win32
+  const base = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  return path.join(base, "thirdmovement", "ani-gui", "config", "config.toml");
+}
+
+/**
+ * Read the user's configured UI locale from config.toml synchronously
+ * at app start, so the preload can seed Paraglide's localStorage key
+ * before any renderer scripts run. Returns null on any failure
+ * (missing file, unreadable, missing key) — the preload falls through
+ * to Paraglide's preferredLanguage / baseLocale strategies, matching
+ * pre-change behaviour.
+ *
+ * Synchronous fs is intentional: we need the value in
+ * `additionalArguments` before the BrowserWindow is created, and the
+ * file is a handful of KB at most.
+ */
+function readConfigLocale() {
+  const p = resolveUserConfigPath();
+  if (!p) return null;
+  let text;
+  try {
+    text = fs.readFileSync(p, "utf8");
+  } catch (e) {
+    // ENOENT on a fresh install is normal — Settings hasn't run yet.
+    // Other errors (permissions, decode) get logged but don't fail
+    // the launch; the page just boots in English.
+    if (e && e.code !== "ENOENT") {
+      console.warn("[main] readConfigLocale:", e.message);
+    }
+    return null;
+  }
+  return extractLocaleFromToml(text);
 }
 
 /**
@@ -278,9 +345,18 @@ async function createWindow(apiBase) {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      // Pass the resolved apiBase into the preload via additional
-      // arguments — the preload reads them off process.argv.
-      additionalArguments: [`--ani-gui-api-base=${apiBase}`],
+      // Pass the resolved apiBase + the user's configured locale
+      // into the preload via additional arguments. The preload reads
+      // them off process.argv. The locale flag is omitted entirely
+      // when config.toml is missing or has no locale key, so the
+      // preload falls through to Paraglide's preferredLanguage /
+      // baseLocale strategies instead of seeding garbage.
+      additionalArguments: (() => {
+        const args = [`--ani-gui-api-base=${apiBase}`];
+        const locale = readConfigLocale();
+        if (locale) args.push(`--ani-gui-locale=${locale}`);
+        return args;
+      })(),
     },
   });
 

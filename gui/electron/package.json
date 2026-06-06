@@ -24,7 +24,8 @@
 		"dist:win": "pnpm run build:frontend && electron-builder --win nsis",
 		"repack-appimage": "node scripts/repack-appimage.mjs",
 		"e2e": "pnpm run package && playwright test",
-		"e2e:fast": "playwright test"
+		"e2e:fast": "playwright test",
+		"test": "node --test 'lib/*.test.cjs'"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
