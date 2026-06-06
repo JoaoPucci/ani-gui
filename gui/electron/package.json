@@ -48,6 +48,8 @@
 			"main.js",
 			"preload.js",
 			"package.json",
+			"lib/**/*.cjs",
+			"!lib/**/*.test.cjs",
 			"node_modules/**/*"
 		],
 		"extraResources": [
