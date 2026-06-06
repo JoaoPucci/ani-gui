@@ -71,18 +71,18 @@ export function shouldResetStaleStreamBudget(args: {
 }
 
 /** True when the page has the state it needs to actually run the
- *  recovery flow: the kitsu detail row (for canonical_title +
- *  alt_titles in the eviction payload) and the settings config
- *  (for mode + quality). Both load asynchronously alongside
- *  playStream, so a fast initial proxy/HLS error can fire before
- *  either has landed. In that window:
- *    - Calling recoverFromStaleStream would silently bail on its
- *      `if (!detail || !config) return` precondition.
- *    - Setting `hasAutoRetried = true` would still happen, so the
- *      subsequent — and now-ready — retry attempt would never fire.
- *  Surfacing the error overlay instead lets the user see the
- *  Reload button (which by then will usually catch detail + config
- *  loaded and run the recovery successfully). */
-export function canRecoverFromStaleStream(args: { detail: unknown; config: unknown }): boolean {
-	return args.detail !== null && args.config !== null;
+ *  recovery flow. Only the kitsu detail row is hard-required — its
+ *  canonical_title + alt_titles + episode_count + year populate the
+ *  eviction payload, and there's no sensible fallback. Settings is
+ *  intentionally NOT required: the recovery flow falls back to
+ *  sub/best (matching switchToEpisode's `config?.mode` /
+ *  `config?.quality` pattern), so a permanently null config from a
+ *  rejected settingsGet shouldn't disable the Reload button.
+ *
+ *  When this returns false, the auto-retry path falls through to
+ *  playerError instead of consuming hasAutoRetried on a no-op
+ *  recovery; the user sees the overlay, and clicking Reload once
+ *  detail loads runs the recovery successfully. */
+export function canRecoverFromStaleStream(args: { detail: unknown }): boolean {
+	return args.detail !== null;
 }

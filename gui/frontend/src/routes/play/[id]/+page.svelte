@@ -1205,7 +1205,7 @@
 			// a recovery that would silently bail.
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, config })
+				canRecoverFromStaleStream({ detail })
 			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
@@ -1236,7 +1236,7 @@
 						err: { source: 'hls', type: data.type },
 						hasAutoRetried
 					}) &&
-					canRecoverFromStaleStream({ detail, config })
+					canRecoverFromStaleStream({ detail })
 				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
@@ -1598,15 +1598,18 @@
 	 *  the player-error overlay. Both share the same eviction +
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
-		if (!detail || !config) return;
+		if (!detail) return;
 		// Clear the error AFTER the readiness check so a manual Reload
-		// click that races detail/config loading doesn't wipe the
-		// overlay into a blank frame. The user keeps the Reload button
-		// to try again once the metadata lands.
+		// click that races detail loading doesn't wipe the overlay
+		// into a blank frame. The user keeps the Reload button to try
+		// again once the metadata lands.
 		playerError = null;
 		const title = detail.canonical_title;
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
+		// Settings is intentionally NOT a precondition — falling back to
+		// sub/best matches switchToEpisode's pattern. A permanently null
+		// config (settingsGet rejected) shouldn't leave Reload no-op.
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			await evictPlayCache({

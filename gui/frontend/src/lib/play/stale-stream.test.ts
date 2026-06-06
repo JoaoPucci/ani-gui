@@ -137,19 +137,17 @@ describe('shouldResetStaleStreamBudget', () => {
 describe('canRecoverFromStaleStream', () => {
 	const detail = {} as unknown;
 
-	it('is true when detail is populated and config is null (settings rejected)', () => {
+	it('is true when detail is populated', () => {
 		// Codex P2 #3366950890 — only detail is hard-required for the
 		// eviction payload (canonical_title, alt_titles, episode_count,
 		// year). settings has graceful fallbacks (sub/best) inside the
 		// recovery flow, mirroring switchToEpisode's pattern. If
 		// settingsGet rejects, config stays null forever; gating on it
 		// here would leave the Reload button enabled but no-op, with
-		// no path back to playback.
-		expect(canRecoverFromStaleStream({ detail, config: null })).toBe(true);
-	});
-
-	it('is true when both detail and config are populated', () => {
-		expect(canRecoverFromStaleStream({ detail, config: {} as unknown })).toBe(true);
+		// no path back to playback. The predicate only checks detail
+		// so the recovery flow can still run on the default mode/
+		// quality when config is null.
+		expect(canRecoverFromStaleStream({ detail })).toBe(true);
 	});
 
 	it('is false when detail is null (kitsuAnimeDetail still in flight)', () => {
