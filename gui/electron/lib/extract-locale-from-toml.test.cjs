@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { extractLocaleFromToml } = require('./extract-locale-from-toml');
+const { extractLocaleFromToml } = require('./extract-locale-from-toml.cjs');
 
 test('extracts a top-level locale string', () => {
 	assert.equal(extractLocaleFromToml('locale = "pt-BR"\n'), 'pt-BR');
