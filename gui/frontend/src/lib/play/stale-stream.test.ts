@@ -136,30 +136,30 @@ describe('shouldResetStaleStreamBudget', () => {
 
 describe('canRecoverFromStaleStream', () => {
 	const detail = {} as unknown;
-	const config = {} as unknown;
+
+	it('is true when detail is populated and config is null (settings rejected)', () => {
+		// Codex P2 #3366950890 — only detail is hard-required for the
+		// eviction payload (canonical_title, alt_titles, episode_count,
+		// year). settings has graceful fallbacks (sub/best) inside the
+		// recovery flow, mirroring switchToEpisode's pattern. If
+		// settingsGet rejects, config stays null forever; gating on it
+		// here would leave the Reload button enabled but no-op, with
+		// no path back to playback.
+		expect(canRecoverFromStaleStream({ detail, config: null })).toBe(true);
+	});
 
 	it('is true when both detail and config are populated', () => {
-		expect(canRecoverFromStaleStream({ detail, config })).toBe(true);
+		expect(canRecoverFromStaleStream({ detail, config: {} as unknown })).toBe(true);
 	});
 
 	it('is false when detail is null (kitsuAnimeDetail still in flight)', () => {
-		// Codex P2 #3366926564 motivation. playStream can land before
-		// kitsuAnimeDetail does — especially when the prefetch warmed
+		// Codex P2 #3366926564 — playStream can land before
+		// kitsuAnimeDetail does, especially when the prefetch warmed
 		// the session cache. If a network error fires in that window,
 		// the recovery path can't run (it needs detail.canonical_title
 		// + altTitlesFromKitsu(detail) for the eviction payload), so
 		// the caller must short-circuit and surface the error overlay
 		// instead of burning the one-shot budget on a no-op recovery.
-		expect(canRecoverFromStaleStream({ detail: null, config })).toBe(false);
-	});
-
-	it('is false when config is null (settings still in flight or failed)', () => {
-		// Same race on the settings side. Mode + quality are read from
-		// config inside the recovery flow.
-		expect(canRecoverFromStaleStream({ detail, config: null })).toBe(false);
-	});
-
-	it('is false when both are null (initial mount)', () => {
-		expect(canRecoverFromStaleStream({ detail: null, config: null })).toBe(false);
+		expect(canRecoverFromStaleStream({ detail: null })).toBe(false);
 	});
 });
