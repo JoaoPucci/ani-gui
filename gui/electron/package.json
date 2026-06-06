@@ -25,7 +25,7 @@
 		"repack-appimage": "node scripts/repack-appimage.mjs",
 		"e2e": "pnpm run package && playwright test",
 		"e2e:fast": "playwright test",
-		"test": "node --test 'lib/*.test.cjs'"
+		"test": "node --test lib/extract-locale-from-toml.test.cjs"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
