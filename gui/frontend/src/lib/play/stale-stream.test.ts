@@ -137,17 +137,12 @@ describe('shouldResetStaleStreamBudget', () => {
 describe('canRecoverFromStaleStream', () => {
 	const detail = {} as unknown;
 
-	it('is true when detail is populated', () => {
+	it('is true when detail is populated and no switch is in flight', () => {
 		// Codex P2 #3366950890 — only detail is hard-required for the
 		// eviction payload (canonical_title, alt_titles, episode_count,
 		// year). settings has graceful fallbacks (sub/best) inside the
-		// recovery flow, mirroring switchToEpisode's pattern. If
-		// settingsGet rejects, config stays null forever; gating on it
-		// here would leave the Reload button enabled but no-op, with
-		// no path back to playback. The predicate only checks detail
-		// so the recovery flow can still run on the default mode/
-		// quality when config is null.
-		expect(canRecoverFromStaleStream({ detail })).toBe(true);
+		// recovery flow, mirroring switchToEpisode's pattern.
+		expect(canRecoverFromStaleStream({ detail, switchBusy: false })).toBe(true);
 	});
 
 	it('is false when detail is null (kitsuAnimeDetail still in flight)', () => {
@@ -158,6 +153,21 @@ describe('canRecoverFromStaleStream', () => {
 		// + altTitlesFromKitsu(detail) for the eviction payload), so
 		// the caller must short-circuit and surface the error overlay
 		// instead of burning the one-shot budget on a no-op recovery.
-		expect(canRecoverFromStaleStream({ detail: null })).toBe(false);
+		expect(canRecoverFromStaleStream({ detail: null, switchBusy: false })).toBe(false);
+	});
+
+	it('is false when switchToEpisode is already in flight (switchBusy)', () => {
+		// Codex P2 #3366970113 — a stale network error from the OLD
+		// video URL can fire while the user's Next/Prev click is mid-
+		// flight (switchBusy === true). Today's recovery path would
+		// call clearForShow(id), aborting the foreground switch's
+		// prefetch, then switchToEpisode(episodeNum) which no-ops on
+		// the `!detail || switchBusy` guard. The user's click never
+		// lands and recovery doesn't fire either.
+		//
+		// Gate: skip the auto-retry while busy. The foreground switch
+		// owns the play cache for its episode; if its result also
+		// fails, the next error event will trigger recovery normally.
+		expect(canRecoverFromStaleStream({ detail, switchBusy: true })).toBe(false);
 	});
 });
