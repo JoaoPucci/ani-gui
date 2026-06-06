@@ -100,6 +100,11 @@
 	} from '$lib/play/error-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
+		canRecoverFromStaleStream,
+		shouldAttemptStaleStreamRetry,
+		shouldResetStaleStreamBudget
+	} from '$lib/play/stale-stream';
+	import {
 		describeSyncplayLaunchFailure,
 		isSyncplaySpawnFailure,
 		syncplayLaunchSuccessToast
@@ -123,12 +128,12 @@
 	const mediaKind = $derived<MediaKind>(
 		page.url.searchParams.get('kind') === 'mp4' ? 'mp4' : 'hls'
 	);
-	// True when the play resolution that produced the current session
-	// came from the long-term cache. Used to decide whether a player
-	// error is silently retryable (cache hit → evict + re-resolve) or
-	// terminal (fresh fetch already exhausted the resolve path).
-	// Re-set in switchToEpisode whenever a new session lands.
-	let cacheHit = $state(page.url.searchParams.get('cache_hit') === '1');
+	// Tracks whether the page has already burned its one-shot auto-
+	// recovery for the current session. Reset in switchToEpisode (a
+	// fresh session means a fresh shot). See $lib/play/stale-stream for
+	// the policy that uses it. The manual Reload button on the player-
+	// error overlay bypasses this guard — manual is always allowed.
+	let hasAutoRetried = $state(false);
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1186,14 +1191,24 @@
 					4: 'not-supported'
 				}[code] ?? 'unknown';
 			const reason = `${codeName}${err?.message ? ` (${err.message})` : ''}`;
-			// network errors on a cache-hit play almost always mean the
-			// upstream URL rotated since our HEAD validated. Silent
-			// evict + retry rather than dumping a cryptic error on the
-			// user. Decode/not-supported errors aren't URL-rotation
-			// symptoms, so let them surface.
-			if (cacheHit && code === 2) {
-				cacheHit = false; // don't infinite-loop if retry also fails
-				void silentRetryAfterCacheHitFailure(`video ${reason}`);
+			// Network errors are the rotated-URL signature regardless of
+			// how the user landed on the page (cached resolve OR fresh).
+			// The earlier cache-hit-only gate let fresh-resolve sessions
+			// dead-end after sleep; the policy helper widens the gate to
+			// any code-2 / hls networkError, capped at one auto-retry
+			// per session via hasAutoRetried. Decode / not-supported /
+			// aborted aren't URL-rotation symptoms — surface them.
+			// canRecoverFromStaleStream also gates: a fast initial error
+			// can fire before detail/config land, in which case we surface
+			// the overlay (whose Reload button will pick up the work
+			// once the metadata is in) instead of burning the budget on
+			// a recovery that would silently bail.
+			if (
+				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
+				canRecoverFromStaleStream({ detail, switchBusy })
+			) {
+				hasAutoRetried = true;
+				void recoverFromStaleStream(`video ${reason}`);
 				return;
 			}
 			playerError = `Playback error: ${reason}`;
@@ -1212,9 +1227,19 @@
 			hls.attachMedia(videoEl);
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
-				if (cacheHit && data.type === 'networkError') {
-					cacheHit = false;
-					void silentRetryAfterCacheHitFailure(`hls ${data.details}`);
+				// canRecoverFromStaleStream gate mirrors the <video> path —
+				// fast initial fatal errors can land before detail/config
+				// populate; surface the overlay instead of consuming the
+				// budget on a no-op recovery.
+				if (
+					shouldAttemptStaleStreamRetry({
+						err: { source: 'hls', type: data.type },
+						hasAutoRetried
+					}) &&
+					canRecoverFromStaleStream({ detail, switchBusy })
+				) {
+					hasAutoRetried = true;
+					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
 				}
 				playerError = `Playback error: ${data.type} / ${data.details}`;
@@ -1510,13 +1535,22 @@
 					switchProgress = progressLabel(p);
 				}
 			);
+			// Reset the one-shot auto-retry budget only on a real episode
+			// switch — Next/Prev/pick are distinct session-classes, so
+			// each gets its own shot. Resetting on a same-episode landing
+			// (the auto-recovery path, and the manual Reload path) would
+			// let chronically expired CDN URLs loop unbounded through
+			// eviction + resolve, hammering ani-cli and upstream until a
+			// non-network error happens. See Codex P1 #3366915811.
+			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
+				hasAutoRetried = false;
+			}
 			// goto navigates within the same route, so the page doesn't
 			// fully unmount — `$effect` above re-fires with the new
 			// session, and hls.js swaps source. The target is built
 			// from `resolve()` plus a query string; the no-resolve
 			// lint rule's pattern matcher only recognises a literal
 			// `goto(resolve(...))` call, so we suppress around the call.
-			cacheHit = session.cache_hit === true;
 			// Stamp Continue Watching — see the equivalent block in
 			// /anime/[id] for the rationale (getOrFire reuse).
 			void markWatched({
@@ -1551,19 +1585,32 @@
 		}
 	}
 
-	/** Hand off to a fresh ani-cli resolve when a cached play fails at
-	 *  the player layer (4xx mid-stream, hls.js fatal error). Drops
-	 *  the cache row server-side AND in memory, then re-runs
-	 *  switchToEpisode for the current ep — which cache-misses,
-	 *  runs ani-cli, swaps the session URL. LoadingOverlay shows
-	 *  naturally during the retry because switchBusy goes high inside
-	 *  switchToEpisode. */
-	async function silentRetryAfterCacheHitFailure(reason: string) {
-		if (!detail || !config) return;
+	/** Hand off to a fresh ani-cli resolve when the player layer fails
+	 *  on what looks like a stale upstream URL (4xx mid-stream, hls.js
+	 *  fatal networkError, <video> MEDIA_ERR_NETWORK). Drops the cache
+	 *  row server-side AND in memory, then re-runs switchToEpisode for
+	 *  the current ep — which cache-misses, runs ani-cli, swaps the
+	 *  session URL. LoadingOverlay shows naturally during the retry
+	 *  because switchBusy goes high inside switchToEpisode.
+	 *
+	 *  Two entry points: the auto-retry path (gated by
+	 *  shouldAttemptStaleStreamRetry) and the manual Reload button on
+	 *  the player-error overlay. Both share the same eviction +
+	 *  re-resolve flow. */
+	async function recoverFromStaleStream(reason: string) {
+		if (!detail) return;
+		// Clear the error AFTER the readiness check so a manual Reload
+		// click that races detail loading doesn't wipe the overlay
+		// into a blank frame. The user keeps the Reload button to try
+		// again once the metadata lands.
+		playerError = null;
 		const title = detail.canonical_title;
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
-		console.info('[play] silent retry after cache-hit failure:', reason);
+		// Settings is intentionally NOT a precondition — falling back to
+		// sub/best matches switchToEpisode's pattern. A permanently null
+		// config (settingsGet rejected) shouldn't leave Reload no-op.
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
+		console.info('[play] stale-stream recovery:', reason);
 		try {
 			await evictPlayCache({
 				title,
@@ -1584,6 +1631,16 @@
 		// the next slow play, which is acceptable for the retry.
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
+	}
+
+	/** Wired to the Reload button on the player-error overlay. Bypasses
+	 *  the hasAutoRetried guard — manual recovery is always allowed.
+	 *  recoverFromStaleStream clears playerError itself once it gets
+	 *  past the readiness check, so a click that races detail/config
+	 *  loading leaves the overlay in place to try again rather than
+	 *  flashing into a blank frame. */
+	function onReloadStream() {
+		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
@@ -1928,7 +1985,26 @@
 		{#if !sessionId}
 			<p class="player-empty">{m.play_error_no_session()}</p>
 		{:else if playerError}
-			<p class="player-empty">{playerError}</p>
+			<!-- Player-error overlay. Renders in place of the video slot
+			     so the user's eye lands directly on it. The Reload button
+			     calls recoverFromStaleStream — same eviction + re-resolve
+			     the auto-retry would have used, just without the one-shot
+			     guard. Technical detail stays visible (dimmed) so power
+			     users / bug reports still have it. -->
+			<div class="player-empty player-error">
+				<p class="player-error-headline">{m.play_error_stream_headline()}</p>
+				<p class="player-error-body">{m.play_error_stream_body()}</p>
+				<button type="button" class="player-error-reload" onclick={onReloadStream}>
+					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+						<path
+							d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-6-6 5.94 5.94 0 014.22 1.78L13 11h7V4z"
+							fill="currentColor"
+						/>
+					</svg>
+					<span>{m.play_error_stream_reload()}</span>
+				</button>
+				<p class="player-error-detail">{playerError}</p>
+			</div>
 		{:else}
 			<!-- Target slot for the singleton video. The actual
 			     <video> lives in $lib/play/global-video and gets
@@ -3825,6 +3901,71 @@
 		font-size: var(--type-body-l);
 		font-weight: 500;
 		line-height: 1.5;
+	}
+	/* Stale-stream / playback error overlay. Lays a structured
+	   headline + body + Reload + technical detail on top of the
+	   same letterboxed region the video occupied. */
+	.player-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-3);
+		max-inline-size: 28rem;
+		margin-inline: auto;
+	}
+	.player-error-headline {
+		font-family: var(--font-display);
+		font-size: var(--type-display-s);
+		font-weight: 700;
+		color: var(--bone-100);
+		margin: 0;
+		line-height: 1.2;
+	}
+	.player-error-body {
+		font-size: var(--type-body-m);
+		font-weight: 400;
+		color: var(--bone-200);
+		margin: 0;
+		line-height: 1.5;
+	}
+	.player-error-reload {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding-block: var(--space-2);
+		padding-inline: var(--space-5);
+		margin-block-start: var(--space-2);
+		background: var(--accent);
+		color: var(--ink-bg);
+		border: none;
+		border-radius: var(--radius-md);
+		font-family: var(--font-body);
+		font-size: var(--type-body-m);
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			transform var(--dur-fast) var(--ease-out-soft),
+			filter var(--dur-fast) var(--ease-out-soft);
+	}
+	.player-error-reload:hover {
+		filter: brightness(1.1);
+	}
+	.player-error-reload:active {
+		transform: scale(0.97);
+	}
+	.player-error-reload:focus-visible {
+		outline: 2px solid var(--bone-100);
+		outline-offset: 2px;
+	}
+	.player-error-detail {
+		font-size: var(--type-body-s);
+		font-weight: 400;
+		color: var(--bone-300);
+		opacity: 0.7;
+		margin: var(--space-2) 0 0;
+		font-family: var(--font-mono, monospace);
+		word-break: break-word;
 	}
 	:global(.player-busy video) {
 		opacity: 0.5;
