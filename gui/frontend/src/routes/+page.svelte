@@ -39,6 +39,7 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
+	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -84,6 +85,13 @@
 	// allmanga's truthful count, not Kitsu's sometimes-stale announced
 	// total). Falls back to match?.episode_count when absent.
 	let historyPlayableCounts = $state<Record<string, number>>({});
+
+	// Continue Watching rows after first-occurrence-wins dedupe by
+	// resolved Kitsu id. Defensive: when no two rows share a Kitsu id
+	// (the common case) this is reference-equal row-by-row to
+	// `history`. See $lib/history/dedupe for the policy and the
+	// catalog-drift scenario that motivates it (#116).
+	const dedupedHistory = $derived(history ? dedupeHistoryByKitsuId(history, historyMatches) : []);
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
 	let scrollY = $state(0);
@@ -476,7 +484,7 @@
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
 	>
-		{#each history as entry (entry.id)}
+		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
