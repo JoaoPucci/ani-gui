@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+pub mod account;
 pub mod anicli;
 pub mod api;
 pub mod app;
