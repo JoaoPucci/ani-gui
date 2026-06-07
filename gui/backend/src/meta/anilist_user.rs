@@ -21,6 +21,8 @@
 //! - Score scale: AniList's POINT_100 system is already 0..=100, which
 //!   matches the unified scale; pass through with no conversion.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use async_trait::async_trait;
 use serde::Deserialize;
 
@@ -33,6 +35,11 @@ use crate::account::provider::{
     EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
 };
 use crate::error::{AniError, Result};
+
+/// User-agent advertised on every AniList request. Matches the format
+/// used by [`crate::meta::anilist`] so AniList's Cloudflare layer
+/// treats the two surfaces as the same client.
+const ANILIST_USER_AGENT: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
 /// AniList implementation of [`UserListProvider`].
 ///
@@ -107,8 +114,36 @@ impl UserListProvider for AniListProvider {
             .unwrap_or_default()
     }
 
-    async fn exchange_code(&self, _code: &str, _pkce: &Pkce) -> Result<Tokens> {
-        Err(AniError::Metadata)
+    async fn exchange_code(&self, code: &str, _pkce: &Pkce) -> Result<Tokens> {
+        // AniList's token endpoint accepts the OAuth code-grant body
+        // as JSON. Their docs show form-urlencoded too; we use JSON
+        // here because the rest of the AniList surface is JSON.
+        // The `_pkce` parameter is ignored — AniList doesn't read it.
+        let body = serde_json::json!({
+            "grant_type": "authorization_code",
+            "client_id": ANILIST_CLIENT_ID,
+            "client_secret": ANILIST_CLIENT_SECRET,
+            "redirect_uri": ANILIST_REDIRECT_URI,
+            "code": code,
+        });
+        let resp = self
+            .client
+            .post(self.token_url())
+            .header("user-agent", ANILIST_USER_AGENT)
+            .header("content-type", "application/json")
+            .header("accept", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_token_response(&bytes)
     }
 
     async fn refresh(&self, _refresh_token: &str) -> Result<Tokens> {
@@ -135,6 +170,38 @@ impl UserListProvider for AniListProvider {
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
         Err(AniError::Metadata)
     }
+}
+
+/// Pure parser for AniList's OAuth token-exchange response.
+///
+/// Shape: `{token_type, expires_in, access_token, refresh_token}`.
+/// AniList in practice always returns `refresh_token: null` — the
+/// trait carries it as `Option<String>` so MAL's real refresh tokens
+/// fit the same struct.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the response isn't the
+/// documented shape.
+fn parse_token_response(body: &[u8]) -> Result<Tokens> {
+    #[derive(Deserialize)]
+    struct Wire {
+        access_token: String,
+        #[serde(default)]
+        refresh_token: Option<String>,
+        expires_in: i64,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist token response: {e}"),
+    })?;
+    let now_s = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    Ok(Tokens {
+        access_token: wire.access_token,
+        refresh_token: wire.refresh_token,
+        expires_at_epoch_s: now_s + wire.expires_in,
+    })
 }
 
 #[cfg(test)]
