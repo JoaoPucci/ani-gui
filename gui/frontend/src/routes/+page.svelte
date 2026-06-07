@@ -1138,8 +1138,8 @@
 	   not an ancestor) so its click never triggers play. */
 	.resume-delete {
 		position: absolute;
-		inset-block-start: var(--space-2);
-		inset-inline-end: var(--space-2);
+		inset-block-start: var(--space-3);
+		inset-inline-end: var(--space-3);
 		inline-size: 1.75rem;
 		block-size: 1.75rem;
 		display: grid;
