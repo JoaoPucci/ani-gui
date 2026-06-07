@@ -18,14 +18,23 @@ use crate::account::status::ListStatus;
 use crate::error::Result;
 
 /// Which provider an instance belongs to.
+///
+/// Codex P2 #3369980190: serde rename targets match `slug()` exactly,
+/// so a `ProviderKind::AniList` field on a serialized `UserProfile` /
+/// `ListEntry` round-trips through the renderer's `Provider` type
+/// (`'anilist' | 'mal' | 'inhouse'`). The default snake_case derive
+/// would have emitted `"ani_list"` and silently broken
+/// `accountStore.byProvider` lookups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     /// `anilist.co`. GraphQL. 1-year JWT. No refresh tokens.
+    #[serde(rename = "anilist")]
     AniList,
     /// `myanimelist.net`. REST. 1-hour access tokens, 1-month refresh.
+    #[serde(rename = "mal")]
     MyAnimeList,
     /// Reserved for a future ani-gui-as-its-own-provider implementation.
+    #[serde(rename = "inhouse")]
     InHouse,
 }
 

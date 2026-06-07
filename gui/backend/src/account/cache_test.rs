@@ -230,3 +230,33 @@ fn write_entries_only_drops_the_same_user_rows() {
     assert_eq!(u2.len(), 1);
     assert_eq!(u2[0].media_id.0, 20);
 }
+
+#[test]
+fn provider_kind_serializes_to_slug_form_not_default_snake_case() {
+    // Codex P2 #3369980190: the default serde rename_all = "snake_case"
+    // would have emitted "ani_list" / "my_anime_list" / "in_house",
+    // which mismatch the route slugs ("anilist" / "mal" / "inhouse")
+    // the frontend uses to key its account store. Pin the wire form
+    // so a future enum-rename refactor doesn't silently break it.
+    assert_eq!(
+        serde_json::to_string(&ProviderKind::AniList).unwrap(),
+        "\"anilist\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ProviderKind::MyAnimeList).unwrap(),
+        "\"mal\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ProviderKind::InHouse).unwrap(),
+        "\"inhouse\""
+    );
+    let a: ProviderKind = serde_json::from_str("\"anilist\"").unwrap();
+    let m: ProviderKind = serde_json::from_str("\"mal\"").unwrap();
+    let h: ProviderKind = serde_json::from_str("\"inhouse\"").unwrap();
+    assert_eq!(a, ProviderKind::AniList);
+    assert_eq!(m, ProviderKind::MyAnimeList);
+    assert_eq!(h, ProviderKind::InHouse);
+    assert_eq!(ProviderKind::AniList.slug(), "anilist");
+    assert_eq!(ProviderKind::MyAnimeList.slug(), "mal");
+    assert_eq!(ProviderKind::InHouse.slug(), "inhouse");
+}
