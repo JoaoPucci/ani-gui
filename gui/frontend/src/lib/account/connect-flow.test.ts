@@ -143,7 +143,7 @@ describe('disconnectAccount', () => {
 		const r = await disconnectAccount('anilist', s, deps);
 		expect(r.kind).toBe('ok');
 		expect(deps.clearPersistedAccount).toHaveBeenCalledWith('anilist');
-		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'tok');
+		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'tok', 'u7');
 	});
 
 	it('skips dropListCache when there is no prior account', async () => {

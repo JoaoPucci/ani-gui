@@ -110,7 +110,7 @@ function errStatus(err: unknown): number | undefined {
 
 export interface DisconnectFlowDeps {
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
-	dropListCache(provider: Provider, bearer: string): Promise<void>;
+	dropListCache(provider: Provider, bearer: string, fallbackUserId?: string): Promise<void>;
 }
 
 /**
@@ -125,6 +125,22 @@ export function bearerFor(state: ProviderState): string | null {
 	}
 	if (state.kind === 'error' && state.account) {
 		return state.account.access_token;
+	}
+	return null;
+}
+
+/**
+ * Extract the persisted user_id from a prior provider state — used as
+ * the fallback identity in the cache DELETE call when the bearer has
+ * expired or been revoked (Codex P2 #3369997650). Returns null for
+ * disconnected / connecting / errored-without-account states.
+ */
+export function userIdFor(state: ProviderState): string | null {
+	if (state.kind === 'connected' || state.kind === 'expired') {
+		return state.account.user_id;
+	}
+	if (state.kind === 'error' && state.account) {
+		return state.account.user_id;
 	}
 	return null;
 }
@@ -151,9 +167,13 @@ export async function disconnectAccount(
 	deps: DisconnectFlowDeps
 ): Promise<DisconnectResult> {
 	const bearer = bearerFor(prevState);
+	const fallbackUserId = userIdFor(prevState) ?? undefined;
 	if (bearer) {
 		try {
-			await deps.dropListCache(provider, bearer);
+			// Pass the safeStorage-persisted user_id as fallback so the
+			// backend can still clear the cache when the bearer has
+			// expired (Codex P2 #3369997650).
+			await deps.dropListCache(provider, bearer, fallbackUserId);
 		} catch {
 			/* eviction failure non-fatal — next sync overwrites */
 		}

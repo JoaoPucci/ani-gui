@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
@@ -125,6 +125,20 @@ impl From<Tokens> for TokensResponse {
     }
 }
 
+/// Renderer-supplied fallback identity for the cache DELETE path
+/// (Codex P2 #3369997650). Consulted ONLY when the bearer's `me()` call
+/// fails with `InvalidToken` — disconnect-after-expiry needs to clear
+/// the cache but the bearer is no longer trusted upstream. Trusting
+/// this in the live-bearer path would re-enable the cross-origin
+/// poisoning Codex P1 #3369956138 closed.
+#[derive(Debug, Deserialize)]
+pub struct DisconnectFallbackQuery {
+    /// The user_id the renderer learned from a prior successful
+    /// `me()` (persisted in safeStorage). Used only as a fallback.
+    #[serde(default)]
+    pub fallback_user_id: Option<String>,
+}
+
 // — Handlers — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
 
 fn parse_provider(slug: &str) -> Result<ProviderKind, AniError> {
@@ -205,17 +219,11 @@ async fn get_cached_list(
     Path(provider): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
-    // Codex P1 #3369956138: the prior fix only validated the bearer
-    // syntactically (presence of `Bearer <something>`), then trusted
-    // `?user_id=` from the query. Under the permissive CORS layer any
-    // browser tab could send `Authorization: Bearer anything` plus a
-    // guessed AniList id and read another user's cached rows.
-    //
-    // Real fix: derive the user_id from the bearer by calling the
-    // provider's `me` endpoint. If the bearer is forged the upstream
-    // call fails with 401 and we surface InvalidToken; if it's
-    // genuine we look up cache for the verified id, not whatever the
-    // caller claimed in the query.
+    // Codex P1 #3369956138: identity comes from a live `me()` call, not
+    // from anything the caller claims. The read path stays strictly
+    // upstream-validated; the disconnect fallback ONLY applies to
+    // delete_list_cache (Codex P2 #3369997650) where the user has
+    // already authenticated the bearer-to-user_id binding in safeStorage.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);
@@ -228,14 +236,27 @@ async fn delete_list_cache(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
+    Query(q): Query<DisconnectFallbackQuery>,
 ) -> Result<StatusCode, AniError> {
-    // Same upstream-validated identity as get_cached_list — a forged
-    // bearer can't be used to wipe another user's cache rows.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let profile = account::me(&state, kind, &tokens).await?;
-    account::clear_cache(&state, kind, &profile.user_id)?;
+    let user_id = match account::me(&state, kind, &tokens).await {
+        Ok(profile) => profile.user_id,
+        Err(AniError::InvalidToken) => {
+            // Codex P2 #3369997650: disconnect-after-expiry. The bearer
+            // upstream-401'd, so we can't derive identity from it. Fall
+            // back to the renderer-supplied user_id from safeStorage —
+            // the renderer learned it on a prior successful me() and
+            // kept it locally. Without this fallback the cache rows
+            // linger forever after the bearer expires, breaking the
+            // docs/PRIVACY.md promise that the local list cache is
+            // dropped on disconnect.
+            q.fallback_user_id.ok_or(AniError::InvalidToken)?
+        }
+        Err(e) => return Err(e),
+    };
+    account::clear_cache(&state, kind, &user_id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -126,10 +126,20 @@ export function fetchCachedList(provider: Provider, bearer: string): Promise<Lis
 	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached`, bearer);
 }
 
-export function dropListCache(provider: Provider, bearer: string): Promise<void> {
-	// Same identity model as fetchCachedList — backend derives the
-	// user_id from the bearer.
-	return deleteEndpoint(`/api/account/list/${provider}/cache`, bearer);
+export function dropListCache(
+	provider: Provider,
+	bearer: string,
+	fallbackUserId?: string
+): Promise<void> {
+	// Backend derives the cache-owner user_id from a live `me()` call.
+	// When the bearer has expired or been revoked (disconnect path,
+	// Codex P2 #3369997650), the call 401s; pass the safeStorage-
+	// persisted user_id as `?fallback_user_id=` so the backend can
+	// still clear the cache instead of leaving orphan rows behind.
+	const path = fallbackUserId
+		? `/api/account/list/${provider}/cache?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
+		: `/api/account/list/${provider}/cache`;
+	return deleteEndpoint(path, bearer);
 }
 
 // ─── Electron preload helpers ───────────────────────────────────────
