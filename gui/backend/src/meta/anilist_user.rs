@@ -33,6 +33,7 @@ use crate::account::credentials::{
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
     EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+    UserStats,
 };
 use crate::error::{AniError, Result};
 
@@ -40,6 +41,17 @@ use crate::error::{AniError, Result};
 /// used by [`crate::meta::anilist`] so AniList's Cloudflare layer
 /// treats the two surfaces as the same client.
 const ANILIST_USER_AGENT: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
+
+/// GraphQL: authenticated user's profile. Mirrors §4.1 of the
+/// account-integration plan. `meanScore` on this surface is already
+/// 0..=10 — no scaling on the read side.
+const VIEWER_GQL: &str = "query Viewer { \
+        Viewer { \
+            id name \
+            avatar { large medium } \
+            statistics { anime { count meanScore } } \
+        } \
+    }";
 
 /// AniList implementation of [`UserListProvider`].
 ///
@@ -84,6 +96,39 @@ impl AniListProvider {
 
     fn token_url(&self) -> &str {
         self.token_base.as_deref().unwrap_or(ANILIST_TOKEN_URL)
+    }
+
+    /// Shared POST helper for the GraphQL endpoint. Handles the
+    /// Bearer header + user-agent + the AniList-specific status
+    /// mapping: 401 → [`AniError::InvalidToken`] (revoked / expired
+    /// token; route layer surfaces "Sign in again"), any other
+    /// non-2xx → [`AniError::Upstream`].
+    async fn post_graphql(
+        &self,
+        tokens: &Tokens,
+        body: &serde_json::Value,
+    ) -> Result<bytes::Bytes> {
+        let resp = self
+            .client
+            .post(self.api_url())
+            .header("user-agent", ANILIST_USER_AGENT)
+            .header("content-type", "application/json")
+            .header("accept", "application/json")
+            .bearer_auth(&tokens.access_token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        resp.bytes().await.map_err(|_| AniError::Network)
     }
 }
 
@@ -157,8 +202,10 @@ impl UserListProvider for AniListProvider {
         Err(AniError::Metadata)
     }
 
-    async fn me(&self, _tokens: &Tokens) -> Result<UserProfile> {
-        unimplemented!("me stub — green commit pins the semantics")
+    async fn me(&self, tokens: &Tokens) -> Result<UserProfile> {
+        let body = serde_json::json!({ "query": VIEWER_GQL });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        parse_viewer_response(&bytes)
     }
 
     async fn list_all(&self, _tokens: &Tokens) -> Result<Vec<ListEntry>> {
@@ -177,6 +224,70 @@ impl UserListProvider for AniListProvider {
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
         Err(AniError::Metadata)
     }
+}
+
+/// Pure parser for the `Viewer` GraphQL response. AniList ids are
+/// numeric on the wire; the trait carries `user_id` as a `String`
+/// so MAL's `@me` id later fits the same shape.
+///
+/// Avatar URL preference: `large` first, then `medium`. The trait
+/// surface keeps a single `avatar_url` rather than a bag because
+/// the chip + popover only render one size.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the response isn't the
+/// documented `{ data: { Viewer: { … } } }` envelope.
+fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Viewer")]
+        viewer: Viewer,
+    }
+    #[derive(Deserialize)]
+    struct Viewer {
+        id: u64,
+        name: String,
+        avatar: Option<Avatar>,
+        statistics: Option<Statistics>,
+    }
+    #[derive(Deserialize)]
+    struct Avatar {
+        large: Option<String>,
+        medium: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Statistics {
+        anime: Option<AnimeStats>,
+    }
+    #[derive(Deserialize)]
+    struct AnimeStats {
+        count: u32,
+        #[serde(rename = "meanScore")]
+        mean_score: Option<f32>,
+    }
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist viewer response: {e}"),
+    })?;
+    let avatar_url = wire.data.viewer.avatar.and_then(|a| a.large.or(a.medium));
+    let stats = wire.data.viewer.statistics.and_then(|s| s.anime).map(|a| {
+        UserStats {
+            anime_count: a.count,
+            // AniList's meanScore on this surface is already 0..=10;
+            // pass through unchanged.
+            mean_score_0_to_10: a.mean_score,
+        }
+    });
+    Ok(UserProfile {
+        provider: ProviderKind::AniList,
+        user_id: wire.data.viewer.id.to_string(),
+        username: wire.data.viewer.name,
+        avatar_url,
+        stats,
+    })
 }
 
 /// Pure parser for AniList's OAuth token-exchange response.
