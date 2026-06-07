@@ -13,6 +13,23 @@
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
+
+	// Wrap scale/flip in factories that read `deleteBusy` at fire
+	// time — Svelte caches object-form params at element mount, so
+	// `out:scale={{ duration: deleteBusy ? 240 : 0 }}` captures the
+	// initial false and never animates the actual delete. Function-
+	// form params aren't accepted by the built-in scale/flip types,
+	// hence these tiny wrappers. They short-circuit to duration 0
+	// during the dedupe-on-load list mutation and delegate to the
+	// real transition for user-confirmed deletes.
+	function cwOutScale(node: Element) {
+		if (!isAnimatingDelete) return { duration: 0 };
+		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
+	}
+	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+		if (!isAnimatingDelete) return { duration: 0 };
+		return flip(node, animation, { duration: 280, easing: quintOut });
+	}
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import {
@@ -105,6 +122,14 @@
 	// state update (optimistic — no reload to keep the deletion crisp).
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
+	// Separate gate for the card transitions. `deleteBusy` resets in
+	// the finally block, but Svelte 5 batches that with the
+	// `history = ...` assignment, so by the time the out-transition
+	// factory runs both have already been applied — the factory
+	// reads `deleteBusy=false` and short-circuits. Hold this flag
+	// true across the render cycle and clear it on a timer that
+	// outlasts the longest transition (280ms flip).
+	let isAnimatingDelete = $state(false);
 	// Kebab menu open state for the rail header.
 	let clearMenuOpen = $state(false);
 	// Clear-all confirmation modal open state.
@@ -120,6 +145,7 @@
 	async function confirmDelete() {
 		if (!deleteCandidate) return;
 		deleteBusy = true;
+		isAnimatingDelete = true;
 		try {
 			// Decision + transition logic lives in the helper per
 			// AGENTS.md §2 (Codex P2 #3369181727): group expansion +
@@ -135,6 +161,14 @@
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
+			// Hold the animation gate open long enough for the
+			// out:scale + animate:flip factories to fire (which
+			// happens AFTER Svelte applies the batched `history =`
+			// + `deleteBusy = false` updates). 350ms covers the
+			// 280ms flip + a small safety margin.
+			setTimeout(() => {
+				isAnimatingDelete = false;
+			}, 350);
 		}
 	}
 	function openClearConfirm() {
@@ -614,12 +648,24 @@
 				Number.isFinite(lastWatched) ? lastWatched : null,
 				playableCount ?? match?.episode_count ?? null
 			)}
-			<div
-				class="resume-cell"
-				style="--accent: {accent};"
-				out:scale={{ duration: 240, start: 0.6, opacity: 0, easing: quintOut }}
-				animate:flip={{ duration: 280, easing: quintOut }}
-			>
+			<!-- Both transitions are gated on `deleteBusy` so they only
+		     run for user-confirmed deletes. On home re-mount,
+		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
+		     as their matches resolve, which would otherwise fire
+		     out:scale on every dedupe-removed row + animate:flip on
+		     every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. Duration 0 makes those
+		     transitions instant (no animation) during load; during
+		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
+		     shrink + slide.
+
+		     Params are FUNCTIONS, not object literals, because
+		     Svelte caches the object form at element mount — by
+		     fire time, the cached duration is still the
+		     `deleteBusy=false` value and the user delete won't
+		     animate. The function form re-evaluates on every
+		     fire, so the gate reads the live state. -->
+			<div class="resume-cell" style="--accent: {accent};" out:cwOutScale animate:cwFlip>
 				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
 			     - match === undefined : the per-row loader hasn't
