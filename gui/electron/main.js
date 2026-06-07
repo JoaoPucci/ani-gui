@@ -707,8 +707,30 @@ ipcMain.handle("ani-gui:account:cancel-oauth", () => {
  * Returns true on success. The renderer should treat any false /
  * thrown result as "fall back to disconnected and tell the user".
  */
+/**
+ * Codex P2 #3370070913: `safeStorage.isEncryptionAvailable()` returns
+ * true even when Electron falls back to its hardcoded `basic_text`
+ * backend on Linux installs without libsecret/kwallet/gnome-keyring
+ * (or in headless test environments). That backend XORs the payload
+ * with a fixed string — recoverable by anyone with read access to the
+ * token file — and contradicts the privacy promise that OAuth tokens
+ * are encrypted by the OS keychain. Reject persistence in that mode
+ * so the renderer surfaces `keychain_unavailable` and the user can
+ * install the missing keyring before connecting.
+ */
+function isRealEncryptionBackend() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  // getSelectedStorageBackend exists on Linux only — on macOS/Windows
+  // there's no plaintext fallback to worry about. When the method is
+  // absent (other platforms, older Electron), treat encryption as
+  // legit because isEncryptionAvailable() already gates it.
+  if (typeof safeStorage.getSelectedStorageBackend !== "function") return true;
+  const backend = safeStorage.getSelectedStorageBackend();
+  return backend !== "basic_text" && backend !== "unknown";
+}
+
 ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
-  if (!safeStorage.isEncryptionAvailable()) {
+  if (!isRealEncryptionBackend()) {
     return { ok: false, kind: "encryption_unavailable" };
   }
   if (typeof payload !== "object" || payload == null) {
@@ -738,7 +760,10 @@ ipcMain.on("ani-gui:account:get-token", (event, provider) => {
       event.returnValue = { ok: false, kind: "not_found" };
       return;
     }
-    if (!safeStorage.isEncryptionAvailable()) {
+    if (!isRealEncryptionBackend()) {
+      // The token file exists but the OS keychain that wrote it is no
+      // longer reachable (or never was). Refuse to decrypt rather than
+      // surfacing a plaintext-fallback token — Codex P2 #3370070913.
       event.returnValue = { ok: false, kind: "encryption_unavailable" };
       return;
     }
