@@ -211,6 +211,57 @@ fn state_for_cache_only_tests() -> AppState {
     }
 }
 
+#[test]
+fn needs_backfill_false_when_every_ep_has_thumb() {
+    // The all-Kitsu-thumbs case (e.g. an Attack on Titan page where
+    // Kitsu's CDN already covers every ep). The AniList fetch would
+    // be unconditional otherwise, burning a Kitsu /mappings round-trip
+    // + an AniList rate-limit slot on cold cache with no visible win.
+    let eps = vec![
+        ep_with(1, Some("https://kitsu.cdn/1.jpg")),
+        ep_with(2, Some("https://kitsu.cdn/2.jpg")),
+        ep_with(3, Some("https://kitsu.cdn/3.jpg")),
+    ];
+    assert!(!needs_backfill(&eps));
+}
+
+#[test]
+fn needs_backfill_true_when_at_least_one_ep_missing_thumb() {
+    // One Piece-shaped case: most early eps have Kitsu thumbs, ep 54+
+    // are null. AniList lookup is worth running.
+    let eps = vec![
+        ep_with(1, Some("https://kitsu.cdn/1.jpg")),
+        ep_with(54, None),
+    ];
+    assert!(needs_backfill(&eps));
+}
+
+#[test]
+fn needs_backfill_true_when_thumb_object_present_but_original_null() {
+    // Kitsu sometimes serves `thumbnail: { original: null }` —
+    // shape-wise present, content-wise empty. Same as missing.
+    let mut ep = ep_with(1, None);
+    ep.thumbnail = Some(KitsuEpisodeThumbnail { original: None });
+    assert!(needs_backfill(&[ep]));
+}
+
+#[test]
+fn needs_backfill_skips_eps_without_number() {
+    // Eps without a `number` can't be merged regardless of AniList's
+    // map (the merge keys by ep number). If those are the only ones
+    // missing thumbs, there's nothing to backfill — skip the fetch.
+    let mut ep = ep_with(1, None);
+    ep.number = None;
+    let eps = vec![ep, ep_with(2, Some("https://kitsu.cdn/2.jpg"))];
+    assert!(!needs_backfill(&eps));
+}
+
+#[test]
+fn needs_backfill_false_for_empty_page() {
+    // Out-of-range pages return zero episodes. No backfill needed.
+    assert!(!needs_backfill(&[]));
+}
+
 #[tokio::test]
 async fn thumbs_for_show_returns_cached_map_without_network() {
     // The hot path: cache is warm, hit returns instantly with no
