@@ -13,6 +13,27 @@
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
+	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
+
+	// Per-id, split-per-transition gate for the Continue Watching
+	// row's out:scale + animate:flip. The two factories check
+	// different buckets so a shifted-survivor that gets
+	// dedupe-removed by a background callback during the gate's
+	// open window can't piggyback on the flip allowlist and trigger
+	// a spurious scale-out (Codex P2 #3369281412). cwOutScale only
+	// animates ids the user explicitly deleted; cwFlip animates the
+	// survivors that physically shift to close the gap.
+	const deleteAnimationGate = createAnimationGate();
+	function cwOutScale(node: Element) {
+		const id = (node as HTMLElement).dataset.entryId;
+		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return { duration: 0 };
+		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
+	}
+	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+		const id = (node as HTMLElement).dataset.entryId;
+		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return { duration: 0 };
+		return flip(node, animation, { duration: 280, easing: quintOut });
+	}
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import {
@@ -126,11 +147,24 @@
 			// serialized backend deletes + filtered-history compute,
 			// all unit-covered in delete-controller.test.ts. The
 			// component stays as modal/busy glue.
+			// Snapshot the visible order BEFORE the IPC so we can
+			// hand the gate the exact set of ids this delete
+			// touches: the removed rows themselves + every survivor
+			// whose position shifts left to fill the gap. A
+			// concurrent dedupe firing during the gate's window has
+			// different ids and short-circuits.
+			const snapshot = dedupedHistory.map((e) => e.id);
 			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
 				matches: historyMatches,
 				historyDelete
 			});
+			// Open the gate IMMEDIATELY before the optimistic mutation
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
 			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
@@ -614,11 +648,29 @@
 				Number.isFinite(lastWatched) ? lastWatched : null,
 				playableCount ?? match?.episode_count ?? null
 			)}
+			<!-- Both transitions are gated on `deleteBusy` so they only
+		     run for user-confirmed deletes. On home re-mount,
+		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
+		     as their matches resolve, which would otherwise fire
+		     out:scale on every dedupe-removed row + animate:flip on
+		     every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. Duration 0 makes those
+		     transitions instant (no animation) during load; during
+		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
+		     shrink + slide.
+
+		     Params are FUNCTIONS, not object literals, because
+		     Svelte caches the object form at element mount — by
+		     fire time, the cached duration is still the
+		     `deleteBusy=false` value and the user delete won't
+		     animate. The function form re-evaluates on every
+		     fire, so the gate reads the live state. -->
 			<div
 				class="resume-cell"
 				style="--accent: {accent};"
-				out:scale={{ duration: 240, start: 0.6, opacity: 0, easing: quintOut }}
-				animate:flip={{ duration: 280, easing: quintOut }}
+				data-entry-id={entry.id}
+				out:cwOutScale
+				animate:cwFlip
 			>
 				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
