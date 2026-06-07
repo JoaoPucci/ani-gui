@@ -60,6 +60,12 @@ declare global {
 			 *  Electron main so the close handler can decide whether
 			 *  to prompt the user before quitting. Fire-and-forget. */
 			notifyActiveDownloads?: (count: number) => void;
+			/** Open an https URL in the OS browser. Used by the
+			 *  /account page's Privacy Policy link. */
+			openExternal?: (url: string) => Promise<boolean>;
+			/** Account integration surface — present only in Electron
+			 *  builds. Shape mirrors gui/electron/preload.js. */
+			account?: import('./account/types').AniGuiAccountBridge;
 		};
 	}
 }
