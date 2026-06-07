@@ -15,14 +15,13 @@
 
 use crate::app::AppState;
 use crate::cache::ttl::{
-    ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL, ANIME_DETAIL_TTL, DISCOVERY_TTL,
-    EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
+    ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
 };
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode, KitsuEpisodeThumbnail};
-use std::collections::HashMap;
+use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
 
 // Schema version is encoded in the cache key prefix (`kitsu:v2:`).
 // Bump when KitsuAnimeRef gains a field consumers depend on — v2 was
@@ -272,25 +271,20 @@ pub async fn kitsu_episodes(
     let p = page.max(1);
     let key = format!("kitsu:episodes:{anime_id}:p{p}");
     let eps = if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        match serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
-            Ok(eps) => {
-                warm_signed_image_urls(state, &body);
-                eps
-            }
-            Err(_) => fetch_and_cache_kitsu_eps(state, anime_id, p, &key).await?,
+        if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
+            warm_signed_image_urls(state, &body);
+            eps
+        } else {
+            kitsu_episodes_fresh(state, anime_id, p, &key).await?
         }
     } else {
-        fetch_and_cache_kitsu_eps(state, anime_id, p, &key).await?
+        kitsu_episodes_fresh(state, anime_id, p, &key).await?
     };
-    // Backfill nulls from AniList's streamingEpisodes. Best-effort —
-    // failures (no MAL mapping, AniList down) fall through to the
-    // Kitsu-only result. The merge happens on every read because the
-    // AniList lookup is cached separately, so a Kitsu-cache hit still
-    // gets enrichment without re-querying AniList.
-    Ok(enrich_episodes_with_anilist_thumbs(state, anime_id, eps).await)
+    let anilist = anilist_eps_thumbs::thumbs_for_show(state, anime_id).await;
+    Ok(anilist_eps_thumbs::merge_thumbs(eps, &anilist))
 }
 
-async fn fetch_and_cache_kitsu_eps(
+async fn kitsu_episodes_fresh(
     state: &AppState,
     anime_id: &str,
     page: u32,
@@ -305,143 +299,6 @@ async fn fetch_and_cache_kitsu_eps(
         warm_signed_image_urls(state, &body);
     }
     Ok(eps)
-}
-
-/// Best-effort wrapper: looks up the show's MAL id, fetches its
-/// AniList `streamingEpisodes` (with caching), and merges thumbnails
-/// into the Kitsu episode list. Any failure (no MAL mapping, AniList
-/// error, parse failure) logs and returns the unmodified input —
-/// never propagates an error that would break the episodes route.
-async fn enrich_episodes_with_anilist_thumbs(
-    state: &AppState,
-    anime_id: &str,
-    eps: Vec<KitsuEpisode>,
-) -> Vec<KitsuEpisode> {
-    let Some(mal_id) = mal_id_for_kitsu_id_best_effort(state, anime_id).await else {
-        return eps;
-    };
-    let anilist = anilist_streaming_eps_cached(state, mal_id).await;
-    if anilist.is_empty() {
-        return eps;
-    }
-    merge_anilist_thumbs(eps, &anilist)
-}
-
-/// MAL id lookup that swallows errors and returns `None`. The
-/// underlying `state.kitsu.mal_id_for_kitsu_id` already handles the
-/// Kitsu /mappings round-trip; this wrapper just makes it side-effect-
-/// free at the caller for the AniList enrichment path.
-async fn mal_id_for_kitsu_id_best_effort(state: &AppState, anime_id: &str) -> Option<u32> {
-    match state.kitsu.mal_id_for_kitsu_id(anime_id).await {
-        Ok(opt) => opt,
-        Err(e) => {
-            tracing::warn!(
-                anime_id,
-                error = ?e,
-                "anilist enrichment: mal_id lookup failed; skipping",
-            );
-            None
-        }
-    }
-}
-
-/// Stable key for the AniList streamingEpisodes lookup. Versioned so
-/// a schema change (e.g. cache shape moving from map to richer object)
-/// can orphan old rows.
-fn anilist_streaming_eps_key(mal_id: u32) -> String {
-    format!("anilist:streaming-eps:v1:{mal_id}")
-}
-
-/// Writes the outcome of an AniList streamingEpisodes lookup to the
-/// cache. `Ok(map)` writes the populated map under the full
-/// [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` writes an empty map under
-/// the short [`ANILIST_STREAMING_EPS_ERROR_TTL`] so the next few
-/// minutes of navigation see a cache hit instead of re-burning the
-/// AniList rate-limit budget on the same failed lookup.
-fn cache_anilist_streaming_eps_outcome(
-    pool: &crate::cache::SqlitePool,
-    mal_id: u32,
-    outcome: &std::result::Result<HashMap<u32, String>, ()>,
-) {
-    let key = anilist_streaming_eps_key(mal_id);
-    let (map, ttl) = match outcome {
-        Ok(m) => (m.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
-        Err(()) => (HashMap::new(), ANILIST_STREAMING_EPS_ERROR_TTL.as_secs()),
-    };
-    if let Ok(body) = serde_json::to_string(&map) {
-        let _ = meta_cache_put(pool, &key, &body, ttl);
-    }
-}
-
-/// Fetches AniList `streamingEpisodes` for a MAL id, caching the
-/// result as a `HashMap<u32, String>` (ep number → thumbnail URL).
-/// First-wins de-duplication on the AniList side — duplicate ep
-/// entries (rare; happens when AniList lists subbed + dubbed
-/// separately) collapse to the first occurrence.
-///
-/// On fetch error, the cache stores an empty map with the shorter
-/// negative TTL — this stops the home-page cold-load burst (multiple
-/// Continue Watching rows firing AniList in parallel against the
-/// 30/min unauth limit) from recurring on every navigation.
-async fn anilist_streaming_eps_cached(state: &AppState, mal_id: u32) -> HashMap<u32, String> {
-    let key = anilist_streaming_eps_key(mal_id);
-    if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
-        if let Ok(map) = serde_json::from_str::<HashMap<u32, String>>(&body) {
-            return map;
-        }
-    }
-    let outcome: std::result::Result<HashMap<u32, String>, ()> =
-        match crate::meta::anilist::streaming_episodes_for_mal_id(&state.proxy_http, mal_id, None)
-            .await
-        {
-            Ok(pairs) => {
-                let mut map: HashMap<u32, String> = HashMap::with_capacity(pairs.len());
-                for (n, url) in pairs {
-                    map.entry(n).or_insert(url);
-                }
-                Ok(map)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    mal_id,
-                    error = ?e,
-                    "anilist streamingEpisodes fetch failed; negative-caching empty result",
-                );
-                Err(())
-            }
-        };
-    cache_anilist_streaming_eps_outcome(&state.cache_pool, mal_id, &outcome);
-    outcome.unwrap_or_default()
-}
-
-/// Backfill `thumbnail.original` on Kitsu episodes from the AniList
-/// `streamingEpisodes` map. Kitsu always wins when present — its
-/// stills are consistently higher quality than the Crunchyroll
-/// promotional crops AniList carries. Episodes without a `number`
-/// can't be matched and pass through unchanged.
-fn merge_anilist_thumbs(
-    eps: Vec<KitsuEpisode>,
-    anilist: &HashMap<u32, String>,
-) -> Vec<KitsuEpisode> {
-    eps.into_iter()
-        .map(|mut ep| {
-            let already_has_thumb = ep
-                .thumbnail
-                .as_ref()
-                .and_then(|t| t.original.as_ref())
-                .is_some();
-            if already_has_thumb {
-                return ep;
-            }
-            let Some(num) = ep.number else { return ep };
-            if let Some(url) = anilist.get(&num) {
-                ep.thumbnail = Some(KitsuEpisodeThumbnail {
-                    original: Some(url.clone()),
-                });
-            }
-            ep
-        })
-        .collect()
 }
 
 /// Look up an anime by its slug — Kitsu's URL-stable identifier.
@@ -840,205 +697,6 @@ mod tests {
         include_bytes!("../../../../tests/fixtures/kitsu/search_one_piece.json");
     const DETAIL_FIXTURE: &[u8] =
         include_bytes!("../../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
-
-    // — merge_anilist_thumbs ————————————————————————————————————————————
-    //
-    // Pure helper that backfills Kitsu's null per-episode thumbnails
-    // from AniList's `streamingEpisodes` map. Kitsu always wins when
-    // present; AniList only fills genuine gaps. Used inside
-    // `kitsu_episodes` after both fetches resolve.
-
-    fn ep_with(num: u32, thumb: Option<&str>) -> crate::meta::kitsu::KitsuEpisode {
-        crate::meta::kitsu::KitsuEpisode {
-            id: format!("e{num}"),
-            canonical_title: Some(format!("Ep {num}")),
-            season_number: Some(1),
-            number: Some(num),
-            relative_number: Some(num),
-            length: None,
-            synopsis: None,
-            airdate: None,
-            thumbnail: thumb.map(|t| crate::meta::kitsu::KitsuEpisodeThumbnail {
-                original: Some(t.to_string()),
-            }),
-        }
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_keeps_kitsu_thumb_when_present() {
-        // Kitsu has its own thumbnail; AniList also has one for the
-        // same ep. Kitsu wins — its art quality is consistently higher
-        // (proper episode stills vs. Crunchyroll promotional crops).
-        let eps = vec![ep_with(1, Some("https://kitsu.cdn/1.jpg"))];
-        let mut anilist = std::collections::HashMap::new();
-        anilist.insert(1u32, "https://crunchyroll.cdn/1.jpg".to_string());
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert_eq!(
-            merged[0]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://kitsu.cdn/1.jpg"
-        );
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_fills_null_thumb_from_anilist() {
-        // The headline use-case: Kitsu has no thumb, AniList does —
-        // surface AniList's so the placeholder doesn't render.
-        let eps = vec![ep_with(54, None)];
-        let mut anilist = std::collections::HashMap::new();
-        anilist.insert(54u32, "https://crunchyroll.cdn/54.jpg".to_string());
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert_eq!(
-            merged[0]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://crunchyroll.cdn/54.jpg"
-        );
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_leaves_null_thumb_when_anilist_missing() {
-        // The "both gap" case (One Piece eps 54-61, 131-1010+): Kitsu
-        // null, AniList also has nothing. Placeholder still renders.
-        let eps = vec![ep_with(131, None)];
-        let anilist = std::collections::HashMap::<u32, String>::new();
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert!(merged[0].thumbnail.is_none());
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_handles_mixed_pool() {
-        // Realistic shape from a One Piece-shaped probe: ep 53 Kitsu
-        // present, ep 54 Kitsu null + AniList null, ep 62 Kitsu null +
-        // AniList present, ep 130 ditto.
-        let eps = vec![
-            ep_with(53, Some("https://kitsu.cdn/53.jpg")),
-            ep_with(54, None),
-            ep_with(62, None),
-            ep_with(130, None),
-        ];
-        let mut anilist = std::collections::HashMap::new();
-        anilist.insert(62u32, "https://cr.cdn/62.jpg".to_string());
-        anilist.insert(130u32, "https://cr.cdn/130.jpg".to_string());
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert_eq!(
-            merged[0]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://kitsu.cdn/53.jpg"
-        );
-        assert!(merged[1].thumbnail.is_none());
-        assert_eq!(
-            merged[2]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://cr.cdn/62.jpg"
-        );
-        assert_eq!(
-            merged[3]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://cr.cdn/130.jpg"
-        );
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_skips_eps_without_number() {
-        // Kitsu sometimes serves episodes with null `number` (mostly
-        // movies / specials in a TV show's listing). No number → no
-        // way to match an AniList entry; pass through unchanged.
-        let mut ep = ep_with(1, None);
-        ep.number = None;
-        let eps = vec![ep];
-        let mut anilist = std::collections::HashMap::new();
-        anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert!(merged[0].thumbnail.is_none());
-    }
-
-    // — anilist negative cache ————————————————————————————————————————
-    //
-    // The cache-write step is split out from the fetch step so the
-    // negative-cache contract can be tested without standing up a
-    // wiremock AniList. Two cases to pin: Ok writes the populated map
-    // for retrieval, Err writes an empty map to bound retry frequency
-    // against the rate limit. The TTL difference between the two paths
-    // is enforced by constants — not validated here — but the contract
-    // that "an Err still writes SOMETHING" is what stops the cold-load
-    // burst from recurring on every navigation.
-
-    #[test]
-    fn cache_anilist_streaming_eps_outcome_caches_success_map() {
-        let pool = crate::cache::open_in_memory().expect("in-mem pool");
-        let mut map = std::collections::HashMap::new();
-        map.insert(1u32, "https://cr.cdn/1.jpg".to_string());
-        cache_anilist_streaming_eps_outcome(&pool, 21, &Ok(map.clone()));
-        let body = meta_cache_get(&pool, "anilist:streaming-eps:v1:21")
-            .expect("cache read")
-            .expect("cache hit");
-        let back: std::collections::HashMap<u32, String> =
-            serde_json::from_str(&body).expect("json");
-        assert_eq!(back, map);
-    }
-
-    #[test]
-    fn cache_anilist_streaming_eps_outcome_negative_caches_empty_on_error() {
-        // The rate-limit-burst story: AniList 429s for MAL=21, we
-        // negative-cache an empty map so the next 5 minutes of
-        // navigation see a cache hit instead of re-burning the budget.
-        let pool = crate::cache::open_in_memory().expect("in-mem pool");
-        cache_anilist_streaming_eps_outcome(&pool, 21, &Err(()));
-        let body = meta_cache_get(&pool, "anilist:streaming-eps:v1:21")
-            .expect("cache read")
-            .expect("cache hit — empty is still a hit");
-        let back: std::collections::HashMap<u32, String> =
-            serde_json::from_str(&body).expect("json");
-        assert!(back.is_empty());
-    }
-
-    #[test]
-    fn merge_anilist_thumbs_replaces_thumbnail_with_only_null_original() {
-        // Kitsu sometimes serves `thumbnail: { original: null }` —
-        // shape-wise present, content-wise empty. Treat it the same as
-        // missing thumb and backfill from AniList.
-        let mut ep = ep_with(1, None);
-        ep.thumbnail = Some(crate::meta::kitsu::KitsuEpisodeThumbnail { original: None });
-        let eps = vec![ep];
-        let mut anilist = std::collections::HashMap::new();
-        anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
-        let merged = merge_anilist_thumbs(eps, &anilist);
-        assert_eq!(
-            merged[0]
-                .thumbnail
-                .as_ref()
-                .unwrap()
-                .original
-                .as_deref()
-                .unwrap(),
-            "https://cr.cdn/1.jpg"
-        );
-    }
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
