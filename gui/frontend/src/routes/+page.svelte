@@ -1138,8 +1138,9 @@
 	   not an ancestor) so its click never triggers play. */
 	.resume-delete {
 		position: absolute;
-		inset-block-start: var(--space-3);
-		inset-inline-end: var(--space-3);
+		/* Equal inset off the top-right corner. Single shorthand so
+		   the two values can't drift via cascade. */
+		inset: var(--space-3) var(--space-3) auto auto;
 		inline-size: 1.75rem;
 		block-size: 1.75rem;
 		display: grid;
@@ -1162,7 +1163,10 @@
 	.resume-cell:hover .resume-delete,
 	.resume-delete:focus-visible {
 		opacity: 1;
-		transform: none;
+		/* Mirror the card's hover lift (translateY(-3px) on
+		   .resume-card:hover) so the chip rides with the poster
+		   instead of letting the gap above it grow by 3px. */
+		transform: translateY(-3px);
 		pointer-events: auto;
 	}
 	.resume-delete:hover {
