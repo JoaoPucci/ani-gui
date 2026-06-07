@@ -42,7 +42,7 @@
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
-	import { kitsuGroupSiblingIds } from '$lib/history/delete-group';
+	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -118,27 +118,18 @@
 	async function confirmDelete() {
 		if (!deleteCandidate) return;
 		deleteBusy = true;
-		const clickedId = deleteCandidate.entry.id;
-		// dedupeHistoryByKitsuId collapses every history row whose
-		// resolved match shares a Kitsu id into one visible card.
-		// Deleting only the clicked row leaves its siblings in
-		// storage; the next dedupe pass surfaces a sibling and the
-		// title looks un-deleted (Codex P2). Expand to every row in
-		// the group so the user's confirm matches the visible card.
-		const groupIds = kitsuGroupSiblingIds(clickedId, history ?? [], historyMatches);
-		const idsToRemove = new Set(groupIds);
 		try {
-			// Serialize, do NOT Promise.all — the backend's historyDelete
-			// is a read-modify-write of the ani-hsts file with an atomic
-			// rename, with no shared lock. Concurrent deletes can both
-			// rebase from the original file and the last rename wins,
-			// silently reintroducing the other sibling (Codex P2).
-			for (const id of groupIds) {
-				await historyDelete(id);
-			}
-			// Optimistic local filter — the whole group disappears
-			// together so dedupe can't resurface a sibling.
-			history = history ? history.filter((e) => !idsToRemove.has(e.id)) : history;
+			// Decision + transition logic lives in the helper per
+			// AGENTS.md §2 (Codex P2 #3369181727): group expansion +
+			// serialized backend deletes + filtered-history compute,
+			// all unit-covered in delete-controller.test.ts. The
+			// component stays as modal/busy glue.
+			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
+				history: history ?? [],
+				matches: historyMatches,
+				historyDelete
+			});
+			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
