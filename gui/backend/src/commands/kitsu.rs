@@ -15,8 +15,8 @@
 
 use crate::app::AppState;
 use crate::cache::ttl::{
-    ANILIST_STREAMING_EPS_TTL, ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL,
-    TRENDING_TTL,
+    ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL, ANIME_DETAIL_TTL, DISCOVERY_TTL,
+    EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
 };
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::kitsu_warm::warm_signed_image_urls;
@@ -949,6 +949,46 @@ mod tests {
         anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
         let merged = merge_anilist_thumbs(eps, &anilist);
         assert!(merged[0].thumbnail.is_none());
+    }
+
+    // — anilist negative cache ————————————————————————————————————————
+    //
+    // The cache-write step is split out from the fetch step so the
+    // negative-cache contract can be tested without standing up a
+    // wiremock AniList. Two cases to pin: Ok writes the populated map
+    // for retrieval, Err writes an empty map to bound retry frequency
+    // against the rate limit. The TTL difference between the two paths
+    // is enforced by constants — not validated here — but the contract
+    // that "an Err still writes SOMETHING" is what stops the cold-load
+    // burst from recurring on every navigation.
+
+    #[test]
+    fn cache_anilist_streaming_eps_outcome_caches_success_map() {
+        let pool = crate::cache::open_in_memory().expect("in-mem pool");
+        let mut map = std::collections::HashMap::new();
+        map.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+        cache_anilist_streaming_eps_outcome(&pool, 21, &Ok(map.clone()));
+        let body = meta_cache_get(&pool, "anilist:streaming-eps:v1:21")
+            .expect("cache read")
+            .expect("cache hit");
+        let back: std::collections::HashMap<u32, String> =
+            serde_json::from_str(&body).expect("json");
+        assert_eq!(back, map);
+    }
+
+    #[test]
+    fn cache_anilist_streaming_eps_outcome_negative_caches_empty_on_error() {
+        // The rate-limit-burst story: AniList 429s for MAL=21, we
+        // negative-cache an empty map so the next 5 minutes of
+        // navigation see a cache hit instead of re-burning the budget.
+        let pool = crate::cache::open_in_memory().expect("in-mem pool");
+        cache_anilist_streaming_eps_outcome(&pool, 21, &Err(()));
+        let body = meta_cache_get(&pool, "anilist:streaming-eps:v1:21")
+            .expect("cache read")
+            .expect("cache hit — empty is still a hit");
+        let back: std::collections::HashMap<u32, String> =
+            serde_json::from_str(&body).expect("json");
+        assert!(back.is_empty());
     }
 
     #[test]

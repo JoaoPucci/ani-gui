@@ -28,6 +28,15 @@ pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 /// release.
 pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
+/// Short negative-cache TTL for AniList `streamingEpisodes` lookups
+/// that error out (typically 429 in the home-page cold-load burst
+/// where multiple Continue Watching rows each fire an AniList call
+/// in parallel against the 30/min unauth limit). Caching empty for
+/// a few minutes stops the burst from recurring on every navigation
+/// while still letting retries happen after the rate-limit window
+/// resets.
+pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60); // 5min
+
 /// TTL for title-match cache (Kitsu/AniList → allanime id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
