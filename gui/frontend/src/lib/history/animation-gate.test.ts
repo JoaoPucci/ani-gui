@@ -43,7 +43,7 @@ describe('createAnimationGate', () => {
 		const c = clock();
 		const gate = createAnimationGate(350, c);
 
-		gate.open(['del-1', 'del-2'], ['surv-3']);
+		gate.open(['del-1', 'del-2'], ['surv-3', 'surv-4']);
 		expect(gate.shouldAnimateRemoval('del-1')).toBe(true);
 		expect(gate.shouldAnimateRemoval('del-2')).toBe(true);
 		expect(gate.shouldAnimateShift('surv-3')).toBe(true);
@@ -55,9 +55,37 @@ describe('createAnimationGate', () => {
 
 		c.advance(349);
 		expect(gate.shouldAnimateRemoval('del-1')).toBe(true);
+		// surv-4 is still available (never read) until the window
+		// expires; surv-3 was consumed above so checking it would
+		// return false even without the timer (covered separately).
+		expect(gate.shouldAnimateShift('surv-4')).toBe(true);
 		c.advance(1);
 		expect(gate.shouldAnimateRemoval('del-1')).toBe(false);
-		expect(gate.shouldAnimateShift('surv-3')).toBe(false);
+		expect(gate.shouldAnimateShift('surv-4')).toBe(false);
+	});
+
+	test('shouldAnimateShift is ONE-SHOT — a second call for the same id returns false', () => {
+		// Scenario Codex P2 #3369293607 caught: user deletes A.
+		// During the 350ms window a background dedupe mutation
+		// removes a different row, causing remaining survivors to
+		// re-flip. The shift gate must not re-fire on survivors
+		// it already animated for the user's delete.
+		const c = clock();
+		const gate = createAnimationGate(350, c);
+		gate.open([], ['B']);
+		expect(gate.shouldAnimateShift('B')).toBe(true);
+		expect(gate.shouldAnimateShift('B')).toBe(false);
+	});
+
+	test('shouldAnimateRemoval is NOT consumed (deleted nodes can only fire once anyway)', () => {
+		// The removed element leaves the DOM after its out:scale
+		// completes, so an idempotent (non-consuming) read is fine
+		// — and keeps the gate simpler to reason about.
+		const c = clock();
+		const gate = createAnimationGate(350, c);
+		gate.open(['A'], []);
+		expect(gate.shouldAnimateRemoval('A')).toBe(true);
+		expect(gate.shouldAnimateRemoval('A')).toBe(true);
 	});
 
 	test('a concurrent dedupe-removal of a shifted survivor does NOT animate as a removal', () => {

@@ -11,13 +11,15 @@
  *     #3369281412) — otherwise the flicker creeps back in via
  *     the survivor's out-transition.
  *
- *   - `shouldAnimateShift(id)`: drives `animate:flip`. True for
- *     the ids that physically shift left to close the gap —
- *     i.e., the survivors positioned after the first removed
- *     row in the visible order at delete time. These are the
- *     only nodes whose `animate:flip` should actually play; any
- *     other flip happening during the window is a concurrent
- *     dedupe-driven reposition and should pass through instantly.
+ *   - `shouldAnimateShift(id)`: drives `animate:flip`, ONE-SHOT.
+ *     True for the ids that physically shift left to close the
+ *     gap — i.e., the survivors positioned after the first
+ *     removed row in the visible order at delete time. Each id
+ *     is consumed on the first true return so a subsequent
+ *     mutation (e.g., a concurrent dedupe) can't re-fire the
+ *     same survivor's flip during the 350ms window. Without the
+ *     consume, the row-remount flicker could come back right
+ *     after the user's delete (Codex P2 #3369293607).
  *
  * Two non-obvious bits:
  *
@@ -83,7 +85,14 @@ export function createAnimationGate(
 			return removed.has(id);
 		},
 		shouldAnimateShift(id: string) {
-			return shifted.has(id);
+			// One-shot: consume the id on first true return so a
+			// subsequent flip on the same survivor (e.g., from a
+			// background dedupe mutation during the open window)
+			// reads false and short-circuits. See class docblock for
+			// the Codex P2 #3369293607 scenario.
+			if (!shifted.has(id)) return false;
+			shifted.delete(id);
+			return true;
 		}
 	};
 }
