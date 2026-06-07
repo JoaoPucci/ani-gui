@@ -77,14 +77,23 @@ const ERROR_PAGE = `<!doctype html>
  *   - `stop()`: cancel before a callback lands (e.g. user closes the
  *     consent page in the OS browser).
  */
+// Loopback families the callback server binds. Codex P2 #3370110077:
+// `server.listen(port, "localhost")` resolves to a single address via
+// Node's `dns.lookup()` — usually the OS-preferred family — but the
+// browser's redirect to `localhost:53682` can choose the OTHER family
+// on dual-stack systems, leaving the callback refused. Bind both
+// literals so either family routes home.
+const LOOPBACK_HOSTS = ["127.0.0.1", "::1"];
+
 function startOAuthServer() {
-  let server = null;
+  let servers = [];
   let timer = null;
   let resolveFn = null;
   let rejectFn = null;
   let readyResolve = null;
   let readyReject = null;
   let readySettled = false;
+  let pendingBinds = LOOPBACK_HOSTS.length;
   const promise = new Promise((resolve, reject) => {
     resolveFn = resolve;
     rejectFn = reject;
@@ -109,17 +118,22 @@ function startOAuthServer() {
       clearTimeout(timer);
       timer = null;
     }
-    if (server) {
-      const s = server;
-      server = null;
-      // close() on http.Server is graceful — it lets in-flight requests
-      // finish. We've already written the success page so the request
-      // is complete; closing is immediate.
-      s.close();
+    // Close every bound family in one pass. close() is graceful —
+    // it lets the in-flight callback request finish (we've already
+    // written the success page) and then the underlying socket goes
+    // away. The handler-side rejectFn / resolveFn are idempotent.
+    const live = servers;
+    servers = [];
+    for (const s of live) {
+      try {
+        s.close();
+      } catch {
+        /* already closed — ignore */
+      }
     }
   }
 
-  server = http.createServer((req, res) => {
+  function handler(req, res) {
     // Only the /callback path matters; everything else gets 404'd so
     // a stray favicon request doesn't trigger anything.
     const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -141,49 +155,47 @@ function startOAuthServer() {
     if (!code || !state) {
       res.writeHead(400, { "content-type": "text/plain" });
       res.end("Missing code or state");
-      // Don't shutdown — keep waiting for a clean callback.
+      // Don't shutdown — keep waiting for a clean callback on either family.
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(SUCCESS_PAGE);
     shutdown();
     resolveFn({ code, state });
-  });
+  }
 
-  server.on("error", (err) => {
+  function onBindError(err) {
     // EADDRINUSE on bind is the most common failure — the user has
     // another OAuth-running process or a leftover instance bound to
     // 53682. Surface it specifically so the toast can be actionable.
+    // If ANY family fails to bind, treat the whole attempt as failed:
+    // the redirect might route to the missing family and the user
+    // would just hang. Tear down what did bind and reject.
     const wrapped =
       err && err.code === "EADDRINUSE"
         ? new Error("port_busy: 53682 is held by another process")
         : new Error(`server_error: ${err && err.message ? err.message : "unknown"}`);
-    // Reject the bind-completion promise too so the caller bails
-    // before opening the browser. Both callbacks see the same Error.
+    shutdown();
     settleReady(false, wrapped);
     rejectFn(wrapped);
-    server = null;
-  });
+  }
 
-  // The bind is async — the socket is only accepting once `listening`
-  // fires. Resolve `ready` here so main.js can await it before opening
-  // the OS browser (Codex P2 #3370057919).
-  server.on("listening", () => {
-    settleReady(true);
-  });
-
-  try {
-    // Bind to "localhost" so the listener picks up whichever stack
-    // (IPv4 127.0.0.1 vs IPv6 ::1) the OS's DNS resolution prefers.
-    // The provider redirects to the literal string `localhost:53682`
-    // and the browser resolves it via the same DNS; binding only to
-    // 127.0.0.1 misses ::1 on dual-stack hosts where IPv6 is
-    // preferred. Codex P2 #3369941706.
-    server.listen(OAUTH_CALLBACK_PORT, "localhost");
-  } catch (err) {
-    const wrapped = new Error(`server_error: ${err.message}`);
-    settleReady(false, wrapped);
-    rejectFn(wrapped);
+  for (const host of LOOPBACK_HOSTS) {
+    const s = http.createServer(handler);
+    s.on("error", onBindError);
+    s.on("listening", () => {
+      pendingBinds -= 1;
+      if (pendingBinds === 0) settleReady(true);
+    });
+    servers.push(s);
+    try {
+      s.listen(OAUTH_CALLBACK_PORT, host);
+    } catch (err) {
+      // Sync throw is rare (most failures arrive via 'error' event)
+      // but route through the same drain so we never leak a half-bound
+      // server. Don't double-report if a sibling already rejected.
+      if (!readySettled) onBindError(err);
+    }
   }
 
   // Set a hard wall-clock timeout so a never-completing flow doesn't
