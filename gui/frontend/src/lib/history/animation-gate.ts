@@ -1,19 +1,32 @@
 /**
  * Open/auto-close gate the Continue Watching row uses to decide
  * whether out:scale + animate:flip should play a real transition
- * or short-circuit to duration 0. Scoped per-id so a concurrent
- * `dedupeHistoryByKitsuId` mutation during the open window can't
- * piggyback on the gate and reintroduce the flicker — only ids
- * the caller passed to `open()` animate.
+ * or short-circuit to duration 0. Scoped per-id AND split per
+ * transition kind:
  *
- * Three non-obvious bits this helper exists to test:
+ *   - `shouldAnimateRemoval(id)`: drives `out:scale`. True only
+ *     for the ids the user's confirm actually deleted. A
+ *     shifted-survivor that gets dedupe-removed by a background
+ *     callback during the window MUST NOT animate (Codex P2
+ *     #3369281412) — otherwise the flicker creeps back in via
+ *     the survivor's out-transition.
+ *
+ *   - `shouldAnimateShift(id)`: drives `animate:flip`. True for
+ *     the ids that physically shift left to close the gap —
+ *     i.e., the survivors positioned after the first removed
+ *     row in the visible order at delete time. These are the
+ *     only nodes whose `animate:flip` should actually play; any
+ *     other flip happening during the window is a concurrent
+ *     dedupe-driven reposition and should pass through instantly.
+ *
+ * Two non-obvious bits:
  *
  *  1. `dedupeHistoryByKitsuId` collapses sibling rows as their
- *     Kitsu matches resolve on home page mount. Without a gate,
- *     every dedupe-driven removal fires out:scale and every
- *     survivor fires animate:flip — the resize-flicker users see
- *     on Home → Detail → back. The gate is empty during load;
- *     `shouldAnimate(id)` returns false for every dedupe row.
+ *     Kitsu matches resolve on home page mount. Without the
+ *     gate, every dedupe-driven removal fires out:scale and
+ *     every survivor fires animate:flip — the resize-flicker
+ *     users see on Home → Detail → back. Both sets are empty
+ *     during load; `shouldAnimate*` returns false everywhere.
  *
  *  2. Svelte 5 batches the `history = ...` and `deleteBusy =
  *     false` assignments in `confirmDelete`'s finally block.
@@ -22,28 +35,20 @@
  *     and skips the animation the user just triggered. The gate
  *     auto-closes on a timer that fires AFTER Svelte's
  *     synchronous batch processes, so the factory still reads
- *     `shouldAnimate(id) === true` at fire time.
- *
- *  3. While the timer is open (typically 350ms), a background
- *     `loadContinueWatchingState` callback can resolve another
- *     row's Kitsu match and trigger a dedupe-removal of a
- *     *different* row. With a boolean gate, that unrelated
- *     removal would also animate. With per-id scope, only the
- *     ids the user's delete actually touched animate — the
- *     concurrent dedupe rows are absent from the set and
- *     short-circuit to duration 0.
+ *     `shouldAnimate*(id) === true` at fire time.
  *
  * `holdMs` defaults to 350ms — the longest transition this gate
- * guards is the 280ms `animate:flip` + 70ms margin. Tune via the
- * factory arg if the transition durations change.
+ * guards is the 280ms `animate:flip` + 70ms margin.
  */
 export interface AnimationGate {
-	/** Mark a specific set of ids as "should animate"; auto-closes
-	 *  after `holdMs`. Idempotent — calling open() again replaces
-	 *  the set and resets the timer. */
-	open(ids: Iterable<string>): void;
-	/** Read at transition fire time. */
-	shouldAnimate(id: string): boolean;
+	/** Set the two ids buckets and start the auto-close timer.
+	 *  Idempotent — calling open again replaces both sets and
+	 *  resets the timer. */
+	open(removedIds: Iterable<string>, shiftedIds: Iterable<string>): void;
+	/** Read by `cwOutScale` at transition fire time. */
+	shouldAnimateRemoval(id: string): boolean;
+	/** Read by `cwFlip` at transition fire time. */
+	shouldAnimateShift(id: string): boolean;
 }
 
 export interface AnimationGateDeps {
@@ -60,19 +65,25 @@ export function createAnimationGate(
 	holdMs = 350,
 	deps: AnimationGateDeps = defaultDeps
 ): AnimationGate {
-	let active = new Set<string>();
+	let removed = new Set<string>();
+	let shifted = new Set<string>();
 	let timer: unknown = null;
 	return {
-		open(ids: Iterable<string>) {
-			active = new Set(ids);
+		open(removedIds: Iterable<string>, shiftedIds: Iterable<string>) {
+			removed = new Set(removedIds);
+			shifted = new Set(shiftedIds);
 			if (timer !== null) deps.clearTimeout(timer);
 			timer = deps.setTimeout(() => {
-				active = new Set();
+				removed = new Set();
+				shifted = new Set();
 				timer = null;
 			}, holdMs);
 		},
-		shouldAnimate(id: string) {
-			return active.has(id);
+		shouldAnimateRemoval(id: string) {
+			return removed.has(id);
+		},
+		shouldAnimateShift(id: string) {
+			return shifted.has(id);
 		}
 	};
 }
@@ -84,18 +95,15 @@ export function createAnimationGate(
  * ones `animate:flip` should animate to slide-in-to-close-the-gap.
  *
  * Survivors that sit BEFORE every removed row don't shift; only
- * survivors AFTER the first removed index move left. We return a
- * combined list of removed ids + shifted survivor ids so the
- * caller can hand the whole set to `open()`.
+ * survivors AFTER the first removed index move left.
  */
-export function idsAffectedByDelete(
+export function shiftedSurvivorIds(
 	snapshot: readonly string[],
 	removedIds: readonly string[]
 ): string[] {
 	if (removedIds.length === 0) return [];
 	const removedSet = new Set(removedIds);
 	const firstRemovedIdx = snapshot.findIndex((id) => removedSet.has(id));
-	if (firstRemovedIdx < 0) return [...removedIds];
-	const shiftedSurvivors = snapshot.slice(firstRemovedIdx + 1).filter((id) => !removedSet.has(id));
-	return [...removedIds, ...shiftedSurvivors];
+	if (firstRemovedIdx < 0) return [];
+	return snapshot.slice(firstRemovedIdx + 1).filter((id) => !removedSet.has(id));
 }

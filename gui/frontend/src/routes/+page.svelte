@@ -13,25 +13,25 @@
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
-	import { createAnimationGate, idsAffectedByDelete } from '$lib/history/animation-gate';
+	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 
-	// Per-id gate for the Continue Watching row's out:scale +
-	// animate:flip. Scoped per-id (not a global boolean) so a
-	// background `loadContinueWatchingState` callback that
-	// dedupe-removes an unrelated row during the open window
-	// can't piggyback on the gate and reintroduce the flicker
-	// (Codex P2 #3369269241). The factories read the cell's
-	// data-entry-id off the DOM node and check membership;
-	// dedupe-removed rows aren't in the set and short-circuit.
+	// Per-id, split-per-transition gate for the Continue Watching
+	// row's out:scale + animate:flip. The two factories check
+	// different buckets so a shifted-survivor that gets
+	// dedupe-removed by a background callback during the gate's
+	// open window can't piggyback on the flip allowlist and trigger
+	// a spurious scale-out (Codex P2 #3369281412). cwOutScale only
+	// animates ids the user explicitly deleted; cwFlip animates the
+	// survivors that physically shift to close the gap.
 	const deleteAnimationGate = createAnimationGate();
 	function cwOutScale(node: Element) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimate(id)) return { duration: 0 };
+		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return { duration: 0 };
 		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
 	}
 	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimate(id)) return { duration: 0 };
+		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return { duration: 0 };
 		return flip(node, animation, { duration: 280, easing: quintOut });
 	}
 	import { resolve } from '$app/paths';
@@ -164,7 +164,7 @@
 			// out-transition factory is about to fire — not when the
 			// click was first received. See $lib/history/animation-gate
 			// for the per-id scope + Svelte-batched-reset story.
-			deleteAnimationGate.open(idsAffectedByDelete(snapshot, result.removedIds));
+			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
 			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;

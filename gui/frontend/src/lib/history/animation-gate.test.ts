@@ -1,12 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createAnimationGate, idsAffectedByDelete } from './animation-gate';
+import { createAnimationGate, shiftedSurvivorIds } from './animation-gate';
 
-/**
- * Tiny shim so each test can step time deterministically without
- * vi.useFakeTimers globally — Svelte's test environment is fussy
- * about which timer the framework owns. The shim records pending
- * callbacks; `advance(ms)` triggers any whose target time is ≤ ms.
- */
 function clock() {
 	let now = 0;
 	type Pending = { id: number; at: number; cb: () => void };
@@ -38,99 +32,127 @@ function clock() {
 }
 
 describe('createAnimationGate', () => {
-	test('starts empty (the load-time dedupe-flicker case)', () => {
+	test('starts with both buckets empty (the dedupe-on-load case)', () => {
 		const c = clock();
 		const gate = createAnimationGate(350, c);
-		expect(gate.shouldAnimate('aa-1')).toBe(false);
+		expect(gate.shouldAnimateRemoval('aa-1')).toBe(false);
+		expect(gate.shouldAnimateShift('aa-2')).toBe(false);
 	});
 
-	test('open(ids) flips on only the listed ids until holdMs elapses', () => {
+	test('open() puts ids in their own bucket until holdMs elapses', () => {
 		const c = clock();
 		const gate = createAnimationGate(350, c);
 
-		gate.open(['aa-1', 'aa-2']);
-		expect(gate.shouldAnimate('aa-1')).toBe(true);
-		expect(gate.shouldAnimate('aa-2')).toBe(true);
-		// Unrelated row that happened to dedupe-collapse during the
-		// window must NOT animate — Codex P2 #3369269241.
-		expect(gate.shouldAnimate('aa-9')).toBe(false);
+		gate.open(['del-1', 'del-2'], ['surv-3']);
+		expect(gate.shouldAnimateRemoval('del-1')).toBe(true);
+		expect(gate.shouldAnimateRemoval('del-2')).toBe(true);
+		expect(gate.shouldAnimateShift('surv-3')).toBe(true);
+		// Removed ids must NOT animate flip, and shifted ids must
+		// NOT animate the scale-out — that crosstalk is exactly the
+		// Codex P2 #3369281412 leak this split exists to prevent.
+		expect(gate.shouldAnimateShift('del-1')).toBe(false);
+		expect(gate.shouldAnimateRemoval('surv-3')).toBe(false);
 
 		c.advance(349);
-		expect(gate.shouldAnimate('aa-1')).toBe(true);
-
+		expect(gate.shouldAnimateRemoval('del-1')).toBe(true);
 		c.advance(1);
-		expect(gate.shouldAnimate('aa-1')).toBe(false);
+		expect(gate.shouldAnimateRemoval('del-1')).toBe(false);
+		expect(gate.shouldAnimateShift('surv-3')).toBe(false);
 	});
 
-	test('open() called again replaces the set and resets the timer', () => {
+	test('a concurrent dedupe-removal of a shifted survivor does NOT animate as a removal', () => {
+		// Scenario the Codex P2 caught:
+		//   1. User deletes A. shifted = [B, C].
+		//   2. During the 350ms window, an unrelated
+		//      loadContinueWatchingState callback resolves B's
+		//      Kitsu match and dedupe removes B from the each.
+		//   3. The factory MUST see shouldAnimateRemoval('B') ===
+		//      false — that scale-out is from dedupe, not from the
+		//      user delete.
+		const c = clock();
+		const gate = createAnimationGate(350, c);
+		gate.open(['A'], ['B', 'C']);
+		expect(gate.shouldAnimateRemoval('B')).toBe(false);
+	});
+
+	test('open() called again replaces both sets and resets the timer', () => {
 		const c = clock();
 		const gate = createAnimationGate(350, c);
 
-		gate.open(['aa-1']);
+		gate.open(['A'], ['B']);
 		c.advance(300);
-		expect(gate.shouldAnimate('aa-1')).toBe(true);
+		expect(gate.shouldAnimateRemoval('A')).toBe(true);
 
-		// User triggers another delete on a different row while
-		// the first transition is still in flight. The second
-		// open() replaces the set + restarts the timer.
-		gate.open(['aa-2']);
-		expect(gate.shouldAnimate('aa-1')).toBe(false);
-		expect(gate.shouldAnimate('aa-2')).toBe(true);
+		gate.open(['X'], ['Y']);
+		expect(gate.shouldAnimateRemoval('A')).toBe(false);
+		expect(gate.shouldAnimateShift('B')).toBe(false);
+		expect(gate.shouldAnimateRemoval('X')).toBe(true);
+		expect(gate.shouldAnimateShift('Y')).toBe(true);
 		expect(c.pending()).toBe(1); // first timer cancelled
 
 		c.advance(349);
-		expect(gate.shouldAnimate('aa-2')).toBe(true);
+		expect(gate.shouldAnimateRemoval('X')).toBe(true);
 		c.advance(1);
-		expect(gate.shouldAnimate('aa-2')).toBe(false);
+		expect(gate.shouldAnimateRemoval('X')).toBe(false);
 	});
 
-	test('the default delegates to global setTimeout/clearTimeout', () => {
+	test('default factory delegates open + auto-close to global setTimeout', () => {
 		vi.useFakeTimers();
 		try {
 			const gate = createAnimationGate(50);
-			gate.open(['x']);
-			expect(gate.shouldAnimate('x')).toBe(true);
+			gate.open(['x'], []);
+			expect(gate.shouldAnimateRemoval('x')).toBe(true);
 			vi.advanceTimersByTime(50);
-			expect(gate.shouldAnimate('x')).toBe(false);
+			expect(gate.shouldAnimateRemoval('x')).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test('default factory routes a second open through global clearTimeout', () => {
+		// Coverage hook for `defaultDeps.clearTimeout` — the lambda
+		// only runs when an active timer needs cancelling, so a
+		// single-open test misses it. Calling open() twice in a row
+		// exercises the cancel path.
+		vi.useFakeTimers();
+		try {
+			const gate = createAnimationGate(50);
+			gate.open(['x'], []);
+			gate.open(['y'], []); // cancels the first timer
+			expect(gate.shouldAnimateRemoval('x')).toBe(false);
+			expect(gate.shouldAnimateRemoval('y')).toBe(true);
 		} finally {
 			vi.useRealTimers();
 		}
 	});
 });
 
-describe('idsAffectedByDelete', () => {
-	test('returns the removed ids + every survivor positioned after the first removed', () => {
-		// Snapshot: [A, B, C, D, E]. Remove C and D. Survivors that
-		// shift left to close the gap: E (the only one after the
-		// first removed index 2). A and B don't shift.
-		const result = idsAffectedByDelete(['A', 'B', 'C', 'D', 'E'], ['C', 'D']);
-		expect(result.sort()).toEqual(['C', 'D', 'E']);
+describe('shiftedSurvivorIds', () => {
+	test('returns every survivor positioned after the first removed', () => {
+		// Snapshot: [A, B, C, D, E]. Remove C and D. Only E sits
+		// after the first removed index (2) and survives, so E is
+		// the only shifted id.
+		expect(shiftedSurvivorIds(['A', 'B', 'C', 'D', 'E'], ['C', 'D'])).toEqual(['E']);
 	});
 
-	test('returns just the removed ids when nothing follows them', () => {
-		// Trailing delete: nothing shifts because there are no
-		// survivors past the removed range.
-		const result = idsAffectedByDelete(['A', 'B', 'C'], ['B', 'C']);
-		expect(result.sort()).toEqual(['B', 'C']);
+	test('returns nothing for a trailing delete (no survivor shifts)', () => {
+		expect(shiftedSurvivorIds(['A', 'B', 'C'], ['B', 'C'])).toEqual([]);
 	});
 
-	test('skips removed ids when computing the shifted survivors', () => {
-		// Removed = [B, D]. Survivors after first removed (B at
-		// index 1): C, D, E. Filter out the removed ids: C, E.
-		const result = idsAffectedByDelete(['A', 'B', 'C', 'D', 'E'], ['B', 'D']);
-		expect(result.sort()).toEqual(['B', 'C', 'D', 'E']);
+	test('skips removed ids when scanning past the first-removed index', () => {
+		// Removed = [B, D]. Survivors after first removed (B at 1):
+		// [C, D, E]. Filter out the removed → [C, E].
+		expect(shiftedSurvivorIds(['A', 'B', 'C', 'D', 'E'], ['B', 'D'])).toEqual(['C', 'E']);
 	});
 
-	test('returns an empty list when nothing is removed', () => {
-		expect(idsAffectedByDelete(['A', 'B'], [])).toEqual([]);
+	test('returns nothing when nothing is removed', () => {
+		expect(shiftedSurvivorIds(['A', 'B'], [])).toEqual([]);
 	});
 
-	test('returns the removed ids when none of them appear in the snapshot', () => {
-		// Defensive: if the snapshot doesn't include the removed
-		// ids (e.g., already evicted before the snapshot was taken),
-		// there's no position to shift survivors from. Still report
-		// the removed ids so out:scale fires on whatever DOM nodes
-		// happen to be tagged with them.
-		expect(idsAffectedByDelete(['A', 'B'], ['X', 'Y']).sort()).toEqual(['X', 'Y']);
+	test('returns nothing when the removed ids are not in the snapshot', () => {
+		// Defensive: if the snapshot doesn't include any of the
+		// removed ids (already evicted before the snapshot was
+		// captured), there's no position to shift survivors from.
+		expect(shiftedSurvivorIds(['A', 'B'], ['X', 'Y'])).toEqual([]);
 	});
 });
