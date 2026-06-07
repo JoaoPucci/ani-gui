@@ -13,6 +13,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { m } from '$lib/paraglide/messages';
+	import { imageProxyUrl } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { Pkce } from '$lib/account/pkce';
 	import {
@@ -205,12 +206,12 @@
 				</span>
 			</header>
 
-			{#if anilistState.kind === 'connected' || anilistState.kind === 'expired'}
+			{#if anilistState.kind === 'connected' || anilistState.kind === 'expired' || (anilistState.kind === 'error' && anilistState.account)}
 				<div class="connected-row">
-					{#if anilistState.account.avatar_url}
+					{#if anilistState.account && imageProxyUrl(anilistState.account.avatar_url)}
 						<img
 							class="avatar"
-							src={anilistState.account.avatar_url}
+							src={imageProxyUrl(anilistState.account.avatar_url)}
 							alt=""
 							width="48"
 							height="48"
@@ -219,14 +220,14 @@
 					<div class="user-meta">
 						<p class="username">
 							<span class="username-prefix">{m.account_card_username_prefix()}</span>
-							<strong>{anilistState.account.username}</strong>
+							<strong>{anilistState.account?.username}</strong>
 						</p>
 					</div>
 				</div>
 			{/if}
 
 			<div class="actions">
-				{#if anilistState.kind === 'disconnected' || anilistState.kind === 'error'}
+				{#if anilistState.kind === 'disconnected' || (anilistState.kind === 'error' && !anilistState.account)}
 					<button type="button" class="btn btn-primary" onclick={connectAniList}>
 						{m.account_card_action_connect()}
 					</button>
@@ -234,7 +235,7 @@
 					<button type="button" class="btn" disabled>
 						{m.account_card_status_connecting()}
 					</button>
-				{:else if anilistState.kind === 'expired'}
+				{:else if anilistState.kind === 'expired' || (anilistState.kind === 'error' && anilistState.account)}
 					<button type="button" class="btn btn-primary" onclick={connectAniList}>
 						{m.account_card_action_reconnect()}
 					</button>
