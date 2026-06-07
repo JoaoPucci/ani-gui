@@ -22,45 +22,16 @@ if (!apiBase) {
 	console.error('[preload] no --ani-gui-api-base flag — renderer will fail to reach the backend');
 }
 
-// Seed Paraglide's localStorage key from config.toml BEFORE the page's
-// JS runs. Paraglide's resolution strategy is
-// `['localStorage', 'preferredLanguage', 'baseLocale']` — without this
-// nudge, a fresh launch on a pt-BR / es-419 / ru config.toml renders
-// in English until the user re-picks the language in Settings, because
-// Paraglide never reads our config file. Main process reads the
-// locale at startup and rides it in here via additionalArguments;
-// missing flag (no config, no locale key) leaves Paraglide to its
-// own fallbacks.
-const PARAGLIDE_LOCALE_KEY = 'PARAGLIDE_LOCALE';
+// Capture the locale main.js read from config.toml so the renderer
+// can flip Paraglide directly at boot (see src/hooks.client.ts).
+// Previous design relayed through localStorage and raced Paraglide's
+// bootstrap; the renderer now reads `window.aniGui.configLocale`
+// from the contextBridge below and calls setLocale before any
+// `m.foo()` evaluates. Missing flag → null → renderer falls back to
+// Paraglide's own resolution.
 const localeFlag = '--ani-gui-locale=';
 const localeArg = process.argv.find((a) => a.startsWith(localeFlag));
 const configLocale = localeArg ? localeArg.slice(localeFlag.length) : null;
-if (configLocale) {
-	try {
-		// localStorage is shared between the preload world and the
-		// page world (contextIsolation only partitions the JS heaps,
-		// not DOM-backed storage). Writing here lands in time for
-		// Paraglide's bootstrap because the preload runs before any
-		// page-script `import`s resolve.
-		//
-		// CRITICAL: only seed when localStorage is empty. If it
-		// already has any value, leave it alone — either Paraglide
-		// wrote it during a Settings-page language change (config
-		// is being persisted asynchronously and may still be the
-		// old value at this point) or a prior session's choice is
-		// still authoritative. Overwriting would round-trip the
-		// user's just-picked language back to whatever main.js read
-		// from config.toml at launch.
-		if (!window.localStorage.getItem(PARAGLIDE_LOCALE_KEY)) {
-			window.localStorage.setItem(PARAGLIDE_LOCALE_KEY, configLocale);
-		}
-	} catch (e) {
-		// localStorage can throw in sandboxed iframes / about:blank
-		// edges. Log and fall through; the page boots in baseLocale,
-		// matching pre-change behaviour.
-		console.warn('[preload] localStorage seed failed:', e && e.message);
-	}
-}
 
 contextBridge.exposeInMainWorld('aniGui', {
 	apiBase,
@@ -96,11 +67,16 @@ contextBridge.exposeInMainWorld('aniGui', {
 		return ipcRenderer.invoke('ani-gui:reveal-in-folder', dirPath);
 	},
 
-	// Surface the locale the main process read from config.toml so
-	// the renderer can verify the preload bootstrap landed (and could
-	// re-seed localStorage if needed after a user-driven change in
-	// Settings). Null when no config or no locale key.
-	configLocale,
+	// Read the CURRENT locale from config.toml synchronously. Re-reads
+	// the file every call (main.js handler) so a renderer reload
+	// after a Settings change sees the just-persisted value — the
+	// static `configLocale` snapshot taken at window-creation time is
+	// frozen and would silently revert the user's pick on reload.
+	// Returns null when no config or no `locale` key. Used at boot
+	// by `src/hooks.client.ts`.
+	getConfigLocale() {
+		return ipcRenderer.sendSync('ani-gui:read-config-locale');
+	},
 
 	// Push the renderer's current active-download count to main so
 	// the close handler can decide whether to prompt the user before

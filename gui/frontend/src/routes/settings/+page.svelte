@@ -19,6 +19,7 @@
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
+	import { applyLocale } from '$lib/settings/apply-locale';
 
 	let cfg = $state<Config | null>(null);
 	let info = $state<AppInfo | null>(null);
@@ -102,19 +103,20 @@
 	}
 	function setLocale(l: string) {
 		if (!cfg) return;
-		// Persist the picked locale FIRST, then ask Paraglide to flip
-		// — paraglideSetLocale defaults to `reload: true`, which is
-		// the only reliable way to re-render every `m.foo()` call in
-		// the SPA (Paraglide v2's plain function calls don't trigger
-		// Svelte reactivity on their own). Persisting first means the
-		// reloaded page reads the new locale from both localStorage
-		// (Paraglide's strategy) and config.toml (our backend).
-		void persist({ ...cfg, locale: l }).then(() => {
-			try {
-				paraglideSetLocale(l as Parameters<typeof paraglideSetLocale>[0]);
-			} catch {
-				/* unknown locale — fall through; the picker's `disabled`
-				   guard should keep this branch unreachable. */
+		// Order (persist → runtime flip) is load-bearing for the
+		// preload's "config wins" policy — see $lib/settings/apply-locale
+		// and its tests for the why. paraglideSetLocale defaults to
+		// `reload: true`, which is the only reliable way to re-render
+		// every `m.foo()` call in the SPA.
+		void applyLocale(l, cfg, {
+			persist,
+			setRuntimeLocale: (next) => {
+				try {
+					paraglideSetLocale(next as Parameters<typeof paraglideSetLocale>[0]);
+				} catch {
+					/* unknown locale — fall through; the picker's `disabled`
+					   guard should keep this branch unreachable. */
+				}
 			}
 		});
 	}

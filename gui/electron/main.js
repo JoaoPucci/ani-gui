@@ -554,6 +554,18 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
   activeDownloadCount = Math.floor(count);
 });
 
+// Synchronous read of the current locale from config.toml. The renderer
+// needs this on EVERY load (not just at first window creation) because
+// changing the language in Settings triggers a renderer reload but
+// leaves main.js running — the locale value baked into
+// `webPreferences.additionalArguments` at window-creation time stays
+// frozen at whatever config.toml held when Electron first started.
+// Re-reading the file here is cheap (config is a handful of KB) and
+// happens once per renderer load.
+ipcMain.on("ani-gui:read-config-locale", (event) => {
+  event.returnValue = readConfigLocale();
+});
+
 /**
  * Close-path guard. Called from window 'close' and app 'before-quit';
  * intercepts both X-button and Cmd+Q / dock-quit / OS shutdown. Uses
