@@ -212,6 +212,25 @@ function spawnBackend() {
     // dialog with a download link instead of just logging.
     let fatalReason = null;
 
+    // Backend prints the renderer-only secret on a separate handshake
+    // line right after ANI_GUI_LISTENING. We may see either order on
+    // the stdout buffer, so cache one while waiting for the other and
+    // only resolve once both are in hand. Used to gate the disconnect-
+    // after-expiry cache wipe (Codex P2 #3370011855).
+    let pendingApiBase = null;
+    let pendingInternalSecret = null;
+    const maybeResolve = () => {
+      if (resolved) return;
+      if (pendingApiBase && pendingInternalSecret) {
+        resolved = true;
+        resolve({
+          child,
+          apiBase: pendingApiBase,
+          internalSecret: pendingInternalSecret,
+        });
+      }
+    };
+
     const onLine = (line) => {
       if (resolved) {
         // After handshake, downstream stdout becomes log output;
@@ -219,10 +238,16 @@ function spawnBackend() {
         process.stdout.write(`[backend] ${line}\n`);
         return;
       }
-      const match = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
-      if (match) {
-        resolved = true;
-        resolve({ child, apiBase: match[1] });
+      const apiMatch = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
+      if (apiMatch) {
+        pendingApiBase = apiMatch[1];
+        maybeResolve();
+        return;
+      }
+      const secretMatch = line.match(/^ANI_GUI_INTERNAL_SECRET\s+(\S+)/);
+      if (secretMatch) {
+        pendingInternalSecret = secretMatch[1];
+        maybeResolve();
       }
     };
 
@@ -321,7 +346,7 @@ function killBackendTree() {
   }
 }
 
-async function createWindow(apiBase) {
+async function createWindow(apiBase, internalSecret) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -357,6 +382,9 @@ async function createWindow(apiBase) {
         const args = [`--ani-gui-api-base=${apiBase}`];
         const locale = readConfigLocale();
         if (locale) args.push(`--ani-gui-locale=${locale}`);
+        if (internalSecret) {
+          args.push(`--ani-gui-internal-secret=${internalSecret}`);
+        }
         return args;
       })(),
     },
@@ -772,9 +800,9 @@ app.whenReady().then(async () => {
     // app doesn't use.
     Menu.setApplicationMenu(null);
     if (!IS_DEV) registerAppProtocol();
-    const { child, apiBase } = await spawnBackend();
+    const { child, apiBase, internalSecret } = await spawnBackend();
     backendChild = child;
-    await createWindow(apiBase);
+    await createWindow(apiBase, internalSecret);
   } catch (err) {
     console.error("[main] startup failed:", err);
     // Surface a friendly install dialog when the backend bailed out

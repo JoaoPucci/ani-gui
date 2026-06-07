@@ -18,6 +18,7 @@ import {
 	openExternal,
 	openOAuth,
 	persistAccount,
+	readErrorBody,
 	readPersistedAccount
 } from './api';
 import type { PersistedAccount, PkceWire } from './types';
@@ -43,6 +44,23 @@ function mockFetchJson<T>(body: T, status = 200) {
 		})
 	);
 }
+
+describe('readErrorBody', () => {
+	it('returns the body text on success', async () => {
+		const res = new Response('boom', { status: 500 });
+		await expect(readErrorBody(res)).resolves.toBe('boom');
+	});
+
+	it('swallows .text() rejection and returns empty string', async () => {
+		// A truncated response stream or decode error must not mask
+		// the underlying HTTP status — the caller still throws an
+		// AccountApiError, just without a body excerpt.
+		const res = {
+			text: vi.fn().mockRejectedValue(new Error('stream broken'))
+		} as unknown as Response;
+		await expect(readErrorBody(res)).resolves.toBe('');
+	});
+});
 
 describe('AccountApiError', () => {
 	it('includes the status + detail in its message', () => {
@@ -144,6 +162,39 @@ describe('dropListCache', () => {
 		expect(String(url)).toContain('/api/account/list/anilist/cache');
 		expect(String(url)).not.toContain('user_id'); // backend derives from bearer (Codex P1)
 		expect((init as RequestInit).method).toBe('DELETE');
+	});
+
+	it('threads the fallback user_id into the query when provided', async () => {
+		// Codex P2 #3369997650: disconnect-after-expiry path. The
+		// renderer hands the safeStorage-persisted user_id back as
+		// `?fallback_user_id=` so the backend can still clear the
+		// cache when me() 401s.
+		const spy = mockFetchJson('');
+		await dropListCache('anilist', 'tok', 'u7');
+		const [url] = spy.mock.calls[0];
+		expect(String(url)).toContain('fallback_user_id=u7');
+	});
+
+	it('attaches the internal-secret header when present on window.aniGui', async () => {
+		// Codex P2 #3370011855: the renderer-only header gates the
+		// backend's fallback path so a cross-origin tab can't wipe
+		// another user's cache by guessing the user_id.
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'deadbeef' }
+		};
+		const spy = mockFetchJson('');
+		await dropListCache('anilist', 'tok', 'u7');
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('deadbeef');
+	});
+
+	it('omits the internal-secret header when window.aniGui has no secret', async () => {
+		const spy = mockFetchJson('');
+		await dropListCache('anilist', 'tok');
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBeUndefined();
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {

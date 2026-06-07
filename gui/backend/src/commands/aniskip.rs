@@ -98,6 +98,7 @@ mod tests {
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),
             config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
         }
     }
 

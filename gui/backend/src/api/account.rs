@@ -244,14 +244,16 @@ async fn delete_list_cache(
     let user_id = match account::me(&state, kind, &tokens).await {
         Ok(profile) => profile.user_id,
         Err(AniError::InvalidToken) => {
-            // Codex P2 #3369997650: disconnect-after-expiry. The bearer
-            // upstream-401'd, so we can't derive identity from it. Fall
-            // back to the renderer-supplied user_id from safeStorage —
-            // the renderer learned it on a prior successful me() and
-            // kept it locally. Without this fallback the cache rows
-            // linger forever after the bearer expires, breaking the
-            // docs/PRIVACY.md promise that the local list cache is
-            // dropped on disconnect.
+            // Codex P2 #3370011855: disconnect-after-expiry. The bearer
+            // upstream-401'd, so we can't derive identity from it.
+            // Falling back on the renderer-supplied user_id alone (the
+            // shape Codex P2 #3369997650 opened) would let a cross-
+            // origin tab under the permissive CORS layer wipe any
+            // user's cache — just send `Bearer garbage` + a guessed
+            // user_id. Gate the fallback on the per-process random
+            // internal secret only the Electron renderer learns at
+            // startup (via stdout handshake + preload bridge).
+            state.internal_secret.validate_header(&headers)?;
             q.fallback_user_id.ok_or(AniError::InvalidToken)?
         }
         Err(e) => return Err(e),

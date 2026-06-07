@@ -132,3 +132,244 @@ fn auth_url_response_serialise_round_trip() {
     let s = serde_json::to_string(&r).unwrap();
     assert!(s.contains("anilist.co/x"));
 }
+
+#[test]
+fn disconnect_fallback_query_defaults_to_none_when_field_missing() {
+    let q: DisconnectFallbackQuery = serde_urlencoded::from_str("").unwrap();
+    assert!(q.fallback_user_id.is_none());
+}
+
+#[test]
+fn disconnect_fallback_query_extracts_user_id() {
+    let q: DisconnectFallbackQuery = serde_urlencoded::from_str("fallback_user_id=u7").unwrap();
+    assert_eq!(q.fallback_user_id.as_deref(), Some("u7"));
+}
+
+// ─── Router-level tests ──────────────────────────────────────────────
+//
+// These exercise the handler bodies through the real axum router so
+// the lines they touch get attributed to `api/account.rs` by lcov. The
+// upstream-network calls (`account::me` → AniList GraphQL) can't reach
+// anything in tests; we either:
+//
+//   - pin paths that bail BEFORE the upstream call (missing/bad
+//     bearer, unknown provider slug, malformed JSON), or
+//   - exercise paths whose explicit InvalidToken branch fires when
+//     the upstream call returns an error (the delete fallback gate).
+//
+// Coverage push for the `account.rs` ratchet under Codex P2
+// #3370011855 — the new security gate landed without test cover for
+// the handler body, which pushed CRAP over the ceiling.
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use http_body_util::BodyExt;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tempfile::TempDir;
+use tokio::sync::Semaphore;
+use tower::ServiceExt;
+
+use crate::account::InternalSecret;
+use crate::app::{AppState, SCRAPER_CONCURRENCY};
+use crate::meta::kitsu::KitsuClient;
+use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
+
+fn test_state(td: &TempDir) -> Arc<AppState> {
+    Arc::new(AppState {
+        secret: AppSecret::random(),
+        sessions: SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
+        ani_cli_path: PathBuf::from("/tmp/ani-cli"),
+        bash_path: None,
+        bundled_bin: None,
+        history_path: td.path().join("ani-hsts"),
+        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        image_cache_dir: td.path().join("images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: KitsuClient::new(reqwest::Client::new()),
+        config_path: td.path().join("config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
+    })
+}
+
+async fn body_text(resp: axum::response::Response) -> String {
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+#[tokio::test]
+async fn post_auth_url_rejects_unknown_provider() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/auth-url/unknown")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"state":"x","pkce":{"verifier":"v","challenge":"c","method":"plain"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // parse_provider returns Metadata, which IntoResponse maps to a
+    // structured error response — the exact status varies by error
+    // kind, but it's never 2xx.
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_auth_url_rejects_invalid_pkce_method() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/auth-url/anilist")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"state":"x","pkce":{"verifier":"v","challenge":"c","method":"junk"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_auth_url_builds_anilist_url_for_plain_pkce() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/auth-url/anilist")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"state":"csrf","pkce":{"verifier":"v","challenge":"c","method":"plain"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body = body_text(r).await;
+    assert!(body.contains("anilist.co"), "got: {body}");
+}
+
+#[tokio::test]
+async fn post_me_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/me/anilist")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_list_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/list/anilist")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn get_cached_list_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/account/list/anilist/cached")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn delete_list_cache_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/account/list/anilist/cache")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
+    // Codex P2 #3370011855: the disconnect-after-expiry fallback
+    // requires the per-process internal secret. A cross-origin tab
+    // can send `Bearer garbage` plus a guessed user_id under
+    // permissive CORS, but it can't know the 32 bytes of entropy.
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/account/list/anilist/cache?fallback_user_id=u7")
+                .header("authorization", "Bearer not-a-real-bearer")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn delete_list_cache_fallback_rejects_when_secret_header_wrong() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/account/list/anilist/cache?fallback_user_id=u7")
+                .header("authorization", "Bearer not-a-real-bearer")
+                .header("x-ani-gui-internal-secret", "wrong-value")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}

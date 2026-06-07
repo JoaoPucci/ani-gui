@@ -10,6 +10,8 @@ import {
 	connectAccount,
 	connectErrorKey,
 	disconnectAccount,
+	restoreAfterFailedConnect,
+	userIdFor,
 	type ConnectFlowDeps,
 	type DisconnectFlowDeps
 } from './connect-flow';
@@ -129,6 +131,33 @@ describe('bearerFor', () => {
 	});
 });
 
+describe('userIdFor', () => {
+	it('returns the stored user_id for connected state', () => {
+		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
+		expect(userIdFor(s)).toBe('u7');
+	});
+
+	it('returns the stored user_id for expired state', () => {
+		const s: ProviderState = { kind: 'expired', account: payload() };
+		expect(userIdFor(s)).toBe('u7');
+	});
+
+	it('returns the stored user_id for error state with account', () => {
+		const s: ProviderState = { kind: 'error', account: payload(), message: 'x' };
+		expect(userIdFor(s)).toBe('u7');
+	});
+
+	it('returns null for error state with no account', () => {
+		const s: ProviderState = { kind: 'error', account: null, message: 'x' };
+		expect(userIdFor(s)).toBeNull();
+	});
+
+	it('returns null for disconnected and connecting states', () => {
+		expect(userIdFor({ kind: 'disconnected' })).toBeNull();
+		expect(userIdFor({ kind: 'connecting' })).toBeNull();
+	});
+});
+
 describe('disconnectAccount', () => {
 	function disconnectDeps(): DisconnectFlowDeps {
 		return {
@@ -171,6 +200,43 @@ describe('disconnectAccount', () => {
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
 		const r = await disconnectAccount('anilist', s, deps);
 		expect(r.kind).toBe('token_clear_failed');
+	});
+});
+
+describe('restoreAfterFailedConnect', () => {
+	// Codex P2 #3370011851: failed reconnect should NOT discard the
+	// account from the UI when the underlying token is still on disk.
+	it('keeps expired-with-account when reconnect fails', () => {
+		const s: ProviderState = { kind: 'expired', account: payload() };
+		expect(restoreAfterFailedConnect(s)).toEqual(s);
+	});
+
+	it('keeps error-with-account when connect-from-error fails again', () => {
+		const s: ProviderState = { kind: 'error', account: payload(), message: 'last sync failed' };
+		expect(restoreAfterFailedConnect(s)).toEqual(s);
+	});
+
+	it('falls through to disconnected when prior error had no account', () => {
+		const s: ProviderState = { kind: 'error', account: null, message: 'x' };
+		expect(restoreAfterFailedConnect(s)).toEqual({ kind: 'disconnected' });
+	});
+
+	it('falls through to disconnected when prior state was disconnected', () => {
+		expect(restoreAfterFailedConnect({ kind: 'disconnected' })).toEqual({ kind: 'disconnected' });
+	});
+
+	it('falls through to disconnected when prior state was connecting', () => {
+		// connecting is a transient state — the user just clicked
+		// Connect; if it failed, there's no account to preserve.
+		expect(restoreAfterFailedConnect({ kind: 'connecting' })).toEqual({ kind: 'disconnected' });
+	});
+
+	it("treats connected as a normal disconnect fall-through (shouldn't happen in practice)", () => {
+		// connectAniList sets connecting before calling connectAccount,
+		// so this branch is unreachable from the page — kept as a
+		// defensive fallback for the type system.
+		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
+		expect(restoreAfterFailedConnect(s)).toEqual({ kind: 'disconnected' });
 	});
 });
 

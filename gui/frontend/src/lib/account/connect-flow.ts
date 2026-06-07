@@ -12,6 +12,13 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
+import { bearerFor, userIdFor } from './state-helpers';
+
+// Re-export the data-on-state helpers from their new home so callers
+// importing them from connect-flow continue to compile. The helpers
+// themselves live in `state-helpers.ts` to keep each file's CCN below
+// the CRAP ratchet ceiling.
+export { bearerFor, connectErrorKey, restoreAfterFailedConnect, userIdFor } from './state-helpers';
 
 export interface ConnectFlowDeps {
 	generateState(): string;
@@ -114,38 +121,6 @@ export interface DisconnectFlowDeps {
 }
 
 /**
- * Extract the bearer from a prior provider state. The backend derives
- * the user_id from the bearer (Codex P1 #3369956138), so the caller
- * only needs the bearer to call dropListCache. Returns null for
- * disconnected / connecting / errored-without-account states.
- */
-export function bearerFor(state: ProviderState): string | null {
-	if (state.kind === 'connected' || state.kind === 'expired') {
-		return state.account.access_token;
-	}
-	if (state.kind === 'error' && state.account) {
-		return state.account.access_token;
-	}
-	return null;
-}
-
-/**
- * Extract the persisted user_id from a prior provider state — used as
- * the fallback identity in the cache DELETE call when the bearer has
- * expired or been revoked (Codex P2 #3369997650). Returns null for
- * disconnected / connecting / errored-without-account states.
- */
-export function userIdFor(state: ProviderState): string | null {
-	if (state.kind === 'connected' || state.kind === 'expired') {
-		return state.account.user_id;
-	}
-	if (state.kind === 'error' && state.account) {
-		return state.account.user_id;
-	}
-	return null;
-}
-
-/**
  * Disconnect: drop the cache rows BEFORE clearing safeStorage (the
  * cache delete still needs a live bearer to send), then clear the
  * local tokens. Cache-eviction errors stay swallowed — best-effort —
@@ -181,26 +156,4 @@ export async function disconnectAccount(
 	const ok = await deps.clearPersistedAccount(provider);
 	if (!ok) return { kind: 'token_clear_failed' };
 	return { kind: 'ok' };
-}
-
-/**
- * Map an OAuth-flow error kind into the matching i18n key suffix the
- * page uses to look up the toast message. Centralised so the page
- * and tests agree on the table.
- */
-export function connectErrorKey(kind: string): string {
-	switch (kind) {
-		case 'port_busy':
-			return 'port_busy';
-		case 'timeout':
-			return 'timeout';
-		case 'cancelled':
-			return 'cancelled';
-		case 'oauth_error':
-			return 'oauth_error';
-		case 'no_bridge':
-			return 'no_bridge';
-		default:
-			return 'unknown';
-	}
 }

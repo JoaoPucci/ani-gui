@@ -19,6 +19,9 @@
 
 pub mod cache;
 pub mod credentials;
+pub mod internal_secret;
 pub mod pkce;
 pub mod provider;
 pub mod status;
+
+pub use internal_secret::{InternalSecret, INTERNAL_SECRET_HEADER};

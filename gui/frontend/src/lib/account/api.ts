@@ -7,15 +7,7 @@
  * self-contained and easy to remove if needed.
  */
 
-import type {
-	ListEntry,
-	OAuthOpenResult,
-	PersistedAccount,
-	PkceWire,
-	Provider,
-	Tokens,
-	UserProfile
-} from './types';
+import type { ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types';
 
 // Window.aniGui augmentation lives in lib/api.ts to keep one source
 // of truth for the bridge shape; TypeScript can't merge contradictory
@@ -34,6 +26,21 @@ async function apiBase(): Promise<string> {
 	throw new Error('ani-gui apiBase is not configured');
 }
 
+/**
+ * Read the response body for inclusion in `AccountApiError.detail`.
+ * Swallows body-read failures (truncated stream, decode error, etc.)
+ * so the rejection still carries the status code. Extracted from the
+ * post/get/delete helpers so the error path has one tested home
+ * instead of three identical inline `.catch(() => '')` arrows.
+ */
+export async function readErrorBody(res: Response): Promise<string> {
+	try {
+		return await res.text();
+	} catch {
+		return '';
+	}
+}
+
 async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -44,8 +51,7 @@ async function postJson<T>(path: string, body: unknown, bearer?: string): Promis
 		body: JSON.stringify(body)
 	});
 	if (!res.ok) {
-		const detail = await res.text().catch(() => '');
-		throw new AccountApiError(res.status, detail);
+		throw new AccountApiError(res.status, await readErrorBody(res));
 	}
 	return (await res.json()) as T;
 }
@@ -56,20 +62,22 @@ async function getJson<T>(path: string, bearer?: string): Promise<T> {
 	if (bearer) headers.authorization = `Bearer ${bearer}`;
 	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
 	if (!res.ok) {
-		const detail = await res.text().catch(() => '');
-		throw new AccountApiError(res.status, detail);
+		throw new AccountApiError(res.status, await readErrorBody(res));
 	}
 	return (await res.json()) as T;
 }
 
-async function deleteEndpoint(path: string, bearer?: string): Promise<void> {
+async function deleteEndpoint(
+	path: string,
+	bearer?: string,
+	extraHeaders?: Record<string, string>
+): Promise<void> {
 	const base = await apiBase();
-	const headers: Record<string, string> = {};
+	const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
 	if (bearer) headers.authorization = `Bearer ${bearer}`;
 	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE', headers });
 	if (!res.ok) {
-		const detail = await res.text().catch(() => '');
-		throw new AccountApiError(res.status, detail);
+		throw new AccountApiError(res.status, await readErrorBody(res));
 	}
 }
 
@@ -136,59 +144,32 @@ export function dropListCache(
 	// Codex P2 #3369997650), the call 401s; pass the safeStorage-
 	// persisted user_id as `?fallback_user_id=` so the backend can
 	// still clear the cache instead of leaving orphan rows behind.
+	//
+	// Codex P2 #3370011855: the fallback alone is exploitable under
+	// permissive CORS — a cross-origin tab can send `Bearer garbage`
+	// plus a guessed user_id and wipe another user's cache. Send the
+	// per-process renderer-only secret so the backend can require
+	// proof we're the Electron renderer before honouring the fallback.
 	const path = fallbackUserId
 		? `/api/account/list/${provider}/cache?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
 		: `/api/account/list/${provider}/cache`;
-	return deleteEndpoint(path, bearer);
+	return deleteEndpoint(path, bearer, internalSecretHeader());
 }
 
-// ─── Electron preload helpers ───────────────────────────────────────
-
-export function readPersistedAccount(provider: Provider): PersistedAccount | null {
-	const bridge = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
-	if (!bridge) return null;
-	const r = bridge.getToken(provider);
-	if (!r.ok) return null;
-	return r.payload;
+function internalSecretHeader(): Record<string, string> {
+	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
+	const secret = w?.aniGui?.internalSecret;
+	return secret ? { 'x-ani-gui-internal-secret': secret } : {};
 }
 
-export async function persistAccount(
-	provider: Provider,
-	payload: PersistedAccount
-): Promise<boolean> {
-	const bridge = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
-	if (!bridge) return false;
-	const r = await bridge.setToken(provider, payload);
-	return r.ok;
-}
-
-export async function clearPersistedAccount(provider: Provider): Promise<boolean> {
-	const bridge = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
-	if (!bridge) return false;
-	const r = await bridge.clearToken(provider);
-	return r.ok;
-}
-
-export async function openOAuth(authUrl: string): Promise<OAuthOpenResult> {
-	const bridge = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
-	if (!bridge) {
-		return {
-			ok: false,
-			kind: 'no_bridge',
-			message: 'Electron preload is missing the account surface'
-		};
-	}
-	return bridge.openOAuth({ authUrl });
-}
-
-export async function cancelOAuth(): Promise<boolean> {
-	const bridge = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
-	if (!bridge) return false;
-	return bridge.cancelOAuth();
-}
-
-export async function openExternal(url: string): Promise<boolean> {
-	const fn = (typeof window !== 'undefined' ? window : undefined)?.aniGui?.openExternal;
-	if (!fn) return false;
-	return fn(url);
-}
+// Bridge helpers now live in `./bridge.ts` so api.ts can stay focused
+// on the HTTP-call surface (which has its own CCN to manage). Re-
+// exported here so existing imports `from './api'` keep compiling.
+export {
+	cancelOAuth,
+	clearPersistedAccount,
+	openExternal,
+	openOAuth,
+	persistAccount,
+	readPersistedAccount
+} from './bridge';

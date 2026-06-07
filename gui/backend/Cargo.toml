@@ -55,6 +55,7 @@ hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
+subtle = "2"
 
 # ANSI escape stripping for ani-cli stdout
 strip-ansi-escapes = "0.2"

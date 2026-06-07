@@ -29,7 +29,8 @@
 		bearerFor,
 		connectAccount,
 		connectErrorKey,
-		disconnectAccount
+		disconnectAccount,
+		restoreAfterFailedConnect
 	} from '$lib/account/connect-flow';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -42,6 +43,12 @@
 
 	async function connectAniList() {
 		const provider: Provider = 'anilist';
+		// Snapshot the pre-click state so a failed reconnect-from-
+		// expired (or connect-from-error-with-account) can restore the
+		// UI to it instead of collapsing to `disconnected` — the
+		// persisted token is still on disk and hydrate() would resurrect
+		// it on next launch anyway (Codex P2 #3370011851).
+		const prev = accountStore.byProvider[provider];
 		accountStore.setConnecting(provider);
 		const r = await connectAccount(provider, {
 			generateState: randomState,
@@ -59,7 +66,7 @@
 			accountStore.setConnected(provider, r.account);
 			return;
 		}
-		accountStore.setDisconnected(provider);
+		applyRestoreState(provider, restoreAfterFailedConnect(prev));
 		if (r.kind === 'oauth_error' || r.kind === 'state_mismatch') {
 			const key =
 				r.kind === 'state_mismatch'
@@ -77,6 +84,29 @@
 			? `${m.account_connect_error_unknown()} (${status})`
 			: m.account_connect_error_unknown();
 		toastStore.push({ kind: 'error', message });
+	}
+
+	function applyRestoreState(provider: Provider, restored: ProviderState): void {
+		// Thin dispatch from the restore helper to the matching store
+		// setter. Kept here (one switch) rather than inside the store
+		// so the helper stays a pure data->data function the tests can
+		// pin without mocking the store.
+		switch (restored.kind) {
+			case 'expired':
+				accountStore.setExpired(provider, restored.account);
+				return;
+			case 'error':
+				if (restored.account) {
+					// setError pulls the account from the prior state in
+					// the store — set it back as expired-with-account
+					// first so setError finds it, then promote to error.
+					accountStore.setExpired(provider, restored.account);
+				}
+				accountStore.setError(provider, restored.message);
+				return;
+			default:
+				accountStore.setDisconnected(provider);
+		}
 	}
 
 	async function disconnect(provider: Provider) {
