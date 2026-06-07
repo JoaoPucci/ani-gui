@@ -17,6 +17,7 @@
 //! Electron's `safeStorage` IPC for the decrypted bearer when it needs
 //! to call upstream — see `.planning/account-integration.md` §3.4.
 
+pub mod cache;
 pub mod credentials;
 pub mod pkce;
 pub mod provider;
