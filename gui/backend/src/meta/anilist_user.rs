@@ -258,17 +258,22 @@ impl UserListProvider for AniListProvider {
         Ok(out)
     }
 
+    // TODO(PR #4): SaveMediaListEntry mutation — write-back lands
+    // alongside the mark-watched fan-out across connected trackers.
+    // Until then the route layer short-circuits on this Err and the
+    // /account UI doesn't expose the "edit progress" affordance.
     async fn update_entry(
         &self,
         _tokens: &Tokens,
         _id: ProviderMediaId,
         _update: EntryUpdate,
     ) -> Result<ListEntry> {
-        unimplemented!("update_entry stub — green commit pins PR #4 deferral")
+        Err(AniError::Metadata)
     }
 
+    // TODO(PR #4): DeleteMediaListEntry mutation — see update_entry.
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
-        unimplemented!("delete_entry stub — green commit pins PR #4 deferral")
+        Err(AniError::Metadata)
     }
 }
 
