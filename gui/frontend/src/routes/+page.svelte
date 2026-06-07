@@ -10,7 +10,9 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import { fade, scale } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import {
@@ -612,7 +614,12 @@
 				Number.isFinite(lastWatched) ? lastWatched : null,
 				playableCount ?? match?.episode_count ?? null
 			)}
-			<div class="resume-cell" style="--accent: {accent};">
+			<div
+				class="resume-cell"
+				style="--accent: {accent};"
+				out:scale={{ duration: 240, start: 0.6, opacity: 0, easing: quintOut }}
+				animate:flip={{ duration: 280, easing: quintOut }}
+			>
 				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
 			     - match === undefined : the per-row loader hasn't
