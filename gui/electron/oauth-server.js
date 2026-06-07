@@ -63,23 +63,46 @@ const ERROR_PAGE = `<!doctype html>
 </main></body></html>`;
 
 /**
- * Start the OAuth callback server. Returns a Promise that resolves
- * with `{ code, state }` on a successful callback, or rejects with a
- * descriptive Error on timeout / port-in-use / explicit cancel.
+ * Start the OAuth callback server. Returns a handle with:
  *
- * The returned object also includes a `stop()` method the caller can
- * use to cancel before a callback lands (e.g. user closes the consent
- * page in the OS browser).
+ *   - `ready`: Promise resolving when the socket is bound + accepting
+ *     (the `listening` event has fired). Rejects on EADDRINUSE before
+ *     bind completes. The caller MUST await this before opening the
+ *     consent URL in the OS browser — otherwise an already-authorised
+ *     browser profile that redirects immediately can race the bind
+ *     and hit ECONNREFUSED. Codex P2 #3370057919.
+ *   - `promise`: resolves with `{ code, state }` on a successful
+ *     callback, or rejects with a descriptive Error on timeout /
+ *     port-in-use / explicit cancel.
+ *   - `stop()`: cancel before a callback lands (e.g. user closes the
+ *     consent page in the OS browser).
  */
 function startOAuthServer() {
   let server = null;
   let timer = null;
   let resolveFn = null;
   let rejectFn = null;
+  let readyResolve = null;
+  let readyReject = null;
+  let readySettled = false;
   const promise = new Promise((resolve, reject) => {
     resolveFn = resolve;
     rejectFn = reject;
   });
+  const ready = new Promise((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  // Stash a single-fire dispatcher so the same path (bind error,
+  // EADDRINUSE before listening, sync throw) settles `ready` exactly
+  // once — Promise resolve/reject are idempotent but linting + the
+  // mental model are cleaner with the guard.
+  function settleReady(ok, err) {
+    if (readySettled) return;
+    readySettled = true;
+    if (ok) readyResolve();
+    else readyReject(err);
+  }
 
   function shutdown() {
     if (timer) {
@@ -131,12 +154,22 @@ function startOAuthServer() {
     // EADDRINUSE on bind is the most common failure — the user has
     // another OAuth-running process or a leftover instance bound to
     // 53682. Surface it specifically so the toast can be actionable.
-    if (err && err.code === "EADDRINUSE") {
-      rejectFn(new Error("port_busy: 53682 is held by another process"));
-    } else {
-      rejectFn(new Error(`server_error: ${err && err.message ? err.message : "unknown"}`));
-    }
+    const wrapped =
+      err && err.code === "EADDRINUSE"
+        ? new Error("port_busy: 53682 is held by another process")
+        : new Error(`server_error: ${err && err.message ? err.message : "unknown"}`);
+    // Reject the bind-completion promise too so the caller bails
+    // before opening the browser. Both callbacks see the same Error.
+    settleReady(false, wrapped);
+    rejectFn(wrapped);
     server = null;
+  });
+
+  // The bind is async — the socket is only accepting once `listening`
+  // fires. Resolve `ready` here so main.js can await it before opening
+  // the OS browser (Codex P2 #3370057919).
+  server.on("listening", () => {
+    settleReady(true);
   });
 
   try {
@@ -148,7 +181,9 @@ function startOAuthServer() {
     // preferred. Codex P2 #3369941706.
     server.listen(OAUTH_CALLBACK_PORT, "localhost");
   } catch (err) {
-    rejectFn(new Error(`server_error: ${err.message}`));
+    const wrapped = new Error(`server_error: ${err.message}`);
+    settleReady(false, wrapped);
+    rejectFn(wrapped);
   }
 
   // Set a hard wall-clock timeout so a never-completing flow doesn't
@@ -161,8 +196,13 @@ function startOAuthServer() {
 
   return {
     promise,
+    ready,
     stop: () => {
       shutdown();
+      // If stop() fires before the listening event resolves the ready
+      // promise (e.g. renderer cancels during port-busy resolution),
+      // settle it as a cancel so an awaiting caller doesn't hang.
+      settleReady(false, new Error("cancelled"));
       rejectFn(new Error("cancelled"));
     },
   };

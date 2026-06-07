@@ -18,6 +18,7 @@
 	import {
 		buildAuthUrl,
 		exchangeCode,
+		fetchAndCacheList,
 		fetchMe,
 		openOAuth,
 		openExternal,
@@ -64,6 +65,17 @@
 		});
 		if (r.kind === 'connected') {
 			accountStore.setConnected(provider, r.account);
+			// Codex P2 #3370057922: seed user_list_cache for the rails +
+			// account stats that read from it (Watch Later in PR #2,
+			// progress/score in PR #4). The bearer is good and the token
+			// is already persisted; if this errors the connection is
+			// still valid — we just leave the cache empty and the next
+			// rail/sync mount will warm it. Best-effort, not fatal.
+			try {
+				await fetchAndCacheList(provider, r.account.access_token);
+			} catch {
+				/* non-fatal — next mount warms the cache */
+			}
 			return;
 		}
 		applyRestoreState(provider, restoreAfterFailedConnect(prev));

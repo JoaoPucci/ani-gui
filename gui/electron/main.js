@@ -653,8 +653,21 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
     return { ok: false, kind: "port_busy", message: String(err.message || err) };
   }
   activeOAuth = server;
-  // Open the consent URL AFTER the listener is bound; otherwise a
-  // fast redirect can race and hit a 503.
+  // Wait for the bind to complete before opening the consent URL.
+  // server.listen() is async — the `listening` event fires after
+  // server.ready resolves, and only then is the socket accepting.
+  // An already-authorised browser profile that redirects immediately
+  // would otherwise race the bind and hit ECONNREFUSED. Codex P2
+  // #3370057919.
+  try {
+    await server.ready;
+  } catch (err) {
+    activeOAuth = null;
+    const msg = String(err.message || err);
+    let kind = "error";
+    if (msg.startsWith("port_busy")) kind = "port_busy";
+    return { ok: false, kind, message: msg };
+  }
   shell.openExternal(authUrl);
   try {
     const result = await server.promise;
