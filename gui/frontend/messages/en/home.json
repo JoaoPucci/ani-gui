@@ -21,5 +21,17 @@
 	"strip_trending_caption": "this week · via AniList",
 	"strip_top_rated_eyebrow": "Top rated",
 	"strip_top_rated_caption_loading": "loading",
-	"strip_top_rated_caption": "all-time · via Kitsu"
+	"strip_top_rated_caption": "all-time · via Kitsu",
+	"delete_card_aria_label": "Remove {title} from history",
+	"delete_confirm_eyebrow": "Remove",
+	"delete_confirm_title": "Remove \"{title}\" from history?",
+	"delete_confirm_body": "You can re-add it by watching the show again.",
+	"delete_confirm_button": "Remove",
+	"clear_menu_button_aria": "History options",
+	"clear_menu_item": "Clear history",
+	"clear_confirm_eyebrow": "Clear all",
+	"clear_confirm_title_one": "Remove 1 entry from history?",
+	"clear_confirm_title_other": "Remove {count} entries from history?",
+	"clear_confirm_body": "This wipes the shared ani-cli history file. Cannot be undone.",
+	"clear_confirm_button": "Clear all"
 }

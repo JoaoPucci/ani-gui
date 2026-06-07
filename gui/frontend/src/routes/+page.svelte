@@ -17,6 +17,8 @@
 		altTitlesFromKitsu,
 		checkAvailability,
 		yearFromKitsuRef,
+		historyClear,
+		historyDelete,
 		historyList,
 		imageProxyUrl,
 		kitsuEpisodes,
@@ -50,6 +52,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { m } from '$lib/paraglide/messages';
@@ -92,6 +95,55 @@
 	// `history`. See $lib/history/dedupe for the policy and the
 	// catalog-drift scenario that motivates it (#116).
 	const dedupedHistory = $derived(history ? dedupeHistoryByKitsuId(history, historyMatches) : []);
+
+	// Delete confirmation: holds the entry pending user confirm. Null
+	// means no modal open. The modal pops over the rail; cancelling
+	// just nulls this back out, confirming fires historyDelete + local
+	// state update (optimistic — no reload to keep the deletion crisp).
+	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
+	let deleteBusy = $state(false);
+	// Kebab menu open state for the rail header.
+	let clearMenuOpen = $state(false);
+	// Clear-all confirmation modal open state.
+	let clearConfirmOpen = $state(false);
+	let clearBusy = $state(false);
+
+	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
+		deleteCandidate = { entry, displayTitle };
+	}
+	function cancelDelete() {
+		deleteCandidate = null;
+	}
+	async function confirmDelete() {
+		if (!deleteCandidate) return;
+		deleteBusy = true;
+		const id = deleteCandidate.entry.id;
+		try {
+			await historyDelete(id);
+			// Optimistic local filter so the card disappears immediately.
+			history = history ? history.filter((e) => e.id !== id) : history;
+		} finally {
+			deleteBusy = false;
+			deleteCandidate = null;
+		}
+	}
+	function openClearConfirm() {
+		clearMenuOpen = false;
+		clearConfirmOpen = true;
+	}
+	function cancelClear() {
+		clearConfirmOpen = false;
+	}
+	async function confirmClear() {
+		clearBusy = true;
+		try {
+			await historyClear();
+			history = [];
+		} finally {
+			clearBusy = false;
+			clearConfirmOpen = false;
+		}
+	}
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
 	let scrollY = $state(0);
@@ -477,12 +529,52 @@
 	{/if}
 </section>
 
+{#snippet continueHeaderTrailing()}
+	<div class="continue-menu-wrap">
+		<button
+			type="button"
+			class="continue-menu-btn"
+			aria-label={m.home_clear_menu_button_aria()}
+			aria-haspopup="true"
+			aria-expanded={clearMenuOpen}
+			onclick={(e) => {
+				e.stopPropagation();
+				clearMenuOpen = !clearMenuOpen;
+			}}
+		>
+			<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+				<circle cx="5" cy="12" r="1.6" fill="currentColor" />
+				<circle cx="12" cy="12" r="1.6" fill="currentColor" />
+				<circle cx="19" cy="12" r="1.6" fill="currentColor" />
+			</svg>
+		</button>
+		{#if clearMenuOpen}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="continue-menu-backdrop" onclick={() => (clearMenuOpen = false)}></div>
+			<menu class="continue-menu" role="menu">
+				<li role="presentation">
+					<button
+						type="button"
+						class="continue-menu-item"
+						role="menuitem"
+						onclick={openClearConfirm}
+					>
+						{m.home_clear_menu_item()}
+					</button>
+				</li>
+			</menu>
+		{/if}
+	</div>
+{/snippet}
+
 <!-- Continue Watching: only when history is non-empty -->
 {#if history && history.length > 0}
 	<Strip
 		eyebrow={m.home_strip_continue_eyebrow()}
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
+		headerTrailing={continueHeaderTrailing}
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
@@ -511,7 +603,28 @@
 				Number.isFinite(lastWatched) ? lastWatched : null,
 				playableCount ?? match?.episode_count ?? null
 			)}
-			<!-- Three states for the Continue card:
+			<div class="resume-cell" style="--accent: {accent};">
+				<button
+					type="button"
+					class="resume-delete"
+					aria-label={m.home_delete_card_aria_label({ title: target.displayTitle })}
+					onclick={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						openDeleteFor(entry, target.displayTitle);
+					}}
+				>
+					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+						<path
+							d="M6 6 18 18 M18 6 6 18"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+						/>
+					</svg>
+				</button>
+				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
 			     - match === undefined : the per-row loader hasn't
 			       fired onRowReady yet. Render as a non-interactive
@@ -520,101 +633,102 @@
 			       #3348970892).
 			     - match === null : resolution definitively failed;
 			       the row falls through to /search as a fallback. -->
-			<!-- eslint-disable svelte/no-navigation-without-resolve -->
-			{#if resumable && match}
-				<button
-					type="button"
-					class="resume-card"
-					class:resume-card-busy={isResuming}
-					style="--accent: {accent};"
-					disabled={!!resumeBusy && !isResuming}
-					onclick={() => startResume(match, nextEpisode)}
-				>
-					<span class="resume-poster">
-						{#if image}
-							<img src={image} alt="" loading="lazy" decoding="async" />
-						{:else}
-							<span class="resume-poster-placeholder" aria-hidden="true">
-								{target.displayTitle.slice(0, 2).toUpperCase()}
-							</span>
-						{/if}
-						{#if !singleVideo}
-							<!-- Suppress the "EP N" overlay for single-video
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				{#if resumable && match}
+					<button
+						type="button"
+						class="resume-card"
+						class:resume-card-busy={isResuming}
+						style="--accent: {accent};"
+						disabled={!!resumeBusy && !isResuming}
+						onclick={() => startResume(match, nextEpisode)}
+					>
+						<span class="resume-poster">
+							{#if image}
+								<img src={image} alt="" loading="lazy" decoding="async" />
+							{:else}
+								<span class="resume-poster-placeholder" aria-hidden="true">
+									{target.displayTitle.slice(0, 2).toUpperCase()}
+								</span>
+							{/if}
+							{#if !singleVideo}
+								<!-- Suppress the "EP N" overlay for single-video
 							     shows (movies + finished 1-ep OVAs/specials);
 							     the poster IS the video, no episode number
 							     to surface. The number shown matches what
 							     Continue would play — i.e. the episode about
 							     to start, not the one just watched. -->
-							<span class="resume-ep-tag" aria-hidden="true">
-								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-								<span class="resume-ep-num">{nextEpisode}</span>
-							</span>
-						{/if}
-					</span>
-					<span class="resume-body">
-						<span class="resume-show">{target.displayTitle}</span>
-						{#if ep?.canonical_title}
-							<span class="resume-title">{ep.canonical_title}</span>
-						{:else if !singleVideo}
-							<!-- Single-video shows don't need an "Episode N"
+								<span class="resume-ep-tag" aria-hidden="true">
+									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+									<span class="resume-ep-num">{nextEpisode}</span>
+								</span>
+							{/if}
+						</span>
+						<span class="resume-body">
+							<span class="resume-show">{target.displayTitle}</span>
+							{#if ep?.canonical_title}
+								<span class="resume-title">{ep.canonical_title}</span>
+							{:else if !singleVideo}
+								<!-- Single-video shows don't need an "Episode N"
 							     fallback subtitle — the show title above is
 							     enough, and the card is unambiguously a
 							     "continue this movie" affordance. -->
-							<span class="resume-title resume-title-faint"
-								>{m.home_resume_episode_label({ episode: nextEpisode })}</span
-							>
-						{/if}
-					</span>
-				</button>
-			{:else if match === undefined}
-				<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
-					<span class="resume-poster">
-						<span class="resume-poster-placeholder" aria-hidden="true">
-							{target.displayTitle.slice(0, 2).toUpperCase()}
+								<span class="resume-title resume-title-faint"
+									>{m.home_resume_episode_label({ episode: nextEpisode })}</span
+								>
+							{/if}
 						</span>
-					</span>
-					<span class="resume-body">
-						<span class="resume-show">{target.displayTitle}</span>
-					</span>
-				</div>
-			{:else}
-				<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
-					<span class="resume-poster">
-						{#if image}
-							<img src={image} alt="" loading="lazy" decoding="async" />
-						{:else}
+					</button>
+				{:else if match === undefined}
+					<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
+						<span class="resume-poster">
 							<span class="resume-poster-placeholder" aria-hidden="true">
 								{target.displayTitle.slice(0, 2).toUpperCase()}
 							</span>
-						{/if}
-						{#if !singleVideo}
-							<!-- Suppress the "EP N" overlay for single-video
+						</span>
+						<span class="resume-body">
+							<span class="resume-show">{target.displayTitle}</span>
+						</span>
+					</div>
+				{:else}
+					<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
+						<span class="resume-poster">
+							{#if image}
+								<img src={image} alt="" loading="lazy" decoding="async" />
+							{:else}
+								<span class="resume-poster-placeholder" aria-hidden="true">
+									{target.displayTitle.slice(0, 2).toUpperCase()}
+								</span>
+							{/if}
+							{#if !singleVideo}
+								<!-- Suppress the "EP N" overlay for single-video
 							     shows (movies + finished 1-ep OVAs/specials);
 							     the poster IS the video, no episode number
 							     to surface. -->
-							<span class="resume-ep-tag" aria-hidden="true">
-								<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-								<span class="resume-ep-num">{target.displayEpisode}</span>
-							</span>
-						{/if}
-					</span>
-					<span class="resume-body">
-						<span class="resume-show">{target.displayTitle}</span>
-						{#if ep?.canonical_title}
-							<span class="resume-title">{ep.canonical_title}</span>
-						{:else if !singleVideo}
-							<!-- Single-video shows don't need an "Episode N"
+								<span class="resume-ep-tag" aria-hidden="true">
+									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+									<span class="resume-ep-num">{target.displayEpisode}</span>
+								</span>
+							{/if}
+						</span>
+						<span class="resume-body">
+							<span class="resume-show">{target.displayTitle}</span>
+							{#if ep?.canonical_title}
+								<span class="resume-title">{ep.canonical_title}</span>
+							{:else if !singleVideo}
+								<!-- Single-video shows don't need an "Episode N"
 							     fallback subtitle — the show title above is
 							     enough, and the card is unambiguously a
 							     "continue this movie" affordance. -->
-							<span class="resume-title resume-title-faint"
-								>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
-							>
-						{/if}
-					</span>
-				</a>
-			{/if}
-			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+								<span class="resume-title resume-title-faint"
+									>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
+								>
+							{/if}
+						</span>
+					</a>
+				{/if}
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
 		{/each}
 	</Strip>
 {/if}
@@ -627,6 +741,32 @@
 		onDismiss={() => (resumeFailure = null)}
 	/>
 {/if}
+
+<ConfirmDialog
+	open={deleteCandidate !== null}
+	eyebrow={m.home_delete_confirm_eyebrow()}
+	title={m.home_delete_confirm_title({ title: deleteCandidate?.displayTitle ?? '' })}
+	body={m.home_delete_confirm_body()}
+	confirmLabel={m.home_delete_confirm_button()}
+	destructive
+	busy={deleteBusy}
+	onConfirm={confirmDelete}
+	onCancel={cancelDelete}
+/>
+
+<ConfirmDialog
+	open={clearConfirmOpen}
+	eyebrow={m.home_clear_confirm_eyebrow()}
+	title={(history?.length ?? 0) === 1
+		? m.home_clear_confirm_title_one()
+		: m.home_clear_confirm_title_other({ count: history?.length ?? 0 })}
+	body={m.home_clear_confirm_body()}
+	confirmLabel={m.home_clear_confirm_button()}
+	destructive
+	busy={clearBusy}
+	onConfirm={confirmClear}
+	onCancel={cancelClear}
+/>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
@@ -985,6 +1125,130 @@
 
 	/* — Continue Watching cards. The poster gives identity, the EP tag
 	     is the editorial overlay, the title + Resume CTA close the card. */
+	/* Positioning context for the per-card X chip. Adopts the card's
+	   own --accent variable so the chip inherits the same hue. */
+	.resume-cell {
+		position: relative;
+		display: block;
+	}
+	/* X chip — top-right of the rounded poster, fades in with the
+	   same dur/easing as the resume-poster's accent halo so the two
+	   land on the exact same beat of the hover transition. The chip
+	   sits outside the card's click target (resume-card is a sibling,
+	   not an ancestor) so its click never triggers play. */
+	.resume-delete {
+		position: absolute;
+		inset-block-start: var(--space-2);
+		inset-inline-end: var(--space-2);
+		inline-size: 1.75rem;
+		block-size: 1.75rem;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: color-mix(in oklab, var(--ink-000) 70%, transparent);
+		color: var(--bone-100);
+		cursor: pointer;
+		opacity: 0;
+		transform: scale(0.92);
+		transition:
+			opacity var(--dur-fast) var(--ease-out-soft),
+			transform var(--dur-fast) var(--ease-out-soft),
+			background var(--dur-fast) var(--ease-out-soft);
+		z-index: 2;
+		pointer-events: none;
+	}
+	.resume-cell:hover .resume-delete,
+	.resume-delete:focus-visible {
+		opacity: 1;
+		transform: none;
+		pointer-events: auto;
+	}
+	.resume-delete:hover {
+		background: var(--accent-oxblood);
+	}
+	.resume-delete:focus-visible {
+		outline: 2px solid var(--accent-oxblood);
+		outline-offset: 2px;
+	}
+
+	/* Continue-Watching rail kebab + dropdown. */
+	.continue-menu-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.continue-menu-btn {
+		display: inline-grid;
+		place-items: center;
+		inline-size: 2rem;
+		block-size: 2rem;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--bone-300);
+		cursor: pointer;
+		transition:
+			background var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.continue-menu-btn:hover,
+	.continue-menu-btn[aria-expanded='true'] {
+		background: var(--ink-100);
+		color: var(--bone-100);
+	}
+	.continue-menu-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 19;
+	}
+	.continue-menu {
+		position: absolute;
+		inset-block-start: calc(100% + var(--space-2));
+		inset-inline-end: 0;
+		margin: 0;
+		padding: var(--space-2);
+		list-style: none;
+		background: var(--ink-050);
+		border: 1px solid var(--ink-200);
+		border-radius: var(--radius-card);
+		box-shadow: var(--shadow-card-hover);
+		z-index: 20;
+		min-inline-size: 12rem;
+		animation: cm-rise var(--dur-fast) var(--ease-out-soft) both;
+	}
+	@keyframes cm-rise {
+		from {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+	.continue-menu-item {
+		display: block;
+		inline-size: 100%;
+		text-align: start;
+		padding: var(--space-2) var(--space-3);
+		border: none;
+		border-radius: calc(var(--radius-card) - 4px);
+		background: transparent;
+		color: var(--bone-200);
+		font: inherit;
+		font-size: var(--type-small);
+		cursor: pointer;
+		transition:
+			background var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.continue-menu-item:hover {
+		background: var(--ink-100);
+		color: var(--accent-oxblood);
+	}
+
 	.resume-card {
 		scroll-snap-align: start;
 		display: grid;

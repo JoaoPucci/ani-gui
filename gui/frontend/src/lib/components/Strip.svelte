@@ -20,6 +20,10 @@
 		/** Override the rail's inline padding (default var(--space-8)).
 		 *  Set to '0' for a strip flush with its parent. */
 		pad?: string;
+		/** Optional trailing slot in the strip header, right-aligned
+		 *  next to the eyebrow. The Continue Watching rail uses this
+		 *  for a kebab → "Clear history" affordance. */
+		headerTrailing?: Snippet;
 		children: Snippet;
 	}
 
@@ -29,6 +33,7 @@
 		headless = false,
 		cardWidth = '11.25rem',
 		pad = 'var(--space-8)',
+		headerTrailing,
 		children
 	}: Props = $props();
 
@@ -157,6 +162,9 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
+			{#if headerTrailing}
+				<div class="strip-header-trailing">{@render headerTrailing()}</div>
+			{/if}
 		</header>
 	{/if}
 
@@ -263,6 +271,11 @@
 		gap: var(--space-5);
 		padding-inline: var(--strip-pad);
 		margin-block-end: var(--space-4);
+	}
+	.strip-header-trailing {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
 	}
 
 	.strip-frame {
