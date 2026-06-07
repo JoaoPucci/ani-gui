@@ -146,8 +146,15 @@ impl UserListProvider for AniListProvider {
         parse_token_response(&bytes)
     }
 
+    /// AniList does not issue refresh tokens. Their 1-year JWT has
+    /// no refresh flow and no revocation endpoint — disconnect on
+    /// our side is "drop the token locally" and re-prompt the user.
+    /// Returning [`AniError::Metadata`] keeps this distinct from
+    /// transient Network / Upstream failures so the route layer can
+    /// surface a "this provider has no refresh flow" message rather
+    /// than retrying.
     async fn refresh(&self, _refresh_token: &str) -> Result<Tokens> {
-        unimplemented!("refresh stub — green commit pins the semantics")
+        Err(AniError::Metadata)
     }
 
     async fn me(&self, _tokens: &Tokens) -> Result<UserProfile> {
