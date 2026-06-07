@@ -13,22 +13,25 @@
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
-	import { createAnimationGate } from '$lib/history/animation-gate';
+	import { createAnimationGate, idsAffectedByDelete } from '$lib/history/animation-gate';
 
-	// Open/auto-close gate for the Continue Watching row's
-	// out:scale + animate:flip directives. Open during a
-	// user-confirmed delete, closed during dedupe-on-load list
-	// mutations (which otherwise produce the resize-flicker on
-	// Home → Detail → back). Why the auto-close timer instead of
-	// just gating on `deleteBusy`: see lib/history/animation-gate's
-	// docblock + tests for the Svelte-5-batches-the-reset story.
+	// Per-id gate for the Continue Watching row's out:scale +
+	// animate:flip. Scoped per-id (not a global boolean) so a
+	// background `loadContinueWatchingState` callback that
+	// dedupe-removes an unrelated row during the open window
+	// can't piggyback on the gate and reintroduce the flicker
+	// (Codex P2 #3369269241). The factories read the cell's
+	// data-entry-id off the DOM node and check membership;
+	// dedupe-removed rows aren't in the set and short-circuit.
 	const deleteAnimationGate = createAnimationGate();
 	function cwOutScale(node: Element) {
-		if (!deleteAnimationGate.isOn()) return { duration: 0 };
+		const id = (node as HTMLElement).dataset.entryId;
+		if (!id || !deleteAnimationGate.shouldAnimate(id)) return { duration: 0 };
 		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
 	}
 	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
-		if (!deleteAnimationGate.isOn()) return { duration: 0 };
+		const id = (node as HTMLElement).dataset.entryId;
+		if (!id || !deleteAnimationGate.shouldAnimate(id)) return { duration: 0 };
 		return flip(node, animation, { duration: 280, easing: quintOut });
 	}
 	import { resolve } from '$app/paths';
@@ -144,6 +147,13 @@
 			// serialized backend deletes + filtered-history compute,
 			// all unit-covered in delete-controller.test.ts. The
 			// component stays as modal/busy glue.
+			// Snapshot the visible order BEFORE the IPC so we can
+			// hand the gate the exact set of ids this delete
+			// touches: the removed rows themselves + every survivor
+			// whose position shifts left to fill the gap. A
+			// concurrent dedupe firing during the gate's window has
+			// different ids and short-circuits.
+			const snapshot = dedupedHistory.map((e) => e.id);
 			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
 				matches: historyMatches,
@@ -152,11 +162,9 @@
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's
 			// out-transition factory is about to fire — not when the
-			// click was first received. The IPC await can take
-			// hundreds of ms across N siblings and would otherwise
-			// drain the window before the animation could start. See
-			// $lib/history/animation-gate for the gate semantics.
-			deleteAnimationGate.open();
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			deleteAnimationGate.open(idsAffectedByDelete(snapshot, result.removedIds));
 			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
@@ -657,7 +665,13 @@
 		     `deleteBusy=false` value and the user delete won't
 		     animate. The function form re-evaluates on every
 		     fire, so the gate reads the live state. -->
-			<div class="resume-cell" style="--accent: {accent};" out:cwOutScale animate:cwFlip>
+			<div
+				class="resume-cell"
+				style="--accent: {accent};"
+				data-entry-id={entry.id}
+				out:cwOutScale
+				animate:cwFlip
+			>
 				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
 			     - match === undefined : the per-row loader hasn't
