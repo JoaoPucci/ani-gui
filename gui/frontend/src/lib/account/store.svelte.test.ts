@@ -94,6 +94,24 @@ describe('accountStore lifecycle', () => {
 		}
 	});
 
+	it('setError preserves the account when prior state was already error-with-account', () => {
+		// Codex P2 #3370096597: a second Disconnect attempt that fails
+		// token_clear must NOT drop the persisted account from the UI.
+		// Without this preservation the page collapses to bare Connect
+		// even though the token is still on disk and the user needs
+		// Disconnect to retry the clear.
+		const p = payload();
+		accountStore.setConnected('anilist', p);
+		accountStore.setError('anilist', 'first failure');
+		accountStore.setError('anilist', 'second failure');
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('error');
+		if (s.kind === 'error') {
+			expect(s.account).toEqual(p);
+			expect(s.message).toBe('second failure');
+		}
+	});
+
 	it('setDisconnected drops the prior account', () => {
 		accountStore.setConnected('anilist', payload());
 		accountStore.setDisconnected('anilist');

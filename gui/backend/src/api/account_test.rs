@@ -333,6 +333,35 @@ async fn delete_list_cache_requires_bearer() {
     assert!(!r.status().is_success());
 }
 
+#[test]
+fn me_failure_allows_fallback_for_invalid_token() {
+    assert!(me_failure_allows_renderer_fallback(&AniError::InvalidToken));
+}
+
+#[test]
+fn me_failure_allows_fallback_for_network_outage() {
+    // Codex P2 #3370096596: offline disconnects must still be able to
+    // clear the local cache rows docs/PRIVACY.md promises to drop.
+    assert!(me_failure_allows_renderer_fallback(&AniError::Network));
+}
+
+#[test]
+fn me_failure_allows_fallback_for_upstream_5xx() {
+    // Codex P2 #3370096596: a transient AniList 5xx during disconnect
+    // shouldn't strand the cache rows.
+    assert!(me_failure_allows_renderer_fallback(&AniError::Upstream {
+        status: 503
+    }));
+}
+
+#[test]
+fn me_failure_rejects_fallback_for_other_variants() {
+    // Anything else (Io, Metadata, etc.) is a real backend / data
+    // bug, not a renderer-driven retry signal — propagate as-is.
+    assert!(!me_failure_allows_renderer_fallback(&AniError::Io));
+    assert!(!me_failure_allows_renderer_fallback(&AniError::Metadata));
+}
+
 #[tokio::test]
 async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
     // Codex P2 #3370011855: the disconnect-after-expiry fallback

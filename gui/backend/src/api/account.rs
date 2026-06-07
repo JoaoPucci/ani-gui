@@ -139,6 +139,21 @@ pub struct DisconnectFallbackQuery {
     pub fallback_user_id: Option<String>,
 }
 
+/// When the disconnect-path `me()` call fails, decide whether to fall
+/// through to the renderer-supplied identity (still gated by the
+/// internal secret). Codex P2 #3370011855 opened the path for
+/// `InvalidToken`; Codex P2 #3370096596 extends it to `Network` and
+/// `Upstream` so an offline disconnect can still clear the local cache
+/// rows the docs/PRIVACY.md promise to drop. Other variants (Io, etc.)
+/// still propagate as before — they indicate the backend itself is
+/// broken, not that the upstream identity can't be reached.
+fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
+    matches!(
+        e,
+        AniError::InvalidToken | AniError::Network | AniError::Upstream { .. }
+    )
+}
+
 // — Handlers — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
 
 fn parse_provider(slug: &str) -> Result<ProviderKind, AniError> {
@@ -243,18 +258,18 @@ async fn delete_list_cache(
     let tokens = account::tokens_from_bearer(&bearer);
     let user_id = match account::me(&state, kind, &tokens).await {
         Ok(profile) => profile.user_id,
-        Err(AniError::InvalidToken) => {
-            // Codex P2 #3370011855: disconnect-after-expiry. The bearer
-            // upstream-401'd, so we can't derive identity from it.
-            // Falling back on the renderer-supplied user_id alone (the
-            // shape Codex P2 #3369997650 opened) would let a cross-
-            // origin tab under the permissive CORS layer wipe any
-            // user's cache — just send `Bearer garbage` + a guessed
-            // user_id. Gate the fallback on the per-process random
-            // internal secret only the Electron renderer learns at
-            // startup (via stdout handshake + preload bridge).
+        Err(e) if me_failure_allows_renderer_fallback(&e) => {
+            // Codex P2 #3370011855 + #3370096596: the bearer can't be
+            // round-tripped for identity. Either the provider 401'd
+            // (token expired/revoked), is unreachable (offline), or
+            // returned a 5xx. The renderer-only internal secret gates
+            // the fallback so a cross-origin tab under the permissive
+            // CORS layer can't wipe an arbitrary user's cache — only
+            // Electron's preload knows the 32-byte secret. With it
+            // present we trust the safeStorage-persisted user_id;
+            // without it we surface the original me() error.
             state.internal_secret.validate_header(&headers)?;
-            q.fallback_user_id.ok_or(AniError::InvalidToken)?
+            q.fallback_user_id.ok_or(e)?
         }
         Err(e) => return Err(e),
     };

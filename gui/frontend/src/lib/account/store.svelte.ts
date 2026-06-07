@@ -83,8 +83,18 @@ class AccountStore {
 	}
 
 	setError(provider: Provider, message: string): void {
+		// Codex P2 #3370096597: preserve the account from prior
+		// `error`-with-account too, not just connected / expired. If
+		// the user is already in error-with-account and a Disconnect
+		// attempt hits token_clear_failed, the bearer is still on disk
+		// — dropping the account here would collapse the UI to bare
+		// Connect even though the user needs Disconnect to retry the
+		// clear. Pull the account from any prior state that carries
+		// one.
 		const prev = this.byProvider[provider];
-		const account = prev.kind === 'connected' || prev.kind === 'expired' ? prev.account : null;
+		let account: PersistedAccount | null = null;
+		if (prev.kind === 'connected' || prev.kind === 'expired') account = prev.account;
+		else if (prev.kind === 'error') account = prev.account;
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'error', account, message }
