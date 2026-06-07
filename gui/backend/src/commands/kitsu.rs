@@ -345,47 +345,73 @@ async fn mal_id_for_kitsu_id_best_effort(state: &AppState, anime_id: &str) -> Op
     }
 }
 
+/// Stable key for the AniList streamingEpisodes lookup. Versioned so
+/// a schema change (e.g. cache shape moving from map to richer object)
+/// can orphan old rows.
+fn anilist_streaming_eps_key(mal_id: u32) -> String {
+    format!("anilist:streaming-eps:v1:{mal_id}")
+}
+
+/// Writes the outcome of an AniList streamingEpisodes lookup to the
+/// cache. `Ok(map)` writes the populated map under the full
+/// [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` writes an empty map under
+/// the short [`ANILIST_STREAMING_EPS_ERROR_TTL`] so the next few
+/// minutes of navigation see a cache hit instead of re-burning the
+/// AniList rate-limit budget on the same failed lookup.
+fn cache_anilist_streaming_eps_outcome(
+    pool: &crate::cache::SqlitePool,
+    mal_id: u32,
+    outcome: &std::result::Result<HashMap<u32, String>, ()>,
+) {
+    let key = anilist_streaming_eps_key(mal_id);
+    let (map, ttl) = match outcome {
+        Ok(m) => (m.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
+        Err(()) => (HashMap::new(), ANILIST_STREAMING_EPS_ERROR_TTL.as_secs()),
+    };
+    if let Ok(body) = serde_json::to_string(&map) {
+        let _ = meta_cache_put(pool, &key, &body, ttl);
+    }
+}
+
 /// Fetches AniList `streamingEpisodes` for a MAL id, caching the
 /// result as a `HashMap<u32, String>` (ep number → thumbnail URL).
 /// First-wins de-duplication on the AniList side — duplicate ep
 /// entries (rare; happens when AniList lists subbed + dubbed
-/// separately) collapse to the first occurrence. Cache is empty-vec
-/// safe: an empty map is a valid cached value, and the caller (which
-/// skips the merge step on empty) handles it identically.
+/// separately) collapse to the first occurrence.
+///
+/// On fetch error, the cache stores an empty map with the shorter
+/// negative TTL — this stops the home-page cold-load burst (multiple
+/// Continue Watching rows firing AniList in parallel against the
+/// 30/min unauth limit) from recurring on every navigation.
 async fn anilist_streaming_eps_cached(state: &AppState, mal_id: u32) -> HashMap<u32, String> {
-    let key = format!("anilist:streaming-eps:v1:{mal_id}");
+    let key = anilist_streaming_eps_key(mal_id);
     if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
         if let Ok(map) = serde_json::from_str::<HashMap<u32, String>>(&body) {
             return map;
         }
     }
-    let pairs =
+    let outcome: std::result::Result<HashMap<u32, String>, ()> =
         match crate::meta::anilist::streaming_episodes_for_mal_id(&state.proxy_http, mal_id, None)
             .await
         {
-            Ok(v) => v,
+            Ok(pairs) => {
+                let mut map: HashMap<u32, String> = HashMap::with_capacity(pairs.len());
+                for (n, url) in pairs {
+                    map.entry(n).or_insert(url);
+                }
+                Ok(map)
+            }
             Err(e) => {
                 tracing::warn!(
                     mal_id,
                     error = ?e,
-                    "anilist streamingEpisodes fetch failed; no enrichment this round",
+                    "anilist streamingEpisodes fetch failed; negative-caching empty result",
                 );
-                return HashMap::new();
+                Err(())
             }
         };
-    let mut map: HashMap<u32, String> = HashMap::with_capacity(pairs.len());
-    for (n, url) in pairs {
-        map.entry(n).or_insert(url);
-    }
-    if let Ok(body) = serde_json::to_string(&map) {
-        let _ = meta_cache_put(
-            &state.cache_pool,
-            &key,
-            &body,
-            ANILIST_STREAMING_EPS_TTL.as_secs(),
-        );
-    }
-    map
+    cache_anilist_streaming_eps_outcome(&state.cache_pool, mal_id, &outcome);
+    outcome.unwrap_or_default()
 }
 
 /// Backfill `thumbnail.original` on Kitsu episodes from the AniList
