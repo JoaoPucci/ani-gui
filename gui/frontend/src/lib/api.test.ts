@@ -16,6 +16,7 @@ import {
 	evictPlayCache,
 	historyByKitsu,
 	historyClear,
+	historyDelete,
 	historyList,
 	imageCacheClear,
 	imageProxyUrl,
@@ -151,6 +152,28 @@ describe('historyClear', () => {
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history`);
 		expect(init?.method).toBe('DELETE');
+	});
+});
+
+describe('historyDelete', () => {
+	it('DELETEs /api/history/:id with the encoded show id', async () => {
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyDelete('vDTSJHSpYnrkZnAvG');
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/vDTSJHSpYnrkZnAvG`);
+		expect(init?.method).toBe('DELETE');
+	});
+
+	it('percent-encodes ids with special characters', async () => {
+		// allmanga show_ids in the wild are alphanumeric, but pin the
+		// contract so a future id shape with `/` or `?` doesn't escape
+		// the /api/history/:id path.
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyDelete('weird/id with spaces');
+		const { url } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/weird%2Fid%20with%20spaces`);
 	});
 });
 
