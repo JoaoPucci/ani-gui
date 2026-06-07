@@ -15,12 +15,14 @@
 
 use crate::app::AppState;
 use crate::cache::ttl::{
-    ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
+    ANILIST_STREAMING_EPS_TTL, ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL,
+    TRENDING_TTL,
 };
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
+use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode, KitsuEpisodeThumbnail};
+use std::collections::HashMap;
 
 // Schema version is encoded in the cache key prefix (`kitsu:v2:`).
 // Bump when KitsuAnimeRef gains a field consumers depend on — v2 was
@@ -269,21 +271,151 @@ pub async fn kitsu_episodes(
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
     let key = format!("kitsu:episodes:{anime_id}:p{p}");
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
-            warm_signed_image_urls(state, &body);
-            return Ok(eps);
+    let eps = if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+        match serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
+            Ok(eps) => {
+                warm_signed_image_urls(state, &body);
+                eps
+            }
+            Err(_) => fetch_and_cache_kitsu_eps(state, anime_id, p, &key).await?,
         }
-    }
+    } else {
+        fetch_and_cache_kitsu_eps(state, anime_id, p, &key).await?
+    };
+    // Backfill nulls from AniList's streamingEpisodes. Best-effort —
+    // failures (no MAL mapping, AniList down) fall through to the
+    // Kitsu-only result. The merge happens on every read because the
+    // AniList lookup is cached separately, so a Kitsu-cache hit still
+    // gets enrichment without re-querying AniList.
+    Ok(enrich_episodes_with_anilist_thumbs(state, anime_id, eps).await)
+}
+
+async fn fetch_and_cache_kitsu_eps(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+    key: &str,
+) -> Result<Vec<KitsuEpisode>> {
     let eps = state
         .kitsu
-        .episodes(anime_id, p, EPISODES_PAGE_LIMIT)
+        .episodes(anime_id, page, EPISODES_PAGE_LIMIT)
         .await?;
     if let Ok(body) = serde_json::to_string(&eps) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, EPISODES_TTL.as_secs());
+        let _ = meta_cache_put(&state.cache_pool, key, &body, EPISODES_TTL.as_secs());
         warm_signed_image_urls(state, &body);
     }
     Ok(eps)
+}
+
+/// Best-effort wrapper: looks up the show's MAL id, fetches its
+/// AniList `streamingEpisodes` (with caching), and merges thumbnails
+/// into the Kitsu episode list. Any failure (no MAL mapping, AniList
+/// error, parse failure) logs and returns the unmodified input —
+/// never propagates an error that would break the episodes route.
+async fn enrich_episodes_with_anilist_thumbs(
+    state: &AppState,
+    anime_id: &str,
+    eps: Vec<KitsuEpisode>,
+) -> Vec<KitsuEpisode> {
+    let Some(mal_id) = mal_id_for_kitsu_id_best_effort(state, anime_id).await else {
+        return eps;
+    };
+    let anilist = anilist_streaming_eps_cached(state, mal_id).await;
+    if anilist.is_empty() {
+        return eps;
+    }
+    merge_anilist_thumbs(eps, &anilist)
+}
+
+/// MAL id lookup that swallows errors and returns `None`. The
+/// underlying `state.kitsu.mal_id_for_kitsu_id` already handles the
+/// Kitsu /mappings round-trip; this wrapper just makes it side-effect-
+/// free at the caller for the AniList enrichment path.
+async fn mal_id_for_kitsu_id_best_effort(state: &AppState, anime_id: &str) -> Option<u32> {
+    match state.kitsu.mal_id_for_kitsu_id(anime_id).await {
+        Ok(opt) => opt,
+        Err(e) => {
+            tracing::warn!(
+                anime_id,
+                error = ?e,
+                "anilist enrichment: mal_id lookup failed; skipping",
+            );
+            None
+        }
+    }
+}
+
+/// Fetches AniList `streamingEpisodes` for a MAL id, caching the
+/// result as a `HashMap<u32, String>` (ep number → thumbnail URL).
+/// First-wins de-duplication on the AniList side — duplicate ep
+/// entries (rare; happens when AniList lists subbed + dubbed
+/// separately) collapse to the first occurrence. Cache is empty-vec
+/// safe: an empty map is a valid cached value, and the caller (which
+/// skips the merge step on empty) handles it identically.
+async fn anilist_streaming_eps_cached(state: &AppState, mal_id: u32) -> HashMap<u32, String> {
+    let key = format!("anilist:streaming-eps:v1:{mal_id}");
+    if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
+        if let Ok(map) = serde_json::from_str::<HashMap<u32, String>>(&body) {
+            return map;
+        }
+    }
+    let pairs =
+        match crate::meta::anilist::streaming_episodes_for_mal_id(&state.proxy_http, mal_id, None)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    mal_id,
+                    error = ?e,
+                    "anilist streamingEpisodes fetch failed; no enrichment this round",
+                );
+                return HashMap::new();
+            }
+        };
+    let mut map: HashMap<u32, String> = HashMap::with_capacity(pairs.len());
+    for (n, url) in pairs {
+        map.entry(n).or_insert(url);
+    }
+    if let Ok(body) = serde_json::to_string(&map) {
+        let _ = meta_cache_put(
+            &state.cache_pool,
+            &key,
+            &body,
+            ANILIST_STREAMING_EPS_TTL.as_secs(),
+        );
+    }
+    map
+}
+
+/// Backfill `thumbnail.original` on Kitsu episodes from the AniList
+/// `streamingEpisodes` map. Kitsu always wins when present — its
+/// stills are consistently higher quality than the Crunchyroll
+/// promotional crops AniList carries. Episodes without a `number`
+/// can't be matched and pass through unchanged.
+fn merge_anilist_thumbs(
+    eps: Vec<KitsuEpisode>,
+    anilist: &HashMap<u32, String>,
+) -> Vec<KitsuEpisode> {
+    eps.into_iter()
+        .map(|mut ep| {
+            let already_has_thumb = ep
+                .thumbnail
+                .as_ref()
+                .and_then(|t| t.original.as_ref())
+                .is_some();
+            if already_has_thumb {
+                return ep;
+            }
+            let Some(num) = ep.number else { return ep };
+            if let Some(url) = anilist.get(&num) {
+                ep.thumbnail = Some(KitsuEpisodeThumbnail {
+                    original: Some(url.clone()),
+                });
+            }
+            ep
+        })
+        .collect()
 }
 
 /// Look up an anime by its slug — Kitsu's URL-stable identifier.

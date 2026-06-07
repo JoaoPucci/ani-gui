@@ -20,6 +20,14 @@ pub const ANIME_DETAIL_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); //
 /// is cheap.
 pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
+/// TTL for AniList `streamingEpisodes` lookups by MAL id, used to
+/// backfill per-episode thumbnails Kitsu doesn't carry. Aligned with
+/// [`EPISODES_TTL`] (1d) — Crunchyroll's per-episode metadata is
+/// stable enough that we don't burn AniList calls re-fetching, but a
+/// daily window picks up fresh stills as currently-airing shows
+/// release.
+pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
+
 /// TTL for title-match cache (Kitsu/AniList → allanime id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
