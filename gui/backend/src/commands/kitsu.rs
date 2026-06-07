@@ -287,9 +287,37 @@ pub async fn kitsu_episodes(
     if !anilist_eps_thumbs::needs_backfill(&eps) {
         return Ok(eps);
     }
-    let anilist = anilist_eps_thumbs::thumbs_for_show(state, anime_id).await;
+    // Cap the cold-cache cost of the enrichment chain (Kitsu mappings
+    // + AniList GraphQL) at a tight budget. proxy_http's own timeout
+    // is 120s — long enough that a slow upstream would stall
+    // /api/kitsu/episodes when the route should just degrade to
+    // Kitsu-only data. On timeout, return the Kitsu page directly.
+    // Codex P2 #3368793002.
+    let anilist = match tokio::time::timeout(
+        ANILIST_ENRICHMENT_BUDGET,
+        anilist_eps_thumbs::thumbs_for_show(state, anime_id),
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(_) => {
+            tracing::warn!(
+                anime_id,
+                "anilist enrichment exceeded budget; returning Kitsu-only",
+            );
+            return Ok(eps);
+        }
+    };
     Ok(anilist_eps_thumbs::merge_thumbs(eps, &anilist))
 }
+
+/// Wall-clock budget the `/api/kitsu/episodes` route gives the AniList
+/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL +
+/// cache write). Tight on purpose — the underlying `proxy_http` has a
+/// 120s timeout, which would stall the route when the user just wants
+/// the Kitsu data we already loaded. On budget exhaustion the route
+/// degrades to a Kitsu-only response.
+const ANILIST_ENRICHMENT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
 async fn kitsu_episodes_fresh(
     state: &AppState,

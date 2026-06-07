@@ -279,6 +279,24 @@ async fn thumbs_for_show_returns_cached_map_without_network() {
 }
 
 #[tokio::test]
+async fn thumbs_for_show_negative_caches_on_cache_miss_with_unreachable_kitsu() {
+    // The miss path: nothing in cache, Kitsu mappings lookup errors
+    // (state.kitsu points at an unbound port). `fetch_anilist_eps_thumbs`
+    // returns Err, `cache_anilist_eps_thumbs` writes an empty map to
+    // the negative cache, and the caller sees the empty result. A
+    // second call hits cache and returns instantly.
+    let state = state_for_cache_only_tests();
+    let first = thumbs_for_show(&state, "999").await;
+    assert!(first.is_empty());
+    // Verify the negative cache was written.
+    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v1:k999")
+        .expect("cache read")
+        .expect("negative cache hit");
+    let cached: HashMap<u32, String> = serde_json::from_str(&body).expect("json");
+    assert!(cached.is_empty());
+}
+
+#[tokio::test]
 async fn thumbs_for_show_returns_empty_on_cached_negative() {
     // The negative-cached branch: an earlier failed lookup wrote
     // an empty map. Subsequent calls hit cache and return empty
