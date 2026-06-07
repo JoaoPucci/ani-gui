@@ -150,6 +150,89 @@ async fn exchange_code_surfaces_upstream_4xx_as_upstream_error() {
     let _ = dummy_tokens();
 }
 
+/// Real-shape response to `query Viewer { Viewer { … } }`. Numeric
+/// `id` (not stringy), avatar bag, statistics with anime stats
+/// nested two levels deep. AniList's `meanScore` is already on the
+/// 0..=10 scale here — pass through.
+const VIEWER_RESPONSE_BODY: &str = r#"{
+    "data": {
+        "Viewer": {
+            "id": 5921,
+            "name": "pucci",
+            "avatar": {
+                "large": "https://s4.anilist.co/file/anilistcdn/user/avatar/large/b5921-x.png",
+                "medium": "https://s4.anilist.co/file/anilistcdn/user/avatar/medium/b5921-x.png"
+            },
+            "statistics": {
+                "anime": {
+                    "count": 312,
+                    "meanScore": 7.4
+                }
+            }
+        }
+    }
+}"#;
+
+#[tokio::test]
+async fn me_parses_viewer_query_response() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            "Bearer test-access-token",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(VIEWER_RESPONSE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let profile = provider.me(&dummy_tokens()).await.expect("me ok");
+
+    assert_eq!(profile.provider, ProviderKind::AniList);
+    // AniList ids are numeric on the wire; UserProfile.user_id is a
+    // String so the same shape fits MAL's "@me" id later.
+    assert_eq!(profile.user_id, "5921");
+    assert_eq!(profile.username, "pucci");
+    assert_eq!(
+        profile.avatar_url.as_deref(),
+        Some("https://s4.anilist.co/file/anilistcdn/user/avatar/large/b5921-x.png")
+    );
+    let stats = profile.stats.expect("stats present");
+    assert_eq!(stats.anime_count, 312);
+    // meanScore is already 0..=10; pass through, no scaling.
+    assert!(
+        matches!(stats.mean_score_0_to_10, Some(v) if (v - 7.4).abs() < 0.001),
+        "mean_score_0_to_10: {:?}",
+        stats.mean_score_0_to_10
+    );
+}
+
+#[tokio::test]
+async fn me_surfaces_401_as_invalid_token() {
+    // A 401 on the Viewer query means the bearer is bad — almost
+    // always because the user revoked the app from anilist.co or
+    // (rare) because the 1-year JWT silently expired. The route
+    // layer surfaces this distinctly from generic Upstream so the
+    // /account page can show "Sign in again" instead of a retry.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(401)
+                .set_body_string(r#"{"errors":[{"message":"Invalid token"}]}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .me(&dummy_tokens())
+        .await
+        .expect_err("401 must surface as Err");
+    assert!(
+        matches!(err, AniError::InvalidToken),
+        "expected AniError::InvalidToken, got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn refresh_returns_metadata_error_no_network_call() {
     // AniList does not issue refresh tokens — their 1-year JWT has
