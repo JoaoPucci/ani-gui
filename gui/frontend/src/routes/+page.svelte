@@ -42,6 +42,7 @@
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
+	import { kitsuGroupSiblingIds } from '$lib/history/delete-group';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -117,11 +118,20 @@
 	async function confirmDelete() {
 		if (!deleteCandidate) return;
 		deleteBusy = true;
-		const id = deleteCandidate.entry.id;
+		const clickedId = deleteCandidate.entry.id;
+		// dedupeHistoryByKitsuId collapses every history row whose
+		// resolved match shares a Kitsu id into one visible card.
+		// Deleting only the clicked row leaves its siblings in
+		// storage; the next dedupe pass surfaces a sibling and the
+		// title looks un-deleted (Codex P2). Expand to every row in
+		// the group so the user's confirm matches the visible card.
+		const groupIds = kitsuGroupSiblingIds(clickedId, history ?? [], historyMatches);
+		const idsToRemove = new Set(groupIds);
 		try {
-			await historyDelete(id);
-			// Optimistic local filter so the card disappears immediately.
-			history = history ? history.filter((e) => e.id !== id) : history;
+			await Promise.all(groupIds.map((id) => historyDelete(id)));
+			// Optimistic local filter — the whole group disappears
+			// together so dedupe can't resurface a sibling.
+			history = history ? history.filter((e) => !idsToRemove.has(e.id)) : history;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
