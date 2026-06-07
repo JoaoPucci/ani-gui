@@ -86,9 +86,25 @@ impl UserListProvider for AniListProvider {
         ProviderKind::AniList
     }
 
-    fn auth_url(&self, _pkce: &Pkce, _state: &str) -> String {
-        // Stubbed — implementation lands in the matching feat(green).
-        String::new()
+    fn auth_url(&self, _pkce: &Pkce, state: &str) -> String {
+        // AniList ignores PKCE entirely — we deliberately do not emit
+        // `code_challenge` / `code_challenge_method` here. The trait
+        // still hands us a `Pkce` so the MAL impl can mirror the
+        // signature, but on the wire we'd only confuse AniList's
+        // parser. See module doc-comment.
+        //
+        // `url::Url::parse_with_params` percent-encodes the values
+        // per `application/x-www-form-urlencoded` — same encoding
+        // AniList's authorize endpoint expects.
+        let params = [
+            ("client_id", ANILIST_CLIENT_ID),
+            ("redirect_uri", ANILIST_REDIRECT_URI),
+            ("response_type", "code"),
+            ("state", state),
+        ];
+        url::Url::parse_with_params(ANILIST_AUTH_URL, &params)
+            .map(String::from)
+            .unwrap_or_default()
     }
 
     async fn exchange_code(&self, _code: &str, _pkce: &Pkce) -> Result<Tokens> {
