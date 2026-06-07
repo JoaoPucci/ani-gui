@@ -113,7 +113,7 @@ pub fn list_entries(
             mal_id: mal_id.map(|v| v as u32),
             status,
             progress_episodes: progress as u32,
-            score_0_to_100: score.map(|v| v.min(100).max(0) as u8),
+            score_0_to_100: score.map(|v| v.clamp(0, 100) as u8),
             updated_at_epoch_s: updated_at,
             title: title.unwrap_or_default(),
         });
