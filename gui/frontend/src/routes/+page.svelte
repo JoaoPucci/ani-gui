@@ -605,26 +605,6 @@
 				playableCount ?? match?.episode_count ?? null
 			)}
 			<div class="resume-cell" style="--accent: {accent};">
-				<button
-					type="button"
-					class="resume-delete"
-					aria-label={m.home_delete_card_aria_label({ title: target.displayTitle })}
-					onclick={(e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						openDeleteFor(entry, target.displayTitle);
-					}}
-				>
-					<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-						<path
-							d="M6 6 18 18 M18 6 6 18"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2.5"
-							stroke-linecap="round"
-						/>
-					</svg>
-				</button>
 				<!-- Three states for the Continue card:
 			     - resumable + match : button (the normal case).
 			     - match === undefined : the per-row loader hasn't
@@ -729,6 +709,32 @@
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				<!-- Delete chip sits AFTER the card in DOM so role-based
+			     queries land on the card first (Playwright's
+			     `getByRole('button').first()` was picking up the
+			     chip and getting empty text). z-index on the chip
+			     keeps it visually on top regardless of source
+			     order. -->
+				<button
+					type="button"
+					class="resume-delete"
+					aria-label={m.home_delete_card_aria_label({ title: target.displayTitle })}
+					onclick={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						openDeleteFor(entry, target.displayTitle);
+					}}
+				>
+					<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+						<path
+							d="M6 6 18 18 M18 6 6 18"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+						/>
+					</svg>
+				</button>
 			</div>
 		{/each}
 	</Strip>

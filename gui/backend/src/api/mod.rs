@@ -857,6 +857,28 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
 
+    /// Per-row delete: route exists, accepts an id path segment, and
+    /// returns 204 NO_CONTENT regardless of whether the id was present
+    /// (the handler's own idempotency, covered by `commands::history`
+    /// tests, surfaces as a uniform 204 from the wire).
+    #[tokio::test]
+    async fn delete_history_entry_returns_204() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/history/some-allanime-id")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
     #[tokio::test]
     async fn get_settings_returns_default_config_when_file_absent() {
         let td = TempDir::new().expect("tempdir");
