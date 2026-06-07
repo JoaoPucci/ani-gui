@@ -362,4 +362,86 @@ mod tests {
         run_migrations(&mut conn).expect("second run is a no-op");
         run_migrations(&mut conn).expect("third run is a no-op");
     }
+
+    #[test]
+    fn v002_creates_user_list_cache_with_expected_columns() {
+        // PR #1 of the account integration chain. user_list_cache
+        // holds the per-provider list snapshot used by the home
+        // Watch Later rail (PR #2) and write-back optimistic state
+        // (PR #4). Pin the column shape here so a future migration
+        // can't silently drop a column the cache reader depends on.
+        let pool = open_in_memory().unwrap();
+        let conn = pool.get().unwrap();
+        let cols: Vec<(String, String)> = conn
+            .prepare("PRAGMA table_info(user_list_cache)")
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect();
+        let names: Vec<&str> = cols.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(
+            names.contains(&"provider"),
+            "missing provider column: {names:?}"
+        );
+        assert!(names.contains(&"user_id"), "missing user_id: {names:?}");
+        assert!(names.contains(&"media_id"), "missing media_id: {names:?}");
+        assert!(names.contains(&"mal_id"), "missing mal_id: {names:?}");
+        assert!(names.contains(&"status"), "missing status: {names:?}");
+        assert!(names.contains(&"progress"), "missing progress: {names:?}");
+        assert!(
+            names.contains(&"score_x100"),
+            "missing score_x100: {names:?}"
+        );
+        assert!(
+            names.contains(&"updated_at"),
+            "missing updated_at: {names:?}"
+        );
+        assert!(
+            names.contains(&"fetched_at"),
+            "missing fetched_at: {names:?}"
+        );
+        assert!(names.contains(&"title"), "missing title: {names:?}");
+    }
+
+    #[test]
+    fn v002_user_list_cache_round_trip_insert_select() {
+        // Sanity check that the schema actually stores + retrieves a
+        // representative row. Caught a bug in an earlier draft where
+        // the PRIMARY KEY column order was wrong.
+        let pool = open_in_memory().unwrap();
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO user_list_cache (\
+                provider, user_id, media_id, mal_id, status, progress, \
+                score_x100, updated_at, fetched_at, title) \
+             VALUES ('anilist', '12345', 16498, 16498, 'planning', 0, \
+                NULL, 1700000000, 1700000005, 'Shingeki no Kyojin')",
+            [],
+        )
+        .unwrap();
+        let row: (String, String, i64, Option<i64>, String, i64) = conn
+            .query_row(
+                "SELECT provider, user_id, media_id, mal_id, status, progress \
+                 FROM user_list_cache WHERE media_id = 16498",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(row.0, "anilist");
+        assert_eq!(row.1, "12345");
+        assert_eq!(row.2, 16498);
+        assert_eq!(row.3, Some(16498));
+        assert_eq!(row.4, "planning");
+        assert_eq!(row.5, 0);
+    }
 }
