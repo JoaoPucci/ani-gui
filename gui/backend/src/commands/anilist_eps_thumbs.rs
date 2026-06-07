@@ -91,6 +91,23 @@ async fn fetch_anilist_eps_thumbs(
     })
 }
 
+/// Returns `true` when at least one episode in the page has a
+/// numeric `number` and a missing `thumbnail.original` — i.e. the
+/// only shape AniList's backfill can actually fill. Lets the caller
+/// short-circuit the whole `thumbs_for_show` round-trip on pages
+/// where Kitsu already covers every row, sparing the cold-cache
+/// `/mappings` + AniList rate-limit cost when no merge would land.
+pub fn needs_backfill(eps: &[KitsuEpisode]) -> bool {
+    eps.iter().any(|ep| {
+        ep.number.is_some()
+            && ep
+                .thumbnail
+                .as_ref()
+                .and_then(|t| t.original.as_ref())
+                .is_none()
+    })
+}
+
 /// Backfill `thumbnail.original` on Kitsu episodes from the AniList
 /// `streamingEpisodes` map. Kitsu always wins when present. Episodes
 /// without a `number` can't be matched and pass through unchanged.

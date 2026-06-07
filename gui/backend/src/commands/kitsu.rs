@@ -280,6 +280,13 @@ pub async fn kitsu_episodes(
     } else {
         kitsu_episodes_fresh(state, anime_id, p, &key).await?
     };
+    // Skip the AniList lookup entirely when every row Kitsu returned
+    // already has a thumbnail — the merge would be a no-op and the
+    // round-trip would only burn a cold-cache `/mappings` call + an
+    // AniList rate-limit slot. Codex P2 #3368787400.
+    if !anilist_eps_thumbs::needs_backfill(&eps) {
+        return Ok(eps);
+    }
     let anilist = anilist_eps_thumbs::thumbs_for_show(state, anime_id).await;
     Ok(anilist_eps_thumbs::merge_thumbs(eps, &anilist))
 }
