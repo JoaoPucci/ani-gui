@@ -264,11 +264,11 @@ impl UserListProvider for AniListProvider {
         _id: ProviderMediaId,
         _update: EntryUpdate,
     ) -> Result<ListEntry> {
-        Err(AniError::Metadata)
+        unimplemented!("update_entry stub — green commit pins PR #4 deferral")
     }
 
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
-        Err(AniError::Metadata)
+        unimplemented!("delete_entry stub — green commit pins PR #4 deferral")
     }
 }
 

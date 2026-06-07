@@ -513,6 +513,45 @@ async fn list_all_drops_entries_with_unknown_status() {
 }
 
 #[tokio::test]
+async fn update_entry_is_stubbed_until_pr_4() {
+    // Write-back lands in PR #4 alongside the mark-watched fan-out;
+    // until then the trait surface must return Err(Metadata) so the
+    // route layer can short-circuit on PR #1's wiring rather than
+    // panicking. The provider points at unbound URIs so a stray
+    // network attempt would surface as Network instead.
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        "http://127.0.0.1:1/no-api".into(),
+        "http://127.0.0.1:1/no-token".into(),
+    );
+    let err = provider
+        .update_entry(&dummy_tokens(), ProviderMediaId(21), EntryUpdate::default())
+        .await
+        .expect_err("update_entry stub must error until PR #4");
+    assert!(
+        matches!(err, AniError::Metadata),
+        "expected AniError::Metadata, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn delete_entry_is_stubbed_until_pr_4() {
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        "http://127.0.0.1:1/no-api".into(),
+        "http://127.0.0.1:1/no-token".into(),
+    );
+    let err = provider
+        .delete_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect_err("delete_entry stub must error until PR #4");
+    assert!(
+        matches!(err, AniError::Metadata),
+        "expected AniError::Metadata, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn refresh_returns_metadata_error_no_network_call() {
     // AniList does not issue refresh tokens — their 1-year JWT has
     // no refresh flow and no revocation endpoint. The trait method
