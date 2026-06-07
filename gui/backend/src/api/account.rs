@@ -125,15 +125,6 @@ impl From<Tokens> for TokensResponse {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ListRequest {
-    /// User id the renderer learned from a prior `me` call. The backend
-    /// can't derive this from the bearer cheaply — every provider
-    /// implements a separate user-info endpoint — so the renderer
-    /// passes it along to scope the cache write.
-    pub user_id: String,
-}
-
 // — Handlers — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
 
 fn parse_provider(slug: &str) -> Result<ProviderKind, AniError> {
@@ -193,12 +184,19 @@ async fn post_list(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
-    Json(req): Json<ListRequest>,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
+    // Codex P2 #3369972493: previously this accepted `user_id` from
+    // the request body and used it as the cache-write owner. A
+    // cross-origin page with its own valid bearer could choose any
+    // other user_id and poison that target's local cache. Like the
+    // cached read/delete paths, derive the owner from the bearer by
+    // calling `me()` upstream — the bearer is the only identity
+    // input the backend trusts.
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let entries = account::list_all_and_cache(&state, kind, &tokens, &req.user_id).await?;
+    let profile = account::me(&state, kind, &tokens).await?;
+    let entries = account::list_all_and_cache(&state, kind, &tokens, &profile.user_id).await?;
     Ok(Json(entries))
 }
 

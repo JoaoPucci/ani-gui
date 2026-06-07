@@ -110,12 +110,12 @@ export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile
 	return postJson<UserProfile>(`/api/account/me/${provider}`, {}, bearer);
 }
 
-export function fetchAndCacheList(
-	provider: Provider,
-	userId: string,
-	bearer: string
-): Promise<ListEntry[]> {
-	return postJson<ListEntry[]>(`/api/account/list/${provider}`, { user_id: userId }, bearer);
+export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
+	// No user_id in the body — the backend derives the cache owner
+	// from the bearer by calling me() internally. Codex P2 #3369972493:
+	// a renderer-supplied user_id could be used to poison another
+	// user's local cache under permissive CORS.
+	return postJson<ListEntry[]>(`/api/account/list/${provider}`, {}, bearer);
 }
 
 export function fetchCachedList(provider: Provider, bearer: string): Promise<ListEntry[]> {

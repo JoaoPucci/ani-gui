@@ -108,12 +108,16 @@ describe('fetchMe', () => {
 });
 
 describe('fetchAndCacheList', () => {
-	it('POSTs the user_id + bearer', async () => {
+	it('POSTs an empty body + bearer (backend derives the owner from me())', async () => {
 		const spy = mockFetchJson([]);
-		await fetchAndCacheList('anilist', 'u-7', 'tok');
+		await fetchAndCacheList('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist');
-		expect(String((init as RequestInit).body)).toContain('"user_id":"u-7"');
+		// Codex P2 #3369972493: no user_id in the body; backend
+		// derives the cache-write owner from the bearer.
+		expect(String((init as RequestInit).body)).not.toContain('user_id');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.authorization).toBe('Bearer tok');
 	});
 });
 

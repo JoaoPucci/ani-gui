@@ -125,13 +125,6 @@ fn exchange_code_request_deserialise() {
 }
 
 #[test]
-fn list_request_deserialise_with_user_id() {
-    let body = r#"{ "user_id": "u-7" }"#;
-    let req: ListRequest = serde_json::from_str(body).unwrap();
-    assert_eq!(req.user_id, "u-7");
-}
-
-#[test]
 fn auth_url_response_serialise_round_trip() {
     let r = AuthUrlResponse {
         url: "https://anilist.co/x".into(),
