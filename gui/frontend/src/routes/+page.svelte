@@ -574,6 +574,7 @@
 		eyebrow={m.home_strip_continue_eyebrow()}
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
+		padBlock="var(--space-4) var(--space-3)"
 		headerTrailing={continueHeaderTrailing}
 	>
 		{#each dedupedHistory as entry (entry.id)}
@@ -614,7 +615,7 @@
 						openDeleteFor(entry, target.displayTitle);
 					}}
 				>
-					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+					<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
 						<path
 							d="M6 6 18 18 M18 6 6 18"
 							fill="none"
@@ -1138,17 +1139,25 @@
 	   not an ancestor) so its click never triggers play. */
 	.resume-delete {
 		position: absolute;
-		/* Equal inset off the top-right corner. Single shorthand so
-		   the two values can't drift via cascade. */
-		inset: var(--space-3) var(--space-3) auto auto;
-		inline-size: 1.75rem;
-		block-size: 1.75rem;
+		/* Anchored half-outside the top-right corner so the chip
+		   reads as a deliberate badge attached to the card rather
+		   than a button parked inside it. Strip's `padBlock` prop is
+		   widened on this row so the popped portion isn't clipped. */
+		inset: -0.625rem -0.625rem auto auto;
+		inline-size: 2.25rem;
+		block-size: 2.25rem;
 		display: grid;
 		place-items: center;
 		padding: 0;
-		border: none;
+		/* Subtle hairline so the chip has a defined edge against both
+		   the poster (dark) and the page bg (also dark). Pairs with
+		   the solid lighter fill below. */
+		border: 1px solid var(--ink-300);
 		border-radius: 999px;
-		background: color-mix(in oklab, var(--ink-000) 70%, transparent);
+		/* Solid ink-200 (clearly lighter than the page background)
+		   plus the border above gives the chip a visible silhouette
+		   wherever the popped half ends up sitting. */
+		background: var(--ink-200);
 		color: var(--bone-100);
 		cursor: pointer;
 		opacity: 0;
