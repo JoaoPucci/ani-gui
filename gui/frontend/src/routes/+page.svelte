@@ -128,7 +128,14 @@
 		const groupIds = kitsuGroupSiblingIds(clickedId, history ?? [], historyMatches);
 		const idsToRemove = new Set(groupIds);
 		try {
-			await Promise.all(groupIds.map((id) => historyDelete(id)));
+			// Serialize, do NOT Promise.all — the backend's historyDelete
+			// is a read-modify-write of the ani-hsts file with an atomic
+			// rename, with no shared lock. Concurrent deletes can both
+			// rebase from the original file and the last rename wins,
+			// silently reintroducing the other sibling (Codex P2).
+			for (const id of groupIds) {
+				await historyDelete(id);
+			}
 			// Optimistic local filter — the whole group disappears
 			// together so dedupe can't resurface a sibling.
 			history = history ? history.filter((e) => !idsToRemove.has(e.id)) : history;

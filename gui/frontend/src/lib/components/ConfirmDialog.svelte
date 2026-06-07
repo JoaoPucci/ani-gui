@@ -84,13 +84,7 @@
 		tabindex="-1"
 		onclick={onBackdropClick}
 	>
-		<div
-			class="cd-card"
-			role="document"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-			tabindex="-1"
-		>
+		<div class="cd-card" role="document" onclick={(e) => e.stopPropagation()} tabindex="-1">
 			<header class="cd-head">
 				{#if eyebrow}
 					<p class="cd-eyebrow" aria-hidden="true">
