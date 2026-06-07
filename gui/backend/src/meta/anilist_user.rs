@@ -35,6 +35,7 @@ use crate::account::provider::{
     EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
     UserStats,
 };
+use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
 
 /// User-agent advertised on every AniList request. Matches the format
@@ -50,6 +51,25 @@ const VIEWER_GQL: &str = "query Viewer { \
             id name \
             avatar { large medium } \
             statistics { anime { count meanScore } } \
+        } \
+    }";
+
+/// GraphQL: paginated full user list. `perChunk: 500` matches the
+/// upper bound AniList advertises per request — for a 312-entry
+/// user (the median in our test fixtures) the loop terminates after
+/// one round-trip. The trait surface accepts the pagination cost so
+/// every concrete provider hides chunk semantics from rail callers.
+const MEDIA_LIST_GQL: &str = "query MediaList($userId: Int!, $chunk: Int!) { \
+        MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { \
+            hasNextChunk \
+            lists { \
+                status \
+                entries { \
+                    mediaId \
+                    status progress score updatedAt repeat \
+                    media { idMal title { romaji english userPreferred } } \
+                } \
+            } \
         } \
     }";
 
@@ -208,8 +228,34 @@ impl UserListProvider for AniListProvider {
         parse_viewer_response(&bytes)
     }
 
-    async fn list_all(&self, _tokens: &Tokens) -> Result<Vec<ListEntry>> {
-        unimplemented!("list_all stub — green commit pins the semantics")
+    async fn list_all(&self, tokens: &Tokens) -> Result<Vec<ListEntry>> {
+        // AniList's MediaListCollection wants `$userId` as a
+        // non-negotiable filter; we resolve it via `me()` so the
+        // trait stays minimal (one call site doesn't need to pass
+        // the user id through to every list fetch).
+        let me = self.me(tokens).await?;
+        let user_id: i64 = me.user_id.parse().map_err(|_| AniError::ParseFailed {
+            detail: format!("anilist viewer id not numeric: {}", me.user_id),
+        })?;
+
+        let mut out: Vec<ListEntry> = Vec::new();
+        let mut chunk: i64 = 1;
+        loop {
+            let body = serde_json::json!({
+                "query": MEDIA_LIST_GQL,
+                "variables": { "userId": user_id, "chunk": chunk },
+            });
+            let bytes = self.post_graphql(tokens, &body).await?;
+            let page = parse_media_list_page(&bytes)?;
+            for entry in page.entries {
+                out.push(entry);
+            }
+            if !page.has_next_chunk {
+                break;
+            }
+            chunk += 1;
+        }
+        Ok(out)
     }
 
     async fn update_entry(
@@ -287,6 +333,124 @@ fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
         username: wire.data.viewer.name,
         avatar_url,
         stats,
+    })
+}
+
+/// One decoded MediaListCollection page — the chunk's entries
+/// (already translated into the trait shape) plus the
+/// has-next-chunk flag the paginator loops on.
+struct MediaListPage {
+    entries: Vec<ListEntry>,
+    has_next_chunk: bool,
+}
+
+/// Pure parser for the MediaListCollection chunk response. Drops
+/// entries whose status doesn't translate (rare draft / half-saved
+/// AniList state — surfacing them as a hard error would break the
+/// rail for the whole list).
+///
+/// Title fallback: `userPreferred` → `romaji` → `english` →
+/// `"(untitled)"` (the rail renders this via Kitsu metadata once the
+/// `mal_id` bridge resolves, so a literal fallback is acceptable).
+///
+/// Score: AniList's POINT_100 system writes the score as a float
+/// 0.0..=100.0 on the wire (the 0..=10 surface comes from other
+/// scoring systems we ignore in v1). 0.0 surfaces as `None` per the
+/// "unrated" convention; non-zero clamps to u8 via `.min(100)` to
+/// guard against arithmetic underflow if AniList ever bumps the
+/// scale ceiling.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the response isn't the
+/// documented `{ data: { MediaListCollection: { … } } }` envelope.
+fn parse_media_list_page(body: &[u8]) -> Result<MediaListPage> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "MediaListCollection")]
+        media_list_collection: Collection,
+    }
+    #[derive(Deserialize)]
+    struct Collection {
+        #[serde(rename = "hasNextChunk")]
+        has_next_chunk: bool,
+        #[serde(default)]
+        lists: Vec<ListBucket>,
+    }
+    #[derive(Deserialize)]
+    struct ListBucket {
+        #[serde(default)]
+        entries: Vec<RawEntry>,
+    }
+    #[derive(Deserialize)]
+    struct RawEntry {
+        #[serde(rename = "mediaId")]
+        media_id: u32,
+        status: String,
+        progress: u32,
+        score: f32,
+        #[serde(rename = "updatedAt")]
+        updated_at: i64,
+        media: RawMedia,
+    }
+    #[derive(Deserialize)]
+    struct RawMedia {
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+        title: RawTitle,
+    }
+    #[derive(Deserialize)]
+    struct RawTitle {
+        romaji: Option<String>,
+        english: Option<String>,
+        #[serde(rename = "userPreferred")]
+        user_preferred: Option<String>,
+    }
+
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media list response: {e}"),
+    })?;
+    let collection = wire.data.media_list_collection;
+
+    let mut entries = Vec::new();
+    for bucket in collection.lists {
+        for raw in bucket.entries {
+            let Some(status) = ListStatus::from_anilist(&raw.status) else {
+                // Skip — the unified enum has no slot for this
+                // value; surfacing it as a hard error would break
+                // the rail renderer for the whole list.
+                continue;
+            };
+            let score_0_to_100 = if raw.score == 0.0 {
+                None
+            } else {
+                Some((raw.score as u32).min(100) as u8)
+            };
+            let title = raw
+                .media
+                .title
+                .user_preferred
+                .or(raw.media.title.romaji)
+                .or(raw.media.title.english)
+                .unwrap_or_else(|| "(untitled)".to_string());
+            entries.push(ListEntry {
+                provider: ProviderKind::AniList,
+                media_id: ProviderMediaId(raw.media_id),
+                mal_id: raw.media.id_mal,
+                status,
+                progress_episodes: raw.progress,
+                score_0_to_100,
+                updated_at_epoch_s: raw.updated_at,
+                title,
+            });
+        }
+    }
+    Ok(MediaListPage {
+        entries,
+        has_next_chunk: collection.has_next_chunk,
     })
 }
 
