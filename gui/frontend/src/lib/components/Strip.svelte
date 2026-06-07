@@ -20,6 +20,17 @@
 		/** Override the rail's inline padding (default var(--space-8)).
 		 *  Set to '0' for a strip flush with its parent. */
 		pad?: string;
+		/** Override the rail's block padding (space above/below the
+		 *  cards inside the scroll container). The scroller's
+		 *  `overflow-x: auto` couples vertical overflow per spec, so
+		 *  any row whose cards extend above their base box (e.g.
+		 *  Continue Watching's popped-out delete chip) needs this
+		 *  widened to keep that hover surface from being clipped. */
+		padBlock?: string;
+		/** Optional trailing slot in the strip header, right-aligned
+		 *  next to the eyebrow. The Continue Watching rail uses this
+		 *  for a kebab → "Clear history" affordance. */
+		headerTrailing?: Snippet;
 		children: Snippet;
 	}
 
@@ -29,6 +40,8 @@
 		headless = false,
 		cardWidth = '11.25rem',
 		pad = 'var(--space-8)',
+		padBlock = 'var(--space-2) var(--space-3)',
+		headerTrailing,
 		children
 	}: Props = $props();
 
@@ -148,7 +161,7 @@
 <section
 	class="strip"
 	class:strip-headless={headless}
-	style="--strip-card: {cardWidth}; --strip-pad: {pad};"
+	style="--strip-card: {cardWidth}; --strip-pad: {pad}; --strip-pad-block: {padBlock};"
 >
 	{#if !headless}
 		<header class="strip-header">
@@ -157,6 +170,9 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
+			{#if headerTrailing}
+				<div class="strip-header-trailing">{@render headerTrailing()}</div>
+			{/if}
 		</header>
 	{/if}
 
@@ -264,6 +280,11 @@
 		padding-inline: var(--strip-pad);
 		margin-block-end: var(--space-4);
 	}
+	.strip-header-trailing {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
 
 	.strip-frame {
 		position: relative;
@@ -296,10 +317,11 @@
 		/* Padding lives on the rail, not the scroll container — keeps
 		   first-card alignment matching the eyebrow on initial render. */
 		padding-inline: var(--strip-pad);
-		/* Block-start padding gives cards room to translateY(-3..-4px)
-		   on hover without the parent's auto overflow shaving the top
-		   border. */
-		padding-block: var(--space-2) var(--space-3);
+		/* Block padding gives cards room for their hover treatments
+		   (lift, popped-out chips, etc.) without the parent's auto
+		   overflow shaving them. Override via the `padBlock` prop on
+		   rows whose hover poses extend further than the default. */
+		padding-block: var(--strip-pad-block);
 	}
 	/* Suppress native HTML5 image drag inside cards — without this, mousing
 	   on a poster triggers the browser's image-drag ghost, which fights

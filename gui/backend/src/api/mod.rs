@@ -98,6 +98,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/proxy-base-url", get(get_proxy_base_url))
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
+        .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
@@ -174,6 +175,17 @@ async fn get_history(
 
 async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode, AniError> {
     h_inner::history_clear(&state)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Remove one history row by its allmanga show_id. 204 whether or
+/// not a row was actually removed — idempotent semantics keep client
+/// retries safe.
+async fn delete_history_entry(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AniError> {
+    h_inner::history_delete(&state, &id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -836,6 +848,28 @@ mod tests {
                 Request::builder()
                     .method("DELETE")
                     .uri("/api/history")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    /// Per-row delete: route exists, accepts an id path segment, and
+    /// returns 204 NO_CONTENT regardless of whether the id was present
+    /// (the handler's own idempotency, covered by `commands::history`
+    /// tests, surfaces as a uniform 204 from the wire).
+    #[tokio::test]
+    async fn delete_history_entry_returns_204() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/history/some-allanime-id")
                     .body(Body::empty())
                     .expect("req"),
             )

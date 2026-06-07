@@ -1,10 +1,10 @@
-//! History commands — `history_list` and `history_clear`.
+//! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
 //! Reads/writes the same `ani-hsts` file the CLI uses, so a user
 //! alternating between CLI and GUI sees one coherent history.
 
 use crate::error::Result;
-use crate::history::{read_all, write_atomic, HistoryEntry};
+use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
 /// Returns every history entry as the frontend would render the
 /// "Continue Watching" row. Most-recent-first order is the GUI's choice;
@@ -55,6 +55,27 @@ pub fn history_by_kitsu(
         }
     }
     Ok(None)
+}
+
+/// Remove the history row matching `id`. Returns `true` when a row
+/// was removed, `false` for a no-op (id not in file, file missing,
+/// empty id). The rewrite is atomic (`.new` + rename) so a concurrent
+/// reader sees either the full pre-state or the full post-state,
+/// never a half-written file.
+///
+/// # Errors
+/// Returns [`crate::error::AniError::Io`] when the file exists and
+/// cannot be read or written.
+pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
+    if id.is_empty() {
+        return Ok(false);
+    }
+    let mut entries = read_all(&state.history_path)?;
+    if !remove_by_id(&mut entries, id) {
+        return Ok(false);
+    }
+    write_atomic(&state.history_path, &entries)?;
+    Ok(true)
 }
 
 /// Truncate the history file to zero length. Mirrors `ani-cli -D`.
@@ -160,6 +181,104 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let s = make_state(tmp.path().join("nope"));
         assert!(history_by_kitsu(&s, "K1").unwrap().is_none());
+    }
+
+    // — history_delete ————————————————————————————————————————————
+    //
+    // Per-row delete operates on the same TSV file the CLI shares.
+    // Pins: removes the matching id, preserves others byte-identically,
+    // is idempotent (no-op delete of an unknown id returns false), and
+    // handles a missing file as "nothing to delete" rather than erroring.
+
+    #[test]
+    fn delete_removes_matching_row_and_preserves_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[
+                HistoryEntry {
+                    ep_no: "5".into(),
+                    id: "amA".into(),
+                    title: "Show A".into(),
+                },
+                HistoryEntry {
+                    ep_no: "12".into(),
+                    id: "amB".into(),
+                    title: "Show B".into(),
+                },
+                HistoryEntry {
+                    ep_no: "3".into(),
+                    id: "amC".into(),
+                    title: "Show C".into(),
+                },
+            ],
+        )
+        .unwrap();
+
+        let removed = history_delete(&s, "amB").unwrap();
+        assert!(removed, "delete reports true when a row is removed");
+
+        let after = history_list(&s).unwrap();
+        assert_eq!(after.len(), 2);
+        assert_eq!(after[0].id, "amA");
+        assert_eq!(after[1].id, "amC");
+    }
+
+    #[test]
+    fn delete_unknown_id_is_idempotent_no_op() {
+        // Per-card double-clicks and bad client retries must be safe.
+        // No-op delete returns false; the file stays byte-identical.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[HistoryEntry {
+                ep_no: "5".into(),
+                id: "amA".into(),
+                title: "Show A".into(),
+            }],
+        )
+        .unwrap();
+        let body_before = std::fs::read_to_string(&path).unwrap();
+
+        let removed = history_delete(&s, "does-not-exist").unwrap();
+        assert!(!removed);
+        let body_after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(body_before, body_after);
+    }
+
+    #[test]
+    fn delete_against_missing_file_returns_false() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_state(tmp.path().join("nope"));
+        let removed = history_delete(&s, "amA").unwrap();
+        assert!(!removed);
+    }
+
+    #[test]
+    fn delete_with_empty_id_returns_false() {
+        // Defensive: a malformed client call with empty id mustn't
+        // accidentally wipe rows with id="" (parser already drops
+        // those at read, but pin the contract anyway).
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[HistoryEntry {
+                ep_no: "5".into(),
+                id: "amA".into(),
+                title: "Show A".into(),
+            }],
+        )
+        .unwrap();
+
+        let removed = history_delete(&s, "").unwrap();
+        assert!(!removed);
+        assert_eq!(history_list(&s).unwrap().len(), 1);
     }
 
     #[test]

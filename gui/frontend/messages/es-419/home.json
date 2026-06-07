@@ -21,5 +21,17 @@
 	"strip_trending_caption": "esta semana · vía AniList",
 	"strip_top_rated_eyebrow": "Mejor valorados",
 	"strip_top_rated_caption_loading": "cargando",
-	"strip_top_rated_caption": "de todos los tiempos · vía Kitsu"
+	"strip_top_rated_caption": "de todos los tiempos · vía Kitsu",
+	"delete_card_aria_label": "Quitar {title} del historial",
+	"delete_confirm_eyebrow": "Quitar",
+	"delete_confirm_title": "¿Quitar \"{title}\" del historial?",
+	"delete_confirm_body": "Puedes volver a agregarlo viendo el programa de nuevo.",
+	"delete_confirm_button": "Quitar",
+	"clear_menu_button_aria": "Opciones del historial",
+	"clear_menu_item": "Borrar historial",
+	"clear_confirm_eyebrow": "Borrar todo",
+	"clear_confirm_title_one": "¿Quitar 1 entrada del historial?",
+	"clear_confirm_title_other": "¿Quitar {count} entradas del historial?",
+	"clear_confirm_body": "Esto borra el archivo de historial compartido con ani-cli. No se puede deshacer.",
+	"clear_confirm_button": "Borrar todo"
 }
