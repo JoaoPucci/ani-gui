@@ -212,8 +212,17 @@ async fn post_list(
 async fn get_cached_list(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
+    // Codex P2 #3369941703: the API router is mounted under
+    // `CorsLayer::permissive()`, so any page in any browser tab could
+    // hit the loopback port and read other users' lists by guessing
+    // numeric AniList ids if the cached path didn't require auth.
+    // Require the same bearer the live `/list` endpoint does — the
+    // renderer already has it in safeStorage, so the cost is a single
+    // IPC re-fetch per request.
+    let _bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let entries = account::cached_list(&state, kind, &q.user_id)?;
     Ok(Json(entries))
@@ -222,8 +231,12 @@ async fn get_cached_list(
 async fn delete_list_cache(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<ListQuery>,
 ) -> Result<StatusCode, AniError> {
+    // Same auth gate — a permissive-CORS DELETE could otherwise wipe
+    // another user's cache rows without their bearer.
+    let _bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     account::clear_cache(&state, kind, &q.user_id)?;
     Ok(StatusCode::NO_CONTENT)

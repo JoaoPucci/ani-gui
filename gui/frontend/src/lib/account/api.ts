@@ -50,9 +50,11 @@ async function postJson<T>(path: string, body: unknown, bearer?: string): Promis
 	return (await res.json()) as T;
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(path: string, bearer?: string): Promise<T> {
 	const base = await apiBase();
-	const res = await fetch(base.replace(/\/+$/, '') + path);
+	const headers: Record<string, string> = {};
+	if (bearer) headers.authorization = `Bearer ${bearer}`;
+	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
 	if (!res.ok) {
 		const detail = await res.text().catch(() => '');
 		throw new AccountApiError(res.status, detail);
@@ -60,9 +62,11 @@ async function getJson<T>(path: string): Promise<T> {
 	return (await res.json()) as T;
 }
 
-async function deleteEndpoint(path: string): Promise<void> {
+async function deleteEndpoint(path: string, bearer?: string): Promise<void> {
 	const base = await apiBase();
-	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE' });
+	const headers: Record<string, string> = {};
+	if (bearer) headers.authorization = `Bearer ${bearer}`;
+	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE', headers });
 	if (!res.ok) {
 		const detail = await res.text().catch(() => '');
 		throw new AccountApiError(res.status, detail);
@@ -114,14 +118,22 @@ export function fetchAndCacheList(
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, { user_id: userId }, bearer);
 }
 
-export function fetchCachedList(provider: Provider, userId: string): Promise<ListEntry[]> {
+export function fetchCachedList(
+	provider: Provider,
+	userId: string,
+	bearer: string
+): Promise<ListEntry[]> {
+	// Bearer required even on the cached read — see backend api/account.rs
+	// `get_cached_list` rationale (Codex P2 #3369941703). The renderer
+	// already has the token in safeStorage from the connect flow.
 	const q = new URLSearchParams({ user_id: userId }).toString();
-	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached?${q}`);
+	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached?${q}`, bearer);
 }
 
-export function dropListCache(provider: Provider, userId: string): Promise<void> {
+export function dropListCache(provider: Provider, userId: string, bearer: string): Promise<void> {
+	// Same auth gate as fetchCachedList.
 	const q = new URLSearchParams({ user_id: userId }).toString();
-	return deleteEndpoint(`/api/account/list/${provider}/cache?${q}`);
+	return deleteEndpoint(`/api/account/list/${provider}/cache?${q}`, bearer);
 }
 
 // ─── Electron preload helpers ───────────────────────────────────────

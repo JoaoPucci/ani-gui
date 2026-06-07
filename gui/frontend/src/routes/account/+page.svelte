@@ -23,10 +23,15 @@
 		openExternal,
 		persistAccount,
 		clearPersistedAccount,
-		dropListCache,
-		AccountApiError
+		dropListCache
 	} from '$lib/account/api';
-	import type { PersistedAccount, Provider, ProviderState } from '$lib/account/types';
+	import {
+		bearerAndUserIdFor,
+		connectAccount,
+		connectErrorKey,
+		disconnectAccount
+	} from '$lib/account/connect-flow';
+	import type { Provider, ProviderState } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 
 	const PRIVACY_URL = 'https://github.com/JoaoPucci/ani-gui/blob/master/docs/PRIVACY.md';
@@ -38,82 +43,50 @@
 	async function connectAniList() {
 		const provider: Provider = 'anilist';
 		accountStore.setConnecting(provider);
-		try {
-			// 1. Generate CSRF state + PKCE (AniList ignores PKCE but
-			//    the trait still wants one).
-			const state = randomState();
-			const pkce = Pkce.s256();
-			// 2. Ask the backend for the authorize URL.
-			const authResp = await buildAuthUrl(provider, {
-				state,
-				pkce: { verifier: pkce.verifier, challenge: pkce.challenge, method: pkce.method }
-			});
-			// 3. Open the OS browser and wait for the loopback callback.
-			const callback = await openOAuth(authResp.url);
-			if (!callback.ok) {
-				accountStore.setDisconnected(provider);
-				toastStore.push({ kind: 'error', message: connectErrorMessage(callback.kind) });
-				return;
-			}
-			if (callback.state !== state) {
-				accountStore.setDisconnected(provider);
-				toastStore.push({ kind: 'error', message: m.account_connect_error_oauth_error() });
-				return;
-			}
-			// 4. Exchange code for tokens.
-			const tokens = await exchangeCode(provider, {
-				code: callback.code,
-				pkce: { verifier: pkce.verifier, challenge: pkce.challenge, method: pkce.method }
-			});
-			// 5. Fetch user profile.
-			const profile = await fetchMe(provider, tokens.access_token);
-			// 6. Persist via safeStorage.
-			const persisted: PersistedAccount = {
-				access_token: tokens.access_token,
-				refresh_token: tokens.refresh_token,
-				expires_at_epoch_s: tokens.expires_at_epoch_s,
-				user_id: profile.user_id,
-				username: profile.username,
-				avatar_url: profile.avatar_url
-			};
-			const ok = await persistAccount(provider, persisted);
-			if (!ok) {
-				accountStore.setError(provider, m.account_connect_error_unknown());
-				return;
-			}
-			accountStore.setConnected(provider, persisted);
-		} catch (err) {
-			accountStore.setDisconnected(provider);
-			const message =
-				err instanceof AccountApiError
-					? `${m.account_connect_error_unknown()} (${err.status})`
-					: m.account_connect_error_unknown();
-			toastStore.push({ kind: 'error', message });
+		const r = await connectAccount(provider, {
+			generateState: randomState,
+			generatePkce: () => {
+				const p = Pkce.s256();
+				return { verifier: p.verifier, challenge: p.challenge, method: p.method };
+			},
+			buildAuthUrl,
+			openOAuth,
+			exchangeCode,
+			fetchMe,
+			persistAccount
+		});
+		if (r.kind === 'connected') {
+			accountStore.setConnected(provider, r.account);
+			return;
 		}
+		accountStore.setDisconnected(provider);
+		if (r.kind === 'oauth_error' || r.kind === 'state_mismatch') {
+			const key =
+				r.kind === 'state_mismatch'
+					? 'oauth_error'
+					: connectErrorKey((r as { reason: string }).reason);
+			toastStore.push({ kind: 'error', message: connectErrorMessageFor(key) });
+			return;
+		}
+		if (r.kind === 'persist_failed') {
+			accountStore.setError(provider, m.account_connect_error_unknown());
+			return;
+		}
+		const status = (r as { status?: number }).status;
+		const message = status
+			? `${m.account_connect_error_unknown()} (${status})`
+			: m.account_connect_error_unknown();
+		toastStore.push({ kind: 'error', message });
 	}
 
 	async function disconnect(provider: Provider) {
 		const prev = accountStore.byProvider[provider];
-		const userId =
-			prev.kind === 'connected' || prev.kind === 'expired'
-				? prev.account.user_id
-				: prev.kind === 'error'
-					? (prev.account?.user_id ?? null)
-					: null;
-		await clearPersistedAccount(provider);
-		if (userId) {
-			try {
-				await dropListCache(provider, userId);
-			} catch {
-				// Cache eviction failing isn't worth surfacing — the
-				// next sync will overwrite anyway.
-			}
-		}
+		await disconnectAccount(provider, prev, { clearPersistedAccount, dropListCache });
 		accountStore.setDisconnected(provider);
 	}
 
-	function connectErrorMessage(kind: string): string {
-		switch (kind) {
+	function connectErrorMessageFor(key: string): string {
+		switch (key) {
 			case 'port_busy':
 				return m.account_connect_error_port_busy();
 			case 'timeout':
@@ -154,6 +127,9 @@
 				return m.account_card_status_disconnected();
 		}
 	}
+	// Used by template, kept exported so connect-flow tests can pin
+	// the helper without test-only exports leaking from +page.svelte.
+	void bearerAndUserIdFor;
 </script>
 
 <svelte:head>

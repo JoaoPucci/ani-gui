@@ -140,7 +140,13 @@ function startOAuthServer() {
   });
 
   try {
-    server.listen(OAUTH_CALLBACK_PORT, "127.0.0.1");
+    // Bind to "localhost" so the listener picks up whichever stack
+    // (IPv4 127.0.0.1 vs IPv6 ::1) the OS's DNS resolution prefers.
+    // The provider redirects to the literal string `localhost:53682`
+    // and the browser resolves it via the same DNS; binding only to
+    // 127.0.0.1 misses ::1 on dual-stack hosts where IPv6 is
+    // preferred. Codex P2 #3369941706.
+    server.listen(OAUTH_CALLBACK_PORT, "localhost");
   } catch (err) {
     rejectFn(new Error(`server_error: ${err.message}`));
   }
