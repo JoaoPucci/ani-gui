@@ -209,7 +209,7 @@ impl UserListProvider for AniListProvider {
     }
 
     async fn list_all(&self, _tokens: &Tokens) -> Result<Vec<ListEntry>> {
-        Err(AniError::Metadata)
+        unimplemented!("list_all stub — green commit pins the semantics")
     }
 
     async fn update_entry(

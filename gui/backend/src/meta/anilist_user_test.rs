@@ -1,5 +1,6 @@
 use super::*;
 use crate::account::pkce::Pkce;
+use crate::account::status::ListStatus;
 use crate::error::AniError;
 
 /// Build the wiremock-backed provider used across the network tests.
@@ -231,6 +232,284 @@ async fn me_surfaces_401_as_invalid_token() {
         matches!(err, AniError::InvalidToken),
         "expected AniError::InvalidToken, got {err:?}"
     );
+}
+
+/// Minimal but realistic single-chunk MediaListCollection — two
+/// entries across two status buckets, hitting the optional fields
+/// (idMal Some + None, score 0.0 → None, score 7.5 → Some(7), title
+/// fallback chain). `hasNextChunk: false` ends the pagination loop
+/// in one round-trip.
+const LIST_CHUNK_1_BODY: &str = r#"{
+    "data": {
+        "MediaListCollection": {
+            "hasNextChunk": false,
+            "lists": [
+                {
+                    "status": "CURRENT",
+                    "entries": [
+                        {
+                            "mediaId": 21,
+                            "status": "CURRENT",
+                            "progress": 1043,
+                            "score": 7.5,
+                            "updatedAt": 1700000000,
+                            "repeat": 0,
+                            "media": {
+                                "idMal": 21,
+                                "title": {
+                                    "romaji": "ONE PIECE",
+                                    "english": null,
+                                    "userPreferred": "One Piece"
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "status": "PLANNING",
+                    "entries": [
+                        {
+                            "mediaId": 999999,
+                            "status": "PLANNING",
+                            "progress": 0,
+                            "score": 0.0,
+                            "updatedAt": 1700000001,
+                            "repeat": 0,
+                            "media": {
+                                "idMal": null,
+                                "title": {
+                                    "romaji": "Lonely Anime",
+                                    "english": null,
+                                    "userPreferred": null
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}"#;
+
+/// Mount a Viewer response on the wiremock server so list_all can
+/// resolve the user id internally. Matches the request body by the
+/// `Viewer` keyword in the query — narrower than method+path alone,
+/// looser than a literal whole-body match (which would lock the
+/// helper to the exact whitespace in VIEWER_GQL).
+async fn mount_viewer(server: &wiremock::MockServer) {
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Viewer"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(VIEWER_RESPONSE_BODY))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn list_all_parses_single_chunk_with_status_score_and_mal_id() {
+    let server = wiremock::MockServer::start().await;
+    mount_viewer(&server).await;
+    // Chunk 1 only — hasNextChunk=false ends the loop immediately.
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "userId": 5921, "chunk": 1 }
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(LIST_CHUNK_1_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let entries = provider
+        .list_all(&dummy_tokens())
+        .await
+        .expect("list_all ok");
+
+    assert_eq!(entries.len(), 2);
+
+    // First entry — ONE PIECE, CURRENT, score 7.5 → 7 (truncated to
+    // u8 on the unified 0..=100 scale; AniList POINT_100 is the
+    // assumed scoring system and is already 0..=100 native), mal_id
+    // present, updated timestamp passes through, title falls back to
+    // userPreferred when present.
+    let watching = entries
+        .iter()
+        .find(|e| e.media_id == ProviderMediaId(21))
+        .expect("watching entry");
+    assert_eq!(watching.provider, ProviderKind::AniList);
+    assert_eq!(watching.status, ListStatus::Watching);
+    assert_eq!(watching.progress_episodes, 1043);
+    assert_eq!(watching.score_0_to_100, Some(7));
+    assert_eq!(watching.mal_id, Some(21));
+    assert_eq!(watching.updated_at_epoch_s, 1_700_000_000);
+    assert_eq!(watching.title, "One Piece");
+
+    // Second entry — PLANNING, score 0.0 → None (unrated), mal_id
+    // None falls through gracefully, title falls back from
+    // userPreferred → romaji.
+    let planning = entries
+        .iter()
+        .find(|e| e.media_id == ProviderMediaId(999_999))
+        .expect("planning entry");
+    assert_eq!(planning.status, ListStatus::Planning);
+    assert!(
+        planning.score_0_to_100.is_none(),
+        "score 0.0 unrated → None"
+    );
+    assert!(planning.mal_id.is_none());
+    assert_eq!(planning.title, "Lonely Anime");
+}
+
+#[tokio::test]
+async fn list_all_paginates_until_has_next_chunk_false() {
+    // Two chunks: the first carries one entry + hasNextChunk=true,
+    // the second carries another entry + hasNextChunk=false. The
+    // paginator must increment the chunk variable and stop when the
+    // flag flips off — otherwise it would loop forever on a busy
+    // user with hundreds of entries.
+    let server = wiremock::MockServer::start().await;
+    mount_viewer(&server).await;
+    let chunk_1 = r#"{
+        "data": {
+            "MediaListCollection": {
+                "hasNextChunk": true,
+                "lists": [{
+                    "status": "COMPLETED",
+                    "entries": [{
+                        "mediaId": 1,
+                        "status": "COMPLETED",
+                        "progress": 12,
+                        "score": 8.0,
+                        "updatedAt": 1600000000,
+                        "repeat": 1,
+                        "media": { "idMal": 100, "title": { "romaji": "First Chunk", "english": null, "userPreferred": null } }
+                    }]
+                }]
+            }
+        }
+    }"#;
+    let chunk_2 = r#"{
+        "data": {
+            "MediaListCollection": {
+                "hasNextChunk": false,
+                "lists": [{
+                    "status": "COMPLETED",
+                    "entries": [{
+                        "mediaId": 2,
+                        "status": "COMPLETED",
+                        "progress": 24,
+                        "score": 9.0,
+                        "updatedAt": 1600000001,
+                        "repeat": 0,
+                        "media": { "idMal": 200, "title": { "romaji": "Second Chunk", "english": null, "userPreferred": null } }
+                    }]
+                }]
+            }
+        }
+    }"#;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "chunk": 1 }
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(chunk_1))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "chunk": 2 }
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(chunk_2))
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let entries = provider
+        .list_all(&dummy_tokens())
+        .await
+        .expect("list_all ok");
+    let ids: Vec<u32> = entries.iter().map(|e| e.media_id.0).collect();
+    assert_eq!(ids, vec![1, 2], "both chunks merged in order");
+}
+
+#[tokio::test]
+async fn list_all_status_translation_covers_every_anilist_variant() {
+    // Pins the from_anilist translation in context — a bad mapping
+    // would silently bucket entries into the wrong rail (Plan-to-
+    // Watch showing entries the user marked Completed).
+    let server = wiremock::MockServer::start().await;
+    mount_viewer(&server).await;
+    let body = r#"{
+        "data": {
+            "MediaListCollection": {
+                "hasNextChunk": false,
+                "lists": [
+                    { "status": "CURRENT", "entries": [{ "mediaId": 1, "status": "CURRENT", "progress": 1, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": null, "title": { "romaji": "A", "english": null, "userPreferred": null } } }] },
+                    { "status": "PLANNING", "entries": [{ "mediaId": 2, "status": "PLANNING", "progress": 0, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": null, "title": { "romaji": "B", "english": null, "userPreferred": null } } }] },
+                    { "status": "COMPLETED", "entries": [{ "mediaId": 3, "status": "COMPLETED", "progress": 12, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": null, "title": { "romaji": "C", "english": null, "userPreferred": null } } }] },
+                    { "status": "PAUSED", "entries": [{ "mediaId": 4, "status": "PAUSED", "progress": 5, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": null, "title": { "romaji": "D", "english": null, "userPreferred": null } } }] },
+                    { "status": "DROPPED", "entries": [{ "mediaId": 5, "status": "DROPPED", "progress": 3, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": null, "title": { "romaji": "E", "english": null, "userPreferred": null } } }] },
+                    { "status": "REPEATING", "entries": [{ "mediaId": 6, "status": "REPEATING", "progress": 7, "score": 0.0, "updatedAt": 1, "repeat": 2, "media": { "idMal": null, "title": { "romaji": "F", "english": null, "userPreferred": null } } }] }
+                ]
+            }
+        }
+    }"#;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "chunk": 1 }
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let entries = provider
+        .list_all(&dummy_tokens())
+        .await
+        .expect("list_all ok");
+    let by_id: std::collections::HashMap<u32, ListStatus> =
+        entries.iter().map(|e| (e.media_id.0, e.status)).collect();
+    assert_eq!(by_id.get(&1), Some(&ListStatus::Watching));
+    assert_eq!(by_id.get(&2), Some(&ListStatus::Planning));
+    assert_eq!(by_id.get(&3), Some(&ListStatus::Completed));
+    assert_eq!(by_id.get(&4), Some(&ListStatus::Paused));
+    assert_eq!(by_id.get(&5), Some(&ListStatus::Dropped));
+    assert_eq!(by_id.get(&6), Some(&ListStatus::Rewatching));
+}
+
+#[tokio::test]
+async fn list_all_drops_entries_with_unknown_status() {
+    // AniList occasionally returns an empty status bucket on draft /
+    // half-saved entries; the unified enum has no slot for that, so
+    // the row should be skipped rather than panicking the rail
+    // renderer. Pin the skip behaviour.
+    let server = wiremock::MockServer::start().await;
+    mount_viewer(&server).await;
+    let body = r#"{
+        "data": {
+            "MediaListCollection": {
+                "hasNextChunk": false,
+                "lists": [{
+                    "status": "WAT",
+                    "entries": [
+                        { "mediaId": 10, "status": "WAT", "progress": 0, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": 10, "title": { "romaji": "Unknown", "english": null, "userPreferred": null } } },
+                        { "mediaId": 11, "status": "COMPLETED", "progress": 24, "score": 0.0, "updatedAt": 1, "repeat": 0, "media": { "idMal": 11, "title": { "romaji": "Real", "english": null, "userPreferred": null } } }
+                    ]
+                }]
+            }
+        }
+    }"#;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "chunk": 1 }
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let entries = provider
+        .list_all(&dummy_tokens())
+        .await
+        .expect("list_all ok");
+    let ids: Vec<u32> = entries.iter().map(|e| e.media_id.0).collect();
+    assert_eq!(ids, vec![11], "unknown status row dropped, real row kept");
 }
 
 #[tokio::test]
