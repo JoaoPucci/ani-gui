@@ -1,10 +1,10 @@
-//! History commands — `history_list` and `history_clear`.
+//! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
 //! Reads/writes the same `ani-hsts` file the CLI uses, so a user
 //! alternating between CLI and GUI sees one coherent history.
 
 use crate::error::Result;
-use crate::history::{read_all, write_atomic, HistoryEntry};
+use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
 /// Returns every history entry as the frontend would render the
 /// "Continue Watching" row. Most-recent-first order is the GUI's choice;
@@ -55,6 +55,27 @@ pub fn history_by_kitsu(
         }
     }
     Ok(None)
+}
+
+/// Remove the history row matching `id`. Returns `true` when a row
+/// was removed, `false` for a no-op (id not in file, file missing,
+/// empty id). The rewrite is atomic (`.new` + rename) so a concurrent
+/// reader sees either the full pre-state or the full post-state,
+/// never a half-written file.
+///
+/// # Errors
+/// Returns [`crate::error::AniError::Io`] when the file exists and
+/// cannot be read or written.
+pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
+    if id.is_empty() {
+        return Ok(false);
+    }
+    let mut entries = read_all(&state.history_path)?;
+    if !remove_by_id(&mut entries, id) {
+        return Ok(false);
+    }
+    write_atomic(&state.history_path, &entries)?;
+    Ok(true)
 }
 
 /// Truncate the history file to zero length. Mirrors `ani-cli -D`.
