@@ -26,7 +26,7 @@
 		dropListCache
 	} from '$lib/account/api';
 	import {
-		bearerAndUserIdFor,
+		bearerFor,
 		connectAccount,
 		connectErrorKey,
 		disconnectAccount
@@ -129,7 +129,7 @@
 	}
 	// Used by template, kept exported so connect-flow tests can pin
 	// the helper without test-only exports leaking from +page.svelte.
-	void bearerAndUserIdFor;
+	void bearerFor;
 </script>
 
 <svelte:head>

@@ -110,52 +110,49 @@ function errStatus(err: unknown): number | undefined {
 
 export interface DisconnectFlowDeps {
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
-	dropListCache(provider: Provider, userId: string, bearer: string): Promise<void>;
+	dropListCache(provider: Provider, bearer: string): Promise<void>;
 }
 
 /**
- * Extract `{ user_id, access_token }` from a prior provider state so
- * the caller doesn't have to walk the discriminated union inline.
- * Returns nulls for the disconnected / connecting cases.
+ * Extract the bearer from a prior provider state. The backend derives
+ * the user_id from the bearer (Codex P1 #3369956138), so the caller
+ * only needs the bearer to call dropListCache. Returns null for
+ * disconnected / connecting / errored-without-account states.
  */
-export function bearerAndUserIdFor(
-	state: ProviderState
-): { userId: string; bearer: string } | null {
+export function bearerFor(state: ProviderState): string | null {
 	if (state.kind === 'connected' || state.kind === 'expired') {
-		return {
-			userId: state.account.user_id,
-			bearer: state.account.access_token
-		};
+		return state.account.access_token;
 	}
 	if (state.kind === 'error' && state.account) {
-		return {
-			userId: state.account.user_id,
-			bearer: state.account.access_token
-		};
+		return state.account.access_token;
 	}
 	return null;
 }
 
 /**
- * Disconnect: clear safeStorage first, then drop the cache rows.
- * Cache eviction errors are swallowed because the next resync will
- * overwrite anyway and the disconnect itself is the user-facing
- * action.
+ * Disconnect: drop the cache rows BEFORE clearing safeStorage (so the
+ * cache delete still has a live bearer to send), then clear local
+ * tokens. Cache-eviction errors are swallowed — disconnect is the
+ * user-facing action and a future resync would overwrite stale rows.
+ *
+ * Order changed from clear-then-drop (PR #1 v1) to drop-then-clear
+ * because the cache DELETE now requires the bearer; running it after
+ * the safeStorage purge means the renderer has already forgotten it.
  */
 export async function disconnectAccount(
 	provider: Provider,
 	prevState: ProviderState,
 	deps: DisconnectFlowDeps
 ): Promise<void> {
-	const ids = bearerAndUserIdFor(prevState);
-	await deps.clearPersistedAccount(provider);
-	if (ids) {
+	const bearer = bearerFor(prevState);
+	if (bearer) {
 		try {
-			await deps.dropListCache(provider, ids.userId, ids.bearer);
+			await deps.dropListCache(provider, bearer);
 		} catch {
 			/* eviction failure non-fatal — next sync overwrites */
 		}
 	}
+	await deps.clearPersistedAccount(provider);
 }
 
 /**

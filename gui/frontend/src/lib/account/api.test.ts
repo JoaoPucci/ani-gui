@@ -120,29 +120,31 @@ describe('fetchAndCacheList', () => {
 describe('fetchCachedList', () => {
 	it('builds the query string with the user_id', async () => {
 		const spy = mockFetchJson([]);
-		await fetchCachedList('anilist', 'u-9', 'tok');
+		await fetchCachedList('anilist', 'tok');
 		const [url] = spy.mock.calls[0];
-		expect(String(url)).toContain('/api/account/list/anilist/cached?user_id=u-9');
+		expect(String(url)).toContain('/api/account/list/anilist/cached');
+		expect(String(url)).not.toContain('user_id'); // backend derives from bearer (Codex P1)
 	});
 
 	it('surfaces fetch failure as AccountApiError', async () => {
 		mockFetchJson({}, 404);
-		await expect(fetchCachedList('anilist', 'u', 'tok')).rejects.toBeInstanceOf(AccountApiError);
+		await expect(fetchCachedList('anilist', 'tok')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
 
 describe('dropListCache', () => {
 	it('DELETEs the cache scoped to the user', async () => {
 		const spy = mockFetchJson('');
-		await dropListCache('anilist', 'u-9', 'tok');
+		await dropListCache('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
-		expect(String(url)).toContain('/api/account/list/anilist/cache?user_id=u-9');
+		expect(String(url)).toContain('/api/account/list/anilist/cache');
+		expect(String(url)).not.toContain('user_id'); // backend derives from bearer (Codex P1)
 		expect((init as RequestInit).method).toBe('DELETE');
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
 		mockFetchJson('boom', 500);
-		await expect(dropListCache('anilist', 'u', 'tok')).rejects.toBeInstanceOf(AccountApiError);
+		await expect(dropListCache('anilist', 'tok')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
 

@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
@@ -126,13 +126,6 @@ impl From<Tokens> for TokensResponse {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ListQuery {
-    /// User id from the provider — needed to scope cache reads /
-    /// deletes when the renderer doesn't carry a bearer.
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct ListRequest {
     /// User id the renderer learned from a prior `me` call. The backend
     /// can't derive this from the bearer cheaply — every provider
@@ -213,18 +206,23 @@ async fn get_cached_list(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
-    Query(q): Query<ListQuery>,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
-    // Codex P2 #3369941703: the API router is mounted under
-    // `CorsLayer::permissive()`, so any page in any browser tab could
-    // hit the loopback port and read other users' lists by guessing
-    // numeric AniList ids if the cached path didn't require auth.
-    // Require the same bearer the live `/list` endpoint does — the
-    // renderer already has it in safeStorage, so the cost is a single
-    // IPC re-fetch per request.
-    let _bearer = bearer_from_headers(&headers)?;
+    // Codex P1 #3369956138: the prior fix only validated the bearer
+    // syntactically (presence of `Bearer <something>`), then trusted
+    // `?user_id=` from the query. Under the permissive CORS layer any
+    // browser tab could send `Authorization: Bearer anything` plus a
+    // guessed AniList id and read another user's cached rows.
+    //
+    // Real fix: derive the user_id from the bearer by calling the
+    // provider's `me` endpoint. If the bearer is forged the upstream
+    // call fails with 401 and we surface InvalidToken; if it's
+    // genuine we look up cache for the verified id, not whatever the
+    // caller claimed in the query.
+    let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
-    let entries = account::cached_list(&state, kind, &q.user_id)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    let profile = account::me(&state, kind, &tokens).await?;
+    let entries = account::cached_list(&state, kind, &profile.user_id)?;
     Ok(Json(entries))
 }
 
@@ -232,13 +230,14 @@ async fn delete_list_cache(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
-    Query(q): Query<ListQuery>,
 ) -> Result<StatusCode, AniError> {
-    // Same auth gate — a permissive-CORS DELETE could otherwise wipe
-    // another user's cache rows without their bearer.
-    let _bearer = bearer_from_headers(&headers)?;
+    // Same upstream-validated identity as get_cached_list — a forged
+    // bearer can't be used to wipe another user's cache rows.
+    let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
-    account::clear_cache(&state, kind, &q.user_id)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    let profile = account::me(&state, kind, &tokens).await?;
+    account::clear_cache(&state, kind, &profile.user_id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

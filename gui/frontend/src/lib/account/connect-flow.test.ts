@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-	bearerAndUserIdFor,
+	bearerFor,
 	connectAccount,
 	connectErrorKey,
 	disconnectAccount,
@@ -99,33 +99,33 @@ describe('connectAccount', () => {
 	});
 });
 
-describe('bearerAndUserIdFor', () => {
+describe('bearerFor', () => {
 	it('returns ids for connected state', () => {
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
-		expect(bearerAndUserIdFor(s)).toEqual({ userId: 'u7', bearer: 'tok' });
+		expect(bearerFor(s)).toBe('tok');
 	});
 
 	it('returns ids for expired state', () => {
 		const s: ProviderState = { kind: 'expired', account: payload() };
-		expect(bearerAndUserIdFor(s)).toEqual({ userId: 'u7', bearer: 'tok' });
+		expect(bearerFor(s)).toBe('tok');
 	});
 
 	it('returns ids for error state when account is present', () => {
 		const s: ProviderState = { kind: 'error', account: payload(), message: 'x' };
-		expect(bearerAndUserIdFor(s)).toEqual({ userId: 'u7', bearer: 'tok' });
+		expect(bearerFor(s)).toBe('tok');
 	});
 
 	it('returns null for error state with no account', () => {
 		const s: ProviderState = { kind: 'error', account: null, message: 'x' };
-		expect(bearerAndUserIdFor(s)).toBeNull();
+		expect(bearerFor(s)).toBeNull();
 	});
 
 	it('returns null for disconnected state', () => {
-		expect(bearerAndUserIdFor({ kind: 'disconnected' })).toBeNull();
+		expect(bearerFor({ kind: 'disconnected' })).toBeNull();
 	});
 
 	it('returns null for connecting state', () => {
-		expect(bearerAndUserIdFor({ kind: 'connecting' })).toBeNull();
+		expect(bearerFor({ kind: 'connecting' })).toBeNull();
 	});
 });
 
@@ -142,7 +142,7 @@ describe('disconnectAccount', () => {
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
 		await disconnectAccount('anilist', s, deps);
 		expect(deps.clearPersistedAccount).toHaveBeenCalledWith('anilist');
-		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'u7', 'tok');
+		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'tok');
 	});
 
 	it('skips dropListCache when there is no prior account', async () => {

@@ -132,13 +132,6 @@ fn list_request_deserialise_with_user_id() {
 }
 
 #[test]
-fn list_query_deserialise_via_serde_urlencoded() {
-    // Mirrors how axum's Query extractor decodes ?user_id=u-7.
-    let q: ListQuery = serde_urlencoded::from_str("user_id=u-7").unwrap();
-    assert_eq!(q.user_id, "u-7");
-}
-
-#[test]
 fn auth_url_response_serialise_round_trip() {
     let r = AuthUrlResponse {
         url: "https://anilist.co/x".into(),

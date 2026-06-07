@@ -118,22 +118,18 @@ export function fetchAndCacheList(
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, { user_id: userId }, bearer);
 }
 
-export function fetchCachedList(
-	provider: Provider,
-	userId: string,
-	bearer: string
-): Promise<ListEntry[]> {
-	// Bearer required even on the cached read — see backend api/account.rs
-	// `get_cached_list` rationale (Codex P2 #3369941703). The renderer
-	// already has the token in safeStorage from the connect flow.
-	const q = new URLSearchParams({ user_id: userId }).toString();
-	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached?${q}`, bearer);
+export function fetchCachedList(provider: Provider, bearer: string): Promise<ListEntry[]> {
+	// No user_id query — the backend derives it from the bearer by
+	// calling the provider's me() endpoint. Codex P1 #3369956138: a
+	// renderer-supplied user_id under permissive CORS was forgeable;
+	// the bearer must be the only identity input.
+	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached`, bearer);
 }
 
-export function dropListCache(provider: Provider, userId: string, bearer: string): Promise<void> {
-	// Same auth gate as fetchCachedList.
-	const q = new URLSearchParams({ user_id: userId }).toString();
-	return deleteEndpoint(`/api/account/list/${provider}/cache?${q}`, bearer);
+export function dropListCache(provider: Provider, bearer: string): Promise<void> {
+	// Same identity model as fetchCachedList — backend derives the
+	// user_id from the bearer.
+	return deleteEndpoint(`/api/account/list/${provider}/cache`, bearer);
 }
 
 // ─── Electron preload helpers ───────────────────────────────────────
