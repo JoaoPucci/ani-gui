@@ -13,21 +13,22 @@
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
+	import { createAnimationGate } from '$lib/history/animation-gate';
 
-	// Wrap scale/flip in factories that read `deleteBusy` at fire
-	// time — Svelte caches object-form params at element mount, so
-	// `out:scale={{ duration: deleteBusy ? 240 : 0 }}` captures the
-	// initial false and never animates the actual delete. Function-
-	// form params aren't accepted by the built-in scale/flip types,
-	// hence these tiny wrappers. They short-circuit to duration 0
-	// during the dedupe-on-load list mutation and delegate to the
-	// real transition for user-confirmed deletes.
+	// Open/auto-close gate for the Continue Watching row's
+	// out:scale + animate:flip directives. Open during a
+	// user-confirmed delete, closed during dedupe-on-load list
+	// mutations (which otherwise produce the resize-flicker on
+	// Home → Detail → back). Why the auto-close timer instead of
+	// just gating on `deleteBusy`: see lib/history/animation-gate's
+	// docblock + tests for the Svelte-5-batches-the-reset story.
+	const deleteAnimationGate = createAnimationGate();
 	function cwOutScale(node: Element) {
-		if (!isAnimatingDelete) return { duration: 0 };
+		if (!deleteAnimationGate.isOn()) return { duration: 0 };
 		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
 	}
 	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
-		if (!isAnimatingDelete) return { duration: 0 };
+		if (!deleteAnimationGate.isOn()) return { duration: 0 };
 		return flip(node, animation, { duration: 280, easing: quintOut });
 	}
 	import { resolve } from '$app/paths';
@@ -122,14 +123,6 @@
 	// state update (optimistic — no reload to keep the deletion crisp).
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
-	// Separate gate for the card transitions. `deleteBusy` resets in
-	// the finally block, but Svelte 5 batches that with the
-	// `history = ...` assignment, so by the time the out-transition
-	// factory runs both have already been applied — the factory
-	// reads `deleteBusy=false` and short-circuits. Hold this flag
-	// true across the render cycle and clear it on a timer that
-	// outlasts the longest transition (280ms flip).
-	let isAnimatingDelete = $state(false);
 	// Kebab menu open state for the rail header.
 	let clearMenuOpen = $state(false);
 	// Clear-all confirmation modal open state.
@@ -145,7 +138,6 @@
 	async function confirmDelete() {
 		if (!deleteCandidate) return;
 		deleteBusy = true;
-		isAnimatingDelete = true;
 		try {
 			// Decision + transition logic lives in the helper per
 			// AGENTS.md §2 (Codex P2 #3369181727): group expansion +
@@ -157,18 +149,18 @@
 				matches: historyMatches,
 				historyDelete
 			});
+			// Open the gate IMMEDIATELY before the optimistic mutation
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. The IPC await can take
+			// hundreds of ms across N siblings and would otherwise
+			// drain the window before the animation could start. See
+			// $lib/history/animation-gate for the gate semantics.
+			deleteAnimationGate.open();
 			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
-			// Hold the animation gate open long enough for the
-			// out:scale + animate:flip factories to fire (which
-			// happens AFTER Svelte applies the batched `history =`
-			// + `deleteBusy = false` updates). 350ms covers the
-			// 280ms flip + a small safety margin.
-			setTimeout(() => {
-				isAnimatingDelete = false;
-			}, 350);
 		}
 	}
 	function openClearConfirm() {
