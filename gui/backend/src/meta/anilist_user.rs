@@ -44,8 +44,10 @@ use crate::error::{AniError, Result};
 const ANILIST_USER_AGENT: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
 /// GraphQL: authenticated user's profile. Mirrors §4.1 of the
-/// account-integration plan. `meanScore` on this surface is already
-/// 0..=10 — no scaling on the read side.
+/// account-integration plan. `meanScore` on this surface is the
+/// 0..=100 percentage AniList returns regardless of the user's
+/// chosen scoring system — Codex P2 #3370087028. The read side
+/// rescales to the trait's 0..=10 contract.
 const VIEWER_GQL: &str = "query Viewer { \
         Viewer { \
             id name \
@@ -332,9 +334,13 @@ fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
     let stats = wire.data.viewer.statistics.and_then(|s| s.anime).map(|a| {
         UserStats {
             anime_count: a.count,
-            // AniList's meanScore on this surface is already 0..=10;
-            // pass through unchanged.
-            mean_score_0_to_10: a.mean_score,
+            // AniList returns meanScore in 0..=100 (percentage points)
+            // regardless of the user's chosen scoring system —
+            // POINT_100, POINT_10, POINT_5, etc. all surface here as a
+            // percentage. The trait's contract is 0..=10, so divide.
+            // Codex P2 #3370087028: prior pass-through showed 65.5/10
+            // for a 100-point user with a 65.5% mean.
+            mean_score_0_to_10: a.mean_score.map(|s| s / 10.0),
         }
     });
     Ok(UserProfile {

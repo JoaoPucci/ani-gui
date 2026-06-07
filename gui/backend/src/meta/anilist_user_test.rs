@@ -167,7 +167,7 @@ const VIEWER_RESPONSE_BODY: &str = r#"{
             "statistics": {
                 "anime": {
                     "count": 312,
-                    "meanScore": 7.4
+                    "meanScore": 74.0
                 }
             }
         }
@@ -200,7 +200,11 @@ async fn me_parses_viewer_query_response() {
     );
     let stats = profile.stats.expect("stats present");
     assert_eq!(stats.anime_count, 312);
-    // meanScore is already 0..=10; pass through, no scaling.
+    // AniList's meanScore wire format is 0..=100 (percentage points)
+    // regardless of the user's chosen scoring system; UserStats's
+    // contract is 0..=10, so 74.0 from the wire rescales to 7.4 here.
+    // Codex P2 #3370087028: prior pass-through surfaced 65.5/10 for a
+    // 100-point user.
     assert!(
         matches!(stats.mean_score_0_to_10, Some(v) if (v - 7.4).abs() < 0.001),
         "mean_score_0_to_10: {:?}",

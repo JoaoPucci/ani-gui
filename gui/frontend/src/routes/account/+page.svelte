@@ -18,6 +18,7 @@
 	import { Pkce } from '$lib/account/pkce';
 	import {
 		buildAuthUrl,
+		cancelOAuth,
 		exchangeCode,
 		fetchAndCacheList,
 		fetchMe,
@@ -120,6 +121,19 @@
 			default:
 				accountStore.setDisconnected(provider);
 		}
+	}
+
+	async function cancelConnect() {
+		// Codex P2 #3370087029: without this the `connecting` state
+		// only resolves after openOAuth's 5-minute server timeout — the
+		// user can't recover until then. cancelOAuth stops the
+		// loopback server immediately; the awaiting connectAccount
+		// then resolves as oauth_error with kind === 'cancelled',
+		// and the prior `disconnected` state is restored via the
+		// existing restoreAfterFailedConnect path. (The OAuth server
+		// is process-singleton across providers, so we don't need a
+		// provider arg — MAL in PR #3 reuses the same server.)
+		await cancelOAuth();
 	}
 
 	async function disconnect(provider: Provider) {
@@ -234,6 +248,9 @@
 				{:else if anilistState.kind === 'connecting'}
 					<button type="button" class="btn" disabled>
 						{m.account_card_status_connecting()}
+					</button>
+					<button type="button" class="btn" onclick={cancelConnect}>
+						{m.account_card_action_cancel()}
 					</button>
 				{:else if anilistState.kind === 'expired' || (anilistState.kind === 'error' && anilistState.account)}
 					<button type="button" class="btn btn-primary" onclick={connectAniList}>
