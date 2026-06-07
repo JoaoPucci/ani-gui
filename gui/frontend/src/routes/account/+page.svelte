@@ -81,7 +81,16 @@
 
 	async function disconnect(provider: Provider) {
 		const prev = accountStore.byProvider[provider];
-		await disconnectAccount(provider, prev, { clearPersistedAccount, dropListCache });
+		const r = await disconnectAccount(provider, prev, { clearPersistedAccount, dropListCache });
+		if (r.kind === 'token_clear_failed') {
+			// Codex P2 #3369988183: the bearer is still on disk; telling
+			// the user they're disconnected would be a lie because the
+			// next hydrate() restores the account. Leave state as-is and
+			// surface the failure as an error.
+			accountStore.setError(provider, m.account_connect_error_unknown());
+			toastStore.push({ kind: 'error', message: m.account_disconnect_error_token_clear() });
+			return;
+		}
 		accountStore.setDisconnected(provider);
 	}
 

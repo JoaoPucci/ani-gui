@@ -130,20 +130,26 @@ export function bearerFor(state: ProviderState): string | null {
 }
 
 /**
- * Disconnect: drop the cache rows BEFORE clearing safeStorage (so the
- * cache delete still has a live bearer to send), then clear local
- * tokens. Cache-eviction errors are swallowed — disconnect is the
- * user-facing action and a future resync would overwrite stale rows.
+ * Disconnect: drop the cache rows BEFORE clearing safeStorage (the
+ * cache delete still needs a live bearer to send), then clear the
+ * local tokens. Cache-eviction errors stay swallowed — best-effort —
+ * but a token-clear failure is fatal: per Codex P2 #3369988183, if
+ * `clearPersistedAccount` returns false the bearer is still on disk
+ * and `hydrate()` will restore the account on next launch. Telling
+ * the user they're disconnected in that state is a lie, so surface
+ * the failure to the caller.
  *
  * Order changed from clear-then-drop (PR #1 v1) to drop-then-clear
  * because the cache DELETE now requires the bearer; running it after
  * the safeStorage purge means the renderer has already forgotten it.
  */
+export type DisconnectResult = { kind: 'ok' } | { kind: 'token_clear_failed' };
+
 export async function disconnectAccount(
 	provider: Provider,
 	prevState: ProviderState,
 	deps: DisconnectFlowDeps
-): Promise<void> {
+): Promise<DisconnectResult> {
 	const bearer = bearerFor(prevState);
 	if (bearer) {
 		try {
@@ -152,7 +158,9 @@ export async function disconnectAccount(
 			/* eviction failure non-fatal — next sync overwrites */
 		}
 	}
-	await deps.clearPersistedAccount(provider);
+	const ok = await deps.clearPersistedAccount(provider);
+	if (!ok) return { kind: 'token_clear_failed' };
+	return { kind: 'ok' };
 }
 
 /**

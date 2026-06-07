@@ -33,5 +33,6 @@
 	"settings_section_title": "Accounts",
 	"settings_section_hint": "AniList + MyAnimeList sync",
 	"settings_subtitle_connected": "Signed in to {provider}.",
-	"settings_subtitle_disconnected": "No tracker connected."
+	"settings_subtitle_disconnected": "No tracker connected.",
+	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs."
 }

@@ -739,18 +739,6 @@
 			</div>
 		</section>
 
-		<!-- ACCOUNTS — full management surface lives at /account; this
-		     section is a thin pointer per .planning/account-integration.md §6.4. -->
-		<section class="section accounts">
-			<h2 class="section-eyebrow">
-				<span>{m.account_settings_section_title()}</span>
-				<span class="section-eyebrow-faint">{m.account_settings_section_hint()}</span>
-			</h2>
-			<a class="inline-link" href={resolve('/account')}>
-				{m.account_settings_link_label()} →
-			</a>
-		</section>
-
 		{#if saveError}
 			<div class="state state-error" role="alert">
 				<p class="state-headline">{m.settings_error_save_headline()}</p>
@@ -799,6 +787,20 @@
 					<dt>{m.settings_about_disclaimer_label()}</dt>
 					<dd class="about-foot">
 						{m.settings_about_disclaimer_text()}
+					</dd>
+				</div>
+				<!-- ACCOUNTS pointer: the full management surface lives at
+				     /account; this row is the discovery affordance in Settings
+				     per .planning/account-integration.md §6.4. Sits in About
+				     rather than its own section so Playwright's existing
+				     section-order assumptions stay stable. -->
+				<div class="about-row">
+					<dt>{m.account_settings_section_title()}</dt>
+					<dd>
+						<a class="inline-link" href={resolve('/account')}>
+							{m.account_settings_link_label()}
+						</a>
+						<span class="about-foot">{m.account_settings_section_hint()}</span>
 					</dd>
 				</div>
 			</dl>

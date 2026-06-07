@@ -140,14 +140,16 @@ describe('disconnectAccount', () => {
 	it('clears safeStorage then drops the cache when ids are known', async () => {
 		const deps = disconnectDeps();
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
-		await disconnectAccount('anilist', s, deps);
+		const r = await disconnectAccount('anilist', s, deps);
+		expect(r.kind).toBe('ok');
 		expect(deps.clearPersistedAccount).toHaveBeenCalledWith('anilist');
 		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'tok');
 	});
 
 	it('skips dropListCache when there is no prior account', async () => {
 		const deps = disconnectDeps();
-		await disconnectAccount('anilist', { kind: 'disconnected' }, deps);
+		const r = await disconnectAccount('anilist', { kind: 'disconnected' }, deps);
+		expect(r.kind).toBe('ok');
 		expect(deps.clearPersistedAccount).toHaveBeenCalled();
 		expect(deps.dropListCache).not.toHaveBeenCalled();
 	});
@@ -156,7 +158,19 @@ describe('disconnectAccount', () => {
 		const deps = disconnectDeps();
 		deps.dropListCache = vi.fn().mockRejectedValue(new Error('cache 502'));
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
-		await expect(disconnectAccount('anilist', s, deps)).resolves.toBeUndefined();
+		const r = await disconnectAccount('anilist', s, deps);
+		expect(r.kind).toBe('ok');
+	});
+
+	it('returns token_clear_failed when safeStorage clear fails (Codex P2 #3369988183)', async () => {
+		// If clearPersistedAccount returns false the bearer is still on
+		// disk and hydrate() will restore the account next launch.
+		// Telling the user they're disconnected in that state is a lie.
+		const deps = disconnectDeps();
+		deps.clearPersistedAccount = vi.fn().mockResolvedValue(false);
+		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
+		const r = await disconnectAccount('anilist', s, deps);
+		expect(r.kind).toBe('token_clear_failed');
 	});
 });
 
