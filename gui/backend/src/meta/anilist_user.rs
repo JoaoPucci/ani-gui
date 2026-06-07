@@ -59,6 +59,11 @@ const VIEWER_GQL: &str = "query Viewer { \
 /// user (the median in our test fixtures) the loop terminates after
 /// one round-trip. The trait surface accepts the pagination cost so
 /// every concrete provider hides chunk semantics from rail callers.
+/// `score(format: POINT_100)` pins the returned value to the unified
+/// 0..=100 scale regardless of the user's AniList scoring preference.
+/// Without the format arg the user's preferred system (POINT_10,
+/// POINT_5_DECIMAL, etc.) leaks through, and an 8/10 silently
+/// becomes 8/100 in the cache.
 const MEDIA_LIST_GQL: &str = "query MediaList($userId: Int!, $chunk: Int!) { \
         MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { \
             hasNextChunk \
@@ -66,7 +71,7 @@ const MEDIA_LIST_GQL: &str = "query MediaList($userId: Int!, $chunk: Int!) { \
                 status \
                 entries { \
                     mediaId \
-                    status progress score updatedAt repeat \
+                    status progress score(format: POINT_100) updatedAt repeat \
                     media { idMal title { romaji english userPreferred } } \
                 } \
             } \

@@ -236,7 +236,7 @@ async fn me_surfaces_401_as_invalid_token() {
 
 /// Minimal but realistic single-chunk MediaListCollection — two
 /// entries across two status buckets, hitting the optional fields
-/// (idMal Some + None, score 0.0 → None, score 7.5 → Some(7), title
+/// (idMal Some + None, score 0.0 → None, score 75.0 → Some(75), title
 /// fallback chain). `hasNextChunk: false` ends the pagination loop
 /// in one round-trip.
 const LIST_CHUNK_1_BODY: &str = r#"{
@@ -251,7 +251,7 @@ const LIST_CHUNK_1_BODY: &str = r#"{
                             "mediaId": 21,
                             "status": "CURRENT",
                             "progress": 1043,
-                            "score": 7.5,
+                            "score": 75.0,
                             "updatedAt": 1700000000,
                             "repeat": 0,
                             "media": {
@@ -324,9 +324,10 @@ async fn list_all_parses_single_chunk_with_status_score_and_mal_id() {
 
     assert_eq!(entries.len(), 2);
 
-    // First entry — ONE PIECE, CURRENT, score 7.5 → 7 (truncated to
-    // u8 on the unified 0..=100 scale; AniList POINT_100 is the
-    // assumed scoring system and is already 0..=100 native), mal_id
+    // First entry — ONE PIECE, CURRENT, score 75.0 → Some(75) on the
+    // unified 0..=100 scale. The GraphQL query requests
+    // `score(format: POINT_100)` so this value is independent of the
+    // user's AniList scoring preference (per Codex P2 fix), mal_id
     // present, updated timestamp passes through, title falls back to
     // userPreferred when present.
     let watching = entries
@@ -336,7 +337,7 @@ async fn list_all_parses_single_chunk_with_status_score_and_mal_id() {
     assert_eq!(watching.provider, ProviderKind::AniList);
     assert_eq!(watching.status, ListStatus::Watching);
     assert_eq!(watching.progress_episodes, 1043);
-    assert_eq!(watching.score_0_to_100, Some(7));
+    assert_eq!(watching.score_0_to_100, Some(75));
     assert_eq!(watching.mal_id, Some(21));
     assert_eq!(watching.updated_at_epoch_s, 1_700_000_000);
     assert_eq!(watching.title, "One Piece");

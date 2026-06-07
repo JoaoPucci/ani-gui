@@ -20,18 +20,6 @@
 	import { m } from '$lib/paraglide/messages';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
-	import { accountStore } from '$lib/account/store.svelte';
-
-	function connectedProvidersLabel(store: typeof accountStore): string {
-		// Short label for the Accounts section subtitle. Names are
-		// brand strings (per provider's marks), not localised.
-		const names = store.connected.map((p) =>
-			p === 'anilist' ? 'AniList' : p === 'mal' ? 'MyAnimeList' : 'ani-gui'
-		);
-		if (names.length === 0) return '';
-		if (names.length === 1) return names[0];
-		return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
-	}
 
 	let cfg = $state<Config | null>(null);
 	let info = $state<AppInfo | null>(null);
@@ -758,15 +746,8 @@
 				<span>{m.account_settings_section_title()}</span>
 				<span class="section-eyebrow-faint">{m.account_settings_section_hint()}</span>
 			</h2>
-			<p class="settings-accounts-summary">
-				{accountStore.hasAny
-					? m.account_settings_subtitle_connected({
-							provider: connectedProvidersLabel(accountStore)
-						})
-					: m.account_settings_subtitle_disconnected()}
-			</p>
 			<a class="inline-link" href={resolve('/account')}>
-				{m.account_settings_link_label()}
+				{m.account_settings_link_label()} →
 			</a>
 		</section>
 

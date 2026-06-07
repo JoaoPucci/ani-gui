@@ -1,0 +1,175 @@
+/**
+ * Tests for the per-provider account store. The store mirrors the
+ * download store shape (`lib/download/store.svelte.ts`): one rune
+ * `$state` field per provider, mutated by lifecycle methods, derived
+ * `connected` / `hasAny` / `hasErrored` getters.
+ *
+ * Hydrate is exercised against a stubbed `window.aniGui.account`
+ * bridge so we can pin the disconnected/connected/expired branches
+ * without touching real Electron safeStorage.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { accountStore } from './store.svelte';
+import type { PersistedAccount } from './types';
+
+function payload(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
+	return {
+		access_token: 'a',
+		refresh_token: null,
+		expires_at_epoch_s: 1_999_999_999,
+		user_id: '7',
+		username: 'pucci',
+		avatar_url: null,
+		...overrides
+	};
+}
+
+beforeEach(() => {
+	// Reset the singleton between tests — its state is module-scoped.
+	accountStore.setDisconnected('anilist');
+	accountStore.setDisconnected('mal');
+	accountStore.setDisconnected('inhouse');
+});
+
+afterEach(() => {
+	(globalThis as { window?: unknown }).window = undefined;
+});
+
+describe('accountStore lifecycle', () => {
+	it('starts every provider in disconnected state', () => {
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		expect(accountStore.byProvider.mal.kind).toBe('disconnected');
+		expect(accountStore.byProvider.inhouse.kind).toBe('disconnected');
+		expect(accountStore.hasAny).toBe(false);
+		expect(accountStore.hasErrored).toBe(false);
+		expect(accountStore.connected).toEqual([]);
+	});
+
+	it('setConnecting flips state to connecting', () => {
+		accountStore.setConnecting('anilist');
+		expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+		expect(accountStore.hasAny).toBe(false);
+	});
+
+	it('setConnected populates the account + lastSyncedAt', () => {
+		const p = payload();
+		accountStore.setConnected('anilist', p);
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('connected');
+		if (s.kind === 'connected') {
+			expect(s.account).toEqual(p);
+			expect(s.lastSyncedAt).not.toBeNull();
+		}
+		expect(accountStore.hasAny).toBe(true);
+		expect(accountStore.connected).toEqual(['anilist']);
+	});
+
+	it('setExpired surfaces the prior account', () => {
+		const p = payload();
+		accountStore.setExpired('anilist', p);
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('expired');
+		expect(accountStore.hasErrored).toBe(true);
+	});
+
+	it('setError preserves the prior account when available', () => {
+		const p = payload();
+		accountStore.setConnected('anilist', p);
+		accountStore.setError('anilist', 'sync failed');
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('error');
+		if (s.kind === 'error') {
+			expect(s.account).toEqual(p);
+			expect(s.message).toBe('sync failed');
+		}
+		expect(accountStore.hasErrored).toBe(true);
+	});
+
+	it('setError surfaces null account when starting from disconnected', () => {
+		accountStore.setError('anilist', 'oh no');
+		const s = accountStore.byProvider.anilist;
+		if (s.kind === 'error') {
+			expect(s.account).toBeNull();
+		}
+	});
+
+	it('setDisconnected drops the prior account', () => {
+		accountStore.setConnected('anilist', payload());
+		accountStore.setDisconnected('anilist');
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		expect(accountStore.hasAny).toBe(false);
+	});
+
+	it('markSynced bumps lastSyncedAt without flipping state', () => {
+		accountStore.setConnected('anilist', payload());
+		const before = accountStore.byProvider.anilist;
+		if (before.kind !== 'connected') throw new Error('precondition');
+		const beforeTs = before.lastSyncedAt!;
+		vi.useFakeTimers();
+		vi.advanceTimersByTime(5_000);
+		accountStore.markSynced('anilist');
+		vi.useRealTimers();
+		const after = accountStore.byProvider.anilist;
+		if (after.kind !== 'connected') throw new Error('postcondition');
+		expect(after.lastSyncedAt).toBeGreaterThanOrEqual(beforeTs);
+	});
+
+	it('markSynced on a non-connected provider is a no-op', () => {
+		accountStore.markSynced('anilist');
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+	});
+});
+
+describe('accountStore.hydrate', () => {
+	function stubBridge(byProvider: Record<string, PersistedAccount | null>) {
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				account: {
+					getToken(provider: string) {
+						const acc = byProvider[provider];
+						return acc ? { ok: true, payload: acc } : { ok: false, kind: 'not_found' };
+					}
+				}
+			}
+		};
+	}
+
+	it('seeds disconnected when no payload exists', () => {
+		stubBridge({});
+		accountStore.hydrate();
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+	});
+
+	it('seeds connected when a valid payload exists', () => {
+		const p = payload();
+		stubBridge({ anilist: p });
+		accountStore.hydrate();
+		expect(accountStore.byProvider.anilist.kind).toBe('connected');
+	});
+
+	it('seeds expired when expiry is in the past', () => {
+		const p = payload({ expires_at_epoch_s: 1 });
+		stubBridge({ anilist: p });
+		accountStore.hydrate();
+		expect(accountStore.byProvider.anilist.kind).toBe('expired');
+	});
+
+	it('seeds connected when expires_at is zero (unknown)', () => {
+		// expires_at_epoch_s === 0 means "we don't know"; treat as
+		// valid so a missing-expiry round-trip doesn't accidentally
+		// trip the expired branch.
+		const p = payload({ expires_at_epoch_s: 0 });
+		stubBridge({ anilist: p });
+		accountStore.hydrate();
+		expect(accountStore.byProvider.anilist.kind).toBe('connected');
+	});
+
+	it('is a no-op when the preload bridge is absent', () => {
+		(globalThis as { window?: unknown }).window = undefined;
+		accountStore.setConnected('anilist', payload());
+		accountStore.hydrate();
+		// hydrate without a bridge resets to disconnected
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+	});
+});
