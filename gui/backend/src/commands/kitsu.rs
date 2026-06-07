@@ -683,6 +683,165 @@ mod tests {
     const DETAIL_FIXTURE: &[u8] =
         include_bytes!("../../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
+    // — merge_anilist_thumbs ————————————————————————————————————————————
+    //
+    // Pure helper that backfills Kitsu's null per-episode thumbnails
+    // from AniList's `streamingEpisodes` map. Kitsu always wins when
+    // present; AniList only fills genuine gaps. Used inside
+    // `kitsu_episodes` after both fetches resolve.
+
+    fn ep_with(num: u32, thumb: Option<&str>) -> crate::meta::kitsu::KitsuEpisode {
+        crate::meta::kitsu::KitsuEpisode {
+            id: format!("e{num}"),
+            canonical_title: Some(format!("Ep {num}")),
+            season_number: Some(1),
+            number: Some(num),
+            relative_number: Some(num),
+            length: None,
+            synopsis: None,
+            airdate: None,
+            thumbnail: thumb.map(|t| crate::meta::kitsu::KitsuEpisodeThumbnail {
+                original: Some(t.to_string()),
+            }),
+        }
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_keeps_kitsu_thumb_when_present() {
+        // Kitsu has its own thumbnail; AniList also has one for the
+        // same ep. Kitsu wins — its art quality is consistently higher
+        // (proper episode stills vs. Crunchyroll promotional crops).
+        let eps = vec![ep_with(1, Some("https://kitsu.cdn/1.jpg"))];
+        let mut anilist = std::collections::HashMap::new();
+        anilist.insert(1u32, "https://crunchyroll.cdn/1.jpg".to_string());
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert_eq!(
+            merged[0]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://kitsu.cdn/1.jpg"
+        );
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_fills_null_thumb_from_anilist() {
+        // The headline use-case: Kitsu has no thumb, AniList does —
+        // surface AniList's so the placeholder doesn't render.
+        let eps = vec![ep_with(54, None)];
+        let mut anilist = std::collections::HashMap::new();
+        anilist.insert(54u32, "https://crunchyroll.cdn/54.jpg".to_string());
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert_eq!(
+            merged[0]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://crunchyroll.cdn/54.jpg"
+        );
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_leaves_null_thumb_when_anilist_missing() {
+        // The "both gap" case (One Piece eps 54-61, 131-1010+): Kitsu
+        // null, AniList also has nothing. Placeholder still renders.
+        let eps = vec![ep_with(131, None)];
+        let anilist = std::collections::HashMap::<u32, String>::new();
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert!(merged[0].thumbnail.is_none());
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_handles_mixed_pool() {
+        // Realistic shape from a One Piece-shaped probe: ep 53 Kitsu
+        // present, ep 54 Kitsu null + AniList null, ep 62 Kitsu null +
+        // AniList present, ep 130 ditto.
+        let eps = vec![
+            ep_with(53, Some("https://kitsu.cdn/53.jpg")),
+            ep_with(54, None),
+            ep_with(62, None),
+            ep_with(130, None),
+        ];
+        let mut anilist = std::collections::HashMap::new();
+        anilist.insert(62u32, "https://cr.cdn/62.jpg".to_string());
+        anilist.insert(130u32, "https://cr.cdn/130.jpg".to_string());
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert_eq!(
+            merged[0]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://kitsu.cdn/53.jpg"
+        );
+        assert!(merged[1].thumbnail.is_none());
+        assert_eq!(
+            merged[2]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://cr.cdn/62.jpg"
+        );
+        assert_eq!(
+            merged[3]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://cr.cdn/130.jpg"
+        );
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_skips_eps_without_number() {
+        // Kitsu sometimes serves episodes with null `number` (mostly
+        // movies / specials in a TV show's listing). No number → no
+        // way to match an AniList entry; pass through unchanged.
+        let mut ep = ep_with(1, None);
+        ep.number = None;
+        let eps = vec![ep];
+        let mut anilist = std::collections::HashMap::new();
+        anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert!(merged[0].thumbnail.is_none());
+    }
+
+    #[test]
+    fn merge_anilist_thumbs_replaces_thumbnail_with_only_null_original() {
+        // Kitsu sometimes serves `thumbnail: { original: null }` —
+        // shape-wise present, content-wise empty. Treat it the same as
+        // missing thumb and backfill from AniList.
+        let mut ep = ep_with(1, None);
+        ep.thumbnail = Some(crate::meta::kitsu::KitsuEpisodeThumbnail { original: None });
+        let eps = vec![ep];
+        let mut anilist = std::collections::HashMap::new();
+        anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+        let merged = merge_anilist_thumbs(eps, &anilist);
+        assert_eq!(
+            merged[0]
+                .thumbnail
+                .as_ref()
+                .unwrap()
+                .original
+                .as_deref()
+                .unwrap(),
+            "https://cr.cdn/1.jpg"
+        );
+    }
+
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
             secret: AppSecret::random(),
