@@ -147,7 +147,7 @@ impl UserListProvider for AniListProvider {
     }
 
     async fn refresh(&self, _refresh_token: &str) -> Result<Tokens> {
-        Err(AniError::Metadata)
+        unimplemented!("refresh stub — green commit pins the semantics")
     }
 
     async fn me(&self, _tokens: &Tokens) -> Result<UserProfile> {

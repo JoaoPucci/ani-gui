@@ -149,3 +149,29 @@ async fn exchange_code_surfaces_upstream_4xx_as_upstream_error() {
     // Suppress dead-code warnings until later pairs land.
     let _ = dummy_tokens();
 }
+
+#[tokio::test]
+async fn refresh_returns_metadata_error_no_network_call() {
+    // AniList does not issue refresh tokens — their 1-year JWT has
+    // no refresh flow and no revocation endpoint. The trait method
+    // must surface this as AniError::Metadata so the route layer can
+    // distinguish "no flow" from a transient upstream / network
+    // failure (which would be Network / Upstream).
+    //
+    // Build the provider with bogus endpoints to also prove the impl
+    // doesn't attempt a network round-trip — any HTTP call against
+    // these unbound URIs would surface as Network, not Metadata.
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        "http://127.0.0.1:1/no-api".into(),
+        "http://127.0.0.1:1/no-token".into(),
+    );
+    let err = provider
+        .refresh("never-issued")
+        .await
+        .expect_err("refresh must always error");
+    assert!(
+        matches!(err, AniError::Metadata),
+        "expected AniError::Metadata, got {err:?}"
+    );
+}
