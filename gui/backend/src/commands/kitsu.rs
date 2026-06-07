@@ -18,6 +18,7 @@ use crate::cache::ttl::{
     ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
 };
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
 use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
@@ -269,18 +270,67 @@ pub async fn kitsu_episodes(
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
     let key = format!("kitsu:episodes:{anime_id}:p{p}");
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+    let eps = if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
             warm_signed_image_urls(state, &body);
+            eps
+        } else {
+            kitsu_episodes_fresh(state, anime_id, p, &key).await?
+        }
+    } else {
+        kitsu_episodes_fresh(state, anime_id, p, &key).await?
+    };
+    // Skip the AniList lookup entirely when every row Kitsu returned
+    // already has a thumbnail — the merge would be a no-op and the
+    // round-trip would only burn a cold-cache `/mappings` call + an
+    // AniList rate-limit slot. Codex P2 #3368787400.
+    if !anilist_eps_thumbs::needs_backfill(&eps) {
+        return Ok(eps);
+    }
+    // Cap the cold-cache cost of the enrichment chain (Kitsu mappings
+    // + AniList GraphQL) at a tight budget. proxy_http's own timeout
+    // is 120s — long enough that a slow upstream would stall
+    // /api/kitsu/episodes when the route should just degrade to
+    // Kitsu-only data. On timeout, return the Kitsu page directly.
+    // Codex P2 #3368793002.
+    let anilist = match tokio::time::timeout(
+        ANILIST_ENRICHMENT_BUDGET,
+        anilist_eps_thumbs::thumbs_for_show(state, anime_id),
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(_) => {
+            tracing::warn!(
+                anime_id,
+                "anilist enrichment exceeded budget; returning Kitsu-only",
+            );
             return Ok(eps);
         }
-    }
+    };
+    Ok(anilist_eps_thumbs::merge_thumbs(eps, &anilist))
+}
+
+/// Wall-clock budget the `/api/kitsu/episodes` route gives the AniList
+/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL +
+/// cache write). Tight on purpose — the underlying `proxy_http` has a
+/// 120s timeout, which would stall the route when the user just wants
+/// the Kitsu data we already loaded. On budget exhaustion the route
+/// degrades to a Kitsu-only response.
+const ANILIST_ENRICHMENT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
+async fn kitsu_episodes_fresh(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+    key: &str,
+) -> Result<Vec<KitsuEpisode>> {
     let eps = state
         .kitsu
-        .episodes(anime_id, p, EPISODES_PAGE_LIMIT)
+        .episodes(anime_id, page, EPISODES_PAGE_LIMIT)
         .await?;
     if let Ok(body) = serde_json::to_string(&eps) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, EPISODES_TTL.as_secs());
+        let _ = meta_cache_put(&state.cache_pool, key, &body, EPISODES_TTL.as_secs());
         warm_signed_image_urls(state, &body);
     }
     Ok(eps)
