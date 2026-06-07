@@ -143,7 +143,7 @@ mod tests {
         // stray character escaped in.
         let p = Pkce::new_plain();
         for c in p.verifier.chars() {
-            assert!(is_valid_char(c), "illegal char {:?} in verifier", c);
+            assert!(is_valid_char(c), "illegal char {c:?} in verifier");
         }
     }
 

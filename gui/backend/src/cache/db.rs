@@ -254,7 +254,8 @@ mod tests {
     fn open_in_memory_runs_migrations_and_creates_tables() {
         let pool = open_in_memory().expect("pool opens");
         let conn = pool.get().expect("checkout");
-        // Migrations should have created all three tables.
+        // Migrations should have created all four tables (V001 created the
+        // first three; V002 added user_list_cache for account integration).
         let tables: Vec<String> = conn
             .prepare(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'refinery%' \
@@ -265,7 +266,15 @@ mod tests {
             .unwrap()
             .map(std::result::Result::unwrap)
             .collect();
-        assert_eq!(tables, vec!["image_index", "meta_cache", "title_match"]);
+        assert_eq!(
+            tables,
+            vec![
+                "image_index",
+                "meta_cache",
+                "title_match",
+                "user_list_cache"
+            ]
+        );
     }
 
     #[test]
