@@ -36,17 +36,30 @@ impl ListStatus {
     /// (used in GraphQL queries and mutations).
     #[must_use]
     pub fn to_anilist(self) -> &'static str {
-        // Stub — replaced in the next commit's green pair.
-        "PLANNING"
+        match self {
+            Self::Planning => "PLANNING",
+            Self::Watching => "CURRENT",
+            Self::Completed => "COMPLETED",
+            Self::Paused => "PAUSED",
+            Self::Dropped => "DROPPED",
+            Self::Rewatching => "REPEATING",
+        }
     }
 
     /// Inverse of [`Self::to_anilist`]. `None` when the value isn't a
     /// known AniList status — caller decides whether to log + skip or
-    /// hard-fail.
+    /// hard-fail. Case-sensitive: AniList wires everything UPPER.
     #[must_use]
-    pub fn from_anilist(_s: &str) -> Option<Self> {
-        // Stub — replaced in the next commit's green pair.
-        None
+    pub fn from_anilist(s: &str) -> Option<Self> {
+        match s {
+            "PLANNING" => Some(Self::Planning),
+            "CURRENT" => Some(Self::Watching),
+            "COMPLETED" => Some(Self::Completed),
+            "PAUSED" => Some(Self::Paused),
+            "DROPPED" => Some(Self::Dropped),
+            "REPEATING" => Some(Self::Rewatching),
+            _ => None,
+        }
     }
 
     /// Translate to MAL's `(status, is_rewatching)` pair. MAL splits
@@ -55,15 +68,31 @@ impl ListStatus {
     /// take both back as inputs.
     #[must_use]
     pub fn to_mal(self) -> (&'static str, bool) {
-        // Stub — replaced in the next commit's green pair.
-        ("plan_to_watch", false)
+        match self {
+            Self::Planning => ("plan_to_watch", false),
+            Self::Watching => ("watching", false),
+            Self::Completed => ("completed", false),
+            Self::Paused => ("on_hold", false),
+            Self::Dropped => ("dropped", false),
+            Self::Rewatching => ("watching", true),
+        }
     }
 
-    /// Inverse of [`Self::to_mal`].
+    /// Inverse of [`Self::to_mal`]. The `is_rewatching` flag only
+    /// carries meaning when `status == "watching"`; on other statuses
+    /// it's ignored (users may carry stale `is_rewatching=true` on
+    /// completed entries — surface as Completed, not None).
     #[must_use]
-    pub fn from_mal(_status: &str, _is_rewatching: bool) -> Option<Self> {
-        // Stub — replaced in the next commit's green pair.
-        None
+    pub fn from_mal(status: &str, is_rewatching: bool) -> Option<Self> {
+        match (status, is_rewatching) {
+            ("plan_to_watch", _) => Some(Self::Planning),
+            ("watching", false) => Some(Self::Watching),
+            ("watching", true) => Some(Self::Rewatching),
+            ("completed", _) => Some(Self::Completed),
+            ("on_hold", _) => Some(Self::Paused),
+            ("dropped", _) => Some(Self::Dropped),
+            _ => None,
+        }
     }
 }
 
