@@ -24,6 +24,7 @@ const {
   ipcMain,
   net,
   protocol,
+  safeStorage,
   screen,
   shell,
 } = require("electron");
@@ -33,6 +34,7 @@ const os = require("node:os");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
+const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -564,6 +566,172 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // happens once per renderer load.
 ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
+});
+
+// ─── Account integration IPC handlers ──────────────────────────────
+//
+// See .planning/account-integration.md §3.3 (OAuth flow) and §3.4
+// (token storage). The Rust backend never touches safeStorage — every
+// token operation is mediated by these handlers.
+
+/**
+ * Path where encrypted tokens for the given provider live. One file
+ * per provider so disconnect can rm a single file cleanly.
+ * `app.getPath("userData")` is the OS-canonical per-app data dir:
+ *   - Linux: $XDG_CONFIG_HOME/ani-gui (defaults to ~/.config/ani-gui)
+ *   - macOS: ~/Library/Application Support/ani-gui
+ *   - Windows: %APPDATA%\ani-gui
+ */
+function tokenPathFor(provider) {
+  const dir = path.join(app.getPath("userData"), "tokens");
+  // The directory may not exist on first install; mkdir -p.
+  fs.mkdirSync(dir, { recursive: true });
+  // Allowlist provider slugs to prevent path traversal via a malicious
+  // renderer payload (defensive — preload exposes a closed enum, but
+  // belt-and-braces).
+  if (!/^[a-z]+$/.test(provider)) {
+    throw new Error("invalid provider slug");
+  }
+  return path.join(dir, `${provider}.bin`);
+}
+
+// Track the active OAuth attempt so a cancel can stop the server.
+let activeOAuth = null;
+
+/**
+ * Begin the OAuth flow for the given provider. Opens the consent URL
+ * in the OS browser and listens on 127.0.0.1:53682 for the callback.
+ * Renderer gets `{ code, state }` back when the user approves, or an
+ * error with one of the documented `kind`s.
+ */
+ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
+  if (typeof authUrl !== "string" || !authUrl.startsWith("https://")) {
+    return { ok: false, kind: "bad_request" };
+  }
+  // Cancel any previous in-flight attempt — a fresh click should
+  // start fresh, not stack on top.
+  if (activeOAuth) {
+    try {
+      activeOAuth.stop();
+    } catch {
+      /* ignore */
+    }
+    activeOAuth = null;
+  }
+  let server;
+  try {
+    server = startOAuthServer();
+  } catch (err) {
+    return { ok: false, kind: "port_busy", message: String(err.message || err) };
+  }
+  activeOAuth = server;
+  // Open the consent URL AFTER the listener is bound; otherwise a
+  // fast redirect can race and hit a 503.
+  shell.openExternal(authUrl);
+  try {
+    const result = await server.promise;
+    activeOAuth = null;
+    return { ok: true, code: result.code, state: result.state };
+  } catch (err) {
+    activeOAuth = null;
+    const msg = String(err.message || err);
+    let kind = "error";
+    if (msg.startsWith("port_busy")) kind = "port_busy";
+    else if (msg.startsWith("timeout")) kind = "timeout";
+    else if (msg.startsWith("cancelled")) kind = "cancelled";
+    else if (msg.startsWith("oauth_error")) kind = "oauth_error";
+    return { ok: false, kind, message: msg };
+  }
+});
+
+/** Cancel the active OAuth attempt (renderer pressed cancel). */
+ipcMain.handle("ani-gui:account:cancel-oauth", () => {
+  if (activeOAuth) {
+    try {
+      activeOAuth.stop();
+    } catch {
+      /* ignore */
+    }
+    activeOAuth = null;
+    return true;
+  }
+  return false;
+});
+
+/**
+ * Encrypt + persist tokens for the given provider. The JSON body
+ * (`{access_token, refresh_token, expires_at_epoch_s, user_id}`) is
+ * encrypted via safeStorage and written to a per-provider file.
+ *
+ * Returns true on success. The renderer should treat any false /
+ * thrown result as "fall back to disconnected and tell the user".
+ */
+ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, kind: "encryption_unavailable" };
+  }
+  if (typeof payload !== "object" || payload == null) {
+    return { ok: false, kind: "bad_request" };
+  }
+  try {
+    const encrypted = safeStorage.encryptString(JSON.stringify(payload));
+    fs.writeFileSync(tokenPathFor(provider), encrypted);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "io_error", message: String(err.message || err) };
+  }
+});
+
+/**
+ * Decrypt + return the persisted token payload for the given
+ * provider. Returns `{ ok: true, payload }` on success, or an
+ * `{ ok: false, kind }` for absent file / decryption failure / etc.
+ *
+ * Synchronous IPC because the renderer calls this on EVERY backend
+ * request that needs a bearer; the round-trip cost matters.
+ */
+ipcMain.on("ani-gui:account:get-token", (event, provider) => {
+  try {
+    const p = tokenPathFor(provider);
+    if (!fs.existsSync(p)) {
+      event.returnValue = { ok: false, kind: "not_found" };
+      return;
+    }
+    if (!safeStorage.isEncryptionAvailable()) {
+      event.returnValue = { ok: false, kind: "encryption_unavailable" };
+      return;
+    }
+    const encrypted = fs.readFileSync(p);
+    const plain = safeStorage.decryptString(encrypted);
+    event.returnValue = { ok: true, payload: JSON.parse(plain) };
+  } catch (err) {
+    event.returnValue = { ok: false, kind: "decrypt_error", message: String(err.message || err) };
+  }
+});
+
+/** Delete the persisted token file for the given provider. */
+ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
+  try {
+    const p = tokenPathFor(provider);
+    if (fs.existsSync(p)) {
+      fs.unlinkSync(p);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "io_error", message: String(err.message || err) };
+  }
+});
+
+/**
+ * Open an https URL in the OS browser. Used by the /account page's
+ * Privacy Policy link. Only allows https / http schemes — a renderer
+ * compromise can't redirect this to a file:// path.
+ */
+ipcMain.handle("ani-gui:open-external", async (_event, url) => {
+  if (typeof url !== "string") return false;
+  if (!/^https?:\/\//.test(url)) return false;
+  await shell.openExternal(url);
+  return true;
 });
 
 /**
