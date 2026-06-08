@@ -27,6 +27,7 @@
 	"connect_error_oauth_error": "The provider declined the sign-in. Try again.",
 	"connect_error_no_bridge": "The ani-gui preload bridge is missing. Restart the app.",
 	"connect_error_unknown": "Sign-in failed. Try again.",
+	"persist_error_keychain_unavailable": "Sign-in succeeded but the OS keychain isn't available — your token can't be stored securely. Install (or unlock) gnome-keyring / kwallet / KeePassXC and try again.",
 	"disconnect_confirm_title": "Disconnect from {provider}?",
 	"disconnect_confirm_body": "Your watchlist stays on {provider} — only the local connection is dropped.",
 	"settings_subtitle_connected": "Signed in to {provider}.",

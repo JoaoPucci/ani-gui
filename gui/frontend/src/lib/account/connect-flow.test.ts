@@ -82,7 +82,7 @@ describe('connectAccount', () => {
 	// `encryption_unavailable`. The flow must thread that kind through
 	// so the page can render "install your OS keyring" instead of the
 	// generic sign-in error users have no way to act on.
-	it.skip('threads the underlying kind into persist_failed.reason', async () => {
+	it('threads the underlying kind into persist_failed.reason', async () => {
 		const deps = happyDeps();
 		deps.persistAccount = vi.fn().mockResolvedValue({ ok: false, kind: 'encryption_unavailable' });
 		const r = await connectAccount('anilist', deps);

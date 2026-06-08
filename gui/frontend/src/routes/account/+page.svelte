@@ -90,7 +90,16 @@
 			return;
 		}
 		if (r.kind === 'persist_failed') {
-			accountStore.setError(provider, m.account_connect_error_unknown());
+			// Codex P2 #3372942245: surface the underlying keychain
+			// failure so Linux users without a usable libsecret/kwallet
+			// see "install your OS keyring" instead of the generic
+			// sign-in error.
+			const message =
+				r.reason === 'encryption_unavailable'
+					? m.account_persist_error_keychain_unavailable()
+					: m.account_connect_error_unknown();
+			accountStore.setError(provider, message);
+			toastStore.push({ kind: 'error', message });
 			return;
 		}
 		const status = (r as { status?: number }).status;

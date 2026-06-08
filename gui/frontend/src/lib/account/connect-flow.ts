@@ -106,7 +106,7 @@ export async function connectAccount(
 		avatar_url: profile.avatar_url
 	};
 	const persisted = await deps.persistAccount(provider, account);
-	if (!persisted.ok) return { kind: 'persist_failed' };
+	if (!persisted.ok) return { kind: 'persist_failed', reason: persisted.kind };
 	return { kind: 'connected', account };
 }
 
