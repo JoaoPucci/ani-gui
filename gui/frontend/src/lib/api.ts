@@ -837,6 +837,17 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist');
 }
 
+/** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
+ *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Used by the home Watch Later rail (plan §6.6) to render the
+ *  merged Plan-to-Watch list with Kitsu metadata + availability
+ *  filtering matching the rest of the home. Empty input → empty
+ *  output (no round-trip needed). */
+export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {
+	if (malIds.length === 0) return [];
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/by-mal-ids', { mal_ids: malIds });
+}
+
 /** One skip interval for the embedded player's Skip OP / Skip
  *  Outro button. Times are seconds (sub-second precision). */
 export interface SkipInterval {

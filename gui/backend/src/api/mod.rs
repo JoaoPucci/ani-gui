@@ -113,6 +113,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             "/api/kitsu/trending-anilist",
             get(get_kitsu_trending_anilist),
         )
+        .route("/api/kitsu/by-mal-ids", post(post_kitsu_by_mal_ids))
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
@@ -248,6 +249,21 @@ async fn get_kitsu_trending_anilist(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
     Ok(Json(kitsu_inner::kitsu_trending_anilist(&state).await?))
+}
+
+#[derive(serde::Deserialize)]
+struct KitsuByMalIdsBody {
+    /// Batch of MAL ids to bridge to Kitsu refs. Order is preserved
+    /// in the response; entries Kitsu can't map are dropped.
+    /// Caller-bound: home rail bridges its merged Plan-to-Watch set.
+    mal_ids: Vec<u32>,
+}
+
+async fn post_kitsu_by_mal_ids(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<KitsuByMalIdsBody>,
+) -> Json<Vec<KitsuAnimeRef>> {
+    Json(kitsu_inner::kitsu_for_mal_ids(&state, body.mal_ids).await)
 }
 
 #[derive(serde::Deserialize)]
