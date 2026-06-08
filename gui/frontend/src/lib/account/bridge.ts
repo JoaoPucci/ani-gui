@@ -14,12 +14,32 @@ function bridge() {
 	return (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
 }
 
+/**
+ * Result of a safeStorage read. Codex P2 #3371530183: collapsing every
+ * non-ok read to `null` made `hydrate()` treat a keychain outage the
+ * same as "no token on disk", hiding the Disconnect action even though
+ * the credential file was still there. Now the consumer can distinguish
+ * `not_found` (genuinely no account → disconnected) from `unreadable`
+ * (file present but keychain broken / decrypt failed → error state
+ * exposing a Clear-local-file affordance).
+ */
+export type ReadPersistedAccountResult =
+	| { ok: true; account: PersistedAccount }
+	| { ok: false; kind: 'not_found' }
+	| { ok: false; kind: 'unreadable'; detail: string };
+
 /** Synchronous safeStorage read. Used at boot by `accountStore.hydrate()`. */
-export function readPersistedAccount(provider: Provider): PersistedAccount | null {
+export function readPersistedAccount(provider: Provider): ReadPersistedAccountResult {
 	const b = bridge();
-	if (!b) return null;
+	if (!b) return { ok: false, kind: 'not_found' };
 	const r = b.getToken(provider);
-	return r.ok ? r.payload : null;
+	if (r.ok) return { ok: true, account: r.payload };
+	// `not_found` is the only "you should treat this as disconnected"
+	// case. Everything else means the file is on disk but unusable —
+	// surface it so the page can render a cleanup affordance instead
+	// of pretending no account exists.
+	if (r.kind === 'not_found') return { ok: false, kind: 'not_found' };
+	return { ok: false, kind: 'unreadable', detail: r.kind };
 }
 
 /** Encrypt + write to safeStorage. Returns whether the write succeeded. */

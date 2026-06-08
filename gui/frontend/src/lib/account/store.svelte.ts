@@ -33,16 +33,31 @@ class AccountStore {
 		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
 		const next = { ...this.byProvider };
 		for (const p of providers) {
-			const payload = readPersistedAccount(p);
-			if (!payload) {
+			const r = readPersistedAccount(p);
+			if (r.ok) {
+				next[p] = isExpired(r.account)
+					? { kind: 'expired', account: r.account }
+					: { kind: 'connected', account: r.account, lastSyncedAt: null };
+				continue;
+			}
+			if (r.kind === 'not_found') {
 				next[p] = { kind: 'disconnected' };
 				continue;
 			}
-			if (isExpired(payload)) {
-				next[p] = { kind: 'expired', account: payload };
-			} else {
-				next[p] = { kind: 'connected', account: payload, lastSyncedAt: null };
-			}
+			// Codex P2 #3371530183: the token file is on disk but the
+			// keychain is unreachable (libsecret/Keychain outage,
+			// decrypt failure, basic_text reject from #3370070913).
+			// Surface as error with no account; the page's error-no-
+			// account branch now exposes Disconnect so the user can
+			// call clearToken and remove the orphan file before
+			// reconnecting. The message includes the underlying kind
+			// (encryption_unavailable / decrypt_error / …) for the
+			// diagnostics log; the page renders a friendlier copy.
+			next[p] = {
+				kind: 'error',
+				account: null,
+				message: `Keychain read failed: ${r.detail}`
+			};
 		}
 		this.byProvider = next;
 	}

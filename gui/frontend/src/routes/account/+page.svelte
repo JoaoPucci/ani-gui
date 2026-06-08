@@ -241,9 +241,22 @@
 			{/if}
 
 			<div class="actions">
-				{#if anilistState.kind === 'disconnected' || (anilistState.kind === 'error' && !anilistState.account)}
+				{#if anilistState.kind === 'disconnected'}
 					<button type="button" class="btn btn-primary" onclick={connectAniList}>
 						{m.account_card_action_connect()}
+					</button>
+				{:else if anilistState.kind === 'error' && !anilistState.account}
+					<!-- Codex P2 #3371530183: error-with-no-account covers the
+					     orphan-file case where hydrate() couldn't read the
+					     keychain. Offer Disconnect so the user can call
+					     clearToken and clean up before reconnecting; the
+					     Connect button stays so they can try again now if
+					     it was a transient failure. -->
+					<button type="button" class="btn btn-primary" onclick={connectAniList}>
+						{m.account_card_action_connect()}
+					</button>
+					<button type="button" class="btn" onclick={() => disconnect('anilist')}>
+						{m.account_card_action_disconnect()}
 					</button>
 				{:else if anilistState.kind === 'connecting'}
 					<button type="button" class="btn" disabled>

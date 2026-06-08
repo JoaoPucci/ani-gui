@@ -222,36 +222,23 @@ function stubBridge(impl: Record<string, unknown>) {
 	};
 }
 
-describe.skip('readPersistedAccount', () => {
-	// `.skip` on the red commit: these tests pin the new discriminated-
-	// union return shape from #3371530183. The current implementation
-	// still returns `PersistedAccount | null`, so they'd all fail
-	// without the green's implementation change. Unskipped together
-	// with the implementation in the next commit.
-	//
-	// The casts to `unknown` then specific shapes work around the type
-	// checker, which sees the old return type even though the tests
-	// don't actually run yet. Green removes both the .skip AND the
-	// casts when readPersistedAccount's signature is widened.
+describe('readPersistedAccount', () => {
 	it('returns ok+account when the bridge has one', () => {
 		stubBridge({ getToken: () => ({ ok: true, payload: payload() }) });
-		const r = readPersistedAccount('anilist') as unknown as {
-			ok: boolean;
-			account?: PersistedAccount;
-		};
+		const r = readPersistedAccount('anilist');
 		expect(r.ok).toBe(true);
-		if (r.ok) expect(r.account!.username).toBe('p');
+		if (r.ok) expect(r.account.username).toBe('p');
 	});
 
 	it('returns not_found when the bridge says no token on disk', () => {
 		stubBridge({ getToken: () => ({ ok: false, kind: 'not_found' }) });
-		const r = readPersistedAccount('anilist') as unknown;
+		const r = readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
 	it('returns not_found when no bridge is wired (browser-only dev)', () => {
 		(globalThis as { window?: unknown }).window = undefined;
-		const r = readPersistedAccount('anilist') as unknown;
+		const r = readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
@@ -260,13 +247,13 @@ describe.skip('readPersistedAccount', () => {
 		// can't be decrypted. Callers must NOT collapse this to "no
 		// account" — the orphan file needs an in-app cleanup path.
 		stubBridge({ getToken: () => ({ ok: false, kind: 'encryption_unavailable' }) });
-		const r = readPersistedAccount('anilist') as unknown;
+		const r = readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'encryption_unavailable' });
 	});
 
 	it('returns unreadable when the bridge surfaces decrypt_error', () => {
 		stubBridge({ getToken: () => ({ ok: false, kind: 'decrypt_error' }) });
-		const r = readPersistedAccount('anilist') as unknown;
+		const r = readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'decrypt_error' });
 	});
 });

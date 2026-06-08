@@ -212,10 +212,7 @@ describe('accountStore.hydrate', () => {
 	// action that calls clearToken, and the orphaned file would have
 	// no in-app cleanup path. Surface the read failure as an `error`
 	// state so the page can render a cleanup affordance.
-	// `.skip` on the red commit per the project's pre-commit lefthook,
-	// which runs the full vitest suite and rejects any commit whose
-	// tests don't all pass. Unskipped + made green in the next commit.
-	it.skip('seeds error state when keychain read fails with encryption_unavailable', () => {
+	it('seeds error state when keychain read fails with encryption_unavailable', () => {
 		stubBridgeWithReadError('anilist', 'encryption_unavailable');
 		accountStore.hydrate();
 		const s = accountStore.byProvider.anilist;
@@ -229,7 +226,7 @@ describe('accountStore.hydrate', () => {
 		}
 	});
 
-	it.skip('seeds error state when keychain read fails with decrypt_error', () => {
+	it('seeds error state when keychain read fails with decrypt_error', () => {
 		// Corrupted token file (e.g., partial write, basic_text reject
 		// from #3370070913 on a fresh start) — same orphan-cleanup
 		// path as encryption_unavailable.
