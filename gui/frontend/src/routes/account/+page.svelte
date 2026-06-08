@@ -11,7 +11,6 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { resolve } from '$app/paths';
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -304,7 +303,6 @@
 				{m.account_privacy_link_label()}
 			</button>.
 		</p>
-		<a class="back-link" href={resolve('/settings')}>← {m.account_eyebrow_key()}</a>
 	</footer>
 </main>
 
@@ -576,18 +574,5 @@
 
 	.inline-link:hover {
 		text-decoration-color: var(--brand);
-	}
-
-	.back-link {
-		font-family: var(--font-mono);
-		font-size: var(--type-micro);
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		color: var(--bone-400);
-		text-decoration: none;
-	}
-
-	.back-link:hover {
-		color: var(--bone-100);
 	}
 </style>
