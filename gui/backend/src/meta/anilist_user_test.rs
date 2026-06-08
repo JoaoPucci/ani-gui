@@ -128,18 +128,17 @@ async fn exchange_code_parses_access_token_and_expiry() {
 
 /// Build a JWT-shaped access token whose payload contains a known
 /// `exp` claim, so a test can pin that the parser pulls the expiry
-/// out of the JWT when the wire response omits `expires_in`. Header
-/// + signature are intentionally fixed garbage — we never verify the
-/// signature, we only base64url-decode the payload.
+/// out of the JWT when the wire response omits `expires_in`.
 ///
-/// Codex P2 #3371176290.
+/// Header + signature are intentionally fixed garbage — we never
+/// verify the signature, we only base64url-decode the payload.
+/// Codex P1 #3371176290.
 fn fake_anilist_jwt_with_exp(exp_epoch_s: i64) -> String {
     use base64::Engine;
-    let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(br#"{"alg":"RS256","typ":"JWT"}"#);
-    let payload_json = format!(r#"{{"sub":"5921","exp":{}}}"#, exp_epoch_s);
-    let payload =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload_json.as_bytes());
+    let header =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
+    let payload_json = format!(r#"{{"sub":"5921","exp":{exp_epoch_s}}}"#);
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload_json.as_bytes());
     // The signature segment is base64url too, but we never decode it.
     // A literal "sig" is fine; the parser splits on '.' and only
     // touches the middle segment.
@@ -210,8 +209,7 @@ async fn exchange_code_falls_back_to_one_year_sentinel_when_jwt_decode_fails() {
     let expected_min = now_floor + 31_536_000 - 5;
     let expected_max = now_floor + 31_536_000 + 60;
     assert!(
-        tokens.expires_at_epoch_s >= expected_min
-            && tokens.expires_at_epoch_s <= expected_max,
+        tokens.expires_at_epoch_s >= expected_min && tokens.expires_at_epoch_s <= expected_max,
         "sentinel expiry ({}) must be ~1y from now [{}, {}]",
         tokens.expires_at_epoch_s,
         expected_min,

@@ -470,12 +470,28 @@ fn parse_media_list_page(body: &[u8]) -> Result<MediaListPage> {
     })
 }
 
+/// Sentinel expiry when neither `expires_in` nor a decodable JWT `exp`
+/// claim is available. AniList's tokens are documented as essentially
+/// non-expiring; a 1-year window matches their nominal `expires_in`
+/// when they DO send it, and keeps the renderer's expiry check
+/// (`accountStore.hydrate` → `isExpired(payload)`) honest. A real
+/// auth failure surfaces later as the `me()` 401 → `expired` state
+/// regardless of this number — this just keeps the Connect flow from
+/// rejecting a perfectly good token on the spot.
+const ANILIST_FALLBACK_EXPIRY_S: i64 = 31_536_000;
+
 /// Pure parser for AniList's OAuth token-exchange response.
 ///
-/// Shape: `{token_type, expires_in, access_token, refresh_token}`.
+/// Shape: `{token_type, [expires_in], access_token, refresh_token}`.
 /// AniList in practice always returns `refresh_token: null` — the
 /// trait carries it as `Option<String>` so MAL's real refresh tokens
 /// fit the same struct.
+///
+/// `expires_in` is documented but inconsistently present — Codex P1
+/// #3371176290. When absent we try to decode the JWT `exp` claim from
+/// the access_token (no signature verification — we only trust the
+/// issuer-stated wall-clock window for the local hydrate gate); if
+/// that fails too, we fall back to [`ANILIST_FALLBACK_EXPIRY_S`].
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the response isn't the
@@ -486,7 +502,8 @@ fn parse_token_response(body: &[u8]) -> Result<Tokens> {
         access_token: String,
         #[serde(default)]
         refresh_token: Option<String>,
-        expires_in: i64,
+        #[serde(default)]
+        expires_in: Option<i64>,
     }
     let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist token response: {e}"),
@@ -495,11 +512,60 @@ fn parse_token_response(body: &[u8]) -> Result<Tokens> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    let expires_at_epoch_s = resolve_token_expiry(wire.expires_in, &wire.access_token, now_s);
     Ok(Tokens {
         access_token: wire.access_token,
         refresh_token: wire.refresh_token,
-        expires_at_epoch_s: now_s + wire.expires_in,
+        expires_at_epoch_s,
     })
+}
+
+/// Resolve an absolute expiry epoch from three sources, in order of
+/// trust:
+///
+///   1. The wire's `expires_in` (relative seconds → absolute).
+///   2. The JWT `exp` claim decoded from the access token (absolute
+///      epoch). We do NOT verify the signature — we only believe the
+///      token's own stated expiry for the local hydrate gate; the
+///      provider validates the signature on every authenticated call.
+///   3. [`ANILIST_FALLBACK_EXPIRY_S`] from now — last-resort sentinel
+///      so an exchange that succeeded server-side doesn't get rejected
+///      client-side just because we can't tell when it'll expire.
+///
+/// Extracted as a pure helper so unit tests can pin every branch
+/// without a wiremock fixture.
+fn resolve_token_expiry(expires_in: Option<i64>, access_token: &str, now_s: i64) -> i64 {
+    if let Some(s) = expires_in {
+        return now_s.saturating_add(s);
+    }
+    if let Some(exp) = jwt_exp_claim(access_token) {
+        return exp;
+    }
+    now_s.saturating_add(ANILIST_FALLBACK_EXPIRY_S)
+}
+
+/// Decode the `exp` claim from a JWT-shaped access token without
+/// verifying the signature.
+///
+/// Returns `None` on any failure (non-JWT shape, base64url decode
+/// error, non-JSON payload, missing `exp`, non-integer `exp`). The
+/// signature is never validated here — that's the provider's
+/// responsibility on every authenticated call; we only trust the
+/// issuer-stated expiry for our local hydrate gate.
+fn jwt_exp_claim(access_token: &str) -> Option<i64> {
+    use base64::Engine;
+    let mut parts = access_token.split('.');
+    let _header = parts.next()?;
+    let payload_b64 = parts.next()?;
+    // A real JWT has exactly three segments; opaque strings often have
+    // zero or one. Tolerate trailing junk (parts.next() may yield
+    // anything) but require at least the header + payload segments to
+    // have been present.
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json.get("exp")?.as_i64()
 }
 
 #[cfg(test)]
