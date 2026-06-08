@@ -14,6 +14,7 @@
 	import Icon from './Icon.svelte';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { chipDescriptor, type ChipState } from '$lib/account/chip-descriptor';
+	import { imageProxyUrl } from '$lib/api';
 	import { clearPersistedAccount, dropListCache, dropProviderCache } from '$lib/account/api';
 	import { disconnectAccount } from '$lib/account/connect-flow';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -21,6 +22,13 @@
 
 	const descriptor: ChipState = $derived(chipDescriptor(accountStore.byProvider));
 	const visible = $derived(descriptor.kind === 'connected');
+	// Codex P2 #3374957922: route avatar fetches through `/api/image` so the
+	// topbar uses the same cache + privacy boundary the rest of the app does.
+	// Falls back to the account icon when imageProxyUrl returns null (no
+	// avatar set, blob: URL, etc.).
+	const proxiedAvatarUrl = $derived(
+		descriptor.kind === 'connected' ? imageProxyUrl(descriptor.avatarUrl) : null
+	);
 
 	let open = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
@@ -95,8 +103,8 @@
 			onclick={() => (open = !open)}
 		>
 			<span class="account-chip-avatar" aria-hidden="true">
-				{#if descriptor.avatarUrl}
-					<img src={descriptor.avatarUrl} alt="" loading="lazy" decoding="async" />
+				{#if proxiedAvatarUrl}
+					<img src={proxiedAvatarUrl} alt="" loading="lazy" decoding="async" />
 				{:else}
 					<Icon name="account" size={18} />
 				{/if}
