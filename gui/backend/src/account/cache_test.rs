@@ -95,6 +95,75 @@ fn read_filters_by_provider_and_user() {
     );
 }
 
+/// Codex P2 #3371658227 introduced clear_provider for the orphan-
+/// token disconnect path (no decoded user_id available). Pin that
+/// it scopes to the provider — sibling providers' rows survive — and
+/// that it removes every row for the target provider regardless of
+/// user_id, which clear_user can't do.
+#[test]
+fn clear_provider_drops_every_user_for_that_provider() {
+    let pool = open_in_memory().unwrap();
+    write_entries(
+        &pool,
+        ProviderKind::AniList,
+        "u1",
+        &[entry(ProviderKind::AniList, 1, ListStatus::Planning)],
+    )
+    .unwrap();
+    write_entries(
+        &pool,
+        ProviderKind::AniList,
+        "u2",
+        &[entry(ProviderKind::AniList, 2, ListStatus::Watching)],
+    )
+    .unwrap();
+    write_entries(
+        &pool,
+        ProviderKind::MyAnimeList,
+        "u3",
+        &[entry(ProviderKind::MyAnimeList, 1, ListStatus::Planning)],
+    )
+    .unwrap();
+
+    clear_provider(&pool, ProviderKind::AniList).unwrap();
+
+    // Both AniList users' rows gone.
+    assert_eq!(
+        list_entries(&pool, ProviderKind::AniList, "u1")
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        list_entries(&pool, ProviderKind::AniList, "u2")
+            .unwrap()
+            .len(),
+        0
+    );
+    // MAL row survives — clear_provider must not cross provider scope.
+    assert_eq!(
+        list_entries(&pool, ProviderKind::MyAnimeList, "u3")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn clear_provider_is_noop_when_no_rows_exist() {
+    // Defensive: orphan-disconnect on a provider that was never
+    // connected (e.g. the user only ever used AniList but the
+    // renderer issued a clear for MAL by mistake) must not error.
+    let pool = open_in_memory().unwrap();
+    clear_provider(&pool, ProviderKind::AniList).unwrap();
+    assert_eq!(
+        list_entries(&pool, ProviderKind::AniList, "u1")
+            .unwrap()
+            .len(),
+        0
+    );
+}
+
 #[test]
 fn clear_user_drops_only_that_user_rows() {
     let pool = open_in_memory().unwrap();

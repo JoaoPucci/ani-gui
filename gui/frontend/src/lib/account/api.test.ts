@@ -11,6 +11,7 @@ import {
 	cancelOAuth,
 	clearPersistedAccount,
 	dropListCache,
+	dropProviderCache,
 	exchangeCode,
 	fetchAndCacheList,
 	fetchCachedList,
@@ -200,6 +201,42 @@ describe('dropListCache', () => {
 	it('throws AccountApiError on non-2xx', async () => {
 		mockFetchJson('boom', 500);
 		await expect(dropListCache('anilist', 'tok')).rejects.toBeInstanceOf(AccountApiError);
+	});
+});
+
+describe('dropProviderCache', () => {
+	// Codex P2 #3371658227: provider-wide clear used by the orphan-
+	// token disconnect path (no bearer, no user_id). Backend gates on
+	// the internal_secret header so a cross-origin tab can't trigger.
+	it('DELETEs the provider-wide cache endpoint with the internal-secret header', async () => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'cafebabe' }
+		};
+		const spy = mockFetchJson('');
+		await dropProviderCache('anilist');
+		const [url, init] = spy.mock.calls[0];
+		expect(String(url)).toContain('/api/account/list/anilist/cache/all');
+		expect((init as RequestInit).method).toBe('DELETE');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('cafebabe');
+		// No Authorization header — this path is gated only by the secret.
+		expect(headers.authorization).toBeUndefined();
+	});
+
+	it('omits the secret header when one isn’t available (browser-only dev)', async () => {
+		// In dev without Electron the secret simply isn't on window;
+		// backend rejects, surfacing as AccountApiError. Not collapsed
+		// to a noop so dev-time misconfigs are visible.
+		const spy = mockFetchJson('');
+		await dropProviderCache('anilist');
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBeUndefined();
+	});
+
+	it('throws AccountApiError on non-2xx', async () => {
+		mockFetchJson('forbidden', 403);
+		await expect(dropProviderCache('anilist')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
 
