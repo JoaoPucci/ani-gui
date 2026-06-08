@@ -46,7 +46,7 @@
 	import { updateStore } from '$lib/update/store.svelte';
 	import { APP_VERSION as appVersion } from '$lib/version';
 	import { accountStore } from '$lib/account/store.svelte';
-	import { detectExpiredProviders } from '$lib/account/expiry-toast';
+	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
@@ -122,6 +122,29 @@
 		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
 	});
 
+	// Cold-launch + ongoing expiry-toast tracker. Pushes one pinned
+	// `warning` toast per expired provider after hydrate, dismisses
+	// it the moment the provider recovers (the user re-auths from
+	// `/account` or the chip popover) — Codex P2 #3375219208. Re-runs
+	// reactively on every `accountStore.byProvider` mutation so the
+	// recovery path doesn't need to know the toast exists.
+	const expiryToastTracker = new ExpiryToastTracker();
+	$effect(() => {
+		expiryToastTracker.sync(accountStore.byProvider, {
+			push: (e) => {
+				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
+				return toastStore.push({
+					kind: 'warning',
+					duration: null,
+					message: m.account_expiry_toast_message({ provider: providerLabel }),
+					actionLabel: m.account_expiry_toast_action(),
+					onAction: () => void goto(resolve('/account'))
+				});
+			},
+			dismiss: (id) => toastStore.dismiss(id)
+		});
+	});
+
 	let topbarQuery = $state('');
 	let topbarInputEl: HTMLInputElement | undefined = $state();
 
@@ -169,24 +192,6 @@
 		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
 		// the time the home page mounts the store is fully populated.
 		accountStore.hydrate();
-
-		// Cold-launch expiry toast. After hydrate, surface a pinned
-		// toast for every provider whose persisted token has expired so
-		// the user can re-auth without digging into /account. The chip
-		// also draws an amber dot, but the toast is the loud channel:
-		// AniList JWTs last a year, so a user might miss the dot weeks
-		// after the session went stale. Pure helper lives in $lib so
-		// the priority-order pick is unit-tested.
-		for (const e of detectExpiredProviders(accountStore.byProvider)) {
-			const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
-			toastStore.push({
-				kind: 'warning',
-				duration: null,
-				message: m.account_expiry_toast_message({ provider: providerLabel }),
-				actionLabel: m.account_expiry_toast_action(),
-				onAction: () => void goto(resolve('/account'))
-			});
-		}
 
 		// Persistent PiP — distinguish two ways the PiP window can
 		// close:

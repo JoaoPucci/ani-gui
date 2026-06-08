@@ -74,7 +74,7 @@ describe('detectExpiredProviders', () => {
 	});
 });
 
-describe.skip('ExpiryToastTracker', () => {
+describe('ExpiryToastTracker', () => {
 	function fakeDeps(): {
 		deps: ExpirySyncDeps;
 		push: ReturnType<typeof vi.fn>;
