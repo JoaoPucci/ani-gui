@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadWatchLater, type WatchLaterDeps } from './watch-later-loader';
+import {
+	loadWatchLater,
+	WATCH_LATER_BRIDGE_MAX_IDS,
+	type WatchLaterDeps
+} from './watch-later-loader';
 import type { ListEntry, Provider } from './types';
 import type { KitsuAnimeRef } from '$lib/api';
 
@@ -109,6 +113,30 @@ describe('loadWatchLater', () => {
 		const out = await loadWatchLater(deps);
 		expect(deps.kitsuByMalIds).toHaveBeenCalledWith([11]);
 		expect(out).toHaveLength(1);
+	});
+
+	// Codex P2 #3373907898: backend rejects >500 mal_ids before
+	// fan-out. Without a client-side slice, a heavy listmaker with
+	// 501+ planned titles would 4xx the bridge call and lose the
+	// entire rail (loader.catch sets watchLater=[]). Slicing here
+	// renders the first 500 instead of nothing.
+	it('caps the bridge call at WATCH_LATER_BRIDGE_MAX_IDS', async () => {
+		const rows: ListEntry[] = Array.from({ length: WATCH_LATER_BRIDGE_MAX_IDS + 50 }, (_, i) =>
+			row({ provider: 'anilist', media_id: i + 1, mal_id: i + 1, status: 'planning' })
+		);
+		const bridge = vi.fn().mockResolvedValue([]);
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: { bearer: 'a', userId: 'u' } },
+			fetchCachedList: vi.fn().mockResolvedValue(rows),
+			kitsuByMalIds: bridge
+		};
+		await loadWatchLater(deps);
+		expect(bridge).toHaveBeenCalledTimes(1);
+		const arg = (bridge.mock.calls[0] ?? [])[0] as number[];
+		expect(arg).toHaveLength(WATCH_LATER_BRIDGE_MAX_IDS);
+		// AniList order preserved; first MAX_IDS rows are 1..500.
+		expect(arg[0]).toBe(1);
+		expect(arg[arg.length - 1]).toBe(WATCH_LATER_BRIDGE_MAX_IDS);
 	});
 
 	it('skips the Kitsu round-trip when the merged set has no mal_ids', async () => {

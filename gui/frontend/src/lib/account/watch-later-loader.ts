@@ -19,6 +19,16 @@ import type { ListEntry, Provider } from './types';
 import type { KitsuAnimeRef } from '$lib/api';
 import { mergedWatchLater } from './watch-later';
 
+/**
+ * Mirror of the backend's
+ * `commands::account::WATCH_LATER_BRIDGE_MAX_IDS`. Keep in sync —
+ * if these drift the loader will fire requests the backend rejects
+ * and the rail blanks (Codex P2 #3373907898 caught the original
+ * unbounded version doing exactly that for users with 501+ planned
+ * titles).
+ */
+export const WATCH_LATER_BRIDGE_MAX_IDS = 500;
+
 export interface WatchLaterDeps {
 	/** Bearer + fallback user_id per connected provider. Disconnected
 	 *  providers must NOT appear in the map; an entry signals "this
@@ -60,7 +70,10 @@ export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRe
 	);
 
 	const merged = mergedWatchLater(byProvider);
-	const malIds = merged.map((e) => e.mal_id).filter((id): id is number => typeof id === 'number');
+	const malIds = merged
+		.map((e) => e.mal_id)
+		.filter((id): id is number => typeof id === 'number')
+		.slice(0, WATCH_LATER_BRIDGE_MAX_IDS);
 	if (malIds.length === 0) return [];
 
 	return deps.kitsuByMalIds(malIds);

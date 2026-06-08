@@ -66,6 +66,4 @@ fn watch_later_bridge_max_ids_is_a_sane_ceiling() {
     // bounds per-request fan-out cost. Pinned here so a future
     // bump is intentional, not a typo.
     assert_eq!(WATCH_LATER_BRIDGE_MAX_IDS, 500);
-    assert!(WATCH_LATER_BRIDGE_MAX_IDS >= 200);
-    assert!(WATCH_LATER_BRIDGE_MAX_IDS <= 1000);
 }
