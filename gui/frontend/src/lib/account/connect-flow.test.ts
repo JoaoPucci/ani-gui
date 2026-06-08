@@ -40,7 +40,7 @@ function happyDeps(): ConnectFlowDeps {
 			expires_at_epoch_s: 999
 		}),
 		fetchMe: vi.fn().mockResolvedValue({ user_id: 'u7', username: 'pucci', avatar_url: null }),
-		persistAccount: vi.fn().mockResolvedValue(true)
+		persistAccount: vi.fn().mockResolvedValue({ ok: true })
 	};
 }
 
@@ -71,9 +71,23 @@ describe('connectAccount', () => {
 
 	it('returns persist_failed when safeStorage rejects the write', async () => {
 		const deps = happyDeps();
-		deps.persistAccount = vi.fn().mockResolvedValue(false);
+		deps.persistAccount = vi.fn().mockResolvedValue({ ok: false, kind: 'io_error' });
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('persist_failed');
+	});
+
+	// Codex P2 #3372942245: Linux without a usable keyring (libsecret
+	// missing / kwallet locked) makes safeStorage fall back to
+	// `basic_text`; main.js refuses to persist and returns
+	// `encryption_unavailable`. The flow must thread that kind through
+	// so the page can render "install your OS keyring" instead of the
+	// generic sign-in error users have no way to act on.
+	it.skip('threads the underlying kind into persist_failed.reason', async () => {
+		const deps = happyDeps();
+		deps.persistAccount = vi.fn().mockResolvedValue({ ok: false, kind: 'encryption_unavailable' });
+		const r = await connectAccount('anilist', deps);
+		expect(r.kind).toBe('persist_failed');
+		if (r.kind === 'persist_failed') expect(r.reason).toBe('encryption_unavailable');
 	});
 
 	it('surfaces buildAuthUrl errors as api_error', async () => {

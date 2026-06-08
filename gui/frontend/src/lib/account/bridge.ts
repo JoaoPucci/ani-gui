@@ -42,15 +42,46 @@ export function readPersistedAccount(provider: Provider): ReadPersistedAccountRe
 	return { ok: false, kind: 'unreadable', detail: r.kind };
 }
 
-/** Encrypt + write to safeStorage. Returns whether the write succeeded. */
+/**
+ * Result of a safeStorage write. Codex P2 #3372942245: collapsing every
+ * failure to `false` hid `encryption_unavailable` and `basic_text` from
+ * the page, so Linux users without a usable keyring saw the generic
+ * "sign-in failed" error after a successful OAuth round-trip with no
+ * pointer to the keyring as the actual problem. The discriminated
+ * result lets `connectAccount` thread the kind through to a specific
+ * actionable message.
+ */
+export type PersistAccountResult =
+	| { ok: true }
+	| {
+			ok: false;
+			kind: 'no_bridge' | 'encryption_unavailable' | 'bad_request' | 'io_error' | 'unknown';
+			detail?: string;
+	  };
+
+/** Encrypt + write to safeStorage. Returns the IPC failure kind on error so the page can act on it. */
 export async function persistAccount(
 	provider: Provider,
 	payload: PersistedAccount
-): Promise<boolean> {
+): Promise<PersistAccountResult> {
 	const b = bridge();
-	if (!b) return false;
+	if (!b) return { ok: false, kind: 'no_bridge' };
 	const r = await b.setToken(provider, payload);
-	return r.ok;
+	if (r.ok) return { ok: true };
+	return { ok: false, kind: normaliseSetTokenKind(r.kind), detail: r.message };
+}
+
+function normaliseSetTokenKind(
+	kind: string
+): 'no_bridge' | 'encryption_unavailable' | 'bad_request' | 'io_error' | 'unknown' {
+	switch (kind) {
+		case 'encryption_unavailable':
+		case 'bad_request':
+		case 'io_error':
+			return kind;
+		default:
+			return 'unknown';
+	}
 }
 
 /** Drop the persisted file on disk. Returns whether the delete succeeded. */

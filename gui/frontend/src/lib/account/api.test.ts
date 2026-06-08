@@ -313,19 +313,43 @@ describe('readPersistedAccount', () => {
 });
 
 describe('persistAccount', () => {
-	it('returns true on successful safeStorage write', async () => {
+	it('returns {ok: true} on successful safeStorage write', async () => {
 		stubBridge({ setToken: async () => ({ ok: true }) });
-		expect(await persistAccount('anilist', payload())).toBe(true);
+		expect(await persistAccount('anilist', payload())).toEqual({ ok: true });
 	});
 
-	it('returns false when the bridge rejects the write', async () => {
-		stubBridge({ setToken: async () => ({ ok: false, kind: 'io_error' }) });
-		expect(await persistAccount('anilist', payload())).toBe(false);
+	it('threads the kind through on io_error', async () => {
+		stubBridge({ setToken: async () => ({ ok: false, kind: 'io_error', message: 'EACCES' }) });
+		const r = await persistAccount('anilist', payload());
+		expect(r.ok).toBe(false);
+		if (!r.ok) {
+			expect(r.kind).toBe('io_error');
+			expect(r.detail).toBe('EACCES');
+		}
 	});
 
-	it('returns false when no bridge is wired', async () => {
+	// Codex P2 #3372942245: Linux without a usable keyring trips this
+	// path. The page needs the specific kind to render "install your OS
+	// keyring" instead of the generic sign-in error.
+	it('threads encryption_unavailable through verbatim', async () => {
+		stubBridge({ setToken: async () => ({ ok: false, kind: 'encryption_unavailable' }) });
+		const r = await persistAccount('anilist', payload());
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.kind).toBe('encryption_unavailable');
+	});
+
+	it('normalises unknown failure kinds to "unknown"', async () => {
+		stubBridge({ setToken: async () => ({ ok: false, kind: 'somefutureerror' }) });
+		const r = await persistAccount('anilist', payload());
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.kind).toBe('unknown');
+	});
+
+	it('returns no_bridge when no preload is wired', async () => {
 		(globalThis as { window?: unknown }).window = undefined;
-		expect(await persistAccount('anilist', payload())).toBe(false);
+		const r = await persistAccount('anilist', payload());
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.kind).toBe('no_bridge');
 	});
 });
 

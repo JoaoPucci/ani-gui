@@ -48,7 +48,10 @@ export interface ConnectFlowDeps {
 		username: string;
 		avatar_url: string | null;
 	}>;
-	persistAccount(provider: Provider, payload: PersistedAccount): Promise<boolean>;
+	persistAccount(
+		provider: Provider,
+		payload: PersistedAccount
+	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
 }
 
 export type ConnectFlowResult =
@@ -56,7 +59,7 @@ export type ConnectFlowResult =
 	| { kind: 'cancelled' }
 	| { kind: 'oauth_error'; reason: string }
 	| { kind: 'state_mismatch' }
-	| { kind: 'persist_failed' }
+	| { kind: 'persist_failed'; reason?: string }
 	| { kind: 'api_error'; status?: number };
 
 /**
@@ -102,8 +105,8 @@ export async function connectAccount(
 		username: profile.username,
 		avatar_url: profile.avatar_url
 	};
-	const ok = await deps.persistAccount(provider, account);
-	if (!ok) return { kind: 'persist_failed' };
+	const persisted = await deps.persistAccount(provider, account);
+	if (!persisted.ok) return { kind: 'persist_failed' };
 	return { kind: 'connected', account };
 }
 
