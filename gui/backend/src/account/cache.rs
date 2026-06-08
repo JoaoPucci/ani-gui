@@ -144,6 +144,25 @@ pub fn clear_user(pool: &SqlitePool, kind: ProviderKind, user_id: &str) -> Resul
     Ok(())
 }
 
+/// Delete every row for `provider` regardless of `user_id`. Codex P2
+/// #3371658227: when `hydrate()` puts the provider in the unreadable-
+/// token error state (orphan token file, no decoded account), the
+/// renderer's safeStorage has no `user_id` to scope the per-user
+/// clear, so the standard delete-cache path can't run. The frontend
+/// calls this provider-wide flavour as the cleanup step before
+/// dropping the orphan file. Still gated by the renderer-only
+/// internal secret at the API boundary — a cross-origin tab can't
+/// trigger it without knowing the 32-byte secret.
+pub fn clear_provider(pool: &SqlitePool, kind: ProviderKind) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    conn.execute(
+        "DELETE FROM user_list_cache WHERE provider = ?1",
+        params![provider_slug(kind)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "cache_test.rs"]
 mod tests;

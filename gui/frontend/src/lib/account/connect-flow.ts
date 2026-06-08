@@ -118,6 +118,13 @@ function errStatus(err: unknown): number | undefined {
 export interface DisconnectFlowDeps {
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
 	dropListCache(provider: Provider, bearer: string, fallbackUserId?: string): Promise<void>;
+	/**
+	 * Codex P2 #3371658227: orphan-token disconnect path. When the
+	 * prior state had no decoded account (hydrate found the file
+	 * unreadable), there's no bearer to send to dropListCache —
+	 * provider-wide clear is the only path that can drop the rows.
+	 */
+	dropProviderCache(provider: Provider): Promise<void>;
 }
 
 /**
@@ -151,6 +158,18 @@ export async function disconnectAccount(
 			await deps.dropListCache(provider, bearer, fallbackUserId);
 		} catch {
 			/* eviction failure non-fatal — next sync overwrites */
+		}
+	} else {
+		// Codex P2 #3371658227: no bearer = orphan-token disconnect
+		// (hydrate's unreadable-token error state). The per-user
+		// delete needs a user_id we don't have; fall through to the
+		// provider-wide clear so PRIVACY.md's "list cache dropped on
+		// disconnect" promise still holds. Gated server-side by the
+		// renderer-only internal secret.
+		try {
+			await deps.dropProviderCache(provider);
+		} catch {
+			/* same best-effort policy — next launch can retry */
 		}
 	}
 	const ok = await deps.clearPersistedAccount(provider);

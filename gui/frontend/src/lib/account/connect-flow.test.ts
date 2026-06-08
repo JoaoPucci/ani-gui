@@ -162,7 +162,8 @@ describe('disconnectAccount', () => {
 	function disconnectDeps(): DisconnectFlowDeps {
 		return {
 			clearPersistedAccount: vi.fn().mockResolvedValue(true),
-			dropListCache: vi.fn().mockResolvedValue(undefined)
+			dropListCache: vi.fn().mockResolvedValue(undefined),
+			dropProviderCache: vi.fn().mockResolvedValue(undefined)
 		};
 	}
 
@@ -173,14 +174,31 @@ describe('disconnectAccount', () => {
 		expect(r.kind).toBe('ok');
 		expect(deps.clearPersistedAccount).toHaveBeenCalledWith('anilist');
 		expect(deps.dropListCache).toHaveBeenCalledWith('anilist', 'tok', 'u7');
+		expect(deps.dropProviderCache).not.toHaveBeenCalled();
 	});
 
-	it('skips dropListCache when there is no prior account', async () => {
+	it('uses dropProviderCache when there is no prior account (Codex P2 #3371658227)', async () => {
+		// Orphan-token disconnect: hydrate found the keychain
+		// unreadable, so the store has no bearer + no user_id. The
+		// per-user dropListCache can't run; fall through to the
+		// provider-wide clear so PRIVACY.md's promise still holds.
 		const deps = disconnectDeps();
 		const r = await disconnectAccount('anilist', { kind: 'disconnected' }, deps);
 		expect(r.kind).toBe('ok');
 		expect(deps.clearPersistedAccount).toHaveBeenCalled();
 		expect(deps.dropListCache).not.toHaveBeenCalled();
+		expect(deps.dropProviderCache).toHaveBeenCalledWith('anilist');
+	});
+
+	it('uses dropProviderCache for error-with-no-account orphan states', async () => {
+		// Same orphan-cleanup path triggered from the unreadable-token
+		// error state set by hydrate() in #3371530183.
+		const deps = disconnectDeps();
+		const s: ProviderState = { kind: 'error', account: null, message: 'Keychain read failed' };
+		const r = await disconnectAccount('anilist', s, deps);
+		expect(r.kind).toBe('ok');
+		expect(deps.dropListCache).not.toHaveBeenCalled();
+		expect(deps.dropProviderCache).toHaveBeenCalledWith('anilist');
 	});
 
 	it('swallows dropListCache failures — eviction is best-effort', async () => {
@@ -188,6 +206,16 @@ describe('disconnectAccount', () => {
 		deps.dropListCache = vi.fn().mockRejectedValue(new Error('cache 502'));
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
 		const r = await disconnectAccount('anilist', s, deps);
+		expect(r.kind).toBe('ok');
+	});
+
+	it('swallows dropProviderCache failures on orphan disconnects', async () => {
+		// Same best-effort policy as dropListCache — next launch's
+		// hydrate retries by leaving the cache rows in place; the
+		// renderer doesn't surface this to the user.
+		const deps = disconnectDeps();
+		deps.dropProviderCache = vi.fn().mockRejectedValue(new Error('cache 502'));
+		const r = await disconnectAccount('anilist', { kind: 'disconnected' }, deps);
 		expect(r.kind).toBe('ok');
 	});
 

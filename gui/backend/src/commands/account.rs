@@ -126,6 +126,17 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
     crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
 }
 
+/// Drop every cached row for `kind` regardless of `user_id`. Codex P2
+/// #3371658227: the renderer's safeStorage-orphan-disconnect path has
+/// no `user_id` to pass — the token file existed but the keychain
+/// couldn't decrypt it on hydrate — so we can't run the per-user
+/// clear. The API boundary still gates this on the renderer-only
+/// internal secret so a cross-origin tab can't wipe a stranger's
+/// cache by guessing nothing.
+pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
+    crate::account::cache::clear_provider(&state.cache_pool, kind)
+}
+
 fn write_through_cache(
     pool: &SqlitePool,
     kind: ProviderKind,

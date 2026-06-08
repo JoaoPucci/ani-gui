@@ -26,7 +26,8 @@
 		openExternal,
 		persistAccount,
 		clearPersistedAccount,
-		dropListCache
+		dropListCache,
+		dropProviderCache
 	} from '$lib/account/api';
 	import {
 		bearerFor,
@@ -138,7 +139,11 @@
 
 	async function disconnect(provider: Provider) {
 		const prev = accountStore.byProvider[provider];
-		const r = await disconnectAccount(provider, prev, { clearPersistedAccount, dropListCache });
+		const r = await disconnectAccount(provider, prev, {
+			clearPersistedAccount,
+			dropListCache,
+			dropProviderCache
+		});
 		if (r.kind === 'token_clear_failed') {
 			// Codex P2 #3369988183: the bearer is still on disk; telling
 			// the user they're disconnected would be a lie because the

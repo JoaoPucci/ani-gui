@@ -668,7 +668,24 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
     if (msg.startsWith("port_busy")) kind = "port_busy";
     return { ok: false, kind, message: msg };
   }
-  shell.openExternal(authUrl);
+  // Codex P2 #3371658225: shell.openExternal returns a Promise — on
+  // hosts with no default browser (or where xdg-open / the desktop
+  // portal can't dispatch the URL) it rejects, and the prior fire-
+  // and-forget call left the OAuth server running while the renderer
+  // hung in `connecting` until the 5-minute timeout. Await + handle
+  // the rejection so we shut down the listener and surface a launch
+  // error immediately.
+  try {
+    await shell.openExternal(authUrl);
+  } catch (err) {
+    server.stop();
+    activeOAuth = null;
+    return {
+      ok: false,
+      kind: "browser_launch_failed",
+      message: String((err && err.message) || err),
+    };
+  }
   try {
     const result = await server.promise;
     activeOAuth = null;

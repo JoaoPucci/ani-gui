@@ -134,6 +134,27 @@ export function fetchCachedList(provider: Provider, bearer: string): Promise<Lis
 	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached`, bearer);
 }
 
+/**
+ * Provider-wide cache wipe — no bearer, no user_id. Codex P2
+ * #3371658227: the orphan-token disconnect path (hydrate found the
+ * file unreadable, so the store has no account) can't run
+ * dropListCache because it has no bearer and no user_id. This
+ * fallback hits the renderer-only `…/cache/all` endpoint gated by
+ * the internal_secret header so a cross-origin tab can't trigger it.
+ */
+export async function dropProviderCache(provider: Provider): Promise<void> {
+	const base = await apiBase();
+	const headers: Record<string, string> = { ...internalSecretHeader() };
+	const res = await fetch(base.replace(/\/+$/, '') + `/api/account/list/${provider}/cache/all`, {
+		method: 'DELETE',
+		headers
+	});
+	if (!res.ok) {
+		const detail = await readErrorBody(res);
+		throw new AccountApiError(res.status, detail);
+	}
+}
+
 export function dropListCache(
 	provider: Provider,
 	bearer: string,

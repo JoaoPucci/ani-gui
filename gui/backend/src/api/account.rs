@@ -51,6 +51,10 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/account/list/:provider/cache",
             delete(delete_list_cache),
         )
+        .route(
+            "/api/account/list/:provider/cache/all",
+            delete(delete_list_cache_all),
+        )
 }
 
 // — Wire types — — — — — — — — — — — — — — — — — — — — — — — — — — —
@@ -274,6 +278,24 @@ async fn delete_list_cache(
         Err(e) => return Err(e),
     };
     account::clear_cache(&state, kind, &user_id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Provider-wide cache wipe — no bearer, no user_id, just the
+/// renderer-only internal secret. Codex P2 #3371658227: the
+/// orphan-token disconnect path (hydrate found the token file
+/// unreadable, so the store has no account) has no `user_id` to pass
+/// to the per-user delete and no live bearer to authenticate one.
+/// Gating on the internal secret keeps cross-origin tabs out — only
+/// the Electron renderer learned the 32-byte secret at startup.
+async fn delete_list_cache_all(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, AniError> {
+    state.internal_secret.validate_header(&headers)?;
+    let kind = parse_provider(&provider)?;
+    account::clear_provider_cache(&state, kind)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
