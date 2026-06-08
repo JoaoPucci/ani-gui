@@ -662,6 +662,12 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   try {
     await server.ready;
   } catch (err) {
+    // Same drain rationale as the openExternal branch below
+    // (Codex P2 #3371719725): when server.ready rejects the bind
+    // helper also synchronously rejects server.promise; attach a
+    // no-op handler so Node doesn't surface an unhandledRejection
+    // after we return.
+    server.promise.catch(() => {});
     activeOAuth = null;
     const msg = String(err.message || err);
     let kind = "error";
@@ -678,6 +684,14 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   try {
     await shell.openExternal(authUrl);
   } catch (err) {
+    // Codex P2 #3371719725: server.stop() rejects server.promise with
+    // "cancelled". We're about to bail without awaiting it, so attach
+    // a no-op drain first — otherwise Node surfaces an
+    // unhandledRejection on hosts where openExternal fails (no
+    // default browser / xdg-open / portal), which Electron 28+ may
+    // upgrade to a process exit. The drain has to land BEFORE stop()
+    // so the rejection is never observed without a handler.
+    server.promise.catch(() => {});
     server.stop();
     activeOAuth = null;
     return {
