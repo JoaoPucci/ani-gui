@@ -56,17 +56,6 @@ async function postJson<T>(path: string, body: unknown, bearer?: string): Promis
 	return (await res.json()) as T;
 }
 
-async function getJson<T>(path: string, bearer?: string): Promise<T> {
-	const base = await apiBase();
-	const headers: Record<string, string> = {};
-	if (bearer) headers.authorization = `Bearer ${bearer}`;
-	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
-	if (!res.ok) {
-		throw new AccountApiError(res.status, await readErrorBody(res));
-	}
-	return (await res.json()) as T;
-}
-
 async function deleteEndpoint(
 	path: string,
 	bearer?: string,
@@ -126,12 +115,33 @@ export function fetchAndCacheList(provider: Provider, bearer: string): Promise<L
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, {}, bearer);
 }
 
-export function fetchCachedList(provider: Provider, bearer: string): Promise<ListEntry[]> {
-	// No user_id query — the backend derives it from the bearer by
-	// calling the provider's me() endpoint. Codex P1 #3369956138: a
-	// renderer-supplied user_id under permissive CORS was forgeable;
-	// the bearer must be the only identity input.
-	return getJson<ListEntry[]>(`/api/account/list/${provider}/cached`, bearer);
+export async function fetchCachedList(
+	provider: Provider,
+	bearer: string,
+	fallbackUserId?: string
+): Promise<ListEntry[]> {
+	// Backend resolves identity from a live `me()` call (Codex P1
+	// #3369956138: a renderer-supplied user_id alone is forgeable
+	// under permissive CORS). When that round-trip fails (offline,
+	// 401, 5xx) the backend falls through to `fallbackUserId` gated
+	// by the renderer-only internal secret — Codex P2 #3372942241:
+	// the cached endpoint must keep serving local rows during
+	// upstream outages, which is exactly when the cache earns its
+	// keep. Send the fallback always; the backend ignores it when
+	// me() succeeds.
+	const base = await apiBase();
+	const path = fallbackUserId
+		? `/api/account/list/${provider}/cached?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
+		: `/api/account/list/${provider}/cached`;
+	const headers: Record<string, string> = {
+		authorization: `Bearer ${bearer}`,
+		...internalSecretHeader()
+	};
+	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
+	if (!res.ok) {
+		throw new AccountApiError(res.status, await readErrorBody(res));
+	}
+	return (await res.json()) as ListEntry[];
 }
 
 /**

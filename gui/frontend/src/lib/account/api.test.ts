@@ -141,12 +141,29 @@ describe('fetchAndCacheList', () => {
 });
 
 describe('fetchCachedList', () => {
-	it('builds the query string with the user_id', async () => {
+	it('hits the cached endpoint with the bearer (no user_id when no fallback)', async () => {
 		const spy = mockFetchJson([]);
 		await fetchCachedList('anilist', 'tok');
-		const [url] = spy.mock.calls[0];
+		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cached');
-		expect(String(url)).not.toContain('user_id'); // backend derives from bearer (Codex P1)
+		expect(String(url)).not.toContain('fallback_user_id');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.authorization).toBe('Bearer tok');
+	});
+
+	it('appends fallback_user_id + internal-secret header for offline reads (Codex P2 #3372942241)', async () => {
+		// Backend gate: the renderer-only secret authenticates us as
+		// the Electron preload before the fallback id is trusted.
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'cafebabe' }
+		};
+		const spy = mockFetchJson([]);
+		await fetchCachedList('anilist', 'tok', 'u7');
+		const [url, init] = spy.mock.calls[0];
+		expect(String(url)).toContain('/api/account/list/anilist/cached?fallback_user_id=u7');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('cafebabe');
+		expect(headers.authorization).toBe('Bearer tok');
 	});
 
 	it('surfaces fetch failure as AccountApiError', async () => {

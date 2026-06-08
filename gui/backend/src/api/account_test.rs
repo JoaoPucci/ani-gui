@@ -372,7 +372,6 @@ fn me_failure_rejects_fallback_for_other_variants() {
 /// exactly the moment the upstream round-trip is unavailable —
 /// the opposite of what a local cache is for.
 #[tokio::test]
-#[ignore]
 async fn get_cached_list_serves_rows_when_offline_with_secret_fallback() {
     use crate::account::cache;
     use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId};

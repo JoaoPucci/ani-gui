@@ -158,6 +158,30 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
     )
 }
 
+/// Resolve the cache-owner user_id for an endpoint that operates on
+/// per-user cache rows. Tries the bearer-derived `me()` identity
+/// first (the only one upstream can vouch for), and on offline /
+/// 401 / 5xx falls back to the renderer-supplied id gated by the
+/// internal secret. Used by both the cached-read path (Codex P2
+/// #3372942241) and the disconnect-delete path (Codex P2 #3370011855
+/// + #3370096596) so a single helper enforces the security gate.
+async fn resolve_owner_user_id(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    headers: &HeaderMap,
+    fallback: Option<String>,
+) -> Result<String, AniError> {
+    match account::me(state, kind, tokens).await {
+        Ok(profile) => Ok(profile.user_id),
+        Err(e) if me_failure_allows_renderer_fallback(&e) => {
+            state.internal_secret.validate_header(headers)?;
+            fallback.ok_or(e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 // — Handlers — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
 
 fn parse_provider(slug: &str) -> Result<ProviderKind, AniError> {
@@ -237,17 +261,24 @@ async fn get_cached_list(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
+    Query(q): Query<DisconnectFallbackQuery>,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
-    // Codex P1 #3369956138: identity comes from a live `me()` call, not
-    // from anything the caller claims. The read path stays strictly
-    // upstream-validated; the disconnect fallback ONLY applies to
-    // delete_list_cache (Codex P2 #3369997650) where the user has
-    // already authenticated the bearer-to-user_id binding in safeStorage.
+    // Codex P2 #3372942241: previously this required a live `me()` to
+    // succeed, which defeated the local cache the moment the user went
+    // offline or AniList threw 5xx — exactly when the cached read is
+    // most useful. Resolve through the shared helper so the bearer-
+    // validated identity wins when reachable, with the renderer-only
+    // internal-secret-gated fallback covering outage paths. Codex P1
+    // #3369956138 (no caller-supplied user_id in the trusted path) is
+    // still honoured: the fallback id is only consulted after me()
+    // fails for offline/401/5xx AND the renderer secret authenticates
+    // the request as coming from the Electron preload.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let profile = account::me(&state, kind, &tokens).await?;
-    let entries = account::cached_list(&state, kind, &profile.user_id)?;
+    let user_id =
+        resolve_owner_user_id(&state, kind, &tokens, &headers, q.fallback_user_id).await?;
+    let entries = account::cached_list(&state, kind, &user_id)?;
     Ok(Json(entries))
 }
 
@@ -257,26 +288,16 @@ async fn delete_list_cache(
     headers: HeaderMap,
     Query(q): Query<DisconnectFallbackQuery>,
 ) -> Result<StatusCode, AniError> {
+    // Codex P2 #3370011855 + #3370096596 + #3372942241: shared resolver
+    // so the same security gate covers the disconnect-delete and the
+    // cached-read paths. Bearer-validated me() wins when reachable;
+    // offline / 401 / 5xx falls through to the renderer-supplied id
+    // gated by the internal secret.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let user_id = match account::me(&state, kind, &tokens).await {
-        Ok(profile) => profile.user_id,
-        Err(e) if me_failure_allows_renderer_fallback(&e) => {
-            // Codex P2 #3370011855 + #3370096596: the bearer can't be
-            // round-tripped for identity. Either the provider 401'd
-            // (token expired/revoked), is unreachable (offline), or
-            // returned a 5xx. The renderer-only internal secret gates
-            // the fallback so a cross-origin tab under the permissive
-            // CORS layer can't wipe an arbitrary user's cache — only
-            // Electron's preload knows the 32-byte secret. With it
-            // present we trust the safeStorage-persisted user_id;
-            // without it we surface the original me() error.
-            state.internal_secret.validate_header(&headers)?;
-            q.fallback_user_id.ok_or(e)?
-        }
-        Err(e) => return Err(e),
-    };
+    let user_id =
+        resolve_owner_user_id(&state, kind, &tokens, &headers, q.fallback_user_id).await?;
     account::clear_cache(&state, kind, &user_id)?;
     Ok(StatusCode::NO_CONTENT)
 }
