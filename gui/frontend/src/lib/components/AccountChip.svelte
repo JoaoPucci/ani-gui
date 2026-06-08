@@ -149,8 +149,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
-		padding-block: var(--space-1);
-		padding-inline: var(--space-2);
+		padding-block: var(--space-2);
+		padding-inline: var(--space-3);
 		background: transparent;
 		border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 		border-radius: var(--radius-pill, 999px);
