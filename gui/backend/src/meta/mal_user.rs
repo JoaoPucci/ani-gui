@@ -117,9 +117,56 @@ impl MalProvider {
         self.api_base.as_deref().unwrap_or(MAL_API)
     }
 
-    #[allow(dead_code)] // Wired in once exchange_code / refresh land.
     fn token_url(&self) -> &str {
         self.token_base.as_deref().unwrap_or(MAL_TOKEN_URL)
+    }
+
+    /// Shared form-encoded POST to MAL's OAuth token endpoint. Both
+    /// `exchange_code` and `refresh` use it — only the form body
+    /// differs. Returns parsed `Tokens` on 2xx, `AniError::Upstream`
+    /// for non-2xx, `AniError::Network` for transport failures.
+    async fn post_token_form(&self, form: &[(&str, &str)]) -> Result<Tokens> {
+        let resp = self
+            .client
+            .post(self.token_url())
+            .header("user-agent", MAL_USER_AGENT)
+            .form(form)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_token_response(&bytes)
+    }
+
+    /// Shared GET that attaches the bearer + the mandatory
+    /// `X-MAL-CLIENT-ID` header. Used by `me` and `list_all` (and
+    /// any future read endpoint).
+    async fn get_auth_bytes(&self, url: &str, tokens: &Tokens) -> Result<bytes::Bytes> {
+        let resp = self
+            .client
+            .get(url)
+            .header("user-agent", MAL_USER_AGENT)
+            .header("x-mal-client-id", MAL_CLIENT_ID)
+            .bearer_auth(&tokens.access_token)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        resp.bytes().await.map_err(|_| AniError::Network)
     }
 }
 
@@ -164,35 +211,34 @@ impl UserListProvider for MalProvider {
             ("code_verifier", pkce.verifier.as_str()),
             ("redirect_uri", MAL_REDIRECT_URI),
         ];
-        let resp = self
-            .client
-            .post(self.token_url())
-            .header("user-agent", MAL_USER_AGENT)
-            .form(&form)
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
-        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_token_response(&bytes)
+        self.post_token_form(&form).await
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<Tokens> {
         // Hold the mutex across the cache-check + network call so two
         // concurrent refreshers serialize. Inside the critical
         // section: if the cache already has tokens from a previous
-        // rotation of THIS refresh_token, return them (the upstream
-        // already invalidated the input token; a second POST would
-        // 401). Otherwise hit the network and replace the cache.
+        // rotation of THIS refresh_token AND those tokens are still
+        // live, return them — the upstream already invalidated the
+        // input token; a second POST would 401. If the cached access
+        // token has expired (renderer didn't persist the new
+        // refresh token after the first rotation, and the backend
+        // process stayed alive past expiry) we fall through to a
+        // fresh network call so the caller gets the real upstream
+        // response — almost certainly a 401 since `refresh_token`
+        // was invalidated by the first rotation, which the caller
+        // surfaces as "Sign in again" instead of looping on stale
+        // tokens. Codex P2 #3375578767.
         let mut guard = self.last_refresh.lock().await;
         if let Some(cached) = guard.as_ref() {
             if cached.input_refresh_token == refresh_token {
-                return Ok(cached.tokens.clone());
+                let now_s = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if cached.tokens.expires_at_epoch_s > now_s {
+                    return Ok(cached.tokens.clone());
+                }
             }
         }
         let form = [
@@ -200,22 +246,7 @@ impl UserListProvider for MalProvider {
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
         ];
-        let resp = self
-            .client
-            .post(self.token_url())
-            .header("user-agent", MAL_USER_AGENT)
-            .form(&form)
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
-        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
-        let tokens = parse_token_response(&bytes)?;
+        let tokens = self.post_token_form(&form).await?;
         *guard = Some(CoalescedRefresh {
             input_refresh_token: refresh_token.to_string(),
             tokens: tokens.clone(),
@@ -229,25 +260,7 @@ impl UserListProvider for MalProvider {
         // so the popover can show counts + mean score without a
         // second round trip.
         let url = format!("{}/users/@me?fields=anime_statistics", self.api_url());
-        let resp = self
-            .client
-            .get(&url)
-            .header("user-agent", MAL_USER_AGENT)
-            .header("x-mal-client-id", MAL_CLIENT_ID)
-            .bearer_auth(&tokens.access_token)
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(AniError::InvalidToken);
-        }
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
-        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        let bytes = self.get_auth_bytes(&url, tokens).await?;
         parse_viewer_response(&bytes)
     }
 
@@ -263,29 +276,9 @@ impl UserListProvider for MalProvider {
         let mut next_url = Some(initial);
         let mut out: Vec<ListEntry> = Vec::new();
         while let Some(url) = next_url.take() {
-            let resp = self
-                .client
-                .get(&url)
-                .header("user-agent", MAL_USER_AGENT)
-                .header("x-mal-client-id", MAL_CLIENT_ID)
-                .bearer_auth(&tokens.access_token)
-                .send()
-                .await
-                .map_err(|_| AniError::Network)?;
-            let status = resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED {
-                return Err(AniError::InvalidToken);
-            }
-            if !status.is_success() {
-                return Err(AniError::Upstream {
-                    status: status.as_u16(),
-                });
-            }
-            let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+            let bytes = self.get_auth_bytes(&url, tokens).await?;
             let page = parse_list_page(&bytes)?;
-            for entry in page.entries {
-                out.push(entry);
-            }
+            out.extend(page.entries);
             next_url = page.next_url;
         }
         Ok(out)

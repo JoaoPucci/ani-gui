@@ -575,6 +575,43 @@ async fn refresh_coalesces_concurrent_calls_with_same_refresh_token() {
 }
 
 #[tokio::test]
+async fn refresh_does_not_coalesce_when_cached_tokens_are_expired() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    // `expires_in: 0` → tokens are already expired the moment they
+    // land in the cache. The second caller must NOT hit the cache;
+    // it must do a fresh network call (which then propagates the
+    // upstream's real 401 if the refresh token was invalidated by
+    // the first rotation).
+    let server = wiremock::MockServer::start().await;
+    let hit_count = Arc::new(AtomicUsize::new(0));
+    let hit_count2 = hit_count.clone();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(move |_: &wiremock::Request| {
+            hit_count2.fetch_add(1, Ordering::SeqCst);
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"token_type":"Bearer","expires_in":0,"access_token":"already-expired","refresh_token":"new"}"#,
+            )
+        })
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let _first = provider
+        .refresh("stale")
+        .await
+        .expect("first refresh ok (but tokens are pre-expired)");
+    let _second = provider
+        .refresh("stale")
+        .await
+        .expect("second refresh hits the network again");
+    assert_eq!(
+        hit_count.load(Ordering::SeqCst),
+        2,
+        "expired cached tokens must NOT be returned — second refresh must re-POST"
+    );
+}
+
+#[tokio::test]
 async fn refresh_lock_serializes_concurrent_calls() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
