@@ -29,9 +29,6 @@
 	"connect_error_unknown": "Sign-in failed. Try again.",
 	"disconnect_confirm_title": "Disconnect from {provider}?",
 	"disconnect_confirm_body": "Your watchlist stays on {provider} — only the local connection is dropped.",
-	"settings_link_label": "Manage accounts",
-	"settings_section_title": "Accounts",
-	"settings_section_hint": "AniList + MyAnimeList sync",
 	"settings_subtitle_connected": "Signed in to {provider}.",
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs."

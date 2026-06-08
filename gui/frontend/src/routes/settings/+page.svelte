@@ -789,20 +789,6 @@
 						{m.settings_about_disclaimer_text()}
 					</dd>
 				</div>
-				<!-- ACCOUNTS pointer: the full management surface lives at
-				     /account; this row is the discovery affordance in Settings
-				     per .planning/account-integration.md §6.4. Sits in About
-				     rather than its own section so Playwright's existing
-				     section-order assumptions stay stable. -->
-				<div class="about-row">
-					<dt>{m.account_settings_section_title()}</dt>
-					<dd>
-						<a class="inline-link" href={resolve('/account')}>
-							{m.account_settings_link_label()}
-						</a>
-						<span class="about-foot">{m.account_settings_section_hint()}</span>
-					</dd>
-				</div>
 			</dl>
 		</section>
 	{/if}
