@@ -103,6 +103,66 @@ fn auth_url_panics_when_handed_an_s256_pkce() {
     let _ = production_provider().auth_url(&pkce, "csrf");
 }
 
+// `parse_iso8601_to_epoch` has multiple early-return branches for
+// malformed input; cover them so a single regression doesn't push
+// the file's CRAP score over the ratchet.
+
+#[test]
+fn parse_iso8601_to_epoch_returns_zero_for_short_input() {
+    assert_eq!(crate::meta::mal_user_parse::parse_iso8601_to_epoch(""), 0);
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-01"),
+        0
+    );
+}
+
+#[test]
+fn parse_iso8601_to_epoch_returns_zero_for_non_numeric_segments() {
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("XXXX-01-01T00:00:00+00:00"),
+        0
+    );
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-XX-01T00:00:00+00:00"),
+        0
+    );
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-XXT00:00:00+00:00"),
+        0
+    );
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-01TXX:00:00+00:00"),
+        0
+    );
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-01T00:XX:00+00:00"),
+        0
+    );
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-01T00:00:XX+00:00"),
+        0
+    );
+}
+
+#[test]
+fn parse_iso8601_to_epoch_parses_unix_epoch_origin() {
+    // 1970-01-01T00:00:00 UTC = 0.
+    assert_eq!(
+        crate::meta::mal_user_parse::parse_iso8601_to_epoch("1970-01-01T00:00:00+00:00"),
+        0
+    );
+}
+
+#[test]
+fn parse_iso8601_to_epoch_parses_known_timestamp() {
+    // 2026-01-15T10:30:00 — same string used by the list_all happy
+    // path. We just want a strictly-positive epoch, not the exact
+    // value (the offset is dropped on purpose; the comparator is
+    // ordering, not absolute time).
+    let ts = crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-15T10:30:00+00:00");
+    assert!(ts > 0, "parser must produce a positive epoch, got {ts}");
+}
+
 /// Canonical MAL token response — `expires_in` in seconds (1 hour
 /// per their docs), opaque access_token + refresh_token.
 const MAL_TOKEN_RESPONSE_BODY: &str = r#"{
@@ -476,6 +536,42 @@ async fn refresh_surfaces_4xx_as_upstream() {
         crate::error::AniError::Upstream { status } => assert_eq!(status, 401),
         other => panic!("expected Upstream {{ status: 401 }}, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn refresh_coalesces_concurrent_calls_with_same_refresh_token() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let server = wiremock::MockServer::start().await;
+    let hit_count = Arc::new(AtomicUsize::new(0));
+    let hit_count2 = hit_count.clone();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(move |_: &wiremock::Request| {
+            hit_count2.fetch_add(1, Ordering::SeqCst);
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY)
+        })
+        .mount(&server)
+        .await;
+    let provider = Arc::new(make_provider("http://unused-api", &server.uri()));
+    // Two concurrent callers hand over the SAME stale refresh token.
+    let p1 = provider.clone();
+    let p2 = provider.clone();
+    let h1 = tokio::spawn(async move { p1.refresh("stale").await });
+    let h2 = tokio::spawn(async move { p2.refresh("stale").await });
+    let t1 = h1.await.unwrap().expect("first refresh ok");
+    let t2 = h2.await.unwrap().expect("second refresh must coalesce");
+    // Both callers receive the same rotated tokens.
+    assert_eq!(t1.access_token, t2.access_token);
+    assert_eq!(t1.refresh_token, t2.refresh_token);
+    // Exactly ONE upstream POST happened — the second caller hit the
+    // coalesce cache instead of re-POSTing the now-invalidated
+    // refresh token.
+    assert_eq!(
+        hit_count.load(Ordering::SeqCst),
+        1,
+        "refresh must coalesce — saw {} POSTs",
+        hit_count.load(Ordering::SeqCst)
+    );
 }
 
 #[tokio::test]

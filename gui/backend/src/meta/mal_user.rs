@@ -29,12 +29,10 @@
 //! Every API request must carry `X-MAL-CLIENT-ID` per the App Type
 //! "Other" auth model — the bearer alone is rejected.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use async_trait::async_trait;
-use serde::Deserialize;
 use tokio::sync::Mutex;
 
+use super::mal_user_parse::{parse_list_page, parse_token_response, parse_viewer_response};
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
 };
@@ -42,7 +40,6 @@ use crate::account::pkce::{Pkce, PkceMethod};
 use crate::account::provider::{
     EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
 };
-use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
 
 /// Page size for `/v2/users/@me/animelist`. MAL caps at 1000; we
@@ -71,11 +68,24 @@ pub struct MalProvider {
     /// Override for the OAuth token endpoint. `None` → production
     /// [`MAL_TOKEN_URL`]. Tests pass a wiremock URI.
     token_base: Option<String>,
-    /// Serializes concurrent `refresh` calls so two parallel handler
-    /// calls don't both POST `/v1/oauth2/token` and rotate the
-    /// refresh token — one of the responses would invalidate the
-    /// other and the next request 401s. Plan §6 / TDD pair 3.
-    refresh_lock: Mutex<()>,
+    /// Serializes + coalesces concurrent `refresh` calls. Two
+    /// parallel handler calls would otherwise both POST
+    /// `/v1/oauth2/token` and rotate the refresh token; the first
+    /// rotation invalidates the second caller's stale refresh
+    /// token, and the second 401s. The mutex makes the calls
+    /// sequential AND caches the last successful rotation — when a
+    /// second caller arrives holding the SAME input refresh token
+    /// the cache hit returns the first caller's result without a
+    /// second network round trip (Codex P2 #3375519102).
+    last_refresh: Mutex<Option<CoalescedRefresh>>,
+}
+
+/// Cache slot for the last successful refresh, keyed by the input
+/// refresh token. Lets concurrent refreshers share one upstream
+/// rotation instead of each invalidating the previous result.
+struct CoalescedRefresh {
+    input_refresh_token: String,
+    tokens: Tokens,
 }
 
 impl MalProvider {
@@ -86,7 +96,7 @@ impl MalProvider {
             client,
             api_base: None,
             token_base: None,
-            refresh_lock: Mutex::new(()),
+            last_refresh: Mutex::new(None),
         }
     }
 
@@ -98,7 +108,7 @@ impl MalProvider {
             client,
             api_base: Some(api_base),
             token_base: Some(token_base),
-            refresh_lock: Mutex::new(()),
+            last_refresh: Mutex::new(None),
         }
     }
 
@@ -173,10 +183,18 @@ impl UserListProvider for MalProvider {
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<Tokens> {
-        // The mutex serializes concurrent refreshes so the upstream
-        // never sees two simultaneous rotation requests — one rotation
-        // would invalidate the other and the next API call 401s.
-        let _guard = self.refresh_lock.lock().await;
+        // Hold the mutex across the cache-check + network call so two
+        // concurrent refreshers serialize. Inside the critical
+        // section: if the cache already has tokens from a previous
+        // rotation of THIS refresh_token, return them (the upstream
+        // already invalidated the input token; a second POST would
+        // 401). Otherwise hit the network and replace the cache.
+        let mut guard = self.last_refresh.lock().await;
+        if let Some(cached) = guard.as_ref() {
+            if cached.input_refresh_token == refresh_token {
+                return Ok(cached.tokens.clone());
+            }
+        }
         let form = [
             ("client_id", MAL_CLIENT_ID),
             ("grant_type", "refresh_token"),
@@ -197,7 +215,12 @@ impl UserListProvider for MalProvider {
             });
         }
         let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_token_response(&bytes)
+        let tokens = parse_token_response(&bytes)?;
+        *guard = Some(CoalescedRefresh {
+            input_refresh_token: refresh_token.to_string(),
+            tokens: tokens.clone(),
+        });
+        Ok(tokens)
     }
 
     async fn me(&self, tokens: &Tokens) -> Result<UserProfile> {
@@ -280,212 +303,6 @@ impl UserListProvider for MalProvider {
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
         Err(AniError::Metadata)
     }
-}
-
-/// Parse MAL's OAuth token-exchange response into [`Tokens`]. Both
-/// `exchange_code` and (in the next pair) `refresh` use this — the
-/// wire shape is identical between the initial grant and refresh
-/// responses.
-fn parse_token_response(body: &[u8]) -> Result<Tokens> {
-    #[derive(Deserialize)]
-    struct Wire {
-        access_token: String,
-        #[serde(default)]
-        refresh_token: Option<String>,
-        #[serde(default)]
-        expires_in: Option<i64>,
-    }
-    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("mal token response: {e}"),
-    })?;
-    let now_s = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    // MAL always sends expires_in; fall back to 1 hour (their stated
-    // ceiling) so a missing field doesn't cause an immediate-expiry
-    // disconnect on the next handler call.
-    let expires_at_epoch_s = now_s + wire.expires_in.unwrap_or(3600);
-    Ok(Tokens {
-        access_token: wire.access_token,
-        refresh_token: wire.refresh_token,
-        expires_at_epoch_s,
-    })
-}
-
-/// Parse MAL's `/v2/users/@me?fields=anime_statistics` response into
-/// the unified [`UserProfile`]. Mean score is rescaled from MAL's
-/// 0..=10 wire scale to the unified 0..=10 (no scale change for MAL).
-fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
-    #[derive(Deserialize)]
-    struct Wire {
-        id: u64,
-        name: String,
-        #[serde(default)]
-        picture: Option<String>,
-        #[serde(default)]
-        anime_statistics: Option<AnimeStats>,
-    }
-    #[derive(Deserialize)]
-    struct AnimeStats {
-        #[serde(default)]
-        num_items: Option<u32>,
-        #[serde(default)]
-        num_items_completed: Option<u32>,
-        #[serde(default)]
-        num_items_watching: Option<u32>,
-        #[serde(default)]
-        num_items_on_hold: Option<u32>,
-        #[serde(default)]
-        num_items_dropped: Option<u32>,
-        #[serde(default)]
-        num_items_plan_to_watch: Option<u32>,
-        #[serde(default)]
-        mean_score: Option<f32>,
-    }
-    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("mal viewer response: {e}"),
-    })?;
-    let stats = wire.anime_statistics.map(|a| {
-        // MAL exposes per-status counts but not a `num_items` total in
-        // every response; sum them up when the aggregate is absent.
-        let count = a.num_items.unwrap_or_else(|| {
-            a.num_items_watching.unwrap_or(0)
-                + a.num_items_completed.unwrap_or(0)
-                + a.num_items_on_hold.unwrap_or(0)
-                + a.num_items_dropped.unwrap_or(0)
-                + a.num_items_plan_to_watch.unwrap_or(0)
-        });
-        crate::account::provider::UserStats {
-            anime_count: count,
-            mean_score_0_to_10: a.mean_score.filter(|s| *s > 0.0),
-        }
-    });
-    Ok(UserProfile {
-        provider: ProviderKind::MyAnimeList,
-        user_id: wire.id.to_string(),
-        username: wire.name,
-        avatar_url: wire.picture,
-        stats,
-    })
-}
-
-struct MalListPage {
-    entries: Vec<ListEntry>,
-    next_url: Option<String>,
-}
-
-fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
-    #[derive(Deserialize)]
-    struct Wire {
-        data: Vec<WireRow>,
-        #[serde(default)]
-        paging: Option<Paging>,
-    }
-    #[derive(Deserialize)]
-    struct Paging {
-        #[serde(default)]
-        next: Option<String>,
-    }
-    #[derive(Deserialize)]
-    struct WireRow {
-        node: WireNode,
-        list_status: WireListStatus,
-    }
-    #[derive(Deserialize)]
-    struct WireNode {
-        id: u32,
-        #[serde(default)]
-        title: String,
-    }
-    #[derive(Deserialize)]
-    struct WireListStatus {
-        status: String,
-        #[serde(default)]
-        score: Option<u8>,
-        #[serde(default)]
-        num_episodes_watched: Option<u32>,
-        #[serde(default)]
-        is_rewatching: Option<bool>,
-        #[serde(default)]
-        updated_at: Option<String>,
-    }
-    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("mal list_all page: {e}"),
-    })?;
-    let mut entries = Vec::with_capacity(wire.data.len());
-    for row in wire.data {
-        let Some(status) = ListStatus::from_mal(
-            &row.list_status.status,
-            row.list_status.is_rewatching.unwrap_or(false),
-        ) else {
-            // Unknown status — log + skip rather than fail the whole
-            // page (mirrors AniList's tolerance for unrecognised
-            // enum values).
-            continue;
-        };
-        let updated_at_epoch_s = row
-            .list_status
-            .updated_at
-            .as_deref()
-            .map_or(0, parse_iso8601_to_epoch);
-        // MAL scores are 0..=10 integer; the cache stores 0..=100.
-        // 0 means "unrated" — drop it so the popover doesn't render
-        // "0/10" for users who haven't scored anything.
-        let score_0_to_100 = row
-            .list_status
-            .score
-            .filter(|s| *s > 0)
-            .map(|s| s.saturating_mul(10));
-        entries.push(ListEntry {
-            provider: ProviderKind::MyAnimeList,
-            media_id: ProviderMediaId(row.node.id),
-            mal_id: Some(row.node.id),
-            status,
-            progress_episodes: row.list_status.num_episodes_watched.unwrap_or(0),
-            score_0_to_100,
-            updated_at_epoch_s,
-            title: row.node.title,
-        });
-    }
-    Ok(MalListPage {
-        entries,
-        next_url: wire.paging.and_then(|p| p.next),
-    })
-}
-
-/// Minimal RFC 3339 / ISO 8601 parser. MAL always emits the canonical
-/// `YYYY-MM-DDTHH:MM:SS±HH:MM` (or trailing `Z`) shape — we extract
-/// the date + time numerically and ignore the trailing offset (the
-/// epoch the cache stores is treated as UTC; ordering across rows
-/// stays correct because every row is from the same user).
-///
-/// Returns 0 for unparseable input so a malformed row doesn't fail
-/// the whole list page.
-fn parse_iso8601_to_epoch(s: &str) -> i64 {
-    let bytes = s.as_bytes();
-    if bytes.len() < 19 {
-        return 0;
-    }
-    let parse_u = |start: usize, end: usize| -> Option<i64> {
-        std::str::from_utf8(&bytes[start..end]).ok()?.parse().ok()
-    };
-    let Some(y) = parse_u(0, 4) else { return 0 };
-    let Some(m) = parse_u(5, 7) else { return 0 };
-    let Some(d) = parse_u(8, 10) else { return 0 };
-    let Some(hh) = parse_u(11, 13) else { return 0 };
-    let Some(mm) = parse_u(14, 16) else { return 0 };
-    let Some(ss) = parse_u(17, 19) else { return 0 };
-    // Howard Hinnant's days_from_civil algorithm — exact for all
-    // years in the proleptic Gregorian calendar.
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let m_adj = if m > 2 { m - 3 } else { m + 9 };
-    let doy = (153 * m_adj + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
-    days * 86400 + hh * 3600 + mm * 60 + ss
 }
 
 #[cfg(test)]
