@@ -210,13 +210,27 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
 /// requests per call.
 pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 
+/// Concurrent in-flight Kitsu `/mappings` lookups during the
+/// Watch-Later bridge. Codex P2 #3373969321: `lookup_by_mal_id` is
+/// uncached so a single rail load could fire up to
+/// [`WATCH_LATER_BRIDGE_MAX_IDS`] requests in parallel and trip
+/// Kitsu's upstream rate limit (the AniList trending bridge tops
+/// out at 25 — well below the throttle threshold — and never hit
+/// this; the rail's larger batch exposes it). 8 is well under the
+/// observed safe parallelism for `/mappings` and keeps the
+/// worst-case rail wall-clock under ~5s while still much faster
+/// than serial.
+const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
+
 /// Bridge a list of MAL ids to Kitsu refs, preserving input order
 /// and dropping ids Kitsu can't map. Used by the home page's Watch
 /// Later rail (plan §6.6) so cached `user_list_cache` rows render
 /// with the same Kitsu metadata + availability filter as the rest
-/// of the home. The per-id `lookup_by_mal_id` call is already cached
-/// in the kitsu client; we fan out concurrently here so the rail
-/// doesn't serialise the lookups.
+/// of the home.
+///
+/// Concurrency is capped at [`WATCH_LATER_BRIDGE_CONCURRENCY`] via
+/// `buffered(N)` so we don't queue up to 500 outbound Kitsu
+/// requests at once (Codex P2 #3373969321).
 ///
 /// Truncates `mal_ids` at [`WATCH_LATER_BRIDGE_MAX_IDS`] before
 /// fan-out — the upstream gate (route handler) rejects oversize
@@ -230,24 +244,21 @@ pub async fn kitsu_for_mal_ids(
     state: &Arc<AppState>,
     mal_ids: Vec<u32>,
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
-    use futures_util::stream::{FuturesOrdered, StreamExt};
+    use futures_util::stream::{self, StreamExt};
 
     let bounded = mal_ids
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
         .collect::<Vec<_>>();
-    let mut futures = FuturesOrdered::new();
-    for mal_id in bounded {
-        let kitsu = state.kitsu.clone();
-        futures.push_back(async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() });
-    }
-    let mut out = Vec::new();
-    while let Some(maybe_ref) = futures.next().await {
-        if let Some(r) = maybe_ref {
-            out.push(r);
-        }
-    }
-    out
+    stream::iter(bounded)
+        .map(|mal_id| {
+            let kitsu = state.kitsu.clone();
+            async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
+        })
+        .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
+        .filter_map(|maybe_ref| async move { maybe_ref })
+        .collect()
+        .await
 }
 
 #[cfg(test)]
