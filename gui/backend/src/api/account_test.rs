@@ -362,6 +362,57 @@ fn me_failure_rejects_fallback_for_other_variants() {
     assert!(!me_failure_allows_renderer_fallback(&AniError::Metadata));
 }
 
+/// Codex P2 #3372942241: when a connected user is offline or
+/// AniList is throwing 5xx, the cached endpoint must still serve
+/// the local rows it was added to provide (Watch Later rail).
+/// Mirror the disconnect fallback: try `me()` first for upstream-
+/// validated identity, but when it fails for offline/401/5xx fall
+/// back to the renderer-supplied user_id gated by the internal
+/// secret. Without that, cached consumers lose their list at
+/// exactly the moment the upstream round-trip is unavailable —
+/// the opposite of what a local cache is for.
+#[tokio::test]
+#[ignore]
+async fn get_cached_list_serves_rows_when_offline_with_secret_fallback() {
+    use crate::account::cache;
+    use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId};
+    use crate::account::status::ListStatus;
+
+    let td = TempDir::new().unwrap();
+    let state = test_state(&td);
+    let row = ListEntry {
+        provider: ProviderKind::AniList,
+        media_id: ProviderMediaId(11_061),
+        mal_id: Some(11_061),
+        status: ListStatus::Watching,
+        progress_episodes: 5,
+        score_0_to_100: None,
+        updated_at_epoch_s: 1_700_000_000,
+        title: "Hunter x Hunter".to_string(),
+    };
+    cache::write_entries(&state.cache_pool, ProviderKind::AniList, "u7", &[row]).unwrap();
+
+    let r = router()
+        .with_state(state)
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/account/list/anilist/cached?fallback_user_id=u7")
+                .header("authorization", "Bearer not-a-real-bearer")
+                .header("x-ani-gui-internal-secret", "dead")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(r.status().is_success(), "status was {}", r.status());
+    let body = body_text(r).await;
+    assert!(
+        body.contains("11061"),
+        "cached row missing from body: {body}"
+    );
+}
+
 #[tokio::test]
 async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
     // Codex P2 #3370011855: the disconnect-after-expiry fallback
