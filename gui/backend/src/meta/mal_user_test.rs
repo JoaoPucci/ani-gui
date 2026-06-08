@@ -93,14 +93,18 @@ fn auth_url_emits_pkce_plain_challenge_and_method() {
 }
 
 #[test]
-#[should_panic(expected = "MAL requires PKCE method=plain")]
-fn auth_url_panics_when_handed_an_s256_pkce() {
+fn auth_url_returns_empty_when_handed_an_s256_pkce() {
     // MAL's authorize endpoint rejects code_challenge_method=S256.
-    // The provider hard-asserts the method instead of silently
-    // emitting an S256 URL the user's browser would 400 on.
+    // Returning an empty URL is the sentinel the route layer
+    // detects + surfaces as a clean error; a previous panic could
+    // abort the axum task (Codex P2 #3375623160).
     let mut pkce = Pkce::new_plain();
     pkce.method = PkceMethod::S256;
-    let _ = production_provider().auth_url(&pkce, "csrf");
+    let url = production_provider().auth_url(&pkce, "csrf");
+    assert_eq!(
+        url, "",
+        "S256 PKCE must produce an empty URL, not panic and not an S256 URL the browser would 400 on"
+    );
 }
 
 // `parse_iso8601_to_epoch` has multiple early-return branches for
@@ -475,6 +479,44 @@ async fn list_all_score_of_zero_means_unrated() {
     let entries = provider.list_all(&tokens).await.expect("list_all ok");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].score_0_to_100, None);
+}
+
+#[tokio::test]
+async fn list_all_drops_off_origin_paging_next() {
+    // Page 1 returns `paging.next` pointing at an attacker host;
+    // list_all MUST NOT follow it (would leak the bearer +
+    // X-MAL-CLIENT-ID off-origin). Codex P2 #3375623170.
+    let server = wiremock::MockServer::start().await;
+    let body = r#"{
+        "data": [{
+            "node": { "id": 1, "title": "Page1" },
+            "list_status": {
+                "status": "plan_to_watch",
+                "score": 0,
+                "num_episodes_watched": 0,
+                "is_rewatching": false,
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        }],
+        "paging": { "next": "https://attacker.example.com/anime/list?cursor=2" }
+    }"#;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider
+        .list_all(&tokens)
+        .await
+        .expect("list_all ok — off-origin next should be dropped, not followed");
+    // Only the first page lands; the attacker URL is never hit.
+    assert_eq!(entries.len(), 1);
 }
 
 #[tokio::test]

@@ -178,15 +178,16 @@ impl UserListProvider for MalProvider {
 
     fn auth_url(&self, pkce: &Pkce, state: &str) -> String {
         // MAL's authorize endpoint rejects S256 — the docs explicitly
-        // require `plain`. Hard-assert at the boundary so a future
-        // caller can't silently emit an S256 URL the browser would
-        // 400 on. The PKCE helper has separate `new_plain` and
-        // `new_s256` constructors for symmetric trait callers, but
-        // for MAL only the plain variant is legal on the wire.
-        assert!(
-            matches!(pkce.method, PkceMethod::Plain),
-            "MAL requires PKCE method=plain (S256 forbidden by spec)"
-        );
+        // require `plain`. Return an empty string for any non-`Plain`
+        // method so the route layer can detect the misuse and return
+        // a clean error to the caller instead of an axum task panic
+        // (Codex P2 #3375623160). The trait can't return `Result`
+        // without churning AniList; an empty URL is the agreed-upon
+        // sentinel — the route handler treats empty as
+        // `AniError::Metadata`.
+        if !matches!(pkce.method, PkceMethod::Plain) {
+            return String::new();
+        }
         let params = [
             ("response_type", "code"),
             ("client_id", MAL_CLIENT_ID),
@@ -273,13 +274,21 @@ impl UserListProvider for MalProvider {
             "{}/users/@me/animelist?fields=list_status&limit={MAL_LIST_PAGE_LIMIT}&nsfw=true",
             self.api_url()
         );
+        let api_origin = url_origin(self.api_url());
         let mut next_url = Some(initial);
         let mut out: Vec<ListEntry> = Vec::new();
         while let Some(url) = next_url.take() {
             let bytes = self.get_auth_bytes(&url, tokens).await?;
             let page = parse_list_page(&bytes)?;
             out.extend(page.entries);
-            next_url = page.next_url;
+            // `paging.next` is an absolute URL from the upstream.
+            // Validate the origin matches our configured MAL API
+            // before reusing it — without this check a compromised or
+            // malformed upstream response could redirect pagination to
+            // an attacker-controlled host that receives the user's
+            // bearer + X-MAL-CLIENT-ID. Off-origin → treat as terminal
+            // page (Codex P2 #3375623170).
+            next_url = page.next_url.filter(|n| url_origin(n) == api_origin);
         }
         Ok(out)
     }
@@ -296,6 +305,28 @@ impl UserListProvider for MalProvider {
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
         Err(AniError::Metadata)
     }
+}
+
+/// Extract the (scheme, host, port) tuple of a URL string for
+/// origin comparison. Returns `("", "", 0)` for unparseable input —
+/// the caller treats that as a non-matching origin so a malformed
+/// `paging.next` value is dropped rather than followed.
+fn url_origin(s: &str) -> (String, String, u16) {
+    let Ok(u) = url::Url::parse(s) else {
+        return (String::new(), String::new(), 0);
+    };
+    let host = u.host_str().unwrap_or("").to_string();
+    let port = u
+        .port_or_known_default()
+        .or_else(|| {
+            if u.scheme() == "http" {
+                Some(80)
+            } else {
+                Some(443)
+            }
+        })
+        .unwrap_or(0);
+    (u.scheme().to_string(), host, port)
 }
 
 #[cfg(test)]
