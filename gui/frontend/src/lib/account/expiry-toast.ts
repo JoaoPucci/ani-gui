@@ -34,3 +34,37 @@ export function detectExpiredProviders(
 	}
 	return out;
 }
+
+export interface ExpirySyncDeps {
+	push(info: ExpiredProvider): string;
+	dismiss(toastId: string): void;
+}
+
+/**
+ * Tracks per-provider toast ids so the layout can dismiss the
+ * "session expired" warning the moment the user reconnects (or
+ * disconnects) the provider — even when they fix the session from
+ * /account or the chip popover directly instead of pressing the
+ * toast action. Codex P2 #3375219208: pinned toasts (`duration:
+ * null`) require explicit dismiss; without this tracker the stale
+ * warning lingers after recovery.
+ */
+export class ExpiryToastTracker {
+	private byProvider = new Map<Provider, string>();
+
+	sync(state: Record<Provider, ProviderState>, deps: ExpirySyncDeps): void {
+		const expiredNow = new Map<Provider, ExpiredProvider>(
+			detectExpiredProviders(state).map((e) => [e.provider, e])
+		);
+		for (const [provider, toastId] of this.byProvider) {
+			if (!expiredNow.has(provider)) {
+				deps.dismiss(toastId);
+				this.byProvider.delete(provider);
+			}
+		}
+		for (const [provider, info] of expiredNow) {
+			if (this.byProvider.has(provider)) continue;
+			this.byProvider.set(provider, deps.push(info));
+		}
+	}
+}
