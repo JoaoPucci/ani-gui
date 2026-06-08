@@ -237,20 +237,6 @@
 			.then((t) => filterAvailable(t, filterMode))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
-		// Watch Later rail (plan §6.6). Loader handles per-provider
-		// cache reads, merge, dedupe, and the MAL→Kitsu bridge.
-		// `accountStore` hydrates synchronously in the layout's
-		// onMount via the preload's getToken, so `byProvider` is
-		// populated by the time the home page mounts.
-		void loadWatchLater(buildWatchLaterDeps())
-			.then((refs) => filterAvailable(refs, filterMode))
-			.then((refs) => (watchLater = refs))
-			.catch(() => {
-				// Failure means we leave the rail hidden — same UX as
-				// no-provider-connected. Logging is up to the loader's
-				// per-provider try/catch; the page swallows here.
-				watchLater = [];
-			});
 		// Settings drive mode/quality for the Continue Watching click
 		// handler. Default {sub, best} when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
@@ -328,6 +314,34 @@
 		window.addEventListener('scroll', onScroll, { passive: true });
 		onScroll();
 		return () => window.removeEventListener('scroll', onScroll);
+	});
+
+	// Watch Later rail (plan §6.6). Reactive on accountStore.byProvider so:
+	//  - on cold launch directly to `/`, the rail loads as soon as the
+	//    layout's hydrate() populates the store (Codex P2 #3373736854);
+	//  - sign-in / disconnect / token-refresh events during the session
+	//    trigger a re-load without a route navigation.
+	// `cfg.mode` participates too — toggling sub/dub re-runs the
+	// availability filter against the new mode.
+	$effect(() => {
+		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const deps = buildWatchLaterDeps();
+		let cancelled = false;
+		void loadWatchLater(deps)
+			.then((refs) => filterAvailable(refs, filterMode))
+			.then((refs) => {
+				if (!cancelled) watchLater = refs;
+			})
+			.catch(() => {
+				// Loader's per-provider try/catch already swallowed
+				// individual failures; a top-level reject means every
+				// provider failed (or the bridge died). Render nothing
+				// — same UX as no-provider-connected.
+				if (!cancelled) watchLater = [];
+			});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
