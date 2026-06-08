@@ -23,7 +23,7 @@ function build(over: Partial<Record<Provider, ProviderState>>): Record<Provider,
 	};
 }
 
-describe.skip('detectExpiredProviders', () => {
+describe('detectExpiredProviders', () => {
 	it('returns an empty list when every provider is disconnected', () => {
 		expect(detectExpiredProviders(build({}))).toEqual([]);
 	});

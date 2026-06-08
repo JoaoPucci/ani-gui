@@ -40,5 +40,7 @@
 	"chip_warning_error": "Falló la última sincronización",
 	"chip_pop_aria_label": "Acciones de cuenta",
 	"chip_pop_manage": "Gestionar cuenta",
-	"chip_pop_disconnect": "Desconectar"
+	"chip_pop_disconnect": "Desconectar",
+	"expiry_toast_message": "Tu sesión de {provider} expiró. Conéctate de nuevo para seguir sincronizando.",
+	"expiry_toast_action": "Conectarse"
 }

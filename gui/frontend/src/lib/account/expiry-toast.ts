@@ -20,9 +20,17 @@ export interface ExpiredProvider {
 	username: string;
 }
 
+const PRIORITY: ReadonlyArray<Provider> = ['anilist', 'mal', 'inhouse'];
+
 export function detectExpiredProviders(
 	byProvider: Record<Provider, ProviderState>
 ): ExpiredProvider[] {
-	void byProvider;
-	return [];
+	const out: ExpiredProvider[] = [];
+	for (const provider of PRIORITY) {
+		const state = byProvider[provider];
+		if (state.kind === 'expired') {
+			out.push({ provider, username: state.account.username });
+		}
+	}
+	return out;
 }
