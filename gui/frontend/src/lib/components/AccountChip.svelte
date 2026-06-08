@@ -168,7 +168,7 @@
 		position: relative;
 		inline-size: 28px;
 		block-size: 28px;
-		border-radius: var(--radius-card, 8px);
+		border-radius: 5px;
 		overflow: hidden;
 		background: var(--surface-2, rgba(255, 255, 255, 0.06));
 		display: inline-flex;
