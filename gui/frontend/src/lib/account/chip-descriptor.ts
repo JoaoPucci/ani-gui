@@ -5,16 +5,19 @@
  * Svelte / DOM dependency.
  *
  * Logic:
- *   - Pick the highest-priority provider with a known identity
- *     (`connected`, `expired`, or `error` with a surviving account).
- *   - Priority order: AniList → MAL → InHouse. Same as
- *     `MERGE_ORDER` in `./watch-later`.
- *   - Disconnected / connecting / orphan-error states surface as
- *     `{kind: 'hidden'}` — the side-rail's /account link is the
- *     primary path for users without a session.
+ *   - Walk providers in priority order (AniList → MAL → InHouse,
+ *     same as `MERGE_ORDER` in `./watch-later`).
+ *   - First provider with a surviving identity wins, even if its
+ *     session is expired or transiently erroring — the chip then
+ *     renders a warning dot so the user can recover from the chip
+ *     popover instead of digging through /account.
+ *   - Disconnected / connecting / orphan-error states are skipped
+ *     entirely; if every provider is in one of those states the
+ *     chip stays hidden and the side-rail's /account link is the
+ *     primary entry point.
  */
 
-import type { Provider, ProviderState } from './types';
+import type { PersistedAccount, Provider, ProviderState } from './types';
 
 export type ChipWarning = 'expired' | 'error';
 
@@ -28,7 +31,29 @@ export type ChipState =
 			warning: ChipWarning | null;
 	  };
 
+const PRIORITY: ReadonlyArray<Provider> = ['anilist', 'mal', 'inhouse'];
+
+function connectedFrom(
+	provider: Provider,
+	account: PersistedAccount,
+	warning: ChipWarning | null
+): ChipState {
+	return {
+		kind: 'connected',
+		provider,
+		username: account.username,
+		avatarUrl: account.avatar_url,
+		warning
+	};
+}
+
 export function chipDescriptor(byProvider: Record<Provider, ProviderState>): ChipState {
-	void byProvider;
+	for (const provider of PRIORITY) {
+		const state = byProvider[provider];
+		if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
+		if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');
+		if (state.kind === 'error' && state.account)
+			return connectedFrom(provider, state.account, 'error');
+	}
 	return { kind: 'hidden' };
 }

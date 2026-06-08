@@ -39,7 +39,7 @@ function build(over: Partial<Record<Provider, ProviderState>>): Record<Provider,
 	};
 }
 
-describe.skip('chipDescriptor', () => {
+describe('chipDescriptor', () => {
 	it('hides the chip when no provider is connected', () => {
 		expect(chipDescriptor(build({}))).toEqual({ kind: 'hidden' });
 	});
