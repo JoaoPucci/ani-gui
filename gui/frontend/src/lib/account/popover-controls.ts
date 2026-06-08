@@ -33,11 +33,10 @@ export function createPopoverControls(deps: PopoverDeps): PopoverControls {
 		attach({ onClose }) {
 			const onPointerDown = (e: PointerEvent) => {
 				const target = e.target as Node | null;
-				if (!target) return;
 				const trigger = deps.getTrigger();
-				if (trigger?.contains(target)) return;
+				if (target && trigger?.contains(target)) return;
 				const pop = document.getElementById(deps.getPopoverId());
-				if (pop?.contains(target)) return;
+				if (target && pop?.contains(target)) return;
 				onClose();
 			};
 			const onKey = (e: KeyboardEvent) => {
