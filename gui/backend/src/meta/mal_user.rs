@@ -29,7 +29,10 @@
 //! Every API request must carry `X-MAL-CLIENT-ID` per the App Type
 //! "Other" auth model — the bearer alone is rejected.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use async_trait::async_trait;
+use serde::Deserialize;
 
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
@@ -127,8 +130,33 @@ impl UserListProvider for MalProvider {
             .unwrap_or_default()
     }
 
-    async fn exchange_code(&self, _code: &str, _pkce: &Pkce) -> Result<Tokens> {
-        Err(AniError::Metadata)
+    async fn exchange_code(&self, code: &str, pkce: &Pkce) -> Result<Tokens> {
+        // MAL's token endpoint takes `application/x-www-form-urlencoded`
+        // and — uniquely for App Type "Other" — has no client_secret.
+        // PKCE is authentication, so `code_verifier` is required.
+        let form = [
+            ("client_id", MAL_CLIENT_ID),
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("code_verifier", pkce.verifier.as_str()),
+            ("redirect_uri", MAL_REDIRECT_URI),
+        ];
+        let resp = self
+            .client
+            .post(self.token_url())
+            .header("user-agent", MAL_USER_AGENT)
+            .form(&form)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_token_response(&bytes)
     }
 
     async fn refresh(&self, _refresh_token: &str) -> Result<Tokens> {
@@ -155,6 +183,37 @@ impl UserListProvider for MalProvider {
     async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
         Err(AniError::Metadata)
     }
+}
+
+/// Parse MAL's OAuth token-exchange response into [`Tokens`]. Both
+/// `exchange_code` and (in the next pair) `refresh` use this — the
+/// wire shape is identical between the initial grant and refresh
+/// responses.
+fn parse_token_response(body: &[u8]) -> Result<Tokens> {
+    #[derive(Deserialize)]
+    struct Wire {
+        access_token: String,
+        #[serde(default)]
+        refresh_token: Option<String>,
+        #[serde(default)]
+        expires_in: Option<i64>,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal token response: {e}"),
+    })?;
+    let now_s = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    // MAL always sends expires_in; fall back to 1 hour (their stated
+    // ceiling) so a missing field doesn't cause an immediate-expiry
+    // disconnect on the next handler call.
+    let expires_at_epoch_s = now_s + wire.expires_in.unwrap_or(3600);
+    Ok(Tokens {
+        access_token: wire.access_token,
+        refresh_token: wire.refresh_token,
+        expires_at_epoch_s,
+    })
 }
 
 #[cfg(test)]

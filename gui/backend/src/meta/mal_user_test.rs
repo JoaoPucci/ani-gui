@@ -102,3 +102,115 @@ fn auth_url_panics_when_handed_an_s256_pkce() {
     pkce.method = PkceMethod::S256;
     let _ = production_provider().auth_url(&pkce, "csrf");
 }
+
+/// Canonical MAL token response — `expires_in` in seconds (1 hour
+/// per their docs), opaque access_token + refresh_token.
+const MAL_TOKEN_RESPONSE_BODY: &str = r#"{
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "access_token": "mal-access-token-xyz",
+    "refresh_token": "mal-refresh-token-abc"
+}"#;
+
+#[tokio::test]
+async fn exchange_code_parses_access_token_refresh_and_expiry() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let pkce = Pkce::new_plain();
+    let now_floor = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let tokens = provider
+        .exchange_code("the-auth-code", &pkce)
+        .await
+        .expect("exchange ok");
+    assert_eq!(tokens.access_token, "mal-access-token-xyz");
+    assert_eq!(
+        tokens.refresh_token.as_deref(),
+        Some("mal-refresh-token-abc")
+    );
+    // 3600s ± a few seconds of wiggle for slow CI.
+    let expected_min = now_floor + 3600 - 5;
+    let expected_max = now_floor + 3600 + 60;
+    assert!(
+        tokens.expires_at_epoch_s >= expected_min && tokens.expires_at_epoch_s <= expected_max,
+        "expires_at_epoch_s ({}) must be within [{}, {}]",
+        tokens.expires_at_epoch_s,
+        expected_min,
+        expected_max
+    );
+}
+
+#[tokio::test]
+async fn exchange_code_sends_form_body_with_pkce_verifier_and_no_client_secret() {
+    use wiremock::matchers::body_string_contains;
+    let server = wiremock::MockServer::start().await;
+    let pkce = Pkce::new_plain();
+    // `reqwest::Form` url-encodes the verifier; assert on the encoded
+    // form so a `.`/`~`/`_` in the verifier doesn't trip the matcher.
+    let encoded_verifier =
+        url::form_urlencoded::byte_serialize(pkce.verifier.as_bytes()).collect::<String>();
+    let verifier_marker = format!("code_verifier={encoded_verifier}");
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::header(
+            "content-type",
+            "application/x-www-form-urlencoded",
+        ))
+        .and(body_string_contains("grant_type=authorization_code"))
+        .and(body_string_contains(&format!("client_id={MAL_CLIENT_ID}")))
+        .and(body_string_contains("code=the-auth-code"))
+        .and(body_string_contains(&verifier_marker))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let tokens = provider.exchange_code("the-auth-code", &pkce).await;
+    assert!(
+        tokens.is_ok(),
+        "exchange_code must hit the wiremock matcher: {tokens:?}"
+    );
+}
+
+#[tokio::test]
+async fn exchange_code_surfaces_4xx_as_oauth_exchange_failed_or_upstream() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(400).set_body_string(r#"{"error":"invalid_grant"}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let err = provider
+        .exchange_code("bad-code", &Pkce::new_plain())
+        .await
+        .expect_err("4xx must surface as error");
+    match err {
+        crate::error::AniError::Upstream { status } => assert_eq!(status, 400),
+        other => panic!("expected Upstream {{ status: 400 }}, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn exchange_code_surfaces_5xx_as_upstream() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let err = provider
+        .exchange_code("the-auth-code", &Pkce::new_plain())
+        .await
+        .expect_err("5xx must surface as error");
+    match err {
+        crate::error::AniError::Upstream { status } => assert_eq!(status, 503),
+        other => panic!("expected Upstream {{ status: 503 }}, got {other:?}"),
+    }
+}
