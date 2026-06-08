@@ -126,6 +126,99 @@ async fn exchange_code_parses_access_token_and_expiry() {
     );
 }
 
+/// Build a JWT-shaped access token whose payload contains a known
+/// `exp` claim, so a test can pin that the parser pulls the expiry
+/// out of the JWT when the wire response omits `expires_in`. Header
+/// + signature are intentionally fixed garbage — we never verify the
+/// signature, we only base64url-decode the payload.
+///
+/// Codex P2 #3371176290.
+fn fake_anilist_jwt_with_exp(exp_epoch_s: i64) -> String {
+    use base64::Engine;
+    let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(br#"{"alg":"RS256","typ":"JWT"}"#);
+    let payload_json = format!(r#"{{"sub":"5921","exp":{}}}"#, exp_epoch_s);
+    let payload =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload_json.as_bytes());
+    // The signature segment is base64url too, but we never decode it.
+    // A literal "sig" is fine; the parser splits on '.' and only
+    // touches the middle segment.
+    format!("{header}.{payload}.sig")
+}
+
+/// AniList's documented Authorization-Code response carries
+/// `expires_in`. Their *live* response sometimes omits it (their
+/// tokens are essentially non-expiring and the field is documented
+/// inconsistently). The earlier required-`expires_in` decoder would
+/// reject an otherwise valid exchange as `ParseFailed` and the
+/// Connect flow would fail before persisting the token. Codex P1
+/// #3371176290.
+///
+/// This test fixture's body omits `expires_in` entirely; the access
+/// token IS a JWT-shaped string with a known `exp` claim, so the
+/// parser must fall back to JWT decoding to recover the expiry.
+#[tokio::test]
+async fn exchange_code_falls_back_to_jwt_exp_when_expires_in_missing() {
+    let exp = 2_000_000_000_i64; // 2033-05-18 — well past any test wall clock
+    let access_token = fake_anilist_jwt_with_exp(exp);
+    let body = format!(
+        r#"{{"token_type":"Bearer","access_token":"{access_token}","refresh_token":null}}"#
+    );
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(&body))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let tokens = provider
+        .exchange_code("the-code", &Pkce::new_plain())
+        .await
+        .expect("exchange must succeed even without expires_in");
+    assert_eq!(
+        tokens.expires_at_epoch_s, exp,
+        "must read expiry from JWT exp claim"
+    );
+}
+
+/// Defensive fallback: when AniList ever returns a non-JWT access
+/// token AND omits `expires_in`, the parser uses a 1-year sentinel
+/// rather than failing the exchange. Codex P1 #3371176290 — the user
+/// would otherwise be stuck on a stale connect flow on every retry
+/// even though the token itself is fine.
+#[tokio::test]
+async fn exchange_code_falls_back_to_one_year_sentinel_when_jwt_decode_fails() {
+    let body = r#"{
+        "token_type": "Bearer",
+        "access_token": "not-a-jwt-just-an-opaque-string",
+        "refresh_token": null
+    }"#;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let now_floor = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let tokens = provider
+        .exchange_code("the-code", &Pkce::new_plain())
+        .await
+        .expect("exchange must succeed; expiry falls back to sentinel");
+    // Sentinel = ~1 year. Generous bounds so a slow CI doesn't flake.
+    let expected_min = now_floor + 31_536_000 - 5;
+    let expected_max = now_floor + 31_536_000 + 60;
+    assert!(
+        tokens.expires_at_epoch_s >= expected_min
+            && tokens.expires_at_epoch_s <= expected_max,
+        "sentinel expiry ({}) must be ~1y from now [{}, {}]",
+        tokens.expires_at_epoch_s,
+        expected_min,
+        expected_max
+    );
+}
+
 #[tokio::test]
 async fn exchange_code_surfaces_upstream_4xx_as_upstream_error() {
     // AniList returns 400 on a stale / replayed code with a JSON
