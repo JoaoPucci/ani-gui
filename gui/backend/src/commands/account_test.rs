@@ -57,3 +57,13 @@ fn tokens_from_bearer_drops_expiry_and_refresh() {
     assert!(t.refresh_token.is_none());
     assert_eq!(t.expires_at_epoch_s, 0);
 }
+
+#[test]
+fn watch_later_bridge_max_ids_is_a_sane_ceiling() {
+    // Codex P1 #3373789621: the route gates on this constant.
+    // 500 covers the largest plausible Plan-to-Watch (a heavy
+    // listmaker with curated picks tops out around 200-300) and
+    // bounds per-request fan-out cost. Pinned here so a future
+    // bump is intentional, not a typo.
+    assert_eq!(WATCH_LATER_BRIDGE_MAX_IDS, 500);
+}

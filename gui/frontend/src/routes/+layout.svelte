@@ -44,6 +44,7 @@
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
 	import { APP_VERSION as appVersion } from '$lib/version';
+	import { accountStore } from '$lib/account/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import {
@@ -155,6 +156,16 @@
 		} catch {
 			// localStorage unavailable — leave recentSearches empty.
 		}
+
+		// Hydrate the account store at app boot so every consumer
+		// (home Watch Later rail, future topbar chip, expiry toast)
+		// sees populated providers from their own onMount. Previously
+		// only `/account/+page.svelte` called this, which meant a cold
+		// launch directly to `/` left the rail blank for connected
+		// users until they visited Accounts first (Codex P2 #3373736854).
+		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
+		// the time the home page mounts the store is fully populated.
+		accountStore.hydrate();
 
 		// Persistent PiP — distinguish two ways the PiP window can
 		// close:

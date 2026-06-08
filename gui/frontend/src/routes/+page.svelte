@@ -44,6 +44,7 @@
 		historyDelete,
 		historyList,
 		imageProxyUrl,
+		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
@@ -57,6 +58,10 @@
 		type KitsuEpisode,
 		type PlayProgress
 	} from '$lib/api';
+	import { accountStore } from '$lib/account/store.svelte';
+	import { fetchCachedList } from '$lib/account/api';
+	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
@@ -95,6 +100,12 @@
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
 	let history = $state<HistoryEntry[] | null>(null);
+	// Plan §6.6: Watch Later rail. `null` = not loaded yet (during
+	// boot before accountStore.hydrate completes, or no provider
+	// connected at all). `[]` = loaded, but no Planning rows to
+	// show — rail stays hidden, same as the "no provider" case.
+	// Non-empty = render with the bridged Kitsu refs.
+	let watchLater = $state<KitsuAnimeRef[] | null>(null);
 	let heroIndex = $state(0);
 	let heroPaused = $state(false);
 	// Per-history-entry Kitsu match, keyed by allanime id. Populated lazily
@@ -305,6 +316,34 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
+	// Watch Later rail (plan §6.6). Reactive on accountStore.byProvider so:
+	//  - on cold launch directly to `/`, the rail loads as soon as the
+	//    layout's hydrate() populates the store (Codex P2 #3373736854);
+	//  - sign-in / disconnect / token-refresh events during the session
+	//    trigger a re-load without a route navigation.
+	// `cfg.mode` participates too — toggling sub/dub re-runs the
+	// availability filter against the new mode.
+	$effect(() => {
+		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const deps = buildWatchLaterDeps();
+		let cancelled = false;
+		void loadWatchLater(deps)
+			.then((refs) => filterAvailable(refs, filterMode))
+			.then((refs) => {
+				if (!cancelled) watchLater = refs;
+			})
+			.catch(() => {
+				// Loader's per-provider try/catch already swallowed
+				// individual failures; a top-level reject means every
+				// provider failed (or the bridge died). Render nothing
+				// — same UX as no-provider-connected.
+				if (!cancelled) watchLater = [];
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
 	// this effect is the runtime adapter (matchMedia probe + interval
 	// management).
@@ -326,6 +365,31 @@
 		}, HERO_ROTATE_MS);
 		return () => window.clearInterval(id);
 	});
+
+	/**
+	 * Pluck bearer + user_id pairs from every provider whose stored
+	 * account is usable for a cache read. "Usable" = `connected`,
+	 * `expired` (bearer rejected upstream but PR #60's secret-gated
+	 * fallback still serves rows), or `error` with an account. The
+	 * disconnected/connecting states are skipped — no credential, no
+	 * fetch.
+	 */
+	function buildWatchLaterDeps() {
+		const credentials: Partial<Record<Provider, { bearer: string; userId: string }>> = {};
+		for (const [key, state] of Object.entries(accountStore.byProvider) as [
+			Provider,
+			ProviderState
+		][]) {
+			const acct =
+				state.kind === 'connected' || state.kind === 'expired'
+					? state.account
+					: state.kind === 'error' && state.account
+						? state.account
+						: null;
+			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
+		}
+		return { credentials, fetchCachedList, kitsuByMalIds };
+	}
 
 	function describeError(e: unknown): string {
 		if (typeof e === 'object' && e !== null) {
@@ -841,6 +905,19 @@
 	onConfirm={confirmClear}
 	onCancel={cancelClear}
 />
+
+<!-- Watch Later rail (plan §6.6) — between Continue Watching and
+     Trending. Hidden when:
+       - watchLater === null  → boot, accountStore not hydrated yet
+       - watchLater.length === 0 → no provider connected, or every
+         connected provider's Plan-to-Watch is empty / un-bridged. -->
+{#if watchLater && watchLater.length > 0}
+	<Strip eyebrow={m.account_watch_later_title()} caption={m.account_watch_later_caption()}>
+		{#each watchLater as anime (anime.id)}
+			<PosterCard {anime} />
+		{/each}
+	</Strip>
+{/if}
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}

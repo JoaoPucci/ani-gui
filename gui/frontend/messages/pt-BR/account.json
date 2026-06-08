@@ -32,5 +32,7 @@
 	"disconnect_confirm_body": "Your watchlist stays on {provider} — only the local connection is dropped.",
 	"settings_subtitle_connected": "Signed in to {provider}.",
 	"settings_subtitle_disconnected": "No tracker connected.",
+	"watch_later_title": "Ver depois",
+	"watch_later_caption": "Das suas listas de Planejados",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs."
 }
