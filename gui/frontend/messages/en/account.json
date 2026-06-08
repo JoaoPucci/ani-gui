@@ -40,5 +40,7 @@
 	"chip_warning_error": "Last sync failed",
 	"chip_pop_aria_label": "Account actions",
 	"chip_pop_manage": "Manage account",
-	"chip_pop_disconnect": "Disconnect"
+	"chip_pop_disconnect": "Disconnect",
+	"expiry_toast_message": "Your {provider} session expired. Sign in again to keep syncing.",
+	"expiry_toast_action": "Sign in"
 }

@@ -40,5 +40,7 @@
 	"chip_warning_error": "Последняя синхронизация не удалась",
 	"chip_pop_aria_label": "Действия с аккаунтом",
 	"chip_pop_manage": "Управление аккаунтом",
-	"chip_pop_disconnect": "Отключить"
+	"chip_pop_disconnect": "Отключить",
+	"expiry_toast_message": "Срок сеанса {provider} истёк. Войдите снова, чтобы продолжить синхронизацию.",
+	"expiry_toast_action": "Войти"
 }
