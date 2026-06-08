@@ -12,3 +12,4 @@ pub mod aniskip;
 pub mod github;
 pub mod images;
 pub mod kitsu;
+pub mod mal_user;
