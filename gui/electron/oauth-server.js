@@ -85,6 +85,15 @@ const ERROR_PAGE = `<!doctype html>
 // literals so either family routes home.
 const LOOPBACK_HOSTS = ["127.0.0.1", "::1"];
 
+// errno codes that mean "this loopback family isn't configured on this
+// host" — IPv6 disabled in the kernel, ::1 not bound to lo, etc.
+// Codex P2 #3371498414: a hardened server with IPv6 off must still be
+// able to start the OAuth flow on 127.0.0.1 alone. If the missing
+// family WAS what the OS resolver would have returned for `localhost`,
+// the kernel that disabled the family won't return it from getaddrinfo
+// either — tolerating the bind error is symmetric with the resolver.
+const FAMILY_UNAVAILABLE_CODES = new Set(["EADDRNOTAVAIL", "EAFNOSUPPORT"]);
+
 function startOAuthServer() {
   let servers = [];
   let timer = null;
@@ -94,6 +103,7 @@ function startOAuthServer() {
   let readyReject = null;
   let readySettled = false;
   let pendingBinds = LOOPBACK_HOSTS.length;
+  let successfulBinds = 0;
   const promise = new Promise((resolve, reject) => {
     resolveFn = resolve;
     rejectFn = reject;
@@ -165,12 +175,41 @@ function startOAuthServer() {
   }
 
   function onBindError(err) {
-    // EADDRINUSE on bind is the most common failure — the user has
-    // another OAuth-running process or a leftover instance bound to
-    // 53682. Surface it specifically so the toast can be actionable.
-    // If ANY family fails to bind, treat the whole attempt as failed:
-    // the redirect might route to the missing family and the user
-    // would just hang. Tear down what did bind and reject.
+    // Two failure modes, two policies:
+    //
+    //  - EADDRNOTAVAIL / EAFNOSUPPORT: the OS doesn't have this
+    //    loopback family configured (IPv6 off, ::1 unbound, etc.).
+    //    Per Codex P2 #3371498414, tolerate this — if the family is
+    //    absent, the OS's getaddrinfo for `localhost` won't return it
+    //    to the browser either, so the surviving family is what the
+    //    redirect actually hits.
+    //
+    //  - Anything else (EADDRINUSE, permission denied, hard syscall
+    //    failure): fatal. EADDRINUSE in particular means a stale
+    //    instance owns the port; even if the other family binds, the
+    //    browser may pick the held one and either reach the wrong
+    //    process or hang. Tear everything down.
+    const isFamilyUnavailable = err && FAMILY_UNAVAILABLE_CODES.has(err.code);
+    if (isFamilyUnavailable) {
+      pendingBinds -= 1;
+      // If at least one family already bound (or will), keep the flow
+      // alive; ready resolves on the survivor.
+      if (pendingBinds === 0) {
+        if (successfulBinds === 0) {
+          // No loopback family available at all — surface as
+          // server_error so the toast can show the underlying code.
+          const wrapped = new Error(
+            `server_error: no loopback family available (${err.code})`,
+          );
+          shutdown();
+          settleReady(false, wrapped);
+          rejectFn(wrapped);
+        } else {
+          settleReady(true);
+        }
+      }
+      return;
+    }
     const wrapped =
       err && err.code === "EADDRINUSE"
         ? new Error("port_busy: 53682 is held by another process")
@@ -184,6 +223,7 @@ function startOAuthServer() {
     const s = http.createServer(handler);
     s.on("error", onBindError);
     s.on("listening", () => {
+      successfulBinds += 1;
       pendingBinds -= 1;
       if (pendingBinds === 0) settleReady(true);
     });
