@@ -6,7 +6,7 @@ function makeState(): ProviderState {
 	return { kind: 'disconnected' };
 }
 
-describe.skip('handleChipDisconnect', () => {
+describe('handleChipDisconnect', () => {
 	it('calls disconnectAccount with the persisted-account clear deps', async () => {
 		const disconnectAccount = vi.fn().mockResolvedValue({ kind: 'ok' });
 		const cb = {

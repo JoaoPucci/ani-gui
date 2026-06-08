@@ -7,21 +7,15 @@
  * coverage without mounting a Svelte component, per AGENTS.md §2.
  */
 
+import type { DisconnectFlowDeps, DisconnectResult } from './connect-flow';
 import type { Provider, ProviderState } from './types';
 
-export interface ChipDisconnectDeps {
+export interface ChipDisconnectDeps extends DisconnectFlowDeps {
 	disconnectAccount: (
 		provider: Provider,
 		prev: ProviderState,
-		ops: {
-			clearPersistedAccount: ChipDisconnectDeps['clearPersistedAccount'];
-			dropListCache: ChipDisconnectDeps['dropListCache'];
-			dropProviderCache: ChipDisconnectDeps['dropProviderCache'];
-		}
-	) => Promise<{ kind: 'ok' } | { kind: 'token_clear_failed' }>;
-	clearPersistedAccount: (provider: Provider) => Promise<boolean>;
-	dropListCache: (provider: Provider, userId: string | null) => Promise<void>;
-	dropProviderCache: (provider: Provider) => Promise<void>;
+		ops: DisconnectFlowDeps
+	) => Promise<DisconnectResult>;
 }
 
 export interface ChipDisconnectCallbacks {
@@ -38,8 +32,15 @@ export async function handleChipDisconnect(
 	deps: ChipDisconnectDeps,
 	cb: ChipDisconnectCallbacks
 ): Promise<void> {
-	void provider;
-	void prev;
-	void deps;
-	void cb;
+	const r = await deps.disconnectAccount(provider, prev, {
+		clearPersistedAccount: deps.clearPersistedAccount,
+		dropListCache: deps.dropListCache,
+		dropProviderCache: deps.dropProviderCache
+	});
+	if (r.kind === 'token_clear_failed') {
+		cb.setError(provider, cb.unknownErrorMessage());
+		cb.pushToast({ kind: 'error', message: cb.tokenClearFailedMessage() });
+		return;
+	}
+	cb.setDisconnected(provider);
 }

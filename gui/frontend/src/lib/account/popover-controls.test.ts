@@ -1,7 +1,8 @@
+// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPopoverControls } from './popover-controls';
 
-describe.skip('createPopoverControls', () => {
+describe('createPopoverControls', () => {
 	let trigger: HTMLButtonElement;
 	let popover: HTMLDivElement;
 	let outside: HTMLDivElement;

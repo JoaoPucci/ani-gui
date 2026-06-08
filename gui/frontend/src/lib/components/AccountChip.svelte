@@ -17,6 +17,8 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { clearPersistedAccount, dropListCache, dropProviderCache } from '$lib/account/api';
 	import { disconnectAccount } from '$lib/account/connect-flow';
+	import { createPopoverControls } from '$lib/account/popover-controls';
+	import { handleChipDisconnect } from '$lib/account/chip-disconnect';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
 
@@ -33,25 +35,14 @@
 	let open = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
 
+	const popoverControls = createPopoverControls({
+		getTrigger: () => trigger,
+		getPopoverId: () => 'account-chip-pop'
+	});
+
 	$effect(() => {
 		if (!open) return;
-		const onPointerDown = (e: PointerEvent) => {
-			const target = e.target as Node | null;
-			if (!target) return;
-			if (trigger?.contains(target)) return;
-			const pop = document.getElementById('account-chip-pop');
-			if (pop?.contains(target)) return;
-			open = false;
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') open = false;
-		};
-		document.addEventListener('pointerdown', onPointerDown);
-		document.addEventListener('keydown', onKey);
-		return () => {
-			document.removeEventListener('pointerdown', onPointerDown);
-			document.removeEventListener('keydown', onKey);
-		};
+		return popoverControls.attach({ onClose: () => (open = false) });
 	});
 
 	function providerLabel(provider: 'anilist' | 'mal' | 'inhouse'): string {
@@ -76,17 +67,18 @@
 		const provider = descriptor.provider;
 		const prev = accountStore.byProvider[provider];
 		open = false;
-		const r = await disconnectAccount(provider, prev, {
-			clearPersistedAccount,
-			dropListCache,
-			dropProviderCache
-		});
-		if (r.kind === 'token_clear_failed') {
-			accountStore.setError(provider, m.account_connect_error_unknown());
-			toastStore.push({ kind: 'error', message: m.account_disconnect_error_token_clear() });
-			return;
-		}
-		accountStore.setDisconnected(provider);
+		await handleChipDisconnect(
+			provider,
+			prev,
+			{ disconnectAccount, clearPersistedAccount, dropListCache, dropProviderCache },
+			{
+				setError: (p, msg) => accountStore.setError(p, msg),
+				setDisconnected: (p) => accountStore.setDisconnected(p),
+				pushToast: (t) => toastStore.push(t),
+				unknownErrorMessage: () => m.account_connect_error_unknown(),
+				tokenClearFailedMessage: () => m.account_disconnect_error_token_clear()
+			}
+		);
 	}
 </script>
 
