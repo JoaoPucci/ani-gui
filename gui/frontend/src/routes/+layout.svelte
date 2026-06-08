@@ -33,6 +33,7 @@
 		type KitsuAnimeRef
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
+	import AccountChip from '$lib/components/AccountChip.svelte';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -639,6 +640,7 @@
 			</form>
 			<UpdateBadge />
 			<DownloadDock />
+			<AccountChip />
 		</header>
 		<main class="content">
 			{@render children()}

@@ -34,5 +34,11 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Ver después",
 	"watch_later_caption": "De tus listas de Planeados",
-	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs."
+	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
+	"chip_aria_label": "Menú de cuenta — conectado como {username}",
+	"chip_warning_expired": "Sesión expirada",
+	"chip_warning_error": "Falló la última sincronización",
+	"chip_pop_aria_label": "Acciones de cuenta",
+	"chip_pop_manage": "Gestionar cuenta",
+	"chip_pop_disconnect": "Desconectar"
 }
