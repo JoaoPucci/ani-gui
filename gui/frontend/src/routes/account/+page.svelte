@@ -458,9 +458,12 @@
 	}
 
 	.avatar {
+		/* AniList ships 230x230 squares composed edge-to-edge — a full
+		   pill clips characters/faces. Soft-rounded square keeps the
+		   source crop intact and matches the card-corner family. */
 		inline-size: 3rem;
 		block-size: 3rem;
-		border-radius: var(--radius-pill);
+		border-radius: var(--radius-card, 8px);
 		object-fit: cover;
 		flex-shrink: 0;
 		border: 1px solid var(--bone-600, var(--ink-200));
