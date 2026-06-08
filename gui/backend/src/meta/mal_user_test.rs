@@ -163,7 +163,7 @@ async fn exchange_code_sends_form_body_with_pkce_verifier_and_no_client_secret()
             "application/x-www-form-urlencoded",
         ))
         .and(body_string_contains("grant_type=authorization_code"))
-        .and(body_string_contains(&format!("client_id={MAL_CLIENT_ID}")))
+        .and(body_string_contains(format!("client_id={MAL_CLIENT_ID}")))
         .and(body_string_contains("code=the-auth-code"))
         .and(body_string_contains(&verifier_marker))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY))
@@ -284,6 +284,159 @@ async fn me_401_surfaces_as_invalid_token() {
     }
 }
 
+const MAL_LIST_PAGE_BODY: &str = r#"{
+    "data": [
+        {
+            "node": { "id": 21, "title": "One Piece" },
+            "list_status": {
+                "status": "watching",
+                "score": 9,
+                "num_episodes_watched": 1100,
+                "is_rewatching": false,
+                "updated_at": "2026-01-15T10:30:00+00:00"
+            }
+        },
+        {
+            "node": { "id": 5114, "title": "Fullmetal Alchemist: Brotherhood" },
+            "list_status": {
+                "status": "completed",
+                "score": 10,
+                "num_episodes_watched": 64,
+                "is_rewatching": false,
+                "updated_at": "2025-06-01T18:00:00+00:00"
+            }
+        }
+    ],
+    "paging": {}
+}"#;
+
+#[tokio::test]
+async fn list_all_maps_status_score_and_progress() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_LIST_PAGE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider.list_all(&tokens).await.expect("list_all ok");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].media_id.0, 21);
+    assert_eq!(entries[0].mal_id, Some(21));
+    assert_eq!(
+        entries[0].status,
+        crate::account::status::ListStatus::Watching
+    );
+    // 9 (0..=10) → 90 (0..=100).
+    assert_eq!(entries[0].score_0_to_100, Some(90));
+    assert_eq!(entries[0].progress_episodes, 1100);
+    assert!(entries[0].updated_at_epoch_s > 0);
+    assert_eq!(
+        entries[1].status,
+        crate::account::status::ListStatus::Completed
+    );
+    assert_eq!(entries[1].score_0_to_100, Some(100));
+}
+
+#[tokio::test]
+async fn list_all_follows_paging_next() {
+    // First page: paging.next points at /page2; second page: empty
+    // paging so the loop ends.
+    let server = wiremock::MockServer::start().await;
+    let page2_url = format!("{}/page2", server.uri());
+    let page1_body = format!(
+        r#"{{
+            "data": [{{
+                "node": {{ "id": 1, "title": "First" }},
+                "list_status": {{
+                    "status": "plan_to_watch",
+                    "score": 0,
+                    "num_episodes_watched": 0,
+                    "is_rewatching": false,
+                    "updated_at": "2026-01-01T00:00:00+00:00"
+                }}
+            }}],
+            "paging": {{ "next": "{page2_url}" }}
+        }}"#
+    );
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(page1_body))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/page2"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_LIST_PAGE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider.list_all(&tokens).await.expect("list_all ok");
+    // 1 from page1 + 2 from page2 (the canonical sample) = 3 total.
+    assert_eq!(entries.len(), 3);
+}
+
+#[tokio::test]
+async fn list_all_score_of_zero_means_unrated() {
+    let body = r#"{
+        "data": [{
+            "node": { "id": 99, "title": "Unrated" },
+            "list_status": {
+                "status": "plan_to_watch",
+                "score": 0,
+                "num_episodes_watched": 0,
+                "is_rewatching": false,
+                "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+        }],
+        "paging": {}
+    }"#;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider.list_all(&tokens).await.expect("list_all ok");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].score_0_to_100, None);
+}
+
+#[tokio::test]
+async fn list_all_401_surfaces_as_invalid_token() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "revoked".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    match provider.list_all(&tokens).await {
+        Err(crate::error::AniError::InvalidToken) => {}
+        other => panic!("expected InvalidToken, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
     use wiremock::matchers::body_string_contains;
@@ -295,7 +448,7 @@ async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
         ))
         .and(body_string_contains("grant_type=refresh_token"))
         .and(body_string_contains("refresh_token=stale-refresh-xyz"))
-        .and(body_string_contains(&format!("client_id={MAL_CLIENT_ID}")))
+        .and(body_string_contains(format!("client_id={MAL_CLIENT_ID}")))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY))
         .mount(&server)
         .await;
