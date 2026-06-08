@@ -153,6 +153,18 @@ describe('accountStore.hydrate', () => {
 		};
 	}
 
+	function stubBridgeWithReadError(provider: string, kind: string, message?: string) {
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				account: {
+					getToken(p: string) {
+						return p === provider ? { ok: false, kind, message } : { ok: false, kind: 'not_found' };
+					}
+				}
+			}
+		};
+	}
+
 	it('seeds disconnected when no payload exists', () => {
 		stubBridge({});
 		accountStore.hydrate();
@@ -189,5 +201,40 @@ describe('accountStore.hydrate', () => {
 		accountStore.hydrate();
 		// hydrate without a bridge resets to disconnected
 		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+	});
+
+	// Codex P2 #3371530183: when the token file is on disk but the OS
+	// keychain is unreachable (libsecret missing on Linux, Keychain
+	// access denied, etc.), getToken returns { ok: false, kind:
+	// 'encryption_unavailable' }. Collapsing that to `null` here would
+	// mark the provider `disconnected` even though the credential file
+	// is still on disk — the page would then hide the Disconnect
+	// action that calls clearToken, and the orphaned file would have
+	// no in-app cleanup path. Surface the read failure as an `error`
+	// state so the page can render a cleanup affordance.
+	// `.skip` on the red commit per the project's pre-commit lefthook,
+	// which runs the full vitest suite and rejects any commit whose
+	// tests don't all pass. Unskipped + made green in the next commit.
+	it.skip('seeds error state when keychain read fails with encryption_unavailable', () => {
+		stubBridgeWithReadError('anilist', 'encryption_unavailable');
+		accountStore.hydrate();
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('error');
+		if (s.kind === 'error') {
+			// No account payload — we couldn't read one — but the page
+			// branch for error-with-no-account now offers Disconnect
+			// (= clearToken) so the orphan file can be removed.
+			expect(s.account).toBeNull();
+			expect(s.message.length).toBeGreaterThan(0);
+		}
+	});
+
+	it.skip('seeds error state when keychain read fails with decrypt_error', () => {
+		// Corrupted token file (e.g., partial write, basic_text reject
+		// from #3370070913 on a fresh start) — same orphan-cleanup
+		// path as encryption_unavailable.
+		stubBridgeWithReadError('anilist', 'decrypt_error');
+		accountStore.hydrate();
+		expect(accountStore.byProvider.anilist.kind).toBe('error');
 	});
 });
