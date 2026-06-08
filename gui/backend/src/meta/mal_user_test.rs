@@ -198,6 +198,87 @@ async fn exchange_code_surfaces_4xx_as_oauth_exchange_failed_or_upstream() {
 }
 
 #[tokio::test]
+async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
+    use wiremock::matchers::body_string_contains;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::header(
+            "content-type",
+            "application/x-www-form-urlencoded",
+        ))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .and(body_string_contains("refresh_token=stale-refresh-xyz"))
+        .and(body_string_contains(&format!("client_id={MAL_CLIENT_ID}")))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let tokens = provider
+        .refresh("stale-refresh-xyz")
+        .await
+        .expect("refresh ok");
+    assert_eq!(tokens.access_token, "mal-access-token-xyz");
+}
+
+#[tokio::test]
+async fn refresh_surfaces_4xx_as_upstream() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let err = provider
+        .refresh("revoked")
+        .await
+        .expect_err("4xx must surface");
+    match err {
+        crate::error::AniError::Upstream { status } => assert_eq!(status, 401),
+        other => panic!("expected Upstream {{ status: 401 }}, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn refresh_lock_serializes_concurrent_calls() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+    let server = wiremock::MockServer::start().await;
+    // Slow response holds the upstream busy long enough that without
+    // the mutex two concurrent calls would overlap. With the mutex
+    // we'll observe two SEQUENTIAL requests, never concurrent.
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let max_observed = Arc::new(AtomicUsize::new(0));
+    let in_flight2 = in_flight.clone();
+    let max_observed2 = max_observed.clone();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = in_flight2.fetch_add(1, Ordering::SeqCst) + 1;
+            max_observed2.fetch_max(n, Ordering::SeqCst);
+            // 50ms gives the second caller plenty of time to race in
+            // without the lock; with the lock the second call doesn't
+            // start until after we leave this closure.
+            std::thread::sleep(Duration::from_millis(50));
+            in_flight2.fetch_sub(1, Ordering::SeqCst);
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY)
+        })
+        .mount(&server)
+        .await;
+    let provider = Arc::new(make_provider("http://unused-api", &server.uri()));
+    let p1 = provider.clone();
+    let p2 = provider.clone();
+    let h1 = tokio::spawn(async move { p1.refresh("token-1").await });
+    let h2 = tokio::spawn(async move { p2.refresh("token-2").await });
+    let _ = h1.await.unwrap().expect("refresh 1 ok");
+    let _ = h2.await.unwrap().expect("refresh 2 ok");
+    let observed = max_observed.load(Ordering::SeqCst);
+    assert_eq!(
+        observed, 1,
+        "refresh_lock must serialize — saw {observed} concurrent in-flight calls"
+    );
+}
+
+#[tokio::test]
 async fn exchange_code_surfaces_5xx_as_upstream() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))

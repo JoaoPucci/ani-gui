@@ -33,6 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use serde::Deserialize;
+use tokio::sync::Mutex;
 
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
@@ -55,7 +56,7 @@ const MAL_USER_AGENT: &str = concat!("ani-gui/", env!("CARGO_PKG_VERSION"));
 /// `token_base` for the OAuth token-exchange endpoint — let tests point
 /// at wiremock while production hits the real `myanimelist.net`.
 pub struct MalProvider {
-    #[allow(dead_code)] // Wired in once me/list_all/refresh land.
+    #[allow(dead_code)] // Wired in once me/list_all land.
     client: reqwest::Client,
     /// Override for the v2 data endpoint. `None` → production
     /// [`MAL_API`]. Tests pass a wiremock URI.
@@ -63,8 +64,12 @@ pub struct MalProvider {
     api_base: Option<String>,
     /// Override for the OAuth token endpoint. `None` → production
     /// [`MAL_TOKEN_URL`]. Tests pass a wiremock URI.
-    #[allow(dead_code)] // Wired in once exchange_code / refresh land.
     token_base: Option<String>,
+    /// Serializes concurrent `refresh` calls so two parallel handler
+    /// calls don't both POST `/v1/oauth2/token` and rotate the
+    /// refresh token — one of the responses would invalidate the
+    /// other and the next request 401s. Plan §6 / TDD pair 3.
+    refresh_lock: Mutex<()>,
 }
 
 impl MalProvider {
@@ -75,6 +80,7 @@ impl MalProvider {
             client,
             api_base: None,
             token_base: None,
+            refresh_lock: Mutex::new(()),
         }
     }
 
@@ -86,6 +92,7 @@ impl MalProvider {
             client,
             api_base: Some(api_base),
             token_base: Some(token_base),
+            refresh_lock: Mutex::new(()),
         }
     }
 
@@ -159,8 +166,32 @@ impl UserListProvider for MalProvider {
         parse_token_response(&bytes)
     }
 
-    async fn refresh(&self, _refresh_token: &str) -> Result<Tokens> {
-        Err(AniError::Metadata)
+    async fn refresh(&self, refresh_token: &str) -> Result<Tokens> {
+        // The mutex serializes concurrent refreshes so the upstream
+        // never sees two simultaneous rotation requests — one rotation
+        // would invalidate the other and the next API call 401s.
+        let _guard = self.refresh_lock.lock().await;
+        let form = [
+            ("client_id", MAL_CLIENT_ID),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+        ];
+        let resp = self
+            .client
+            .post(self.token_url())
+            .header("user-agent", MAL_USER_AGENT)
+            .form(&form)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_token_response(&bytes)
     }
 
     async fn me(&self, _tokens: &Tokens) -> Result<UserProfile> {
