@@ -16,7 +16,7 @@ function entry(over: Partial<ListEntry> = {}): ListEntry {
 	};
 }
 
-describe.skip('mergedWatchLater', () => {
+describe('mergedWatchLater', () => {
 	it('returns an empty list when no provider has rows', () => {
 		expect(mergedWatchLater({})).toEqual([]);
 	});

@@ -13,7 +13,28 @@
 
 import type { ListEntry, Provider } from './types';
 
+/**
+ * Per plan §6.6: AniList first (richer metadata via Kitsu's
+ * mappings), then MAL. `inhouse` isn't in scope for the rail —
+ * it's reserved for the future native provider that doesn't have
+ * an off-app library to mirror.
+ */
+const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
+
 export function mergedWatchLater(byProvider: Partial<Record<Provider, ListEntry[]>>): ListEntry[] {
-	void byProvider;
-	return [];
+	const seen = new Set<number>();
+	const out: ListEntry[] = [];
+	for (const provider of MERGE_ORDER) {
+		const rows = byProvider[provider];
+		if (!rows) continue;
+		for (const entry of rows) {
+			if (entry.status !== 'planning') continue;
+			if (entry.mal_id != null) {
+				if (seen.has(entry.mal_id)) continue;
+				seen.add(entry.mal_id);
+			}
+			out.push(entry);
+		}
+	}
+	return out;
 }
