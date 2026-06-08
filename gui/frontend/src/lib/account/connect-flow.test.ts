@@ -251,7 +251,7 @@ describe('restoreAfterFailedConnect', () => {
 	// through to `disconnected` hides Disconnect while the orphan file
 	// is still on disk — the user can no longer act on it without
 	// inspecting their filesystem. Keep the orphan-error state instead.
-	it.skip('preserves error-no-account orphan state on failed reconnect', () => {
+	it('preserves error-no-account orphan state on failed reconnect', () => {
 		const s: ProviderState = { kind: 'error', account: null, message: 'x' };
 		expect(restoreAfterFailedConnect(s)).toEqual(s);
 	});

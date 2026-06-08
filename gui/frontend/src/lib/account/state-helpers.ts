@@ -51,16 +51,22 @@ function accountFromState(state: ProviderState): PersistedAccount | null {
  *
  *  - `expired` with an account → stays `expired` (the bearer didn't
  *    suddenly become valid; the user just failed to refresh it)
- *  - `error` with an account → stays `error` with the same message —
- *    the new attempt failed too; the prior message is at least as
- *    accurate as a generic one
- *  - anything else (`disconnected`, `connecting`, `error` with no
- *    account) → fall through to `disconnected`, matching the prior
- *    behaviour
+ *  - `error` (with or without account) → stays `error` with the same
+ *    message. With-account preserves the Reconnect + Disconnect
+ *    surface; without-account (the orphan-token "Keychain read
+ *    failed" path hydrate() sets) preserves the Disconnect
+ *    affordance so the user can still purge the unreadable token
+ *    file on disk. Codex P2 #3372887747: collapsing the orphan to
+ *    `disconnected` hides the only way to clean it up.
+ *  - `disconnected` / `connecting` → fall through to `disconnected`
+ *    (nothing to preserve)
+ *  - `connected` → fall through to `disconnected` as a defensive
+ *    fallback for the type system; the page sets `connecting`
+ *    before this call, so this branch isn't reachable in practice
  */
 export function restoreAfterFailedConnect(prev: ProviderState): ProviderState {
 	if (prev.kind === 'expired') return prev;
-	if (prev.kind === 'error' && prev.account) return prev;
+	if (prev.kind === 'error') return prev;
 	return { kind: 'disconnected' };
 }
 
