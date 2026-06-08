@@ -5,6 +5,7 @@
 	"home_link_title": "ani-gui — главная",
 	"home_link_label": "Главная",
 	"search_link_label": "Поиск",
+	"account_link_label": "Аккаунты",
 	"settings_link_label": "Настройки",
 	"debug_link_label": "Отладка",
 	"search_refine_placeholder": "Уточните запрос…",

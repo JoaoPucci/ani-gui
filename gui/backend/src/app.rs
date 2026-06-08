@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
+use crate::account::InternalSecret;
 use crate::anicli::process::{locate_ani_cli, DebugOptions};
 use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
@@ -69,6 +70,12 @@ pub struct AppState {
     /// `$XDG_STATE_HOME/ani-gui/` — backing store for the latest
     /// `ani-cli -U` outcome JSON the diagnostics page reads.
     pub state_dir: PathBuf,
+    /// Per-process random secret renderer-only paths require as the
+    /// `x-ani-gui-internal-secret` header. Currently used to gate the
+    /// disconnect-after-expiry cache wipe (Codex P2 #3370011855) so a
+    /// cross-origin tab under the permissive CORS layer can't poison
+    /// another user's local cache.
+    pub internal_secret: InternalSecret,
 }
 
 impl AppState {
@@ -144,6 +151,7 @@ impl AppState {
             kitsu,
             config_path,
             state_dir,
+            internal_secret: InternalSecret::random(),
         })
     }
 
@@ -268,6 +276,7 @@ mod tests {
             kitsu: KitsuClient::new(reqwest::Client::new()),
             config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
         }
     }
 

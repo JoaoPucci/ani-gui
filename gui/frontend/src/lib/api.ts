@@ -30,6 +30,13 @@ declare global {
 	interface Window {
 		aniGui?: {
 			apiBase?: string;
+			/** Per-process random secret printed by the Rust backend at
+			 *  startup and threaded through Electron's preload. Sent as
+			 *  the `x-ani-gui-internal-secret` header on the few backend
+			 *  paths that need a renderer-only gate beyond the bearer —
+			 *  specifically the disconnect-after-expiry cache wipe
+			 *  (Codex P2 #3370011855). Absent in browser-only dev. */
+			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
 			 *  etc. Used by surfaces whose copy or recovery hints differ
@@ -60,6 +67,12 @@ declare global {
 			 *  Electron main so the close handler can decide whether
 			 *  to prompt the user before quitting. Fire-and-forget. */
 			notifyActiveDownloads?: (count: number) => void;
+			/** Open an https URL in the OS browser. Used by the
+			 *  /account page's Privacy Policy link. */
+			openExternal?: (url: string) => Promise<boolean>;
+			/** Account integration surface — present only in Electron
+			 *  builds. Shape mirrors gui/electron/preload.js. */
+			account?: import('./account/types').AniGuiAccountBridge;
 		};
 	}
 }

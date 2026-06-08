@@ -24,6 +24,7 @@ const {
   ipcMain,
   net,
   protocol,
+  safeStorage,
   screen,
   shell,
 } = require("electron");
@@ -33,6 +34,7 @@ const os = require("node:os");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
+const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -210,6 +212,25 @@ function spawnBackend() {
     // dialog with a download link instead of just logging.
     let fatalReason = null;
 
+    // Backend prints the renderer-only secret on a separate handshake
+    // line right after ANI_GUI_LISTENING. We may see either order on
+    // the stdout buffer, so cache one while waiting for the other and
+    // only resolve once both are in hand. Used to gate the disconnect-
+    // after-expiry cache wipe (Codex P2 #3370011855).
+    let pendingApiBase = null;
+    let pendingInternalSecret = null;
+    const maybeResolve = () => {
+      if (resolved) return;
+      if (pendingApiBase && pendingInternalSecret) {
+        resolved = true;
+        resolve({
+          child,
+          apiBase: pendingApiBase,
+          internalSecret: pendingInternalSecret,
+        });
+      }
+    };
+
     const onLine = (line) => {
       if (resolved) {
         // After handshake, downstream stdout becomes log output;
@@ -217,10 +238,16 @@ function spawnBackend() {
         process.stdout.write(`[backend] ${line}\n`);
         return;
       }
-      const match = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
-      if (match) {
-        resolved = true;
-        resolve({ child, apiBase: match[1] });
+      const apiMatch = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
+      if (apiMatch) {
+        pendingApiBase = apiMatch[1];
+        maybeResolve();
+        return;
+      }
+      const secretMatch = line.match(/^ANI_GUI_INTERNAL_SECRET\s+(\S+)/);
+      if (secretMatch) {
+        pendingInternalSecret = secretMatch[1];
+        maybeResolve();
       }
     };
 
@@ -319,7 +346,7 @@ function killBackendTree() {
   }
 }
 
-async function createWindow(apiBase) {
+async function createWindow(apiBase, internalSecret) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -355,6 +382,9 @@ async function createWindow(apiBase) {
         const args = [`--ani-gui-api-base=${apiBase}`];
         const locale = readConfigLocale();
         if (locale) args.push(`--ani-gui-locale=${locale}`);
+        if (internalSecret) {
+          args.push(`--ani-gui-internal-secret=${internalSecret}`);
+        }
         return args;
       })(),
     },
@@ -566,6 +596,241 @@ ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
 });
 
+// ─── Account integration IPC handlers ──────────────────────────────
+//
+// See .planning/account-integration.md §3.3 (OAuth flow) and §3.4
+// (token storage). The Rust backend never touches safeStorage — every
+// token operation is mediated by these handlers.
+
+/**
+ * Path where encrypted tokens for the given provider live. One file
+ * per provider so disconnect can rm a single file cleanly.
+ * `app.getPath("userData")` is the OS-canonical per-app data dir:
+ *   - Linux: $XDG_CONFIG_HOME/ani-gui (defaults to ~/.config/ani-gui)
+ *   - macOS: ~/Library/Application Support/ani-gui
+ *   - Windows: %APPDATA%\ani-gui
+ */
+function tokenPathFor(provider) {
+  const dir = path.join(app.getPath("userData"), "tokens");
+  // The directory may not exist on first install; mkdir -p.
+  fs.mkdirSync(dir, { recursive: true });
+  // Allowlist provider slugs to prevent path traversal via a malicious
+  // renderer payload (defensive — preload exposes a closed enum, but
+  // belt-and-braces).
+  if (!/^[a-z]+$/.test(provider)) {
+    throw new Error("invalid provider slug");
+  }
+  return path.join(dir, `${provider}.bin`);
+}
+
+// Track the active OAuth attempt so a cancel can stop the server.
+let activeOAuth = null;
+
+/**
+ * Begin the OAuth flow for the given provider. Opens the consent URL
+ * in the OS browser and listens on 127.0.0.1:53682 for the callback.
+ * Renderer gets `{ code, state }` back when the user approves, or an
+ * error with one of the documented `kind`s.
+ */
+ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
+  if (typeof authUrl !== "string" || !authUrl.startsWith("https://")) {
+    return { ok: false, kind: "bad_request" };
+  }
+  // Cancel any previous in-flight attempt — a fresh click should
+  // start fresh, not stack on top.
+  if (activeOAuth) {
+    try {
+      activeOAuth.stop();
+    } catch {
+      /* ignore */
+    }
+    activeOAuth = null;
+  }
+  let server;
+  try {
+    server = startOAuthServer();
+  } catch (err) {
+    return { ok: false, kind: "port_busy", message: String(err.message || err) };
+  }
+  activeOAuth = server;
+  // Wait for the bind to complete before opening the consent URL.
+  // server.listen() is async — the `listening` event fires after
+  // server.ready resolves, and only then is the socket accepting.
+  // An already-authorised browser profile that redirects immediately
+  // would otherwise race the bind and hit ECONNREFUSED. Codex P2
+  // #3370057919.
+  try {
+    await server.ready;
+  } catch (err) {
+    // Same drain rationale as the openExternal branch below
+    // (Codex P2 #3371719725): when server.ready rejects the bind
+    // helper also synchronously rejects server.promise; attach a
+    // no-op handler so Node doesn't surface an unhandledRejection
+    // after we return.
+    server.promise.catch(() => {});
+    activeOAuth = null;
+    const msg = String(err.message || err);
+    let kind = "error";
+    if (msg.startsWith("port_busy")) kind = "port_busy";
+    return { ok: false, kind, message: msg };
+  }
+  // Codex P2 #3371658225: shell.openExternal returns a Promise — on
+  // hosts with no default browser (or where xdg-open / the desktop
+  // portal can't dispatch the URL) it rejects, and the prior fire-
+  // and-forget call left the OAuth server running while the renderer
+  // hung in `connecting` until the 5-minute timeout. Await + handle
+  // the rejection so we shut down the listener and surface a launch
+  // error immediately.
+  try {
+    await shell.openExternal(authUrl);
+  } catch (err) {
+    // Codex P2 #3371719725: server.stop() rejects server.promise with
+    // "cancelled". We're about to bail without awaiting it, so attach
+    // a no-op drain first — otherwise Node surfaces an
+    // unhandledRejection on hosts where openExternal fails (no
+    // default browser / xdg-open / portal), which Electron 28+ may
+    // upgrade to a process exit. The drain has to land BEFORE stop()
+    // so the rejection is never observed without a handler.
+    server.promise.catch(() => {});
+    server.stop();
+    activeOAuth = null;
+    return {
+      ok: false,
+      kind: "browser_launch_failed",
+      message: String((err && err.message) || err),
+    };
+  }
+  try {
+    const result = await server.promise;
+    activeOAuth = null;
+    return { ok: true, code: result.code, state: result.state };
+  } catch (err) {
+    activeOAuth = null;
+    const msg = String(err.message || err);
+    let kind = "error";
+    if (msg.startsWith("port_busy")) kind = "port_busy";
+    else if (msg.startsWith("timeout")) kind = "timeout";
+    else if (msg.startsWith("cancelled")) kind = "cancelled";
+    else if (msg.startsWith("oauth_error")) kind = "oauth_error";
+    return { ok: false, kind, message: msg };
+  }
+});
+
+/** Cancel the active OAuth attempt (renderer pressed cancel). */
+ipcMain.handle("ani-gui:account:cancel-oauth", () => {
+  if (activeOAuth) {
+    try {
+      activeOAuth.stop();
+    } catch {
+      /* ignore */
+    }
+    activeOAuth = null;
+    return true;
+  }
+  return false;
+});
+
+/**
+ * Encrypt + persist tokens for the given provider. The JSON body
+ * (`{access_token, refresh_token, expires_at_epoch_s, user_id}`) is
+ * encrypted via safeStorage and written to a per-provider file.
+ *
+ * Returns true on success. The renderer should treat any false /
+ * thrown result as "fall back to disconnected and tell the user".
+ */
+/**
+ * Codex P2 #3370070913: `safeStorage.isEncryptionAvailable()` returns
+ * true even when Electron falls back to its hardcoded `basic_text`
+ * backend on Linux installs without libsecret/kwallet/gnome-keyring
+ * (or in headless test environments). That backend XORs the payload
+ * with a fixed string — recoverable by anyone with read access to the
+ * token file — and contradicts the privacy promise that OAuth tokens
+ * are encrypted by the OS keychain. Reject persistence in that mode
+ * so the renderer surfaces `keychain_unavailable` and the user can
+ * install the missing keyring before connecting.
+ */
+function isRealEncryptionBackend() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  // getSelectedStorageBackend exists on Linux only — on macOS/Windows
+  // there's no plaintext fallback to worry about. When the method is
+  // absent (other platforms, older Electron), treat encryption as
+  // legit because isEncryptionAvailable() already gates it.
+  if (typeof safeStorage.getSelectedStorageBackend !== "function") return true;
+  const backend = safeStorage.getSelectedStorageBackend();
+  return backend !== "basic_text" && backend !== "unknown";
+}
+
+ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
+  if (!isRealEncryptionBackend()) {
+    return { ok: false, kind: "encryption_unavailable" };
+  }
+  if (typeof payload !== "object" || payload == null) {
+    return { ok: false, kind: "bad_request" };
+  }
+  try {
+    const encrypted = safeStorage.encryptString(JSON.stringify(payload));
+    fs.writeFileSync(tokenPathFor(provider), encrypted);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "io_error", message: String(err.message || err) };
+  }
+});
+
+/**
+ * Decrypt + return the persisted token payload for the given
+ * provider. Returns `{ ok: true, payload }` on success, or an
+ * `{ ok: false, kind }` for absent file / decryption failure / etc.
+ *
+ * Synchronous IPC because the renderer calls this on EVERY backend
+ * request that needs a bearer; the round-trip cost matters.
+ */
+ipcMain.on("ani-gui:account:get-token", (event, provider) => {
+  try {
+    const p = tokenPathFor(provider);
+    if (!fs.existsSync(p)) {
+      event.returnValue = { ok: false, kind: "not_found" };
+      return;
+    }
+    if (!isRealEncryptionBackend()) {
+      // The token file exists but the OS keychain that wrote it is no
+      // longer reachable (or never was). Refuse to decrypt rather than
+      // surfacing a plaintext-fallback token — Codex P2 #3370070913.
+      event.returnValue = { ok: false, kind: "encryption_unavailable" };
+      return;
+    }
+    const encrypted = fs.readFileSync(p);
+    const plain = safeStorage.decryptString(encrypted);
+    event.returnValue = { ok: true, payload: JSON.parse(plain) };
+  } catch (err) {
+    event.returnValue = { ok: false, kind: "decrypt_error", message: String(err.message || err) };
+  }
+});
+
+/** Delete the persisted token file for the given provider. */
+ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
+  try {
+    const p = tokenPathFor(provider);
+    if (fs.existsSync(p)) {
+      fs.unlinkSync(p);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, kind: "io_error", message: String(err.message || err) };
+  }
+});
+
+/**
+ * Open an https URL in the OS browser. Used by the /account page's
+ * Privacy Policy link. Only allows https / http schemes — a renderer
+ * compromise can't redirect this to a file:// path.
+ */
+ipcMain.handle("ani-gui:open-external", async (_event, url) => {
+  if (typeof url !== "string") return false;
+  if (!/^https?:\/\//.test(url)) return false;
+  await shell.openExternal(url);
+  return true;
+});
+
 /**
  * Close-path guard. Called from window 'close' and app 'before-quit';
  * intercepts both X-button and Cmd+Q / dock-quit / OS shutdown. Uses
@@ -604,9 +869,9 @@ app.whenReady().then(async () => {
     // app doesn't use.
     Menu.setApplicationMenu(null);
     if (!IS_DEV) registerAppProtocol();
-    const { child, apiBase } = await spawnBackend();
+    const { child, apiBase, internalSecret } = await spawnBackend();
     backendChild = child;
-    await createWindow(apiBase);
+    await createWindow(apiBase, internalSecret);
   } catch (err) {
     console.error("[main] startup failed:", err);
     // Surface a friendly install dialog when the backend bailed out

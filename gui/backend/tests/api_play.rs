@@ -109,6 +109,7 @@ fn build_state(tmp: &std::path::Path) -> AppState {
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: tmp.join("config.toml"),
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: ani_gui::account::InternalSecret::random(),
     }
 }
 

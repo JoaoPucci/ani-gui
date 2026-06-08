@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tower_http::cors::CorsLayer;
 
+mod account;
 mod syncplay;
 mod update;
 
@@ -145,6 +146,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/watched-at", get(get_watched_at_all))
         .route("/api/anicli/update-log", get(get_anicli_update_log))
+        .merge(account::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`
         // while we bind 127.0.0.1:<random> — that's cross-origin, so
@@ -761,6 +763,7 @@ mod tests {
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
             config_path: td.path().join("config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
         }
     }
 

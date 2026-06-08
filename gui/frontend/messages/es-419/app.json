@@ -5,6 +5,7 @@
 	"home_link_title": "ani-gui — inicio",
 	"home_link_label": "Inicio",
 	"search_link_label": "Buscar",
+	"account_link_label": "Cuentas",
 	"settings_link_label": "Ajustes",
 	"debug_link_label": "Depuración",
 	"search_refine_placeholder": "Refina tu búsqueda…",

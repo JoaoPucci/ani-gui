@@ -80,6 +80,7 @@
 	const routeId = $derived<string>(page.route?.id ?? page.url.pathname);
 	const isHome = $derived(routeId === '/');
 	const isSearch = $derived(routeId.startsWith('/search'));
+	const isAccount = $derived(routeId.startsWith('/account'));
 	const isSettings = $derived(routeId.startsWith('/settings'));
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
 	const isAbout = $derived(routeId.startsWith('/about'));
@@ -475,6 +476,17 @@
 					>
 						<span class="nav-mark"><Icon name="search" size={20} /></span>
 						<span class="nav-label">{m.app_search_link_label()}</span>
+					</a>
+				</li>
+				<li>
+					<a
+						href={resolve('/account')}
+						class="nav-link"
+						class:active={isAccount}
+						aria-current={isAccount ? 'page' : undefined}
+					>
+						<span class="nav-mark"><Icon name="account" size={20} /></span>
+						<span class="nav-label">{m.app_account_link_label()}</span>
 					</a>
 				</li>
 				<li>

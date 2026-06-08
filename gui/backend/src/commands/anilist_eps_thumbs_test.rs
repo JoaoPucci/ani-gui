@@ -208,6 +208,7 @@ fn state_for_cache_only_tests() -> AppState {
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: crate::account::InternalSecret::random(),
     }
 }
 
