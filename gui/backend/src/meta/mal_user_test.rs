@@ -197,6 +197,93 @@ async fn exchange_code_surfaces_4xx_as_oauth_exchange_failed_or_upstream() {
     }
 }
 
+/// Canonical `/v2/users/@me?fields=anime_statistics` response.
+const MAL_VIEWER_BODY: &str = r#"{
+    "id": 4242,
+    "name": "shiro",
+    "picture": "https://cdn.myanimelist.net/images/userimages/4242.jpg",
+    "anime_statistics": {
+        "num_items_watching": 5,
+        "num_items_completed": 100,
+        "num_items_on_hold": 1,
+        "num_items_dropped": 2,
+        "num_items_plan_to_watch": 30,
+        "mean_score": 7.5
+    }
+}"#;
+
+#[tokio::test]
+async fn me_parses_user_profile_and_anime_stats() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me"))
+        .and(wiremock::matchers::query_param(
+            "fields",
+            "anime_statistics",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_VIEWER_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let profile = provider.me(&tokens).await.expect("me ok");
+    assert_eq!(profile.user_id, "4242");
+    assert_eq!(profile.username, "shiro");
+    assert_eq!(
+        profile.avatar_url.as_deref(),
+        Some("https://cdn.myanimelist.net/images/userimages/4242.jpg")
+    );
+    let stats = profile.stats.expect("stats present");
+    assert_eq!(stats.anime_count, 138);
+    assert_eq!(stats.mean_score_0_to_10, Some(7.5));
+}
+
+#[tokio::test]
+async fn me_sends_x_mal_client_id_header() {
+    use wiremock::matchers::header;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me"))
+        .and(header("x-mal-client-id", MAL_CLIENT_ID))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(MAL_VIEWER_BODY))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    provider
+        .me(&tokens)
+        .await
+        .expect("me must hit the matcher demanding X-MAL-CLIENT-ID");
+}
+
+#[tokio::test]
+async fn me_401_surfaces_as_invalid_token() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "revoked".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    match provider.me(&tokens).await {
+        Err(crate::error::AniError::InvalidToken) => {}
+        other => panic!("expected InvalidToken, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
     use wiremock::matchers::body_string_contains;

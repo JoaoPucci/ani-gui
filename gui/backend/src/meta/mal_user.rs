@@ -194,8 +194,32 @@ impl UserListProvider for MalProvider {
         parse_token_response(&bytes)
     }
 
-    async fn me(&self, _tokens: &Tokens) -> Result<UserProfile> {
-        Err(AniError::Metadata)
+    async fn me(&self, tokens: &Tokens) -> Result<UserProfile> {
+        // MAL's `/v2/users/@me` returns user fields + an optional
+        // `anime_statistics` section. We always request the statistics
+        // so the popover can show counts + mean score without a
+        // second round trip.
+        let url = format!("{}/users/@me?fields=anime_statistics", self.api_url());
+        let resp = self
+            .client
+            .get(&url)
+            .header("user-agent", MAL_USER_AGENT)
+            .header("x-mal-client-id", MAL_CLIENT_ID)
+            .bearer_auth(&tokens.access_token)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_viewer_response(&bytes)
     }
 
     async fn list_all(&self, _tokens: &Tokens) -> Result<Vec<ListEntry>> {
@@ -244,6 +268,63 @@ fn parse_token_response(body: &[u8]) -> Result<Tokens> {
         access_token: wire.access_token,
         refresh_token: wire.refresh_token,
         expires_at_epoch_s,
+    })
+}
+
+/// Parse MAL's `/v2/users/@me?fields=anime_statistics` response into
+/// the unified [`UserProfile`]. Mean score is rescaled from MAL's
+/// 0..=10 wire scale to the unified 0..=10 (no scale change for MAL).
+fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
+    #[derive(Deserialize)]
+    struct Wire {
+        id: u64,
+        name: String,
+        #[serde(default)]
+        picture: Option<String>,
+        #[serde(default)]
+        anime_statistics: Option<AnimeStats>,
+    }
+    #[derive(Deserialize)]
+    struct AnimeStats {
+        #[serde(default)]
+        num_items: Option<u32>,
+        #[serde(default)]
+        num_items_completed: Option<u32>,
+        #[serde(default)]
+        num_items_watching: Option<u32>,
+        #[serde(default)]
+        num_items_on_hold: Option<u32>,
+        #[serde(default)]
+        num_items_dropped: Option<u32>,
+        #[serde(default)]
+        num_items_plan_to_watch: Option<u32>,
+        #[serde(default)]
+        mean_score: Option<f32>,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal viewer response: {e}"),
+    })?;
+    let stats = wire.anime_statistics.map(|a| {
+        // MAL exposes per-status counts but not a `num_items` total in
+        // every response; sum them up when the aggregate is absent.
+        let count = a.num_items.unwrap_or_else(|| {
+            a.num_items_watching.unwrap_or(0)
+                + a.num_items_completed.unwrap_or(0)
+                + a.num_items_on_hold.unwrap_or(0)
+                + a.num_items_dropped.unwrap_or(0)
+                + a.num_items_plan_to_watch.unwrap_or(0)
+        });
+        crate::account::provider::UserStats {
+            anime_count: count,
+            mean_score_0_to_10: a.mean_score.filter(|s| *s > 0.0),
+        }
+    });
+    Ok(UserProfile {
+        provider: ProviderKind::MyAnimeList,
+        user_id: wire.id.to_string(),
+        username: wire.name,
+        avatar_url: wire.picture,
+        stats,
     })
 }
 
