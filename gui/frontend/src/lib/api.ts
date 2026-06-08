@@ -842,10 +842,24 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
  *  Used by the home Watch Later rail (plan §6.6) to render the
  *  merged Plan-to-Watch list with Kitsu metadata + availability
  *  filtering matching the rest of the home. Empty input → empty
- *  output (no round-trip needed). */
+ *  output (no round-trip needed).
+ *
+ *  Sends the renderer-only internal-secret header — backend gates
+ *  the route on it so a cross-origin page under permissive CORS
+ *  can't reach the handler (Codex P1 #3373789621). Also enforces
+ *  a 500-id batch cap server-side; this client doesn't pre-truncate
+ *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/by-mal-ids', { mal_ids: malIds });
+	const headers: Record<string, string> = { 'content-type': 'application/json' };
+	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
+	if (secret) headers['x-ani-gui-internal-secret'] = secret;
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({ mal_ids: malIds })
+	});
+	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
 /** One skip interval for the embedded player's Skip OP / Skip

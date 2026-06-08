@@ -197,34 +197,6 @@ pub(super) async fn bridge_anilist_to_kitsu(
     out
 }
 
-/// Bridge a list of MAL ids to Kitsu refs, preserving input order
-/// and dropping ids Kitsu can't map. Used by the home page's Watch
-/// Later rail (plan §6.6) so cached `user_list_cache` rows render
-/// with the same Kitsu metadata + availability filter as the rest
-/// of the home. The per-id `lookup_by_mal_id` call is already cached
-/// in the kitsu client; we fan out concurrently here so the rail
-/// doesn't serialise the lookups.
-///
-/// # Errors
-/// Never fails the whole batch — individual lookup failures drop the
-/// entry from the output. Empty input → empty output.
-pub async fn kitsu_for_mal_ids(state: &AppState, mal_ids: Vec<u32>) -> Vec<KitsuAnimeRef> {
-    use futures_util::stream::{FuturesOrdered, StreamExt};
-
-    let mut futures = FuturesOrdered::new();
-    for mal_id in mal_ids {
-        let kitsu = state.kitsu.clone();
-        futures.push_back(async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() });
-    }
-    let mut out = Vec::new();
-    while let Some(maybe_ref) = futures.next().await {
-        if let Some(r) = maybe_ref {
-            out.push(r);
-        }
-    }
-    out
-}
-
 /// Top-rated anime (averageRating ≥ 70/100). Cache key:
 /// `kitsu:top_rated`, TTL [`DISCOVERY_TTL`] (6 hours).
 ///

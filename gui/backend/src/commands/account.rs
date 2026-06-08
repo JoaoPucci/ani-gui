@@ -201,6 +201,55 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
     }
 }
 
+/// Cap on the renderer-supplied Watch-Later bridge batch. The home
+/// rail's largest plausible Plan-to-Watch is a few hundred titles;
+/// 500 leaves comfortable headroom while bounding the fan-out cost
+/// per request to a fixed worst case. Codex P1 #3373789621: under
+/// the permissive CORS layer a cross-origin page could otherwise
+/// POST an unbounded `mal_ids` array and burn N concurrent Kitsu
+/// requests per call.
+pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
+
+/// Bridge a list of MAL ids to Kitsu refs, preserving input order
+/// and dropping ids Kitsu can't map. Used by the home page's Watch
+/// Later rail (plan §6.6) so cached `user_list_cache` rows render
+/// with the same Kitsu metadata + availability filter as the rest
+/// of the home. The per-id `lookup_by_mal_id` call is already cached
+/// in the kitsu client; we fan out concurrently here so the rail
+/// doesn't serialise the lookups.
+///
+/// Truncates `mal_ids` at [`WATCH_LATER_BRIDGE_MAX_IDS`] before
+/// fan-out — the upstream gate (route handler) rejects oversize
+/// batches outright, this cap is belt-and-suspenders so a missing
+/// route-level check can't be exploited.
+///
+/// # Errors
+/// Never fails the whole batch — individual lookup failures drop the
+/// entry from the output. Empty input → empty output.
+pub async fn kitsu_for_mal_ids(
+    state: &Arc<AppState>,
+    mal_ids: Vec<u32>,
+) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    use futures_util::stream::{FuturesOrdered, StreamExt};
+
+    let bounded = mal_ids
+        .into_iter()
+        .take(WATCH_LATER_BRIDGE_MAX_IDS)
+        .collect::<Vec<_>>();
+    let mut futures = FuturesOrdered::new();
+    for mal_id in bounded {
+        let kitsu = state.kitsu.clone();
+        futures.push_back(async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() });
+    }
+    let mut out = Vec::new();
+    while let Some(maybe_ref) = futures.next().await {
+        if let Some(r) = maybe_ref {
+            out.push(r);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 #[path = "account_test.rs"]
 mod tests;

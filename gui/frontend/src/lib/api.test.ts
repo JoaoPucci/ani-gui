@@ -1331,7 +1331,10 @@ describe('kitsuTrendingAnilist', () => {
 });
 
 describe('kitsuByMalIds', () => {
-	it('POSTs the mal_ids batch and returns the parsed list', async () => {
+	it('POSTs the mal_ids batch + internal-secret header and returns the parsed list', async () => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: BASE, internalSecret: 'cafebabe' }
+		};
 		const list: KitsuAnimeRef[] = [];
 		const fetchMock = mockFetchOnce(list);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1340,8 +1343,23 @@ describe('kitsuByMalIds', () => {
 		expect(call.url).toBe(`${BASE}/api/kitsu/by-mal-ids`);
 		const init = call.init!;
 		expect(init.method).toBe('POST');
+		const headers = init.headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('cafebabe');
 		expect(JSON.parse(init.body as string)).toEqual({ mal_ids: [11061, 21] });
 		expect(got).toEqual(list);
+	});
+
+	it('omits the secret header in browser-only dev (Codex P1 #3373789621 gate is server-side)', async () => {
+		// Backend rejects without the header; client just doesn't forge
+		// a value it doesn't have. Dev-time misconfigs surface as 4xx
+		// rather than silent success.
+		(globalThis as { window?: unknown }).window = { aniGui: { apiBase: BASE } };
+		const list: KitsuAnimeRef[] = [];
+		const fetchMock = mockFetchOnce(list);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuByMalIds([11061]);
+		const headers = lastCall(fetchMock).init!.headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBeUndefined();
 	});
 
 	it('short-circuits on empty input without a round-trip', async () => {
