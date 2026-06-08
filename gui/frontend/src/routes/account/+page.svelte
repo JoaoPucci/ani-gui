@@ -309,60 +309,81 @@
 </main>
 
 <style>
+	/* Family alignment with /settings + /about (M3 design pass):
+	   - mono micro eyebrow with brand-colored "key" word
+	   - display title in bone-100
+	   - body subtitle in bone-200
+	   - cards layered on ink-100 with bone-500 hairline + brand-tinted
+	     border lifts on focus / state
+	   The original styling here referenced --surface-* / --ink-3xx /
+	   --radius-N tokens that don't exist in tokens.css, which is why
+	   the page rendered as undefined fallbacks. */
 	.account-page {
-		padding-block: var(--space-7);
-		padding-inline: clamp(var(--space-4), 4vw, var(--space-7));
-		max-inline-size: 56rem;
+		max-inline-size: 60rem;
 		margin-inline: auto;
-		color: var(--ink-100);
+		padding-block: var(--space-7);
+		padding-inline: var(--space-7);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-7);
 	}
 
 	.page-head {
-		margin-block-end: var(--space-7);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
 	}
 
 	.eyebrow {
-		font-family: var(--font-display);
-		font-size: 0.875rem;
-		font-weight: 500;
-		letter-spacing: 0.16em;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
-		color: var(--ink-400);
-		margin: 0 0 var(--space-2);
+		color: var(--brand);
 	}
 
 	.display {
+		margin: 0;
 		font-family: var(--font-display);
-		font-size: clamp(1.875rem, 4vw, 2.5rem);
-		font-weight: 600;
+		font-size: var(--type-display-s, 2rem);
+		font-weight: 700;
 		line-height: 1.1;
 		letter-spacing: -0.01em;
-		margin: 0 0 var(--space-3);
+		color: var(--bone-100);
 	}
 
 	.subtitle {
-		font-family: var(--font-body);
-		font-size: 1rem;
-		line-height: 1.6;
-		color: var(--ink-300);
-		max-inline-size: 38rem;
 		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-body-l);
+		line-height: 1.55;
+		color: var(--bone-200);
+		max-inline-size: 56ch;
 	}
 
 	.provider-card {
-		background: var(--surface-1);
-		border: 1px solid var(--border-1);
-		border-radius: var(--radius-2);
-		padding: var(--space-6);
-		margin-block-end: var(--space-5);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		background: var(--ink-100);
+		border: 1px solid var(--bone-500, var(--ink-200));
+		border-radius: var(--radius-card, 8px);
+		padding: var(--space-5) var(--space-6);
+		transition: border-color var(--dur-fast) var(--ease-out-soft);
+	}
+
+	.provider-card[data-state='connected'] {
+		border-color: color-mix(in oklab, var(--accent-jade) 40%, var(--bone-500, var(--ink-200)));
 	}
 
 	.provider-card[data-state='expired'] {
-		border-color: var(--accent-amber, #c89a48);
+		border-color: color-mix(in oklab, var(--accent-ochre) 40%, var(--bone-500, var(--ink-200)));
 	}
 
 	.provider-card[data-state='error'] {
-		border-color: var(--accent-oxblood, #c44);
+		border-color: color-mix(in oklab, var(--accent-oxblood) 40%, var(--bone-500, var(--ink-200)));
 	}
 
 	.provider-card.provider-disabled {
@@ -374,64 +395,89 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3);
-		margin-block-end: var(--space-4);
+		padding-block-end: var(--space-3);
+		border-block-end: 1px solid var(--bone-600, var(--ink-200));
 	}
 
 	.provider-name {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 600;
 		margin: 0;
+		font-family: var(--font-display);
+		font-size: var(--type-display-m);
+		font-weight: 600;
+		color: var(--bone-100);
 	}
 
 	.state-badge {
-		font-family: var(--font-display);
-		font-size: 0.75rem;
-		font-weight: 500;
-		letter-spacing: 0.08em;
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
-		padding: 0.25rem 0.5rem;
-		border-radius: var(--radius-1);
-		background: var(--surface-2);
-		color: var(--ink-400);
+		padding: var(--space-1) var(--space-3);
+		border-radius: var(--radius-pill);
+		background: var(--ink-050);
+		color: var(--bone-300);
+		border: 1px solid var(--bone-600, var(--ink-200));
 	}
 
 	.state-badge-connected {
-		background: var(--surface-success, #2a3a2a);
-		color: var(--ink-100);
+		background: color-mix(in oklab, var(--accent-jade) 14%, var(--ink-050));
+		border-color: color-mix(in oklab, var(--accent-jade) 35%, var(--bone-600, var(--ink-200)));
+		color: var(--accent-jade);
 	}
 
 	.state-badge-expired {
-		background: var(--surface-warn, #3a3320);
-		color: var(--ink-100);
+		background: color-mix(in oklab, var(--accent-ochre) 14%, var(--ink-050));
+		border-color: color-mix(in oklab, var(--accent-ochre) 35%, var(--bone-600, var(--ink-200)));
+		color: var(--accent-ochre);
 	}
 
 	.state-badge-error {
-		background: var(--surface-error, #3a2424);
-		color: var(--ink-100);
+		background: color-mix(in oklab, var(--accent-oxblood) 14%, var(--ink-050));
+		border-color: color-mix(in oklab, var(--accent-oxblood) 35%, var(--bone-600, var(--ink-200)));
+		color: var(--accent-oxblood);
+	}
+
+	.state-badge-coming-soon {
+		font-style: italic;
 	}
 
 	.connected-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-4);
-		margin-block-end: var(--space-4);
 	}
 
 	.avatar {
 		inline-size: 3rem;
 		block-size: 3rem;
-		border-radius: 50%;
+		border-radius: var(--radius-pill);
 		object-fit: cover;
 		flex-shrink: 0;
+		border: 1px solid var(--bone-600, var(--ink-200));
+	}
+
+	.user-meta {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
 	}
 
 	.username {
 		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-body);
+		color: var(--bone-100);
 	}
 
 	.username-prefix {
-		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-400);
 		margin-inline-end: var(--space-2);
 	}
 
@@ -442,77 +488,106 @@
 	}
 
 	.btn {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 500;
-		padding: 0.5rem 1rem;
-		border-radius: var(--radius-1);
-		border: 1px solid var(--border-1);
-		background: var(--surface-2);
-		color: var(--ink-100);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-4);
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-200);
+		background: transparent;
+		border: 1px solid var(--bone-500, var(--ink-200));
+		border-radius: var(--radius-control, 6px);
 		cursor: pointer;
-		transition: background-color var(--dur-fast) var(--ease-out-soft);
+		transition:
+			color var(--dur-fast) var(--ease-out-soft),
+			background var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
 	}
 
-	.btn:hover {
-		background: var(--surface-3);
+	.btn:hover:not(:disabled) {
+		color: var(--bone-100);
+		border-color: var(--bone-400);
+	}
+
+	.btn:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 2px var(--ink-000),
+			0 0 0 4px var(--brand);
 	}
 
 	.btn:disabled {
 		cursor: not-allowed;
-		opacity: 0.6;
+		opacity: 0.55;
 	}
 
 	.btn-primary {
-		background: var(--accent-oxblood, #8c2a2a);
-		border-color: var(--accent-oxblood, #8c2a2a);
-		color: white;
+		color: var(--brand-ink);
+		background: var(--brand);
+		border-color: var(--brand);
 	}
 
-	.btn-primary:hover {
-		background: var(--accent-oxblood-hover, #a03434);
+	.btn-primary:hover:not(:disabled) {
+		color: var(--brand-ink);
+		background: color-mix(in oklab, var(--brand) 90%, white);
+		border-color: color-mix(in oklab, var(--brand) 90%, white);
 	}
 
 	.provider-disabled-hint {
-		font-size: 0.9375rem;
-		color: var(--ink-400);
 		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-body);
+		color: var(--bone-300);
 	}
 
 	.page-foot {
-		margin-block-start: var(--space-7);
-		padding-block-start: var(--space-5);
-		border-block-start: 1px solid var(--border-1);
 		display: flex;
 		justify-content: space-between;
 		gap: var(--space-4);
 		flex-wrap: wrap;
+		padding-block-start: var(--space-5);
+		border-block-start: 1px solid var(--bone-600, var(--ink-200));
 	}
 
 	.privacy-line {
-		font-size: 0.875rem;
-		color: var(--ink-400);
 		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		color: var(--bone-400);
 	}
 
 	.inline-link {
 		background: none;
 		border: none;
 		padding: 0;
-		color: var(--accent-oxblood, #c66);
+		color: var(--brand);
 		cursor: pointer;
 		font: inherit;
 		text-decoration: underline;
 		text-underline-offset: 2px;
+		text-decoration-color: color-mix(in oklab, var(--brand) 45%, transparent);
+		transition: text-decoration-color var(--dur-fast) var(--ease-out-soft);
+	}
+
+	.inline-link:hover {
+		text-decoration-color: var(--brand);
 	}
 
 	.back-link {
-		font-size: 0.875rem;
-		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-400);
 		text-decoration: none;
 	}
 
 	.back-link:hover {
-		color: var(--ink-100);
+		color: var(--bone-100);
 	}
 </style>
