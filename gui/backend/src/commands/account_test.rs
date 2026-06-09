@@ -165,6 +165,30 @@ async fn push_progress_skips_unmappable_show_without_writing() {
 }
 
 #[test]
+fn build_entry_update_rejects_empty_and_unknown_status() {
+    // Codex P2 #3381617932: an all-absent update, or a status typo
+    // that silently parses to None, would still call update_entry —
+    // and since both providers upsert, that creates a list row with
+    // upstream defaults. Reject both so a malformed fan-out request
+    // is a no-op error, not a phantom "watching" entry.
+    assert!(
+        build_entry_update(None, None, None).is_err(),
+        "all-absent update must be rejected"
+    );
+    assert!(
+        build_entry_update(Some("not_a_status"), Some(5), None).is_err(),
+        "unrecognized status must be rejected, not dropped to None"
+    );
+    let ok = build_entry_update(Some("watching"), Some(5), None).expect("valid update");
+    assert_eq!(ok.status, Some(ListStatus::Watching));
+    assert_eq!(ok.progress_episodes, Some(5));
+    // Progress-only (no status) is a legitimate update.
+    let progress_only = build_entry_update(None, Some(7), None).expect("progress-only ok");
+    assert!(progress_only.status.is_none());
+    assert_eq!(progress_only.progress_episodes, Some(7));
+}
+
+#[test]
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
     use std::sync::Arc;

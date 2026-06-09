@@ -311,6 +311,39 @@ pub(crate) async fn resolve_native_media_id(
     }
 }
 
+/// Build a validated [`EntryUpdate`] from the renderer's wire fields.
+/// Rejects two malformed shapes (Codex P2 #3381617932):
+///
+/// - an all-absent update (no status, progress, or score) — since
+///   both providers' `update_entry` upsert, an empty update would
+///   create a list row with upstream defaults instead of being a
+///   no-op;
+/// - a `status` string that isn't a recognized unified value — a typo
+///   silently dropped to `None` would make a bad request look like a
+///   successful (but empty) update.
+///
+/// Both surface as [`AniError::Metadata`], matching how the account
+/// routes already treat malformed input (bad provider slug).
+pub fn build_entry_update(
+    status: Option<&str>,
+    progress_episodes: Option<u32>,
+    score_0_to_100: Option<u8>,
+) -> Result<EntryUpdate> {
+    let status = match status {
+        None => None,
+        Some(s) => Some(status_from_snake(s).ok_or(AniError::Metadata)?),
+    };
+    if status.is_none() && progress_episodes.is_none() && score_0_to_100.is_none() {
+        return Err(AniError::Metadata);
+    }
+    Ok(EntryUpdate {
+        status,
+        progress_episodes,
+        score_0_to_100,
+        repeat_count: None,
+    })
+}
+
 /// Push `update` (progress / status / score) to a connected tracker
 /// for the show identified by its Kitsu id. Called once per connected
 /// provider by the mark-watched fan-out, each with that provider's

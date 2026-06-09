@@ -249,12 +249,9 @@ async fn post_update(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let update = crate::account::provider::EntryUpdate {
-        status: req.status.as_deref().and_then(account::status_from_snake),
-        progress_episodes: req.progress,
-        score_0_to_100: req.score,
-        repeat_count: None,
-    };
+    // Reject empty / typo'd payloads before they reach the upsert
+    // (Codex P2 #3381617932).
+    let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
     let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
     Ok(Json(entry))
 }
