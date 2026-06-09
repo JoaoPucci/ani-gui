@@ -165,7 +165,7 @@ impl UserListProvider for AniListProvider {
         ProviderKind::AniList
     }
 
-    fn auth_url(&self, _pkce: &Pkce, state: &str) -> String {
+    fn auth_url(&self, _pkce: &Pkce, state: &str) -> Result<String> {
         // AniList ignores PKCE entirely — we deliberately do not emit
         // `code_challenge` / `code_challenge_method` here. The trait
         // still hands us a `Pkce` so the MAL impl can mirror the
@@ -181,9 +181,9 @@ impl UserListProvider for AniListProvider {
             ("response_type", "code"),
             ("state", state),
         ];
-        url::Url::parse_with_params(ANILIST_AUTH_URL, &params)
+        Ok(url::Url::parse_with_params(ANILIST_AUTH_URL, &params)
             .map(String::from)
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 
     async fn exchange_code(&self, code: &str, _pkce: &Pkce) -> Result<Tokens> {

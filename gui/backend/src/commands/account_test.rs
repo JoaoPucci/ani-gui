@@ -6,11 +6,31 @@ use super::*;
 use crate::account::pkce::PkceMethod;
 
 #[test]
-fn provider_for_kind_returns_some_for_anilist_only_in_pr_1() {
-    let client = reqwest::Client::new();
-    assert!(provider_for_kind(ProviderKind::AniList, client.clone()).is_some());
-    assert!(provider_for_kind(ProviderKind::MyAnimeList, client.clone()).is_none());
-    assert!(provider_for_kind(ProviderKind::InHouse, client).is_none());
+fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+    let state = Arc::new(crate::app::AppState {
+        secret: crate::proxy::AppSecret::random(),
+        sessions: crate::proxy::SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
+        ani_cli_path: PathBuf::from("/tmp/ani-cli"),
+        bash_path: None,
+        bundled_bin: None,
+        history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
+        scraper_slots: Arc::new(Semaphore::new(crate::app::SCRAPER_CONCURRENCY)),
+        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
+        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: crate::account::InternalSecret::random(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+    });
+    assert!(provider_for_kind(&state, ProviderKind::AniList).is_some());
+    assert!(provider_for_kind(&state, ProviderKind::MyAnimeList).is_some());
+    assert!(provider_for_kind(&state, ProviderKind::InHouse).is_none());
 }
 
 #[test]

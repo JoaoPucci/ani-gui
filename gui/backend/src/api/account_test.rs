@@ -192,6 +192,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         config_path: td.path().join("config.toml"),
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
     })
 }
 
