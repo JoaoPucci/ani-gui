@@ -127,7 +127,6 @@ async fn resolve_native_media_id_none_when_anilist_unmapped() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit implements push_progress"]
 async fn push_progress_skips_unmappable_show_without_writing() {
     // A show Kitsu can't map to MAL → resolve yields None → push_progress
     // returns Ok(None) and never reaches update_entry. The provider

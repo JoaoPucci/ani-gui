@@ -285,9 +285,6 @@ pub async fn kitsu_for_mal_ids(
 /// providers' `update_entry` upsert, so resolving the native id is
 /// all that's needed to push progress to a show — including one not
 /// yet on the user's list (the basis for currently-watching tracking).
-// Stub-`push_progress` (red commit) doesn't call this yet; the green
-// commit's real body does, dropping this allow.
-#[allow(dead_code)]
 pub(crate) async fn resolve_native_media_id(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -338,7 +335,6 @@ pub async fn push_progress(
 /// Inner `push_progress` with the AniList endpoint override threaded
 /// through to `resolve_native_media_id`. Production calls
 /// `push_progress` (base `None`); tests pass a wiremock URI.
-#[allow(unused_variables)]
 async fn push_progress_with_anilist_base(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -347,8 +343,14 @@ async fn push_progress_with_anilist_base(
     update: EntryUpdate,
     anilist_base: Option<&str>,
 ) -> Result<Option<ListEntry>> {
-    // Stub — green commit implements resolve + update_entry.
-    Err(AniError::Metadata)
+    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
+        return Ok(None);
+    };
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    let entry = provider.update_entry(tokens, native, update).await?;
+    Ok(Some(entry))
 }
 
 #[cfg(test)]
