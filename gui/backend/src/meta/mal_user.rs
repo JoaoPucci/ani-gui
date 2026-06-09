@@ -24,7 +24,7 @@ use async_trait::async_trait;
 
 use super::mal_user_net::url_origin;
 pub use super::mal_user_net::MalRefreshState;
-use super::mal_user_parse::{parse_list_page, parse_viewer_response};
+use super::mal_user_parse::{parse_list_page, parse_list_status_response, parse_viewer_response};
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
 };
@@ -164,15 +164,39 @@ impl UserListProvider for MalProvider {
 
     async fn update_entry(
         &self,
-        _tokens: &Tokens,
-        _id: ProviderMediaId,
-        _update: EntryUpdate,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+        update: EntryUpdate,
     ) -> Result<ListEntry> {
-        Err(AniError::Metadata)
+        // MAL splits `Rewatching` across `status="watching"` +
+        // `is_rewatching=true`; the helper carries both halves.
+        let mut form: Vec<(&str, String)> = Vec::new();
+        if let Some(status) = update.status {
+            let (mal_status, is_rewatching) = status.to_mal();
+            form.push(("status", mal_status.to_string()));
+            form.push(("is_rewatching", is_rewatching.to_string()));
+        }
+        if let Some(progress) = update.progress_episodes {
+            form.push(("num_watched_episodes", progress.to_string()));
+        }
+        if let Some(score_0_to_100) = update.score_0_to_100 {
+            // Unified scale 0..=100 → MAL 0..=10. Integer divide so a
+            // 95 round-trips as a 9 (MAL's UI shows integer tenths
+            // only; finer precision is lost on display anyway).
+            let mal_score = score_0_to_100 / 10;
+            form.push(("score", mal_score.to_string()));
+        }
+        if let Some(repeat) = update.repeat_count {
+            form.push(("num_times_rewatched", repeat.to_string()));
+        }
+        let url = format!("{}/anime/{}/my_list_status", self.api_url(), id.0);
+        let bytes = self.patch_form(&url, tokens, &form).await?;
+        parse_list_status_response(&bytes, id.0)
     }
 
-    async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
-        Err(AniError::Metadata)
+    async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()> {
+        let url = format!("{}/anime/{}/my_list_status", self.api_url(), id.0);
+        self.delete_auth(&url, tokens).await
     }
 }
 

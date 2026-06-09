@@ -184,6 +184,46 @@ pub(super) fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
     })
 }
 
+/// Parse a bare `my_list_status` response (PATCH return body). MAL
+/// returns just the updated `list_status` here, no anime metadata —
+/// the caller already knows which anime they PATCHed. The trait
+/// returns `ListEntry`, so the caller supplies the media id; title
+/// is left empty (the cache write-through merges with the row from
+/// `list_all` if present).
+pub(super) fn parse_list_status_response(body: &[u8], media_id: u32) -> Result<ListEntry> {
+    #[derive(Deserialize)]
+    struct WireListStatus {
+        status: String,
+        #[serde(default)]
+        score: Option<u8>,
+        #[serde(default)]
+        num_episodes_watched: Option<u32>,
+        #[serde(default)]
+        is_rewatching: Option<bool>,
+        #[serde(default)]
+        updated_at: Option<String>,
+    }
+    let wire: WireListStatus = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal my_list_status response: {e}"),
+    })?;
+    let status = ListStatus::from_mal(&wire.status, wire.is_rewatching.unwrap_or(false))
+        .ok_or_else(|| AniError::ParseFailed {
+            detail: format!("mal my_list_status unknown status: {}", wire.status),
+        })?;
+    let updated_at_epoch_s = wire.updated_at.as_deref().map_or(0, parse_iso8601_to_epoch);
+    let score_0_to_100 = wire.score.filter(|s| *s > 0).map(|s| s.saturating_mul(10));
+    Ok(ListEntry {
+        provider: ProviderKind::MyAnimeList,
+        media_id: ProviderMediaId(media_id),
+        mal_id: Some(media_id),
+        status,
+        progress_episodes: wire.num_episodes_watched.unwrap_or(0),
+        score_0_to_100,
+        updated_at_epoch_s,
+        title: String::new(),
+    })
+}
+
 /// Minimal RFC 3339 / ISO 8601 parser. MAL always emits the canonical
 /// `YYYY-MM-DDTHH:MM:SS±HH:MM` (or trailing `Z`) shape — we extract
 /// the date + time numerically and ignore the trailing offset (the

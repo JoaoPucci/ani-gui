@@ -56,6 +56,35 @@ const VIEWER_GQL: &str = "query Viewer { \
         } \
     }";
 
+/// GraphQL: write-back mutation. Returns the resulting `MediaList`
+/// row so the caller can echo the persisted state straight back to
+/// the cache without a follow-up read. Score is requested via
+/// `format: POINT_100` so the round-trip stays on the unified 0..=100
+/// scale — see `MEDIA_LIST_GQL` for the rationale.
+const SAVE_ENTRY_GQL: &str = "mutation Save( \
+        $mediaId: Int!, $status: MediaListStatus, $progress: Int, \
+        $scoreRaw: Int, $repeat: Int) { \
+        SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, \
+            scoreRaw: $scoreRaw, repeat: $repeat) { \
+            mediaId \
+            status progress score(format: POINT_100) updatedAt repeat \
+            media { idMal title { romaji english userPreferred } } \
+        } \
+    }";
+
+/// GraphQL: resolve the entry's row id from `(mediaId, userId)`.
+/// `DeleteMediaListEntry` takes the row id, not the media id — so
+/// delete is a two-step query+mutation. The viewer id is fetched via
+/// the same `me()` path the trait already uses.
+const MEDIA_LIST_ROW_ID_GQL: &str = "query MediaList($mediaId: Int!, $userId: Int!) { \
+        MediaList(mediaId: $mediaId, userId: $userId) { id } \
+    }";
+
+/// GraphQL: delete the resolved row.
+const DELETE_ENTRY_GQL: &str = "mutation Delete($id: Int!) { \
+        DeleteMediaListEntry(id: $id) { deleted } \
+    }";
+
 /// GraphQL: paginated full user list. `perChunk: 500` matches the
 /// upper bound AniList advertises per request — for a 312-entry
 /// user (the median in our test fixtures) the loop terminates after
@@ -265,22 +294,74 @@ impl UserListProvider for AniListProvider {
         Ok(out)
     }
 
-    // TODO(PR #4): SaveMediaListEntry mutation — write-back lands
-    // alongside the mark-watched fan-out across connected trackers.
-    // Until then the route layer short-circuits on this Err and the
-    // /account UI doesn't expose the "edit progress" affordance.
     async fn update_entry(
         &self,
-        _tokens: &Tokens,
-        _id: ProviderMediaId,
-        _update: EntryUpdate,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+        update: EntryUpdate,
     ) -> Result<ListEntry> {
-        Err(AniError::Metadata)
+        // Build the variables map. AniList's GraphQL ignores absent
+        // arg keys (leaves the field unchanged); `null` is treated as
+        // an explicit clear. We only emit fields the caller asked to
+        // change so partial updates don't accidentally null
+        // siblings.
+        let mut vars = serde_json::Map::new();
+        vars.insert("mediaId".into(), serde_json::json!(id.0));
+        if let Some(status) = update.status {
+            vars.insert("status".into(), serde_json::json!(status.to_anilist()));
+        }
+        if let Some(progress) = update.progress_episodes {
+            vars.insert("progress".into(), serde_json::json!(progress));
+        }
+        if let Some(score) = update.score_0_to_100 {
+            // AniList's `scoreRaw` arg is the POINT_100 integer; the
+            // unified 0..=100 scale lines up 1:1.
+            vars.insert("scoreRaw".into(), serde_json::json!(score));
+        }
+        if let Some(repeat) = update.repeat_count {
+            vars.insert("repeat".into(), serde_json::json!(repeat));
+        }
+        let body = serde_json::json!({
+            "query": SAVE_ENTRY_GQL,
+            "variables": vars,
+        });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        parse_save_entry_response(&bytes)
     }
 
-    // TODO(PR #4): DeleteMediaListEntry mutation — see update_entry.
-    async fn delete_entry(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<()> {
-        Err(AniError::Metadata)
+    async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()> {
+        // Two-step: AniList's `DeleteMediaListEntry` mutation takes
+        // the MediaList row id, not the media id. Resolve the row
+        // id first by looking up `(mediaId, userId)`, then fire the
+        // delete. Three round-trips total (me + row-id lookup +
+        // delete); each hits a 401 short-circuit so a revoked token
+        // surfaces immediately as `InvalidToken` instead of after a
+        // partial success.
+        let me = self.me(tokens).await?;
+        let user_id: i64 = me.user_id.parse().map_err(|_| AniError::ParseFailed {
+            detail: format!("anilist viewer id not numeric: {}", me.user_id),
+        })?;
+        let lookup_body = serde_json::json!({
+            "query": MEDIA_LIST_ROW_ID_GQL,
+            "variables": { "mediaId": id.0, "userId": user_id },
+        });
+        let lookup_bytes = self.post_graphql(tokens, &lookup_body).await?;
+        let row_id = parse_media_list_row_id(&lookup_bytes)?;
+        let delete_body = serde_json::json!({
+            "query": DELETE_ENTRY_GQL,
+            "variables": { "id": row_id },
+        });
+        let bytes = self.post_graphql(tokens, &delete_body).await?;
+        // AniList answers with `{ deleted: Boolean }`; `false` is its
+        // documented failure signal. Surface it as an error so a future
+        // retry/cache layer doesn't drop the local row + stop retrying
+        // for an entry the provider never removed (Codex P2
+        // #3381101376).
+        if parse_delete_result(&bytes)? {
+            Ok(())
+        } else {
+            Err(AniError::Metadata)
+        }
     }
 }
 
@@ -468,6 +549,136 @@ fn parse_media_list_page(body: &[u8]) -> Result<MediaListPage> {
         entries,
         has_next_chunk: collection.has_next_chunk,
     })
+}
+
+/// Pure parser for the `SaveMediaListEntry` mutation response. Shape
+/// mirrors a single `entries[]` row from the list query so it
+/// re-uses the same mapping logic (status translation, score
+/// rescale, title pick).
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when the response isn't the documented
+/// `{ data: { SaveMediaListEntry: { … } } }` envelope, or when the
+/// row carries a status the unified enum doesn't recognise.
+fn parse_save_entry_response(body: &[u8]) -> Result<ListEntry> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "SaveMediaListEntry")]
+        save_media_list_entry: RawEntry,
+    }
+    #[derive(Deserialize)]
+    struct RawEntry {
+        #[serde(rename = "mediaId")]
+        media_id: u32,
+        status: String,
+        progress: u32,
+        score: f32,
+        #[serde(rename = "updatedAt")]
+        updated_at: i64,
+        media: RawMedia,
+    }
+    #[derive(Deserialize)]
+    struct RawMedia {
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+        title: RawTitle,
+    }
+    #[derive(Deserialize)]
+    struct RawTitle {
+        romaji: Option<String>,
+        english: Option<String>,
+        #[serde(rename = "userPreferred")]
+        user_preferred: Option<String>,
+    }
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist save entry response: {e}"),
+    })?;
+    let raw = wire.data.save_media_list_entry;
+    let status = ListStatus::from_anilist(&raw.status).ok_or_else(|| AniError::ParseFailed {
+        detail: format!("anilist save entry unknown status: {}", raw.status),
+    })?;
+    let score_0_to_100 = if raw.score == 0.0 {
+        None
+    } else {
+        Some((raw.score as u32).min(100) as u8)
+    };
+    let title = raw
+        .media
+        .title
+        .user_preferred
+        .or(raw.media.title.romaji)
+        .or(raw.media.title.english)
+        .unwrap_or_else(|| "(untitled)".to_string());
+    Ok(ListEntry {
+        provider: ProviderKind::AniList,
+        media_id: ProviderMediaId(raw.media_id),
+        mal_id: raw.media.id_mal,
+        status,
+        progress_episodes: raw.progress,
+        score_0_to_100,
+        updated_at_epoch_s: raw.updated_at,
+        title,
+    })
+}
+
+/// Pure parser for the `DeleteMediaListEntry` mutation response.
+/// Returns the `deleted` flag; the caller treats `false` as a failed
+/// delete (Codex P2 #3381101376).
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when the envelope isn't the documented
+/// `{ data: { DeleteMediaListEntry: { deleted } } }` shape.
+fn parse_delete_result(body: &[u8]) -> Result<bool> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "DeleteMediaListEntry")]
+        delete_media_list_entry: Deleted,
+    }
+    #[derive(Deserialize)]
+    struct Deleted {
+        deleted: bool,
+    }
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist delete response: {e}"),
+    })?;
+    Ok(wire.data.delete_media_list_entry.deleted)
+}
+
+/// Pure parser for the `MediaList(mediaId, userId)` row-id lookup.
+/// Returns the row id so `delete_entry` can call
+/// `DeleteMediaListEntry(id)` against it.
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when the envelope is wrong; the AniList
+/// API returns a GraphQL error (not a 404) when the entry doesn't
+/// exist, so a missing `MediaList` field is surfaced as a parse
+/// failure rather than a sentinel "already deleted" success.
+fn parse_media_list_row_id(body: &[u8]) -> Result<i64> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "MediaList")]
+        media_list: Row,
+    }
+    #[derive(Deserialize)]
+    struct Row {
+        id: i64,
+    }
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media list row-id response: {e}"),
+    })?;
+    Ok(wire.data.media_list.id)
 }
 
 /// Sentinel expiry when neither `expires_in` nor a decodable JWT `exp`
