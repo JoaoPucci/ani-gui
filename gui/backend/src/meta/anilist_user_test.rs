@@ -610,42 +610,149 @@ async fn list_all_drops_entries_with_unknown_status() {
     assert_eq!(ids, vec![11], "unknown status row dropped, real row kept");
 }
 
+/// Canonical `SaveMediaListEntry` response body — mirrors the shape
+/// `list_all` reads so the same `parse_entry` helper handles both.
+const SAVE_ENTRY_RESPONSE_BODY: &str = r#"{
+    "data": {
+        "SaveMediaListEntry": {
+            "id": 999,
+            "mediaId": 21,
+            "status": "CURRENT",
+            "progress": 1100,
+            "score": 90,
+            "updatedAt": 1735689600,
+            "repeat": 0,
+            "media": {
+                "idMal": 21,
+                "title": { "romaji": "One Piece", "english": null, "userPreferred": "One Piece" }
+            }
+        }
+    }
+}"#;
+
 #[tokio::test]
-async fn update_entry_is_stubbed_until_pr_4() {
-    // Write-back lands in PR #4 alongside the mark-watched fan-out;
-    // until then the trait surface must return Err(Metadata) so the
-    // route layer can short-circuit on PR #1's wiring rather than
-    // panicking. The provider points at unbound URIs so a stray
-    // network attempt would surface as Network instead.
-    let provider = AniListProvider::with_bases(
-        reqwest::Client::new(),
-        "http://127.0.0.1:1/no-api".into(),
-        "http://127.0.0.1:1/no-token".into(),
-    );
-    let err = provider
-        .update_entry(&dummy_tokens(), ProviderMediaId(21), EntryUpdate::default())
+#[ignore = "red; green commit lands the SaveMediaListEntry impl"]
+async fn update_entry_posts_save_mutation_with_variables_and_returns_entry() {
+    use wiremock::matchers::{body_string_contains, method};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("SaveMediaListEntry"))
+        .and(body_string_contains("\"mediaId\":21"))
+        .and(body_string_contains("\"progress\":1100"))
+        .and(body_string_contains("\"status\":\"CURRENT\""))
+        .and(body_string_contains("\"scoreRaw\":90"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(SAVE_ENTRY_RESPONSE_BODY),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let update = EntryUpdate {
+        status: Some(ListStatus::Watching),
+        progress_episodes: Some(1100),
+        score_0_to_100: Some(90),
+        repeat_count: None,
+    };
+    let entry = provider
+        .update_entry(&dummy_tokens(), ProviderMediaId(21), update)
         .await
-        .expect_err("update_entry stub must error until PR #4");
+        .expect("update_entry ok");
+    assert_eq!(entry.media_id.0, 21);
+    assert_eq!(entry.status, ListStatus::Watching);
+    assert_eq!(entry.progress_episodes, 1100);
+    assert_eq!(entry.score_0_to_100, Some(90));
+}
+
+#[tokio::test]
+#[ignore = "red; green commit unignores"]
+async fn update_entry_surfaces_401_as_invalid_token() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .update_entry(
+            &dummy_tokens(),
+            ProviderMediaId(21),
+            EntryUpdate {
+                progress_episodes: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("401 must surface");
     assert!(
-        matches!(err, AniError::Metadata),
-        "expected AniError::Metadata, got {err:?}"
+        matches!(err, AniError::InvalidToken),
+        "expected InvalidToken, got {err:?}"
     );
 }
 
 #[tokio::test]
-async fn delete_entry_is_stubbed_until_pr_4() {
-    let provider = AniListProvider::with_bases(
-        reqwest::Client::new(),
-        "http://127.0.0.1:1/no-api".into(),
-        "http://127.0.0.1:1/no-token".into(),
-    );
+#[ignore = "red; green commit lands the DeleteMediaListEntry two-step impl"]
+async fn delete_entry_queries_for_id_then_calls_delete_mutation() {
+    // AniList's DeleteMediaListEntry takes the MediaList row id, not
+    // the mediaId. We first run a `MediaList(mediaId, userId)` query
+    // to resolve the row id, then dispatch the delete mutation. Both
+    // POST against the same GraphQL endpoint — wiremock can't
+    // distinguish them by URL, so we register two mocks that match
+    // on the query name in the body.
+    use wiremock::matchers::{body_string_contains, method};
+    let server = wiremock::MockServer::start().await;
+    // Step 1: viewer + media-list-id lookup. Provider calls Viewer
+    // first to get the user id, then MediaList for the entry id.
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Viewer":{"id":4242,"name":"shiro","avatar":{"large":null,"medium":null},"statistics":{"anime":{"count":0,"meanScore":0}}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("MediaList("))
+        .and(body_string_contains("\"mediaId\":21"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"MediaList":{"id":7777}}}"#),
+        )
+        .mount(&server)
+        .await;
+    // Step 2: the actual delete.
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("DeleteMediaListEntry"))
+        .and(body_string_contains("\"id\":7777"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"DeleteMediaListEntry":{"deleted":true}}}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    provider
+        .delete_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect("delete_entry ok");
+}
+
+#[tokio::test]
+#[ignore = "red; green commit unignores"]
+async fn delete_entry_surfaces_401_as_invalid_token() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
     let err = provider
         .delete_entry(&dummy_tokens(), ProviderMediaId(21))
         .await
-        .expect_err("delete_entry stub must error until PR #4");
+        .expect_err("401 must surface");
     assert!(
-        matches!(err, AniError::Metadata),
-        "expected AniError::Metadata, got {err:?}"
+        matches!(err, AniError::InvalidToken),
+        "expected InvalidToken, got {err:?}"
     );
 }
 
