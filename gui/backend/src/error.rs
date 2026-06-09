@@ -152,6 +152,35 @@ impl AniError {
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }
+
+    /// HTTP status code the route layer surfaces for this variant.
+    /// Lives here (next to the variant declarations) instead of on the
+    /// `IntoResponse` impl in `api/mod.rs` because that file is already
+    /// the largest match in the codebase — every new variant otherwise
+    /// nudges its CRAP score, even when the variant has nothing to do
+    /// with API routing.
+    #[must_use]
+    pub fn http_status_code(&self) -> u16 {
+        match self {
+            Self::NoResults => 404,
+            Self::InvalidToken => 401,
+            Self::Upstream { .. } => 502,
+            Self::Network => 503,
+            Self::Timeout => 504,
+            Self::UnsupportedPkce => 400,
+            Self::ParseFailed { .. }
+            | Self::MissingBinary
+            | Self::BashMissing
+            | Self::FfmpegMissing
+            | Self::PlayerSpawnFailed { .. }
+            | Self::SyncplaySpawnFailed { .. }
+            | Self::Cache
+            | Self::Io
+            | Self::Config
+            | Self::Metadata
+            | Self::Scraper { .. } => 500,
+        }
+    }
 }
 
 impl From<reqwest::Error> for AniError {

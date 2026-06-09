@@ -47,25 +47,8 @@ use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 /// `invoke()` rejection payloads to `fetch()` 4xx/5xx bodies.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
-        let status = match self {
-            AniError::NoResults => StatusCode::NOT_FOUND,
-            AniError::InvalidToken => StatusCode::UNAUTHORIZED,
-            AniError::Upstream { .. } => StatusCode::BAD_GATEWAY,
-            AniError::Network => StatusCode::SERVICE_UNAVAILABLE,
-            AniError::Timeout => StatusCode::GATEWAY_TIMEOUT,
-            AniError::ParseFailed { .. }
-            | AniError::MissingBinary
-            | AniError::BashMissing
-            | AniError::FfmpegMissing
-            | AniError::PlayerSpawnFailed { .. }
-            | AniError::SyncplaySpawnFailed { .. }
-            | AniError::Cache
-            | AniError::Io
-            | AniError::Config
-            | AniError::Metadata
-            | AniError::Scraper { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            AniError::UnsupportedPkce => StatusCode::BAD_REQUEST,
-        };
+        let status = StatusCode::from_u16(self.http_status_code())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, Json(self)).into_response()
     }
 }
