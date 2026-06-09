@@ -631,7 +631,6 @@ const SAVE_ENTRY_RESPONSE_BODY: &str = r#"{
 }"#;
 
 #[tokio::test]
-#[ignore = "red; green commit lands the SaveMediaListEntry impl"]
 async fn update_entry_posts_save_mutation_with_variables_and_returns_entry() {
     use wiremock::matchers::{body_string_contains, method};
     let server = wiremock::MockServer::start().await;
@@ -664,7 +663,6 @@ async fn update_entry_posts_save_mutation_with_variables_and_returns_entry() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit unignores"]
 async fn update_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::method;
     let server = wiremock::MockServer::start().await;
@@ -691,7 +689,6 @@ async fn update_entry_surfaces_401_as_invalid_token() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit lands the DeleteMediaListEntry two-step impl"]
 async fn delete_entry_queries_for_id_then_calls_delete_mutation() {
     // AniList's DeleteMediaListEntry takes the MediaList row id, not
     // the mediaId. We first run a `MediaList(mediaId, userId)` query
@@ -737,7 +734,6 @@ async fn delete_entry_queries_for_id_then_calls_delete_mutation() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit unignores"]
 async fn delete_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::method;
     let server = wiremock::MockServer::start().await;
