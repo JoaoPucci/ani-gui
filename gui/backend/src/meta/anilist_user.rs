@@ -351,8 +351,17 @@ impl UserListProvider for AniListProvider {
             "query": DELETE_ENTRY_GQL,
             "variables": { "id": row_id },
         });
-        let _ = self.post_graphql(tokens, &delete_body).await?;
-        Ok(())
+        let bytes = self.post_graphql(tokens, &delete_body).await?;
+        // AniList answers with `{ deleted: Boolean }`; `false` is its
+        // documented failure signal. Surface it as an error so a future
+        // retry/cache layer doesn't drop the local row + stop retrying
+        // for an entry the provider never removed (Codex P2
+        // #3381101376).
+        if parse_delete_result(&bytes)? {
+            Ok(())
+        } else {
+            Err(AniError::Metadata)
+        }
     }
 }
 
@@ -614,6 +623,33 @@ fn parse_save_entry_response(body: &[u8]) -> Result<ListEntry> {
         updated_at_epoch_s: raw.updated_at,
         title,
     })
+}
+
+/// Pure parser for the `DeleteMediaListEntry` mutation response.
+/// Returns the `deleted` flag; the caller treats `false` as a failed
+/// delete (Codex P2 #3381101376).
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when the envelope isn't the documented
+/// `{ data: { DeleteMediaListEntry: { deleted } } }` shape.
+fn parse_delete_result(body: &[u8]) -> Result<bool> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "DeleteMediaListEntry")]
+        delete_media_list_entry: Deleted,
+    }
+    #[derive(Deserialize)]
+    struct Deleted {
+        deleted: bool,
+    }
+    let wire: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist delete response: {e}"),
+    })?;
+    Ok(wire.data.delete_media_list_entry.deleted)
 }
 
 /// Pure parser for the `MediaList(mediaId, userId)` row-id lookup.

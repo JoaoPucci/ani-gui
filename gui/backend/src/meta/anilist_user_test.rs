@@ -734,7 +734,6 @@ async fn delete_entry_queries_for_id_then_calls_delete_mutation() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit parses deleted flag"]
 async fn delete_entry_errors_when_mutation_reports_deleted_false() {
     // AniList answers DeleteMediaListEntry with a 200 body where
     // `deleted` is false — its documented failure signal. The provider
