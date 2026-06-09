@@ -214,18 +214,67 @@ const MEDIA_ID_BY_MAL_GQL: &str = "query MediaIdByMal($idMal: Int!) { \
     }";
 
 /// Resolve a MAL id → AniList numeric `mediaId`. `None` when AniList
-/// doesn't index the supplied MAL id. Stub until the green commit.
+/// doesn't index the supplied MAL id. Mirrors [`banner_for_mal_id`]'s
+/// network shape; `base_override` points at wiremock in tests.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`banner_for_mal_id`].
 pub async fn media_id_for_mal(
-    _client: &reqwest::Client,
-    _mal_id: u32,
-    _base_override: Option<&str>,
+    client: &reqwest::Client,
+    mal_id: u32,
+    base_override: Option<&str>,
 ) -> Result<Option<u32>> {
-    Err(AniError::Metadata)
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MEDIA_ID_BY_MAL_GQL,
+        "variables": { "idMal": mal_id },
+    });
+    let resp = client
+        .post(url)
+        .header(
+            "user-agent",
+            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
+        )
+        .header("content-type", "application/json")
+        .header("accept", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|_| AniError::Network)?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AniError::Upstream {
+            status: status.as_u16(),
+        });
+    }
+    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    parse_media_id_response(&bytes)
 }
 
-/// Pure parser for the by-MAL `mediaId` response. Stub until green.
-pub fn parse_media_id_response(_body: &[u8]) -> Result<Option<u32>> {
-    Err(AniError::Metadata)
+/// Pure parser for the by-MAL `mediaId` response.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// `{ data: { Media: { id } } }` envelope. `Media: null` (MAL id not
+/// indexed) maps to `Ok(None)`, not an error.
+pub fn parse_media_id_response(body: &[u8]) -> Result<Option<u32>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        id: u32,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media-id response: {e}"),
+    })?;
+    Ok(parsed.data.media.map(|m| m.id))
 }
 
 /// Pure parser for the by-MAL banner response.
@@ -542,7 +591,6 @@ mod tests {
     // the keystone the write-back path needs: mark-watched knows the
     // Kitsu id → mal_id, but SaveMediaListEntry wants AniList's own id.
     #[test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     fn parse_media_id_response_returns_id_when_present() {
         let body = br#"{"data":{"Media":{"id":154587}}}"#;
         let got = parse_media_id_response(body).expect("ok");
@@ -550,7 +598,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     fn parse_media_id_response_returns_none_when_media_is_null() {
         // AniList answers Media: null when the MAL id isn't indexed.
         let body = br#"{"data":{"Media":null}}"#;
@@ -559,14 +606,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     fn parse_media_id_response_rejects_non_envelope_payload() {
         let err = parse_media_id_response(br#"<html>nope</html>"#).unwrap_err();
         assert!(matches!(err, AniError::ParseFailed { .. }));
     }
 
     #[tokio::test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     async fn media_id_for_mal_posts_idmal_query_and_returns_media_id() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
@@ -588,7 +633,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     async fn media_id_for_mal_returns_none_when_unmapped() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
@@ -605,7 +649,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "red; green commit implements media_id_for_mal"]
     async fn media_id_for_mal_propagates_upstream_5xx() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
