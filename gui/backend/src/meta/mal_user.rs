@@ -21,9 +21,9 @@
 //! so this file stays focused on the trait dispatch.
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
-use super::mal_user_net::{url_origin, CoalescedRefresh};
+use super::mal_user_net::url_origin;
+pub use super::mal_user_net::MalRefreshState;
 use super::mal_user_parse::{parse_list_page, parse_viewer_response};
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
@@ -42,30 +42,38 @@ pub struct MalProvider {
     client: reqwest::Client,
     api_base: Option<String>,
     token_base: Option<String>,
-    last_refresh: Mutex<Option<CoalescedRefresh>>,
+    refresh_state: MalRefreshState,
 }
 
 impl MalProvider {
-    /// Build a provider that hits production MAL endpoints.
+    /// Build a provider that hits production MAL endpoints. The
+    /// `refresh_state` is shared across every provider instance the
+    /// dispatcher constructs so two concurrent handler calls hit the
+    /// same coalesce cache (Codex P2 #3379969316).
     #[must_use]
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(client: reqwest::Client, refresh_state: MalRefreshState) -> Self {
         Self {
             client,
             api_base: None,
             token_base: None,
-            last_refresh: Mutex::new(None),
+            refresh_state,
         }
     }
 
     /// Build a provider with wiremock-style endpoint overrides — the
     /// test harness mounts mock responses on these URIs.
     #[must_use]
-    pub fn with_bases(client: reqwest::Client, api_base: String, token_base: String) -> Self {
+    pub fn with_bases(
+        client: reqwest::Client,
+        api_base: String,
+        token_base: String,
+        refresh_state: MalRefreshState,
+    ) -> Self {
         Self {
             client,
             api_base: Some(api_base),
             token_base: Some(token_base),
-            last_refresh: Mutex::new(None),
+            refresh_state,
         }
     }
 
@@ -81,8 +89,8 @@ impl MalProvider {
         self.token_base.as_deref().unwrap_or(MAL_TOKEN_URL)
     }
 
-    pub(super) fn last_refresh(&self) -> &Mutex<Option<CoalescedRefresh>> {
-        &self.last_refresh
+    pub(super) fn refresh_state(&self) -> &MalRefreshState {
+        &self.refresh_state
     }
 }
 

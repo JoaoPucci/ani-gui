@@ -30,23 +30,32 @@ use crate::app::AppState;
 use crate::cache::SqlitePool;
 use crate::error::{AniError, Result};
 use crate::meta::anilist_user::AniListProvider;
+use crate::meta::mal_user::MalProvider;
 
 /// Build a [`UserListProvider`] for the requested provider kind. Used
-/// by every route handler that calls into a concrete provider.
+/// by every route handler that calls into a concrete provider. Takes
+/// the whole [`AppState`] so MAL can pull the process-wide refresh
+/// coalesce cache off it — without that shared cache, two concurrent
+/// handlers each build their own `MalProvider` with its own mutex and
+/// both POST the same stale refresh token (Codex P2 #3379969316).
 ///
-/// PR #3 (MAL adapter) will add the `MyAnimeList` branch; PR #4+
-/// (in-house) eventually adds the third. Today MAL and InHouse return
-/// [`AniError::Metadata`] — the routes that dispatch by slug guard
-/// against unsupported kinds at the slug-parse step, but defending
-/// here too keeps the dispatcher honest.
+/// PR #4+ (in-house) eventually adds the third branch. Today InHouse
+/// returns `None` — the routes that dispatch by slug guard against
+/// unsupported kinds at the slug-parse step, but defending here too
+/// keeps the dispatcher honest.
 #[must_use]
 pub fn provider_for_kind(
+    state: &Arc<AppState>,
     kind: ProviderKind,
-    client: reqwest::Client,
 ) -> Option<Box<dyn UserListProvider>> {
+    let client = state.proxy_http.clone();
     match kind {
         ProviderKind::AniList => Some(Box::new(AniListProvider::new(client))),
-        ProviderKind::MyAnimeList | ProviderKind::InHouse => None,
+        ProviderKind::MyAnimeList => Some(Box::new(MalProvider::new(
+            client,
+            state.mal_refresh.clone(),
+        ))),
+        ProviderKind::InHouse => None,
     }
 }
 
@@ -64,7 +73,7 @@ pub fn auth_url(
     csrf: &str,
     pkce: &Pkce,
 ) -> Result<String> {
-    let Some(provider) = provider_for_kind(kind, state.proxy_http.clone()) else {
+    let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
     provider.auth_url(pkce, csrf)
@@ -79,7 +88,7 @@ pub async fn exchange_code(
     code: &str,
     pkce: &Pkce,
 ) -> Result<Tokens> {
-    let Some(provider) = provider_for_kind(kind, state.proxy_http.clone()) else {
+    let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
     provider.exchange_code(code, pkce).await
@@ -88,7 +97,7 @@ pub async fn exchange_code(
 /// Fetch the authenticated user's profile. Routes use this to populate
 /// the AccountChip avatar + `/account` page stats.
 pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<UserProfile> {
-    let Some(provider) = provider_for_kind(kind, state.proxy_http.clone()) else {
+    let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
     provider.me(tokens).await
@@ -103,7 +112,7 @@ pub async fn list_all_and_cache(
     tokens: &Tokens,
     user_id: &str,
 ) -> Result<Vec<ListEntry>> {
-    let Some(provider) = provider_for_kind(kind, state.proxy_http.clone()) else {
+    let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
     let entries = provider.list_all(tokens).await?;

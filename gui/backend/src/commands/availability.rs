@@ -490,6 +490,7 @@ mod tests {
             config_path: td.path().join("config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
             internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         }
     }
 

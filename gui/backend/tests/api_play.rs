@@ -110,6 +110,7 @@ fn build_state(tmp: &std::path::Path) -> AppState {
         config_path: tmp.join("config.toml"),
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: ani_gui::account::InternalSecret::random(),
+        mal_refresh: ani_gui::meta::mal_user::MalRefreshState::new(),
     }
 }
 

@@ -9,9 +9,11 @@
 //! caller. The helpers expect a parent reference (`MalProvider`) and
 //! delegate field access through accessors `mal_user.rs` exposes.
 
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
+use tokio::sync::Mutex;
 
 use super::mal_user::MalProvider;
 use super::mal_user_parse::parse_token_response;
@@ -30,6 +32,31 @@ pub(super) const MAL_USER_AGENT: &str = concat!("ani-gui/", env!("CARGO_PKG_VERS
 pub(super) struct CoalescedRefresh {
     pub input_refresh_token: String,
     pub tokens: Tokens,
+}
+
+/// Process-wide shared refresh-coalesce state for MAL. Lives on
+/// [`crate::app::AppState`] so every `MalProvider` instance
+/// constructed by `provider_for_kind` sees the same mutex + cache —
+/// without this, two concurrent handler calls each construct their
+/// own `MalProvider`, each with its own private mutex, and both POST
+/// the same stale refresh token (Codex P2 #3379969316).
+#[derive(Clone, Default)]
+pub struct MalRefreshState {
+    inner: Arc<Mutex<Option<CoalescedRefresh>>>,
+}
+
+impl MalRefreshState {
+    /// Build an empty state slot. Production callers `default()` once
+    /// at boot and clone the cheap `Arc` into each provider; tests can
+    /// also `default()` per fresh instance.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn lock(&self) -> &Mutex<Option<CoalescedRefresh>> {
+        &self.inner
+    }
 }
 
 impl MalProvider {
@@ -88,7 +115,7 @@ impl MalProvider {
     /// expired (Codex P2 #3375578767), otherwise rotates and stores
     /// the result.
     pub(super) async fn refresh_inner(&self, refresh_token: &str) -> Result<Tokens> {
-        let mut guard = self.last_refresh().lock().await;
+        let mut guard = self.refresh_state().lock().lock().await;
         if let Some(cached) = guard.as_ref() {
             if cached.input_refresh_token == refresh_token {
                 let now_s = SystemTime::now()

@@ -24,6 +24,7 @@ use crate::cache::SqlitePool;
 use crate::config::paths;
 use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuClient;
+use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
 /// Maximum concurrent `ani-cli` subprocess invocations.
@@ -76,6 +77,12 @@ pub struct AppState {
     /// cross-origin tab under the permissive CORS layer can't poison
     /// another user's local cache.
     pub internal_secret: InternalSecret,
+    /// Shared refresh-coalesce state for MAL. One slot per process —
+    /// every `MalProvider` the `provider_for_kind` dispatcher
+    /// constructs clones the cheap `Arc` so concurrent refresh
+    /// handlers serialize on the same mutex and reuse the same
+    /// rotation cache (Codex P2 #3379969316).
+    pub mal_refresh: MalRefreshState,
 }
 
 impl AppState {
@@ -152,6 +159,7 @@ impl AppState {
             config_path,
             state_dir,
             internal_secret: InternalSecret::random(),
+            mal_refresh: MalRefreshState::new(),
         })
     }
 
@@ -277,6 +285,7 @@ mod tests {
             config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
             internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: MalRefreshState::new(),
         }
     }
 

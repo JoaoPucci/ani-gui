@@ -7,18 +7,23 @@ use crate::account::credentials::{MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI}
 use crate::account::pkce::{Pkce, PkceMethod};
 
 /// Build the wiremock-backed provider used across the network tests.
-/// `api_uri` / `token_uri` are wiremock server URIs.
+/// `api_uri` / `token_uri` are wiremock server URIs. Each call gets a
+/// fresh `MalRefreshState` — tests that exercise the coalesce cache
+/// share one provider instance, so a default state per `make_provider`
+/// call models how production threads the shared state from
+/// `AppState` into each dispatcher-built provider.
 #[allow(dead_code)] // Used once network tests land — keep the helper compiled.
 fn make_provider(api_uri: &str, token_uri: &str) -> MalProvider {
     MalProvider::with_bases(
         reqwest::Client::new(),
         api_uri.to_string(),
         token_uri.to_string(),
+        MalRefreshState::new(),
     )
 }
 
 fn production_provider() -> MalProvider {
-    MalProvider::new(reqwest::Client::new())
+    MalProvider::new(reqwest::Client::new(), MalRefreshState::new())
 }
 
 fn plain_pkce() -> Pkce {
@@ -137,6 +142,7 @@ fn unbound_provider() -> MalProvider {
         reqwest::Client::new(),
         UNBOUND_PORT_API.to_string(),
         UNBOUND_PORT_TOKEN.to_string(),
+        MalRefreshState::new(),
     )
 }
 
@@ -820,6 +826,54 @@ async fn refresh_coalesces_concurrent_calls_with_same_refresh_token() {
         hit_count.load(Ordering::SeqCst),
         1,
         "refresh must coalesce — saw {} POSTs",
+        hit_count.load(Ordering::SeqCst)
+    );
+}
+
+#[tokio::test]
+async fn refresh_coalesces_across_provider_instances_sharing_one_refresh_state() {
+    // Codex P2 #3379969316: the account dispatcher builds a fresh
+    // `MalProvider` per handler call, so the coalesce state must live
+    // OUTSIDE the provider (on AppState) and be shared by Arc/clone.
+    // Two distinct provider instances handed the same `MalRefreshState`
+    // must serialize at the same mutex and the second caller must hit
+    // the cache without re-POSTing the stale refresh token.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let server = wiremock::MockServer::start().await;
+    let hit_count = Arc::new(AtomicUsize::new(0));
+    let hit_count2 = hit_count.clone();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(move |_: &wiremock::Request| {
+            hit_count2.fetch_add(1, Ordering::SeqCst);
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY)
+        })
+        .mount(&server)
+        .await;
+    let shared = MalRefreshState::new();
+    let p1 = MalProvider::with_bases(
+        reqwest::Client::new(),
+        "http://unused-api".to_string(),
+        server.uri(),
+        shared.clone(),
+    );
+    let p2 = MalProvider::with_bases(
+        reqwest::Client::new(),
+        "http://unused-api".to_string(),
+        server.uri(),
+        shared,
+    );
+    let p1 = Arc::new(p1);
+    let p2 = Arc::new(p2);
+    let h1 = tokio::spawn(async move { p1.refresh("stale").await });
+    let h2 = tokio::spawn(async move { p2.refresh("stale").await });
+    let t1 = h1.await.unwrap().expect("first refresh ok");
+    let t2 = h2.await.unwrap().expect("second refresh must coalesce");
+    assert_eq!(t1.access_token, t2.access_token);
+    assert_eq!(
+        hit_count.load(Ordering::SeqCst),
+        1,
+        "shared MalRefreshState must coalesce across provider instances — saw {} POSTs",
         hit_count.load(Ordering::SeqCst)
     );
 }
