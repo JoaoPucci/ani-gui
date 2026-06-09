@@ -13,4 +13,5 @@ pub mod github;
 pub mod images;
 pub mod kitsu;
 pub mod mal_user;
+mod mal_user_net;
 mod mal_user_parse;
