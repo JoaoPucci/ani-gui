@@ -36,7 +36,9 @@ fn auth_url_builds_anilist_consent_url_with_state() {
     // AniList ignores PKCE entirely, but the trait shape passes one in
     // for symmetry with MAL. Build a plain pair just so we have one.
     let pkce = Pkce::new_plain();
-    let url = provider.auth_url(&pkce, "csrf-token-xyz");
+    let url = provider
+        .auth_url(&pkce, "csrf-token-xyz")
+        .expect("anilist auth_url");
 
     assert!(
         url.starts_with("https://anilist.co/api/v2/oauth/authorize?"),

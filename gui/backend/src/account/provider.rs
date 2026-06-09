@@ -160,8 +160,12 @@ pub trait UserListProvider: Send + Sync {
 
     /// Build the URL the user's OS browser opens for the consent flow.
     /// `state` is the CSRF token the loopback callback server verifies
-    /// on redirect.
-    fn auth_url(&self, pkce: &Pkce, state: &str) -> String;
+    /// on redirect. Returns `Err(AniError::Metadata)` when the provided
+    /// PKCE configuration is unsupported by the upstream (MAL rejects
+    /// `S256` — surfacing the misuse here lets the route handler return
+    /// a clean 4xx instead of panicking or silently emitting an empty
+    /// URL that fails later in the connect flow).
+    fn auth_url(&self, pkce: &Pkce, state: &str) -> Result<String>;
 
     /// Trade an authorization code for tokens after the user approves.
     async fn exchange_code(&self, code: &str, pkce: &Pkce) -> Result<Tokens>;

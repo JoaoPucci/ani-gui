@@ -27,7 +27,9 @@ fn plain_pkce() -> Pkce {
 
 #[test]
 fn auth_url_starts_with_the_mal_authorize_endpoint() {
-    let url = production_provider().auth_url(&plain_pkce(), "csrf-token");
+    let url = production_provider()
+        .auth_url(&plain_pkce(), "csrf-token")
+        .expect("plain pkce ok");
     assert!(
         url.starts_with(MAL_AUTH_URL),
         "auth_url must point at MAL's authorize endpoint, got: {url}"
@@ -36,7 +38,9 @@ fn auth_url_starts_with_the_mal_authorize_endpoint() {
 
 #[test]
 fn auth_url_carries_the_public_client_id() {
-    let url = production_provider().auth_url(&plain_pkce(), "csrf-token");
+    let url = production_provider()
+        .auth_url(&plain_pkce(), "csrf-token")
+        .expect("plain pkce ok");
     assert!(
         url.contains(&format!("client_id={MAL_CLIENT_ID}")),
         "auth_url must carry the public client_id, got: {url}"
@@ -45,7 +49,9 @@ fn auth_url_carries_the_public_client_id() {
 
 #[test]
 fn auth_url_round_trips_the_csrf_state() {
-    let url = production_provider().auth_url(&plain_pkce(), "csrf-token-xyz");
+    let url = production_provider()
+        .auth_url(&plain_pkce(), "csrf-token-xyz")
+        .expect("plain pkce ok");
     assert!(
         url.contains("state=csrf-token-xyz"),
         "auth_url must round-trip the CSRF state, got: {url}"
@@ -54,7 +60,9 @@ fn auth_url_round_trips_the_csrf_state() {
 
 #[test]
 fn auth_url_uses_the_registered_redirect_uri() {
-    let url = production_provider().auth_url(&plain_pkce(), "csrf");
+    let url = production_provider()
+        .auth_url(&plain_pkce(), "csrf")
+        .expect("plain pkce ok");
     let encoded =
         url::form_urlencoded::byte_serialize(MAL_REDIRECT_URI.as_bytes()).collect::<String>();
     assert!(
@@ -65,7 +73,9 @@ fn auth_url_uses_the_registered_redirect_uri() {
 
 #[test]
 fn auth_url_declares_response_type_code() {
-    let url = production_provider().auth_url(&plain_pkce(), "csrf");
+    let url = production_provider()
+        .auth_url(&plain_pkce(), "csrf")
+        .expect("plain pkce ok");
     assert!(
         url.contains("response_type=code"),
         "auth_url must declare the OAuth2 authorization-code grant, got: {url}"
@@ -75,7 +85,9 @@ fn auth_url_declares_response_type_code() {
 #[test]
 fn auth_url_emits_pkce_plain_challenge_and_method() {
     let pkce = Pkce::new_plain();
-    let url = production_provider().auth_url(&pkce, "csrf");
+    let url = production_provider()
+        .auth_url(&pkce, "csrf")
+        .expect("plain pkce ok");
     assert!(
         url.contains("code_challenge_method=plain"),
         "MAL spec mandates plain — auth_url must declare it, got: {url}"
@@ -93,17 +105,20 @@ fn auth_url_emits_pkce_plain_challenge_and_method() {
 }
 
 #[test]
-fn auth_url_returns_empty_when_handed_an_s256_pkce() {
+fn auth_url_returns_error_for_s256_pkce_so_route_layer_surfaces_clean_4xx() {
     // MAL's authorize endpoint rejects code_challenge_method=S256.
-    // Returning an empty URL is the sentinel the route layer
-    // detects + surfaces as a clean error; a previous panic could
-    // abort the axum task (Codex P2 #3375623160).
+    // Provider returns Err(AniError::Metadata) so the auth-url route
+    // handler returns a clean 4xx — never a panic (Codex P2
+    // #3375623160) and never a 200 with `url: ""` that would fail
+    // silently later in the connect flow (Codex P2 #3375657046).
     let mut pkce = Pkce::new_plain();
     pkce.method = PkceMethod::S256;
-    let url = production_provider().auth_url(&pkce, "csrf");
-    assert_eq!(
-        url, "",
-        "S256 PKCE must produce an empty URL, not panic and not an S256 URL the browser would 400 on"
+    let err = production_provider()
+        .auth_url(&pkce, "csrf")
+        .expect_err("S256 must be rejected");
+    assert!(
+        matches!(err, crate::error::AniError::Metadata),
+        "expected AniError::Metadata, got {err:?}"
     );
 }
 

@@ -67,7 +67,7 @@ pub fn auth_url(
     let Some(provider) = provider_for_kind(kind, state.proxy_http.clone()) else {
         return Err(AniError::Metadata);
     };
-    Ok(provider.auth_url(pkce, csrf))
+    provider.auth_url(pkce, csrf)
 }
 
 /// Exchange an OAuth authorization code for tokens. Renderer then

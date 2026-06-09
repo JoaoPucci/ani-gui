@@ -176,17 +176,15 @@ impl UserListProvider for MalProvider {
         ProviderKind::MyAnimeList
     }
 
-    fn auth_url(&self, pkce: &Pkce, state: &str) -> String {
+    fn auth_url(&self, pkce: &Pkce, state: &str) -> Result<String> {
         // MAL's authorize endpoint rejects S256 — the docs explicitly
-        // require `plain`. Return an empty string for any non-`Plain`
-        // method so the route layer can detect the misuse and return
-        // a clean error to the caller instead of an axum task panic
-        // (Codex P2 #3375623160). The trait can't return `Result`
-        // without churning AniList; an empty URL is the agreed-upon
-        // sentinel — the route handler treats empty as
-        // `AniError::Metadata`.
+        // require `plain`. Return `AniError::Metadata` for any
+        // non-`Plain` method so the route layer surfaces a clean
+        // 4xx instead of either an axum task panic or a silent
+        // empty-string serialised back to the renderer (Codex P2
+        // #3375657046, refining the earlier sentinel approach).
         if !matches!(pkce.method, PkceMethod::Plain) {
-            return String::new();
+            return Err(AniError::Metadata);
         }
         let params = [
             ("response_type", "code"),
@@ -196,9 +194,9 @@ impl UserListProvider for MalProvider {
             ("code_challenge", pkce.challenge.as_str()),
             ("code_challenge_method", pkce.method.as_param()),
         ];
-        url::Url::parse_with_params(MAL_AUTH_URL, &params)
+        Ok(url::Url::parse_with_params(MAL_AUTH_URL, &params)
             .map(String::from)
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 
     async fn exchange_code(&self, code: &str, pkce: &Pkce) -> Result<Tokens> {
