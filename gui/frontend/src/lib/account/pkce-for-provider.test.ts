@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pkceForProvider } from './pkce-for-provider';
 
-describe.skip('pkceForProvider [red — green commit unskips]', () => {
+describe('pkceForProvider', () => {
 	it('picks S256 for anilist (provider ignores the challenge but accepts both)', () => {
 		const pair = pkceForProvider('anilist');
 		expect(pair.method).toBe('S256');
