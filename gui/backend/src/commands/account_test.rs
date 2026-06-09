@@ -45,7 +45,6 @@ const KITSU_MAL_MAPPING_BODY: &str = r#"{
 }"#;
 
 #[tokio::test]
-#[ignore = "red; green commit implements resolve_native_media_id"]
 async fn resolve_native_media_id_mal_is_the_mapped_mal_id() {
     use wiremock::matchers::{method, path};
     let kitsu = wiremock::MockServer::start().await;
@@ -62,7 +61,6 @@ async fn resolve_native_media_id_mal_is_the_mapped_mal_id() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit implements resolve_native_media_id"]
 async fn resolve_native_media_id_anilist_bridges_mal_to_media_id() {
     use wiremock::matchers::{method, path};
     let kitsu = wiremock::MockServer::start().await;
@@ -87,7 +85,6 @@ async fn resolve_native_media_id_anilist_bridges_mal_to_media_id() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit implements resolve_native_media_id"]
 async fn resolve_native_media_id_none_when_kitsu_has_no_mal_mapping() {
     use wiremock::matchers::{method, path};
     let kitsu = wiremock::MockServer::start().await;
@@ -107,7 +104,6 @@ async fn resolve_native_media_id_none_when_kitsu_has_no_mal_mapping() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit implements resolve_native_media_id"]
 async fn resolve_native_media_id_none_when_anilist_unmapped() {
     use wiremock::matchers::{method, path};
     let kitsu = wiremock::MockServer::start().await;

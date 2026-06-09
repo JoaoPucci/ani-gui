@@ -251,25 +251,6 @@ const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 /// # Errors
 /// Never fails the whole batch — individual lookup failures drop the
 /// entry from the output. Empty input → empty output.
-/// Resolve a show's Kitsu id into the provider-native media id needed
-/// by `update_entry`: MAL's anime id (the Kitsu→MAL mapping) for
-/// MyAnimeList, and AniList's numeric `mediaId` (MAL id → AniList
-/// `Media(idMal:)`) for AniList. `Ok(None)` when the show can't be
-/// mapped (no MAL mapping, or AniList doesn't index it) — a non-error
-/// "nothing to push" so the mark-watched fan-out skips it rather than
-/// reporting a failure. `anilist_base` overrides the AniList endpoint
-/// in tests; production passes `None`.
-///
-/// Green commit fills this in (Codex-free write-back foundation).
-pub(crate) async fn resolve_native_media_id(
-    _state: &Arc<AppState>,
-    _kind: ProviderKind,
-    _kitsu_id: &str,
-    _anilist_base: Option<&str>,
-) -> Result<Option<ProviderMediaId>> {
-    Err(AniError::Metadata)
-}
-
 pub async fn kitsu_for_mal_ids(
     state: &Arc<AppState>,
     mal_ids: Vec<u32>,
@@ -289,6 +270,49 @@ pub async fn kitsu_for_mal_ids(
         .filter_map(|maybe_ref| async move { maybe_ref })
         .collect()
         .await
+}
+
+/// Resolve a show's Kitsu id into the provider-native media id needed
+/// by `update_entry`: MAL's anime id (the Kitsu→MAL mapping) for
+/// MyAnimeList, and AniList's numeric `mediaId` (MAL id → AniList
+/// `Media(idMal:)`) for AniList. `Ok(None)` when the show can't be
+/// mapped (no MAL mapping, or AniList doesn't index it) — a non-error
+/// "nothing to push" so the mark-watched fan-out skips it rather than
+/// reporting a failure. `anilist_base` overrides the AniList endpoint
+/// in tests; production passes `None`.
+///
+/// This is the live id-lookup foundation for write-back: both
+/// providers' `update_entry` upsert, so resolving the native id is
+/// all that's needed to push progress to a show — including one not
+/// yet on the user's list (the basis for currently-watching tracking).
+// Exercised by tests now; the non-test caller (`push_progress` + the
+// `POST /api/account/update/:provider` route) lands in the next 4b
+// step, at which point this allow comes off.
+#[allow(dead_code)]
+pub(crate) async fn resolve_native_media_id(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> Result<Option<ProviderMediaId>> {
+    // Every provider's native id keys off the show's MAL id, which
+    // Kitsu's mappings carry. No MAL mapping → can't push anywhere.
+    let Some(mal_id) = state.kitsu.mal_id_for_kitsu_id(kitsu_id).await? else {
+        return Ok(None);
+    };
+    match kind {
+        // MAL's anime id IS the mapped MAL id.
+        ProviderKind::MyAnimeList => Ok(Some(ProviderMediaId(mal_id))),
+        // AniList keys on its own numeric mediaId; bridge MAL → AniList.
+        ProviderKind::AniList => {
+            let media_id =
+                crate::meta::anilist::media_id_for_mal(&state.proxy_http, mal_id, anilist_base)
+                    .await?;
+            Ok(media_id.map(ProviderMediaId))
+        }
+        // In-house provider has no external id space yet.
+        ProviderKind::InHouse => Ok(None),
+    }
 }
 
 #[cfg(test)]
