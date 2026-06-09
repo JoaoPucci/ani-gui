@@ -60,6 +60,35 @@ impl MalRefreshState {
 }
 
 impl MalProvider {
+    /// Map an authed-endpoint response status into the trait's error
+    /// contract: 401 → [`AniError::InvalidToken`] (revoked / expired —
+    /// route layer surfaces "Sign in again"), any other non-2xx →
+    /// [`AniError::Upstream`]. Shared by the bearer-authed request
+    /// helpers so the branch pair lives in one place. NOT used for the
+    /// OAuth token endpoint, where a 401 means "bad code / refresh
+    /// token" and must surface as `Upstream`, not `InvalidToken`.
+    fn check_status(status: reqwest::StatusCode) -> Result<()> {
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Start a request with the headers every MAL API call needs: the
+    /// `User-Agent`, the mandatory `X-MAL-CLIENT-ID`, and the bearer.
+    /// (`post_token_form` hits the OAuth endpoint, which takes neither
+    /// the client-id header nor a bearer, so it builds its own.)
+    fn authed(&self, req: reqwest::RequestBuilder, tokens: &Tokens) -> reqwest::RequestBuilder {
+        req.header("user-agent", MAL_USER_AGENT)
+            .header("x-mal-client-id", MAL_CLIENT_ID)
+            .bearer_auth(&tokens.access_token)
+    }
+
     /// Shared form-encoded POST to MAL's OAuth token endpoint. Both
     /// `exchange_code` and `refresh` use it — only the form body
     /// differs. Returns parsed `Tokens` on 2xx, `AniError::Upstream`
@@ -92,24 +121,12 @@ impl MalProvider {
         form: &[(&str, String)],
     ) -> Result<Bytes> {
         let resp = self
-            .client()
-            .patch(url)
-            .header("user-agent", MAL_USER_AGENT)
-            .header("x-mal-client-id", MAL_CLIENT_ID)
-            .bearer_auth(&tokens.access_token)
+            .authed(self.client().patch(url), tokens)
             .form(form)
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(AniError::InvalidToken);
-        }
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
+        Self::check_status(resp.status())?;
         resp.bytes().await.map_err(|_| AniError::Network)
     }
 
@@ -120,24 +137,11 @@ impl MalProvider {
     /// from a transient failure).
     pub(super) async fn delete_auth(&self, url: &str, tokens: &Tokens) -> Result<()> {
         let resp = self
-            .client()
-            .delete(url)
-            .header("user-agent", MAL_USER_AGENT)
-            .header("x-mal-client-id", MAL_CLIENT_ID)
-            .bearer_auth(&tokens.access_token)
+            .authed(self.client().delete(url), tokens)
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(AniError::InvalidToken);
-        }
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
-        Ok(())
+        Self::check_status(resp.status())
     }
 
     /// Shared GET that attaches the bearer + the mandatory
@@ -145,23 +149,11 @@ impl MalProvider {
     /// future read endpoint).
     pub(super) async fn get_auth_bytes(&self, url: &str, tokens: &Tokens) -> Result<Bytes> {
         let resp = self
-            .client()
-            .get(url)
-            .header("user-agent", MAL_USER_AGENT)
-            .header("x-mal-client-id", MAL_CLIENT_ID)
-            .bearer_auth(&tokens.access_token)
+            .authed(self.client().get(url), tokens)
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        let status = resp.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(AniError::InvalidToken);
-        }
-        if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
-        }
+        Self::check_status(resp.status())?;
         resp.bytes().await.map_err(|_| AniError::Network)
     }
 
