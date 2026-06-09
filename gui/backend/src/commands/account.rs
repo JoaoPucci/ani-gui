@@ -24,7 +24,9 @@
 use std::sync::Arc;
 
 use crate::account::pkce::Pkce;
-use crate::account::provider::{ListEntry, ProviderKind, Tokens, UserListProvider, UserProfile};
+use crate::account::provider::{
+    ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+};
 use crate::account::status::ListStatus;
 use crate::app::AppState;
 use crate::cache::SqlitePool;
@@ -249,6 +251,25 @@ const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 /// # Errors
 /// Never fails the whole batch — individual lookup failures drop the
 /// entry from the output. Empty input → empty output.
+/// Resolve a show's Kitsu id into the provider-native media id needed
+/// by `update_entry`: MAL's anime id (the Kitsu→MAL mapping) for
+/// MyAnimeList, and AniList's numeric `mediaId` (MAL id → AniList
+/// `Media(idMal:)`) for AniList. `Ok(None)` when the show can't be
+/// mapped (no MAL mapping, or AniList doesn't index it) — a non-error
+/// "nothing to push" so the mark-watched fan-out skips it rather than
+/// reporting a failure. `anilist_base` overrides the AniList endpoint
+/// in tests; production passes `None`.
+///
+/// Green commit fills this in (Codex-free write-back foundation).
+pub(crate) async fn resolve_native_media_id(
+    _state: &Arc<AppState>,
+    _kind: ProviderKind,
+    _kitsu_id: &str,
+    _anilist_base: Option<&str>,
+) -> Result<Option<ProviderMediaId>> {
+    Err(AniError::Metadata)
+}
+
 pub async fn kitsu_for_mal_ids(
     state: &Arc<AppState>,
     mal_ids: Vec<u32>,

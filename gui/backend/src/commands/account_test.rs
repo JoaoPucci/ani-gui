@@ -5,6 +5,131 @@
 use super::*;
 use crate::account::pkce::PkceMethod;
 
+/// Build an `AppState` whose Kitsu client points at `kitsu_uri` (a
+/// wiremock server) so id-resolution tests can mock the mappings
+/// endpoint. Everything else is throwaway.
+#[cfg(test)]
+fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+    Arc::new(crate::app::AppState {
+        secret: crate::proxy::AppSecret::random(),
+        sessions: crate::proxy::SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
+        ani_cli_path: PathBuf::from("/tmp/ani-cli"),
+        bash_path: None,
+        bundled_bin: None,
+        history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
+        scraper_slots: Arc::new(Semaphore::new(crate::app::SCRAPER_CONCURRENCY)),
+        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
+        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: crate::account::InternalSecret::random(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+    })
+}
+
+/// Kitsu `/anime/:id?include=mappings` body carrying a MAL mapping.
+#[cfg(test)]
+const KITSU_MAL_MAPPING_BODY: &str = r#"{
+    "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "One Piece" } },
+    "included": [{
+        "id": "1175",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" }
+    }]
+}"#;
+
+#[tokio::test]
+#[ignore = "red; green commit implements resolve_native_media_id"]
+async fn resolve_native_media_id_mal_is_the_mapped_mal_id() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPING_BODY))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::MyAnimeList, "12", None)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, Some(ProviderMediaId(21)));
+}
+
+#[tokio::test]
+#[ignore = "red; green commit implements resolve_native_media_id"]
+async fn resolve_native_media_id_anilist_bridges_mal_to_media_id() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPING_BODY))
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Media":{"id":154587}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::AniList, "12", Some(&anilist.uri()))
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, Some(ProviderMediaId(154587)));
+}
+
+#[tokio::test]
+#[ignore = "red; green commit implements resolve_native_media_id"]
+async fn resolve_native_media_id_none_when_kitsu_has_no_mal_mapping() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"id":"999","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::MyAnimeList, "999", None)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, None);
+}
+
+#[tokio::test]
+#[ignore = "red; green commit implements resolve_native_media_id"]
+async fn resolve_native_media_id_none_when_anilist_unmapped() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPING_BODY))
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::AniList, "12", Some(&anilist.uri()))
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, None);
+}
+
 #[test]
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
