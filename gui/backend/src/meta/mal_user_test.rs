@@ -972,3 +972,142 @@ async fn exchange_code_surfaces_5xx_as_upstream() {
         other => panic!("expected Upstream {{ status: 503 }}, got {other:?}"),
     }
 }
+
+/// Canonical PATCH `/anime/{id}/my_list_status` response body. MAL
+/// returns the updated `list_status` only — no anime metadata —
+/// because the caller already knows which anime they PATCHed.
+const MAL_LIST_STATUS_RESPONSE: &str = r#"{
+    "status": "watching",
+    "score": 9,
+    "num_episodes_watched": 1100,
+    "is_rewatching": false,
+    "num_times_rewatched": 0,
+    "updated_at": "2026-01-15T10:30:00+00:00"
+}"#;
+
+#[tokio::test]
+#[ignore = "red; green commit lands the PATCH my_list_status impl"]
+async fn update_entry_patches_my_list_status_with_form_body_and_returns_entry() {
+    use wiremock::matchers::{body_string_contains, header, method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .and(header("x-mal-client-id", MAL_CLIENT_ID))
+        .and(header("content-type", "application/x-www-form-urlencoded"))
+        .and(body_string_contains("status=watching"))
+        .and(body_string_contains("score=9"))
+        .and(body_string_contains("num_watched_episodes=1100"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_LIST_STATUS_RESPONSE),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let update = crate::account::provider::EntryUpdate {
+        status: Some(crate::account::status::ListStatus::Watching),
+        progress_episodes: Some(1100),
+        score_0_to_100: Some(90),
+        repeat_count: None,
+    };
+    let entry = provider
+        .update_entry(&tokens, ProviderMediaId(21), update)
+        .await
+        .expect("update_entry ok");
+    assert_eq!(entry.media_id.0, 21);
+    assert_eq!(entry.mal_id, Some(21));
+    assert_eq!(entry.status, crate::account::status::ListStatus::Watching);
+    assert_eq!(entry.progress_episodes, 1100);
+    // 9/10 → 90/100.
+    assert_eq!(entry.score_0_to_100, Some(90));
+}
+
+#[tokio::test]
+#[ignore = "red; green commit unignores"]
+async fn update_entry_surfaces_401_as_invalid_token() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "revoked".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = provider
+        .update_entry(
+            &tokens,
+            ProviderMediaId(21),
+            crate::account::provider::EntryUpdate {
+                progress_episodes: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("401 must surface");
+    assert!(
+        matches!(err, crate::error::AniError::InvalidToken),
+        "expected InvalidToken, got {err:?}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "red; green commit lands the DELETE my_list_status impl"]
+async fn delete_entry_sends_delete_request_to_list_status_path() {
+    use wiremock::matchers::{header, method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .and(header("x-mal-client-id", MAL_CLIENT_ID))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    provider
+        .delete_entry(&tokens, ProviderMediaId(21))
+        .await
+        .expect("delete_entry ok");
+}
+
+#[tokio::test]
+#[ignore = "red; green commit unignores"]
+async fn delete_entry_surfaces_404_as_upstream_so_partial_double_delete_is_visible() {
+    // MAL returns 404 when the entry doesn't exist. The retry layer
+    // upstream of the trait will swallow this — but the provider must
+    // surface it so a retry budget can see the result, not assume
+    // success on a phantom delete.
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = provider
+        .delete_entry(&tokens, ProviderMediaId(21))
+        .await
+        .expect_err("404 must surface");
+    match err {
+        crate::error::AniError::Upstream { status } => assert_eq!(status, 404),
+        other => panic!("expected Upstream 404, got {other:?}"),
+    }
+}
