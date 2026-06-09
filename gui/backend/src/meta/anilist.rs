@@ -205,6 +205,29 @@ pub async fn banner_for_mal_id(
     parse_banner_response(&bytes)
 }
 
+/// By-MAL-id query resolving AniList's numeric `mediaId`. The
+/// write-back path needs it: mark-watched knows the show's MAL id
+/// (via Kitsu mappings) but `SaveMediaListEntry` keys on AniList's
+/// own id. Green commit fills the body in.
+const MEDIA_ID_BY_MAL_GQL: &str = "query MediaIdByMal($idMal: Int!) { \
+        Media(idMal: $idMal, type: ANIME) { id } \
+    }";
+
+/// Resolve a MAL id → AniList numeric `mediaId`. `None` when AniList
+/// doesn't index the supplied MAL id. Stub until the green commit.
+pub async fn media_id_for_mal(
+    _client: &reqwest::Client,
+    _mal_id: u32,
+    _base_override: Option<&str>,
+) -> Result<Option<u32>> {
+    Err(AniError::Metadata)
+}
+
+/// Pure parser for the by-MAL `mediaId` response. Stub until green.
+pub fn parse_media_id_response(_body: &[u8]) -> Result<Option<u32>> {
+    Err(AniError::Metadata)
+}
+
 /// Pure parser for the by-MAL banner response.
 ///
 /// # Errors
@@ -513,5 +536,86 @@ mod tests {
             .await
             .expect("ok");
         assert!(got.is_none());
+    }
+
+    // `media_id_for_mal` resolves a MAL id → AniList numeric mediaId,
+    // the keystone the write-back path needs: mark-watched knows the
+    // Kitsu id → mal_id, but SaveMediaListEntry wants AniList's own id.
+    #[test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    fn parse_media_id_response_returns_id_when_present() {
+        let body = br#"{"data":{"Media":{"id":154587}}}"#;
+        let got = parse_media_id_response(body).expect("ok");
+        assert_eq!(got, Some(154587));
+    }
+
+    #[test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    fn parse_media_id_response_returns_none_when_media_is_null() {
+        // AniList answers Media: null when the MAL id isn't indexed.
+        let body = br#"{"data":{"Media":null}}"#;
+        let got = parse_media_id_response(body).expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    fn parse_media_id_response_rejects_non_envelope_payload() {
+        let err = parse_media_id_response(br#"<html>nope</html>"#).unwrap_err();
+        assert!(matches!(err, AniError::ParseFailed { .. }));
+    }
+
+    #[tokio::test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    async fn media_id_for_mal_posts_idmal_query_and_returns_media_id() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "query": MEDIA_ID_BY_MAL_GQL,
+                "variables": { "idMal": 52991 },
+            })))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"data":{"Media":{"id":154587}}}"#),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let got = media_id_for_mal(&client, 52991, Some(&server.uri()))
+            .await
+            .expect("ok");
+        assert_eq!(got, Some(154587));
+    }
+
+    #[tokio::test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    async fn media_id_for_mal_returns_none_when_unmapped() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let got = media_id_for_mal(&client, 99_999_999, Some(&server.uri()))
+            .await
+            .expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "red; green commit implements media_id_for_mal"]
+    async fn media_id_for_mal_propagates_upstream_5xx() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(502))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = media_id_for_mal(&client, 52991, Some(&server.uri()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AniError::Upstream { status: 502 }));
     }
 }
