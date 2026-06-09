@@ -120,6 +120,42 @@ const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
         Media(idMal: $idMal, type: ANIME) { bannerImage } \
     }";
 
+/// User-agent for every AniList request. The proxy client mimics
+/// Firefox, but AniList's Cloudflare layer 403s browser UAs that lack
+/// a full fingerprint — an app-style identifier passes through.
+const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
+
+/// Shared POST to AniList's public GraphQL endpoint. The three public
+/// fetchers (`trending`, `banner_for_mal_id`, `media_id_for_mal`) only
+/// differ in query body + parser, so the request build + status
+/// mapping live here once.
+///
+/// # Errors
+/// [`AniError::Network`] on transport failure, [`AniError::Upstream`]
+/// on non-2xx.
+async fn post_graphql_public(
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<bytes::Bytes> {
+    let resp = client
+        .post(url)
+        .header("user-agent", ANILIST_UA)
+        .header("content-type", "application/json")
+        .header("accept", "application/json")
+        .json(body)
+        .send()
+        .await
+        .map_err(|_| AniError::Network)?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AniError::Upstream {
+            status: status.as_u16(),
+        });
+    }
+    resp.bytes().await.map_err(|_| AniError::Network)
+}
+
 /// Fetch the AniList trending feed, top `limit` entries.
 ///
 /// `base_override` mirrors the convention in `scraper::allanime` —
@@ -140,29 +176,7 @@ pub async fn trending(
         "query": TRENDING_GQL,
         "variables": { "perPage": limit },
     });
-    // Override the proxy client's Firefox-mimic UA with an app-style
-    // identifier — AniList's Cloudflare layer blocks browser UAs
-    // that lack a full browser fingerprint and returns 403. Curl
-    // and any UA that doesn't claim to be a browser pass through.
-    let resp = client
-        .post(url)
-        .header(
-            "user-agent",
-            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
-        )
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    let bytes = post_graphql_public(client, url, &body).await?;
     parse_trending(&bytes)
 }
 
@@ -181,6 +195,34 @@ pub async fn banner_for_mal_id(
     let url = base_override.unwrap_or(ANILIST_API);
     let body = serde_json::json!({
         "query": BANNER_BY_MAL_GQL,
+        "variables": { "idMal": mal_id },
+    });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    parse_banner_response(&bytes)
+}
+
+/// By-MAL-id query resolving AniList's numeric `mediaId`. The
+/// write-back path needs it: mark-watched knows the show's MAL id
+/// (via Kitsu mappings) but `SaveMediaListEntry` keys on AniList's
+/// own id. Green commit fills the body in.
+const MEDIA_ID_BY_MAL_GQL: &str = "query MediaIdByMal($idMal: Int!) { \
+        Media(idMal: $idMal, type: ANIME) { id } \
+    }";
+
+/// Resolve a MAL id → AniList numeric `mediaId`. `None` when AniList
+/// doesn't index the supplied MAL id. Mirrors [`banner_for_mal_id`]'s
+/// network shape; `base_override` points at wiremock in tests.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`banner_for_mal_id`].
+pub async fn media_id_for_mal(
+    client: &reqwest::Client,
+    mal_id: u32,
+    base_override: Option<&str>,
+) -> Result<Option<u32>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MEDIA_ID_BY_MAL_GQL,
         "variables": { "idMal": mal_id },
     });
     let resp = client
@@ -202,7 +244,33 @@ pub async fn banner_for_mal_id(
         });
     }
     let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
-    parse_banner_response(&bytes)
+    parse_media_id_response(&bytes)
+}
+
+/// Pure parser for the by-MAL `mediaId` response.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// `{ data: { Media: { id } } }` envelope. `Media: null` (MAL id not
+/// indexed) maps to `Ok(None)`, not an error.
+pub fn parse_media_id_response(body: &[u8]) -> Result<Option<u32>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        id: u32,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media-id response: {e}"),
+    })?;
+    Ok(parsed.data.media.map(|m| m.id))
 }
 
 /// Pure parser for the by-MAL banner response.
@@ -513,5 +581,80 @@ mod tests {
             .await
             .expect("ok");
         assert!(got.is_none());
+    }
+
+    // `media_id_for_mal` resolves a MAL id → AniList numeric mediaId,
+    // the keystone the write-back path needs: mark-watched knows the
+    // Kitsu id → mal_id, but SaveMediaListEntry wants AniList's own id.
+    #[test]
+    fn parse_media_id_response_returns_id_when_present() {
+        let body = br#"{"data":{"Media":{"id":154587}}}"#;
+        let got = parse_media_id_response(body).expect("ok");
+        assert_eq!(got, Some(154587));
+    }
+
+    #[test]
+    fn parse_media_id_response_returns_none_when_media_is_null() {
+        // AniList answers Media: null when the MAL id isn't indexed.
+        let body = br#"{"data":{"Media":null}}"#;
+        let got = parse_media_id_response(body).expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn parse_media_id_response_rejects_non_envelope_payload() {
+        let err = parse_media_id_response(br#"<html>nope</html>"#).unwrap_err();
+        assert!(matches!(err, AniError::ParseFailed { .. }));
+    }
+
+    #[tokio::test]
+    async fn media_id_for_mal_posts_idmal_query_and_returns_media_id() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "query": MEDIA_ID_BY_MAL_GQL,
+                "variables": { "idMal": 52991 },
+            })))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"data":{"Media":{"id":154587}}}"#),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let got = media_id_for_mal(&client, 52991, Some(&server.uri()))
+            .await
+            .expect("ok");
+        assert_eq!(got, Some(154587));
+    }
+
+    #[tokio::test]
+    async fn media_id_for_mal_returns_none_when_unmapped() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let got = media_id_for_mal(&client, 99_999_999, Some(&server.uri()))
+            .await
+            .expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn media_id_for_mal_propagates_upstream_5xx() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(502))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = media_id_for_mal(&client, 52991, Some(&server.uri()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AniError::Upstream { status: 502 }));
     }
 }

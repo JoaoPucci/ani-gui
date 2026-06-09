@@ -24,7 +24,9 @@
 use std::sync::Arc;
 
 use crate::account::pkce::Pkce;
-use crate::account::provider::{ListEntry, ProviderKind, Tokens, UserListProvider, UserProfile};
+use crate::account::provider::{
+    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+};
 use crate::account::status::ListStatus;
 use crate::app::AppState;
 use crate::cache::SqlitePool;
@@ -268,6 +270,120 @@ pub async fn kitsu_for_mal_ids(
         .filter_map(|maybe_ref| async move { maybe_ref })
         .collect()
         .await
+}
+
+/// Resolve a show's Kitsu id into the provider-native media id needed
+/// by `update_entry`: MAL's anime id (the Kitsu→MAL mapping) for
+/// MyAnimeList, and AniList's numeric `mediaId` (MAL id → AniList
+/// `Media(idMal:)`) for AniList. `Ok(None)` when the show can't be
+/// mapped (no MAL mapping, or AniList doesn't index it) — a non-error
+/// "nothing to push" so the mark-watched fan-out skips it rather than
+/// reporting a failure. `anilist_base` overrides the AniList endpoint
+/// in tests; production passes `None`.
+///
+/// This is the live id-lookup foundation for write-back: both
+/// providers' `update_entry` upsert, so resolving the native id is
+/// all that's needed to push progress to a show — including one not
+/// yet on the user's list (the basis for currently-watching tracking).
+pub(crate) async fn resolve_native_media_id(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> Result<Option<ProviderMediaId>> {
+    // Every provider's native id keys off the show's MAL id, which
+    // Kitsu's mappings carry. No MAL mapping → can't push anywhere.
+    let Some(mal_id) = state.kitsu.mal_id_for_kitsu_id(kitsu_id).await? else {
+        return Ok(None);
+    };
+    match kind {
+        // MAL's anime id IS the mapped MAL id.
+        ProviderKind::MyAnimeList => Ok(Some(ProviderMediaId(mal_id))),
+        // AniList keys on its own numeric mediaId; bridge MAL → AniList.
+        ProviderKind::AniList => {
+            let media_id =
+                crate::meta::anilist::media_id_for_mal(&state.proxy_http, mal_id, anilist_base)
+                    .await?;
+            Ok(media_id.map(ProviderMediaId))
+        }
+        // In-house provider has no external id space yet.
+        ProviderKind::InHouse => Ok(None),
+    }
+}
+
+/// Build a validated [`EntryUpdate`] from the renderer's wire fields.
+/// Rejects two malformed shapes (Codex P2 #3381617932):
+///
+/// - an all-absent update (no status, progress, or score) — since
+///   both providers' `update_entry` upsert, an empty update would
+///   create a list row with upstream defaults instead of being a
+///   no-op;
+/// - a `status` string that isn't a recognized unified value — a typo
+///   silently dropped to `None` would make a bad request look like a
+///   successful (but empty) update.
+///
+/// Both surface as [`AniError::Metadata`], matching how the account
+/// routes already treat malformed input (bad provider slug).
+pub fn build_entry_update(
+    status: Option<&str>,
+    progress_episodes: Option<u32>,
+    score_0_to_100: Option<u8>,
+) -> Result<EntryUpdate> {
+    let status = match status {
+        None => None,
+        Some(s) => Some(status_from_snake(s).ok_or(AniError::Metadata)?),
+    };
+    if status.is_none() && progress_episodes.is_none() && score_0_to_100.is_none() {
+        return Err(AniError::Metadata);
+    }
+    Ok(EntryUpdate {
+        status,
+        progress_episodes,
+        score_0_to_100,
+        repeat_count: None,
+    })
+}
+
+/// Push `update` (progress / status / score) to a connected tracker
+/// for the show identified by its Kitsu id. Called once per connected
+/// provider by the mark-watched fan-out, each with that provider's
+/// bearer.
+///
+/// Returns `Ok(None)` when the show can't be mapped to the provider
+/// (no MAL mapping, or AniList doesn't index it) — a non-error "nothing
+/// to push" so the fan-out treats it as a skip, not a failure.
+/// `Ok(Some(entry))` carries the upserted entry (both providers'
+/// `update_entry` create the list row if absent — the basis for
+/// currently-watching tracking).
+pub async fn push_progress(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+) -> Result<Option<ListEntry>> {
+    push_progress_with_anilist_base(state, kind, tokens, kitsu_id, update, None).await
+}
+
+/// Inner `push_progress` with the AniList endpoint override threaded
+/// through to `resolve_native_media_id`. Production calls
+/// `push_progress` (base `None`); tests pass a wiremock URI.
+async fn push_progress_with_anilist_base(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+    anilist_base: Option<&str>,
+) -> Result<Option<ListEntry>> {
+    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
+        return Ok(None);
+    };
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    let entry = provider.update_entry(tokens, native, update).await?;
+    Ok(Some(entry))
 }
 
 #[cfg(test)]

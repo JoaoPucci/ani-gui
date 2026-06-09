@@ -45,6 +45,7 @@ pub fn router() -> Router<Arc<AppState>> {
             post(post_exchange_code),
         )
         .route("/api/account/me/:provider", post(post_me))
+        .route("/api/account/update/:provider", post(post_update))
         .route("/api/account/list/:provider", post(post_list))
         .route("/api/account/list/:provider/cached", get(get_cached_list))
         .route(
@@ -127,6 +128,28 @@ impl From<Tokens> for TokensResponse {
             expires_at_epoch_s: t.expires_at_epoch_s,
         }
     }
+}
+
+/// Renderer-supplied write-back payload for `POST /update/:provider`.
+/// The renderer fires this once per connected provider on mark-watched,
+/// each with that provider's bearer in the `Authorization` header. The
+/// backend resolves the provider-native media id from `kitsu_id` (the
+/// only id the play context carries). All update fields are optional —
+/// omitted means "leave unchanged"; `status` is the unified snake_case
+/// form (`watching`, `completed`, …).
+#[derive(Debug, Deserialize)]
+pub struct UpdateProgressRequest {
+    /// Kitsu id of the show being marked watched.
+    pub kitsu_id: String,
+    /// New episodes-watched count.
+    #[serde(default)]
+    pub progress: Option<u32>,
+    /// New unified status (snake_case). `None` leaves it unchanged.
+    #[serde(default)]
+    pub status: Option<String>,
+    /// New score on the unified 0..=100 scale.
+    #[serde(default)]
+    pub score: Option<u8>,
 }
 
 /// Renderer-supplied fallback identity for the cache DELETE path
@@ -212,6 +235,25 @@ async fn post_auth_url(
     let pkce = req.pkce.into_pkce().ok_or(AniError::Metadata)?;
     let url = account::auth_url(&state, kind, &req.state, &pkce)?;
     Ok(Json(AuthUrlResponse { url }))
+}
+
+/// Push watch progress/status to a connected tracker. Returns the
+/// upserted entry, or `null` when the show couldn't be mapped to the
+/// provider (the renderer treats `null` as a no-op, not an error).
+async fn post_update(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateProgressRequest>,
+) -> Result<Json<Option<ListEntry>>, AniError> {
+    let kind = parse_provider(&provider)?;
+    let bearer = bearer_from_headers(&headers)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    // Reject empty / typo'd payloads before they reach the upsert
+    // (Codex P2 #3381617932).
+    let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
+    let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
+    Ok(Json(entry))
 }
 
 async fn post_exchange_code(
