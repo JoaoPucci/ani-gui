@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
 };
 use crate::account::status::ListStatus;
 use crate::app::AppState;
@@ -285,9 +285,8 @@ pub async fn kitsu_for_mal_ids(
 /// providers' `update_entry` upsert, so resolving the native id is
 /// all that's needed to push progress to a show — including one not
 /// yet on the user's list (the basis for currently-watching tracking).
-// Exercised by tests now; the non-test caller (`push_progress` + the
-// `POST /api/account/update/:provider` route) lands in the next 4b
-// step, at which point this allow comes off.
+// Stub-`push_progress` (red commit) doesn't call this yet; the green
+// commit's real body does, dropping this allow.
 #[allow(dead_code)]
 pub(crate) async fn resolve_native_media_id(
     state: &Arc<AppState>,
@@ -313,6 +312,43 @@ pub(crate) async fn resolve_native_media_id(
         // In-house provider has no external id space yet.
         ProviderKind::InHouse => Ok(None),
     }
+}
+
+/// Push `update` (progress / status / score) to a connected tracker
+/// for the show identified by its Kitsu id. Called once per connected
+/// provider by the mark-watched fan-out, each with that provider's
+/// bearer.
+///
+/// Returns `Ok(None)` when the show can't be mapped to the provider
+/// (no MAL mapping, or AniList doesn't index it) — a non-error "nothing
+/// to push" so the fan-out treats it as a skip, not a failure.
+/// `Ok(Some(entry))` carries the upserted entry (both providers'
+/// `update_entry` create the list row if absent — the basis for
+/// currently-watching tracking).
+pub async fn push_progress(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+) -> Result<Option<ListEntry>> {
+    push_progress_with_anilist_base(state, kind, tokens, kitsu_id, update, None).await
+}
+
+/// Inner `push_progress` with the AniList endpoint override threaded
+/// through to `resolve_native_media_id`. Production calls
+/// `push_progress` (base `None`); tests pass a wiremock URI.
+#[allow(unused_variables)]
+async fn push_progress_with_anilist_base(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+    anilist_base: Option<&str>,
+) -> Result<Option<ListEntry>> {
+    // Stub — green commit implements resolve + update_entry.
+    Err(AniError::Metadata)
 }
 
 #[cfg(test)]

@@ -126,6 +126,45 @@ async fn resolve_native_media_id_none_when_anilist_unmapped() {
     assert_eq!(got, None);
 }
 
+#[tokio::test]
+#[ignore = "red; green commit implements push_progress"]
+async fn push_progress_skips_unmappable_show_without_writing() {
+    // A show Kitsu can't map to MAL → resolve yields None → push_progress
+    // returns Ok(None) and never reaches update_entry. The provider
+    // built by the dispatcher hits the real MAL host, so a stray write
+    // attempt would surface as Network/Upstream, not Ok(None) — proving
+    // the short-circuit fires before any upstream call.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"id":"999","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let tokens = Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let got = push_progress(
+        &state,
+        ProviderKind::MyAnimeList,
+        &tokens,
+        "999",
+        crate::account::provider::EntryUpdate {
+            progress_episodes: Some(5),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("push ok");
+    assert!(got.is_none(), "unmappable show must short-circuit to None");
+}
+
 #[test]
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
