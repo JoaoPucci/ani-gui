@@ -986,7 +986,6 @@ const MAL_LIST_STATUS_RESPONSE: &str = r#"{
 }"#;
 
 #[tokio::test]
-#[ignore = "red; green commit lands the PATCH my_list_status impl"]
 async fn update_entry_patches_my_list_status_with_form_body_and_returns_entry() {
     use wiremock::matchers::{body_string_contains, header, method, path};
     let server = wiremock::MockServer::start().await;
@@ -1027,7 +1026,6 @@ async fn update_entry_patches_my_list_status_with_form_body_and_returns_entry() 
 }
 
 #[tokio::test]
-#[ignore = "red; green commit unignores"]
 async fn update_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::{method, path};
     let server = wiremock::MockServer::start().await;
@@ -1060,7 +1058,6 @@ async fn update_entry_surfaces_401_as_invalid_token() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit lands the DELETE my_list_status impl"]
 async fn delete_entry_sends_delete_request_to_list_status_path() {
     use wiremock::matchers::{header, method, path};
     let server = wiremock::MockServer::start().await;
@@ -1083,7 +1080,6 @@ async fn delete_entry_sends_delete_request_to_list_status_path() {
 }
 
 #[tokio::test]
-#[ignore = "red; green commit unignores"]
 async fn delete_entry_surfaces_404_as_upstream_so_partial_double_delete_is_visible() {
     // MAL returns 404 when the entry doesn't exist. The retry layer
     // upstream of the trait will swallow this — but the provider must

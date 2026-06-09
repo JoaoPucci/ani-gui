@@ -83,6 +83,63 @@ impl MalProvider {
         parse_token_response(&bytes)
     }
 
+    /// PATCH with a form body + bearer + `X-MAL-CLIENT-ID`. Used by
+    /// `update_entry` to write to `/anime/{id}/my_list_status`.
+    pub(super) async fn patch_form(
+        &self,
+        url: &str,
+        tokens: &Tokens,
+        form: &[(&str, String)],
+    ) -> Result<Bytes> {
+        let resp = self
+            .client()
+            .patch(url)
+            .header("user-agent", MAL_USER_AGENT)
+            .header("x-mal-client-id", MAL_CLIENT_ID)
+            .bearer_auth(&tokens.access_token)
+            .form(form)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        resp.bytes().await.map_err(|_| AniError::Network)
+    }
+
+    /// DELETE with bearer + `X-MAL-CLIENT-ID`. MAL returns a 200 with
+    /// an empty body on success; we ignore the body and surface
+    /// non-2xx (including 404 — `delete_entry` is expected to expose
+    /// that so the retry layer can distinguish "already deleted"
+    /// from a transient failure).
+    pub(super) async fn delete_auth(&self, url: &str, tokens: &Tokens) -> Result<()> {
+        let resp = self
+            .client()
+            .delete(url)
+            .header("user-agent", MAL_USER_AGENT)
+            .header("x-mal-client-id", MAL_CLIENT_ID)
+            .bearer_auth(&tokens.access_token)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AniError::InvalidToken);
+        }
+        if !status.is_success() {
+            return Err(AniError::Upstream {
+                status: status.as_u16(),
+            });
+        }
+        Ok(())
+    }
+
     /// Shared GET that attaches the bearer + the mandatory
     /// `X-MAL-CLIENT-ID` header. Used by `me` and `list_all` (and any
     /// future read endpoint).
