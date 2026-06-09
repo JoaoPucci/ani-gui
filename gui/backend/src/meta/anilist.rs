@@ -120,6 +120,42 @@ const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
         Media(idMal: $idMal, type: ANIME) { bannerImage } \
     }";
 
+/// User-agent for every AniList request. The proxy client mimics
+/// Firefox, but AniList's Cloudflare layer 403s browser UAs that lack
+/// a full fingerprint — an app-style identifier passes through.
+const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
+
+/// Shared POST to AniList's public GraphQL endpoint. The three public
+/// fetchers (`trending`, `banner_for_mal_id`, `media_id_for_mal`) only
+/// differ in query body + parser, so the request build + status
+/// mapping live here once.
+///
+/// # Errors
+/// [`AniError::Network`] on transport failure, [`AniError::Upstream`]
+/// on non-2xx.
+async fn post_graphql_public(
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<bytes::Bytes> {
+    let resp = client
+        .post(url)
+        .header("user-agent", ANILIST_UA)
+        .header("content-type", "application/json")
+        .header("accept", "application/json")
+        .json(body)
+        .send()
+        .await
+        .map_err(|_| AniError::Network)?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AniError::Upstream {
+            status: status.as_u16(),
+        });
+    }
+    resp.bytes().await.map_err(|_| AniError::Network)
+}
+
 /// Fetch the AniList trending feed, top `limit` entries.
 ///
 /// `base_override` mirrors the convention in `scraper::allanime` —
@@ -140,29 +176,7 @@ pub async fn trending(
         "query": TRENDING_GQL,
         "variables": { "perPage": limit },
     });
-    // Override the proxy client's Firefox-mimic UA with an app-style
-    // identifier — AniList's Cloudflare layer blocks browser UAs
-    // that lack a full browser fingerprint and returns 403. Curl
-    // and any UA that doesn't claim to be a browser pass through.
-    let resp = client
-        .post(url)
-        .header(
-            "user-agent",
-            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
-        )
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    let bytes = post_graphql_public(client, url, &body).await?;
     parse_trending(&bytes)
 }
 
@@ -183,25 +197,7 @@ pub async fn banner_for_mal_id(
         "query": BANNER_BY_MAL_GQL,
         "variables": { "idMal": mal_id },
     });
-    let resp = client
-        .post(url)
-        .header(
-            "user-agent",
-            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
-        )
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    let bytes = post_graphql_public(client, url, &body).await?;
     parse_banner_response(&bytes)
 }
 
