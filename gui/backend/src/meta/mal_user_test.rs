@@ -117,9 +117,202 @@ fn auth_url_returns_error_for_s256_pkce_so_route_layer_surfaces_clean_4xx() {
         .auth_url(&pkce, "csrf")
         .expect_err("S256 must be rejected");
     assert!(
-        matches!(err, crate::error::AniError::Metadata),
-        "expected AniError::Metadata, got {err:?}"
+        matches!(err, crate::error::AniError::UnsupportedPkce),
+        "expected AniError::UnsupportedPkce (route layer maps to 400), got {err:?}"
     );
+}
+
+// Network-error coverage: point both endpoints at an unbound port
+// (any TCP/IP stack on Linux yields connection-refused) so the
+// `.send().await` path returns `reqwest::Error`, which the helpers
+// map to `AniError::Network`. Hits the otherwise-unreachable error
+// branch in every network method, lifting the file's coverage
+// above 95% so the CRAP ratchet stays under the high-risk threshold.
+
+const UNBOUND_PORT_API: &str = "http://127.0.0.1:1";
+const UNBOUND_PORT_TOKEN: &str = "http://127.0.0.1:1";
+
+fn unbound_provider() -> MalProvider {
+    MalProvider::with_bases(
+        reqwest::Client::new(),
+        UNBOUND_PORT_API.to_string(),
+        UNBOUND_PORT_TOKEN.to_string(),
+    )
+}
+
+#[tokio::test]
+async fn exchange_code_surfaces_transport_failure_as_network() {
+    let err = unbound_provider()
+        .exchange_code("code", &Pkce::new_plain())
+        .await
+        .expect_err("connection refused must surface");
+    assert!(
+        matches!(err, crate::error::AniError::Network),
+        "expected Network, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn refresh_surfaces_transport_failure_as_network() {
+    let err = unbound_provider()
+        .refresh("token")
+        .await
+        .expect_err("connection refused must surface");
+    assert!(
+        matches!(err, crate::error::AniError::Network),
+        "expected Network, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn me_surfaces_transport_failure_as_network() {
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = unbound_provider()
+        .me(&tokens)
+        .await
+        .expect_err("connection refused must surface");
+    assert!(
+        matches!(err, crate::error::AniError::Network),
+        "expected Network, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn list_all_surfaces_transport_failure_as_network() {
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = unbound_provider()
+        .list_all(&tokens)
+        .await
+        .expect_err("connection refused must surface");
+    assert!(
+        matches!(err, crate::error::AniError::Network),
+        "expected Network, got {err:?}"
+    );
+}
+
+// Malformed-JSON coverage for parse_token_response — exercises the
+// `serde_json::from_slice` error path which the happy-path tests
+// can't reach.
+#[tokio::test]
+async fn exchange_code_surfaces_malformed_json_as_parse_failed() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("not-json"))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused", &server.uri());
+    let err = provider
+        .exchange_code("code", &Pkce::new_plain())
+        .await
+        .expect_err("malformed JSON must surface");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "expected ParseFailed, got {err:?}"
+    );
+}
+
+// Malformed-JSON for the viewer parser too.
+#[tokio::test]
+async fn me_surfaces_malformed_json_as_parse_failed() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("{"))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = provider
+        .me(&tokens)
+        .await
+        .expect_err("malformed JSON must surface");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "expected ParseFailed, got {err:?}"
+    );
+}
+
+// And for the list-page parser.
+#[tokio::test]
+async fn list_all_surfaces_malformed_json_as_parse_failed() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("{"))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = provider
+        .list_all(&tokens)
+        .await
+        .expect_err("malformed JSON must surface");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "expected ParseFailed, got {err:?}"
+    );
+}
+
+// Status-translation skip in parse_list_page — a row with an
+// unrecognised status is dropped silently.
+#[tokio::test]
+async fn list_all_skips_rows_with_unknown_status() {
+    let body = r#"{
+        "data": [
+            {
+                "node": { "id": 1, "title": "Known" },
+                "list_status": {
+                    "status": "watching",
+                    "score": 0,
+                    "num_episodes_watched": 0,
+                    "is_rewatching": false,
+                    "updated_at": "2026-01-01T00:00:00+00:00"
+                }
+            },
+            {
+                "node": { "id": 2, "title": "Mystery" },
+                "list_status": {
+                    "status": "mysterious_new_status_we_dont_recognise",
+                    "score": 0,
+                    "num_episodes_watched": 0,
+                    "is_rewatching": false,
+                    "updated_at": "2026-01-01T00:00:00+00:00"
+                }
+            }
+        ],
+        "paging": {}
+    }"#;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider.list_all(&tokens).await.expect("list_all ok");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].media_id.0, 1);
 }
 
 // `parse_iso8601_to_epoch` has multiple early-return branches for

@@ -114,6 +114,13 @@ pub enum AniError {
     #[error("metadata source")]
     Metadata,
 
+    /// Request supplied a PKCE configuration the provider doesn't accept
+    /// (today: MAL rejects `S256`). Distinct from `Metadata` so the
+    /// route handler can return 400 instead of 500 — the client / renderer
+    /// sent the bad value, not the server.
+    #[error("unsupported pkce method for this provider")]
+    UnsupportedPkce,
+
     /// Stream session token was missing, expired, or signature-invalid.
     #[error("invalid stream token")]
     InvalidToken,
@@ -141,6 +148,7 @@ impl AniError {
             Self::Io => "error.io.generic",
             Self::Config => "error.config.parse",
             Self::Metadata => "error.metadata.source",
+            Self::UnsupportedPkce => "error.account.unsupported_pkce",
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }

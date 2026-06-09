@@ -184,7 +184,7 @@ impl UserListProvider for MalProvider {
         // empty-string serialised back to the renderer (Codex P2
         // #3375657046, refining the earlier sentinel approach).
         if !matches!(pkce.method, PkceMethod::Plain) {
-            return Err(AniError::Metadata);
+            return Err(AniError::UnsupportedPkce);
         }
         let params = [
             ("response_type", "code"),

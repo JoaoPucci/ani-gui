@@ -64,6 +64,7 @@ impl IntoResponse for AniError {
             | AniError::Config
             | AniError::Metadata
             | AniError::Scraper { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            AniError::UnsupportedPkce => StatusCode::BAD_REQUEST,
         };
         (status, Json(self)).into_response()
     }
