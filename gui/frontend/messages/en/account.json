@@ -6,8 +6,6 @@
 	"privacy_link_label": "Privacy Policy",
 	"provider_anilist": "AniList",
 	"provider_mal": "MyAnimeList",
-	"provider_mal_coming_soon_label": "Coming soon",
-	"provider_mal_coming_soon_hint": "MyAnimeList support lands in a follow-up release.",
 	"card_status_connected": "Connected",
 	"card_status_disconnected": "Not connected",
 	"card_status_connecting": "Signing in…",

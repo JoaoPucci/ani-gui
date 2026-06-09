@@ -1,9 +1,10 @@
 <!--
   Accounts management surface. Reached from Settings → Accounts or
-  the eventual topbar chip (lands in PR #2 alongside Watch Later).
+  the topbar chip.
 
-  Single AniList card today; MAL lands in PR #3 (placeholder reserved
-  here so the layout is stable when it ships).
+  AniList + MyAnimeList cards. Both flow through the same
+  `connect(provider)` adapter; PKCE method is picked per provider
+  (S256 for AniList, plain for MAL) via `pkceForProvider`.
 
   All visible strings via Paraglide per AGENTS.md §6. Imperative
   connect-flow logic delegated to $lib/account/connect-flow to keep
@@ -14,7 +15,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
-	import { Pkce } from '$lib/account/pkce';
+	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
 		cancelOAuth,
@@ -44,8 +45,7 @@
 		accountStore.hydrate();
 	});
 
-	async function connectAniList() {
-		const provider: Provider = 'anilist';
+	async function connect(provider: Provider) {
 		// Snapshot the pre-click state so a failed reconnect-from-
 		// expired (or connect-from-error-with-account) can restore the
 		// UI to it instead of collapsing to `disconnected` — the
@@ -55,10 +55,7 @@
 		accountStore.setConnecting(provider);
 		const r = await connectAccount(provider, {
 			generateState: randomState,
-			generatePkce: () => {
-				const p = Pkce.s256();
-				return { verifier: p.verifier, challenge: p.challenge, method: p.method };
-			},
+			generatePkce: () => pkceForProvider(provider),
 			buildAuthUrl,
 			openOAuth,
 			exchangeCode,
@@ -222,23 +219,22 @@
 		<p class="subtitle">{m.account_subtitle()}</p>
 	</header>
 
-	<!-- AniList -->
-	{#if true}
-		{@const anilistState = accountStore.byProvider.anilist}
-		<section class="provider-card" data-state={anilistState.kind}>
+	{#each [{ provider: 'anilist' as Provider, name: m.account_provider_anilist() }, { provider: 'mal' as Provider, name: m.account_provider_mal() }] as { provider, name } (provider)}
+		{@const state = accountStore.byProvider[provider]}
+		<section class="provider-card" data-state={state.kind}>
 			<header class="provider-head">
-				<h2 class="provider-name">{m.account_provider_anilist()}</h2>
-				<span class="state-badge state-badge-{anilistState.kind}">
-					{stateBadgeKind(anilistState)}
+				<h2 class="provider-name">{name}</h2>
+				<span class="state-badge state-badge-{state.kind}">
+					{stateBadgeKind(state)}
 				</span>
 			</header>
 
-			{#if anilistState.kind === 'connected' || anilistState.kind === 'expired' || (anilistState.kind === 'error' && anilistState.account)}
+			{#if state.kind === 'connected' || state.kind === 'expired' || (state.kind === 'error' && state.account)}
 				<div class="connected-row">
-					{#if anilistState.account && imageProxyUrl(anilistState.account.avatar_url)}
+					{#if state.account && imageProxyUrl(state.account.avatar_url)}
 						<img
 							class="avatar"
-							src={imageProxyUrl(anilistState.account.avatar_url)}
+							src={imageProxyUrl(state.account.avatar_url)}
 							alt=""
 							width="48"
 							height="48"
@@ -247,63 +243,52 @@
 					<div class="user-meta">
 						<p class="username">
 							<span class="username-prefix">{m.account_card_username_prefix()}</span>
-							<strong>{anilistState.account?.username}</strong>
+							<strong>{state.account?.username}</strong>
 						</p>
 					</div>
 				</div>
 			{/if}
 
 			<div class="actions">
-				{#if anilistState.kind === 'disconnected'}
-					<button type="button" class="btn btn-primary" onclick={connectAniList}>
+				{#if state.kind === 'disconnected'}
+					<button type="button" class="btn btn-primary" onclick={() => connect(provider)}>
 						{m.account_card_action_connect()}
 					</button>
-				{:else if anilistState.kind === 'error' && !anilistState.account}
+				{:else if state.kind === 'error' && !state.account}
 					<!-- Codex P2 #3371530183: error-with-no-account covers the
 					     orphan-file case where hydrate() couldn't read the
 					     keychain. Offer Disconnect so the user can call
 					     clearToken and clean up before reconnecting; the
 					     Connect button stays so they can try again now if
 					     it was a transient failure. -->
-					<button type="button" class="btn btn-primary" onclick={connectAniList}>
+					<button type="button" class="btn btn-primary" onclick={() => connect(provider)}>
 						{m.account_card_action_connect()}
 					</button>
-					<button type="button" class="btn" onclick={() => disconnect('anilist')}>
+					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
-				{:else if anilistState.kind === 'connecting'}
+				{:else if state.kind === 'connecting'}
 					<button type="button" class="btn" disabled>
 						{m.account_card_status_connecting()}
 					</button>
 					<button type="button" class="btn" onclick={cancelConnect}>
 						{m.account_card_action_cancel()}
 					</button>
-				{:else if anilistState.kind === 'expired' || (anilistState.kind === 'error' && anilistState.account)}
-					<button type="button" class="btn btn-primary" onclick={connectAniList}>
+				{:else if state.kind === 'expired' || (state.kind === 'error' && state.account)}
+					<button type="button" class="btn btn-primary" onclick={() => connect(provider)}>
 						{m.account_card_action_reconnect()}
 					</button>
-					<button type="button" class="btn" onclick={() => disconnect('anilist')}>
+					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
 				{:else}
-					<button type="button" class="btn" onclick={() => disconnect('anilist')}>
+					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
 				{/if}
 			</div>
 		</section>
-	{/if}
-
-	<!-- MAL: placeholder for PR #3 -->
-	<section class="provider-card provider-disabled">
-		<header class="provider-head">
-			<h2 class="provider-name">{m.account_provider_mal()}</h2>
-			<span class="state-badge state-badge-coming-soon">
-				{m.account_provider_mal_coming_soon_label()}
-			</span>
-		</header>
-		<p class="provider-disabled-hint">{m.account_provider_mal_coming_soon_hint()}</p>
-	</section>
+	{/each}
 
 	<footer class="page-foot">
 		<p class="privacy-line">
@@ -393,10 +378,6 @@
 		border-color: color-mix(in oklab, var(--accent-oxblood) 40%, var(--bone-500, var(--ink-200)));
 	}
 
-	.provider-card.provider-disabled {
-		opacity: 0.55;
-	}
-
 	.provider-head {
 		display: flex;
 		align-items: center;
@@ -445,10 +426,6 @@
 		background: color-mix(in oklab, var(--accent-oxblood) 14%, var(--ink-050));
 		border-color: color-mix(in oklab, var(--accent-oxblood) 35%, var(--bone-600, var(--ink-200)));
 		color: var(--accent-oxblood);
-	}
-
-	.state-badge-coming-soon {
-		font-style: italic;
 	}
 
 	.connected-row {
@@ -546,13 +523,6 @@
 		color: var(--brand-ink);
 		background: color-mix(in oklab, var(--brand) 90%, white);
 		border-color: color-mix(in oklab, var(--brand) 90%, white);
-	}
-
-	.provider-disabled-hint {
-		margin: 0;
-		font-family: var(--font-body);
-		font-size: var(--type-body);
-		color: var(--bone-300);
 	}
 
 	.page-foot {
