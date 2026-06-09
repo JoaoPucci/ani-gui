@@ -734,6 +734,50 @@ async fn delete_entry_queries_for_id_then_calls_delete_mutation() {
 }
 
 #[tokio::test]
+#[ignore = "red; green commit parses deleted flag"]
+async fn delete_entry_errors_when_mutation_reports_deleted_false() {
+    // AniList answers DeleteMediaListEntry with a 200 body where
+    // `deleted` is false — its documented failure signal. The provider
+    // must NOT report success: a future retry/cache layer would drop
+    // the local row and stop retrying for an entry the provider never
+    // removed (Codex P2 #3381101376).
+    use wiremock::matchers::{body_string_contains, method};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Viewer":{"id":4242,"name":"shiro","avatar":{"large":null,"medium":null},"statistics":{"anime":{"count":0,"meanScore":0}}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("MediaList("))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"MediaList":{"id":7777}}}"#),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("DeleteMediaListEntry"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"DeleteMediaListEntry":{"deleted":false}}}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .delete_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect_err("deleted:false must surface as an error, not Ok");
+    assert!(
+        matches!(err, AniError::Metadata),
+        "expected Metadata, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn delete_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::method;
     let server = wiremock::MockServer::start().await;
