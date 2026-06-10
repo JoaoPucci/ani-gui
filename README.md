@@ -146,7 +146,7 @@ Once connected:
 - **Watch Later rail** — your Plan-to-Watch list surfaces as a rail on the home page, bridged to local cards you can play in one click.
 - **Automatic progress sync** — as you watch, the episode is pushed back to the tracker. The sync only ever moves progress *forward* (replaying or stepping back never lowers your count), promotes a Plan-to-Watch title to *Watching* on first play, preserves a *Rewatching* row, and marks a series *Completed* only when you finish the last episode of a finished show.
 
-The backend stores no account state — tokens live only on your machine, and each request carries its own bearer. See the [privacy policy](docs/PRIVACY.md) for exactly what's sent where.
+Everything stays on your machine: your OAuth token lives in the OS keychain (the Rust backend never persists it — each request carries its own bearer), and your tracker list is cached in a local SQLite database to render the Watch Later rail. ani-gui runs no server of its own. See the [privacy policy](docs/PRIVACY.md) for exactly what's sent where.
 
 ## Configuration
 
