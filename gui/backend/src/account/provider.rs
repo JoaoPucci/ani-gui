@@ -194,10 +194,27 @@ pub trait UserListProvider: Send + Sync {
     /// PR #4 implements.
     async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()>;
 
-    /// Current watched-episode count for `id` on the authenticated
-    /// user's list, or `None` when the show isn't on their list yet.
-    /// Bearer-scoped single read — used to keep write-back monotonic
-    /// so replaying an earlier episode never regresses the tracker's
-    /// cumulative progress (Codex P1 #3386909281).
-    async fn current_progress(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<Option<u32>>;
+    /// The authenticated user's current list entry for `id` (status +
+    /// watched count), or `None` when the show isn't on their list yet.
+    /// Bearer-scoped single read. Drives the write-back reconcile: keep
+    /// progress monotonic so a replay never regresses it (Codex P1
+    /// #3386909281), and read the status so a progress write can promote
+    /// a planning row to watching while preserving rewatching/completed
+    /// (Codex P2 #3387319861 / #3387383171).
+    async fn current_entry(
+        &self,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+    ) -> Result<Option<CurrentEntry>>;
+}
+
+/// Lean snapshot of the user's existing list row for one media, read
+/// before a write-back so the reconcile can stay monotonic and
+/// status-preserving. Only the two fields the reconcile needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentEntry {
+    /// The row's current unified status.
+    pub status: ListStatus,
+    /// Episodes the user has watched so far.
+    pub progress_episodes: u32,
 }

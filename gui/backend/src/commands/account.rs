@@ -26,7 +26,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
+    UserProfile,
 };
 use crate::account::status::ListStatus;
 use crate::app::AppState;
@@ -387,26 +388,32 @@ pub fn build_entry_update(
     })
 }
 
-/// Reconcile a write against the tracker's `current` watched count so
-/// the write-back stays monotonic, returning the fields still worth
-/// sending (or `None` when nothing actionable remains, so the caller
-/// skips the write entirely).
+/// Reconcile a write against the tracker's `current` list entry so the
+/// write-back stays monotonic and status-preserving, returning the
+/// fields still worth sending (or `None` when nothing actionable
+/// remains, so the caller skips the write entirely).
 ///
-/// When the requested progress wouldn't advance `current` (a replay,
-/// or the Previous button — Codex P1 #3386909281):
-///   - the progress field is dropped, never decreasing the count;
-///   - a `Watching` status is dropped too, since at an unchanged count
-///     it can only downgrade a more-complete state (e.g. re-opening an
-///     earlier episode of a finished show) or be a no-op;
-///   - a `Completed` status is kept — finishing a series is a valid
-///     forward move even when progress is unchanged (Codex P2
-///     #3387051891: a tracker already at episode N but still
-///     `watching` must still be completable).
+/// Progress (Codex P1 #3386909281): if the requested count wouldn't
+/// advance `current` (a replay / the Previous button) the progress field
+/// is dropped — never decrease the count.
 ///
-/// `None` current (show not on the list yet) advances by definition —
-/// the write creates the row — so nothing is dropped.
-pub fn reconcile_monotonic(mut update: EntryUpdate, current: Option<u32>) -> Option<EntryUpdate> {
-    let advances = match (current, update.progress_episodes) {
+/// Status: the fan-out only ever sends `Completed` (a finished finale),
+/// otherwise it sends no status. This helper fills the rest in:
+///   - a `Completed` write is always kept, even at unchanged progress —
+///     finishing a series is a valid forward move (Codex P2 #3387051891);
+///   - a status-less *advancing* progress write promotes a planning row
+///     (or a not-yet-on-the-list show) to `Watching` so a Plan-to-Watch
+///     title leaves Watch Later (Codex P2 #3387383171), but leaves any
+///     other status untouched — preserving `Rewatching`/`Completed`/
+///     `Paused` (Codex P2 #3387319861);
+///   - a non-advancing `Watching` is dropped (it could only downgrade or
+///     no-op).
+pub fn reconcile_monotonic(
+    mut update: EntryUpdate,
+    current: Option<CurrentEntry>,
+) -> Option<EntryUpdate> {
+    let current_progress = current.map(|c| c.progress_episodes);
+    let advances = match (current_progress, update.progress_episodes) {
         (Some(c), Some(p)) => p > c,
         _ => true,
     };
@@ -414,6 +421,17 @@ pub fn reconcile_monotonic(mut update: EntryUpdate, current: Option<u32>) -> Opt
         update.progress_episodes = None;
         if update.status == Some(ListStatus::Watching) {
             update.status = None;
+        }
+    } else if update.status.is_none() && update.progress_episodes.is_some() {
+        // Advancing progress with no explicit status: promote a planning
+        // / not-yet-listed row to Watching, but don't touch any other
+        // status (rewatching, paused, …).
+        let promote = match current {
+            None => true,
+            Some(c) => c.status == ListStatus::Planning,
+        };
+        if promote {
+            update.status = Some(ListStatus::Watching);
         }
     }
     let empty = update.status.is_none()
@@ -481,7 +499,7 @@ async fn push_progress_with_anilist_base(
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
     let update = if update.progress_episodes.is_some() {
-        let current = provider.current_progress(tokens, native).await?;
+        let current = provider.current_entry(tokens, native).await?;
         match reconcile_monotonic(update, current) {
             Some(reconciled) => reconciled,
             None => return Ok(None),

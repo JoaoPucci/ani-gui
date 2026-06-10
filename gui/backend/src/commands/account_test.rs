@@ -187,31 +187,59 @@ fn account_write_locks_share_one_mutex_per_show() {
 }
 
 #[test]
-fn reconcile_monotonic_clamps_progress_but_keeps_needed_status() {
-    use crate::account::provider::EntryUpdate;
-    let watching_at = |ep| EntryUpdate {
+fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
+    use crate::account::provider::{CurrentEntry, EntryUpdate};
+    // The fan-out sends progress-only for non-finale, Completed at the
+    // finale. Helpers mirror that.
+    let progress_only = |ep| EntryUpdate {
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+    let watching = |ep| EntryUpdate {
         status: Some(ListStatus::Watching),
         progress_episodes: Some(ep),
         ..Default::default()
     };
+    let entry = |status, ep| {
+        Some(CurrentEntry {
+            status,
+            progress_episodes: ep,
+        })
+    };
 
-    // No entry yet → advances by definition; nothing dropped.
+    // Codex P2 #3387383171: a progress write to a not-yet-listed show
+    // creates it as Watching.
     assert_eq!(
-        reconcile_monotonic(watching_at(1), None),
-        Some(watching_at(1))
+        reconcile_monotonic(progress_only(1), None),
+        Some(watching(1))
+    );
+    // …and promotes a Plan-to-Watch row out of planning.
+    assert_eq!(
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Planning, 0)),
+        Some(watching(6))
     );
 
-    // Forward progress → full update passes through.
+    // Codex P2 #3387319861: an advancing write must NOT touch a
+    // rewatching (or already-watching) row's status — progress only.
     assert_eq!(
-        reconcile_monotonic(watching_at(6), Some(5)),
-        Some(watching_at(6))
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Rewatching, 5)),
+        Some(progress_only(6))
+    );
+    assert_eq!(
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Watching, 5)),
+        Some(progress_only(6))
     );
 
-    // Codex P1 #3386909281: replaying an earlier episode must neither
-    // regress progress nor downgrade a finished show — the watching
-    // write at an unchanged count is dropped entirely.
-    assert_eq!(reconcile_monotonic(watching_at(3), Some(10)), None);
-    assert_eq!(reconcile_monotonic(watching_at(10), Some(10)), None);
+    // Codex P1 #3386909281: a non-advancing progress write is dropped
+    // entirely — never regress.
+    assert_eq!(
+        reconcile_monotonic(progress_only(3), entry(ListStatus::Watching, 10)),
+        None
+    );
+    assert_eq!(
+        reconcile_monotonic(progress_only(10), entry(ListStatus::Watching, 10)),
+        None
+    );
 
     // Codex P2 #3387051891: a Completed write at unchanged progress is
     // still needed — keep the status, drop only the non-advancing
@@ -222,7 +250,7 @@ fn reconcile_monotonic_clamps_progress_but_keeps_needed_status() {
         ..Default::default()
     };
     assert_eq!(
-        reconcile_monotonic(finale, Some(12)),
+        reconcile_monotonic(finale, entry(ListStatus::Watching, 12)),
         Some(EntryUpdate {
             status: Some(ListStatus::Completed),
             progress_episodes: None,
@@ -230,14 +258,15 @@ fn reconcile_monotonic_clamps_progress_but_keeps_needed_status() {
         })
     );
 
-    // A score-only edit at unchanged progress survives (not a no-op).
+    // A score-only edit at unchanged progress survives (not a no-op,
+    // and no spurious promotion since progress was dropped).
     let rescore = EntryUpdate {
         progress_episodes: Some(5),
         score_0_to_100: Some(90),
         ..Default::default()
     };
     assert_eq!(
-        reconcile_monotonic(rescore, Some(10)),
+        reconcile_monotonic(rescore, entry(ListStatus::Watching, 10)),
         Some(EntryUpdate {
             score_0_to_100: Some(90),
             ..Default::default()

@@ -25,15 +25,15 @@ use async_trait::async_trait;
 use super::mal_user_net::url_origin;
 pub use super::mal_user_net::MalRefreshState;
 use super::mal_user_parse::{
-    parse_list_page, parse_list_status_response, parse_my_list_status_progress,
-    parse_viewer_response,
+    parse_list_page, parse_list_status_response, parse_my_list_status_entry, parse_viewer_response,
 };
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
 };
 use crate::account::pkce::{Pkce, PkceMethod};
 use crate::account::provider::{
-    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
+    UserProfile,
 };
 use crate::error::{AniError, Result};
 
@@ -202,10 +202,14 @@ impl UserListProvider for MalProvider {
         self.delete_auth(&url, tokens).await
     }
 
-    async fn current_progress(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<Option<u32>> {
+    async fn current_entry(
+        &self,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+    ) -> Result<Option<CurrentEntry>> {
         let url = format!("{}/anime/{}?fields=my_list_status", self.api_url(), id.0);
         let bytes = self.get_auth_bytes(&url, tokens).await?;
-        parse_my_list_status_progress(&bytes)
+        parse_my_list_status_entry(&bytes)
     }
 }
 

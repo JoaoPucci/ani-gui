@@ -1026,14 +1026,16 @@ async fn update_entry_patches_my_list_status_with_form_body_and_returns_entry() 
 }
 
 #[tokio::test]
-async fn current_progress_reads_num_episodes_watched() {
+async fn current_entry_reads_status_and_num_episodes_watched() {
+    use crate::account::provider::CurrentEntry;
+    use crate::account::status::ListStatus;
     use wiremock::matchers::{method, path, query_param};
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .and(query_param("fields", "my_list_status"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"id":21,"my_list_status":{"status":"watching","num_episodes_watched":10}}"#,
+            r#"{"id":21,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":10}}"#,
         ))
         .mount(&server)
         .await;
@@ -1044,16 +1046,23 @@ async fn current_progress_reads_num_episodes_watched() {
         expires_at_epoch_s: i64::MAX,
     };
     let got = provider
-        .current_progress(&tokens, ProviderMediaId(21))
+        .current_entry(&tokens, ProviderMediaId(21))
         .await
-        .expect("current_progress ok");
-    assert_eq!(got, Some(10));
+        .expect("current_entry ok");
+    // is_rewatching=true folds watching → Rewatching.
+    assert_eq!(
+        got,
+        Some(CurrentEntry {
+            status: ListStatus::Rewatching,
+            progress_episodes: 10
+        })
+    );
 }
 
 #[tokio::test]
-async fn current_progress_is_none_when_not_on_list() {
+async fn current_entry_is_none_when_not_on_list() {
     // No `my_list_status` key → the show isn't on the user's list, so
-    // current_progress is None and the first write is an advance.
+    // current_entry is None and the first write is an advance.
     use wiremock::matchers::{method, path};
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
@@ -1070,9 +1079,9 @@ async fn current_progress_is_none_when_not_on_list() {
         expires_at_epoch_s: i64::MAX,
     };
     let got = provider
-        .current_progress(&tokens, ProviderMediaId(21))
+        .current_entry(&tokens, ProviderMediaId(21))
         .await
-        .expect("current_progress ok");
+        .expect("current_entry ok");
     assert_eq!(got, None);
 }
 

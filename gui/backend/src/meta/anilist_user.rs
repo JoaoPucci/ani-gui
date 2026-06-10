@@ -32,8 +32,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
-    UserStats,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
+    UserProfile, UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -91,7 +91,7 @@ const DELETE_ENTRY_GQL: &str = "mutation Delete($id: Int!) { \
 /// Used by [`UserListProvider::current_progress`] for the monotonic
 /// write-back guard.
 const MEDIA_PROGRESS_GQL: &str = "query Progress($mediaId: Int!) { \
-        Media(id: $mediaId) { mediaListEntry { progress } } \
+        Media(id: $mediaId) { mediaListEntry { status progress } } \
     }";
 
 /// GraphQL: paginated full user list. `perChunk: 500` matches the
@@ -373,24 +373,30 @@ impl UserListProvider for AniListProvider {
         }
     }
 
-    async fn current_progress(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<Option<u32>> {
+    async fn current_entry(
+        &self,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+    ) -> Result<Option<CurrentEntry>> {
         let body = serde_json::json!({
             "query": MEDIA_PROGRESS_GQL,
             "variables": { "mediaId": id.0 },
         });
         let bytes = self.post_graphql(tokens, &body).await?;
-        parse_media_progress_response(&bytes)
+        parse_media_entry_response(&bytes)
     }
 }
 
-/// Pure parser for the `Media { mediaListEntry { progress } }`
+/// Pure parser for the `Media { mediaListEntry { status progress } }`
 /// response. Returns `None` when `mediaListEntry` is `null` (the show
-/// isn't on the viewer's list) and `Some(progress)` otherwise.
+/// isn't on the viewer's list) and `Some(CurrentEntry)` otherwise. An
+/// unrecognized status maps to `ListStatus::Watching` so a malformed
+/// enum can't suppress the monotonic guard.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the response isn't the
 /// documented `{ data: { Media: { … } } }` envelope.
-fn parse_media_progress_response(body: &[u8]) -> Result<Option<u32>> {
+fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Data,
@@ -407,16 +413,20 @@ fn parse_media_progress_response(body: &[u8]) -> Result<Option<u32>> {
     }
     #[derive(Deserialize)]
     struct Entry {
+        status: Option<String>,
         progress: Option<u32>,
     }
     let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("anilist media progress: {e}"),
+        detail: format!("anilist media entry: {e}"),
     })?;
-    Ok(wrap
-        .data
-        .media
-        .and_then(|m| m.entry)
-        .and_then(|e| e.progress))
+    Ok(wrap.data.media.and_then(|m| m.entry).map(|e| CurrentEntry {
+        status: e
+            .status
+            .as_deref()
+            .and_then(ListStatus::from_anilist)
+            .unwrap_or(ListStatus::Watching),
+        progress_episodes: e.progress.unwrap_or(0),
+    }))
 }
 
 /// Pure parser for the `Viewer` GraphQL response. AniList ids are
