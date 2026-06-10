@@ -85,6 +85,15 @@ const DELETE_ENTRY_GQL: &str = "mutation Delete($id: Int!) { \
         DeleteMediaListEntry(id: $id) { deleted } \
     }";
 
+/// GraphQL: the authenticated viewer's current progress for one media.
+/// `Media.mediaListEntry` is scoped to the bearer, so no `userId` is
+/// needed — `null` means the show isn't on the viewer's list yet.
+/// Used by [`UserListProvider::current_progress`] for the monotonic
+/// write-back guard.
+const MEDIA_PROGRESS_GQL: &str = "query Progress($mediaId: Int!) { \
+        Media(id: $mediaId) { mediaListEntry { progress } } \
+    }";
+
 /// GraphQL: paginated full user list. `perChunk: 500` matches the
 /// upper bound AniList advertises per request — for a 312-entry
 /// user (the median in our test fixtures) the loop terminates after
@@ -363,6 +372,51 @@ impl UserListProvider for AniListProvider {
             Err(AniError::Metadata)
         }
     }
+
+    async fn current_progress(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<Option<u32>> {
+        let body = serde_json::json!({
+            "query": MEDIA_PROGRESS_GQL,
+            "variables": { "mediaId": id.0 },
+        });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        parse_media_progress_response(&bytes)
+    }
+}
+
+/// Pure parser for the `Media { mediaListEntry { progress } }`
+/// response. Returns `None` when `mediaListEntry` is `null` (the show
+/// isn't on the viewer's list) and `Some(progress)` otherwise.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the response isn't the
+/// documented `{ data: { Media: { … } } }` envelope.
+fn parse_media_progress_response(body: &[u8]) -> Result<Option<u32>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        #[serde(rename = "mediaListEntry")]
+        entry: Option<Entry>,
+    }
+    #[derive(Deserialize)]
+    struct Entry {
+        progress: Option<u32>,
+    }
+    let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media progress: {e}"),
+    })?;
+    Ok(wrap
+        .data
+        .media
+        .and_then(|m| m.entry)
+        .and_then(|e| e.progress))
 }
 
 /// Pure parser for the `Viewer` GraphQL response. AniList ids are

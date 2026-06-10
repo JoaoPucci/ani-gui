@@ -344,6 +344,22 @@ pub fn build_entry_update(
     })
 }
 
+/// Whether a write claiming `requested` watched episodes moves the
+/// tracker forward from its `current` count. `None` current means the
+/// show isn't on the user's list yet, so any write is an advance (it
+/// creates the row). A write at or below the existing count is a
+/// replay of an already-watched episode and must be skipped — Codex
+/// P1 #3386909281: pushing the played episode number unconditionally
+/// would regress MAL `num_watched_episodes` / AniList `progress` (and
+/// flip a completed show back to "watching") when the user opens an
+/// earlier episode via Previous or replays one.
+pub fn progress_advances(current: Option<u32>, requested: u32) -> bool {
+    match current {
+        None => true,
+        Some(c) => requested > c,
+    }
+}
+
 /// Push `update` (progress / status / score) to a connected tracker
 /// for the show identified by its Kitsu id. Called once per connected
 /// provider by the mark-watched fan-out, each with that provider's
@@ -382,6 +398,19 @@ async fn push_progress_with_anilist_base(
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
+    // Monotonic guard: skip the whole write when it wouldn't advance the
+    // tracker's existing progress, so replaying an earlier episode never
+    // regresses the count or flips a completed show back to "watching"
+    // (Codex P1 #3386909281). Reading current progress first costs one
+    // bearer-scoped GET per write — cheap against a once-per-episode
+    // event, and the only authoritative source (the local cache is
+    // empty until the user syncs their list).
+    if let Some(requested) = update.progress_episodes {
+        let current = provider.current_progress(tokens, native).await?;
+        if !progress_advances(current, requested) {
+            return Ok(None);
+        }
+    }
     let entry = provider.update_entry(tokens, native, update).await?;
     Ok(Some(entry))
 }

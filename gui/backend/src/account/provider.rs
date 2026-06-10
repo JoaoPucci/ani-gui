@@ -193,4 +193,11 @@ pub trait UserListProvider: Send + Sync {
     /// Remove an entry. PR #1 stubs to `Err(AniError::Metadata)`;
     /// PR #4 implements.
     async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()>;
+
+    /// Current watched-episode count for `id` on the authenticated
+    /// user's list, or `None` when the show isn't on their list yet.
+    /// Bearer-scoped single read — used to keep write-back monotonic
+    /// so replaying an earlier episode never regresses the tracker's
+    /// cumulative progress (Codex P1 #3386909281).
+    async fn current_progress(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<Option<u32>>;
 }

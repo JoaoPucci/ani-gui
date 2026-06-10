@@ -224,6 +224,27 @@ pub(super) fn parse_list_status_response(body: &[u8], media_id: u32) -> Result<L
     })
 }
 
+/// Parse an `/anime/{id}?fields=my_list_status` response down to the
+/// authenticated user's watched-episode count. `my_list_status` is
+/// absent when the show isn't on the user's list → `None`. Powers the
+/// monotonic write-back guard (Codex P1 #3386909281).
+pub(super) fn parse_my_list_status_progress(body: &[u8]) -> Result<Option<u32>> {
+    #[derive(Deserialize)]
+    struct Wire {
+        #[serde(default)]
+        my_list_status: Option<MyListStatus>,
+    }
+    #[derive(Deserialize)]
+    struct MyListStatus {
+        #[serde(default)]
+        num_episodes_watched: Option<u32>,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal anime my_list_status: {e}"),
+    })?;
+    Ok(wire.my_list_status.and_then(|s| s.num_episodes_watched))
+}
+
 /// Minimal RFC 3339 / ISO 8601 parser. MAL always emits the canonical
 /// `YYYY-MM-DDTHH:MM:SS±HH:MM` (or trailing `Z`) shape — we extract
 /// the date + time numerically and ignore the trailing offset (the
