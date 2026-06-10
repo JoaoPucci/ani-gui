@@ -140,7 +140,7 @@ pub struct ListEntry {
 }
 
 /// Update payload for write-back (PR #4).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryUpdate {
     /// New status — leave `None` to keep current.
     pub status: Option<ListStatus>,

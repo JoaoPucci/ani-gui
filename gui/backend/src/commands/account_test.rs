@@ -165,18 +165,62 @@ async fn push_progress_skips_unmappable_show_without_writing() {
 }
 
 #[test]
-fn progress_advances_only_when_strictly_greater_than_current() {
-    // Codex P1 #3386909281: the fan-out sends the played episode number
-    // as cumulative progress, so a replay/Previous would regress the
-    // tracker. push_progress only writes when this returns true.
-    // No entry yet → any write is an advance (it creates the row).
-    assert!(progress_advances(None, 1));
-    assert!(progress_advances(None, 0));
-    // Strictly forward only.
-    assert!(progress_advances(Some(5), 6));
-    // Replaying the same or an earlier episode must not write.
-    assert!(!progress_advances(Some(10), 3));
-    assert!(!progress_advances(Some(10), 10));
+fn reconcile_monotonic_clamps_progress_but_keeps_needed_status() {
+    use crate::account::provider::EntryUpdate;
+    let watching_at = |ep| EntryUpdate {
+        status: Some(ListStatus::Watching),
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+
+    // No entry yet → advances by definition; nothing dropped.
+    assert_eq!(
+        reconcile_monotonic(watching_at(1), None),
+        Some(watching_at(1))
+    );
+
+    // Forward progress → full update passes through.
+    assert_eq!(
+        reconcile_monotonic(watching_at(6), Some(5)),
+        Some(watching_at(6))
+    );
+
+    // Codex P1 #3386909281: replaying an earlier episode must neither
+    // regress progress nor downgrade a finished show — the watching
+    // write at an unchanged count is dropped entirely.
+    assert_eq!(reconcile_monotonic(watching_at(3), Some(10)), None);
+    assert_eq!(reconcile_monotonic(watching_at(10), Some(10)), None);
+
+    // Codex P2 #3387051891: a Completed write at unchanged progress is
+    // still needed — keep the status, drop only the non-advancing
+    // progress field.
+    let finale = EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(12),
+        ..Default::default()
+    };
+    assert_eq!(
+        reconcile_monotonic(finale, Some(12)),
+        Some(EntryUpdate {
+            status: Some(ListStatus::Completed),
+            progress_episodes: None,
+            ..Default::default()
+        })
+    );
+
+    // A score-only edit at unchanged progress survives (not a no-op).
+    let rescore = EntryUpdate {
+        progress_episodes: Some(5),
+        score_0_to_100: Some(90),
+        ..Default::default()
+    };
+    assert_eq!(
+        reconcile_monotonic(rescore, Some(10)),
+        Some(EntryUpdate {
+            score_0_to_100: Some(90),
+            ..Default::default()
+        })
+    );
 }
 
 #[test]

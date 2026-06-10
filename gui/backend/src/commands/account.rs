@@ -344,19 +344,43 @@ pub fn build_entry_update(
     })
 }
 
-/// Whether a write claiming `requested` watched episodes moves the
-/// tracker forward from its `current` count. `None` current means the
-/// show isn't on the user's list yet, so any write is an advance (it
-/// creates the row). A write at or below the existing count is a
-/// replay of an already-watched episode and must be skipped — Codex
-/// P1 #3386909281: pushing the played episode number unconditionally
-/// would regress MAL `num_watched_episodes` / AniList `progress` (and
-/// flip a completed show back to "watching") when the user opens an
-/// earlier episode via Previous or replays one.
-pub fn progress_advances(current: Option<u32>, requested: u32) -> bool {
-    match current {
-        None => true,
-        Some(c) => requested > c,
+/// Reconcile a write against the tracker's `current` watched count so
+/// the write-back stays monotonic, returning the fields still worth
+/// sending (or `None` when nothing actionable remains, so the caller
+/// skips the write entirely).
+///
+/// When the requested progress wouldn't advance `current` (a replay,
+/// or the Previous button — Codex P1 #3386909281):
+///   - the progress field is dropped, never decreasing the count;
+///   - a `Watching` status is dropped too, since at an unchanged count
+///     it can only downgrade a more-complete state (e.g. re-opening an
+///     earlier episode of a finished show) or be a no-op;
+///   - a `Completed` status is kept — finishing a series is a valid
+///     forward move even when progress is unchanged (Codex P2
+///     #3387051891: a tracker already at episode N but still
+///     `watching` must still be completable).
+///
+/// `None` current (show not on the list yet) advances by definition —
+/// the write creates the row — so nothing is dropped.
+pub fn reconcile_monotonic(mut update: EntryUpdate, current: Option<u32>) -> Option<EntryUpdate> {
+    let advances = match (current, update.progress_episodes) {
+        (Some(c), Some(p)) => p > c,
+        _ => true,
+    };
+    if !advances {
+        update.progress_episodes = None;
+        if update.status == Some(ListStatus::Watching) {
+            update.status = None;
+        }
+    }
+    let empty = update.status.is_none()
+        && update.progress_episodes.is_none()
+        && update.score_0_to_100.is_none()
+        && update.repeat_count.is_none();
+    if empty {
+        None
+    } else {
+        Some(update)
     }
 }
 
@@ -398,19 +422,22 @@ async fn push_progress_with_anilist_base(
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
-    // Monotonic guard: skip the whole write when it wouldn't advance the
-    // tracker's existing progress, so replaying an earlier episode never
-    // regresses the count or flips a completed show back to "watching"
-    // (Codex P1 #3386909281). Reading current progress first costs one
-    // bearer-scoped GET per write — cheap against a once-per-episode
-    // event, and the only authoritative source (the local cache is
-    // empty until the user syncs their list).
-    if let Some(requested) = update.progress_episodes {
+    // Monotonic guard (Codex P1 #3386909281 / P2 #3387051891): reconcile
+    // the write against the tracker's current count so a replay can't
+    // regress progress or downgrade a finished show, while still letting
+    // a completion through at unchanged progress. Reading current
+    // progress costs one bearer-scoped GET per write — only when the
+    // write carries progress, and the only authoritative source (the
+    // local cache is empty until the user syncs their list).
+    let update = if update.progress_episodes.is_some() {
         let current = provider.current_progress(tokens, native).await?;
-        if !progress_advances(current, requested) {
-            return Ok(None);
+        match reconcile_monotonic(update, current) {
+            Some(reconciled) => reconciled,
+            None => return Ok(None),
         }
-    }
+    } else {
+        update
+    };
     let entry = provider.update_entry(tokens, native, update).await?;
     Ok(Some(entry))
 }
