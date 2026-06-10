@@ -58,3 +58,29 @@ describe('pushWatchedToTrackers', () => {
 		expect(c2).toHaveLength(0);
 	});
 });
+
+describe('pushWatchedToTrackers finale status', () => {
+	it('marks completed when the watched episode is the last of a finite series', async () => {
+		// Codex P2 #3386988961: episode N of an N-episode show should
+		// move the tracker to completed, not leave it stuck on watching
+		// at full progress.
+		const { d, calls } = deps();
+		await pushWatchedToTrackers(d, 'kitsu-12', 12, 12);
+		expect(calls[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 12, status: 'completed' });
+	});
+
+	it('stays watching mid-series', async () => {
+		const { d, calls } = deps();
+		await pushWatchedToTrackers(d, 'kitsu-12', 6, 12);
+		expect((calls[0].body as { status: string }).status).toBe('watching');
+	});
+
+	it('stays watching when episode_count is unknown (null/0)', async () => {
+		const { d: d1, calls: c1 } = deps();
+		await pushWatchedToTrackers(d1, 'kitsu-12', 6, null);
+		expect((c1[0].body as { status: string }).status).toBe('watching');
+		const { d: d2, calls: c2 } = deps();
+		await pushWatchedToTrackers(d2, 'kitsu-12', 6, 0);
+		expect((c2[0].body as { status: string }).status).toBe('watching');
+	});
+});

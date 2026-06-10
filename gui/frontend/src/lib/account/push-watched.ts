@@ -21,12 +21,25 @@ export interface PushWatchedDeps {
 	) => Promise<ListEntry | null>;
 }
 
+/**
+ * Unified status to sync for an episode just watched. The finale of a
+ * finite series (episode N of N) moves the tracker to `completed`;
+ * everything else stays `watching`. `episodeCount` null/0 means the
+ * total is unknown (ongoing show, or Kitsu has no count) — stay
+ * `watching` rather than guess. Codex P2 #3386988961.
+ */
+export function watchedStatus(episode: number, episodeCount: number | null): string {
+	return episodeCount && episodeCount > 0 && episode >= episodeCount ? 'completed' : 'watching';
+}
+
 export async function pushWatchedToTrackers(
 	deps: PushWatchedDeps,
 	kitsuId: string,
-	episode: number
+	episode: number,
+	episodeCount: number | null = null
 ): Promise<void> {
 	if (!kitsuId || deps.connected.length === 0) return;
+	const status = watchedStatus(episode, episodeCount);
 	await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = deps.bearerFor(provider);
@@ -35,7 +48,7 @@ export async function pushWatchedToTrackers(
 				await deps.updateProgress(provider, bearer, {
 					kitsu_id: kitsuId,
 					progress: episode,
-					status: 'watching'
+					status
 				});
 			} catch {
 				// Best-effort: a single tracker failing must not block the
@@ -51,7 +64,11 @@ export async function pushWatchedToTrackers(
  * providers + their bearers off the account store and delegates to
  * the pure `pushWatchedToTrackers`. Best-effort — safe to `void`.
  */
-export function syncWatchedToTrackers(kitsuId: string, episode: number): Promise<void> {
+export function syncWatchedToTrackers(
+	kitsuId: string,
+	episode: number,
+	episodeCount: number | null = null
+): Promise<void> {
 	return pushWatchedToTrackers(
 		{
 			connected: accountStore.connected,
@@ -59,6 +76,7 @@ export function syncWatchedToTrackers(kitsuId: string, episode: number): Promise
 			updateProgress
 		},
 		kitsuId,
-		episode
+		episode,
+		episodeCount
 	);
 }

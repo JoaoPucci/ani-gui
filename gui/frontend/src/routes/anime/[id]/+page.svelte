@@ -867,7 +867,7 @@
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
-			void syncWatchedToTrackers(id, ep).catch(() => {});
+			void syncWatchedToTrackers(id, ep, detail?.episode_count ?? null).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */

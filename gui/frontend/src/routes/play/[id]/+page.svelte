@@ -1567,7 +1567,7 @@
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
 			// so the renderer fans the write out per provider.
-			void syncWatchedToTrackers(id, targetEp).catch(() => {});
+			void syncWatchedToTrackers(id, targetEp, detail?.episode_count ?? null).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to
