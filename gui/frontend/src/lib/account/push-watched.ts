@@ -34,17 +34,22 @@ export interface PushWatchedDeps {
  * `is_rewatching=false`) — Codex P2 #3387319861.
  *
  * `seriesFinished` gates completion (Codex P2 #3387184082): a
- * currently-airing show's playable cap is just the latest released
- * episode, so only a Kitsu `finished` show completes. `episodeCount`
- * null/0 means the total is unknown — don't complete (Codex P2
- * #3386988961).
+ * currently-airing show only ever has the latest released episode, so
+ * only a Kitsu `finished` show completes.
+ *
+ * `seriesTotal` is the show's FULL finite episode count (Kitsu's
+ * mode-independent announced total), NOT the mode-specific playable
+ * cap — in `dub` mode the playable cap can be a fraction of the series
+ * (e.g. 12 dubbed of 24), and watching the last dubbed episode must
+ * not complete the whole series (Codex P2 #3387467149). null/0 means
+ * the total is unknown — don't complete (Codex P2 #3386988961).
  */
 export function watchedStatus(
 	episode: number,
-	episodeCount: number | null,
+	seriesTotal: number | null,
 	seriesFinished: boolean
 ): string | null {
-	const atFinale = !!episodeCount && episodeCount > 0 && episode >= episodeCount;
+	const atFinale = !!seriesTotal && seriesTotal > 0 && episode >= seriesTotal;
 	return seriesFinished && atFinale ? 'completed' : null;
 }
 
@@ -52,11 +57,11 @@ export async function pushWatchedToTrackers(
 	deps: PushWatchedDeps,
 	kitsuId: string,
 	episode: number,
-	episodeCount: number | null = null,
+	seriesTotal: number | null = null,
 	seriesFinished: boolean = false
 ): Promise<void> {
 	if (!kitsuId || deps.connected.length === 0) return;
-	const status = watchedStatus(episode, episodeCount, seriesFinished);
+	const status = watchedStatus(episode, seriesTotal, seriesFinished);
 	const body = status
 		? { kitsu_id: kitsuId, progress: episode, status }
 		: { kitsu_id: kitsuId, progress: episode };
@@ -83,7 +88,7 @@ export async function pushWatchedToTrackers(
 export function syncWatchedToTrackers(
 	kitsuId: string,
 	episode: number,
-	episodeCount: number | null = null,
+	seriesTotal: number | null = null,
 	seriesFinished: boolean = false
 ): Promise<void> {
 	return pushWatchedToTrackers(
@@ -94,7 +99,7 @@ export function syncWatchedToTrackers(
 		},
 		kitsuId,
 		episode,
-		episodeCount,
+		seriesTotal,
 		seriesFinished
 	);
 }

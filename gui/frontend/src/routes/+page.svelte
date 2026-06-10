@@ -435,7 +435,7 @@
 	async function startResume(
 		match: KitsuAnimeRef,
 		ep: number,
-		episodeCap: number | null,
+		seriesTotal: number | null,
 		seriesFinished: boolean
 	) {
 		if (resumeBusy) return;
@@ -498,10 +498,10 @@
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
-			// Completion is decided against the *playable* cap, not Kitsu's
-			// announced total which lags (Codex P2 #3387132051), and only
-			// for a finished series (Codex P2 #3387184082).
-			void syncWatchedToTrackers(match.id, ep, episodeCap, seriesFinished).catch(() => {});
+			// Completion is decided against the FULL finite series total
+			// (mode-independent), NOT the dub/sub playable cap (Codex P2
+			// #3387467149), and only for a finished series (#3387184082).
+			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -769,7 +769,7 @@
 							startResume(
 								match,
 								nextEpisode,
-								playableCount ?? match?.episode_count ?? null,
+								match?.episode_count ?? null,
 								match?.status === 'finished'
 							)}
 					>

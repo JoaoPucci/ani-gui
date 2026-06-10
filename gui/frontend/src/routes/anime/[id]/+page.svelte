@@ -867,12 +867,17 @@
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
-			// Completion is decided against the *playable* cap (episodeCap
-			// prefers allmanga; Kitsu's episode_count lags — Codex P2
-			// #3387132051), not the announced total markWatched stamps, and
-			// only for a finished series (Codex P2 #3387184082: an airing
-			// show's cap is just the latest released episode).
-			void syncWatchedToTrackers(id, ep, episodeCap, detail?.status === 'finished').catch(() => {});
+			// Completion is decided against the FULL finite series total
+			// (Kitsu's mode-independent count), NOT episodeCap — in dub
+			// mode the playable cap is only the dubbed slice (Codex P2
+			// #3387467149) — and only for a finished series (Codex P2
+			// #3387184082). progress itself is the played episode number.
+			void syncWatchedToTrackers(
+				id,
+				ep,
+				detail?.episode_count ?? null,
+				detail?.status === 'finished'
+			).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
