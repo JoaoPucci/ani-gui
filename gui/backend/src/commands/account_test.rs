@@ -165,6 +165,21 @@ async fn push_progress_skips_unmappable_show_without_writing() {
 }
 
 #[test]
+fn progress_advances_only_when_strictly_greater_than_current() {
+    // Codex P1 #3386909281: the fan-out sends the played episode number
+    // as cumulative progress, so a replay/Previous would regress the
+    // tracker. push_progress only writes when this returns true.
+    // No entry yet → any write is an advance (it creates the row).
+    assert!(progress_advances(None, 1));
+    assert!(progress_advances(None, 0));
+    // Strictly forward only.
+    assert!(progress_advances(Some(5), 6));
+    // Replaying the same or an earlier episode must not write.
+    assert!(!progress_advances(Some(10), 3));
+    assert!(!progress_advances(Some(10), 10));
+}
+
+#[test]
 fn build_entry_update_rejects_empty_and_unknown_status() {
     // Codex P2 #3381617932: an all-absent update, or a status typo
     // that silently parses to None, would still call update_entry —
