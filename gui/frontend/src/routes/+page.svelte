@@ -432,7 +432,12 @@
 	 *  bypassing the detail page. Once running, back from /play/[id]
 	 *  returns home (where the user came from) instead of dropping
 	 *  them on the detail view with a stale highlight ring. */
-	async function startResume(match: KitsuAnimeRef, ep: number, episodeCap: number | null) {
+	async function startResume(
+		match: KitsuAnimeRef,
+		ep: number,
+		episodeCap: number | null,
+		seriesFinished: boolean
+	) {
 		if (resumeBusy) return;
 		const title = match.canonical_title;
 		if (!title) return;
@@ -494,8 +499,9 @@
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
 			// Completion is decided against the *playable* cap, not Kitsu's
-			// announced total which lags (Codex P2 #3387132051).
-			void syncWatchedToTrackers(match.id, ep, episodeCap).catch(() => {});
+			// announced total which lags (Codex P2 #3387132051), and only
+			// for a finished series (Codex P2 #3387184082).
+			void syncWatchedToTrackers(match.id, ep, episodeCap, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -760,7 +766,12 @@
 						style="--accent: {accent};"
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(match, nextEpisode, playableCount ?? match?.episode_count ?? null)}
+							startResume(
+								match,
+								nextEpisode,
+								playableCount ?? match?.episode_count ?? null,
+								match?.status === 'finished'
+							)}
 					>
 						<span class="resume-poster">
 							{#if image}

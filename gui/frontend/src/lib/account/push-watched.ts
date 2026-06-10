@@ -23,23 +23,34 @@ export interface PushWatchedDeps {
 
 /**
  * Unified status to sync for an episode just watched. The finale of a
- * finite series (episode N of N) moves the tracker to `completed`;
- * everything else stays `watching`. `episodeCount` null/0 means the
- * total is unknown (ongoing show, or Kitsu has no count) — stay
- * `watching` rather than guess. Codex P2 #3386988961.
+ * finished finite series (episode N of N) moves the tracker to
+ * `completed`; everything else stays `watching`.
+ *
+ * `seriesFinished` gates completion (Codex P2 #3387184082): for a
+ * currently-airing show the playable cap equals the latest released
+ * episode, so watching it would otherwise falsely complete an ongoing
+ * series — only a Kitsu `finished` show can be completed. `episodeCount`
+ * null/0 means the total is unknown — stay `watching` rather than guess
+ * (Codex P2 #3386988961).
  */
-export function watchedStatus(episode: number, episodeCount: number | null): string {
-	return episodeCount && episodeCount > 0 && episode >= episodeCount ? 'completed' : 'watching';
+export function watchedStatus(
+	episode: number,
+	episodeCount: number | null,
+	seriesFinished: boolean
+): string {
+	const atFinale = !!episodeCount && episodeCount > 0 && episode >= episodeCount;
+	return seriesFinished && atFinale ? 'completed' : 'watching';
 }
 
 export async function pushWatchedToTrackers(
 	deps: PushWatchedDeps,
 	kitsuId: string,
 	episode: number,
-	episodeCount: number | null = null
+	episodeCount: number | null = null,
+	seriesFinished: boolean = false
 ): Promise<void> {
 	if (!kitsuId || deps.connected.length === 0) return;
-	const status = watchedStatus(episode, episodeCount);
+	const status = watchedStatus(episode, episodeCount, seriesFinished);
 	await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = deps.bearerFor(provider);
@@ -67,7 +78,8 @@ export async function pushWatchedToTrackers(
 export function syncWatchedToTrackers(
 	kitsuId: string,
 	episode: number,
-	episodeCount: number | null = null
+	episodeCount: number | null = null,
+	seriesFinished: boolean = false
 ): Promise<void> {
 	return pushWatchedToTrackers(
 		{
@@ -77,6 +89,7 @@ export function syncWatchedToTrackers(
 		},
 		kitsuId,
 		episode,
-		episodeCount
+		episodeCount,
+		seriesFinished
 	);
 }

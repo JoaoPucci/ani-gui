@@ -1569,8 +1569,12 @@
 			// so the renderer fans the write out per provider.
 			// Completion is decided against the *playable* cap (episodeCap
 			// prefers allmanga; Kitsu's episode_count lags — Codex P2
-			// #3387132051), not the announced total markWatched stamps.
-			void syncWatchedToTrackers(id, targetEp, episodeCap).catch(() => {});
+			// #3387132051), not the announced total markWatched stamps, and
+			// only for a finished series (Codex P2 #3387184082: an airing
+			// show's cap is just the latest released episode).
+			void syncWatchedToTrackers(id, targetEp, episodeCap, detail?.status === 'finished').catch(
+				() => {}
+			);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to
