@@ -1,0 +1,30 @@
+// Fan-out trigger for write-back: on mark-watched, push the episode
+// the user just watched to every connected tracker. Renderer-driven
+// (the backend is stateless) — we hold the per-provider bearers, so
+// the renderer orchestrates the calls. Green commit implements.
+
+import type { ListEntry, Provider } from './types';
+
+export interface PushWatchedDeps {
+	/** Providers currently connected (from the account store). */
+	connected: Provider[];
+	/** Resolve a provider's bearer, or null if unavailable. */
+	bearerFor: (provider: Provider) => string | null;
+	/** POST the update to one provider. */
+	updateProgress: (
+		provider: Provider,
+		bearer: string,
+		body: { kitsu_id: string; progress: number; status: string }
+	) => Promise<ListEntry | null>;
+}
+
+export async function pushWatchedToTrackers(
+	deps: PushWatchedDeps,
+	kitsuId: string,
+	episode: number
+): Promise<void> {
+	// Stub — green commit fans out across deps.connected.
+	throw new Error(
+		`pushWatchedToTrackers not implemented (${deps.connected.length} providers, ${kitsuId}@${episode})`
+	);
+}
