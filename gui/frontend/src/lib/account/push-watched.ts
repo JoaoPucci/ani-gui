@@ -23,8 +23,32 @@ export async function pushWatchedToTrackers(
 	kitsuId: string,
 	episode: number
 ): Promise<void> {
-	// Stub — green commit fans out across deps.connected.
-	throw new Error(
-		`pushWatchedToTrackers not implemented (${deps.connected.length} providers, ${kitsuId}@${episode})`
+	if (!kitsuId || deps.connected.length === 0) return;
+	await Promise.all(
+		deps.connected.map(async (provider) => {
+			const bearer = deps.bearerFor(provider);
+			if (!bearer) return;
+			try {
+				await deps.updateProgress(provider, bearer, {
+					kitsu_id: kitsuId,
+					progress: episode,
+					status: 'watching'
+				});
+			} catch {
+				// Best-effort: a single tracker failing must not block the
+				// others or surface to the caller. Retry/toast deferred.
+			}
+		})
 	);
+}
+
+/**
+ * Live-store wiring for the play surfaces: fan the just-watched
+ * episode out to every connected tracker. Reads the connected
+ * providers + their bearers off the account store and delegates to
+ * the pure `pushWatchedToTrackers`. Best-effort — safe to `void`.
+ */
+export function syncWatchedToTrackers(kitsuId: string, episode: number): Promise<void> {
+	// Stub — green commit wires the store deps into pushWatchedToTrackers.
+	throw new Error(`syncWatchedToTrackers not implemented (${kitsuId}@${episode})`);
 }
