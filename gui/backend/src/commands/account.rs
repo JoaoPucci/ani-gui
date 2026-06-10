@@ -21,7 +21,8 @@
 //! 5. Renderer → Electron main: safeStorage-encrypt + persist
 //! 6. Renderer → backend `me` / `list_all` with `Authorization: Bearer`
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
@@ -33,6 +34,48 @@ use crate::cache::SqlitePool;
 use crate::error::{AniError, Result};
 use crate::meta::anilist_user::AniListProvider;
 use crate::meta::mal_user::MalProvider;
+
+/// The per-show async mutex callers hold across the read + upsert.
+type ShowLock = Arc<tokio::sync::Mutex<()>>;
+/// Process-wide map of `(provider, media id)` → its [`ShowLock`].
+type ShowLockMap = Mutex<HashMap<(ProviderKind, u32), ShowLock>>;
+
+/// Per-(provider, native media id) serialization for write-back.
+///
+/// `push_progress` reads `current_progress` before the upsert, and the
+/// route callers fire `syncWatchedToTrackers` without awaiting — so two
+/// fan-out calls for the same show can both read the same count and the
+/// later-landing lower write would regress it (Codex P2 #3387237642).
+/// Providers only upsert (no compare-and-set), so the fix is to hold a
+/// per-show lock across the read + reconcile + write, making the
+/// monotonic guard atomic. The map indirection keeps distinct shows
+/// concurrent. Process-wide on [`AppState`] so it spans the separate
+/// HTTP requests each un-awaited write becomes; cloned `Arc` is cheap.
+///
+/// The map grows one entry per show ever written this run — negligible
+/// for a desktop session (a binge tops out in the low hundreds), so it
+/// isn't pruned.
+#[derive(Clone, Default)]
+pub struct AccountWriteLocks {
+    inner: Arc<ShowLockMap>,
+}
+
+impl AccountWriteLocks {
+    /// An empty lock map. Production builds one at boot and clones the
+    /// cheap `Arc` into every `AppState`; tests `new()` per fixture.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The lock guarding writes to one `(provider, media id)`. The brief
+    /// std-mutex section only swaps the `Arc`; the returned async mutex
+    /// is what the caller holds across the network round-trips.
+    fn for_show(&self, kind: ProviderKind, media_id: u32) -> ShowLock {
+        let mut map = self.inner.lock().expect("account write-lock map poisoned");
+        Arc::clone(map.entry((kind, media_id)).or_default())
+    }
+}
 
 /// Build a [`UserListProvider`] for the requested provider kind. Used
 /// by every route handler that calls into a concrete provider. Takes
@@ -422,6 +465,14 @@ async fn push_progress_with_anilist_base(
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
+    // Serialize writes to this show so the read-then-write monotonic
+    // guard is atomic: the route callers fire syncWatchedToTrackers
+    // without awaiting, so two writes for the same show can otherwise
+    // both read the same current count and the later-landing lower one
+    // regresses it (Codex P2 #3387237642). Held across the GET + upsert
+    // since providers only upsert (no compare-and-set).
+    let show_lock = state.account_write_locks.for_show(kind, native.0);
+    let _write_guard = show_lock.lock().await;
     // Monotonic guard (Codex P1 #3386909281 / P2 #3387051891): reconcile
     // the write against the tracker's current count so a replay can't
     // regress progress or downgrade a finished show, while still letting

@@ -30,6 +30,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: AccountWriteLocks::new(),
     })
 }
 
@@ -165,6 +166,27 @@ async fn push_progress_skips_unmappable_show_without_writing() {
 }
 
 #[test]
+fn account_write_locks_share_one_mutex_per_show() {
+    // Codex P2 #3387237642: serialization only works if every call for
+    // the same (provider, show) gets the SAME mutex, and distinct shows
+    // get distinct ones (so they stay concurrent).
+    let locks = AccountWriteLocks::new();
+    let a1 = locks.for_show(ProviderKind::MyAnimeList, 21);
+    let a2 = locks.for_show(ProviderKind::MyAnimeList, 21);
+    assert!(std::sync::Arc::ptr_eq(&a1, &a2), "same show → same mutex");
+    let other_show = locks.for_show(ProviderKind::MyAnimeList, 22);
+    assert!(
+        !std::sync::Arc::ptr_eq(&a1, &other_show),
+        "different show → different mutex"
+    );
+    let other_provider = locks.for_show(ProviderKind::AniList, 21);
+    assert!(
+        !std::sync::Arc::ptr_eq(&a1, &other_provider),
+        "same id, different provider → different mutex"
+    );
+}
+
+#[test]
 fn reconcile_monotonic_clamps_progress_but_keeps_needed_status() {
     use crate::account::provider::EntryUpdate;
     let watching_at = |ep| EntryUpdate {
@@ -269,6 +291,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: AccountWriteLocks::new(),
     });
     assert!(provider_for_kind(&state, ProviderKind::AniList).is_some());
     assert!(provider_for_kind(&state, ProviderKind::MyAnimeList).is_some());
