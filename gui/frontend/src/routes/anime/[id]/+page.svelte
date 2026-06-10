@@ -46,6 +46,7 @@
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { pickNextEpisode } from '$lib/play/next-episode';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -864,6 +865,9 @@
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (best-effort,
+			// renderer-driven fan-out — see /play/[id] for the rationale).
+			void syncWatchedToTrackers(id, ep).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */

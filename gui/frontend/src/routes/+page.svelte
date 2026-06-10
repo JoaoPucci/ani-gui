@@ -61,6 +61,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { fetchCachedList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
@@ -490,6 +491,9 @@
 				alt_titles: altTitlesFromKitsu(match),
 				kitsu_id: match.id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (best-effort,
+			// renderer-driven fan-out — see /play/[id] for the rationale).
+			void syncWatchedToTrackers(match.id, ep).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
