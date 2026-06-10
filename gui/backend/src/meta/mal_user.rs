@@ -207,7 +207,15 @@ impl UserListProvider for MalProvider {
         tokens: &Tokens,
         id: ProviderMediaId,
     ) -> Result<Option<CurrentEntry>> {
-        let url = format!("{}/anime/{}?fields=my_list_status", self.api_url(), id.0);
+        // `nsfw=true` so an R18 title isn't hidden from the lookup —
+        // matching `list_all`. Without it MAL omits the entry for NSFW
+        // anime and the write-back would never see (or update) it
+        // (Codex P2 #3387530453).
+        let url = format!(
+            "{}/anime/{}?fields=my_list_status&nsfw=true",
+            self.api_url(),
+            id.0
+        );
         let bytes = self.get_auth_bytes(&url, tokens).await?;
         parse_my_list_status_entry(&bytes)
     }

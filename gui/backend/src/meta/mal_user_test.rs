@@ -1034,6 +1034,8 @@ async fn current_entry_reads_status_and_num_episodes_watched() {
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .and(query_param("fields", "my_list_status"))
+        // nsfw=true so R18 titles aren't hidden (Codex P2 #3387530453).
+        .and(query_param("nsfw", "true"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
             r#"{"id":21,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":10}}"#,
         ))
