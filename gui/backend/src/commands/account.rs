@@ -413,6 +413,10 @@ pub fn reconcile_monotonic(
     current: Option<CurrentEntry>,
 ) -> Option<EntryUpdate> {
     let current_progress = current.map(|c| c.progress_episodes);
+    // Whether this write carries a watch event at all — captured before
+    // the non-advance branch may strip the progress field, so the
+    // planning promotion below still fires on a non-advancing write.
+    let is_watch_event = update.progress_episodes.is_some();
     let advances = match (current_progress, update.progress_episodes) {
         (Some(c), Some(p)) => p > c,
         _ => true,
@@ -422,10 +426,13 @@ pub fn reconcile_monotonic(
         if update.status == Some(ListStatus::Watching) {
             update.status = None;
         }
-    } else if update.status.is_none() && update.progress_episodes.is_some() {
-        // Advancing progress with no explicit status: promote a planning
-        // / not-yet-listed row to Watching, but don't touch any other
-        // status (rewatching, paused, …).
+    }
+    // Promote a planning / not-yet-listed row to Watching on ANY watch
+    // event, advancing or not (Codex P2 #3387568872: a planning row
+    // already at the same/higher count must still leave Watch Later),
+    // but leave every other status untouched — preserving
+    // rewatching/paused/completed (Codex P2 #3387319861).
+    if is_watch_event && update.status.is_none() {
         let promote = match current {
             None => true,
             Some(c) => c.status == ListStatus::Planning,

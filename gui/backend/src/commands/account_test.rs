@@ -219,6 +219,17 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         Some(watching(6))
     );
 
+    // Codex P2 #3387568872: a planning row already at the same/higher
+    // count still promotes to Watching (status-only) — the progress is
+    // dropped as non-advancing but the title must leave Watch Later.
+    assert_eq!(
+        reconcile_monotonic(progress_only(3), entry(ListStatus::Planning, 10)),
+        Some(EntryUpdate {
+            status: Some(ListStatus::Watching),
+            ..Default::default()
+        })
+    );
+
     // Codex P2 #3387319861: an advancing write must NOT touch a
     // rewatching (or already-watching) row's status — progress only.
     assert_eq!(
