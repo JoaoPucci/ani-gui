@@ -867,7 +867,10 @@
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
-			void syncWatchedToTrackers(id, ep, detail?.episode_count ?? null).catch(() => {});
+			// Completion is decided against the *playable* cap (episodeCap
+			// prefers allmanga; Kitsu's episode_count lags — Codex P2
+			// #3387132051), not the announced total markWatched stamps.
+			void syncWatchedToTrackers(id, ep, episodeCap).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */

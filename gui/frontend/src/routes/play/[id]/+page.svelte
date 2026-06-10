@@ -1567,7 +1567,10 @@
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
 			// so the renderer fans the write out per provider.
-			void syncWatchedToTrackers(id, targetEp, detail?.episode_count ?? null).catch(() => {});
+			// Completion is decided against the *playable* cap (episodeCap
+			// prefers allmanga; Kitsu's episode_count lags — Codex P2
+			// #3387132051), not the announced total markWatched stamps.
+			void syncWatchedToTrackers(id, targetEp, episodeCap).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to
