@@ -13,33 +13,39 @@ export interface PushWatchedDeps {
 	connected: Provider[];
 	/** Resolve a provider's bearer, or null if unavailable. */
 	bearerFor: (provider: Provider) => string | null;
-	/** POST the update to one provider. */
+	/** POST the update to one provider. `status` omitted = leave the
+	 *  tracker's current status untouched. */
 	updateProgress: (
 		provider: Provider,
 		bearer: string,
-		body: { kitsu_id: string; progress: number; status: string }
+		body: { kitsu_id: string; progress: number; status?: string }
 	) => Promise<ListEntry | null>;
 }
 
 /**
- * Unified status to sync for an episode just watched. The finale of a
- * finished finite series (episode N of N) moves the tracker to
- * `completed`; everything else stays `watching`.
+ * Unified status to sync for an episode just watched, or `null` to
+ * leave the tracker's existing status untouched.
  *
- * `seriesFinished` gates completion (Codex P2 #3387184082): for a
- * currently-airing show the playable cap equals the latest released
- * episode, so watching it would otherwise falsely complete an ongoing
- * series — only a Kitsu `finished` show can be completed. `episodeCount`
- * null/0 means the total is unknown — stay `watching` rather than guess
- * (Codex P2 #3386988961).
+ * Only the finale of a finished finite series (episode N of N) sets a
+ * status — `completed`. Every other progress update returns `null` and
+ * sends progress alone, so a normal next-episode write never overrides
+ * the user's status. Critically this preserves a `rewatching`/repeating
+ * row: sending `watching` would downgrade it (AniList `CURRENT`, MAL
+ * `is_rewatching=false`) — Codex P2 #3387319861.
+ *
+ * `seriesFinished` gates completion (Codex P2 #3387184082): a
+ * currently-airing show's playable cap is just the latest released
+ * episode, so only a Kitsu `finished` show completes. `episodeCount`
+ * null/0 means the total is unknown — don't complete (Codex P2
+ * #3386988961).
  */
 export function watchedStatus(
 	episode: number,
 	episodeCount: number | null,
 	seriesFinished: boolean
-): string {
+): string | null {
 	const atFinale = !!episodeCount && episodeCount > 0 && episode >= episodeCount;
-	return seriesFinished && atFinale ? 'completed' : 'watching';
+	return seriesFinished && atFinale ? 'completed' : null;
 }
 
 export async function pushWatchedToTrackers(
@@ -51,16 +57,15 @@ export async function pushWatchedToTrackers(
 ): Promise<void> {
 	if (!kitsuId || deps.connected.length === 0) return;
 	const status = watchedStatus(episode, episodeCount, seriesFinished);
+	const body = status
+		? { kitsu_id: kitsuId, progress: episode, status }
+		: { kitsu_id: kitsuId, progress: episode };
 	await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = deps.bearerFor(provider);
 			if (!bearer) return;
 			try {
-				await deps.updateProgress(provider, bearer, {
-					kitsu_id: kitsuId,
-					progress: episode,
-					status
-				});
+				await deps.updateProgress(provider, bearer, body);
 			} catch {
 				// Best-effort: a single tracker failing must not block the
 				// others or surface to the caller. Retry/toast deferred.

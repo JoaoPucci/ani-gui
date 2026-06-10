@@ -116,7 +116,7 @@ export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile
 export function updateProgress(
 	provider: Provider,
 	bearer: string,
-	body: { kitsu_id: string; progress: number; status: string }
+	body: { kitsu_id: string; progress: number; status?: string }
 ): Promise<ListEntry | null> {
 	return postJson<ListEntry | null>(`/api/account/update/${provider}`, body, bearer);
 }

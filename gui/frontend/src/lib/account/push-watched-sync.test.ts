@@ -36,15 +36,15 @@ describe('syncWatchedToTrackers', () => {
 		byProvider.inhouse = { kind: 'disconnected' };
 		await syncWatchedToTrackers('kitsu-12', 7);
 		expect(updateProgress).toHaveBeenCalledTimes(2);
+		// Progress-only: a normal advance never sends a status override
+		// (Codex P2 #3387319861).
 		expect(updateProgress).toHaveBeenCalledWith('anilist', 'tok-a', {
 			kitsu_id: 'kitsu-12',
-			progress: 7,
-			status: 'watching'
+			progress: 7
 		});
 		expect(updateProgress).toHaveBeenCalledWith('mal', 'tok-m', {
 			kitsu_id: 'kitsu-12',
-			progress: 7,
-			status: 'watching'
+			progress: 7
 		});
 	});
 

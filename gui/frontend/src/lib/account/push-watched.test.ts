@@ -16,14 +16,16 @@ function deps(overrides: Partial<Parameters<typeof pushWatchedToTrackers>[0]> = 
 }
 
 describe('pushWatchedToTrackers', () => {
-	it('fans out to every connected provider with kitsu_id + progress + watching status', async () => {
+	it('fans out to every connected provider with kitsu_id + progress and no status override', async () => {
+		// Codex P2 #3387319861: a normal progress update sends no status,
+		// so it never downgrades a rewatching/paused tracker row.
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 7);
 		expect(calls).toHaveLength(2);
 		expect(calls[0]).toEqual({
 			provider: 'anilist',
 			bearer: 'bearer-anilist',
-			body: { kitsu_id: 'kitsu-12', progress: 7, status: 'watching' }
+			body: { kitsu_id: 'kitsu-12', progress: 7 }
 		});
 		expect(calls[1].provider).toBe('mal');
 	});
@@ -62,34 +64,34 @@ describe('pushWatchedToTrackers', () => {
 describe('pushWatchedToTrackers finale status', () => {
 	it('marks completed on the finale of a finished finite series', async () => {
 		// Codex P2 #3386988961: episode N of an N-episode show should
-		// move the tracker to completed, not leave it stuck on watching
-		// at full progress. Gated on the series being finished.
+		// move the tracker to completed. Gated on the series being
+		// finished, and the only case that sends a status at all.
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 12, 12, true);
 		expect(calls[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 12, status: 'completed' });
 	});
 
-	it('stays watching at the latest episode of a still-airing series', async () => {
+	it('sends no status at the latest episode of a still-airing series', async () => {
 		// Codex P2 #3387184082: the playable cap for an airing show is
 		// the latest released episode, so episode >= cap is true — but a
-		// non-finished series must not be completed.
+		// non-finished series must not be completed (progress only).
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 12, 12, false);
-		expect((calls[0].body as { status: string }).status).toBe('watching');
+		expect(calls[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 12 });
 	});
 
-	it('stays watching mid-series', async () => {
+	it('sends no status mid-series', async () => {
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 6, 12, true);
-		expect((calls[0].body as { status: string }).status).toBe('watching');
+		expect(calls[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 6 });
 	});
 
-	it('stays watching when episode_count is unknown (null/0)', async () => {
+	it('sends no status when episode_count is unknown (null/0)', async () => {
 		const { d: d1, calls: c1 } = deps();
 		await pushWatchedToTrackers(d1, 'kitsu-12', 6, null, true);
-		expect((c1[0].body as { status: string }).status).toBe('watching');
+		expect(c1[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 6 });
 		const { d: d2, calls: c2 } = deps();
 		await pushWatchedToTrackers(d2, 'kitsu-12', 6, 0, true);
-		expect((c2[0].body as { status: string }).status).toBe('watching');
+		expect(c2[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 6 });
 	});
 });
