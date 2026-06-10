@@ -20,7 +20,8 @@ import {
 	openOAuth,
 	persistAccount,
 	readErrorBody,
-	readPersistedAccount
+	readPersistedAccount,
+	updateProgress
 } from './api';
 import type { PersistedAccount, PkceWire } from './types';
 
@@ -123,6 +124,54 @@ describe('fetchMe', () => {
 		const [, init] = spy.mock.calls[0];
 		const headers = (init as RequestInit).headers as Record<string, string>;
 		expect(headers.authorization).toBe('Bearer tok');
+	});
+});
+
+describe('updateProgress', () => {
+	it('POSTs the body + bearer to /api/account/update/:provider and returns the entry', async () => {
+		const entry = {
+			provider: 'anilist',
+			media_id: 154587,
+			mal_id: 21,
+			status: 'watching',
+			progress_episodes: 7,
+			score_0_to_100: null,
+			updated_at_epoch_s: 1,
+			title: 'One Piece'
+		};
+		const spy = mockFetchJson(entry);
+		const r = await updateProgress('anilist', 'tok', {
+			kitsu_id: 'kitsu-12',
+			progress: 7,
+			status: 'watching'
+		});
+		expect(r).toEqual(entry);
+		const [url, init] = spy.mock.calls[0];
+		expect(String(url)).toContain('/api/account/update/anilist');
+		expect((init as RequestInit).method).toBe('POST');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.authorization).toBe('Bearer tok');
+		const body = String((init as RequestInit).body);
+		expect(body).toContain('"kitsu_id":"kitsu-12"');
+		expect(body).toContain('"progress":7');
+		expect(body).toContain('"status":"watching"');
+	});
+
+	it('returns null when the show is unmappable (backend replies null)', async () => {
+		mockFetchJson(null);
+		const r = await updateProgress('mal', 'tok', {
+			kitsu_id: 'kitsu-999',
+			progress: 1,
+			status: 'watching'
+		});
+		expect(r).toBeNull();
+	});
+
+	it('throws AccountApiError on non-2xx', async () => {
+		mockFetchJson({}, 500);
+		await expect(
+			updateProgress('anilist', 'tok', { kitsu_id: 'k', progress: 1, status: 'watching' })
+		).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
 

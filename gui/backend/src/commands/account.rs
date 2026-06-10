@@ -21,11 +21,13 @@
 //! 5. Renderer → Electron main: safeStorage-encrypt + persist
 //! 6. Renderer → backend `me` / `list_all` with `Authorization: Bearer`
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider, UserProfile,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
+    UserProfile,
 };
 use crate::account::status::ListStatus;
 use crate::app::AppState;
@@ -33,6 +35,48 @@ use crate::cache::SqlitePool;
 use crate::error::{AniError, Result};
 use crate::meta::anilist_user::AniListProvider;
 use crate::meta::mal_user::MalProvider;
+
+/// The per-show async mutex callers hold across the read + upsert.
+type ShowLock = Arc<tokio::sync::Mutex<()>>;
+/// Process-wide map of `(provider, media id)` → its [`ShowLock`].
+type ShowLockMap = Mutex<HashMap<(ProviderKind, u32), ShowLock>>;
+
+/// Per-(provider, native media id) serialization for write-back.
+///
+/// `push_progress` reads `current_progress` before the upsert, and the
+/// route callers fire `syncWatchedToTrackers` without awaiting — so two
+/// fan-out calls for the same show can both read the same count and the
+/// later-landing lower write would regress it (Codex P2 #3387237642).
+/// Providers only upsert (no compare-and-set), so the fix is to hold a
+/// per-show lock across the read + reconcile + write, making the
+/// monotonic guard atomic. The map indirection keeps distinct shows
+/// concurrent. Process-wide on [`AppState`] so it spans the separate
+/// HTTP requests each un-awaited write becomes; cloned `Arc` is cheap.
+///
+/// The map grows one entry per show ever written this run — negligible
+/// for a desktop session (a binge tops out in the low hundreds), so it
+/// isn't pruned.
+#[derive(Clone, Default)]
+pub struct AccountWriteLocks {
+    inner: Arc<ShowLockMap>,
+}
+
+impl AccountWriteLocks {
+    /// An empty lock map. Production builds one at boot and clones the
+    /// cheap `Arc` into every `AppState`; tests `new()` per fixture.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The lock guarding writes to one `(provider, media id)`. The brief
+    /// std-mutex section only swaps the `Arc`; the returned async mutex
+    /// is what the caller holds across the network round-trips.
+    fn for_show(&self, kind: ProviderKind, media_id: u32) -> ShowLock {
+        let mut map = self.inner.lock().expect("account write-lock map poisoned");
+        Arc::clone(map.entry((kind, media_id)).or_default())
+    }
+}
 
 /// Build a [`UserListProvider`] for the requested provider kind. Used
 /// by every route handler that calls into a concrete provider. Takes
@@ -344,6 +388,70 @@ pub fn build_entry_update(
     })
 }
 
+/// Reconcile a write against the tracker's `current` list entry so the
+/// write-back stays monotonic and status-preserving, returning the
+/// fields still worth sending (or `None` when nothing actionable
+/// remains, so the caller skips the write entirely).
+///
+/// Progress (Codex P1 #3386909281): if the requested count wouldn't
+/// advance `current` (a replay / the Previous button) the progress field
+/// is dropped — never decrease the count.
+///
+/// Status: the fan-out only ever sends `Completed` (a finished finale),
+/// otherwise it sends no status. This helper fills the rest in:
+///   - a `Completed` write is always kept, even at unchanged progress —
+///     finishing a series is a valid forward move (Codex P2 #3387051891);
+///   - a status-less *advancing* progress write promotes a planning row
+///     (or a not-yet-on-the-list show) to `Watching` so a Plan-to-Watch
+///     title leaves Watch Later (Codex P2 #3387383171), but leaves any
+///     other status untouched — preserving `Rewatching`/`Completed`/
+///     `Paused` (Codex P2 #3387319861);
+///   - a non-advancing `Watching` is dropped (it could only downgrade or
+///     no-op).
+pub fn reconcile_monotonic(
+    mut update: EntryUpdate,
+    current: Option<CurrentEntry>,
+) -> Option<EntryUpdate> {
+    let current_progress = current.map(|c| c.progress_episodes);
+    // Whether this write carries a watch event at all — captured before
+    // the non-advance branch may strip the progress field, so the
+    // planning promotion below still fires on a non-advancing write.
+    let is_watch_event = update.progress_episodes.is_some();
+    let advances = match (current_progress, update.progress_episodes) {
+        (Some(c), Some(p)) => p > c,
+        _ => true,
+    };
+    if !advances {
+        update.progress_episodes = None;
+        if update.status == Some(ListStatus::Watching) {
+            update.status = None;
+        }
+    }
+    // Promote a planning / not-yet-listed row to Watching on ANY watch
+    // event, advancing or not (Codex P2 #3387568872: a planning row
+    // already at the same/higher count must still leave Watch Later),
+    // but leave every other status untouched — preserving
+    // rewatching/paused/completed (Codex P2 #3387319861).
+    if is_watch_event && update.status.is_none() {
+        let promote = match current {
+            None => true,
+            Some(c) => c.status == ListStatus::Planning,
+        };
+        if promote {
+            update.status = Some(ListStatus::Watching);
+        }
+    }
+    let empty = update.status.is_none()
+        && update.progress_episodes.is_none()
+        && update.score_0_to_100.is_none()
+        && update.repeat_count.is_none();
+    if empty {
+        None
+    } else {
+        Some(update)
+    }
+}
+
 /// Push `update` (progress / status / score) to a connected tracker
 /// for the show identified by its Kitsu id. Called once per connected
 /// provider by the mark-watched fan-out, each with that provider's
@@ -381,6 +489,30 @@ async fn push_progress_with_anilist_base(
     };
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
+    };
+    // Serialize writes to this show so the read-then-write monotonic
+    // guard is atomic: the route callers fire syncWatchedToTrackers
+    // without awaiting, so two writes for the same show can otherwise
+    // both read the same current count and the later-landing lower one
+    // regresses it (Codex P2 #3387237642). Held across the GET + upsert
+    // since providers only upsert (no compare-and-set).
+    let show_lock = state.account_write_locks.for_show(kind, native.0);
+    let _write_guard = show_lock.lock().await;
+    // Monotonic guard (Codex P1 #3386909281 / P2 #3387051891): reconcile
+    // the write against the tracker's current count so a replay can't
+    // regress progress or downgrade a finished show, while still letting
+    // a completion through at unchanged progress. Reading current
+    // progress costs one bearer-scoped GET per write — only when the
+    // write carries progress, and the only authoritative source (the
+    // local cache is empty until the user syncs their list).
+    let update = if update.progress_episodes.is_some() {
+        let current = provider.current_entry(tokens, native).await?;
+        match reconcile_monotonic(update, current) {
+            Some(reconciled) => reconciled,
+            None => return Ok(None),
+        }
+    } else {
+        update
     };
     let entry = provider.update_entry(tokens, native, update).await?;
     Ok(Some(entry))

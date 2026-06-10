@@ -1026,6 +1026,68 @@ async fn update_entry_patches_my_list_status_with_form_body_and_returns_entry() 
 }
 
 #[tokio::test]
+async fn current_entry_reads_status_and_num_episodes_watched() {
+    use crate::account::provider::CurrentEntry;
+    use crate::account::status::ListStatus;
+    use wiremock::matchers::{method, path, query_param};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        // nsfw=true so R18 titles aren't hidden (Codex P2 #3387530453).
+        .and(query_param("nsfw", "true"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"id":21,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":10}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let got = provider
+        .current_entry(&tokens, ProviderMediaId(21))
+        .await
+        .expect("current_entry ok");
+    // is_rewatching=true folds watching → Rewatching.
+    assert_eq!(
+        got,
+        Some(CurrentEntry {
+            status: ListStatus::Rewatching,
+            progress_episodes: 10
+        })
+    );
+}
+
+#[tokio::test]
+async fn current_entry_is_none_when_not_on_list() {
+    // No `my_list_status` key → the show isn't on the user's list, so
+    // current_entry is None and the first write is an advance.
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21,"title":"x"}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let got = provider
+        .current_entry(&tokens, ProviderMediaId(21))
+        .await
+        .expect("current_entry ok");
+    assert_eq!(got, None);
+}
+
+#[tokio::test]
 async fn update_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::{method, path};
     let server = wiremock::MockServer::start().await;

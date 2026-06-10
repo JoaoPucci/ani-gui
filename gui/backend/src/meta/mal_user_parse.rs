@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use crate::account::provider::{
-    ListEntry, ProviderKind, ProviderMediaId, Tokens, UserProfile, UserStats,
+    CurrentEntry, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserProfile, UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -222,6 +222,41 @@ pub(super) fn parse_list_status_response(body: &[u8], media_id: u32) -> Result<L
         updated_at_epoch_s,
         title: String::new(),
     })
+}
+
+/// Parse an `/anime/{id}?fields=my_list_status` response down to the
+/// authenticated user's current entry (status + watched count).
+/// `my_list_status` is absent when the show isn't on the user's list →
+/// `None`. An unrecognized status maps to `ListStatus::Watching` so a
+/// malformed enum can't suppress the write-back reconcile. Powers the
+/// monotonic + status-preserving guard (Codex P1 #3386909281, P2
+/// #3387319861 / #3387383171).
+pub(super) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<CurrentEntry>> {
+    #[derive(Deserialize)]
+    struct Wire {
+        #[serde(default)]
+        my_list_status: Option<MyListStatus>,
+    }
+    #[derive(Deserialize)]
+    struct MyListStatus {
+        #[serde(default)]
+        status: Option<String>,
+        #[serde(default)]
+        num_episodes_watched: Option<u32>,
+        #[serde(default)]
+        is_rewatching: Option<bool>,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal anime my_list_status: {e}"),
+    })?;
+    Ok(wire.my_list_status.map(|s| CurrentEntry {
+        status: s
+            .status
+            .as_deref()
+            .and_then(|st| ListStatus::from_mal(st, s.is_rewatching.unwrap_or(false)))
+            .unwrap_or(ListStatus::Watching),
+        progress_episodes: s.num_episodes_watched.unwrap_or(0),
+    }))
 }
 
 /// Minimal RFC 3339 / ISO 8601 parser. MAL always emits the canonical

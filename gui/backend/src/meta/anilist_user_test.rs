@@ -663,6 +663,56 @@ async fn update_entry_posts_save_mutation_with_variables_and_returns_entry() {
 }
 
 #[tokio::test]
+async fn current_entry_reads_viewer_status_and_progress() {
+    use crate::account::provider::CurrentEntry;
+    use crate::account::status::ListStatus;
+    use wiremock::matchers::{body_string_contains, method};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("mediaListEntry"))
+        .and(body_string_contains("\"mediaId\":21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"mediaListEntry":{"status":"REPEATING","progress":10}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let got = provider
+        .current_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect("current_entry ok");
+    assert_eq!(
+        got,
+        Some(CurrentEntry {
+            status: ListStatus::Rewatching,
+            progress_episodes: 10
+        })
+    );
+}
+
+#[tokio::test]
+async fn current_entry_is_none_when_show_not_on_list() {
+    // `Media.mediaListEntry` is null when the viewer hasn't added the
+    // show — current_entry maps that to None so the reconcile treats
+    // the first write as an advance (creating the row as watching).
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Media":{"mediaListEntry":null}}}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let got = provider
+        .current_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect("current_entry ok");
+    assert_eq!(got, None);
+}
+
+#[tokio::test]
 async fn update_entry_surfaces_401_as_invalid_token() {
     use wiremock::matchers::method;
     let server = wiremock::MockServer::start().await;

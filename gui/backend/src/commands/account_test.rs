@@ -30,6 +30,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: AccountWriteLocks::new(),
     })
 }
 
@@ -165,6 +166,126 @@ async fn push_progress_skips_unmappable_show_without_writing() {
 }
 
 #[test]
+fn account_write_locks_share_one_mutex_per_show() {
+    // Codex P2 #3387237642: serialization only works if every call for
+    // the same (provider, show) gets the SAME mutex, and distinct shows
+    // get distinct ones (so they stay concurrent).
+    let locks = AccountWriteLocks::new();
+    let a1 = locks.for_show(ProviderKind::MyAnimeList, 21);
+    let a2 = locks.for_show(ProviderKind::MyAnimeList, 21);
+    assert!(std::sync::Arc::ptr_eq(&a1, &a2), "same show → same mutex");
+    let other_show = locks.for_show(ProviderKind::MyAnimeList, 22);
+    assert!(
+        !std::sync::Arc::ptr_eq(&a1, &other_show),
+        "different show → different mutex"
+    );
+    let other_provider = locks.for_show(ProviderKind::AniList, 21);
+    assert!(
+        !std::sync::Arc::ptr_eq(&a1, &other_provider),
+        "same id, different provider → different mutex"
+    );
+}
+
+#[test]
+fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
+    use crate::account::provider::{CurrentEntry, EntryUpdate};
+    // The fan-out sends progress-only for non-finale, Completed at the
+    // finale. Helpers mirror that.
+    let progress_only = |ep| EntryUpdate {
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+    let watching = |ep| EntryUpdate {
+        status: Some(ListStatus::Watching),
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+    let entry = |status, ep| {
+        Some(CurrentEntry {
+            status,
+            progress_episodes: ep,
+        })
+    };
+
+    // Codex P2 #3387383171: a progress write to a not-yet-listed show
+    // creates it as Watching.
+    assert_eq!(
+        reconcile_monotonic(progress_only(1), None),
+        Some(watching(1))
+    );
+    // …and promotes a Plan-to-Watch row out of planning.
+    assert_eq!(
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Planning, 0)),
+        Some(watching(6))
+    );
+
+    // Codex P2 #3387568872: a planning row already at the same/higher
+    // count still promotes to Watching (status-only) — the progress is
+    // dropped as non-advancing but the title must leave Watch Later.
+    assert_eq!(
+        reconcile_monotonic(progress_only(3), entry(ListStatus::Planning, 10)),
+        Some(EntryUpdate {
+            status: Some(ListStatus::Watching),
+            ..Default::default()
+        })
+    );
+
+    // Codex P2 #3387319861: an advancing write must NOT touch a
+    // rewatching (or already-watching) row's status — progress only.
+    assert_eq!(
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Rewatching, 5)),
+        Some(progress_only(6))
+    );
+    assert_eq!(
+        reconcile_monotonic(progress_only(6), entry(ListStatus::Watching, 5)),
+        Some(progress_only(6))
+    );
+
+    // Codex P1 #3386909281: a non-advancing progress write is dropped
+    // entirely — never regress.
+    assert_eq!(
+        reconcile_monotonic(progress_only(3), entry(ListStatus::Watching, 10)),
+        None
+    );
+    assert_eq!(
+        reconcile_monotonic(progress_only(10), entry(ListStatus::Watching, 10)),
+        None
+    );
+
+    // Codex P2 #3387051891: a Completed write at unchanged progress is
+    // still needed — keep the status, drop only the non-advancing
+    // progress field.
+    let finale = EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(12),
+        ..Default::default()
+    };
+    assert_eq!(
+        reconcile_monotonic(finale, entry(ListStatus::Watching, 12)),
+        Some(EntryUpdate {
+            status: Some(ListStatus::Completed),
+            progress_episodes: None,
+            ..Default::default()
+        })
+    );
+
+    // A score-only edit at unchanged progress survives (not a no-op,
+    // and no spurious promotion since progress was dropped).
+    let rescore = EntryUpdate {
+        progress_episodes: Some(5),
+        score_0_to_100: Some(90),
+        ..Default::default()
+    };
+    assert_eq!(
+        reconcile_monotonic(rescore, entry(ListStatus::Watching, 10)),
+        Some(EntryUpdate {
+            score_0_to_100: Some(90),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
 fn build_entry_update_rejects_empty_and_unknown_status() {
     // Codex P2 #3381617932: an all-absent update, or a status typo
     // that silently parses to None, would still call update_entry —
@@ -210,6 +331,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: AccountWriteLocks::new(),
     });
     assert!(provider_for_kind(&state, ProviderKind::AniList).is_some());
     assert!(provider_for_kind(&state, ProviderKind::MyAnimeList).is_some());

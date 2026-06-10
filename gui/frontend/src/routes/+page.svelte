@@ -61,6 +61,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { fetchCachedList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
@@ -431,7 +432,12 @@
 	 *  bypassing the detail page. Once running, back from /play/[id]
 	 *  returns home (where the user came from) instead of dropping
 	 *  them on the detail view with a stale highlight ring. */
-	async function startResume(match: KitsuAnimeRef, ep: number) {
+	async function startResume(
+		match: KitsuAnimeRef,
+		ep: number,
+		seriesTotal: number | null,
+		seriesFinished: boolean
+	) {
 		if (resumeBusy) return;
 		const title = match.canonical_title;
 		if (!title) return;
@@ -490,6 +496,12 @@
 				alt_titles: altTitlesFromKitsu(match),
 				kitsu_id: match.id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (best-effort,
+			// renderer-driven fan-out — see /play/[id] for the rationale).
+			// Completion is decided against the FULL finite series total
+			// (mode-independent), NOT the dub/sub playable cap (Codex P2
+			// #3387467149), and only for a finished series (#3387184082).
+			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -753,7 +765,13 @@
 						class:resume-card-busy={isResuming}
 						style="--accent: {accent};"
 						disabled={!!resumeBusy && !isResuming}
-						onclick={() => startResume(match, nextEpisode)}
+						onclick={() =>
+							startResume(
+								match,
+								nextEpisode,
+								match?.episode_count ?? null,
+								match?.status === 'finished'
+							)}
 					>
 						<span class="resume-poster">
 							{#if image}

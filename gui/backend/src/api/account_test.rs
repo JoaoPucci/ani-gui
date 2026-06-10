@@ -193,6 +193,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         state_dir: PathBuf::from("/tmp/ani-gui-state"),
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: crate::commands::account::AccountWriteLocks::new(),
     })
 }
 

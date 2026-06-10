@@ -46,6 +46,7 @@
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { pickNextEpisode } from '$lib/play/next-episode';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -864,6 +865,19 @@
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (best-effort,
+			// renderer-driven fan-out — see /play/[id] for the rationale).
+			// Completion is decided against the FULL finite series total
+			// (Kitsu's mode-independent count), NOT episodeCap — in dub
+			// mode the playable cap is only the dubbed slice (Codex P2
+			// #3387467149) — and only for a finished series (Codex P2
+			// #3387184082). progress itself is the played episode number.
+			void syncWatchedToTrackers(
+				id,
+				ep,
+				detail?.episode_count ?? null,
+				detail?.status === 'finished'
+			).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */

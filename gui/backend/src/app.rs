@@ -21,6 +21,7 @@ use crate::account::InternalSecret;
 use crate::anicli::process::{locate_ani_cli, DebugOptions};
 use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
+use crate::commands::account::AccountWriteLocks;
 use crate::config::paths;
 use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuClient;
@@ -83,6 +84,12 @@ pub struct AppState {
     /// handlers serialize on the same mutex and reuse the same
     /// rotation cache (Codex P2 #3379969316).
     pub mal_refresh: MalRefreshState,
+    /// Per-(provider, show) write serialization for tracker write-back.
+    /// The un-awaited fan-out can fire overlapping writes for the same
+    /// show; this makes the read-then-upsert monotonic guard atomic so a
+    /// later-landing lower write can't regress progress (Codex P2
+    /// #3387237642). Process-wide; cloned `Arc` is cheap.
+    pub account_write_locks: AccountWriteLocks,
 }
 
 impl AppState {
@@ -160,6 +167,7 @@ impl AppState {
             state_dir,
             internal_secret: InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
+            account_write_locks: AccountWriteLocks::new(),
         })
     }
 
@@ -286,6 +294,7 @@ mod tests {
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
+            account_write_locks: AccountWriteLocks::new(),
         }
     }
 

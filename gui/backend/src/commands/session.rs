@@ -155,6 +155,7 @@ mod tests {
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+            account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         }
     }
 
