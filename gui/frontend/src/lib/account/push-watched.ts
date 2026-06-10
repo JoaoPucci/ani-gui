@@ -4,6 +4,9 @@
 // the renderer orchestrates the calls. Green commit implements.
 
 import type { ListEntry, Provider } from './types';
+import { updateProgress } from './api';
+import { accountStore } from './store.svelte';
+import { bearerFor } from './state-helpers';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -49,6 +52,13 @@ export async function pushWatchedToTrackers(
  * the pure `pushWatchedToTrackers`. Best-effort — safe to `void`.
  */
 export function syncWatchedToTrackers(kitsuId: string, episode: number): Promise<void> {
-	// Stub — green commit wires the store deps into pushWatchedToTrackers.
-	throw new Error(`syncWatchedToTrackers not implemented (${kitsuId}@${episode})`);
+	return pushWatchedToTrackers(
+		{
+			connected: accountStore.connected,
+			bearerFor: (provider) => bearerFor(accountStore.byProvider[provider]),
+			updateProgress
+		},
+		kitsuId,
+		episode
+	);
 }

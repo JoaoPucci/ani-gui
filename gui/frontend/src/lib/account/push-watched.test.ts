@@ -15,7 +15,7 @@ function deps(overrides: Partial<Parameters<typeof pushWatchedToTrackers>[0]> = 
 	return { d: { ...base, ...overrides }, calls };
 }
 
-describe.skip('pushWatchedToTrackers [red — green unskips]', () => {
+describe('pushWatchedToTrackers', () => {
 	it('fans out to every connected provider with kitsu_id + progress + watching status', async () => {
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 7);

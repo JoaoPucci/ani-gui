@@ -4,10 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // real code: syncWatchedToTrackers must read the connected providers
 // off the store, resolve each bearer via state-helpers, and delegate
 // to the (already-tested) pure fan-out with the api updateProgress.
-const updateProgress = vi.fn(async () => null);
+// `vi.hoisted` so the shared handles exist before the hoisted vi.mock
+// factories run.
+const { updateProgress, byProvider } = vi.hoisted(() => ({
+	updateProgress: vi.fn(async () => null),
+	byProvider: {} as Record<string, { kind: string; account?: { access_token: string } }>
+}));
 vi.mock('./api', () => ({ updateProgress }));
-
-const byProvider: Record<string, { kind: string; account?: { access_token: string } }> = {};
 vi.mock('./store.svelte', () => ({
 	accountStore: {
 		get connected() {
@@ -26,7 +29,7 @@ beforeEach(() => {
 	for (const k of Object.keys(byProvider)) delete byProvider[k];
 });
 
-describe.skip('syncWatchedToTrackers [red — green unskips]', () => {
+describe('syncWatchedToTrackers', () => {
 	it('fans the just-watched episode out to every connected tracker', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
