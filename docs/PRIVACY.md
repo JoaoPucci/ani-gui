@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-06-08_
+_Last updated: 2026-06-10_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -32,6 +32,15 @@ ani-gui keeps the following on your computer only:
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
   `safeStorage` API, then written to your OS user-data directory.
+- **Tracker list cache** — if you connect an account, a snapshot of
+  your AniList / MyAnimeList list is cached in the same local SQLite
+  database so the Watch Later rail and your progress render without a
+  round-trip on every launch. Each row holds which provider it came
+  from and your user id on that provider, the show's identifiers (the
+  provider-native id plus its cross-provider MyAnimeList id), your
+  status, episodes watched, score, and title, and two timestamps (the
+  provider's last-updated time and when the row was cached). Cleared
+  when you disconnect the account.
 
 ## What ani-gui transmits to public services
 

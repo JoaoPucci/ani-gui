@@ -25,10 +25,12 @@ The CLI still exists. The GUI does not replace it; the two share the script and 
 | **Picture-in-Picture** | Persists across navigation. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
 | **Downloads** | Per-episode or ranged, progress dock. aria2c bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
-| **Shared history** | Reads/writes `$XDG_STATE_HOME/ani-cli/ani-hsts` — same file as the CLI. |
+| **Shared history** | Continue Watching reads/writes `$XDG_STATE_HOME/ani-cli/ani-hsts` — same file as the CLI. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
+| **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
+| **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
 | **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
-| **No telemetry** | Only the requests required for metadata + the stream you picked. Localhost-only listener on a kernel-assigned port. |
+| **No telemetry** | Only the requests required for metadata + the stream you picked. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
 
 ## Install
 
@@ -134,6 +136,17 @@ After that, click anything that looks clickable. The app routes the click throug
 <p align="center">
   <img width="2751" height="1300" alt="player image" src="https://github.com/user-attachments/assets/db9f1816-d622-40ab-aa15-88a86f14f1d1" />
 </p>
+
+## Accounts & trackers
+
+Connecting a list provider is optional — the app works fully without an account. From the **Account** page you can connect **AniList** or **MyAnimeList** (OAuth in your browser; the token is stored with your OS keychain via Electron's `safeStorage`, never in plaintext).
+
+Once connected:
+
+- **Watch Later rail** — your Plan-to-Watch list surfaces as a rail on the home page, bridged to local cards you can play in one click.
+- **Automatic progress sync** — as you watch, the episode is pushed back to the tracker. The sync only ever moves progress *forward* (replaying or stepping back never lowers your count), promotes a Plan-to-Watch title to *Watching* on first play, preserves a *Rewatching* row, and marks a series *Completed* only when you finish the last episode of a finished show.
+
+Everything stays on your machine: your OAuth token lives in the OS keychain (the Rust backend never persists it — each request carries its own bearer), and your tracker list is cached in a local SQLite database to render the Watch Later rail. ani-gui runs no server of its own. See the [privacy policy](docs/PRIVACY.md) for exactly what's sent where.
 
 ## Configuration
 
