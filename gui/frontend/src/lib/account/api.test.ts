@@ -127,7 +127,7 @@ describe('fetchMe', () => {
 	});
 });
 
-describe.skip('updateProgress [red — green unskips]', () => {
+describe('updateProgress', () => {
 	it('POSTs the body + bearer to /api/account/update/:provider and returns the entry', async () => {
 		const entry = {
 			provider: 'anilist',

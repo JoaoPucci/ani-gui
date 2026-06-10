@@ -118,8 +118,7 @@ export function updateProgress(
 	bearer: string,
 	body: { kitsu_id: string; progress: number; status: string }
 ): Promise<ListEntry | null> {
-	// Stub — green commit POSTs to /api/account/update/:provider.
-	throw new Error(`updateProgress not implemented (${provider} ${bearer} ${body.kitsu_id})`);
+	return postJson<ListEntry | null>(`/api/account/update/${provider}`, body, bearer);
 }
 
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
