@@ -107,6 +107,21 @@ export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile
 	return postJson<UserProfile>(`/api/account/me/${provider}`, {}, bearer);
 }
 
+/**
+ * Push watch progress/status to one connected tracker. The backend
+ * resolves the provider-native media id from `kitsu_id`, then upserts
+ * the list entry. Returns the upserted entry, or `null` when the show
+ * couldn't be mapped to the provider (a no-op, not an error).
+ */
+export function updateProgress(
+	provider: Provider,
+	bearer: string,
+	body: { kitsu_id: string; progress: number; status: string }
+): Promise<ListEntry | null> {
+	// Stub — green commit POSTs to /api/account/update/:provider.
+	throw new Error(`updateProgress not implemented (${provider} ${bearer} ${body.kitsu_id})`);
+}
+
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
 	// No user_id in the body — the backend derives the cache owner
 	// from the bearer by calling me() internally. Codex P2 #3369972493:
