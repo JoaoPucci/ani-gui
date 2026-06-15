@@ -34,7 +34,7 @@ class AccountStore {
 	private bumpGeneration(provider: Provider): void {
 		this.accountGeneration = {
 			...this.accountGeneration,
-			[provider]: (this.accountGeneration[provider] ?? 0) + 1
+			[provider]: this.accountGeneration[provider] + 1
 		};
 	}
 
@@ -114,7 +114,7 @@ class AccountStore {
 			// of an async disconnect), so a refresh that resolved after a
 			// mid-flight disconnect / re-auth is dropped — even before the
 			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
-			generation: (provider) => this.accountGeneration[provider] ?? 0
+			generation: (provider) => this.accountGeneration[provider]
 		});
 	}
 
@@ -167,9 +167,7 @@ class AccountStore {
 		// clear. Pull the account from any prior state that carries
 		// one.
 		const prev = this.byProvider[provider];
-		let account: PersistedAccount | null = null;
-		if (prev.kind === 'connected' || prev.kind === 'expired') account = prev.account;
-		else if (prev.kind === 'error') account = prev.account;
+		const account: PersistedAccount | null = 'account' in prev ? prev.account : null;
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'error', account, message }
