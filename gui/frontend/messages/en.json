@@ -62,6 +62,8 @@
 	"account_watch_later_title": "Watch later",
 	"account_watch_later_caption": "From your Plan-to-Watch lists",
 	"account_watch_later_refresh": "Refresh from tracker",
+	"account_watch_later_empty": "Nothing planned yet",
+	"account_watch_later_empty_hint": "Added a title on your tracker? Refresh to pull it in.",
 	"account_disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"account_chip_aria_label": "Account menu — signed in as {username}",
 	"account_chip_warning_expired": "Session expired",

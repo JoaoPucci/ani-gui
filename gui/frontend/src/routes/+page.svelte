@@ -469,8 +469,13 @@
 	// provider's snapshot is past the TTL, re-pull in the background.
 	function maybeAutoRefreshWatchLater(deps: ReturnType<typeof buildWatchLaterDeps>) {
 		if (watchLaterAutoChecked) return;
-		watchLaterAutoChecked = true;
 		const providers = Object.keys(deps.credentials) as Provider[];
+		// Don't burn the one-shot latch on the pre-hydrate run (no
+		// providers yet) — otherwise the real run with connected
+		// providers short-circuits and the cold-launch TTL refresh never
+		// fires (Codex PR #71). Latch only once there's something to check.
+		if (providers.length === 0) return;
+		watchLaterAutoChecked = true;
 		const now = Date.now();
 		const stale = providers.some((p) => isWatchLaterStale(readLastRefreshed(p), now));
 		if (stale) void refreshWatchLater();
@@ -1037,6 +1042,17 @@
 			<PosterCard {anime} />
 		{/each}
 	</Strip>
+{:else if accountStore.hasAny && watchLater !== null}
+	<!-- Connected but the cached Plan-to-Watch is empty. Still surface the
+	     header + refresh so newly-added tracker titles can be pulled in
+	     before the TTL (Codex PR #71). -->
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_empty()}
+		headerTrailing={watchLaterRefresh}
+	>
+		<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+	</Strip>
 {/if}
 
 <!-- Trending strip (the tail; the head is the hero) -->
@@ -1475,6 +1491,16 @@
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
 			color var(--dur-fast) var(--ease-out-soft);
+	}
+
+	/* Empty-state note shown in the Watch Later rail when a provider is
+	   connected but the cached Plan-to-Watch is empty. */
+	.watch-later-empty {
+		margin: 0;
+		padding-block: var(--space-3);
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		color: var(--bone-400);
 	}
 
 	/* Watch Later rail refresh button (Strip headerTrailing). */

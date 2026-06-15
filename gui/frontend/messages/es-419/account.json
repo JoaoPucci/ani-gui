@@ -33,6 +33,8 @@
 	"watch_later_title": "Ver después",
 	"watch_later_caption": "De tus listas de Planeados",
 	"watch_later_refresh": "Actualizar desde el rastreador",
+	"watch_later_empty": "Nada planeado aún",
+	"watch_later_empty_hint": "¿Agregaste un título en tu rastreador? Actualiza para traerlo.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Menú de cuenta — conectado como {username}",
 	"chip_warning_expired": "Sesión expirada",
