@@ -139,6 +139,37 @@ describe('loadWatchLater', () => {
 		expect(arg[arg.length - 1]).toBe(WATCH_LATER_BRIDGE_MAX_IDS);
 	});
 
+	// Codex P2 #3415603155: a swallowed per-provider failure must not
+	// masquerade as an empty list. When EVERY connected provider's
+	// cached fetch throws (e.g. the lone AniList account while the
+	// cached endpoint is 500/offline), the loader rejects so the rail
+	// shows its failure/retry state — not the false "nothing planned"
+	// empty state.
+	it('rejects when every connected provider fetch fails', async () => {
+		const deps: WatchLaterDeps = {
+			credentials: {
+				anilist: { bearer: 'a', userId: 'u' },
+				mal: { bearer: 'm', userId: 'u' }
+			},
+			fetchCachedList: vi.fn().mockRejectedValue(new Error('5xx')),
+			kitsuByMalIds: vi.fn().mockResolvedValue([])
+		};
+		await expect(loadWatchLater(deps)).rejects.toThrow();
+		expect(deps.kitsuByMalIds).not.toHaveBeenCalled();
+	});
+
+	// The flip side: a provider that successfully returns an empty list
+	// is a genuine empty, NOT a failure — the loader must resolve [] so
+	// the rail shows "nothing planned", not the retry state.
+	it('resolves [] when a provider succeeds with an empty list', async () => {
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: { bearer: 'a', userId: 'u' } },
+			fetchCachedList: vi.fn().mockResolvedValue([]),
+			kitsuByMalIds: vi.fn().mockResolvedValue([])
+		};
+		await expect(loadWatchLater(deps)).resolves.toEqual([]);
+	});
+
 	it('skips the Kitsu round-trip when the merged set has no mal_ids', async () => {
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
