@@ -54,3 +54,15 @@ export function markRefreshed(provider: Provider, nowMs: number): void {
 		   to refreshing each launch, which is acceptable. */
 	}
 }
+
+/** Force the provider's snapshot to be treated as stale on the next
+ *  rail load. Called after a local mark-watched sync, which can move a
+ *  Plan-to-Watch title to Watching (dropping it from the rail) — the
+ *  re-pull reflects that without waiting out the TTL. */
+export function invalidateWatchLater(provider: Provider): void {
+	try {
+		window.localStorage.removeItem(KEY_PREFIX + provider);
+	} catch {
+		/* storage unavailable — next launch re-pulls anyway. */
+	}
+}

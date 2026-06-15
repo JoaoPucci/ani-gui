@@ -7,6 +7,7 @@ import type { ListEntry, Provider } from './types';
 import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
 import { bearerFor } from './state-helpers';
+import { invalidateWatchLater } from './watch-later-refresh';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -85,15 +86,16 @@ export async function pushWatchedToTrackers(
  * providers + their bearers off the account store and delegates to
  * the pure `pushWatchedToTrackers`. Best-effort — safe to `void`.
  */
-export function syncWatchedToTrackers(
+export async function syncWatchedToTrackers(
 	kitsuId: string,
 	episode: number,
 	seriesTotal: number | null = null,
 	seriesFinished: boolean = false
 ): Promise<void> {
-	return pushWatchedToTrackers(
+	const connected = accountStore.connected;
+	await pushWatchedToTrackers(
 		{
-			connected: accountStore.connected,
+			connected,
 			bearerFor: (provider) => bearerFor(accountStore.byProvider[provider]),
 			updateProgress
 		},
@@ -102,4 +104,9 @@ export function syncWatchedToTrackers(
 		seriesTotal,
 		seriesFinished
 	);
+	// A watched episode can promote a Plan-to-Watch title to Watching,
+	// which should drop it from the home Watch Later rail. Invalidate the
+	// cached snapshot so the rail re-pulls (and reflects the change) on
+	// its next load rather than waiting out the freshness TTL.
+	for (const provider of connected) invalidateWatchLater(provider);
 }
