@@ -36,6 +36,11 @@ export async function applyPrimarySelection(
 		await deps.persist(next);
 		return next;
 	} catch {
+		// Roll the optimistic store update back to the persisted value
+		// so the chip/rail don't show an unsaved primary, and hand the
+		// caller back the original config so re-selecting the same
+		// provider retries instead of short-circuiting.
+		deps.applyToStore(parsePrimaryProvider(config.primary_account));
 		deps.onError();
 		return config;
 	}

@@ -17,6 +17,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import { applyPrimarySelection } from '$lib/account/set-primary';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
@@ -69,20 +70,14 @@
 	});
 
 	async function setPrimary(value: string) {
-		if (!config || config.primary_account === value) return;
-		const next = { ...config, primary_account: value };
-		config = next;
-		// Update the shared store immediately so the topbar chip + rail
-		// reflect the choice without waiting for the next config fetch.
-		primaryAccountStore.set(parsePrimaryProvider(value));
-		try {
-			await settingsPut(next);
-		} catch {
-			// Non-fatal: the chip/rail just keep the prior precedence
-			// until the next successful write. Surface a toast so the
-			// choice not sticking isn't silent.
-			toastStore.push({ kind: 'error', message: m.account_primary_save_error() });
-		}
+		// Orchestration (guard / optimistic store update / persist /
+		// rollback-on-failure) lives in the tested helper; the page just
+		// adopts whichever config it returns.
+		config = await applyPrimarySelection(config, value, {
+			persist: settingsPut,
+			applyToStore: (p) => primaryAccountStore.set(p),
+			onError: () => toastStore.push({ kind: 'error', message: m.account_primary_save_error() })
+		});
 	}
 
 	async function connect(provider: Provider) {
