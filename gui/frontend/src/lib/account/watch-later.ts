@@ -21,7 +21,11 @@ import type { ListEntry, Provider } from './types';
  */
 const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
 
-export function mergedWatchLater(byProvider: Partial<Record<Provider, ListEntry[]>>): ListEntry[] {
+export function mergedWatchLater(
+	byProvider: Partial<Record<Provider, ListEntry[]>>,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	primary?: Provider | null
+): ListEntry[] {
 	const seen = new Set<number>();
 	const out: ListEntry[] = [];
 	for (const provider of MERGE_ORDER) {
