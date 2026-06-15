@@ -69,15 +69,27 @@
 			.catch(() => {});
 	});
 
+	// True while a primary-tracker write is in flight. Gates the radios
+	// so a second pick can't race the first: without it, clicking again
+	// before settingsPut resolves passes a stale `config` into the
+	// helper and the slower response wins (Codex P2 #3413276568).
+	let savingPrimary = $state(false);
+
 	async function setPrimary(value: string) {
-		// Orchestration (guard / optimistic store update / persist /
-		// rollback-on-failure) lives in the tested helper; the page just
-		// adopts whichever config it returns.
-		config = await applyPrimarySelection(config, value, {
-			persist: settingsPut,
-			applyToStore: (p) => primaryAccountStore.set(p),
-			onError: () => toastStore.push({ kind: 'error', message: m.account_primary_save_error() })
-		});
+		if (savingPrimary) return;
+		savingPrimary = true;
+		try {
+			// Orchestration (guard / optimistic store update / persist /
+			// rollback-on-failure) lives in the tested helper; the page
+			// just adopts whichever config it returns.
+			config = await applyPrimarySelection(config, value, {
+				persist: settingsPut,
+				applyToStore: (p) => primaryAccountStore.set(p),
+				onError: () => toastStore.push({ kind: 'error', message: m.account_primary_save_error() })
+			});
+		} finally {
+			savingPrimary = false;
+		}
 	}
 
 	async function connect(provider: Provider) {
@@ -336,6 +348,7 @@
 						name="primary-account"
 						value=""
 						checked={(config?.primary_account ?? '') === ''}
+						disabled={savingPrimary}
 						onchange={() => setPrimary('')}
 					/>
 					<span>{m.account_primary_option_auto()}</span>
@@ -347,6 +360,7 @@
 							name="primary-account"
 							value={provider}
 							checked={config?.primary_account === provider}
+							disabled={savingPrimary}
 							onchange={() => setPrimary(provider)}
 						/>
 						<span>
