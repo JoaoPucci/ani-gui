@@ -227,7 +227,26 @@ pub fn upsert_cached_entry(
     user_id: &str,
     entry: &ListEntry,
 ) -> Result<()> {
-    crate::account::cache::upsert_entry(&state.cache_pool, kind, user_id, entry)
+    crate::account::cache_upsert::upsert_entry(&state.cache_pool, kind, user_id, entry)
+}
+
+/// Best-effort cache write-through after a tracker update: resolve the
+/// bearer's owner via `me()` and upsert the just-synced entry so the
+/// Watch Later rail's planning filter drops a started title without a
+/// full resync (Codex P2 #3412673593). A `None` entry (the show wasn't
+/// mappable) or any failure is a silent no-op — the authoritative
+/// tracker write already succeeded. Lives here, off the handler, to
+/// keep `api/account.rs` under the CRAP ceiling.
+pub async fn write_through_after_update(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    entry: Option<&ListEntry>,
+) {
+    let Some(e) = entry else { return };
+    if let Ok(profile) = me(state, kind, tokens).await {
+        let _ = upsert_cached_entry(state, kind, &profile.user_id, e);
+    }
 }
 
 /// Decode the `Authorization: Bearer <token>` header value into a

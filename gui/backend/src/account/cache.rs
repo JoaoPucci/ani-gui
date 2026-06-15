@@ -81,43 +81,6 @@ pub fn write_entries(
     Ok(())
 }
 
-/// Write a single entry back into the cache, replacing the existing
-/// row for its `(provider, user_id, media_id)` and leaving every other
-/// row untouched. Used after a tracker write so the cached status
-/// reflects the change immediately — e.g. a Plan-to-Watch title started
-/// via mark-watched flips to Watching and drops out of the Watch Later
-/// rail's planning filter without waiting for a full resync (Codex P2
-/// #3412673593). Unlike [`write_entries`], this does NOT clear the rest
-/// of the user's list.
-pub fn upsert_entry(
-    pool: &SqlitePool,
-    kind: ProviderKind,
-    user_id: &str,
-    entry: &ListEntry,
-) -> Result<()> {
-    let conn = pool.get().map_err(|_| AniError::Cache)?;
-    conn.execute(
-        "INSERT OR REPLACE INTO user_list_cache \
-         (provider, user_id, media_id, mal_id, status, progress, \
-          score_x100, updated_at, fetched_at, title) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![
-            provider_slug(kind),
-            user_id,
-            i64::from(entry.media_id.0),
-            entry.mal_id.map(i64::from),
-            status_to_snake(entry.status),
-            i64::from(entry.progress_episodes),
-            entry.score_0_to_100.map(i64::from),
-            entry.updated_at_epoch_s,
-            now_secs(),
-            entry.title,
-        ],
-    )
-    .map_err(|_| AniError::Cache)?;
-    Ok(())
-}
-
 /// Read every cached entry for `(provider, user_id)`. Used by the
 /// home Watch Later rail (PR #2) and the /account page stats.
 pub fn list_entries(
