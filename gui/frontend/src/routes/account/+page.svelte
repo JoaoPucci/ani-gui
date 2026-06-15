@@ -15,6 +15,8 @@
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl, settingsGet, settingsPut, type Config } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
@@ -59,7 +61,10 @@
 	onMount(() => {
 		accountStore.hydrate();
 		void settingsGet()
-			.then((c) => (config = c))
+			.then((c) => {
+				config = c;
+				primaryAccountStore.set(parsePrimaryProvider(c.primary_account));
+			})
 			.catch(() => {});
 	});
 
@@ -67,6 +72,9 @@
 		if (!config || config.primary_account === value) return;
 		const next = { ...config, primary_account: value };
 		config = next;
+		// Update the shared store immediately so the topbar chip + rail
+		// reflect the choice without waiting for the next config fetch.
+		primaryAccountStore.set(parsePrimaryProvider(value));
 		try {
 			await settingsPut(next);
 		} catch {

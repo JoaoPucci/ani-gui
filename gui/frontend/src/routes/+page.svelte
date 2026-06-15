@@ -61,7 +61,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { fetchCachedList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
-	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
@@ -394,7 +394,7 @@
 			credentials,
 			fetchCachedList,
 			kitsuByMalIds,
-			primary: parsePrimaryProvider(config?.primary_account)
+			primary: primaryAccountStore.value
 		};
 	}
 
