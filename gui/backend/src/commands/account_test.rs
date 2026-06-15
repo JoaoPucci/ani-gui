@@ -286,6 +286,48 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
 }
 
 #[test]
+fn reconcile_monotonic_preserves_rewatching_at_finale() {
+    use crate::account::provider::{CurrentEntry, EntryUpdate};
+    // Codex P2 #3415780486: the fan-out sends Completed when the user
+    // finishes a finished series. If the tracker row is already
+    // rewatching/repeating, completing it would clear AniList REPEATING
+    // / MAL is_rewatching — contradicting the preserve-rewatching rule.
+    // The finale Completed must be dropped for a rewatching row.
+    let finale = |ep| EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+    let entry = |status, ep| {
+        Some(CurrentEntry {
+            status,
+            progress_episodes: ep,
+        })
+    };
+
+    // Rewatcher advancing into the finale: progress still flows, but the
+    // Completed status is stripped so the row stays rewatching.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Rewatching, 11)),
+        Some(EntryUpdate {
+            progress_episodes: Some(12),
+            ..Default::default()
+        })
+    );
+    // Rewatcher already at the cap (re-finishing): nothing actionable —
+    // progress non-advancing and the Completed is dropped → skip.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Rewatching, 12)),
+        None
+    );
+    // A genuine Watching → Completed finale is still honored.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Watching, 11)),
+        Some(finale(12))
+    );
+}
+
+#[test]
 fn build_entry_update_rejects_empty_and_unknown_status() {
     // Codex P2 #3381617932: an all-absent update, or a status typo
     // that silently parses to None, would still call update_entry —
@@ -391,4 +433,63 @@ fn watch_later_bridge_max_ids_is_a_sane_ceiling() {
     // bounds per-request fan-out cost. Pinned here so a future
     // bump is intentional, not a typo.
     assert_eq!(WATCH_LATER_BRIDGE_MAX_IDS, 500);
+}
+
+#[test]
+fn upsert_cached_entry_writes_through_to_the_cache() {
+    // Codex P2 #3412673593: the write-back path upserts the just-synced
+    // entry so the Watch Later rail sees the new status without a full
+    // resync. Exercise the commands wrapper end-to-end against an
+    // in-memory pool.
+    use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId};
+    use crate::account::status::ListStatus;
+    let state = state_with_kitsu("http://127.0.0.1:0");
+    let entry = ListEntry {
+        provider: ProviderKind::AniList,
+        media_id: ProviderMediaId(5),
+        mal_id: Some(5),
+        status: ListStatus::Watching,
+        progress_episodes: 2,
+        score_0_to_100: None,
+        updated_at_epoch_s: 0,
+        title: "X".into(),
+    };
+    upsert_cached_entry(&state, ProviderKind::AniList, "u", &entry).unwrap();
+    let got = cached_list(&state, ProviderKind::AniList, "u").unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].status, ListStatus::Watching);
+}
+
+#[tokio::test]
+async fn write_through_after_update_noop_without_entry_or_owner() {
+    // Codex P2 #3412673593: best-effort cache write-through. A None
+    // entry returns immediately; a provider with no impl (inhouse →
+    // me() errors, no network) skips the upsert. Neither writes a row.
+    use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId, Tokens};
+    use crate::account::status::ListStatus;
+    let state = state_with_kitsu("http://127.0.0.1:0");
+    let tokens = Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    write_through_after_update(&state, ProviderKind::AniList, &tokens, None).await;
+    assert!(cached_list(&state, ProviderKind::AniList, "u")
+        .unwrap()
+        .is_empty());
+
+    let entry = ListEntry {
+        provider: ProviderKind::InHouse,
+        media_id: ProviderMediaId(1),
+        mal_id: None,
+        status: ListStatus::Watching,
+        progress_episodes: 1,
+        score_0_to_100: None,
+        updated_at_epoch_s: 0,
+        title: "Y".into(),
+    };
+    write_through_after_update(&state, ProviderKind::InHouse, &tokens, Some(&entry)).await;
+    assert!(cached_list(&state, ProviderKind::InHouse, "u")
+        .unwrap()
+        .is_empty());
 }

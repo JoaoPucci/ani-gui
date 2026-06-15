@@ -11,7 +11,8 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
-import { readPersistedAccount } from './api';
+import { persistAccount, readPersistedAccount, refreshTokens } from './api';
+import { refreshExpiredAccounts } from './refresh-flow';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -19,6 +20,33 @@ class AccountStore {
 		mal: { kind: 'disconnected' },
 		inhouse: { kind: 'disconnected' }
 	});
+
+	/**
+	 * Monotonic per-provider counter, bumped on every account state
+	 * change and synchronously at the start of an async disconnect
+	 * ([`beginAccountChange`]). A boot-time refresh captures it before
+	 * its network await and re-checks after, so a disconnect / re-auth
+	 * that raced the refresh supersedes the write even before the
+	 * `byProvider` snapshot updates (Codex P2 #3416668470).
+	 */
+	accountGeneration: Record<Provider, number> = { anilist: 0, mal: 0, inhouse: 0 };
+
+	private bumpGeneration(provider: Provider): void {
+		this.accountGeneration = {
+			...this.accountGeneration,
+			[provider]: this.accountGeneration[provider] + 1
+		};
+	}
+
+	/**
+	 * Signal that an async account mutation (e.g. disconnect) is starting
+	 * for `provider`, so an in-flight token refresh is superseded before
+	 * the mutation's async clear updates `byProvider` (Codex P2
+	 * #3416668470). Synchronous and side-effect-free beyond the counter.
+	 */
+	beginAccountChange(provider: Provider): void {
+		this.bumpGeneration(provider);
+	}
 
 	/**
 	 * Read every provider's persisted token (via Electron safeStorage)
@@ -60,6 +88,34 @@ class AccountStore {
 			};
 		}
 		this.byProvider = next;
+		// Every hydrate path (cold launch AND the account page) must give a
+		// just-expired-but-refreshable provider a chance to refresh, so
+		// hydrate() owns it rather than each caller remembering (Codex P2
+		// #3416668464). Fire-and-forget — safe to ignore.
+		void this.refreshExpired();
+	}
+
+	/**
+	 * Refresh any provider `hydrate()` marked `expired` that still has a
+	 * usable refresh token (MAL's ~1h access token), re-persisting the
+	 * rotated tokens and flipping it back to `connected`. AniList carries
+	 * no refresh token, so it stays expired → reauth. Best-effort and
+	 * safe to `void` from the layout's onMount after hydrate (Codex P2
+	 * #3412673586).
+	 */
+	refreshExpired(): Promise<void> {
+		return refreshExpiredAccounts({
+			byProvider: () => this.byProvider,
+			onRefreshed: (provider, account) => this.setConnected(provider, account),
+			refreshTokens,
+			persistAccount,
+			// Post-await staleness guard: the per-provider generation counter
+			// advances on any account change (and synchronously at the start
+			// of an async disconnect), so a refresh that resolved after a
+			// mid-flight disconnect / re-auth is dropped — even before the
+			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
+			generation: (provider) => this.accountGeneration[provider]
+		});
 	}
 
 	get connected(): Provider[] {
@@ -79,10 +135,12 @@ class AccountStore {
 	}
 
 	setConnecting(provider: Provider): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 
 	setConnected(provider: Provider, account: PersistedAccount): void {
+		this.bumpGeneration(provider);
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'connected', account, lastSyncedAt: Date.now() }
@@ -90,10 +148,12 @@ class AccountStore {
 	}
 
 	setDisconnected(provider: Provider): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'disconnected' } };
 	}
 
 	setExpired(provider: Provider, account: PersistedAccount): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'expired', account } };
 	}
 
@@ -107,9 +167,7 @@ class AccountStore {
 		// clear. Pull the account from any prior state that carries
 		// one.
 		const prev = this.byProvider[provider];
-		let account: PersistedAccount | null = null;
-		if (prev.kind === 'connected' || prev.kind === 'expired') account = prev.account;
-		else if (prev.kind === 'error') account = prev.account;
+		const account: PersistedAccount | null = 'account' in prev ? prev.account : null;
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'error', account, message }

@@ -140,6 +140,23 @@ pub async fn exchange_code(
     provider.exchange_code(code, pkce).await
 }
 
+/// Exchange a refresh token for a fresh token set. The renderer calls
+/// this when a persisted token has expired but is still refreshable
+/// (MAL's ~1h access token against its long-lived refresh token), then
+/// re-persists the result. AniList's provider has no real refresh and
+/// returns an error, which the renderer treats as "fall back to
+/// reauth".
+pub async fn refresh_tokens(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    refresh_token: &str,
+) -> Result<Tokens> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    provider.refresh(refresh_token).await
+}
+
 /// Fetch the authenticated user's profile. Routes use this to populate
 /// the AccountChip avatar + `/account` page stats.
 pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<UserProfile> {
@@ -199,6 +216,37 @@ fn write_through_cache(
     entries: &[ListEntry],
 ) -> Result<()> {
     crate::account::cache::write_entries(pool, kind, user_id, entries)
+}
+
+/// Write a single just-synced entry back into the cache so the local
+/// snapshot reflects the change without a full resync (Codex P2
+/// #3412673593). Leaves the rest of the user's cached list intact.
+pub fn upsert_cached_entry(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+) -> Result<()> {
+    crate::account::cache_upsert::upsert_entry(&state.cache_pool, kind, user_id, entry)
+}
+
+/// Best-effort cache write-through after a tracker update: resolve the
+/// bearer's owner via `me()` and upsert the just-synced entry so the
+/// Watch Later rail's planning filter drops a started title without a
+/// full resync (Codex P2 #3412673593). A `None` entry (the show wasn't
+/// mappable) or any failure is a silent no-op — the authoritative
+/// tracker write already succeeded. Lives here, off the handler, to
+/// keep `api/account.rs` under the CRAP ceiling.
+pub async fn write_through_after_update(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+    entry: Option<&ListEntry>,
+) {
+    let Some(e) = entry else { return };
+    if let Ok(profile) = me(state, kind, tokens).await {
+        let _ = upsert_cached_entry(state, kind, &profile.user_id, e);
+    }
 }
 
 /// Decode the `Authorization: Bearer <token>` header value into a
@@ -426,6 +474,17 @@ pub fn reconcile_monotonic(
         if update.status == Some(ListStatus::Watching) {
             update.status = None;
         }
+    }
+    // Preserve a rewatching/repeating row at the finale (Codex P2
+    // #3415780486): the fan-out sends Completed when a finished series'
+    // last episode is watched, but completing a row that's mid-rewatch
+    // would clear AniList REPEATING / MAL is_rewatching. Drop the
+    // Completed status so the rewatch state survives; any advancing
+    // progress field still flows below.
+    if update.status == Some(ListStatus::Completed)
+        && current.map(|c| c.status) == Some(ListStatus::Rewatching)
+    {
+        update.status = None;
     }
     // Promote a planning / not-yet-listed row to Watching on ANY watch
     // event, advancing or not (Codex P2 #3387568872: a planning row

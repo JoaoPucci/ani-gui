@@ -77,7 +77,13 @@
 		await handleChipDisconnect(
 			provider,
 			prev,
-			{ disconnectAccount, clearPersistedAccount, dropListCache, dropProviderCache },
+			{
+				disconnectAccount,
+				beginAccountChange: () => accountStore.beginAccountChange(provider),
+				clearPersistedAccount,
+				dropListCache,
+				dropProviderCache
+			},
 			{
 				setError: (p, msg) => accountStore.setError(p, msg),
 				setDisconnected: (p) => accountStore.setDisconnected(p),

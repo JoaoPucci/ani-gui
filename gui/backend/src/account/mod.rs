@@ -18,6 +18,7 @@
 //! to call upstream — see `.planning/account-integration.md` §3.4.
 
 pub mod cache;
+pub mod cache_upsert;
 pub mod credentials;
 pub mod internal_secret;
 pub mod pkce;

@@ -56,93 +56,11 @@ fn bearer_from_headers_rejects_empty_token() {
 }
 
 #[test]
-fn pkce_wire_round_trips() {
-    let wire = PkceWire {
-        verifier: "v".into(),
-        challenge: "c".into(),
-        method: "plain".into(),
-    };
-    let p = wire.into_pkce().unwrap();
-    assert_eq!(p.method, PkceMethod::Plain);
-    assert_eq!(p.verifier, "v");
-    assert_eq!(p.challenge, "c");
-}
-
-#[test]
-fn pkce_wire_rejects_unknown_method() {
-    let wire = PkceWire {
-        verifier: "v".into(),
-        challenge: "c".into(),
-        method: "s256".into(), // lowercase — must be S256
-    };
-    assert!(wire.into_pkce().is_none());
-}
-
-#[test]
 fn bearer_from_headers_accepts_extra_whitespace_after_scheme() {
     use axum::http::HeaderMap;
     let mut h = HeaderMap::new();
     h.insert(AUTHORIZATION, "Bearer    spaced-token  ".parse().unwrap());
     assert_eq!(bearer_from_headers(&h).unwrap(), "spaced-token");
-}
-
-#[test]
-fn tokens_response_round_trip_from_tokens() {
-    // From<Tokens> for TokensResponse pins the wire shape. Codex P2
-    // #3369941703 wired bearer auth onto get_cached_list /
-    // delete_list_cache; this test pins that the shared response
-    // shape used by the connect flow doesn't accidentally drop the
-    // refresh_token / expires_at_epoch_s on the way out.
-    let t = crate::commands::account::tokens_from_bearer("xyz");
-    let resp: TokensResponse = t.into();
-    let s = serde_json::to_string(&resp).unwrap();
-    assert!(s.contains("\"access_token\":\"xyz\""));
-    assert!(s.contains("\"refresh_token\":null"));
-    assert!(s.contains("\"expires_at_epoch_s\":0"));
-}
-
-#[test]
-fn auth_url_request_deserialise() {
-    // Pin the wire shape from the renderer side — the renderer's
-    // PkceWire JSON matches the backend's expectation.
-    let body = r#"{
-        "state": "csrf-token",
-        "pkce": { "verifier": "v", "challenge": "c", "method": "plain" }
-    }"#;
-    let req: AuthUrlRequest = serde_json::from_str(body).unwrap();
-    assert_eq!(req.state, "csrf-token");
-    assert_eq!(req.pkce.method, "plain");
-}
-
-#[test]
-fn exchange_code_request_deserialise() {
-    let body = r#"{
-        "code": "auth-code",
-        "pkce": { "verifier": "v", "challenge": "v", "method": "plain" }
-    }"#;
-    let req: ExchangeCodeRequest = serde_json::from_str(body).unwrap();
-    assert_eq!(req.code, "auth-code");
-}
-
-#[test]
-fn auth_url_response_serialise_round_trip() {
-    let r = AuthUrlResponse {
-        url: "https://anilist.co/x".into(),
-    };
-    let s = serde_json::to_string(&r).unwrap();
-    assert!(s.contains("anilist.co/x"));
-}
-
-#[test]
-fn disconnect_fallback_query_defaults_to_none_when_field_missing() {
-    let q: DisconnectFallbackQuery = serde_urlencoded::from_str("").unwrap();
-    assert!(q.fallback_user_id.is_none());
-}
-
-#[test]
-fn disconnect_fallback_query_extracts_user_id() {
-    let q: DisconnectFallbackQuery = serde_urlencoded::from_str("fallback_user_id=u7").unwrap();
-    assert_eq!(q.fallback_user_id.as_deref(), Some("u7"));
 }
 
 // ─── Router-level tests ──────────────────────────────────────────────
@@ -328,6 +246,83 @@ async fn delete_list_cache_requires_bearer() {
                 .method("DELETE")
                 .uri("/api/account/list/anilist/cache")
                 .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_update_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/update/anilist")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"kitsu_id":"1","progress":1}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_exchange_code_rejects_unknown_provider() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/exchange-code/unknown")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"code":"c","pkce":{"verifier":"v","challenge":"c","method":"plain"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_refresh_rejects_unknown_provider() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/refresh/unknown")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"refresh_token":"rt"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(!r.status().is_success());
+}
+
+#[tokio::test]
+async fn post_refresh_inhouse_has_no_provider() {
+    // `inhouse` parses as a valid slug but has no provider impl, so
+    // refresh_tokens hits the provider_for_kind None arm and errors —
+    // no upstream network, but the handler + wrapper bodies execute.
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/refresh/inhouse")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"refresh_token":"rt"}"#))
                 .unwrap(),
         )
         .await

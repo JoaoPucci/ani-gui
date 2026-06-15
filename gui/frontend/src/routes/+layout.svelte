@@ -198,6 +198,10 @@
 		// users until they visited Accounts first (Codex P2 #3373736854).
 		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
 		// the time the home page mounts the store is fully populated.
+		// hydrate() seeds the store from safeStorage AND kicks off a
+		// silent refresh of any expired-but-refreshable token (e.g. MAL's
+		// ~1h access token), so the user isn't pushed through OAuth every
+		// hour (Codex P2 #3412673586, #3416668464).
 		accountStore.hydrate();
 
 		// Persistent PiP — distinguish two ways the PiP window can

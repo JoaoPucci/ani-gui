@@ -1,0 +1,200 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+	expiredRefreshable,
+	refreshAccount,
+	refreshExpiredAccounts,
+	type RefreshFlowDeps
+} from './refresh-flow';
+import type { PersistedAccount, Provider, ProviderState } from './types';
+
+function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
+	return {
+		access_token: 'old-access',
+		refresh_token: 'rt',
+		expires_at_epoch_s: 1,
+		user_id: 'u1',
+		username: 'name',
+		avatar_url: null,
+		...over
+	};
+}
+
+describe('expiredRefreshable', () => {
+	it('selects only expired providers that carry a refresh token', () => {
+		const byProvider = {
+			anilist: { kind: 'expired', account: account({ refresh_token: null }) },
+			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
+			inhouse: { kind: 'connected', account: account(), lastSyncedAt: null }
+		} as unknown as Record<Provider, ProviderState>;
+		expect(expiredRefreshable(byProvider)).toEqual(['mal']);
+	});
+});
+
+describe('refreshAccount', () => {
+	it('refreshes, merges the new tokens, and re-persists', async () => {
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi.fn().mockResolvedValue({
+				access_token: 'new-access',
+				refresh_token: 'new-rt',
+				expires_at_epoch_s: 999
+			}),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('refreshed');
+		expect(deps.refreshTokens).toHaveBeenCalledWith('mal', 'rt');
+		const expected = account({
+			access_token: 'new-access',
+			refresh_token: 'new-rt',
+			expires_at_epoch_s: 999
+		});
+		expect(deps.persistAccount).toHaveBeenCalledWith('mal', expected);
+		if (out.kind === 'refreshed') expect(out.account).toEqual(expected);
+	});
+
+	it('keeps the existing refresh token when the provider returns none', async () => {
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'new', refresh_token: null, expires_at_epoch_s: 5 }),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account({ refresh_token: 'keep-me' }));
+		expect(out.kind).toBe('refreshed');
+		if (out.kind === 'refreshed') expect(out.account.refresh_token).toBe('keep-me');
+	});
+
+	it('is unrefreshable with no refresh token (no calls)', async () => {
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi.fn(),
+			persistAccount: vi.fn(),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account({ refresh_token: null }));
+		expect(out.kind).toBe('unrefreshable');
+		expect(deps.refreshTokens).not.toHaveBeenCalled();
+	});
+
+	it('fails (keeps expired) when the refresh call throws', async () => {
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi.fn().mockRejectedValue(new Error('401')),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('failed');
+		expect(deps.persistAccount).not.toHaveBeenCalled();
+	});
+
+	it('fails when re-persisting the refreshed token fails', async () => {
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 1 }),
+			persistAccount: vi.fn().mockResolvedValue({ ok: false, kind: 'keychain_unavailable' }),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('failed');
+	});
+
+	it('is superseded (no persist) when the generation moves during the refresh', async () => {
+		// Codex P2 #3416616176 / #3416668470: the user disconnected or
+		// re-authed while refreshTokens was in flight — the provider's
+		// generation counter advanced. Must NOT persist the stale account
+		// back. The bump simulates a disconnect/re-auth landing mid-await,
+		// even before the store's account snapshot catches up.
+		let gen = 7;
+		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi.fn().mockImplementation(async () => {
+				gen = 8; // a disconnect/re-auth raced the network call
+				return { access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 };
+			}),
+			persistAccount,
+			generation: () => gen
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('superseded');
+		expect(persistAccount).not.toHaveBeenCalled();
+	});
+
+	it('is superseded when the generation moves during the persist await', async () => {
+		// Codex P2 #3416732381: a disconnect/re-auth can land in the gap
+		// between the post-network check and the persist completing. The
+		// post-persist re-check must also catch it, so onRefreshed never
+		// reconnects the superseded account.
+		let gen = 0;
+		const persistAccount = vi.fn().mockImplementation(async () => {
+			gen = 1; // disconnect/re-auth raced the safeStorage write
+			return { ok: true };
+		});
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 }),
+			persistAccount,
+			generation: () => gen
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('superseded');
+	});
+
+	it('persists when the generation is unchanged across the refresh', async () => {
+		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 }),
+			persistAccount,
+			generation: () => 3
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('refreshed');
+		expect(persistAccount).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('refreshExpiredAccounts', () => {
+	it('marks refreshed providers connected, leaves failed ones alone', async () => {
+		const byProvider = {
+			anilist: { kind: 'connected', account: account(), lastSyncedAt: null },
+			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
+			inhouse: { kind: 'disconnected' }
+		} as unknown as Record<Provider, ProviderState>;
+		const onRefreshed = vi.fn();
+		await refreshExpiredAccounts({
+			byProvider: () => byProvider,
+			onRefreshed,
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 }),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0
+		});
+		expect(onRefreshed).toHaveBeenCalledTimes(1);
+		expect(onRefreshed).toHaveBeenCalledWith(
+			'mal',
+			account({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 })
+		);
+	});
+
+	it('does not mark connected when refresh fails', async () => {
+		const byProvider = {
+			anilist: { kind: 'disconnected' },
+			mal: { kind: 'expired', account: account() },
+			inhouse: { kind: 'disconnected' }
+		} as unknown as Record<Provider, ProviderState>;
+		const onRefreshed = vi.fn();
+		await refreshExpiredAccounts({
+			byProvider: () => byProvider,
+			onRefreshed,
+			refreshTokens: vi.fn().mockRejectedValue(new Error('boom')),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0
+		});
+		expect(onRefreshed).not.toHaveBeenCalled();
+	});
+});

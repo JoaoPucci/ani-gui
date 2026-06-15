@@ -18,12 +18,14 @@ describe('handleChipDisconnect', () => {
 		};
 		const deps = {
 			disconnectAccount,
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn(),
 			dropListCache: vi.fn(),
 			dropProviderCache: vi.fn()
 		};
 		await handleChipDisconnect('anilist', makeState(), deps, cb);
 		expect(disconnectAccount).toHaveBeenCalledWith('anilist', expect.anything(), {
+			beginAccountChange: deps.beginAccountChange,
 			clearPersistedAccount: deps.clearPersistedAccount,
 			dropListCache: deps.dropListCache,
 			dropProviderCache: deps.dropProviderCache
@@ -40,6 +42,7 @@ describe('handleChipDisconnect', () => {
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'ok' }),
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn(),
 			dropListCache: vi.fn(),
 			dropProviderCache: vi.fn()
@@ -60,6 +63,7 @@ describe('handleChipDisconnect', () => {
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'token_clear_failed' }),
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn(),
 			dropListCache: vi.fn(),
 			dropProviderCache: vi.fn()
@@ -85,6 +89,7 @@ describe('handleChipDisconnect', () => {
 		const disconnectAccount = vi.fn().mockResolvedValue({ kind: 'ok' });
 		const deps = {
 			disconnectAccount,
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn(),
 			dropListCache: vi.fn(),
 			dropProviderCache: vi.fn()

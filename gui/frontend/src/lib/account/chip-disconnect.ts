@@ -33,6 +33,7 @@ export async function handleChipDisconnect(
 	cb: ChipDisconnectCallbacks
 ): Promise<void> {
 	const r = await deps.disconnectAccount(provider, prev, {
+		beginAccountChange: deps.beginAccountChange,
 		clearPersistedAccount: deps.clearPersistedAccount,
 		dropListCache: deps.dropListCache,
 		dropProviderCache: deps.dropProviderCache

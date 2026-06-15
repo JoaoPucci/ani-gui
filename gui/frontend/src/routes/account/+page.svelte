@@ -208,6 +208,10 @@
 	async function disconnect(provider: Provider) {
 		const prev = accountStore.byProvider[provider];
 		const r = await disconnectAccount(provider, prev, {
+			// Supersede any in-flight boot refresh before the async clear
+			// (disconnectAccount calls this first) so a refresh resolving
+			// mid-disconnect can't re-persist/reconnect (Codex P2 #3416668470).
+			beginAccountChange: () => accountStore.beginAccountChange(provider),
 			clearPersistedAccount,
 			dropListCache,
 			dropProviderCache

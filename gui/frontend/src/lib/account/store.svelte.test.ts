@@ -235,3 +235,101 @@ describe('accountStore.hydrate', () => {
 		expect(accountStore.byProvider.anilist.kind).toBe('error');
 	});
 });
+
+describe('accountStore.refreshExpired', () => {
+	afterEach(() => {
+		(globalThis as { window?: unknown }).window = undefined;
+		vi.unstubAllGlobals();
+	});
+
+	it('refreshes an expired-but-refreshable provider back to connected', async () => {
+		const setToken = vi.fn().mockResolvedValue({ ok: true });
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:0', account: { setToken } }
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					access_token: 'fresh-access',
+					refresh_token: 'fresh-rt',
+					expires_at_epoch_s: 4_000_000_000
+				})
+			})
+		);
+		accountStore.setExpired('mal', payload({ refresh_token: 'stale-rt' }));
+
+		await accountStore.refreshExpired();
+
+		const s = accountStore.byProvider.mal;
+		expect(s.kind).toBe('connected');
+		if (s.kind === 'connected') expect(s.account.access_token).toBe('fresh-access');
+		expect(setToken).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves an expired provider with no refresh token untouched', async () => {
+		const fetchSpy = vi.fn();
+		vi.stubGlobal('fetch', fetchSpy);
+		accountStore.setExpired('anilist', payload({ refresh_token: null }));
+
+		await accountStore.refreshExpired();
+
+		expect(accountStore.byProvider.anilist.kind).toBe('expired');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	// Codex P2 #3416668470: a Disconnect clicked while the boot refresh is
+	// awaiting the network must win — beginAccountChange bumps the
+	// generation, so the refresh is superseded and the provider is NOT
+	// reconnected (nor its token re-persisted) when the call returns.
+	it('does not reconnect a provider disconnected mid-refresh', async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		const setToken = vi.fn().mockResolvedValue({ ok: true });
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:0', account: { setToken } }
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockImplementation(async () => {
+				await gate;
+				return {
+					ok: true,
+					json: async () => ({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 })
+				};
+			})
+		);
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+
+		const pending = accountStore.refreshExpired();
+		accountStore.beginAccountChange('mal'); // user clicked Disconnect mid-flight
+		release();
+		await pending;
+
+		expect(accountStore.byProvider.mal.kind).toBe('expired');
+		expect(setToken).not.toHaveBeenCalled();
+	});
+});
+
+describe('accountStore.hydrate triggers refresh', () => {
+	afterEach(() => {
+		(globalThis as { window?: unknown }).window = undefined;
+		vi.restoreAllMocks();
+	});
+
+	it('kicks off refreshExpired after seeding state', () => {
+		// Codex P2 #3416668464: every hydrate path (cold launch AND the
+		// account page) must follow up with a refresh, so hydrate() owns it.
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				account: {
+					getToken: () => ({ ok: false, kind: 'not_found' })
+				}
+			}
+		};
+		const spy = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
+		accountStore.hydrate();
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+});

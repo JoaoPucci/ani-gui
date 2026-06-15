@@ -119,6 +119,14 @@ function errStatus(err: unknown): number | undefined {
 }
 
 export interface DisconnectFlowDeps {
+	/**
+	 * Synchronously mark this provider as changing BEFORE any async work,
+	 * so an in-flight boot token refresh is superseded and can't
+	 * re-persist / reconnect the account mid-disconnect. Required of every
+	 * caller (the /account page and the topbar chip) so no disconnect path
+	 * can forget it (Codex P2 #3416668470, #3416762784).
+	 */
+	beginAccountChange(): void;
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
 	dropListCache(provider: Provider, bearer: string, fallbackUserId?: string): Promise<void>;
 	/**
@@ -151,6 +159,12 @@ export async function disconnectAccount(
 	prevState: ProviderState,
 	deps: DisconnectFlowDeps
 ): Promise<DisconnectResult> {
+	// Mark the provider as changing synchronously, before any await, so an
+	// in-flight boot token refresh is superseded and can't re-persist /
+	// reconnect during the async cache + token clears below (Codex P2
+	// #3416668470, #3416762784). Centralised here so every disconnect
+	// entry point (the /account page and the topbar chip) is covered.
+	deps.beginAccountChange();
 	const bearer = bearerFor(prevState);
 	const fallbackUserId = userIdFor(prevState) ?? undefined;
 	if (bearer) {
