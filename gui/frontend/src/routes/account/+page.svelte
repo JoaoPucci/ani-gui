@@ -59,6 +59,18 @@
 		})
 	);
 
+	// Which connected provider currently leads (the one whose card shows
+	// the Primary flag). Driven by the shared store so the flag moves the
+	// instant the user clicks — no wait for the persisted config. Falls
+	// back to the first identity provider (AniList-first) when no explicit
+	// choice is set or the chosen one isn't connected.
+	const effectivePrimary = $derived.by(() => {
+		const ids = identityProviders;
+		if (ids.length === 0) return null;
+		const chosen = primaryAccountStore.value;
+		return chosen && ids.includes(chosen) ? chosen : ids[0];
+	});
+
 	onMount(() => {
 		accountStore.hydrate();
 		void settingsGet()
@@ -271,9 +283,28 @@
 		<section class="provider-card" data-state={state.kind}>
 			<header class="provider-head">
 				<h2 class="provider-name">{name}</h2>
-				<span class="state-badge state-badge-{state.kind}">
-					{stateBadgeKind(state)}
-				</span>
+				<div class="head-meta">
+					{#if identityProviders.length >= 2 && (state.kind === 'connected' || state.kind === 'expired' || (state.kind === 'error' && !!state.account))}
+						{#if effectivePrimary === provider}
+							<span class="primary-flag" title={m.account_primary_hint()}>
+								{m.account_primary_badge()}
+							</span>
+						{:else}
+							<button
+								type="button"
+								class="make-primary"
+								disabled={savingPrimary}
+								title={m.account_primary_hint()}
+								onclick={() => setPrimary(provider)}
+							>
+								{m.account_primary_make()}
+							</button>
+						{/if}
+					{/if}
+					<span class="state-badge state-badge-{state.kind}">
+						{stateBadgeKind(state)}
+					</span>
+				</div>
 			</header>
 
 			{#if state.kind === 'connected' || state.kind === 'expired' || (state.kind === 'error' && state.account)}
@@ -336,41 +367,6 @@
 			</div>
 		</section>
 	{/each}
-
-	{#if identityProviders.length >= 2}
-		<section class="primary-card" aria-labelledby="primary-heading">
-			<h2 class="primary-heading" id="primary-heading">{m.account_primary_section_title()}</h2>
-			<p class="primary-hint">{m.account_primary_section_hint()}</p>
-			<div class="primary-options" role="radiogroup" aria-labelledby="primary-heading">
-				<label class="primary-option">
-					<input
-						type="radio"
-						name="primary-account"
-						value=""
-						checked={(config?.primary_account ?? '') === ''}
-						disabled={savingPrimary}
-						onchange={() => setPrimary('')}
-					/>
-					<span>{m.account_primary_option_auto()}</span>
-				</label>
-				{#each identityProviders as provider (provider)}
-					<label class="primary-option">
-						<input
-							type="radio"
-							name="primary-account"
-							value={provider}
-							checked={config?.primary_account === provider}
-							disabled={savingPrimary}
-							onchange={() => setPrimary(provider)}
-						/>
-						<span>
-							{provider === 'anilist' ? m.account_provider_anilist() : m.account_provider_mal()}
-						</span>
-					</label>
-				{/each}
-			</div>
-		</section>
-	{/if}
 
 	<footer class="page-foot">
 		<p class="privacy-line">
@@ -607,61 +603,57 @@
 		border-color: color-mix(in oklab, var(--brand) 90%, white);
 	}
 
-	.primary-card {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-		background: var(--ink-100);
-		border: 1px solid var(--bone-500, var(--ink-200));
-		border-radius: var(--radius-card, 8px);
-		padding: var(--space-5) var(--space-6);
-	}
-
-	.primary-heading {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: var(--type-display-m);
-		font-weight: 600;
-		color: var(--bone-100);
-	}
-
-	.primary-hint {
-		margin: 0;
-		font-family: var(--font-body);
-		font-size: var(--type-meta);
-		line-height: 1.5;
-		color: var(--bone-400);
-		max-inline-size: 56ch;
-	}
-
-	.primary-options {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		margin-block-start: var(--space-2);
-	}
-
-	.primary-option {
+	.head-meta {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4);
-		font-family: var(--font-body);
-		font-size: var(--type-body);
-		color: var(--bone-200);
+		gap: var(--space-3);
+	}
+
+	/* "Primary" flag on the leading provider's card — same pill family as
+	   the state badge but brand-tinted to read as the active choice. */
+	.primary-flag {
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		padding: var(--space-1) var(--space-3);
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--brand) 16%, var(--ink-050));
+		border: 1px solid color-mix(in oklab, var(--brand) 45%, var(--bone-600, var(--ink-200)));
+		color: var(--brand);
+	}
+
+	/* "Make primary" action on the other connected cards. */
+	.make-primary {
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		padding: var(--space-1) var(--space-3);
+		border-radius: var(--radius-pill);
+		background: transparent;
 		border: 1px solid var(--bone-500, var(--ink-200));
-		border-radius: var(--radius-control, 6px);
+		color: var(--bone-300);
 		cursor: pointer;
+		transition:
+			color var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
 	}
 
-	.primary-option:has(input:checked) {
+	.make-primary:hover:not(:disabled) {
 		color: var(--bone-100);
-		border-color: color-mix(in oklab, var(--brand) 50%, var(--bone-500, var(--ink-200)));
-		background: color-mix(in oklab, var(--brand) 10%, var(--ink-100));
+		border-color: var(--brand);
 	}
 
-	.primary-option input {
-		accent-color: var(--brand);
+	.make-primary:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
 	}
 
 	.page-foot {

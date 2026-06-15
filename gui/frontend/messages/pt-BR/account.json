@@ -41,8 +41,8 @@
 	"chip_pop_disconnect": "Desconectar",
 	"expiry_toast_message": "Sua sessão do {provider} expirou. Conecte-se novamente para continuar sincronizando.",
 	"expiry_toast_action": "Conectar",
-	"primary_section_title": "Rastreador principal",
-	"primary_section_hint": "Escolha qual conta conectada lidera a barra superior e o trilho Assistir mais tarde. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
-	"primary_option_auto": "Automático",
+	"primary_badge": "Principal",
+	"primary_make": "Tornar principal",
+	"primary_hint": "Lidera a barra superior e o trilho Assistir mais tarde. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
 	"primary_save_error": "Não foi possível salvar o rastreador principal. Tente novamente."
 }

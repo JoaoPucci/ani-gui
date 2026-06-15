@@ -41,8 +41,8 @@
 	"chip_pop_disconnect": "Disconnect",
 	"expiry_toast_message": "Your {provider} session expired. Sign in again to keep syncing.",
 	"expiry_toast_action": "Sign in",
-	"primary_section_title": "Primary tracker",
-	"primary_section_hint": "Choose which connected account leads the topbar and the Watch Later rail. Progress is still synced to every connected tracker.",
-	"primary_option_auto": "Automatic",
+	"primary_badge": "Primary",
+	"primary_make": "Make primary",
+	"primary_hint": "Leads the topbar and the Watch Later rail. Progress still syncs to every connected tracker.",
 	"primary_save_error": "Couldn't save your primary tracker. Try again."
 }
