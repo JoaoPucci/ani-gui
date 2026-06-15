@@ -96,6 +96,18 @@ pub struct Config {
     /// the first stable cut. Users who want only stable releases can
     /// flip it off in Settings.
     pub update_include_prereleases: bool,
+    /// Which connected tracker is the "primary" one — drives the
+    /// topbar chip/avatar and the Watch Later rail's lead provider
+    /// when more than one account is connected. Empty string (the
+    /// default) means "no explicit choice"; the UI then falls back to
+    /// its fixed AniList-first precedence. Stored as the provider slug
+    /// (`"anilist"` / `"mal"`) rather than an enum so an unknown value
+    /// written by a newer build degrades to the fallback instead of
+    /// failing to deserialize. Note this only affects what's
+    /// displayed/led — progress write-back still fans out to every
+    /// connected provider regardless.
+    #[serde(default)]
+    pub primary_account: String,
 }
 
 impl Default for Config {
@@ -117,6 +129,7 @@ impl Default for Config {
             disable_auto_pip_on_leave: true,
             auto_update_anicli: true,
             update_include_prereleases: true,
+            primary_account: String::new(),
         }
     }
 }
@@ -271,6 +284,33 @@ mod tests {
         let body = "external_player = \"mpv\"\n";
         let cfg: Config = toml::from_str(body).unwrap();
         assert_eq!(cfg.syncplay_binary, default_syncplay_binary());
+    }
+
+    #[test]
+    fn primary_account_defaults_to_empty() {
+        // No explicit choice on a fresh install; the UI falls back to
+        // its AniList-first precedence rather than forcing a provider.
+        assert_eq!(Config::default().primary_account, "");
+    }
+
+    #[test]
+    fn primary_account_round_trips_through_toml() {
+        let c = Config {
+            primary_account: "mal".into(),
+            ..Config::default()
+        };
+        let s = toml::to_string(&c).unwrap();
+        let parsed: Config = toml::from_str(&s).unwrap();
+        assert_eq!(parsed.primary_account, "mal");
+    }
+
+    #[test]
+    fn primary_account_absent_in_old_config_decodes_as_empty() {
+        // Pre-picker config.toml files don't have this field; serde's
+        // struct-level default must decode them with an empty choice.
+        let body = "mode = \"sub\"\nquality = \"best\"\n";
+        let cfg: Config = toml::from_str(body).unwrap();
+        assert_eq!(cfg.primary_account, "");
     }
 
     #[test]
