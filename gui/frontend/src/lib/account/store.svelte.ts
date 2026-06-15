@@ -11,7 +11,8 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
-import { readPersistedAccount } from './api';
+import { persistAccount, readPersistedAccount, refreshTokens } from './api';
+import { refreshExpiredAccounts } from './refresh-flow';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -60,6 +61,23 @@ class AccountStore {
 			};
 		}
 		this.byProvider = next;
+	}
+
+	/**
+	 * Refresh any provider `hydrate()` marked `expired` that still has a
+	 * usable refresh token (MAL's ~1h access token), re-persisting the
+	 * rotated tokens and flipping it back to `connected`. AniList carries
+	 * no refresh token, so it stays expired → reauth. Best-effort and
+	 * safe to `void` from the layout's onMount after hydrate (Codex P2
+	 * #3412673586).
+	 */
+	refreshExpired(): Promise<void> {
+		return refreshExpiredAccounts({
+			byProvider: () => this.byProvider,
+			onRefreshed: (provider, account) => this.setConnected(provider, account),
+			refreshTokens,
+			persistAccount
+		});
 	}
 
 	get connected(): Provider[] {

@@ -199,6 +199,13 @@
 		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
 		// the time the home page mounts the store is fully populated.
 		accountStore.hydrate();
+		// A MAL token whose ~1h access token expired but whose refresh
+		// token is still valid was just marked `expired` by hydrate();
+		// silently refresh + re-persist it so the user isn't pushed
+		// through OAuth every hour (Codex P2 #3412673586). Fire-and-
+		// forget — the rail/chip update reactively when it flips back to
+		// connected.
+		void accountStore.refreshExpired();
 
 		// Persistent PiP — distinguish two ways the PiP window can
 		// close:

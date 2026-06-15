@@ -235,3 +235,47 @@ describe('accountStore.hydrate', () => {
 		expect(accountStore.byProvider.anilist.kind).toBe('error');
 	});
 });
+
+describe('accountStore.refreshExpired', () => {
+	afterEach(() => {
+		(globalThis as { window?: unknown }).window = undefined;
+		vi.unstubAllGlobals();
+	});
+
+	it('refreshes an expired-but-refreshable provider back to connected', async () => {
+		const setToken = vi.fn().mockResolvedValue({ ok: true });
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:0', account: { setToken } }
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					access_token: 'fresh-access',
+					refresh_token: 'fresh-rt',
+					expires_at_epoch_s: 4_000_000_000
+				})
+			})
+		);
+		accountStore.setExpired('mal', payload({ refresh_token: 'stale-rt' }));
+
+		await accountStore.refreshExpired();
+
+		const s = accountStore.byProvider.mal;
+		expect(s.kind).toBe('connected');
+		if (s.kind === 'connected') expect(s.account.access_token).toBe('fresh-access');
+		expect(setToken).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves an expired provider with no refresh token untouched', async () => {
+		const fetchSpy = vi.fn();
+		vi.stubGlobal('fetch', fetchSpy);
+		accountStore.setExpired('anilist', payload({ refresh_token: null }));
+
+		await accountStore.refreshExpired();
+
+		expect(accountStore.byProvider.anilist.kind).toBe('expired');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+});
