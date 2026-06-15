@@ -47,7 +47,11 @@ function connectedFrom(
 	};
 }
 
-export function chipDescriptor(byProvider: Record<Provider, ProviderState>): ChipState {
+export function chipDescriptor(
+	byProvider: Record<Provider, ProviderState>,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	primary?: Provider | null
+): ChipState {
 	for (const provider of PRIORITY) {
 		const state = byProvider[provider];
 		if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
