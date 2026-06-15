@@ -24,14 +24,20 @@ fn now_secs() -> i64 {
     .unwrap_or(0)
 }
 
-/// Write a single entry back into the cache, replacing the existing row
-/// for its `(provider, user_id, media_id)` and leaving every other row
-/// untouched. Used after a tracker write so the cached status reflects
-/// the change immediately — a Plan-to-Watch title started via
-/// mark-watched flips to Watching and drops out of the Watch Later
-/// rail's planning filter without waiting for a full resync (Codex P2
-/// #3412673593). Unlike [`crate::account::cache::write_entries`], this
-/// does NOT clear the rest of the user's list.
+/// Write a single entry back into the cache for its
+/// `(provider, user_id, media_id)`, leaving every other row untouched.
+/// Used after a tracker write so the cached status reflects the change
+/// immediately — a Plan-to-Watch title started via mark-watched flips
+/// to Watching and drops out of the Watch Later rail's planning filter
+/// without waiting for a full resync (Codex P2 #3412673593). Unlike
+/// [`crate::account::cache::write_entries`], this does NOT clear the
+/// rest of the user's list.
+///
+/// Monotonic on `progress` (Codex P2 #3416732383): the write-through
+/// runs outside `push_progress`'s per-show lock, so two concurrent
+/// mark-watched writes can land in either order. The `ON CONFLICT`
+/// guard keeps the higher progress, so a stale lower-progress write
+/// can't regress the rail. A genuinely new row still inserts.
 pub fn upsert_entry(
     pool: &SqlitePool,
     kind: ProviderKind,
@@ -40,10 +46,16 @@ pub fn upsert_entry(
 ) -> Result<()> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     conn.execute(
-        "INSERT OR REPLACE INTO user_list_cache \
+        "INSERT INTO user_list_cache \
          (provider, user_id, media_id, mal_id, status, progress, \
           score_x100, updated_at, fetched_at, title) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
+         ON CONFLICT(provider, user_id, media_id) DO UPDATE SET \
+            mal_id = excluded.mal_id, status = excluded.status, \
+            progress = excluded.progress, score_x100 = excluded.score_x100, \
+            updated_at = excluded.updated_at, fetched_at = excluded.fetched_at, \
+            title = excluded.title \
+         WHERE excluded.progress >= user_list_cache.progress",
         params![
             kind.slug(),
             user_id,
