@@ -52,6 +52,29 @@ fn upsert_entry_updates_one_row_without_touching_others() {
 }
 
 #[test]
+fn upsert_entry_does_not_regress_progress() {
+    // Codex P2 #3416732383: two mark-watched writes for the same show can
+    // race the cache write-through (it runs outside push_progress's
+    // per-show lock). The upsert must be monotonic — a stale, lower-
+    // progress write landing last must NOT overwrite the newer row.
+    let pool = open_in_memory().unwrap();
+    let mut newer = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    newer.progress_episodes = 6;
+    upsert_entry(&pool, ProviderKind::AniList, "u", &newer).unwrap();
+
+    let mut older = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    older.progress_episodes = 5;
+    upsert_entry(&pool, ProviderKind::AniList, "u", &older).unwrap();
+
+    let got = list_entries(&pool, ProviderKind::AniList, "u").unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(
+        got[0].progress_episodes, 6,
+        "a stale lower-progress write must not regress the cache"
+    );
+}
+
+#[test]
 fn upsert_entry_inserts_when_absent() {
     let pool = open_in_memory().unwrap();
     upsert_entry(
