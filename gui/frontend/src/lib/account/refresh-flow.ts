@@ -73,6 +73,19 @@ export async function refreshAccount(
 	} catch {
 		return { kind: 'failed' };
 	}
+	// The await yielded — the user may have disconnected or re-authed this
+	// provider in the meantime. Re-read the current persisted account and
+	// bail unless it's still the exact one we refreshed from, so we never
+	// resurrect a removed token or overwrite a newer session (Codex P2
+	// #3416616176).
+	const current = deps.currentAccount(provider);
+	if (
+		!current ||
+		current.refresh_token !== account.refresh_token ||
+		current.access_token !== account.access_token
+	) {
+		return { kind: 'superseded' };
+	}
 	const refreshed: PersistedAccount = {
 		...account,
 		access_token: tokens.access_token,
