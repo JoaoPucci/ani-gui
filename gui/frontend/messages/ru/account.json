@@ -32,6 +32,7 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Посмотреть позже",
 	"watch_later_caption": "Из вашего списка «В планах»",
+	"watch_later_refresh": "Обновить из трекера",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Меню аккаунта — вход выполнен как {username}",
 	"chip_warning_expired": "Срок сеанса истёк",

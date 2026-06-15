@@ -32,6 +32,7 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Ver depois",
 	"watch_later_caption": "Das suas listas de Planejados",
+	"watch_later_refresh": "Atualizar do rastreador",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Menu da conta — conectado como {username}",
 	"chip_warning_expired": "Sessão expirada",

@@ -59,10 +59,16 @@
 		type PlayProgress
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
-	import { fetchCachedList } from '$lib/account/api';
+	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import {
+		isWatchLaterStale,
+		readLastRefreshed,
+		markRefreshed
+	} from '$lib/account/watch-later-refresh';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
+	import Icon from '$lib/components/Icon.svelte';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
@@ -108,6 +114,11 @@
 	// show — rail stays hidden, same as the "no provider" case.
 	// Non-empty = render with the bridged Kitsu refs.
 	let watchLater = $state<KitsuAnimeRef[] | null>(null);
+	// Watch Later refresh: in-flight guard for the manual button, and a
+	// one-shot latch so the TTL auto-refresh fires at most once per mount
+	// (the rail effect re-runs on account/mode changes).
+	let refreshingWatchLater = $state(false);
+	let watchLaterAutoChecked = false;
 	let heroIndex = $state(0);
 	let heroPaused = $state(false);
 	// Per-history-entry Kitsu match, keyed by allanime id. Populated lazily
@@ -332,7 +343,9 @@
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
 			.then((refs) => {
-				if (!cancelled) watchLater = refs;
+				if (cancelled) return;
+				watchLater = refs;
+				maybeAutoRefreshWatchLater(deps);
 			})
 			.catch(() => {
 				// Loader's per-provider try/catch already swallowed
@@ -396,6 +409,54 @@
 			kitsuByMalIds,
 			primary: primaryAccountStore.value
 		};
+	}
+
+	// Re-read the cached snapshot and re-render the rail. Shared by the
+	// initial load path and post-refresh.
+	async function reloadWatchLaterRail() {
+		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const refs = await loadWatchLater(buildWatchLaterDeps());
+		watchLater = await filterAvailable(refs, filterMode);
+	}
+
+	// Re-pull each connected provider's list from the tracker (picking up
+	// entries added on the provider's website), then re-render. Drives
+	// both the manual refresh button and the TTL auto-refresh.
+	async function refreshWatchLater() {
+		if (refreshingWatchLater) return;
+		const deps = buildWatchLaterDeps();
+		const providers = Object.keys(deps.credentials) as Provider[];
+		if (providers.length === 0) return;
+		refreshingWatchLater = true;
+		try {
+			await Promise.all(
+				providers.map(async (p) => {
+					const cred = deps.credentials[p];
+					if (!cred) return;
+					try {
+						await fetchAndCacheList(p, cred.bearer);
+						markRefreshed(p, Date.now());
+					} catch {
+						/* leave the stale snapshot in place; a later refresh
+						   (manual or next TTL window) retries. */
+					}
+				})
+			);
+			await reloadWatchLaterRail();
+		} finally {
+			refreshingWatchLater = false;
+		}
+	}
+
+	// One-shot TTL check after the first cached render: if any connected
+	// provider's snapshot is past the TTL, re-pull in the background.
+	function maybeAutoRefreshWatchLater(deps: ReturnType<typeof buildWatchLaterDeps>) {
+		if (watchLaterAutoChecked) return;
+		watchLaterAutoChecked = true;
+		const providers = Object.keys(deps.credentials) as Provider[];
+		const now = Date.now();
+		const stale = providers.some((p) => isWatchLaterStale(readLastRefreshed(p), now));
+		if (stale) void refreshWatchLater();
 	}
 
 	function describeError(e: unknown): string {
@@ -935,8 +996,26 @@
        - watchLater === null  → boot, accountStore not hydrated yet
        - watchLater.length === 0 → no provider connected, or every
          connected provider's Plan-to-Watch is empty / un-bridged. -->
+{#snippet watchLaterRefresh()}
+	<button
+		type="button"
+		class="rail-refresh"
+		class:is-refreshing={refreshingWatchLater}
+		disabled={refreshingWatchLater}
+		aria-label={m.account_watch_later_refresh()}
+		title={m.account_watch_later_refresh()}
+		onclick={refreshWatchLater}
+	>
+		<Icon name="update" size={16} />
+	</button>
+{/snippet}
+
 {#if watchLater && watchLater.length > 0}
-	<Strip eyebrow={m.account_watch_later_title()} caption={m.account_watch_later_caption()}>
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_caption()}
+		headerTrailing={watchLaterRefresh}
+	>
 		{#each watchLater as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1379,6 +1458,44 @@
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
 			color var(--dur-fast) var(--ease-out-soft);
+	}
+
+	/* Watch Later rail refresh button (Strip headerTrailing). */
+	.rail-refresh {
+		display: inline-grid;
+		place-items: center;
+		inline-size: 2rem;
+		block-size: 2rem;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--bone-300);
+		cursor: pointer;
+		transition:
+			background var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.rail-refresh:hover:not(:disabled) {
+		background: var(--ink-100);
+		color: var(--bone-100);
+	}
+	.rail-refresh:disabled {
+		cursor: default;
+		opacity: 0.7;
+	}
+	.rail-refresh.is-refreshing :global(svg) {
+		animation: rail-refresh-spin 0.8s linear infinite;
+	}
+	@keyframes rail-refresh-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rail-refresh.is-refreshing :global(svg) {
+			animation: none;
+		}
 	}
 	.continue-menu-btn:hover,
 	.continue-menu-btn[aria-expanded='true'] {

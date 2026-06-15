@@ -18,6 +18,7 @@
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import { applyPrimarySelection } from '$lib/account/set-primary';
+	import { markRefreshed } from '$lib/account/watch-later-refresh';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
@@ -131,6 +132,9 @@
 			// rail/sync mount will warm it. Best-effort, not fatal.
 			try {
 				await fetchAndCacheList(provider, r.account.access_token);
+				// Connect just pulled a fresh snapshot — stamp it so the
+				// home rail's TTL doesn't immediately re-pull.
+				markRefreshed(provider, Date.now());
 			} catch {
 				/* non-fatal — next mount warms the cache */
 			}
