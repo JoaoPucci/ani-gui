@@ -34,6 +34,7 @@
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import AccountChip from '$lib/components/AccountChip.svelte';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -155,6 +156,11 @@
 	void settingsGet()
 		.then((c) => (config = c))
 		.catch(() => {});
+
+	// User's chosen lead tracker for the topbar chip (config.primary_account,
+	// coerced to a Provider or null). Drives which account's avatar shows
+	// when more than one is connected; write-back is unaffected.
+	const primaryAccount = $derived(parsePrimaryProvider(config?.primary_account));
 
 	// — Live-results dropdown + recent searches + Cmd/Ctrl+K. —————————
 	// Bundled together so a single `git revert HEAD` rolls them back if
@@ -665,7 +671,7 @@
 			</form>
 			<UpdateBadge />
 			<DownloadDock />
-			<AccountChip />
+			<AccountChip primary={primaryAccount} />
 		</header>
 		<main class="content">
 			{@render children()}

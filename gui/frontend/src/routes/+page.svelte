@@ -61,6 +61,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { fetchCachedList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
@@ -389,7 +390,12 @@
 						: null;
 			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
 		}
-		return { credentials, fetchCachedList, kitsuByMalIds };
+		return {
+			credentials,
+			fetchCachedList,
+			kitsuByMalIds,
+			primary: parsePrimaryProvider(config?.primary_account)
+		};
 	}
 
 	function describeError(e: unknown): string {

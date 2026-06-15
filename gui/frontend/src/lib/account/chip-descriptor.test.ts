@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chipDescriptor } from './chip-descriptor';
+import { chipDescriptor, parsePrimaryProvider } from './chip-descriptor';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
 function disconnected(): ProviderState {
@@ -155,5 +155,20 @@ describe('chipDescriptor', () => {
 			null
 		);
 		expect(out).toMatchObject({ provider: 'anilist', username: 'al-name' });
+	});
+});
+
+describe('parsePrimaryProvider', () => {
+	it('passes through known provider slugs', () => {
+		expect(parsePrimaryProvider('anilist')).toBe('anilist');
+		expect(parsePrimaryProvider('mal')).toBe('mal');
+		expect(parsePrimaryProvider('inhouse')).toBe('inhouse');
+	});
+
+	it('maps empty / unknown / nullish to null', () => {
+		expect(parsePrimaryProvider('')).toBeNull();
+		expect(parsePrimaryProvider('kitsu')).toBeNull();
+		expect(parsePrimaryProvider(null)).toBeNull();
+		expect(parsePrimaryProvider(undefined)).toBeNull();
 	});
 });

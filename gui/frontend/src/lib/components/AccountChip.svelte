@@ -20,9 +20,15 @@
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { handleChipDisconnect } from '$lib/account/chip-disconnect';
 	import { toastStore } from '$lib/toasts/store.svelte';
+	import type { Provider } from '$lib/account/types';
 	import { m } from '$lib/paraglide/messages';
 
-	const descriptor: ChipState = $derived(chipDescriptor(accountStore.byProvider));
+	// The user's chosen lead provider (from `config.primary_account`,
+	// coerced by the layout). When set and still signed in it wins the
+	// chip; otherwise chipDescriptor falls back to AniList-first.
+	let { primary = null }: { primary?: Provider | null } = $props();
+
+	const descriptor: ChipState = $derived(chipDescriptor(accountStore.byProvider, primary));
 	const visible = $derived(descriptor.kind === 'connected');
 	// Codex P2 #3374957922: route avatar fetches through `/api/image` so the
 	// topbar uses the same cache + privacy boundary the rest of the app does.

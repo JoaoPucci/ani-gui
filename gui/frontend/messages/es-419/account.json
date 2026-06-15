@@ -40,5 +40,9 @@
 	"chip_pop_manage": "Gestionar cuenta",
 	"chip_pop_disconnect": "Desconectar",
 	"expiry_toast_message": "Tu sesión de {provider} expiró. Conéctate de nuevo para seguir sincronizando.",
-	"expiry_toast_action": "Conectarse"
+	"expiry_toast_action": "Conectarse",
+	"primary_section_title": "Rastreador principal",
+	"primary_section_hint": "Elige qué cuenta conectada encabeza la barra superior y el riel Ver más tarde. El progreso se sigue sincronizando con todos los rastreadores conectados.",
+	"primary_option_auto": "Automático",
+	"primary_save_error": "No se pudo guardar el rastreador principal. Inténtalo de nuevo."
 }

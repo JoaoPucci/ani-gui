@@ -43,6 +43,10 @@ export interface WatchLaterDeps {
 	) => Promise<ListEntry[]>;
 	/** $lib/api.kitsuByMalIds — same rationale. */
 	kitsuByMalIds: (malIds: number[]) => Promise<KitsuAnimeRef[]>;
+	/** User's chosen lead tracker (config.primary_account, coerced).
+	 *  Leads the merge so its rows render first and win the mal_id
+	 *  dedupe; unset keeps the AniList-first order. */
+	primary?: Provider | null;
 }
 
 /**
@@ -69,7 +73,7 @@ export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRe
 		})
 	);
 
-	const merged = mergedWatchLater(byProvider);
+	const merged = mergedWatchLater(byProvider, deps.primary);
 	const malIds = merged
 		.map((e) => e.mal_id)
 		.filter((id): id is number => typeof id === 'number')

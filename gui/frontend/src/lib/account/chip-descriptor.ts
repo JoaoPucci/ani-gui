@@ -47,6 +47,18 @@ function connectedFrom(
 	};
 }
 
+/**
+ * Coerce the raw `config.primary_account` string into a `Provider`
+ * the chip + rail can use, or `null` when it's empty / unrecognised
+ * (so callers fall back to the fixed precedence). Keeps the
+ * string→union narrowing in one tested place instead of duplicated
+ * across the layout, rail loader, and settings picker.
+ */
+export function parsePrimaryProvider(value: string | null | undefined): Provider | null {
+	if (value === 'anilist' || value === 'mal' || value === 'inhouse') return value;
+	return null;
+}
+
 function descriptorFor(state: ProviderState, provider: Provider): ChipState | null {
 	if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
 	if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');

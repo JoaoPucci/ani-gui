@@ -13,7 +13,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, settingsGet, settingsPut, type Config } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
@@ -41,9 +41,41 @@
 
 	const PRIVACY_URL = 'https://github.com/JoaoPucci/ani-gui/blob/master/docs/PRIVACY.md';
 
+	// Persisted settings — only `primary_account` is read/written here.
+	// Loaded once on mount; the picker writes the whole Config back
+	// (settings_put is a full round-trip, matching /settings).
+	let config = $state<Config | null>(null);
+
+	// Providers the user can pick as primary: any with a known identity
+	// (connected / expired / error-with-account), mirroring the chip's
+	// "surviving identity" rule. The picker only matters with 2+.
+	const identityProviders = $derived(
+		(['anilist', 'mal'] as Provider[]).filter((p) => {
+			const s = accountStore.byProvider[p];
+			return s.kind === 'connected' || s.kind === 'expired' || (s.kind === 'error' && !!s.account);
+		})
+	);
+
 	onMount(() => {
 		accountStore.hydrate();
+		void settingsGet()
+			.then((c) => (config = c))
+			.catch(() => {});
 	});
+
+	async function setPrimary(value: string) {
+		if (!config || config.primary_account === value) return;
+		const next = { ...config, primary_account: value };
+		config = next;
+		try {
+			await settingsPut(next);
+		} catch {
+			// Non-fatal: the chip/rail just keep the prior precedence
+			// until the next successful write. Surface a toast so the
+			// choice not sticking isn't silent.
+			toastStore.push({ kind: 'error', message: m.account_primary_save_error() });
+		}
+	}
 
 	async function connect(provider: Provider) {
 		// Snapshot the pre-click state so a failed reconnect-from-
@@ -290,6 +322,39 @@
 		</section>
 	{/each}
 
+	{#if identityProviders.length >= 2}
+		<section class="primary-card" aria-labelledby="primary-heading">
+			<h2 class="primary-heading" id="primary-heading">{m.account_primary_section_title()}</h2>
+			<p class="primary-hint">{m.account_primary_section_hint()}</p>
+			<div class="primary-options" role="radiogroup" aria-labelledby="primary-heading">
+				<label class="primary-option">
+					<input
+						type="radio"
+						name="primary-account"
+						value=""
+						checked={(config?.primary_account ?? '') === ''}
+						onchange={() => setPrimary('')}
+					/>
+					<span>{m.account_primary_option_auto()}</span>
+				</label>
+				{#each identityProviders as provider (provider)}
+					<label class="primary-option">
+						<input
+							type="radio"
+							name="primary-account"
+							value={provider}
+							checked={config?.primary_account === provider}
+							onchange={() => setPrimary(provider)}
+						/>
+						<span>
+							{provider === 'anilist' ? m.account_provider_anilist() : m.account_provider_mal()}
+						</span>
+					</label>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
 	<footer class="page-foot">
 		<p class="privacy-line">
 			{m.account_privacy_consent_line()}
@@ -523,6 +588,63 @@
 		color: var(--brand-ink);
 		background: color-mix(in oklab, var(--brand) 90%, white);
 		border-color: color-mix(in oklab, var(--brand) 90%, white);
+	}
+
+	.primary-card {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		background: var(--ink-100);
+		border: 1px solid var(--bone-500, var(--ink-200));
+		border-radius: var(--radius-card, 8px);
+		padding: var(--space-5) var(--space-6);
+	}
+
+	.primary-heading {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: var(--type-display-m);
+		font-weight: 600;
+		color: var(--bone-100);
+	}
+
+	.primary-hint {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		line-height: 1.5;
+		color: var(--bone-400);
+		max-inline-size: 56ch;
+	}
+
+	.primary-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		margin-block-start: var(--space-2);
+	}
+
+	.primary-option {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-4);
+		font-family: var(--font-body);
+		font-size: var(--type-body);
+		color: var(--bone-200);
+		border: 1px solid var(--bone-500, var(--ink-200));
+		border-radius: var(--radius-control, 6px);
+		cursor: pointer;
+	}
+
+	.primary-option:has(input:checked) {
+		color: var(--bone-100);
+		border-color: color-mix(in oklab, var(--brand) 50%, var(--bone-500, var(--ink-200)));
+		background: color-mix(in oklab, var(--brand) 10%, var(--ink-100));
+	}
+
+	.primary-option input {
+		accent-color: var(--brand);
 	}
 
 	.page-foot {

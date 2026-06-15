@@ -1046,7 +1046,8 @@ describe('settingsGet', () => {
 			use_custom_player_controls: false,
 			disable_auto_pip_on_leave: false,
 			auto_update_anicli: true,
-			update_include_prereleases: true
+			update_include_prereleases: true,
+			primary_account: ''
 		};
 		const fetchMock = mockFetchOnce(cfg);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1074,7 +1075,8 @@ describe('settingsPut', () => {
 			use_custom_player_controls: true,
 			disable_auto_pip_on_leave: true,
 			auto_update_anicli: false,
-			update_include_prereleases: false
+			update_include_prereleases: false,
+			primary_account: 'mal'
 		};
 		const fetchMock = mockFetchOnce(null, 204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
