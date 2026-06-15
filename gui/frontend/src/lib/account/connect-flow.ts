@@ -119,6 +119,14 @@ function errStatus(err: unknown): number | undefined {
 }
 
 export interface DisconnectFlowDeps {
+	/**
+	 * Synchronously mark this provider as changing BEFORE any async work,
+	 * so an in-flight boot token refresh is superseded and can't
+	 * re-persist / reconnect the account mid-disconnect. Required of every
+	 * caller (the /account page and the topbar chip) so no disconnect path
+	 * can forget it (Codex P2 #3416668470, #3416762784).
+	 */
+	beginAccountChange(): void;
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
 	dropListCache(provider: Provider, bearer: string, fallbackUserId?: string): Promise<void>;
 	/**

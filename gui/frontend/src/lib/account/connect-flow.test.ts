@@ -175,11 +175,31 @@ describe('userIdFor', () => {
 describe('disconnectAccount', () => {
 	function disconnectDeps(): DisconnectFlowDeps {
 		return {
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn().mockResolvedValue(true),
 			dropListCache: vi.fn().mockResolvedValue(undefined),
 			dropProviderCache: vi.fn().mockResolvedValue(undefined)
 		};
 	}
+
+	it('signals beginAccountChange before any async clear (Codex P2 #3416762784)', async () => {
+		const deps = disconnectDeps();
+		const order: string[] = [];
+		(deps.beginAccountChange as ReturnType<typeof vi.fn>).mockImplementation(() =>
+			order.push('begin')
+		);
+		(deps.dropListCache as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			order.push('drop');
+		});
+		(deps.clearPersistedAccount as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			order.push('clear');
+			return true;
+		});
+		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
+		await disconnectAccount('mal', s, deps);
+		expect(deps.beginAccountChange).toHaveBeenCalledTimes(1);
+		expect(order[0]).toBe('begin'); // before the async cache/token clears
+	});
 
 	it('clears safeStorage then drops the cache when ids are known', async () => {
 		const deps = disconnectDeps();
