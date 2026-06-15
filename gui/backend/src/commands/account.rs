@@ -427,6 +427,17 @@ pub fn reconcile_monotonic(
             update.status = None;
         }
     }
+    // Preserve a rewatching/repeating row at the finale (Codex P2
+    // #3415780486): the fan-out sends Completed when a finished series'
+    // last episode is watched, but completing a row that's mid-rewatch
+    // would clear AniList REPEATING / MAL is_rewatching. Drop the
+    // Completed status so the rewatch state survives; any advancing
+    // progress field still flows below.
+    if update.status == Some(ListStatus::Completed)
+        && current.map(|c| c.status) == Some(ListStatus::Rewatching)
+    {
+        update.status = None;
+    }
     // Promote a planning / not-yet-listed row to Watching on ANY watch
     // event, advancing or not (Codex P2 #3387568872: a planning row
     // already at the same/higher count must still leave Watch Later),
