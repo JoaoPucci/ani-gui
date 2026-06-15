@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-06-08_
+_Last updated: 2026-06-10_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -32,11 +32,26 @@ ani-gui keeps the following on your computer only:
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
   `safeStorage` API, then written to your OS user-data directory.
+- **Tracker list cache** — if you connect an account, a snapshot of
+  your AniList / MyAnimeList list is cached in the same local SQLite
+  database so the Watch Later rail and your progress don't re-download
+  your full list on every launch (when online, the app still makes a
+  lightweight call to confirm your identity and map titles to local
+  cards). Each row holds which provider it came
+  from and your user id on that provider, the show's identifiers (the
+  provider-native id plus its cross-provider MyAnimeList id), your
+  status, episodes watched, score, and title, and two timestamps (the
+  provider's last-updated time and when the row was cached). Dropped
+  when you disconnect the account; if that local deletion fails (for
+  example the database is momentarily unavailable), the rows are left
+  on disk. Reconnecting the **same** account and re-syncing replaces
+  them; otherwise they remain until you delete the local database.
 
 ## What ani-gui transmits to public services
 
-ani-gui only contacts external services when you take an action that
-requires it. For each kind of request:
+Most outbound traffic happens only when you take an action that
+requires it; the exceptions are the two automatic checks that run on
+launch (the update checks below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the underlying allmanga / allanime catalogue
@@ -57,9 +72,13 @@ requires it. For each kind of request:
     requests:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
-- **Update check** — by default ani-gui checks GitHub's public
-  releases API to notify you when a new version is published. No
-  account information is sent; this can be disabled in settings.
+- **Update checks (automatic, on launch)** — two checks run when the
+  app opens. ani-gui queries GitHub's public releases API to notify
+  you when a new app version is published (the settings only control
+  whether pre-releases are included, not whether the check runs), and
+  the bundled `ani-cli` self-updates by fetching the latest script
+  from its upstream (`ani-cli -U`, on by default, can be turned off in
+  settings). No account information is sent by either.
 - **Aniskip OP/ED timing** — when the auto-skip toggle is on, ani-gui
   asks the Aniskip community service for crowd-sourced opening /
   ending timestamps for the episode you're watching. No account
