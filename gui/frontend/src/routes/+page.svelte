@@ -436,8 +436,15 @@
 	// initial load path and post-refresh.
 	async function reloadWatchLaterRail() {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const refs = await loadWatchLater(buildWatchLaterDeps());
-		watchLater = await filterAvailable(refs, filterMode);
+		try {
+			const refs = await loadWatchLater(buildWatchLaterDeps());
+			watchLater = await filterAvailable(refs, filterMode);
+		} catch {
+			// A refresh-path reload (bridge / availability filter) failed.
+			// Keep the existing rail rather than blanking it or leaking an
+			// unhandled rejection out of the refresh handler — the manual
+			// button just no-ops (Codex PR #71).
+		}
 	}
 
 	// Re-pull each connected provider's list from the tracker (picking up
