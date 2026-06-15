@@ -140,6 +140,23 @@ pub async fn exchange_code(
     provider.exchange_code(code, pkce).await
 }
 
+/// Exchange a refresh token for a fresh token set. The renderer calls
+/// this when a persisted token has expired but is still refreshable
+/// (MAL's ~1h access token against its long-lived refresh token), then
+/// re-persists the result. AniList's provider has no real refresh and
+/// returns an error, which the renderer treats as "fall back to
+/// reauth".
+pub async fn refresh_tokens(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    refresh_token: &str,
+) -> Result<Tokens> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    provider.refresh(refresh_token).await
+}
+
 /// Fetch the authenticated user's profile. Routes use this to populate
 /// the AccountChip avatar + `/account` page stats.
 pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<UserProfile> {

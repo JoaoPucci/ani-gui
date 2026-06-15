@@ -44,6 +44,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/account/exchange-code/:provider",
             post(post_exchange_code),
         )
+        .route("/api/account/refresh/:provider", post(post_refresh))
         .route("/api/account/me/:provider", post(post_me))
         .route("/api/account/update/:provider", post(post_update))
         .route("/api/account/list/:provider", post(post_list))
@@ -111,6 +112,15 @@ pub struct ExchangeCodeRequest {
     pub code: String,
     /// Verifier the renderer kept locally between auth-url and exchange.
     pub pkce: PkceWire,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RefreshRequest {
+    /// The persisted refresh token. The renderer holds it (the backend
+    /// is stateless) and posts it here when an access token has expired
+    /// but is still refreshable — MAL's ~1h access token against its
+    /// long-lived refresh token.
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -275,6 +285,22 @@ async fn post_exchange_code(
     let kind = parse_provider(&provider)?;
     let pkce = req.pkce.into_pkce().ok_or(AniError::Metadata)?;
     let tokens = account::exchange_code(&state, kind, &req.code, &pkce).await?;
+    Ok(Json(tokens.into()))
+}
+
+/// Exchange a refresh token for a fresh access token (and rotated
+/// refresh token). The renderer calls this when a persisted token has
+/// expired but carries a refresh token — chiefly MAL's ~1h access
+/// token — and re-persists the response via safeStorage, so the
+/// provider stays connected instead of being forced back through
+/// OAuth. Stateless: the renderer supplies the refresh token.
+async fn post_refresh(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    Json(req): Json<RefreshRequest>,
+) -> Result<Json<TokensResponse>, AniError> {
+    let kind = parse_provider(&provider)?;
+    let tokens = account::refresh_tokens(&state, kind, &req.refresh_token).await?;
     Ok(Json(tokens.into()))
 }
 
