@@ -52,26 +52,39 @@ export interface WatchLaterDeps {
 /**
  * Run the rail loader end-to-end. Returns the Kitsu refs in
  * merge order. Empty input (no connected provider) → empty output.
- * Cache misses on individual providers are swallowed so one
- * provider being unreachable doesn't blank the entire rail.
+ * A single provider being unreachable is non-fatal — the merge
+ * proceeds with whatever else succeeded. But if EVERY connected
+ * provider's fetch fails, the loader rejects rather than resolving
+ * `[]`: a total failure is distinct from a genuinely empty list, and
+ * the caller surfaces a retry state for it instead of "nothing
+ * planned" (Codex P2 #3415603155).
  */
 export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRef[]> {
 	const providers = Object.keys(deps.credentials) as Provider[];
 	if (providers.length === 0) return [];
 
 	const byProvider: Partial<Record<Provider, ListEntry[]>> = {};
+	let anySucceeded = false;
 	await Promise.all(
 		providers.map(async (provider) => {
 			const cred = deps.credentials[provider];
 			if (!cred) return;
 			try {
 				byProvider[provider] = await deps.fetchCachedList(provider, cred.bearer, cred.userId);
+				anySucceeded = true;
 			} catch {
-				/* Per-provider failure is non-fatal: leave the entry empty
-				   so the merge proceeds with whatever else succeeded. */
+				/* Per-provider failure is non-fatal here: leave the entry
+				   empty so the merge proceeds with whatever else succeeded.
+				   The all-failed case is handled right after. */
 			}
 		})
 	);
+
+	// Every connected provider failed — that's a load failure, not an
+	// empty list. Reject so the caller can show its retry affordance.
+	if (!anySucceeded) {
+		throw new Error('loadWatchLater: every connected provider failed');
+	}
 
 	const merged = mergedWatchLater(byProvider, deps.primary);
 	const malIds = merged
