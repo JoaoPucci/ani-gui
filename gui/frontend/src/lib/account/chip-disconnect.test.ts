@@ -89,6 +89,7 @@ describe('handleChipDisconnect', () => {
 		const disconnectAccount = vi.fn().mockResolvedValue({ kind: 'ok' });
 		const deps = {
 			disconnectAccount,
+			beginAccountChange: vi.fn(),
 			clearPersistedAccount: vi.fn(),
 			dropListCache: vi.fn(),
 			dropProviderCache: vi.fn()

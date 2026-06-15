@@ -159,6 +159,12 @@ export async function disconnectAccount(
 	prevState: ProviderState,
 	deps: DisconnectFlowDeps
 ): Promise<DisconnectResult> {
+	// Mark the provider as changing synchronously, before any await, so an
+	// in-flight boot token refresh is superseded and can't re-persist /
+	// reconnect during the async cache + token clears below (Codex P2
+	// #3416668470, #3416762784). Centralised here so every disconnect
+	// entry point (the /account page and the topbar chip) is covered.
+	deps.beginAccountChange();
 	const bearer = bearerFor(prevState);
 	const fallbackUserId = userIdFor(prevState) ?? undefined;
 	if (bearer) {
