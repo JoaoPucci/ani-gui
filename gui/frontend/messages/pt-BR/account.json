@@ -32,6 +32,11 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Ver depois",
 	"watch_later_caption": "Das suas listas de Planejados",
+	"watch_later_refresh": "Atualizar do rastreador",
+	"watch_later_empty": "Nada planejado ainda",
+	"watch_later_empty_hint": "Adicionou um título no seu rastreador? Atualize para trazê-lo.",
+	"watch_later_failed": "Não foi possível acessar seu rastreador",
+	"watch_later_failed_hint": "Não conseguimos carregar sua lista de Planejados. Verifique sua conexão e tente novamente.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Menu da conta — conectado como {username}",
 	"chip_warning_expired": "Sessão expirada",
@@ -40,5 +45,9 @@
 	"chip_pop_manage": "Gerenciar conta",
 	"chip_pop_disconnect": "Desconectar",
 	"expiry_toast_message": "Sua sessão do {provider} expirou. Conecte-se novamente para continuar sincronizando.",
-	"expiry_toast_action": "Conectar"
+	"expiry_toast_action": "Conectar",
+	"primary_badge": "Principal",
+	"primary_make": "Tornar principal",
+	"primary_hint": "Lidera a barra superior e o trilho Assistir mais tarde. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
+	"primary_save_error": "Não foi possível salvar o rastreador principal. Tente novamente."
 }

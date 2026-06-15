@@ -32,6 +32,11 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Посмотреть позже",
 	"watch_later_caption": "Из вашего списка «В планах»",
+	"watch_later_refresh": "Обновить из трекера",
+	"watch_later_empty": "Пока ничего не запланировано",
+	"watch_later_empty_hint": "Добавили тайтл в трекере? Обновите, чтобы подтянуть его.",
+	"watch_later_failed": "Не удалось связаться с трекером",
+	"watch_later_failed_hint": "Не удалось загрузить ваш список «В планах». Проверьте подключение и попробуйте снова.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Меню аккаунта — вход выполнен как {username}",
 	"chip_warning_expired": "Срок сеанса истёк",
@@ -40,5 +45,9 @@
 	"chip_pop_manage": "Управление аккаунтом",
 	"chip_pop_disconnect": "Отключить",
 	"expiry_toast_message": "Срок сеанса {provider} истёк. Войдите снова, чтобы продолжить синхронизацию.",
-	"expiry_toast_action": "Войти"
+	"expiry_toast_action": "Войти",
+	"primary_badge": "Основной",
+	"primary_make": "Сделать основным",
+	"primary_hint": "Отображается в верхней панели и возглавляет полку «Посмотреть позже». Прогресс по-прежнему синхронизируется со всеми подключёнными трекерами.",
+	"primary_save_error": "Не удалось сохранить основной трекер. Попробуйте ещё раз."
 }

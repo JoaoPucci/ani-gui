@@ -42,6 +42,36 @@ describe('mergedWatchLater', () => {
 		expect(out.map((e) => e.provider)).toEqual(['anilist', 'mal']);
 	});
 
+	it('leads with the primary provider when one is set', () => {
+		const rows: Partial<Record<Provider, ListEntry[]>> = {
+			mal: [entry({ provider: 'mal', media_id: 200, mal_id: 200, status: 'planning' })],
+			anilist: [entry({ provider: 'anilist', media_id: 10, mal_id: 100, status: 'planning' })]
+		};
+		const out = mergedWatchLater(rows, 'mal');
+		expect(out.map((e) => e.provider)).toEqual(['mal', 'anilist']);
+	});
+
+	it('lets the primary provider win the cross-provider mal_id dedupe', () => {
+		const shared = 42;
+		const rows: Partial<Record<Provider, ListEntry[]>> = {
+			anilist: [
+				entry({ provider: 'anilist', media_id: 9001, mal_id: shared, title: 'AniList copy' })
+			],
+			mal: [entry({ provider: 'mal', media_id: shared, mal_id: shared, title: 'MAL copy' })]
+		};
+		const out = mergedWatchLater(rows, 'mal');
+		expect(out).toHaveLength(1);
+		expect(out[0].provider).toBe('mal');
+	});
+
+	it('falls back to AniList-first when primary is null/unset', () => {
+		const rows: Partial<Record<Provider, ListEntry[]>> = {
+			mal: [entry({ provider: 'mal', media_id: 200, mal_id: 200, status: 'planning' })],
+			anilist: [entry({ provider: 'anilist', media_id: 10, mal_id: 100, status: 'planning' })]
+		};
+		expect(mergedWatchLater(rows, null).map((e) => e.provider)).toEqual(['anilist', 'mal']);
+	});
+
 	it('dedupes across providers on mal_id (AniList wins)', () => {
 		const shared = 42;
 		const rows: Partial<Record<Provider, ListEntry[]>> = {

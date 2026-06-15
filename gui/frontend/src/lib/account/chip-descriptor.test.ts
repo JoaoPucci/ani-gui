@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chipDescriptor } from './chip-descriptor';
+import { chipDescriptor, parsePrimaryProvider } from './chip-descriptor';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
 function disconnected(): ProviderState {
@@ -112,5 +112,63 @@ describe('chipDescriptor', () => {
 			})
 		);
 		expect(out).toMatchObject({ provider: 'mal', username: 'mal-user', avatarUrl: null });
+	});
+
+	it('honors the primary override over the fixed precedence when that provider has an identity', () => {
+		const out = chipDescriptor(
+			build({
+				anilist: connected(account({ username: 'al-name' })),
+				mal: connected(account({ username: 'mal-name' }))
+			}),
+			'mal'
+		);
+		expect(out).toMatchObject({ provider: 'mal', username: 'mal-name' });
+	});
+
+	it('still surfaces the primary provider when its session is expired (with a warning)', () => {
+		const out = chipDescriptor(
+			build({
+				anilist: connected(account({ username: 'al-name' })),
+				mal: expired(account({ username: 'mal-name' }))
+			}),
+			'mal'
+		);
+		expect(out).toMatchObject({ provider: 'mal', username: 'mal-name', warning: 'expired' });
+	});
+
+	it('falls back to fixed precedence when the primary provider has no surviving identity', () => {
+		const out = chipDescriptor(
+			build({
+				anilist: connected(account({ username: 'al-name' }))
+			}),
+			'mal'
+		);
+		expect(out).toMatchObject({ provider: 'anilist', username: 'al-name' });
+	});
+
+	it('falls back to fixed precedence when primary is null/unset', () => {
+		const out = chipDescriptor(
+			build({
+				anilist: connected(account({ username: 'al-name' })),
+				mal: connected(account({ username: 'mal-name' }))
+			}),
+			null
+		);
+		expect(out).toMatchObject({ provider: 'anilist', username: 'al-name' });
+	});
+});
+
+describe('parsePrimaryProvider', () => {
+	it('passes through known provider slugs', () => {
+		expect(parsePrimaryProvider('anilist')).toBe('anilist');
+		expect(parsePrimaryProvider('mal')).toBe('mal');
+		expect(parsePrimaryProvider('inhouse')).toBe('inhouse');
+	});
+
+	it('maps empty / unknown / nullish to null', () => {
+		expect(parsePrimaryProvider('')).toBeNull();
+		expect(parsePrimaryProvider('kitsu')).toBeNull();
+		expect(parsePrimaryProvider(null)).toBeNull();
+		expect(parsePrimaryProvider(undefined)).toBeNull();
 	});
 });

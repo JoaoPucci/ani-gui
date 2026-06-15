@@ -34,6 +34,8 @@
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import AccountChip from '$lib/components/AccountChip.svelte';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -153,7 +155,12 @@
 	// whether the bottom progress strip mounts.
 	let config = $state<Config | null>(null);
 	void settingsGet()
-		.then((c) => (config = c))
+		.then((c) => {
+			config = c;
+			// Seed the shared primary-tracker store so the topbar chip
+			// reflects the persisted choice on cold launch.
+			primaryAccountStore.set(parsePrimaryProvider(c.primary_account));
+		})
 		.catch(() => {});
 
 	// — Live-results dropdown + recent searches + Cmd/Ctrl+K. —————————

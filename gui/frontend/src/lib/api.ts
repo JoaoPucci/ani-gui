@@ -273,6 +273,10 @@ export interface Config {
 	disable_auto_pip_on_leave: boolean;
 	auto_update_anicli: boolean;
 	update_include_prereleases: boolean;
+	/** Chosen lead tracker (`"anilist"` | `"mal"`); empty = no choice
+	 *  (UI falls back to AniList-first). Drives the topbar chip + the
+	 *  Watch Later rail order, not write-back (which fans to all). */
+	primary_account: string;
 }
 
 /** Outcome of the most recent ani-cli `-U` run. The backend writes

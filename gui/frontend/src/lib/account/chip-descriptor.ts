@@ -47,13 +47,45 @@ function connectedFrom(
 	};
 }
 
-export function chipDescriptor(byProvider: Record<Provider, ProviderState>): ChipState {
+/**
+ * Coerce the raw `config.primary_account` string into a `Provider`
+ * the chip + rail can use, or `null` when it's empty / unrecognised
+ * (so callers fall back to the fixed precedence). Keeps the
+ * string→union narrowing in one tested place instead of duplicated
+ * across the layout, rail loader, and settings picker.
+ */
+export function parsePrimaryProvider(value: string | null | undefined): Provider | null {
+	if (value === 'anilist' || value === 'mal' || value === 'inhouse') return value;
+	return null;
+}
+
+function descriptorFor(state: ProviderState, provider: Provider): ChipState | null {
+	if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
+	if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');
+	if (state.kind === 'error' && state.account)
+		return connectedFrom(provider, state.account, 'error');
+	return null;
+}
+
+/**
+ * `primary` is the user's chosen lead provider (from
+ * `config.primary_account`). When set and that provider still has a
+ * surviving identity it wins regardless of the fixed precedence; an
+ * unset / unknown / identity-less primary falls through to the
+ * AniList-first `PRIORITY` walk so the chip never goes blank just
+ * because the preferred account is signed out.
+ */
+export function chipDescriptor(
+	byProvider: Record<Provider, ProviderState>,
+	primary?: Provider | null
+): ChipState {
+	if (primary) {
+		const preferred = descriptorFor(byProvider[primary], primary);
+		if (preferred) return preferred;
+	}
 	for (const provider of PRIORITY) {
-		const state = byProvider[provider];
-		if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
-		if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');
-		if (state.kind === 'error' && state.account)
-			return connectedFrom(provider, state.account, 'error');
+		const out = descriptorFor(byProvider[provider], provider);
+		if (out) return out;
 	}
 	return { kind: 'hidden' };
 }

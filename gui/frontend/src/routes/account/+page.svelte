@@ -13,8 +13,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, settingsGet, settingsPut, type Config } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import { applyPrimarySelection } from '$lib/account/set-primary';
+	import { markRefreshed } from '$lib/account/watch-later-refresh';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
@@ -41,9 +45,65 @@
 
 	const PRIVACY_URL = 'https://github.com/JoaoPucci/ani-gui/blob/master/docs/PRIVACY.md';
 
+	// Persisted settings — only `primary_account` is read/written here.
+	// Loaded once on mount; the picker writes the whole Config back
+	// (settings_put is a full round-trip, matching /settings).
+	let config = $state<Config | null>(null);
+
+	// Providers the user can pick as primary: any with a known identity
+	// (connected / expired / error-with-account), mirroring the chip's
+	// "surviving identity" rule. The picker only matters with 2+.
+	const identityProviders = $derived(
+		(['anilist', 'mal'] as Provider[]).filter((p) => {
+			const s = accountStore.byProvider[p];
+			return s.kind === 'connected' || s.kind === 'expired' || (s.kind === 'error' && !!s.account);
+		})
+	);
+
+	// Which connected provider currently leads (the one whose card shows
+	// the Primary flag). Driven by the shared store so the flag moves the
+	// instant the user clicks — no wait for the persisted config. Falls
+	// back to the first identity provider (AniList-first) when no explicit
+	// choice is set or the chosen one isn't connected.
+	const effectivePrimary = $derived.by(() => {
+		const ids = identityProviders;
+		if (ids.length === 0) return null;
+		const chosen = primaryAccountStore.value;
+		return chosen && ids.includes(chosen) ? chosen : ids[0];
+	});
+
 	onMount(() => {
 		accountStore.hydrate();
+		void settingsGet()
+			.then((c) => {
+				config = c;
+				primaryAccountStore.set(parsePrimaryProvider(c.primary_account));
+			})
+			.catch(() => {});
 	});
+
+	// True while a primary-tracker write is in flight. Gates the radios
+	// so a second pick can't race the first: without it, clicking again
+	// before settingsPut resolves passes a stale `config` into the
+	// helper and the slower response wins (Codex P2 #3413276568).
+	let savingPrimary = $state(false);
+
+	async function setPrimary(value: string) {
+		if (savingPrimary) return;
+		savingPrimary = true;
+		try {
+			// Orchestration (guard / optimistic store update / persist /
+			// rollback-on-failure) lives in the tested helper; the page
+			// just adopts whichever config it returns.
+			config = await applyPrimarySelection(config, value, {
+				persist: settingsPut,
+				applyToStore: (p) => primaryAccountStore.set(p),
+				onError: () => toastStore.push({ kind: 'error', message: m.account_primary_save_error() })
+			});
+		} finally {
+			savingPrimary = false;
+		}
+	}
 
 	async function connect(provider: Provider) {
 		// Snapshot the pre-click state so a failed reconnect-from-
@@ -72,6 +132,9 @@
 			// rail/sync mount will warm it. Best-effort, not fatal.
 			try {
 				await fetchAndCacheList(provider, r.account.access_token);
+				// Connect just pulled a fresh snapshot — stamp it so the
+				// home rail's TTL doesn't immediately re-pull.
+				markRefreshed(provider, Date.now());
 			} catch {
 				/* non-fatal — next mount warms the cache */
 			}
@@ -224,9 +287,16 @@
 		<section class="provider-card" data-state={state.kind}>
 			<header class="provider-head">
 				<h2 class="provider-name">{name}</h2>
-				<span class="state-badge state-badge-{state.kind}">
-					{stateBadgeKind(state)}
-				</span>
+				<div class="head-meta">
+					{#if identityProviders.length >= 2 && effectivePrimary === provider}
+						<span class="primary-flag" title={m.account_primary_hint()}>
+							{m.account_primary_badge()}
+						</span>
+					{/if}
+					<span class="state-badge state-badge-{state.kind}">
+						{stateBadgeKind(state)}
+					</span>
+				</div>
 			</header>
 
 			{#if state.kind === 'connected' || state.kind === 'expired' || (state.kind === 'error' && state.account)}
@@ -281,10 +351,32 @@
 					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
+					{#if identityProviders.length >= 2 && effectivePrimary !== provider}
+						<button
+							type="button"
+							class="btn"
+							disabled={savingPrimary}
+							title={m.account_primary_hint()}
+							onclick={() => setPrimary(provider)}
+						>
+							{m.account_primary_make()}
+						</button>
+					{/if}
 				{:else}
 					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
+					{#if identityProviders.length >= 2 && effectivePrimary !== provider}
+						<button
+							type="button"
+							class="btn"
+							disabled={savingPrimary}
+							title={m.account_primary_hint()}
+							onclick={() => setPrimary(provider)}
+						>
+							{m.account_primary_make()}
+						</button>
+					{/if}
 				{/if}
 			</div>
 		</section>
@@ -523,6 +615,29 @@
 		color: var(--brand-ink);
 		background: color-mix(in oklab, var(--brand) 90%, white);
 		border-color: color-mix(in oklab, var(--brand) 90%, white);
+	}
+
+	.head-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	/* "Primary" flag on the leading provider's card — same pill family as
+	   the state badge but brand-tinted to read as the active choice. */
+	.primary-flag {
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		padding: var(--space-1) var(--space-3);
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--brand) 16%, var(--ink-050));
+		border: 1px solid color-mix(in oklab, var(--brand) 45%, var(--bone-600, var(--ink-200)));
+		color: var(--brand);
 	}
 
 	.page-foot {
