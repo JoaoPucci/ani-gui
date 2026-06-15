@@ -29,12 +29,18 @@ export interface RefreshFlowDeps {
 		provider: Provider,
 		payload: PersistedAccount
 	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
+	/** Re-read the provider's currently-persisted account, or null if it
+	 *  is no longer connected/expired. Used as a post-await staleness
+	 *  guard so a refresh can't resurrect a token the user disconnected
+	 *  or clobber a newer session (Codex P2 #3416616176). */
+	currentAccount(provider: Provider): PersistedAccount | null;
 }
 
 export type RefreshOutcome =
 	| { kind: 'refreshed'; account: PersistedAccount }
 	| { kind: 'unrefreshable' }
-	| { kind: 'failed' };
+	| { kind: 'failed' }
+	| { kind: 'superseded' };
 
 /**
  * Providers whose persisted state is `expired` and that carry a refresh

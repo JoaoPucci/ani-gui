@@ -76,7 +76,16 @@ class AccountStore {
 			byProvider: () => this.byProvider,
 			onRefreshed: (provider, account) => this.setConnected(provider, account),
 			refreshTokens,
-			persistAccount
+			persistAccount,
+			// Post-await staleness guard: re-read the live store state so a
+			// refresh that resolved after a mid-flight disconnect / re-auth
+			// doesn't resurrect or clobber it (Codex P2 #3416616176).
+			currentAccount: (provider) => {
+				const s = this.byProvider[provider];
+				return s.kind === 'connected' || s.kind === 'expired' || s.kind === 'error'
+					? s.account
+					: null;
+			}
 		});
 	}
 
