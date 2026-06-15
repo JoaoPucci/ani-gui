@@ -121,6 +121,27 @@ describe('refreshAccount', () => {
 		expect(persistAccount).not.toHaveBeenCalled();
 	});
 
+	it('is superseded when the generation moves during the persist await', async () => {
+		// Codex P2 #3416732381: a disconnect/re-auth can land in the gap
+		// between the post-network check and the persist completing. The
+		// post-persist re-check must also catch it, so onRefreshed never
+		// reconnects the superseded account.
+		let gen = 0;
+		const persistAccount = vi.fn().mockImplementation(async () => {
+			gen = 1; // disconnect/re-auth raced the safeStorage write
+			return { ok: true };
+		});
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 }),
+			persistAccount,
+			generation: () => gen
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('superseded');
+	});
+
 	it('persists when the generation is unchanged across the refresh', async () => {
 		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
 		const deps: RefreshFlowDeps = {
