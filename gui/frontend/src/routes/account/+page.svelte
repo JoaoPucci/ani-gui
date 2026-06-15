@@ -284,22 +284,10 @@
 			<header class="provider-head">
 				<h2 class="provider-name">{name}</h2>
 				<div class="head-meta">
-					{#if identityProviders.length >= 2 && (state.kind === 'connected' || state.kind === 'expired' || (state.kind === 'error' && !!state.account))}
-						{#if effectivePrimary === provider}
-							<span class="primary-flag" title={m.account_primary_hint()}>
-								{m.account_primary_badge()}
-							</span>
-						{:else}
-							<button
-								type="button"
-								class="make-primary"
-								disabled={savingPrimary}
-								title={m.account_primary_hint()}
-								onclick={() => setPrimary(provider)}
-							>
-								{m.account_primary_make()}
-							</button>
-						{/if}
+					{#if identityProviders.length >= 2 && effectivePrimary === provider}
+						<span class="primary-flag" title={m.account_primary_hint()}>
+							{m.account_primary_badge()}
+						</span>
 					{/if}
 					<span class="state-badge state-badge-{state.kind}">
 						{stateBadgeKind(state)}
@@ -359,10 +347,32 @@
 					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
+					{#if identityProviders.length >= 2 && effectivePrimary !== provider}
+						<button
+							type="button"
+							class="btn"
+							disabled={savingPrimary}
+							title={m.account_primary_hint()}
+							onclick={() => setPrimary(provider)}
+						>
+							{m.account_primary_make()}
+						</button>
+					{/if}
 				{:else}
 					<button type="button" class="btn" onclick={() => disconnect(provider)}>
 						{m.account_card_action_disconnect()}
 					</button>
+					{#if identityProviders.length >= 2 && effectivePrimary !== provider}
+						<button
+							type="button"
+							class="btn"
+							disabled={savingPrimary}
+							title={m.account_primary_hint()}
+							onclick={() => setPrimary(provider)}
+						>
+							{m.account_primary_make()}
+						</button>
+					{/if}
 				{/if}
 			</div>
 		</section>
@@ -624,36 +634,6 @@
 		background: color-mix(in oklab, var(--brand) 16%, var(--ink-050));
 		border: 1px solid color-mix(in oklab, var(--brand) 45%, var(--bone-600, var(--ink-200)));
 		color: var(--brand);
-	}
-
-	/* "Make primary" action on the other connected cards. */
-	.make-primary {
-		display: inline-flex;
-		align-items: center;
-		font-family: var(--font-mono);
-		font-size: var(--type-micro);
-		font-weight: 600;
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		padding: var(--space-1) var(--space-3);
-		border-radius: var(--radius-pill);
-		background: transparent;
-		border: 1px solid var(--bone-500, var(--ink-200));
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			color var(--dur-fast) var(--ease-out-soft),
-			border-color var(--dur-fast) var(--ease-out-soft);
-	}
-
-	.make-primary:hover:not(:disabled) {
-		color: var(--bone-100);
-		border-color: var(--brand);
-	}
-
-	.make-primary:disabled {
-		cursor: not-allowed;
-		opacity: 0.55;
 	}
 
 	.page-foot {
