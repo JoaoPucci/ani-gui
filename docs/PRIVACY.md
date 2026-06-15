@@ -39,8 +39,10 @@ ani-gui keeps the following on your computer only:
   from and your user id on that provider, the show's identifiers (the
   provider-native id plus its cross-provider MyAnimeList id), your
   status, episodes watched, score, and title, and two timestamps (the
-  provider's last-updated time and when the row was cached). Cleared
-  when you disconnect the account.
+  provider's last-updated time and when the row was cached). Dropped
+  when you disconnect the account; if that local deletion fails (for
+  example the database is momentarily unavailable), the rows are left
+  in place and the next sign-in or sync overwrites them.
 
 ## What ani-gui transmits to public services
 
