@@ -201,6 +201,18 @@ fn write_through_cache(
     crate::account::cache::write_entries(pool, kind, user_id, entries)
 }
 
+/// Write a single just-synced entry back into the cache so the local
+/// snapshot reflects the change without a full resync (Codex P2
+/// #3412673593). Leaves the rest of the user's cached list intact.
+pub fn upsert_cached_entry(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+) -> Result<()> {
+    crate::account::cache::upsert_entry(&state.cache_pool, kind, user_id, entry)
+}
+
 /// Decode the `Authorization: Bearer <token>` header value into a
 /// [`Tokens`] envelope. `expires_at_epoch_s` is zero because the
 /// header doesn't carry expiry — that's tracked in the renderer's

@@ -253,6 +253,17 @@ async fn post_update(
     // (Codex P2 #3381617932).
     let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
     let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
+    // Write the just-synced entry back into the local cache so the Watch
+    // Later rail's planning filter drops a started title immediately,
+    // without waiting for a full resync (Codex P2 #3412673593). Owner is
+    // the bearer-derived identity, same as the cached read/list paths.
+    // Best-effort: the authoritative tracker write already succeeded, so
+    // a cache hiccup must not fail the request.
+    if let Some(ref e) = entry {
+        if let Ok(profile) = account::me(&state, kind, &tokens).await {
+            let _ = account::upsert_cached_entry(&state, kind, &profile.user_id, e);
+        }
+    }
     Ok(Json(entry))
 }
 
