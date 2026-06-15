@@ -103,6 +103,16 @@ export function exchangeCode(provider: Provider, req: ExchangeCodeRequest): Prom
 	return postJson<Tokens>(`/api/account/exchange-code/${provider}`, req);
 }
 
+/**
+ * Exchange a persisted refresh token for a fresh token set. Called on
+ * hydrate when a token has expired but is still refreshable (MAL's ~1h
+ * access token), so the provider stays connected instead of being
+ * forced back through OAuth. The caller re-persists the result.
+ */
+export function refreshTokens(provider: Provider, refreshToken: string): Promise<Tokens> {
+	return postJson<Tokens>(`/api/account/refresh/${provider}`, { refresh_token: refreshToken });
+}
+
 export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile> {
 	return postJson<UserProfile>(`/api/account/me/${provider}`, {}, bearer);
 }
