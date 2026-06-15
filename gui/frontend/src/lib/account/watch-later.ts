@@ -21,14 +21,24 @@ import type { ListEntry, Provider } from './types';
  */
 const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
 
+/**
+ * Build the merge walk order. When `primary` is one of the rail
+ * providers it leads (so its rows render first and win the mal_id
+ * dedupe); the remaining providers keep their fixed relative order.
+ * An unset / non-rail primary leaves `MERGE_ORDER` untouched.
+ */
+function walkOrder(primary?: Provider | null): ReadonlyArray<Provider> {
+	if (!primary || !MERGE_ORDER.includes(primary)) return MERGE_ORDER;
+	return [primary, ...MERGE_ORDER.filter((p) => p !== primary)];
+}
+
 export function mergedWatchLater(
 	byProvider: Partial<Record<Provider, ListEntry[]>>,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	primary?: Provider | null
 ): ListEntry[] {
 	const seen = new Set<number>();
 	const out: ListEntry[] = [];
-	for (const provider of MERGE_ORDER) {
+	for (const provider of walkOrder(primary)) {
 		const rows = byProvider[provider];
 		if (!rows) continue;
 		for (const entry of rows) {
