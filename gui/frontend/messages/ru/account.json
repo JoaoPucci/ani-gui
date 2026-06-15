@@ -35,6 +35,8 @@
 	"watch_later_refresh": "Обновить из трекера",
 	"watch_later_empty": "Пока ничего не запланировано",
 	"watch_later_empty_hint": "Добавили тайтл в трекере? Обновите, чтобы подтянуть его.",
+	"watch_later_failed": "Не удалось связаться с трекером",
+	"watch_later_failed_hint": "Не удалось загрузить ваш список «В планах». Проверьте подключение и попробуйте снова.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Меню аккаунта — вход выполнен как {username}",
 	"chip_warning_expired": "Срок сеанса истёк",

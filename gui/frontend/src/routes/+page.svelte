@@ -9,7 +9,7 @@
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
@@ -62,7 +62,6 @@
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
-	import { watchLaterRefreshSignal } from '$lib/account/watch-later-signal.svelte';
 	import {
 		isWatchLaterStale,
 		readLastRefreshed,
@@ -115,6 +114,16 @@
 	// show — rail stays hidden, same as the "no provider" case.
 	// Non-empty = render with the bridged Kitsu refs.
 	let watchLater = $state<KitsuAnimeRef[] | null>(null);
+	// True when the most recent rail load failed (bridge/availability),
+	// as opposed to succeeding with an empty list — so a connected user
+	// sees a retry affordance instead of a false "nothing planned"
+	// (Codex PR #71).
+	let watchLaterFailed = $state(false);
+	// Monotonic load token. Every rail load (mount effect + refresh)
+	// captures the next value and only writes its result if still the
+	// latest — so a slow initial load can't clobber a newer refresh, and
+	// vice versa (Codex PR #71).
+	let watchLaterLoadSeq = 0;
 	// Watch Later refresh: in-flight guard for the manual button, and a
 	// one-shot latch so the TTL auto-refresh fires at most once per mount
 	// (the rail effect re-runs on account/mode changes).
@@ -340,44 +349,24 @@
 	$effect(() => {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
-		let cancelled = false;
+		const seq = ++watchLaterLoadSeq;
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
 			.then((refs) => {
-				if (cancelled) return;
+				if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
 				watchLater = refs;
+				watchLaterFailed = false;
 				maybeAutoRefreshWatchLater(deps);
 			})
 			.catch(() => {
 				// Loader's per-provider try/catch already swallowed
 				// individual failures; a top-level reject means every
-				// provider failed (or the bridge died). Render nothing
-				// — same UX as no-provider-connected.
-				if (!cancelled) watchLater = [];
+				// provider failed (or the bridge died). Flag the failure
+				// (distinct from a genuinely empty list) so the rail shows
+				// a retry affordance rather than "nothing planned".
+				if (seq !== watchLaterLoadSeq) return;
+				watchLaterFailed = true;
 			});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// React to a mark-watched sync that finishes while Home is already
-	// mounted: syncWatchedToTrackers bumps watchLaterRefreshSignal after
-	// invalidating the cache, so re-pull the rail now rather than letting
-	// a just-watched title linger until a manual refresh or remount
-	// (Codex PR #71). Skips its own first (mount) run so it only fires on
-	// subsequent bumps, not on every home (re)mount.
-	let watchLaterSignalPrimed = false;
-	$effect(() => {
-		void watchLaterRefreshSignal.version; // the only dependency
-		if (!watchLaterSignalPrimed) {
-			watchLaterSignalPrimed = true;
-			return;
-		}
-		// untrack the call so the effect doesn't subscribe to what
-		// refreshWatchLater reads — notably the `refreshingWatchLater`
-		// busy flag it toggles, which would otherwise re-run this effect
-		// on each true/false flip and loop the refresh (Codex PR #71).
-		untrack(() => void refreshWatchLater());
 	});
 
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
@@ -436,14 +425,21 @@
 	// initial load path and post-refresh.
 	async function reloadWatchLaterRail() {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const seq = ++watchLaterLoadSeq;
 		try {
 			const refs = await loadWatchLater(buildWatchLaterDeps());
-			watchLater = await filterAvailable(refs, filterMode);
+			const filtered = await filterAvailable(refs, filterMode);
+			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			watchLater = filtered;
+			watchLaterFailed = false;
 		} catch {
-			// A refresh-path reload (bridge / availability filter) failed.
-			// Keep the existing rail rather than blanking it or leaking an
-			// unhandled rejection out of the refresh handler — the manual
-			// button just no-ops (Codex PR #71).
+			// Refresh-path reload failed (bridge / availability). Flag it
+			// rather than blanking the rail or leaking an unhandled
+			// rejection: a populated rail keeps showing its cards (the
+			// length>0 branch wins), an empty one shows the retry state
+			// (Codex PR #71).
+			if (seq !== watchLaterLoadSeq) return;
+			watchLaterFailed = true;
 		}
 	}
 
@@ -1053,10 +1049,21 @@
 			<PosterCard {anime} />
 		{/each}
 	</Strip>
+{:else if accountStore.hasAny && watchLaterFailed}
+	<!-- Connected but the last load failed (bridge/availability down). Show
+	     a retry affordance rather than a false "nothing planned" — an empty
+	     list and a failed fetch are different states (Codex PR #71). -->
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_failed()}
+		headerTrailing={watchLaterRefresh}
+	>
+		<p class="watch-later-empty">{m.account_watch_later_failed_hint()}</p>
+	</Strip>
 {:else if accountStore.hasAny && watchLater !== null}
-	<!-- Connected but the cached Plan-to-Watch is empty. Still surface the
-	     header + refresh so newly-added tracker titles can be pulled in
-	     before the TTL (Codex PR #71). -->
+	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
+	     surface the header + refresh so newly-added tracker titles can be
+	     pulled in before the TTL (Codex PR #71). -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
 		caption={m.account_watch_later_empty()}

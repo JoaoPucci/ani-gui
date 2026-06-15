@@ -35,6 +35,8 @@
 	"watch_later_refresh": "Actualizar desde el rastreador",
 	"watch_later_empty": "Nada planeado aún",
 	"watch_later_empty_hint": "¿Agregaste un título en tu rastreador? Actualiza para traerlo.",
+	"watch_later_failed": "No se pudo conectar con tu rastreador",
+	"watch_later_failed_hint": "No pudimos cargar tu lista de Planeados. Revisa tu conexión e inténtalo de nuevo.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Menú de cuenta — conectado como {username}",
 	"chip_warning_expired": "Sesión expirada",

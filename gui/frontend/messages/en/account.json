@@ -35,6 +35,8 @@
 	"watch_later_refresh": "Refresh from tracker",
 	"watch_later_empty": "Nothing planned yet",
 	"watch_later_empty_hint": "Added a title on your tracker? Refresh to pull it in.",
+	"watch_later_failed": "Couldn't reach your tracker",
+	"watch_later_failed_hint": "We couldn't load your Plan-to-Watch list. Check your connection and try again.",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Account menu — signed in as {username}",
 	"chip_warning_expired": "Session expired",
