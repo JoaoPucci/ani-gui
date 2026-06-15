@@ -8,6 +8,7 @@ import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
 import { bearerFor } from './state-helpers';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { watchLaterRefreshSignal } from './watch-later-signal.svelte';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -106,7 +107,12 @@ export async function syncWatchedToTrackers(
 	);
 	// A watched episode can promote a Plan-to-Watch title to Watching,
 	// which should drop it from the home Watch Later rail. Invalidate the
-	// cached snapshot so the rail re-pulls (and reflects the change) on
-	// its next load rather than waiting out the freshness TTL.
+	// cached snapshot so the rail re-pulls on its next load rather than
+	// waiting out the freshness TTL...
 	for (const provider of connected) invalidateWatchLater(provider);
+	// ...and bump the reactive signal so a Home that's already mounted
+	// (e.g. this sync was fired-and-forgotten from Home and finished
+	// after the rail loaded) re-pulls now instead of lingering until a
+	// manual refresh or remount.
+	if (connected.length > 0) watchLaterRefreshSignal.bump();
 }

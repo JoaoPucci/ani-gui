@@ -62,6 +62,7 @@
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import { watchLaterRefreshSignal } from '$lib/account/watch-later-signal.svelte';
 	import {
 		isWatchLaterStale,
 		readLastRefreshed,
@@ -357,6 +358,22 @@
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// React to a mark-watched sync that finishes while Home is already
+	// mounted: syncWatchedToTrackers bumps watchLaterRefreshSignal after
+	// invalidating the cache, so re-pull the rail now rather than letting
+	// a just-watched title linger until a manual refresh or remount
+	// (Codex PR #71). Skips its own first (mount) run so it only fires on
+	// subsequent bumps, not on every home (re)mount.
+	let watchLaterSignalPrimed = false;
+	$effect(() => {
+		void watchLaterRefreshSignal.version; // track the dependency
+		if (!watchLaterSignalPrimed) {
+			watchLaterSignalPrimed = true;
+			return;
+		}
+		void refreshWatchLater();
 	});
 
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
