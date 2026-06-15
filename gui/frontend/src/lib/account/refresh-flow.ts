@@ -29,11 +29,14 @@ export interface RefreshFlowDeps {
 		provider: Provider,
 		payload: PersistedAccount
 	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
-	/** Re-read the provider's currently-persisted account, or null if it
-	 *  is no longer connected/expired. Used as a post-await staleness
-	 *  guard so a refresh can't resurrect a token the user disconnected
-	 *  or clobber a newer session (Codex P2 #3416616176). */
-	currentAccount(provider: Provider): PersistedAccount | null;
+	/** Monotonic per-provider counter, bumped on every account state
+	 *  change (connect / disconnect / expire / error) and synchronously
+	 *  at the start of an async disconnect. Captured before the refresh
+	 *  await and re-checked after: if it moved, a disconnect or re-auth
+	 *  raced the refresh and the write is superseded — even when the
+	 *  store's account snapshot hasn't caught up yet (Codex P2
+	 *  #3416616176, #3416668470). */
+	generation(provider: Provider): number;
 }
 
 export type RefreshOutcome =
@@ -67,24 +70,13 @@ export async function refreshAccount(
 	account: PersistedAccount
 ): Promise<RefreshOutcome> {
 	if (!account.refresh_token) return { kind: 'unrefreshable' };
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const generationAtStart = deps.generation(provider);
 	let tokens;
 	try {
 		tokens = await deps.refreshTokens(provider, account.refresh_token);
 	} catch {
 		return { kind: 'failed' };
-	}
-	// The await yielded — the user may have disconnected or re-authed this
-	// provider in the meantime. Re-read the current persisted account and
-	// bail unless it's still the exact one we refreshed from, so we never
-	// resurrect a removed token or overwrite a newer session (Codex P2
-	// #3416616176).
-	const current = deps.currentAccount(provider);
-	if (
-		!current ||
-		current.refresh_token !== account.refresh_token ||
-		current.access_token !== account.access_token
-	) {
-		return { kind: 'superseded' };
 	}
 	const refreshed: PersistedAccount = {
 		...account,

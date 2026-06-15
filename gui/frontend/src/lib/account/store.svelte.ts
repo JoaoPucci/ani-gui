@@ -22,6 +22,33 @@ class AccountStore {
 	});
 
 	/**
+	 * Monotonic per-provider counter, bumped on every account state
+	 * change and synchronously at the start of an async disconnect
+	 * ([`beginAccountChange`]). A boot-time refresh captures it before
+	 * its network await and re-checks after, so a disconnect / re-auth
+	 * that raced the refresh supersedes the write even before the
+	 * `byProvider` snapshot updates (Codex P2 #3416668470).
+	 */
+	accountGeneration: Record<Provider, number> = { anilist: 0, mal: 0, inhouse: 0 };
+
+	private bumpGeneration(provider: Provider): void {
+		this.accountGeneration = {
+			...this.accountGeneration,
+			[provider]: (this.accountGeneration[provider] ?? 0) + 1
+		};
+	}
+
+	/**
+	 * Signal that an async account mutation (e.g. disconnect) is starting
+	 * for `provider`, so an in-flight token refresh is superseded before
+	 * the mutation's async clear updates `byProvider` (Codex P2
+	 * #3416668470). Synchronous and side-effect-free beyond the counter.
+	 */
+	beginAccountChange(provider: Provider): void {
+		this.bumpGeneration(provider);
+	}
+
+	/**
 	 * Read every provider's persisted token (via Electron safeStorage)
 	 * and seed the store. Called once at cold launch from
 	 * `+layout.svelte`'s onMount.
@@ -77,15 +104,12 @@ class AccountStore {
 			onRefreshed: (provider, account) => this.setConnected(provider, account),
 			refreshTokens,
 			persistAccount,
-			// Post-await staleness guard: re-read the live store state so a
-			// refresh that resolved after a mid-flight disconnect / re-auth
-			// doesn't resurrect or clobber it (Codex P2 #3416616176).
-			currentAccount: (provider) => {
-				const s = this.byProvider[provider];
-				return s.kind === 'connected' || s.kind === 'expired' || s.kind === 'error'
-					? s.account
-					: null;
-			}
+			// Post-await staleness guard: the per-provider generation counter
+			// advances on any account change (and synchronously at the start
+			// of an async disconnect), so a refresh that resolved after a
+			// mid-flight disconnect / re-auth is dropped — even before the
+			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
+			generation: (provider) => this.accountGeneration[provider] ?? 0
 		});
 	}
 
@@ -106,10 +130,12 @@ class AccountStore {
 	}
 
 	setConnecting(provider: Provider): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 
 	setConnected(provider: Provider, account: PersistedAccount): void {
+		this.bumpGeneration(provider);
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'connected', account, lastSyncedAt: Date.now() }
@@ -117,10 +143,12 @@ class AccountStore {
 	}
 
 	setDisconnected(provider: Provider): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'disconnected' } };
 	}
 
 	setExpired(provider: Provider, account: PersistedAccount): void {
+		this.bumpGeneration(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'expired', account } };
 	}
 
