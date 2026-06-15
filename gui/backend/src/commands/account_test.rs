@@ -286,6 +286,48 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
 }
 
 #[test]
+fn reconcile_monotonic_preserves_rewatching_at_finale() {
+    use crate::account::provider::{CurrentEntry, EntryUpdate};
+    // Codex P2 #3415780486: the fan-out sends Completed when the user
+    // finishes a finished series. If the tracker row is already
+    // rewatching/repeating, completing it would clear AniList REPEATING
+    // / MAL is_rewatching — contradicting the preserve-rewatching rule.
+    // The finale Completed must be dropped for a rewatching row.
+    let finale = |ep| EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(ep),
+        ..Default::default()
+    };
+    let entry = |status, ep| {
+        Some(CurrentEntry {
+            status,
+            progress_episodes: ep,
+        })
+    };
+
+    // Rewatcher advancing into the finale: progress still flows, but the
+    // Completed status is stripped so the row stays rewatching.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Rewatching, 11)),
+        Some(EntryUpdate {
+            progress_episodes: Some(12),
+            ..Default::default()
+        })
+    );
+    // Rewatcher already at the cap (re-finishing): nothing actionable —
+    // progress non-advancing and the Completed is dropped → skip.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Rewatching, 12)),
+        None
+    );
+    // A genuine Watching → Completed finale is still honored.
+    assert_eq!(
+        reconcile_monotonic(finale(12), entry(ListStatus::Watching, 11)),
+        Some(finale(12))
+    );
+}
+
+#[test]
 fn build_entry_update_rejects_empty_and_unknown_status() {
     // Codex P2 #3381617932: an all-absent update, or a status typo
     // that silently parses to None, would still call update_entry —
