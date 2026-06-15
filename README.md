@@ -30,7 +30,7 @@ The CLI still exists. The GUI does not replace it; the two share the script and 
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
 | **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
-| **No telemetry** | Only the requests your actions require — metadata, the stream you picked, and (with an account connected) your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
+| **No telemetry** | No analytics or tracking. Outbound traffic is metadata, the stream you picked, launch-time update checks (the app's own GitHub releases + the bundled script's self-update), and — with an account connected — your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
 
 ## Install
 
