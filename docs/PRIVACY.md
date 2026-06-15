@@ -42,7 +42,8 @@ ani-gui keeps the following on your computer only:
   provider's last-updated time and when the row was cached). Dropped
   when you disconnect the account; if that local deletion fails (for
   example the database is momentarily unavailable), the rows are left
-  in place and the next sign-in or sync overwrites them.
+  on disk. Reconnecting the **same** account and re-syncing replaces
+  them; otherwise they remain until you delete the local database.
 
 ## What ani-gui transmits to public services
 
