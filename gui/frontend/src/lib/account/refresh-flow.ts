@@ -70,13 +70,21 @@ export async function refreshAccount(
 	account: PersistedAccount
 ): Promise<RefreshOutcome> {
 	if (!account.refresh_token) return { kind: 'unrefreshable' };
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const generationAtStart = deps.generation(provider);
 	let tokens;
 	try {
 		tokens = await deps.refreshTokens(provider, account.refresh_token);
 	} catch {
 		return { kind: 'failed' };
+	}
+	// The await yielded — a disconnect or re-auth may have raced the
+	// refresh. If the provider's generation moved, that change wins:
+	// don't persist the refreshed-from snapshot back (which would
+	// resurrect a removed token or clobber a newer session). The counter
+	// catches a disconnect even during the window before its async clear
+	// updates the store (Codex P2 #3416616176, #3416668470).
+	if (deps.generation(provider) !== generationAtStart) {
+		return { kind: 'superseded' };
 	}
 	const refreshed: PersistedAccount = {
 		...account,

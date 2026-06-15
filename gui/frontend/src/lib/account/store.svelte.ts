@@ -88,6 +88,11 @@ class AccountStore {
 			};
 		}
 		this.byProvider = next;
+		// Every hydrate path (cold launch AND the account page) must give a
+		// just-expired-but-refreshable provider a chance to refresh, so
+		// hydrate() owns it rather than each caller remembering (Codex P2
+		// #3416668464). Fire-and-forget — safe to ignore.
+		void this.refreshExpired();
 	}
 
 	/**
