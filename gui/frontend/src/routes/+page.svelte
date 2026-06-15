@@ -9,7 +9,7 @@
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
@@ -368,12 +368,16 @@
 	// subsequent bumps, not on every home (re)mount.
 	let watchLaterSignalPrimed = false;
 	$effect(() => {
-		void watchLaterRefreshSignal.version; // track the dependency
+		void watchLaterRefreshSignal.version; // the only dependency
 		if (!watchLaterSignalPrimed) {
 			watchLaterSignalPrimed = true;
 			return;
 		}
-		void refreshWatchLater();
+		// untrack the call so the effect doesn't subscribe to what
+		// refreshWatchLater reads — notably the `refreshingWatchLater`
+		// busy flag it toggles, which would otherwise re-run this effect
+		// on each true/false flip and loop the refresh (Codex PR #71).
+		untrack(() => void refreshWatchLater());
 	});
 
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
