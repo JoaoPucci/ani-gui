@@ -47,17 +47,33 @@ function connectedFrom(
 	};
 }
 
+function descriptorFor(state: ProviderState, provider: Provider): ChipState | null {
+	if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
+	if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');
+	if (state.kind === 'error' && state.account)
+		return connectedFrom(provider, state.account, 'error');
+	return null;
+}
+
+/**
+ * `primary` is the user's chosen lead provider (from
+ * `config.primary_account`). When set and that provider still has a
+ * surviving identity it wins regardless of the fixed precedence; an
+ * unset / unknown / identity-less primary falls through to the
+ * AniList-first `PRIORITY` walk so the chip never goes blank just
+ * because the preferred account is signed out.
+ */
 export function chipDescriptor(
 	byProvider: Record<Provider, ProviderState>,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	primary?: Provider | null
 ): ChipState {
+	if (primary) {
+		const preferred = descriptorFor(byProvider[primary], primary);
+		if (preferred) return preferred;
+	}
 	for (const provider of PRIORITY) {
-		const state = byProvider[provider];
-		if (state.kind === 'connected') return connectedFrom(provider, state.account, null);
-		if (state.kind === 'expired') return connectedFrom(provider, state.account, 'expired');
-		if (state.kind === 'error' && state.account)
-			return connectedFrom(provider, state.account, 'error');
+		const out = descriptorFor(byProvider[provider], provider);
+		if (out) return out;
 	}
 	return { kind: 'hidden' };
 }
