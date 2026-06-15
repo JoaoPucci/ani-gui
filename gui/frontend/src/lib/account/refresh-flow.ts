@@ -94,6 +94,14 @@ export async function refreshAccount(
 	};
 	const persisted = await deps.persistAccount(provider, refreshed);
 	if (!persisted.ok) return { kind: 'failed' };
+	// Re-check after the persist await too: a disconnect / re-auth could
+	// have landed in the gap between the network-await check and the
+	// safeStorage write completing. If the generation moved, don't report
+	// 'refreshed' — the caller must not reconnect the superseded account
+	// (Codex P2 #3416732381).
+	if (deps.generation(provider) !== generationAtStart) {
+		return { kind: 'superseded' };
+	}
 	return { kind: 'refreshed', account: refreshed };
 }
 
