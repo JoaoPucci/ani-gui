@@ -404,8 +404,13 @@
 	$effect(() => {
 		const kitsuId = id;
 		const connected = accountStore.connected;
+		// Reset synchronously on every id/connection change. The route reuses
+		// this component across shows, so a stale entry from the previously
+		// viewed anime must not linger while the async read is in flight or if
+		// it fails (offline/401/upstream) — otherwise the control would show
+		// the prior show's status and a Save could write it to the new id.
+		listEntry = null;
 		if (!kitsuId || connected.length === 0) {
-			listEntry = null;
 			return;
 		}
 		const primaryPref = primaryAccountStore.value;
@@ -418,7 +423,7 @@
 				const v = await getEntry(primary, bearer, kitsuId);
 				if (!cancelled) listEntry = v;
 			} catch {
-				// Leave the control in its add state on a read failure.
+				// Already reset to null above; stay in the add state on failure.
 			}
 		})();
 		return () => {

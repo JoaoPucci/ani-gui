@@ -123,10 +123,19 @@
 	async function remove() {
 		busy = true;
 		try {
-			await syncRemoveEntry(kitsuId);
-			live = null;
-			toastStore.push({ kind: 'success', message: m.detail_list_removed() });
-			open = false;
+			const n = await syncRemoveEntry(kitsuId);
+			// The fan-out swallows per-provider failures and returns the
+			// success count, so mirror the save path: only clear local state
+			// and report success when at least one tracker actually removed
+			// the entry. n === 0 (offline/401/no bearer) is a failure — the
+			// entry is still on the tracker, so don't pretend it's gone.
+			if (n > 0) {
+				live = null;
+				toastStore.push({ kind: 'success', message: m.detail_list_removed() });
+				open = false;
+			} else {
+				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+			}
 		} catch {
 			toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 		} finally {
