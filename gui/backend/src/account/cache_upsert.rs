@@ -44,8 +44,39 @@ pub fn upsert_entry(
     user_id: &str,
     entry: &ListEntry,
 ) -> Result<()> {
+    upsert(pool, kind, user_id, entry, false)
+}
+
+/// Like [`upsert_entry`] but overwrites unconditionally — no monotonic
+/// progress guard. Used by the explicit detail-page list editor, where
+/// the user can deliberately correct an over-count *downward*; the
+/// guarded variant would swallow that lower value. The automatic
+/// mark-watched write-through keeps [`upsert_entry`].
+pub fn upsert_entry_force(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+) -> Result<()> {
+    upsert(pool, kind, user_id, entry, true)
+}
+
+/// Shared upsert. `force` drops the `WHERE excluded.progress >= …`
+/// guard so an explicit edit can lower the cached progress.
+fn upsert(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+    force: bool,
+) -> Result<()> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
-    conn.execute(
+    let guard = if force {
+        ""
+    } else {
+        " WHERE excluded.progress >= user_list_cache.progress"
+    };
+    let sql = format!(
         "INSERT INTO user_list_cache \
          (provider, user_id, media_id, mal_id, status, progress, \
           score_x100, updated_at, fetched_at, title) \
@@ -54,8 +85,10 @@ pub fn upsert_entry(
             mal_id = excluded.mal_id, status = excluded.status, \
             progress = excluded.progress, score_x100 = excluded.score_x100, \
             updated_at = excluded.updated_at, fetched_at = excluded.fetched_at, \
-            title = excluded.title \
-         WHERE excluded.progress >= user_list_cache.progress",
+            title = excluded.title{guard}"
+    );
+    conn.execute(
+        &sql,
         params![
             kind.slug(),
             user_id,
