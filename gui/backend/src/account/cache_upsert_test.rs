@@ -100,6 +100,35 @@ fn upsert_entry_force_overwrites_lower_progress() {
 }
 
 #[test]
+fn upsert_entry_rejects_a_write_older_than_the_cached_row() {
+    // Codex P2 #3423044438: a mark-watched cache write-through runs
+    // outside push_progress's per-show lock, so a stale one (left the
+    // provider earlier) can land AFTER an explicit downward correction.
+    // Its higher progress would pass the monotonic guard and clobber the
+    // correction. Guard on updated_at recency too: a write stamped older
+    // than the cached row loses, so the explicit edit survives.
+    let pool = open_in_memory().unwrap();
+    // Explicit correction: progress 3, freshly stamped (T2).
+    let mut corrected = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    corrected.progress_episodes = 3;
+    corrected.updated_at_epoch_s = 2_000;
+    upsert_entry_force(&pool, ProviderKind::AniList, "u", &corrected).unwrap();
+
+    // Stale mark-watched write-through: higher progress 6 but an OLDER
+    // tracker timestamp (T1 < T2) — it left the provider before the edit.
+    let mut stale = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    stale.progress_episodes = 6;
+    stale.updated_at_epoch_s = 1_000;
+    upsert_entry(&pool, ProviderKind::AniList, "u", &stale).unwrap();
+
+    let got = list_entries(&pool, ProviderKind::AniList, "u").unwrap();
+    assert_eq!(
+        got[0].progress_episodes, 3,
+        "a stale older write must not clobber the newer explicit correction"
+    );
+}
+
+#[test]
 fn upsert_entry_inserts_when_absent() {
     let pool = open_in_memory().unwrap();
     upsert_entry(
