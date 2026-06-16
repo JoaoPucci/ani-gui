@@ -23,18 +23,44 @@ import { freshBearer } from './refresh-flow';
 import { persistAccount, refreshTokens } from './api';
 import { bearerFor } from './state-helpers';
 
+/**
+ * Per-provider in-flight refresh promise. When two call sites hit the
+ * same near-expiry connected provider at once, both would otherwise
+ * reach `freshBearer` with the same snapshot and start independent
+ * refresh-token exchanges; with rotating refresh tokens that races two
+ * rotations to disk while only one survives in memory (Codex P2
+ * #3420173434). Sharing the promise means concurrent callers get the
+ * same rotated account from a single exchange. Cleared once it settles
+ * so a later call (e.g. after the token drifts back toward expiry)
+ * starts a fresh one.
+ */
+const inFlight: Partial<Record<Provider, Promise<string | null>>> = {};
+
 export function freshBearerFor(provider: Provider): Promise<string | null> {
 	const state = accountStore.byProvider[provider];
 	if (state.kind !== 'connected') return Promise.resolve(bearerFor(state));
-	return freshBearer(
+	const pending = inFlight[provider];
+	if (pending) return pending;
+	const p = freshBearer(
 		{
 			refreshTokens,
 			persistAccount,
-			generation: (p) => accountStore.accountGeneration[p],
-			onRefreshed: (p, account) => accountStore.setConnected(p, account),
+			generation: (prov) => accountStore.accountGeneration[prov],
+			onRefreshed: (prov, account) => accountStore.setConnected(prov, account),
 			now: () => Date.now()
 		},
 		provider,
 		state.account
-	);
+	).finally(() => {
+		delete inFlight[provider];
+	});
+	inFlight[provider] = p;
+	return p;
+}
+
+/** Test-only: clear the in-flight refresh map between cases. */
+export function __resetInFlightRefreshes(): void {
+	for (const key of Object.keys(inFlight) as Provider[]) {
+		delete inFlight[key];
+	}
 }
