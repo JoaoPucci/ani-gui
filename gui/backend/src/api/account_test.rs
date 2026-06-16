@@ -203,6 +203,58 @@ async fn post_me_requires_bearer() {
 }
 
 #[tokio::test]
+async fn post_set_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/account/set/anilist")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"kitsu_id":"1","status":"planning"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn get_entry_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/account/entry/anilist?kitsu_id=1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn delete_entry_requires_bearer() {
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state(&td))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/account/entry/anilist?kitsu_id=1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn post_list_requires_bearer() {
     let td = TempDir::new().unwrap();
     let r = router()
