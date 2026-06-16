@@ -4,7 +4,7 @@
 // orchestrates the calls (mirrors push-watched.ts).
 
 import type { ListEntry, ListStatus, Provider } from './types';
-import { removeEntry, setEntry } from './api';
+import { removeEntry, setEntry } from './entry-api';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';

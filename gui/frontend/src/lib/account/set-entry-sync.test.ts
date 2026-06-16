@@ -10,9 +10,8 @@ const { setEntry, removeEntry, invalidateWatchLater, byProvider } = vi.hoisted((
 	invalidateWatchLater: vi.fn(),
 	byProvider: {} as Record<string, { kind: string; account?: { access_token: string } }>
 }));
+vi.mock('./entry-api', () => ({ setEntry, removeEntry }));
 vi.mock('./api', () => ({
-	setEntry,
-	removeEntry,
 	refreshTokens: vi.fn(),
 	persistAccount: vi.fn(async () => ({ ok: true }))
 }));

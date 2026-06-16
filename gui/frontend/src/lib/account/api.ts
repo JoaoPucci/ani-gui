@@ -7,7 +7,7 @@
  * self-contained and easy to remove if needed.
  */
 
-import type { EntryView, ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types';
+import type { ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types';
 
 // Window.aniGui augmentation lives in lib/api.ts to keep one source
 // of truth for the bridge shape; TypeScript can't merge contradictory
@@ -15,7 +15,10 @@ import type { EntryView, ListEntry, PkceWire, Provider, Tokens, UserProfile } fr
 
 // ─── Wrappers around fetch() to the local backend ───────────────────
 
-async function apiBase(): Promise<string> {
+// Exported so the editor endpoints in `entry-api.ts` can build on the
+// same primitives without re-implementing the fetch boilerplate (and
+// without inflating this file's CCN past the coverage ratchet).
+export async function apiBase(): Promise<string> {
 	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
 	const base = w?.aniGui?.apiBase;
 	if (base) return base;
@@ -41,7 +44,7 @@ export async function readErrorBody(res: Response): Promise<string> {
 	}
 }
 
-async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
+export async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
 	if (bearer) headers.authorization = `Bearer ${bearer}`;
@@ -56,18 +59,7 @@ async function postJson<T>(path: string, body: unknown, bearer?: string): Promis
 	return (await res.json()) as T;
 }
 
-async function getJson<T>(path: string, bearer: string): Promise<T> {
-	const base = await apiBase();
-	const res = await fetch(base.replace(/\/+$/, '') + path, {
-		headers: { authorization: `Bearer ${bearer}` }
-	});
-	if (!res.ok) {
-		throw new AccountApiError(res.status, await readErrorBody(res));
-	}
-	return (await res.json()) as T;
-}
-
-async function deleteEndpoint(
+export async function deleteEndpoint(
 	path: string,
 	bearer?: string,
 	extraHeaders?: Record<string, string>
@@ -140,48 +132,6 @@ export function updateProgress(
 	body: { kitsu_id: string; progress: number; status?: string }
 ): Promise<ListEntry | null> {
 	return postJson<ListEntry | null>(`/api/account/update/${provider}`, body, bearer);
-}
-
-/**
- * Read the user's live current list entry for a show so the detail-page
- * editor opens on the real tracker state (the deviation safety). `null`
- * when the show isn't on the list or isn't mapped to the provider.
- */
-export function getEntry(
-	provider: Provider,
-	bearer: string,
-	kitsuId: string
-): Promise<EntryView | null> {
-	return getJson<EntryView | null>(
-		`/api/account/entry/${provider}?kitsu_id=${encodeURIComponent(kitsuId)}`,
-		bearer
-	);
-}
-
-/**
- * Write an explicit list edit (status and/or progress) — the detail-page
- * editor. The backend writes it verbatim (no monotonic guard), so a
- * downward episode correction goes through. Returns the upserted entry,
- * or `null` when the show couldn't be mapped to the provider.
- */
-export function setEntry(
-	provider: Provider,
-	bearer: string,
-	body: { kitsu_id: string; status?: string; progress?: number }
-): Promise<ListEntry | null> {
-	return postJson<ListEntry | null>(`/api/account/set/${provider}`, body, bearer);
-}
-
-/**
- * Remove a show from the user's tracker list (editor "Remove"). The
- * backend is idempotent — an already-removed title still resolves
- * successfully.
- */
-export function removeEntry(provider: Provider, bearer: string, kitsuId: string): Promise<void> {
-	return deleteEndpoint(
-		`/api/account/entry/${provider}?kitsu_id=${encodeURIComponent(kitsuId)}`,
-		bearer
-	);
 }
 
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
