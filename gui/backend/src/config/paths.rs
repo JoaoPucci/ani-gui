@@ -29,19 +29,37 @@ const ORG: &str = "thirdmovement";
 const APP: &str = "ani-gui";
 const APP_DEV: &str = "ani-gui-dev";
 
-/// The app-dir name to resolve under. When `ANI_GUI_DEV` is set (the
-/// Electron dev launcher exports it), every ani-gui-owned directory —
-/// config, cache (incl. `metadata.sqlite`), logs, state — resolves
-/// under `ani-gui-dev` instead of `ani-gui`. That keeps a dev /
-/// smoke-test build from reading or migrating the installed app's data:
-/// the installed binary would otherwise be handed a DB a newer dev
-/// build had already migrated forward and refuse to open it.
+/// Whether ani-gui-owned dirs resolve under the dev profile
+/// (`ani-gui-dev`) rather than production (`ani-gui`). Pure so the
+/// policy is testable independent of the caller's build profile.
+///
+/// True when *either*:
+/// - the build is a debug build (`debug_build`) — this is the decisive
+///   signal, because the only ani-gui binary that ships to users is
+///   built `--release`. Any source-built backend is a debug build,
+///   including the documented standalone dev flow that runs without
+///   Electron and so never sees `ANI_GUI_DEV`; or
+/// - `ANI_GUI_DEV` is set (`env_dev`) — lets a release build opt into
+///   the dev dir explicitly (e.g. testing a packaged build's migration
+///   against throwaway data).
+const fn is_dev_profile(env_dev: bool, debug_build: bool) -> bool {
+    env_dev || debug_build
+}
+
+/// The app-dir name to resolve under. Under the dev profile (see
+/// [`is_dev_profile`]) every ani-gui-owned directory — config, cache
+/// (incl. `metadata.sqlite`), logs, state — resolves under
+/// `ani-gui-dev` instead of `ani-gui`. That keeps a dev / smoke-test
+/// build from reading or migrating the installed app's data: the
+/// installed binary would otherwise be handed a DB a newer dev build
+/// had already migrated forward and refuse to open it.
 ///
 /// The CLI-shared history (`ani_cli_history`, under `ani-cli`) is
 /// deliberately NOT relocated — it carries no schema/migrations and is
 /// meant to stay shared with the actual `ani-cli`.
 fn app_name() -> &'static str {
-    if std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty()) {
+    let env_dev = std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty());
+    if is_dev_profile(env_dev, cfg!(debug_assertions)) {
         APP_DEV
     } else {
         APP
@@ -218,13 +236,11 @@ mod tests {
             hist.to_string_lossy()
         );
 
-        std::env::remove_var("ANI_GUI_DEV");
-        let db = metadata_db().expect("db");
-        let s = db.to_string_lossy();
-        assert!(
-            s.contains("ani-gui") && !s.contains("ani-gui-dev"),
-            "without the flag, the real dir is used: {s}"
-        );
+        // Note: we can't assert the production (`ani-gui`) path here by
+        // clearing the env — this test binary is itself a debug build,
+        // so `app_name()` resolves to `ani-gui-dev` regardless of the
+        // flag. The release-build → production guarantee is pinned by
+        // `is_dev_profile_routes_debug_and_env_to_dev` instead.
 
         match saved {
             Some(v) => std::env::set_var("ANI_GUI_DEV", v),

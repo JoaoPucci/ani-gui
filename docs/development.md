@@ -136,6 +136,17 @@ curl -sI http://127.0.0.1:42337/healthz
 | `ANI_CLI_HIST_DIR` | shared with the CLI; the GUI reads/writes the same `ani-hsts` |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
+| `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
+
+**Dev data isolation.** Any source-built backend (`cargo run`, the
+standalone browser-dev flow above, the Electron dev launcher) is a debug
+build, and debug builds resolve all ani-gui-owned dirs — config, cache,
+`metadata.sqlite`, state — under `ani-gui-dev` instead of `ani-gui`. That
+keeps a dev build from migrating the installed app's DB forward, which
+the older release binary would then refuse to open. The shipped binary is
+built `--release`, so it uses the real `ani-gui` dirs. Set `ANI_GUI_DEV`
+to force the dev profile from a release build (e.g. to test migrations
+against throwaway data).
 
 ## Code style
 

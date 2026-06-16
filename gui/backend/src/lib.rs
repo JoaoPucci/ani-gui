@@ -50,15 +50,16 @@ fn version_with_dev(version: &str, is_dev: bool) -> String {
     }
 }
 
-/// The version string for display surfaces, with `-dev` appended when
-/// `ANI_GUI_DEV` is set (the dev launcher) — the backend counterpart to
-/// the renderer's `versionLabel`.
+/// The version string for display surfaces, with `-dev` appended for
+/// dev builds — the backend counterpart to the renderer's
+/// `versionLabel`. A build is "dev" when it's a debug build (every
+/// source-built backend, incl. the standalone dev flow) or `ANI_GUI_DEV`
+/// is set, mirroring the data-dir profile in [`config::paths`] so the
+/// diagnostics version and the cache dir always agree on dev-vs-release.
 #[must_use]
 pub fn display_version() -> String {
-    version_with_dev(
-        VERSION,
-        std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty()),
-    )
+    let env_dev = std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty());
+    version_with_dev(VERSION, env_dev || cfg!(debug_assertions))
 }
 
 #[cfg(test)]
