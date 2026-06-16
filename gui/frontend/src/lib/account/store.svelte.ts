@@ -135,7 +135,10 @@ class AccountStore {
 			// of an async disconnect), so a refresh that resolved after a
 			// mid-flight disconnect / re-auth is dropped — even before the
 			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
-			generation: (provider) => this.accountGeneration[provider]
+			generation: (provider) => this.accountGeneration[provider],
+			// Don't even start an expired refresh for a provider whose
+			// disconnect is mid-flight (Codex P2 #3421609159).
+			changing: (provider) => this.accountChanging[provider]
 		});
 	}
 
