@@ -30,7 +30,7 @@ use axum::{Json, Router};
 
 use crate::account::provider::{ListEntry, ProviderKind, Tokens, UserProfile};
 use crate::app::AppState;
-use crate::commands::account;
+use crate::commands::{account, account_edit};
 use crate::error::AniError;
 
 /// Mount the account routes onto the given app state. Called from
@@ -181,11 +181,9 @@ async fn post_set(
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
     let update = account::build_entry_update(req.status.as_deref(), req.progress, None)?;
-    let entry = account::set_entry(&state, kind, &tokens, &req.kitsu_id, update).await?;
-    // Force the explicit value into the cache (overwrites a higher
-    // progress, unlike the monotonic mark-watched write-through) so the
-    // rail/editor reflect a downward correction immediately.
-    account::write_through_after_set(&state, kind, &tokens, entry.as_ref()).await;
+    // set_entry writes verbatim (no monotonic guard) and force-upserts
+    // the cache so a downward correction reflects immediately.
+    let entry = account_edit::set_entry(&state, kind, &tokens, &req.kitsu_id, update).await?;
     Ok(Json(entry))
 }
 
@@ -201,7 +199,7 @@ async fn get_entry(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let current = account::get_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    let current = account_edit::get_entry(&state, kind, &tokens, &q.kitsu_id).await?;
     let view = current.map(|c| EntryView {
         status: account::status_to_snake(c.status).to_owned(),
         progress: c.progress_episodes,
@@ -220,7 +218,7 @@ async fn delete_entry(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    account::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    account_edit::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

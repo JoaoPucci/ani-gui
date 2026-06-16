@@ -72,7 +72,7 @@ impl AccountWriteLocks {
     /// The lock guarding writes to one `(provider, media id)`. The brief
     /// std-mutex section only swaps the `Arc`; the returned async mutex
     /// is what the caller holds across the network round-trips.
-    fn for_show(&self, kind: ProviderKind, media_id: u32) -> ShowLock {
+    pub(crate) fn for_show(&self, kind: ProviderKind, media_id: u32) -> ShowLock {
         let mut map = self.inner.lock().expect("account write-lock map poisoned");
         Arc::clone(map.entry((kind, media_id)).or_default())
     }
@@ -575,112 +575,6 @@ async fn push_progress_with_anilist_base(
     };
     let entry = provider.update_entry(tokens, native, update).await?;
     Ok(Some(entry))
-}
-
-/// Read the user's current list entry for a show (status + watched
-/// count), or `Ok(None)` when the show isn't mapped to the provider or
-/// isn't on the user's list. Drives the detail-page editor: it opens
-/// showing the *live* tracker state so the user never edits from a stale
-/// local snapshot. `anilist_base` overrides the AniList endpoint in
-/// tests; production passes `None` via [`get_entry`].
-pub async fn get_entry(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    kitsu_id: &str,
-) -> Result<Option<CurrentEntry>> {
-    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
-        return Ok(None);
-    };
-    let Some(provider) = provider_for_kind(state, kind) else {
-        return Err(AniError::Metadata);
-    };
-    provider.current_entry(tokens, native).await
-}
-
-/// Write an *explicit* user edit (status and/or progress) to a tracker
-/// for a show — the detail-page list editor. Unlike [`push_progress`],
-/// this does NOT run `reconcile_monotonic`: the user's deliberate value
-/// is written verbatim, so they can correct an over-count downward or
-/// move status anywhere. The automatic mark-watched fan-out keeps its
-/// monotonic guard via `push_progress`.
-///
-/// `Ok(None)` when the show can't be mapped to the provider (a non-error
-/// "nothing to write"). Holds the per-show write lock for symmetry with
-/// `push_progress` so an explicit edit and a concurrent mark-watched
-/// write don't interleave.
-pub async fn set_entry(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    kitsu_id: &str,
-    update: EntryUpdate,
-) -> Result<Option<ListEntry>> {
-    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
-        return Ok(None);
-    };
-    let Some(provider) = provider_for_kind(state, kind) else {
-        return Err(AniError::Metadata);
-    };
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _write_guard = show_lock.lock().await;
-    let entry = provider.update_entry(tokens, native, update).await?;
-    Ok(Some(entry))
-}
-
-/// Cache write-through after an explicit [`set_entry`] — forces the
-/// just-written value into the local cache so the rail/editor reflect
-/// it even when it *lowers* progress (the monotonic
-/// [`write_through_after_update`] would swallow that). Best-effort: a
-/// `None` entry or any failure is a silent no-op, the authoritative
-/// tracker write already succeeded.
-pub async fn write_through_after_set(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    entry: Option<&ListEntry>,
-) {
-    let Some(e) = entry else { return };
-    if let Ok(profile) = me(state, kind, tokens).await {
-        let _ = crate::account::cache_upsert::upsert_entry_force(
-            &state.cache_pool,
-            kind,
-            &profile.user_id,
-            e,
-        );
-    }
-}
-
-/// Remove a show from the user's tracker list (the editor's "Remove from
-/// list"). Deletes the provider entry, then drops the local cache row so
-/// the rail/editor reflect the removal immediately. Returns `Ok(false)`
-/// when the show isn't mapped to the provider (nothing to remove);
-/// `Ok(true)` once the delete has been issued.
-pub async fn remove_entry(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    kitsu_id: &str,
-) -> Result<bool> {
-    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
-        return Ok(false);
-    };
-    let Some(provider) = provider_for_kind(state, kind) else {
-        return Err(AniError::Metadata);
-    };
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _write_guard = show_lock.lock().await;
-    provider.delete_entry(tokens, native).await?;
-    // Drop the cache row (best-effort) so the rail stops showing it.
-    if let Ok(profile) = me(state, kind, tokens).await {
-        let _ = crate::account::cache_upsert::delete_entry_row(
-            &state.cache_pool,
-            kind,
-            &profile.user_id,
-            native.0,
-        );
-    }
-    Ok(true)
 }
 
 #[cfg(test)]
