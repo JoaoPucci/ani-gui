@@ -33,15 +33,26 @@ import { bearerFor } from './state-helpers';
  * same rotated account from a single exchange. Cleared once it settles
  * so a later call (e.g. after the token drifts back toward expiry)
  * starts a fresh one.
+ *
+ * The entry is tagged with the `accountGeneration` captured when it
+ * started. A caller only reuses it while that generation still matches:
+ * if the user disconnected / reconnected the provider mid-flight the
+ * generation has advanced, the pending refresh belongs to the old
+ * account (and will resolve `superseded`), and reusing it would fall
+ * back to the previous session's bearer for the new connection — i.e.
+ * the prior user's token (Codex P2 #3420249568). A generation-changed
+ * caller starts its own refresh instead.
  */
-const inFlight: Partial<Record<Provider, Promise<string | null>>> = {};
+const inFlight: Partial<Record<Provider, { generation: number; promise: Promise<string | null> }>> =
+	{};
 
 export function freshBearerFor(provider: Provider): Promise<string | null> {
 	const state = accountStore.byProvider[provider];
 	if (state.kind !== 'connected') return Promise.resolve(bearerFor(state));
+	const generation = accountStore.accountGeneration[provider];
 	const pending = inFlight[provider];
-	if (pending) return pending;
-	const p = freshBearer(
+	if (pending && pending.generation === generation) return pending.promise;
+	const promise = freshBearer(
 		{
 			refreshTokens,
 			persistAccount,
@@ -52,10 +63,12 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
 		provider,
 		state.account
 	).finally(() => {
-		delete inFlight[provider];
+		// Only clear if we're still the active entry — a generation-changed
+		// caller may have already replaced us with its own refresh.
+		if (inFlight[provider]?.promise === promise) delete inFlight[provider];
 	});
-	inFlight[provider] = p;
-	return p;
+	inFlight[provider] = { generation, promise };
+	return promise;
 }
 
 /** Test-only: clear the in-flight refresh map between cases. */
