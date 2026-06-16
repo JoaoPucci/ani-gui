@@ -18,7 +18,7 @@ const { refreshTokens, persistAccount, store } = vi.hoisted(() => ({
 vi.mock('./api', () => ({ refreshTokens, persistAccount }));
 vi.mock('./store.svelte', () => ({ accountStore: store }));
 
-import { freshBearerFor } from './fresh-bearer';
+import { __resetInFlightRefreshes, freshBearerFor } from './fresh-bearer';
 
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
@@ -40,6 +40,7 @@ beforeEach(() => {
 	store.setConnected.mockClear();
 	for (const k of Object.keys(store.byProvider)) delete store.byProvider[k];
 	store.accountGeneration = { anilist: 0, mal: 0, inhouse: 0 };
+	__resetInFlightRefreshes();
 });
 
 afterEach(() => vi.useRealTimers());
@@ -71,5 +72,65 @@ describe('freshBearerFor', () => {
 		expect(bearer).toBe('fresh');
 		expect(refreshTokens).toHaveBeenCalledTimes(1);
 		expect(store.setConnected).toHaveBeenCalledTimes(1);
+	});
+
+	it('coalesces concurrent refreshes for the same provider into one exchange', async () => {
+		// Codex P2 #3420173434: two call sites (Watch Later refresh + a
+		// watched-progress sync) hitting the same near-expiry provider must
+		// share ONE refresh-token exchange, not start two independent
+		// rotations whose writes race.
+		let release!: (v: unknown) => void;
+		refreshTokens.mockImplementation(
+			() =>
+				new Promise((r) => {
+					release = r;
+				})
+		);
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'old', expires_at_epoch_s: nowSec() + 30 })
+		};
+
+		const p1 = freshBearerFor('mal');
+		const p2 = freshBearerFor('mal');
+		await Promise.resolve(); // let both reach the in-flight check
+		release({ access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec() + 3600 });
+		const [b1, b2] = await Promise.all([p1, p2]);
+
+		expect(b1).toBe('fresh');
+		expect(b2).toBe('fresh');
+		expect(refreshTokens).toHaveBeenCalledTimes(1);
+		expect(store.setConnected).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not coalesce across different providers', async () => {
+		refreshTokens.mockResolvedValue({
+			access_token: 'fresh',
+			refresh_token: 'rt2',
+			expires_at_epoch_s: nowSec() + 3600
+		});
+		for (const p of ['mal', 'anilist'] as const) {
+			store.byProvider[p] = {
+				kind: 'connected',
+				account: account({ access_token: 'old', expires_at_epoch_s: nowSec() + 30 })
+			};
+		}
+		await Promise.all([freshBearerFor('mal'), freshBearerFor('anilist')]);
+		expect(refreshTokens).toHaveBeenCalledTimes(2);
+	});
+
+	it('refreshes again on a later call once the in-flight refresh has settled', async () => {
+		refreshTokens.mockResolvedValue({
+			access_token: 'fresh',
+			refresh_token: 'rt2',
+			expires_at_epoch_s: nowSec() + 30 // still near expiry → next call refreshes again
+		});
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'old', expires_at_epoch_s: nowSec() + 30 })
+		};
+		await freshBearerFor('mal');
+		await freshBearerFor('mal');
+		expect(refreshTokens).toHaveBeenCalledTimes(2);
 	});
 });
