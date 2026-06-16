@@ -30,12 +30,12 @@
 		kitsuId,
 		total = null,
 		current = null,
-		loading = false
+		disabled = false
 	}: {
 		kitsuId: string;
 		total?: number | null;
 		current?: EntryView | null;
-		loading?: boolean;
+		disabled?: boolean;
 	} = $props();
 
 	// The live entry we display. A writable `$derived` so it tracks the
@@ -81,10 +81,10 @@
 	});
 
 	function toggle() {
-		// Don't open until the live entry has settled — otherwise the editor
-		// would seed Planning/0 and a Save could overwrite a real entry that
-		// just hadn't arrived yet.
-		if (loading) return;
+		// Don't open while disabled — the live entry is still loading or its
+		// read failed, so the form would seed Planning/0 and a Save could
+		// overwrite a real entry whose status we don't actually know yet.
+		if (disabled) return;
 		if (open) {
 			open = false;
 			return;
@@ -114,10 +114,16 @@
 
 	async function save() {
 		busy = true;
+		// Snapshot the form values before awaiting. The status/episode controls
+		// stay editable during the in-flight save, so reading editStatus/
+		// editProgress again after the await could optimistically show values
+		// the user changed mid-request that were never sent to the tracker.
+		const status = editStatus;
+		const progress = editProgress;
 		try {
-			const n = await syncSetEntry(kitsuId, { status: editStatus, progress: editProgress });
+			const n = await syncSetEntry(kitsuId, { status, progress });
 			if (n > 0) {
-				live = { status: editStatus, progress: editProgress };
+				live = { status, progress };
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 				open = false;
 			} else {
@@ -162,7 +168,7 @@
 		class:on-list={view.onList}
 		aria-haspopup="dialog"
 		aria-expanded={open}
-		disabled={loading}
+		{disabled}
 		onclick={toggle}
 	>
 		<span aria-hidden="true">{view.onList ? '✓' : '＋'}</span>

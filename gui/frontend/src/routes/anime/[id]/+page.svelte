@@ -405,6 +405,11 @@
 	// stays disabled in this window so a Save can't fire against a not-yet-
 	// known entry (which would seed Planning/0 and overwrite the real status).
 	let listEntryLoading = $state(false);
+	// True when the read couldn't establish the real tracker state (the bearer
+	// couldn't be refreshed, or getEntry threw). A null listEntry then means
+	// "unknown", not "not on the list", so the editor stays disabled rather
+	// than offering an Add that could overwrite an existing entry.
+	let listEntryError = $state(false);
 	$effect(() => {
 		const kitsuId = id;
 		const connected = accountStore.connected;
@@ -414,6 +419,7 @@
 		// it fails (offline/401/upstream) — otherwise the control would show
 		// the prior show's status and a Save could write it to the new id.
 		listEntry = null;
+		listEntryError = false;
 		if (!kitsuId || connected.length === 0) {
 			listEntryLoading = false;
 			return;
@@ -425,11 +431,17 @@
 		void (async () => {
 			try {
 				const bearer = await freshBearerFor(primary);
-				if (cancelled || !bearer) return;
+				if (cancelled) return;
+				if (!bearer) {
+					listEntryError = true;
+					return;
+				}
 				const v = await getEntry(primary, bearer, kitsuId);
 				if (!cancelled) listEntry = v;
 			} catch {
-				// Already reset to null above; stay in the add state on failure.
+				// Read failed transiently: treat the entry as unknown, not absent,
+				// so the editor stays disabled instead of offering a stale Add.
+				if (!cancelled) listEntryError = true;
 			} finally {
 				if (!cancelled) listEntryLoading = false;
 			}
@@ -1100,7 +1112,7 @@
 									kitsuId={id}
 									total={detail.episode_count ?? null}
 									current={listEntry}
-									loading={listEntryLoading}
+									disabled={listEntryLoading || listEntryError}
 								/>
 							{/if}
 						</div>
