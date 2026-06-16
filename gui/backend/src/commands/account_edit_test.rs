@@ -236,3 +236,32 @@ async fn remove_entry_via_deletes_then_drops_cache_row() {
     .expect("remove ok");
     assert!(removed, "a mapped show is removed");
 }
+
+#[tokio::test]
+async fn remove_entry_via_treats_a_404_delete_as_already_removed() {
+    // Codex P2 #3423108945: the title was already gone upstream (404 — the
+    // user double-clicked Remove, or removed it in another client). The
+    // DELETE route is documented idempotent, so a 404 must be success: the
+    // cache row still drops and the call returns true rather than erroring.
+    use wiremock::matchers::{method, path};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(404))
+        .mount(&mal)
+        .await;
+    mount_mal_me(&mal).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let removed = remove_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &test_tokens(),
+        "12",
+    )
+    .await
+    .expect("a 404 delete must not surface as an error");
+    assert!(removed, "an already-removed title still reports removed");
+}
