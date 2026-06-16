@@ -131,13 +131,19 @@ async fn remove_entry_via(
     };
     let show_lock = state.account_write_locks.for_show(kind, native.0);
     let _write_guard = show_lock.lock().await;
-    // A 404 means the title was already gone upstream (double-click
-    // Remove, or removed in another client) — the DELETE route is
-    // idempotent, so treat it as success and still drop the cache row
-    // below (Codex P2 #3423108945). Any other error propagates.
-    match provider.delete_entry(tokens, native).await {
-        Ok(()) | Err(AniError::Upstream { status: 404 }) => {}
-        Err(e) => return Err(e),
+    // The title may already be gone upstream (double-click Remove, or
+    // removed in another client). Providers signal that differently —
+    // MAL returns Upstream{404}, AniList fails the row-id lookup with a
+    // parse error (Codex P2 #3423108945 / #3423227862) — so don't match
+    // on a status. Instead, on ANY delete error, confirm with a live
+    // read: if the show is no longer on the list the delete's goal is
+    // already met (idempotent success, still drop the cache row); a
+    // still-present show means the failure is real and propagates.
+    if let Err(e) = provider.delete_entry(tokens, native).await {
+        match provider.current_entry(tokens, native).await {
+            Ok(None) => {}
+            _ => return Err(e),
+        }
     }
     // Drop the cache row (best-effort) so the rail stops showing it.
     if let Ok(profile) = provider.me(tokens).await {
