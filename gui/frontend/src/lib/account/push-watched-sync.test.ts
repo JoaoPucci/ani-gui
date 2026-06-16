@@ -2,15 +2,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the live-store collaborators so the glue under test is the only
 // real code: syncWatchedToTrackers must read the connected providers
-// off the store, resolve each bearer via state-helpers, and delegate
-// to the (already-tested) pure fan-out with the api updateProgress.
+// off the store, resolve each bearer via fresh-bearer, and delegate to
+// the (already-tested) pure fan-out with the api updateProgress.
 // `vi.hoisted` so the shared handles exist before the hoisted vi.mock
-// factories run.
+// factories run. The accounts here carry no refresh_token + a far-future
+// expiry, so fresh-bearer's proactive-refresh branch never fires — it
+// just returns the connected bearer. (refreshTokens/persistAccount are
+// stubbed only because fresh-bearer imports them; the coalescing +
+// refresh branches are unit-tested in fresh-bearer.test.ts.)
 const { updateProgress, byProvider } = vi.hoisted(() => ({
 	updateProgress: vi.fn(async () => null),
-	byProvider: {} as Record<string, { kind: string; account?: { access_token: string } }>
+	byProvider: {} as Record<
+		string,
+		{
+			kind: string;
+			account?: {
+				access_token: string;
+				refresh_token?: string | null;
+				expires_at_epoch_s?: number;
+			};
+		}
+	>
 }));
-vi.mock('./api', () => ({ updateProgress }));
+vi.mock('./api', () => ({
+	updateProgress,
+	refreshTokens: vi.fn(),
+	persistAccount: vi.fn(async () => ({ ok: true }))
+}));
 vi.mock('./store.svelte', () => ({
 	accountStore: {
 		get connected() {
@@ -18,7 +36,10 @@ vi.mock('./store.svelte', () => ({
 		},
 		get byProvider() {
 			return byProvider;
-		}
+		},
+		accountGeneration: { anilist: 0, mal: 0, inhouse: 0 } as Record<string, number>,
+		accountChanging: { anilist: false, mal: false, inhouse: false } as Record<string, boolean>,
+		setConnected: vi.fn()
 	}
 }));
 

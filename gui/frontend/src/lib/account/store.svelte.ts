@@ -31,6 +31,18 @@ class AccountStore {
 	 */
 	accountGeneration: Record<Provider, number> = { anilist: 0, mal: 0, inhouse: 0 };
 
+	/**
+	 * True between `beginAccountChange(provider)` and the next resolved
+	 * state transition for that provider. A disconnect bumps the
+	 * generation up front but leaves `byProvider` as `connected` until its
+	 * async clear finishes; a refresh entering that window would see a
+	 * stable (already-bumped) generation and pass its checks, so the
+	 * generation counter alone can't gate it. Consumers (fresh-bearer)
+	 * treat a changing provider as non-refreshable so a post-disconnect
+	 * refresh can't enqueue a resurrecting write (Codex P2 #3421338541).
+	 */
+	accountChanging: Record<Provider, boolean> = { anilist: false, mal: false, inhouse: false };
+
 	private bumpGeneration(provider: Provider): void {
 		this.accountGeneration = {
 			...this.accountGeneration,
@@ -38,14 +50,23 @@ class AccountStore {
 		};
 	}
 
+	/** Mark / clear the in-progress-change flag for a provider. */
+	private setChanging(provider: Provider, changing: boolean): void {
+		this.accountChanging = { ...this.accountChanging, [provider]: changing };
+	}
+
 	/**
 	 * Signal that an async account mutation (e.g. disconnect) is starting
 	 * for `provider`, so an in-flight token refresh is superseded before
 	 * the mutation's async clear updates `byProvider` (Codex P2
-	 * #3416668470). Synchronous and side-effect-free beyond the counter.
+	 * #3416668470). Also marks the provider as changing until the next
+	 * resolved state transition, so a refresh entering the disconnect
+	 * window (byProvider still `connected`) is held off (Codex P2
+	 * #3421338541). Synchronous and side-effect-free beyond those flags.
 	 */
 	beginAccountChange(provider: Provider): void {
 		this.bumpGeneration(provider);
+		this.setChanging(provider, true);
 	}
 
 	/**
@@ -114,7 +135,10 @@ class AccountStore {
 			// of an async disconnect), so a refresh that resolved after a
 			// mid-flight disconnect / re-auth is dropped — even before the
 			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
-			generation: (provider) => this.accountGeneration[provider]
+			generation: (provider) => this.accountGeneration[provider],
+			// Don't even start an expired refresh for a provider whose
+			// disconnect is mid-flight (Codex P2 #3421609159).
+			changing: (provider) => this.accountChanging[provider]
 		});
 	}
 
@@ -136,11 +160,13 @@ class AccountStore {
 
 	setConnecting(provider: Provider): void {
 		this.bumpGeneration(provider);
+		this.setChanging(provider, false);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 
 	setConnected(provider: Provider, account: PersistedAccount): void {
 		this.bumpGeneration(provider);
+		this.setChanging(provider, false);
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'connected', account, lastSyncedAt: Date.now() }
@@ -149,15 +175,18 @@ class AccountStore {
 
 	setDisconnected(provider: Provider): void {
 		this.bumpGeneration(provider);
+		this.setChanging(provider, false);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'disconnected' } };
 	}
 
 	setExpired(provider: Provider, account: PersistedAccount): void {
 		this.bumpGeneration(provider);
+		this.setChanging(provider, false);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'expired', account } };
 	}
 
 	setError(provider: Provider, message: string): void {
+		this.setChanging(provider, false);
 		// Codex P2 #3370096597: preserve the account from prior
 		// `error`-with-account too, not just connected / expired. If
 		// the user is already in error-with-account and a Disconnect

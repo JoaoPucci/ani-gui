@@ -6,14 +6,16 @@
 import type { ListEntry, Provider } from './types';
 import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
-import { bearerFor } from './state-helpers';
+import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
 	connected: Provider[];
-	/** Resolve a provider's bearer, or null if unavailable. */
-	bearerFor: (provider: Provider) => string | null;
+	/** Resolve a provider's bearer, or null if unavailable. May be async
+	 *  so the caller can refresh a near-expiry token before the write
+	 *  (Codex P2 #3416883107). */
+	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
 	/** POST the update to one provider. `status` omitted = leave the
 	 *  tracker's current status untouched. */
 	updateProgress: (
@@ -68,7 +70,7 @@ export async function pushWatchedToTrackers(
 		: { kitsu_id: kitsuId, progress: episode };
 	await Promise.all(
 		deps.connected.map(async (provider) => {
-			const bearer = deps.bearerFor(provider);
+			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return;
 			try {
 				await deps.updateProgress(provider, bearer, body);
@@ -96,7 +98,10 @@ export async function syncWatchedToTrackers(
 	await pushWatchedToTrackers(
 		{
 			connected,
-			bearerFor: (provider) => bearerFor(accountStore.byProvider[provider]),
+			// Refresh a near-expiry token before the write so a long-open
+			// session doesn't push progress with a stale bearer (Codex P2
+			// #3416883107).
+			bearerFor: (provider) => freshBearerFor(provider),
 			updateProgress
 		},
 		kitsuId,
