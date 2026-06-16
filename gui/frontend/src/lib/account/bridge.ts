@@ -9,6 +9,7 @@
  */
 
 import type { OAuthOpenResult, PersistedAccount, Provider } from './types';
+import { enqueueTokenWrite } from './token-write-queue';
 
 function bridge() {
 	return (typeof window !== 'undefined' ? window : undefined)?.aniGui?.account;
@@ -66,7 +67,10 @@ export async function persistAccount(
 ): Promise<PersistAccountResult> {
 	const b = bridge();
 	if (!b) return { ok: false, kind: 'no_bridge' };
-	const r = await b.setToken(provider, payload);
+	// Serialize with any concurrent clearToken for this provider so a
+	// boot refresh's write can't land after a racing disconnect's clear
+	// (Codex P2 #3416883099).
+	const r = await enqueueTokenWrite(provider, () => b.setToken(provider, payload));
 	if (r.ok) return { ok: true };
 	return { ok: false, kind: normaliseSetTokenKind(r.kind), detail: r.message };
 }
@@ -88,7 +92,10 @@ function normaliseSetTokenKind(
 export async function clearPersistedAccount(provider: Provider): Promise<boolean> {
 	const b = bridge();
 	if (!b) return false;
-	const r = await b.clearToken(provider);
+	// Same per-provider queue as persistAccount: a disconnect's clear
+	// enqueued after a refresh's persist runs strictly after it, so the
+	// file ends cleared rather than holding a resurrected token.
+	const r = await enqueueTokenWrite(provider, () => b.clearToken(provider));
 	return r.ok;
 }
 
