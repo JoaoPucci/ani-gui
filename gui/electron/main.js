@@ -138,12 +138,17 @@ function resolveBackendBinary() {
 /**
  * Locate the user's config.toml using the same path the Rust backend
  * writes to. Mirrors `directories-next`'s ProjectDirs resolution
- * (`net.thirdmovement.ani-gui`) so we read the same file the user's
+ * (`net.thirdmovement.<app>`) so we read the same file the user's
  * Settings page persists to.
  *
- *   Linux:   $XDG_CONFIG_HOME (or ~/.config) /ani-gui/config.toml
- *   macOS:   ~/Library/Application Support/net.thirdmovement.ani-gui/config.toml
- *   Windows: %APPDATA% (or ~/AppData/Roaming) /thirdmovement/ani-gui/config/config.toml
+ * `<app>` is `APP_NAME` — `ani-gui-dev` in dev so we read the dev
+ * profile's config (the backend writes there under `ANI_GUI_DEV`),
+ * `ani-gui` otherwise. Without this, a dev session would seed the
+ * renderer locale from the installed app's config.
+ *
+ *   Linux:   $XDG_CONFIG_HOME (or ~/.config) /<app>/config.toml
+ *   macOS:   ~/Library/Application Support/net.thirdmovement.<app>/config.toml
+ *   Windows: %APPDATA% (or ~/AppData/Roaming) /thirdmovement/<app>/config/config.toml
  *
  * Returns null when the home dir can't be resolved — the only
  * platforms that lack one are headless CI containers, which don't
@@ -154,20 +159,20 @@ function resolveUserConfigPath() {
   if (!home) return null;
   if (process.platform === "linux" || process.platform === "freebsd") {
     const base = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
-    return path.join(base, "ani-gui", "config.toml");
+    return path.join(base, APP_NAME, "config.toml");
   }
   if (process.platform === "darwin") {
     return path.join(
       home,
       "Library",
       "Application Support",
-      "net.thirdmovement.ani-gui",
+      `net.thirdmovement.${APP_NAME}`,
       "config.toml",
     );
   }
   // win32
   const base = process.env.APPDATA || path.join(home, "AppData", "Roaming");
-  return path.join(base, "thirdmovement", "ani-gui", "config", "config.toml");
+  return path.join(base, "thirdmovement", APP_NAME, "config", "config.toml");
 }
 
 /**
