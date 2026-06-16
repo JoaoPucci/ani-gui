@@ -43,6 +43,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn version_with_dev_appends_suffix_only_in_dev() {
+        assert_eq!(version_with_dev("0.9.0", true), "0.9.0-dev");
+        assert_eq!(version_with_dev("0.9.0", false), "0.9.0");
+    }
+
+    #[test]
     fn version_string_looks_like_semver() {
         // env!() produces a `&'static str`; clippy is right that
         // is_empty() on a const is silly. The check that matters is shape.
