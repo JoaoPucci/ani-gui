@@ -238,17 +238,96 @@ async fn remove_entry_via_deletes_then_drops_cache_row() {
 }
 
 #[tokio::test]
+async fn remove_entry_via_treats_a_failed_delete_as_removed_when_the_entry_is_gone() {
+    // Codex P2 #3423227862: AniList doesn't report an already-absent row
+    // as Upstream{404} — its delete fails at the row-id lookup (a
+    // parse/GraphQL error). So the idempotency check can't key off 404;
+    // instead, on ANY delete error, confirm with a live read — if the
+    // show is no longer on the list, the delete's goal is already met.
+    // Modelled here with a generic 500 delete + a current_entry that
+    // reports the show absent.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .mount(&mal)
+        .await;
+    // Live read confirms it's gone (no my_list_status → None).
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
+        .mount(&mal)
+        .await;
+    mount_mal_me(&mal).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let removed = remove_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &test_tokens(),
+        "12",
+    )
+    .await
+    .expect("a delete error must not surface when the entry is already gone");
+    assert!(removed, "an already-gone entry reports removed");
+}
+
+#[tokio::test]
+async fn remove_entry_via_propagates_a_delete_error_when_the_entry_is_still_present() {
+    // The flip side: a genuine failure (the show is still on the list)
+    // must propagate, not be silently swallowed.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .mount(&mal)
+        .await;
+    // Live read shows it's STILL on the list → the failure is real.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"id":21,"my_list_status":{"status":"watching","num_episodes_watched":3}}"#,
+        ))
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let res = remove_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &test_tokens(),
+        "12",
+    )
+    .await;
+    assert!(res.is_err(), "a real delete failure must propagate");
+}
+
+#[tokio::test]
 async fn remove_entry_via_treats_a_404_delete_as_already_removed() {
-    // Codex P2 #3423108945: the title was already gone upstream (404 — the
-    // user double-clicked Remove, or removed it in another client). The
-    // DELETE route is documented idempotent, so a 404 must be success: the
-    // cache row still drops and the call returns true rather than erroring.
-    use wiremock::matchers::{method, path};
+    // Codex P2 #3423108945: the title was already gone upstream (MAL 404 —
+    // the user double-clicked Remove, or removed it in another client).
+    // The DELETE route is documented idempotent, so once the live read
+    // confirms it's absent the call returns true and drops the cache row.
+    use wiremock::matchers::{method, path, query_param};
     let kitsu = mappable_kitsu().await;
     let mal = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("DELETE"))
         .and(path("/anime/21/my_list_status"))
         .respond_with(wiremock::ResponseTemplate::new(404))
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
         .mount(&mal)
         .await;
     mount_mal_me(&mal).await;
