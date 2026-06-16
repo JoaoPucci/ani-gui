@@ -29,8 +29,14 @@
 	let {
 		kitsuId,
 		total = null,
-		current = null
-	}: { kitsuId: string; total?: number | null; current?: EntryView | null } = $props();
+		current = null,
+		loading = false
+	}: {
+		kitsuId: string;
+		total?: number | null;
+		current?: EntryView | null;
+		loading?: boolean;
+	} = $props();
 
 	// The live entry we display. A writable `$derived` so it tracks the
 	// `current` prop (which the page loads + updates async) yet can be
@@ -75,6 +81,10 @@
 	});
 
 	function toggle() {
+		// Don't open until the live entry has settled — otherwise the editor
+		// would seed Planning/0 and a Save could overwrite a real entry that
+		// just hadn't arrived yet.
+		if (loading) return;
 		if (open) {
 			open = false;
 			return;
@@ -152,6 +162,7 @@
 		class:on-list={view.onList}
 		aria-haspopup="dialog"
 		aria-expanded={open}
+		disabled={loading}
 		onclick={toggle}
 	>
 		<span aria-hidden="true">{view.onList ? '✓' : '＋'}</span>
@@ -244,8 +255,12 @@
 			color var(--dur-fast) var(--ease-out-soft);
 		white-space: nowrap;
 	}
-	.le-trigger:hover {
+	.le-trigger:hover:not(:disabled) {
 		border-color: var(--bone-100);
+	}
+	.le-trigger:disabled {
+		opacity: 0.5;
+		cursor: progress;
 	}
 	.le-trigger.on-list {
 		border-color: color-mix(in oklab, var(--accent-jade) 55%, var(--bone-300));

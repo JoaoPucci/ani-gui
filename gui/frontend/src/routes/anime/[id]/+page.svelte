@@ -401,6 +401,10 @@
 	// show id or the connected set changes; writes fan out to ALL
 	// connected trackers (see ListEntryEditor → set-entry).
 	let listEntry = $state<EntryView | null>(null);
+	// True while the primary provider's live entry is being read. The editor
+	// stays disabled in this window so a Save can't fire against a not-yet-
+	// known entry (which would seed Planning/0 and overwrite the real status).
+	let listEntryLoading = $state(false);
 	$effect(() => {
 		const kitsuId = id;
 		const connected = accountStore.connected;
@@ -411,19 +415,23 @@
 		// the prior show's status and a Save could write it to the new id.
 		listEntry = null;
 		if (!kitsuId || connected.length === 0) {
+			listEntryLoading = false;
 			return;
 		}
+		listEntryLoading = true;
 		const primaryPref = primaryAccountStore.value;
 		const primary = primaryPref && connected.includes(primaryPref) ? primaryPref : connected[0];
 		let cancelled = false;
 		void (async () => {
-			const bearer = await freshBearerFor(primary);
-			if (!bearer || cancelled) return;
 			try {
+				const bearer = await freshBearerFor(primary);
+				if (cancelled || !bearer) return;
 				const v = await getEntry(primary, bearer, kitsuId);
 				if (!cancelled) listEntry = v;
 			} catch {
 				// Already reset to null above; stay in the add state on failure.
+			} finally {
+				if (!cancelled) listEntryLoading = false;
 			}
 		})();
 		return () => {
@@ -1092,6 +1100,7 @@
 									kitsuId={id}
 									total={detail.episode_count ?? null}
 									current={listEntry}
+									loading={listEntryLoading}
 								/>
 							{/if}
 						</div>
