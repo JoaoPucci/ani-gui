@@ -536,37 +536,3 @@ fn upsert_cached_entry_writes_through_to_the_cache() {
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].status, ListStatus::Watching);
 }
-
-#[tokio::test]
-async fn write_through_after_update_noop_without_entry_or_owner() {
-    // Codex P2 #3412673593: best-effort cache write-through. A None
-    // entry returns immediately; a provider with no impl (inhouse →
-    // me() errors, no network) skips the upsert. Neither writes a row.
-    use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId, Tokens};
-    use crate::account::status::ListStatus;
-    let state = state_with_kitsu("http://127.0.0.1:0");
-    let tokens = Tokens {
-        access_token: "t".into(),
-        refresh_token: None,
-        expires_at_epoch_s: i64::MAX,
-    };
-    write_through_after_update(&state, ProviderKind::AniList, &tokens, None).await;
-    assert!(cached_list(&state, ProviderKind::AniList, "u")
-        .unwrap()
-        .is_empty());
-
-    let entry = ListEntry {
-        provider: ProviderKind::InHouse,
-        media_id: ProviderMediaId(1),
-        mal_id: None,
-        status: ListStatus::Watching,
-        progress_episodes: 1,
-        score_0_to_100: None,
-        updated_at_epoch_s: 0,
-        title: "Y".into(),
-    };
-    write_through_after_update(&state, ProviderKind::InHouse, &tokens, Some(&entry)).await;
-    assert!(cached_list(&state, ProviderKind::InHouse, "u")
-        .unwrap()
-        .is_empty());
-}

@@ -94,15 +94,13 @@ fn upsert(
     let guard = if force {
         ""
     } else {
-        // Monotonic on progress (two racing mark-watched writes — Codex P2
-        // #3416732383) AND recency on the provider timestamp: a stale
-        // mark-watched write-through (higher progress but an older
-        // updated_at) must not clobber a newer explicit downward
-        // correction that already landed via the force path — its older
-        // timestamp loses (Codex P2 #3423044438). The explicit editor
-        // uses the unconditional `force` path, so it's never blocked here.
-        " WHERE excluded.progress >= user_list_cache.progress \
-          AND excluded.updated_at >= user_list_cache.updated_at"
+        // Monotonic on progress so two racing mark-watched writes can't
+        // regress the count (Codex P2 #3416732383). Coordination with the
+        // explicit editor's force-upsert is handled by the per-show lock:
+        // push_progress now writes the cache under that lock (see
+        // push_progress_via), so a stale write can't land after an
+        // explicit correction.
+        " WHERE excluded.progress >= user_list_cache.progress"
     };
     let sql = format!(
         "INSERT INTO user_list_cache \

@@ -230,25 +230,6 @@ pub fn upsert_cached_entry(
     crate::account::cache_upsert::upsert_entry(&state.cache_pool, kind, user_id, entry)
 }
 
-/// Best-effort cache write-through after a tracker update: resolve the
-/// bearer's owner via `me()` and upsert the just-synced entry so the
-/// Watch Later rail's planning filter drops a started title without a
-/// full resync (Codex P2 #3412673593). A `None` entry (the show wasn't
-/// mappable) or any failure is a silent no-op — the authoritative
-/// tracker write already succeeded. Lives here, off the handler, to
-/// keep `api/account.rs` under the CRAP ceiling.
-pub async fn write_through_after_update(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    entry: Option<&ListEntry>,
-) {
-    let Some(e) = entry else { return };
-    if let Ok(profile) = me(state, kind, tokens).await {
-        let _ = upsert_cached_entry(state, kind, &profile.user_id, e);
-    }
-}
-
 /// Decode the `Authorization: Bearer <token>` header value into a
 /// [`Tokens`] envelope. `expires_at_epoch_s` is zero because the
 /// header doesn't carry expiry — that's tracked in the renderer's
@@ -549,6 +530,21 @@ async fn push_progress_with_anilist_base(
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
+    push_progress_via(state, kind, provider.as_ref(), tokens, native, update).await
+}
+
+/// The monotonic write-back with the provider injected, so tests drive
+/// it against a wiremock-backed provider (the public path builds the
+/// real one). Holds the per-show lock across the read → reconcile →
+/// write → cache write-through.
+async fn push_progress_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+) -> Result<Option<ListEntry>> {
     // Serialize writes to this show so the read-then-write monotonic
     // guard is atomic: the route callers fire syncWatchedToTrackers
     // without awaiting, so two writes for the same show can otherwise
@@ -574,6 +570,16 @@ async fn push_progress_with_anilist_base(
         update
     };
     let entry = provider.update_entry(tokens, native, update).await?;
+    // Write the cache through HERE, under the per-show lock — not in the
+    // route afterwards. Deferring it released the lock first, so a stale
+    // mark-watched write-through could land after an explicit downward
+    // correction and clobber it (Codex P2 #3423108941 / #3423044438).
+    // Inside the lock it's serialized with the explicit editor's
+    // force-upsert, so no stale write lingers; the monotonic upsert still
+    // guards two racing mark-watched writes. Best-effort.
+    if let Ok(profile) = provider.me(tokens).await {
+        let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
+    }
     Ok(Some(entry))
 }
 

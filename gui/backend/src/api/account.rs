@@ -158,12 +158,10 @@ async fn post_update(
     // Reject empty / typo'd payloads before they reach the upsert
     // (Codex P2 #3381617932).
     let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
+    // push_progress writes the cache through under its per-show lock
+    // (Codex P2 #3412673593 reflects a started title; #3423108941 keeps
+    // it under the lock so a stale write can't clobber an explicit edit).
     let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
-    // Reflect the just-synced entry in the local cache (best-effort) so
-    // the Watch Later rail drops a started title without a full resync
-    // (Codex P2 #3412673593). Logic lives in commands to keep this
-    // handler — and the file's CRAP — slim.
-    account::write_through_after_update(&state, kind, &tokens, entry.as_ref()).await;
     Ok(Json(entry))
 }
 
