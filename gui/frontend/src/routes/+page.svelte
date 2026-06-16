@@ -59,6 +59,7 @@
 		type PlayProgress
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
+	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
@@ -460,7 +461,7 @@
 					// Authoritative tracker pull (no secret-gated fallback): refresh
 					// a near-expiry token first so a long-open session's refresh
 					// doesn't 401 against the provider API (Codex P2 #3416883107).
-					const bearer = (await accountStore.freshBearerFor(p)) ?? cred.bearer;
+					const bearer = (await freshBearerFor(p)) ?? cred.bearer;
 					try {
 						await fetchAndCacheList(p, bearer);
 						markRefreshed(p, Date.now());

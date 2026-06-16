@@ -6,6 +6,7 @@
 import type { ListEntry, Provider } from './types';
 import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
+import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 
 export interface PushWatchedDeps {
@@ -100,7 +101,7 @@ export async function syncWatchedToTrackers(
 			// Refresh a near-expiry token before the write so a long-open
 			// session doesn't push progress with a stale bearer (Codex P2
 			// #3416883107).
-			bearerFor: (provider) => accountStore.freshBearerFor(provider),
+			bearerFor: (provider) => freshBearerFor(provider),
 			updateProgress
 		},
 		kitsuId,

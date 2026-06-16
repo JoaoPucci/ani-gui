@@ -12,8 +12,7 @@
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
-import { freshBearer, refreshExpiredAccounts } from './refresh-flow';
-import { bearerFor } from './state-helpers';
+import { refreshExpiredAccounts } from './refresh-flow';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -117,31 +116,6 @@ class AccountStore {
 			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
 			generation: (provider) => this.accountGeneration[provider]
 		});
-	}
-
-	/**
-	 * Resolve a bearer for `provider` that's safe to send on the next API
-	 * call. For a connected provider whose token is within the refresh
-	 * skew window, this refreshes it (re-persisting + flipping the store
-	 * to the rotated tokens) before returning the fresh bearer, so a
-	 * long-lived session never sends a just-expired MAL bearer to a
-	 * write-back or list refresh (Codex P2 #3416883107). Non-connected
-	 * states return whatever bearer they carry (or null), unchanged.
-	 */
-	freshBearerFor(provider: Provider): Promise<string | null> {
-		const state = this.byProvider[provider];
-		if (state.kind !== 'connected') return Promise.resolve(bearerFor(state));
-		return freshBearer(
-			{
-				refreshTokens,
-				persistAccount,
-				generation: (p) => this.accountGeneration[p],
-				onRefreshed: (p, account) => this.setConnected(p, account),
-				now: () => Date.now()
-			},
-			provider,
-			state.account
-		);
 	}
 
 	get connected(): Provider[] {
