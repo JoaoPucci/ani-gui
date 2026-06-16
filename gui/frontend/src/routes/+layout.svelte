@@ -46,7 +46,7 @@
 	import { selectFfmpegMissingCopy } from '$lib/download/ffmpeg-missing-copy';
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
-	import { APP_VERSION as appVersion } from '$lib/version';
+	import { APP_VERSION as appVersion, APP_VERSION_LABEL as appVersionLabel } from '$lib/version';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -575,7 +575,7 @@
 			title={m.app_about_link_title()}
 		>
 			<span class="rail-foot-key">v</span>
-			<span class="rail-foot-val">{appVersion}</span>
+			<span class="rail-foot-val">{appVersionLabel}</span>
 		</a>
 	</aside>
 

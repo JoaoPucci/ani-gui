@@ -20,7 +20,7 @@
 		type BundledToolNoteId
 	} from '$lib/about/credits';
 	import { toastStore } from '$lib/toasts/store.svelte';
-	import { APP_VERSION as appVersion } from '$lib/version';
+	import { APP_VERSION_LABEL as appVersion } from '$lib/version';
 
 	// Static switches so paraglide compiles each m.* into an actual
 	// callable rather than getting reached by a dynamic indexer (the
