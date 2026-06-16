@@ -10,6 +10,7 @@ const { refreshTokens, persistAccount, store } = vi.hoisted(() => ({
 	store: {
 		byProvider: {} as Record<string, { kind: string; account?: PersistedAccount }>,
 		accountGeneration: { anilist: 0, mal: 0, inhouse: 0 } as Record<string, number>,
+		accountChanging: { anilist: false, mal: false, inhouse: false } as Record<string, boolean>,
 		setConnected: vi.fn((p: string, account: PersistedAccount) => {
 			store.byProvider[p] = { kind: 'connected', account };
 		})
@@ -40,6 +41,7 @@ beforeEach(() => {
 	store.setConnected.mockClear();
 	for (const k of Object.keys(store.byProvider)) delete store.byProvider[k];
 	store.accountGeneration = { anilist: 0, mal: 0, inhouse: 0 };
+	store.accountChanging = { anilist: false, mal: false, inhouse: false };
 	__resetInFlightRefreshes();
 });
 
@@ -117,6 +119,30 @@ describe('freshBearerFor', () => {
 		}
 		await Promise.all([freshBearerFor('mal'), freshBearerFor('anilist')]);
 		expect(refreshTokens).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not start a refresh while an account change (disconnect) is in progress', async () => {
+		// Codex P2 #3421338541: disconnectAccount calls beginAccountChange()
+		// (generation bumped, accountChanging set) but leaves byProvider as
+		// `connected` until the async clear finishes. A refresh entering that
+		// window sees a stable already-bumped generation, so its checks pass
+		// and it could enqueue a setToken that the FIFO writes after the
+		// disconnect's clearToken — resurrecting the removed token. Treat an
+		// in-progress change as non-refreshable: return the current bearer,
+		// start no refresh.
+		refreshTokens.mockResolvedValue({
+			access_token: 'fresh',
+			refresh_token: 'rt2',
+			expires_at_epoch_s: nowSec() + 3600
+		});
+		store.accountChanging.mal = true;
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'old', expires_at_epoch_s: nowSec() + 30 })
+		};
+		const bearer = await freshBearerFor('mal');
+		expect(bearer).toBe('old');
+		expect(refreshTokens).not.toHaveBeenCalled();
 	});
 
 	it('does not coalesce onto a pending refresh after the generation changes mid-flight', async () => {
