@@ -49,6 +49,12 @@ const inFlight: Partial<Record<Provider, { generation: number; promise: Promise<
 export function freshBearerFor(provider: Provider): Promise<string | null> {
 	const state = accountStore.byProvider[provider];
 	if (state.kind !== 'connected') return Promise.resolve(bearerFor(state));
+	// A disconnect/account-change is mid-flight: beginAccountChange ran but
+	// byProvider is still `connected` until the async clear finishes. Don't
+	// start a refresh — its persist could land after the disconnect's clear
+	// in the per-provider FIFO and resurrect the removed token (Codex P2
+	// #3421338541). Hand back the current bearer; no rotation, no write.
+	if (accountStore.accountChanging[provider]) return Promise.resolve(state.account.access_token);
 	const generation = accountStore.accountGeneration[provider];
 	const pending = inFlight[provider];
 	if (pending && pending.generation === generation) return pending.promise;

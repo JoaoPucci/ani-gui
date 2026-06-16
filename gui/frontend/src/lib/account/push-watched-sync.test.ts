@@ -38,6 +38,7 @@ vi.mock('./store.svelte', () => ({
 			return byProvider;
 		},
 		accountGeneration: { anilist: 0, mal: 0, inhouse: 0 } as Record<string, number>,
+		accountChanging: { anilist: false, mal: false, inhouse: false } as Record<string, boolean>,
 		setConnected: vi.fn()
 	}
 }));
