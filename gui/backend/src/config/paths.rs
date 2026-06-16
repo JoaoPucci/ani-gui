@@ -154,6 +154,46 @@ mod tests {
     /// handful of tests here.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// #258: `ANI_GUI_DEV` must relocate every ani-gui-owned dir under
+    /// `ani-gui-dev`, so a dev build never reads or migrates the
+    /// installed app's config / cache / state / metadata.sqlite. The
+    /// CLI-shared history (`ani-cli`) is deliberately NOT relocated.
+    #[test]
+    fn dev_profile_relocates_ani_gui_owned_dirs() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let saved = std::env::var_os("ANI_GUI_DEV");
+
+        std::env::set_var("ANI_GUI_DEV", "1");
+        for p in [
+            metadata_db().expect("db"),
+            config_file().expect("cfg"),
+            state_dir().expect("state"),
+        ] {
+            let s = p.to_string_lossy();
+            assert!(s.contains("ani-gui-dev"), "dev profile relocates: {s}");
+        }
+        // The shared CLI history must stay on the real `ani-cli` path.
+        let hist = ani_cli_history().expect("hist");
+        assert!(
+            !hist.to_string_lossy().contains("ani-gui-dev"),
+            "history is not relocated by dev profile: {}",
+            hist.to_string_lossy()
+        );
+
+        std::env::remove_var("ANI_GUI_DEV");
+        let db = metadata_db().expect("db");
+        let s = db.to_string_lossy();
+        assert!(
+            s.contains("ani-gui") && !s.contains("ani-gui-dev"),
+            "without the flag, the real dir is used: {s}"
+        );
+
+        match saved {
+            Some(v) => std::env::set_var("ANI_GUI_DEV", v),
+            None => std::env::remove_var("ANI_GUI_DEV"),
+        }
+    }
+
     #[test]
     fn ani_cli_history_honors_override() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
