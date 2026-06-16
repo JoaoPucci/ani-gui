@@ -44,6 +44,7 @@
 		historyDelete,
 		historyList,
 		imageProxyUrl,
+		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
@@ -57,6 +58,19 @@
 		type KitsuEpisode,
 		type PlayProgress
 	} from '$lib/api';
+	import { accountStore } from '$lib/account/store.svelte';
+	import { freshBearerFor } from '$lib/account/fresh-bearer';
+	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
+	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import {
+		isWatchLaterStale,
+		readLastRefreshed,
+		markRefreshed
+	} from '$lib/account/watch-later-refresh';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
+	import Icon from '$lib/components/Icon.svelte';
+	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
@@ -95,6 +109,27 @@
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
 	let history = $state<HistoryEntry[] | null>(null);
+	// Plan §6.6: Watch Later rail. `null` = not loaded yet (during
+	// boot before accountStore.hydrate completes, or no provider
+	// connected at all). `[]` = loaded, but no Planning rows to
+	// show — rail stays hidden, same as the "no provider" case.
+	// Non-empty = render with the bridged Kitsu refs.
+	let watchLater = $state<KitsuAnimeRef[] | null>(null);
+	// True when the most recent rail load failed (bridge/availability),
+	// as opposed to succeeding with an empty list — so a connected user
+	// sees a retry affordance instead of a false "nothing planned"
+	// (Codex PR #71).
+	let watchLaterFailed = $state(false);
+	// Monotonic load token. Every rail load (mount effect + refresh)
+	// captures the next value and only writes its result if still the
+	// latest — so a slow initial load can't clobber a newer refresh, and
+	// vice versa (Codex PR #71).
+	let watchLaterLoadSeq = 0;
+	// Watch Later refresh: in-flight guard for the manual button, and a
+	// one-shot latch so the TTL auto-refresh fires at most once per mount
+	// (the rail effect re-runs on account/mode changes).
+	let refreshingWatchLater = $state(false);
+	let watchLaterAutoChecked = false;
 	let heroIndex = $state(0);
 	let heroPaused = $state(false);
 	// Per-history-entry Kitsu match, keyed by allanime id. Populated lazily
@@ -305,6 +340,36 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
+	// Watch Later rail (plan §6.6). Reactive on accountStore.byProvider so:
+	//  - on cold launch directly to `/`, the rail loads as soon as the
+	//    layout's hydrate() populates the store (Codex P2 #3373736854);
+	//  - sign-in / disconnect / token-refresh events during the session
+	//    trigger a re-load without a route navigation.
+	// `cfg.mode` participates too — toggling sub/dub re-runs the
+	// availability filter against the new mode.
+	$effect(() => {
+		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const deps = buildWatchLaterDeps();
+		const seq = ++watchLaterLoadSeq;
+		void loadWatchLater(deps)
+			.then((refs) => filterAvailable(refs, filterMode))
+			.then((refs) => {
+				if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+				watchLater = refs;
+				watchLaterFailed = false;
+				maybeAutoRefreshWatchLater(deps);
+			})
+			.catch(() => {
+				// Loader's per-provider try/catch already swallowed
+				// individual failures; a top-level reject means every
+				// provider failed (or the bridge died). Flag the failure
+				// (distinct from a genuinely empty list) so the rail shows
+				// a retry affordance rather than "nothing planned".
+				if (seq !== watchLaterLoadSeq) return;
+				watchLaterFailed = true;
+			});
+	});
+
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
 	// this effect is the runtime adapter (matchMedia probe + interval
 	// management).
@@ -326,6 +391,107 @@
 		}, HERO_ROTATE_MS);
 		return () => window.clearInterval(id);
 	});
+
+	/**
+	 * Pluck bearer + user_id pairs from every provider whose stored
+	 * account is usable for a cache read. "Usable" = `connected`,
+	 * `expired` (bearer rejected upstream but PR #60's secret-gated
+	 * fallback still serves rows), or `error` with an account. The
+	 * disconnected/connecting states are skipped — no credential, no
+	 * fetch.
+	 */
+	function buildWatchLaterDeps() {
+		const credentials: Partial<Record<Provider, { bearer: string; userId: string }>> = {};
+		for (const [key, state] of Object.entries(accountStore.byProvider) as [
+			Provider,
+			ProviderState
+		][]) {
+			const acct =
+				state.kind === 'connected' || state.kind === 'expired'
+					? state.account
+					: state.kind === 'error' && state.account
+						? state.account
+						: null;
+			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
+		}
+		return {
+			credentials,
+			fetchCachedList,
+			kitsuByMalIds,
+			primary: primaryAccountStore.value
+		};
+	}
+
+	// Re-read the cached snapshot and re-render the rail. Shared by the
+	// initial load path and post-refresh.
+	async function reloadWatchLaterRail() {
+		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const seq = ++watchLaterLoadSeq;
+		try {
+			const refs = await loadWatchLater(buildWatchLaterDeps());
+			const filtered = await filterAvailable(refs, filterMode);
+			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			watchLater = filtered;
+			watchLaterFailed = false;
+		} catch {
+			// Refresh-path reload failed (bridge / availability). Flag it
+			// rather than blanking the rail or leaking an unhandled
+			// rejection: a populated rail keeps showing its cards (the
+			// length>0 branch wins), an empty one shows the retry state
+			// (Codex PR #71).
+			if (seq !== watchLaterLoadSeq) return;
+			watchLaterFailed = true;
+		}
+	}
+
+	// Re-pull each connected provider's list from the tracker (picking up
+	// entries added on the provider's website), then re-render. Drives
+	// both the manual refresh button and the TTL auto-refresh.
+	async function refreshWatchLater() {
+		if (refreshingWatchLater) return;
+		const deps = buildWatchLaterDeps();
+		const providers = Object.keys(deps.credentials) as Provider[];
+		if (providers.length === 0) return;
+		refreshingWatchLater = true;
+		try {
+			await Promise.all(
+				providers.map(async (p) => {
+					const cred = deps.credentials[p];
+					if (!cred) return;
+					// Authoritative tracker pull (no secret-gated fallback): refresh
+					// a near-expiry token first so a long-open session's refresh
+					// doesn't 401 against the provider API (Codex P2 #3416883107).
+					const bearer = (await freshBearerFor(p)) ?? cred.bearer;
+					try {
+						await fetchAndCacheList(p, bearer);
+						markRefreshed(p, Date.now());
+					} catch {
+						/* leave the stale snapshot in place; a later refresh
+						   (manual or next TTL window) retries. */
+					}
+				})
+			);
+			await reloadWatchLaterRail();
+		} finally {
+			refreshingWatchLater = false;
+		}
+	}
+
+	// One-shot TTL check after the first cached render: if any connected
+	// provider's snapshot is past the TTL, re-pull in the background.
+	function maybeAutoRefreshWatchLater(deps: ReturnType<typeof buildWatchLaterDeps>) {
+		if (watchLaterAutoChecked) return;
+		const providers = Object.keys(deps.credentials) as Provider[];
+		// Don't burn the one-shot latch on the pre-hydrate run (no
+		// providers yet) — otherwise the real run with connected
+		// providers short-circuits and the cold-launch TTL refresh never
+		// fires (Codex PR #71). Latch only once there's something to check.
+		if (providers.length === 0) return;
+		watchLaterAutoChecked = true;
+		const now = Date.now();
+		const stale = providers.some((p) => isWatchLaterStale(readLastRefreshed(p), now));
+		if (stale) void refreshWatchLater();
+	}
 
 	function describeError(e: unknown): string {
 		if (typeof e === 'object' && e !== null) {
@@ -367,7 +533,12 @@
 	 *  bypassing the detail page. Once running, back from /play/[id]
 	 *  returns home (where the user came from) instead of dropping
 	 *  them on the detail view with a stale highlight ring. */
-	async function startResume(match: KitsuAnimeRef, ep: number) {
+	async function startResume(
+		match: KitsuAnimeRef,
+		ep: number,
+		seriesTotal: number | null,
+		seriesFinished: boolean
+	) {
 		if (resumeBusy) return;
 		const title = match.canonical_title;
 		if (!title) return;
@@ -426,6 +597,12 @@
 				alt_titles: altTitlesFromKitsu(match),
 				kitsu_id: match.id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (best-effort,
+			// renderer-driven fan-out — see /play/[id] for the rationale).
+			// Completion is decided against the FULL finite series total
+			// (mode-independent), NOT the dub/sub playable cap (Codex P2
+			// #3387467149), and only for a finished series (#3387184082).
+			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -689,7 +866,13 @@
 						class:resume-card-busy={isResuming}
 						style="--accent: {accent};"
 						disabled={!!resumeBusy && !isResuming}
-						onclick={() => startResume(match, nextEpisode)}
+						onclick={() =>
+							startResume(
+								match,
+								nextEpisode,
+								match?.episode_count ?? null,
+								match?.status === 'finished'
+							)}
 					>
 						<span class="resume-poster">
 							{#if image}
@@ -841,6 +1024,59 @@
 	onConfirm={confirmClear}
 	onCancel={cancelClear}
 />
+
+<!-- Watch Later rail (plan §6.6) — between Continue Watching and
+     Trending. Hidden when:
+       - watchLater === null  → boot, accountStore not hydrated yet
+       - watchLater.length === 0 → no provider connected, or every
+         connected provider's Plan-to-Watch is empty / un-bridged. -->
+{#snippet watchLaterRefresh()}
+	<button
+		type="button"
+		class="rail-refresh"
+		class:is-refreshing={refreshingWatchLater}
+		disabled={refreshingWatchLater}
+		aria-label={m.account_watch_later_refresh()}
+		title={m.account_watch_later_refresh()}
+		onclick={refreshWatchLater}
+	>
+		<Icon name="update" size={16} />
+	</button>
+{/snippet}
+
+{#if watchLater && watchLater.length > 0}
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_caption()}
+		headerTrailing={watchLaterRefresh}
+	>
+		{#each watchLater as anime (anime.id)}
+			<PosterCard {anime} />
+		{/each}
+	</Strip>
+{:else if accountStore.hasAny && watchLaterFailed}
+	<!-- Connected but the last load failed (bridge/availability down). Show
+	     a retry affordance rather than a false "nothing planned" — an empty
+	     list and a failed fetch are different states (Codex PR #71). -->
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_failed()}
+		headerTrailing={watchLaterRefresh}
+	>
+		<p class="watch-later-empty">{m.account_watch_later_failed_hint()}</p>
+	</Strip>
+{:else if accountStore.hasAny && watchLater !== null}
+	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
+	     surface the header + refresh so newly-added tracker titles can be
+	     pulled in before the TTL (Codex PR #71). -->
+	<Strip
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_empty()}
+		headerTrailing={watchLaterRefresh}
+	>
+		<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+	</Strip>
+{/if}
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
@@ -1278,6 +1514,54 @@
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
 			color var(--dur-fast) var(--ease-out-soft);
+	}
+
+	/* Empty-state note shown in the Watch Later rail when a provider is
+	   connected but the cached Plan-to-Watch is empty. */
+	.watch-later-empty {
+		margin: 0;
+		padding-block: var(--space-3);
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		color: var(--bone-400);
+	}
+
+	/* Watch Later rail refresh button (Strip headerTrailing). */
+	.rail-refresh {
+		display: inline-grid;
+		place-items: center;
+		inline-size: 2rem;
+		block-size: 2rem;
+		padding: 0;
+		border: none;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--bone-300);
+		cursor: pointer;
+		transition:
+			background var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.rail-refresh:hover:not(:disabled) {
+		background: var(--ink-100);
+		color: var(--bone-100);
+	}
+	.rail-refresh:disabled {
+		cursor: default;
+		opacity: 0.7;
+	}
+	.rail-refresh.is-refreshing :global(svg) {
+		animation: rail-refresh-spin 0.8s linear infinite;
+	}
+	@keyframes rail-refresh-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rail-refresh.is-refreshing :global(svg) {
+			animation: none;
+		}
 	}
 	.continue-menu-btn:hover,
 	.continue-menu-btn[aria-expanded='true'] {

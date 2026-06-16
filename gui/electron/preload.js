@@ -33,8 +33,21 @@ const localeFlag = '--ani-gui-locale=';
 const localeArg = process.argv.find((a) => a.startsWith(localeFlag));
 const configLocale = localeArg ? localeArg.slice(localeFlag.length) : null;
 
+// Per-process random secret printed by the backend at startup and
+// passed through additionalArguments. The renderer attaches it as the
+// `x-ani-gui-internal-secret` header on the few backend paths that
+// need a renderer-only gate (the disconnect-after-expiry cache wipe,
+// Codex P2 #3370011855). A cross-origin tab under the permissive CORS
+// layer can't guess 32 bytes of entropy, so the attack closes.
+const internalSecretFlag = '--ani-gui-internal-secret=';
+const internalSecretArg = process.argv.find((a) => a.startsWith(internalSecretFlag));
+const internalSecret = internalSecretArg
+	? internalSecretArg.slice(internalSecretFlag.length)
+	: null;
+
 contextBridge.exposeInMainWorld('aniGui', {
 	apiBase,
+	internalSecret,
 
 	// Surface `process.platform` so renderer-side UI can tailor copy
 	// per OS (Windows installer vs Linux package manager vs macOS
@@ -85,5 +98,46 @@ contextBridge.exposeInMainWorld('aniGui', {
 	// download-store effect; no return value needed.
 	notifyActiveDownloads(count) {
 		ipcRenderer.send('ani-gui:active-downloads', count);
+	},
+
+	// Open an https URL in the OS browser. Used by the /account
+	// page's Privacy Policy link. Main's handler rejects non-http(s)
+	// schemes so a compromised renderer can't redirect to file://.
+	openExternal(url) {
+		return ipcRenderer.invoke('ani-gui:open-external', url);
+	},
+
+	// Account integration surface. Mirrors the lifecycle documented in
+	// .planning/account-integration.md §3.3 / §3.4:
+	//
+	//   1. account.openOAuth({authUrl}) → opens browser, waits for
+	//      callback, resolves to {ok:true, code, state} or
+	//      {ok:false, kind:'port_busy'|'timeout'|'cancelled'|...}.
+	//   2. account.setToken(provider, payload) → safeStorage-encrypts
+	//      the payload (`{access_token, refresh_token, expires_at_epoch_s,
+	//      user_id}`) and writes to disk.
+	//   3. account.getToken(provider) → sync read + decrypt; returns
+	//      {ok:true, payload} or {ok:false, kind:'not_found'|...}.
+	//   4. account.clearToken(provider) → drops the persisted file.
+	//
+	// Sync `getToken` because every backend call that needs a bearer
+	// reads it inline; an async round-trip per fetch is unnecessary
+	// IPC overhead.
+	account: {
+		openOAuth(args) {
+			return ipcRenderer.invoke('ani-gui:account:open-oauth', args);
+		},
+		cancelOAuth() {
+			return ipcRenderer.invoke('ani-gui:account:cancel-oauth');
+		},
+		setToken(provider, payload) {
+			return ipcRenderer.invoke('ani-gui:account:set-token', { provider, payload });
+		},
+		getToken(provider) {
+			return ipcRenderer.sendSync('ani-gui:account:get-token', provider);
+		},
+		clearToken(provider) {
+			return ipcRenderer.invoke('ani-gui:account:clear-token', provider);
+		}
 	}
 });

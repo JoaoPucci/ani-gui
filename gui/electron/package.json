@@ -47,6 +47,7 @@
 		"files": [
 			"main.js",
 			"preload.js",
+			"oauth-server.js",
 			"package.json",
 			"lib/**/*.cjs",
 			"!lib/**/*.test.cjs",

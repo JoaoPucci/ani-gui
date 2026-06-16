@@ -55,6 +55,7 @@ hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
+subtle = "2"
 
 # ANSI escape stripping for ani-cli stdout
 strip-ansi-escapes = "0.2"
@@ -84,6 +85,12 @@ tempfile = "3.13"
 # argv tokens, with shell-style quoting/escaping. Already in the lock
 # tree as a transitive dep; promoted here as a direct dep.
 shlex = "1.3"
+
+# async-trait: dynamic dispatch over the UserListProvider trait
+# (account/provider.rs). Rust 1.75+ has native async fn in traits but
+# they're not dyn-compatible, and the account dispatcher picks a
+# provider at runtime via Box<dyn UserListProvider>.
+async-trait = "0.1"
 
 # AniList GraphQL — added in M3, listed here so cargo-deny audits the dep tree
 # cynic = { version = "3.10", features = ["http-reqwest"] }

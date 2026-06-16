@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -24,14 +24,16 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tower_http::cors::CorsLayer;
 
+mod account;
 mod syncplay;
 mod update;
 
 use crate::app::AppState;
 use crate::commands::{
-    aniskip as aniskip_inner, app_info, availability as availability_inner,
-    download as download_inner, external_player, history as h_inner, kitsu as kitsu_inner,
-    play as play_inner, proxy_url, session as session_inner, settings as settings_inner,
+    account as account_inner, aniskip as aniskip_inner, app_info,
+    availability as availability_inner, download as download_inner, external_player,
+    history as h_inner, kitsu as kitsu_inner, play as play_inner, proxy_url,
+    session as session_inner, settings as settings_inner,
 };
 use crate::config::Config;
 use crate::error::AniError;
@@ -45,24 +47,8 @@ use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 /// `invoke()` rejection payloads to `fetch()` 4xx/5xx bodies.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
-        let status = match self {
-            AniError::NoResults => StatusCode::NOT_FOUND,
-            AniError::InvalidToken => StatusCode::UNAUTHORIZED,
-            AniError::Upstream { .. } => StatusCode::BAD_GATEWAY,
-            AniError::Network => StatusCode::SERVICE_UNAVAILABLE,
-            AniError::Timeout => StatusCode::GATEWAY_TIMEOUT,
-            AniError::ParseFailed { .. }
-            | AniError::MissingBinary
-            | AniError::BashMissing
-            | AniError::FfmpegMissing
-            | AniError::PlayerSpawnFailed { .. }
-            | AniError::SyncplaySpawnFailed { .. }
-            | AniError::Cache
-            | AniError::Io
-            | AniError::Config
-            | AniError::Metadata
-            | AniError::Scraper { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+        let status = StatusCode::from_u16(self.http_status_code())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, Json(self)).into_response()
     }
 }
@@ -112,6 +98,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             "/api/kitsu/trending-anilist",
             get(get_kitsu_trending_anilist),
         )
+        .route("/api/kitsu/by-mal-ids", post(post_kitsu_by_mal_ids))
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
@@ -145,6 +132,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/watched-at", get(get_watched_at_all))
         .route("/api/anicli/update-log", get(get_anicli_update_log))
+        .merge(account::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`
         // while we bind 127.0.0.1:<random> — that's cross-origin, so
@@ -246,6 +234,41 @@ async fn get_kitsu_trending_anilist(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
     Ok(Json(kitsu_inner::kitsu_trending_anilist(&state).await?))
+}
+
+#[derive(serde::Deserialize)]
+struct KitsuByMalIdsBody {
+    /// Batch of MAL ids to bridge to Kitsu refs. Order is preserved
+    /// in the response; entries Kitsu can't map are dropped. Server
+    /// enforces a hard upper bound on the batch — see
+    /// [`crate::commands::account::WATCH_LATER_BRIDGE_MAX_IDS`].
+    mal_ids: Vec<u32>,
+}
+
+/// Codex P1 #3373789621: this route lives under the API router's
+/// permissive CORS layer, so any cross-origin page on the user's
+/// machine could otherwise POST a giant `mal_ids` array and burn N
+/// concurrent Kitsu requests per call. Two gates protect it:
+///
+///   1. The renderer-only internal secret — only Electron's preload
+///      knows the per-process random value, so cross-origin tabs
+///      can't reach the handler body at all.
+///   2. A hard upper bound on the batch size, applied both at the
+///      route boundary (400 Bad Request when exceeded) and inside
+///      the `kitsu_for_mal_ids` helper (truncates) so an internal
+///      caller can't bypass it either.
+async fn post_kitsu_by_mal_ids(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<KitsuByMalIdsBody>,
+) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
+    state.internal_secret.validate_header(&headers)?;
+    if body.mal_ids.len() > account_inner::WATCH_LATER_BRIDGE_MAX_IDS {
+        return Err(AniError::Metadata);
+    }
+    Ok(Json(
+        account_inner::kitsu_for_mal_ids(&state, body.mal_ids).await,
+    ))
 }
 
 #[derive(serde::Deserialize)]
@@ -761,6 +784,9 @@ mod tests {
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
             config_path: td.path().join("config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+            account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         }
     }
 
@@ -2195,6 +2221,102 @@ mod tests {
                 "{path} returned 404 — route missing"
             );
         }
+    }
+
+    /// Codex P1 #3373789621: the renderer-only secret gate must
+    /// reject calls from anything that isn't Electron's preload.
+    /// Without the header, the handler bails before reaching the
+    /// Kitsu fan-out so a cross-origin tab can't trigger the DoS
+    /// even with a giant `mal_ids` body.
+    #[tokio::test]
+    async fn kitsu_by_mal_ids_rejects_without_internal_secret_header() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/kitsu/by-mal-ids")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"mal_ids":[1,2,3]}"#))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert!(
+            !response.status().is_success(),
+            "expected 4xx without internal-secret header, got {}",
+            response.status()
+        );
+    }
+
+    /// Same Codex P1: belt-and-suspenders cap on the batch size so
+    /// an internal caller who somehow held the secret still can't
+    /// burn unbounded Kitsu lookups.
+    #[tokio::test]
+    async fn kitsu_by_mal_ids_rejects_oversize_batch() {
+        let td = TempDir::new().expect("tempdir");
+        let state = Arc::new(AppState {
+            internal_secret: crate::account::InternalSecret::from_hex_for_test("dead")
+                .expect("secret"),
+            ..test_app_state(&td)
+        });
+        let router = build_api_router(state);
+        // 501 mal_ids — one past the WATCH_LATER_BRIDGE_MAX_IDS cap.
+        let huge_body = serde_json::json!({
+            "mal_ids": (0..501u32).collect::<Vec<_>>()
+        })
+        .to_string();
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/kitsu/by-mal-ids")
+                    .header("content-type", "application/json")
+                    .header("x-ani-gui-internal-secret", "dead")
+                    .body(Body::from(huge_body))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert!(
+            !response.status().is_success(),
+            "expected 4xx for >500 mal_ids, got {}",
+            response.status()
+        );
+    }
+
+    /// Happy-path probe: with the secret + an empty batch the
+    /// handler short-circuits without touching Kitsu (the inner
+    /// fn returns `[]` for `Vec::new()`), so this exercises the
+    /// route wiring without needing a Kitsu mock.
+    #[tokio::test]
+    async fn kitsu_by_mal_ids_accepts_empty_batch_with_secret() {
+        let td = TempDir::new().expect("tempdir");
+        let state = Arc::new(AppState {
+            internal_secret: crate::account::InternalSecret::from_hex_for_test("dead")
+                .expect("secret"),
+            ..test_app_state(&td)
+        });
+        let router = build_api_router(state);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/kitsu/by-mal-ids")
+                    .header("content-type", "application/json")
+                    .header("x-ani-gui-internal-secret", "dead")
+                    .body(Body::from(r#"{"mal_ids":[]}"#))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert!(
+            response.status().is_success(),
+            "status: {}",
+            response.status()
+        );
+        assert_eq!(body_string(response).await, "[]");
     }
 
     /// `/api/kitsu/search` requires a `{ query }` body. Drive an

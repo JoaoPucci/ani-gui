@@ -17,12 +17,15 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
+use crate::account::InternalSecret;
 use crate::anicli::process::{locate_ani_cli, DebugOptions};
 use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
+use crate::commands::account::AccountWriteLocks;
 use crate::config::paths;
 use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuClient;
+use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
 /// Maximum concurrent `ani-cli` subprocess invocations.
@@ -69,6 +72,24 @@ pub struct AppState {
     /// `$XDG_STATE_HOME/ani-gui/` — backing store for the latest
     /// `ani-cli -U` outcome JSON the diagnostics page reads.
     pub state_dir: PathBuf,
+    /// Per-process random secret renderer-only paths require as the
+    /// `x-ani-gui-internal-secret` header. Currently used to gate the
+    /// disconnect-after-expiry cache wipe (Codex P2 #3370011855) so a
+    /// cross-origin tab under the permissive CORS layer can't poison
+    /// another user's local cache.
+    pub internal_secret: InternalSecret,
+    /// Shared refresh-coalesce state for MAL. One slot per process —
+    /// every `MalProvider` the `provider_for_kind` dispatcher
+    /// constructs clones the cheap `Arc` so concurrent refresh
+    /// handlers serialize on the same mutex and reuse the same
+    /// rotation cache (Codex P2 #3379969316).
+    pub mal_refresh: MalRefreshState,
+    /// Per-(provider, show) write serialization for tracker write-back.
+    /// The un-awaited fan-out can fire overlapping writes for the same
+    /// show; this makes the read-then-upsert monotonic guard atomic so a
+    /// later-landing lower write can't regress progress (Codex P2
+    /// #3387237642). Process-wide; cloned `Arc` is cheap.
+    pub account_write_locks: AccountWriteLocks,
 }
 
 impl AppState {
@@ -144,6 +165,9 @@ impl AppState {
             kitsu,
             config_path,
             state_dir,
+            internal_secret: InternalSecret::random(),
+            mal_refresh: MalRefreshState::new(),
+            account_write_locks: AccountWriteLocks::new(),
         })
     }
 
@@ -268,6 +292,9 @@ mod tests {
             kitsu: KitsuClient::new(reqwest::Client::new()),
             config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
             state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: MalRefreshState::new(),
+            account_write_locks: AccountWriteLocks::new(),
         }
     }
 

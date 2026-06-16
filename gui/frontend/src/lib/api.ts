@@ -30,6 +30,13 @@ declare global {
 	interface Window {
 		aniGui?: {
 			apiBase?: string;
+			/** Per-process random secret printed by the Rust backend at
+			 *  startup and threaded through Electron's preload. Sent as
+			 *  the `x-ani-gui-internal-secret` header on the few backend
+			 *  paths that need a renderer-only gate beyond the bearer —
+			 *  specifically the disconnect-after-expiry cache wipe
+			 *  (Codex P2 #3370011855). Absent in browser-only dev. */
+			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
 			 *  etc. Used by surfaces whose copy or recovery hints differ
@@ -60,6 +67,12 @@ declare global {
 			 *  Electron main so the close handler can decide whether
 			 *  to prompt the user before quitting. Fire-and-forget. */
 			notifyActiveDownloads?: (count: number) => void;
+			/** Open an https URL in the OS browser. Used by the
+			 *  /account page's Privacy Policy link. */
+			openExternal?: (url: string) => Promise<boolean>;
+			/** Account integration surface — present only in Electron
+			 *  builds. Shape mirrors gui/electron/preload.js. */
+			account?: import('./account/types').AniGuiAccountBridge;
 		};
 	}
 }
@@ -260,6 +273,10 @@ export interface Config {
 	disable_auto_pip_on_leave: boolean;
 	auto_update_anicli: boolean;
 	update_include_prereleases: boolean;
+	/** Chosen lead tracker (`"anilist"` | `"mal"`); empty = no choice
+	 *  (UI falls back to AniList-first). Drives the topbar chip + the
+	 *  Watch Later rail order, not write-back (which fans to all). */
+	primary_account: string;
 }
 
 /** Outcome of the most recent ani-cli `-U` run. The backend writes
@@ -822,6 +839,31 @@ export function kitsuTrending(): Promise<KitsuAnimeRef[]> {
  *  AniList is unreachable; the page still loads either way. */
 export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist');
+}
+
+/** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
+ *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Used by the home Watch Later rail (plan §6.6) to render the
+ *  merged Plan-to-Watch list with Kitsu metadata + availability
+ *  filtering matching the rest of the home. Empty input → empty
+ *  output (no round-trip needed).
+ *
+ *  Sends the renderer-only internal-secret header — backend gates
+ *  the route on it so a cross-origin page under permissive CORS
+ *  can't reach the handler (Codex P1 #3373789621). Also enforces
+ *  a 500-id batch cap server-side; this client doesn't pre-truncate
+ *  so callers see a 4xx if they're pushing past the limit. */
+export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {
+	if (malIds.length === 0) return [];
+	const headers: Record<string, string> = { 'content-type': 'application/json' };
+	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
+	if (secret) headers['x-ani-gui-internal-secret'] = secret;
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({ mal_ids: malIds })
+	});
+	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
 /** One skip interval for the embedded player's Skip OP / Skip

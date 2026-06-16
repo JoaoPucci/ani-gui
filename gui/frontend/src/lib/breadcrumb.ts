@@ -39,6 +39,7 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	}
 	const home: BreadcrumbSegment = { label: m.breadcrumb_home(), href: '/' };
 	if (routeId.startsWith('/search')) return [home, { label: m.breadcrumb_search() }];
+	if (routeId.startsWith('/account')) return [home, { label: m.breadcrumb_account() }];
 	if (routeId.startsWith('/settings')) return [home, { label: m.breadcrumb_settings() }];
 	if (routeId.startsWith('/diagnostics')) return [home, { label: m.breadcrumb_diagnostics() }];
 	if (routeId.startsWith('/about')) return [home, { label: m.breadcrumb_about() }];

@@ -68,6 +68,7 @@
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
+	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
@@ -1563,6 +1564,20 @@
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
+			// Mirror the progress to any connected tracker (AniList / MAL).
+			// Best-effort and renderer-driven — the backend is stateless,
+			// so the renderer fans the write out per provider.
+			// Completion is decided against the FULL finite series total
+			// (Kitsu's mode-independent count), NOT episodeCap — in dub
+			// mode the playable cap is only the dubbed slice (Codex P2
+			// #3387467149) — and only for a finished series (Codex P2
+			// #3387184082). progress itself is the played episode number.
+			void syncWatchedToTrackers(
+				id,
+				targetEp,
+				detail?.episode_count ?? null,
+				detail?.status === 'finished'
+			).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to

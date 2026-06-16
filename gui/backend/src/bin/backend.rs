@@ -76,6 +76,13 @@ fn main() -> std::process::ExitCode {
         // Electron may buffer line-by-line, so any partial line could
         // hang the spawn.
         println!("ANI_GUI_LISTENING {}", origin.base);
+        // Codex P2 #3370011855: emit the renderer-only secret on the
+        // same handshake channel so Electron's main process can parse
+        // it and thread it through preload into `window.aniGui.
+        // internalSecret`. The renderer attaches it as the
+        // `x-ani-gui-internal-secret` header on the few backend paths
+        // that need a cross-origin defense beyond the bearer.
+        println!("ANI_GUI_INTERNAL_SECRET {}", state.internal_secret.as_hex());
         use std::io::Write;
         let _ = std::io::stdout().flush();
         tracing::info!(addr = %addr, "ani-gui-backend ready");

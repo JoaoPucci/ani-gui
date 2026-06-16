@@ -14,6 +14,7 @@
 	type IconName =
 		| 'home'
 		| 'search'
+		| 'account'
 		| 'settings'
 		| 'debug'
 		| 'play'
@@ -56,6 +57,23 @@
 	>
 		<circle cx="10.5" cy="10.5" r="6" />
 		<path d="M14.8 14.8 L20 20" />
+	</svg>
+{:else if name === 'account'}
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<!-- Head circle + shoulders arc — silhouette stays legible at 18px
+		     and reads as identity without the generic "user pill" cliché. -->
+		<circle cx="12" cy="9" r="3.25" />
+		<path d="M5.5 19.5 C5.5 15.5, 8.5 14, 12 14 C15.5 14, 18.5 15.5, 18.5 19.5" />
 	</svg>
 {:else if name === 'settings'}
 	<svg

@@ -709,6 +709,9 @@ mod tests {
             kitsu: KitsuClient::new(reqwest::Client::new()),
             config_path: std::path::PathBuf::from("/tmp/ani-gui-config.toml"),
             state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+            account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         }
     }
 

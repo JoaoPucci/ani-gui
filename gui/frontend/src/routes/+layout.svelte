@@ -33,6 +33,9 @@
 		type KitsuAnimeRef
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
+	import AccountChip from '$lib/components/AccountChip.svelte';
+	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -44,6 +47,9 @@
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
 	import { APP_VERSION as appVersion } from '$lib/version';
+	import { accountStore } from '$lib/account/store.svelte';
+	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import {
@@ -80,6 +86,7 @@
 	const routeId = $derived<string>(page.route?.id ?? page.url.pathname);
 	const isHome = $derived(routeId === '/');
 	const isSearch = $derived(routeId.startsWith('/search'));
+	const isAccount = $derived(routeId.startsWith('/account'));
 	const isSettings = $derived(routeId.startsWith('/settings'));
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
 	const isAbout = $derived(routeId.startsWith('/about'));
@@ -117,6 +124,29 @@
 		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
 	});
 
+	// Cold-launch + ongoing expiry-toast tracker. Pushes one pinned
+	// `warning` toast per expired provider after hydrate, dismisses
+	// it the moment the provider recovers (the user re-auths from
+	// `/account` or the chip popover) — Codex P2 #3375219208. Re-runs
+	// reactively on every `accountStore.byProvider` mutation so the
+	// recovery path doesn't need to know the toast exists.
+	const expiryToastTracker = new ExpiryToastTracker();
+	$effect(() => {
+		expiryToastTracker.sync(accountStore.byProvider, {
+			push: (e) => {
+				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
+				return toastStore.push({
+					kind: 'warning',
+					duration: null,
+					message: m.account_expiry_toast_message({ provider: providerLabel }),
+					actionLabel: m.account_expiry_toast_action(),
+					onAction: () => void goto(resolve('/account'))
+				});
+			},
+			dismiss: (id) => toastStore.dismiss(id)
+		});
+	});
+
 	let topbarQuery = $state('');
 	let topbarInputEl: HTMLInputElement | undefined = $state();
 
@@ -125,7 +155,12 @@
 	// whether the bottom progress strip mounts.
 	let config = $state<Config | null>(null);
 	void settingsGet()
-		.then((c) => (config = c))
+		.then((c) => {
+			config = c;
+			// Seed the shared primary-tracker store so the topbar chip
+			// reflects the persisted choice on cold launch.
+			primaryAccountStore.set(parsePrimaryProvider(c.primary_account));
+		})
 		.catch(() => {});
 
 	// — Live-results dropdown + recent searches + Cmd/Ctrl+K. —————————
@@ -154,6 +189,20 @@
 		} catch {
 			// localStorage unavailable — leave recentSearches empty.
 		}
+
+		// Hydrate the account store at app boot so every consumer
+		// (home Watch Later rail, future topbar chip, expiry toast)
+		// sees populated providers from their own onMount. Previously
+		// only `/account/+page.svelte` called this, which meant a cold
+		// launch directly to `/` left the rail blank for connected
+		// users until they visited Accounts first (Codex P2 #3373736854).
+		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
+		// the time the home page mounts the store is fully populated.
+		// hydrate() seeds the store from safeStorage AND kicks off a
+		// silent refresh of any expired-but-refreshable token (e.g. MAL's
+		// ~1h access token), so the user isn't pushed through OAuth every
+		// hour (Codex P2 #3412673586, #3416668464).
+		accountStore.hydrate();
 
 		// Persistent PiP — distinguish two ways the PiP window can
 		// close:
@@ -479,6 +528,17 @@
 				</li>
 				<li>
 					<a
+						href={resolve('/account')}
+						class="nav-link"
+						class:active={isAccount}
+						aria-current={isAccount ? 'page' : undefined}
+					>
+						<span class="nav-mark"><Icon name="account" size={20} /></span>
+						<span class="nav-label">{m.app_account_link_label()}</span>
+					</a>
+				</li>
+				<li>
+					<a
 						href={resolve('/settings')}
 						class="nav-link"
 						class:active={isSettings}
@@ -616,6 +676,7 @@
 			</form>
 			<UpdateBadge />
 			<DownloadDock />
+			<AccountChip />
 		</header>
 		<main class="content">
 			{@render children()}
