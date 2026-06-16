@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	expiredRefreshable,
+	freshBearer,
+	type FreshBearerDeps,
+	needsProactiveRefresh,
+	REFRESH_SKEW_SECONDS,
 	refreshAccount,
 	refreshExpiredAccounts,
 	type RefreshFlowDeps
@@ -196,5 +200,96 @@ describe('refreshExpiredAccounts', () => {
 			generation: () => 0
 		});
 		expect(onRefreshed).not.toHaveBeenCalled();
+	});
+});
+
+describe('needsProactiveRefresh', () => {
+	const nowSec = 1_000_000;
+
+	it('is true when a refreshable token expires within the skew window', () => {
+		const acct = account({ refresh_token: 'rt', expires_at_epoch_s: nowSec + 60 });
+		expect(needsProactiveRefresh(acct, nowSec)).toBe(true);
+	});
+
+	it('is false when the token is comfortably in the future', () => {
+		const acct = account({ refresh_token: 'rt', expires_at_epoch_s: nowSec + REFRESH_SKEW_SECONDS + 60 });
+		expect(needsProactiveRefresh(acct, nowSec)).toBe(false);
+	});
+
+	it('is false without a refresh token (can not be silently refreshed)', () => {
+		const acct = account({ refresh_token: null, expires_at_epoch_s: nowSec + 10 });
+		expect(needsProactiveRefresh(acct, nowSec)).toBe(false);
+	});
+
+	it('is false when the expiry is unknown (<= 0)', () => {
+		const acct = account({ refresh_token: 'rt', expires_at_epoch_s: 0 });
+		expect(needsProactiveRefresh(acct, nowSec)).toBe(false);
+	});
+
+	it('is true once the token is already past expiry', () => {
+		const acct = account({ refresh_token: 'rt', expires_at_epoch_s: nowSec - 5 });
+		expect(needsProactiveRefresh(acct, nowSec)).toBe(true);
+	});
+});
+
+describe('freshBearer', () => {
+	const nowMs = 1_000_000_000;
+	const nowSec = Math.floor(nowMs / 1000);
+
+	function freshDeps(over: Partial<FreshBearerDeps> = {}): FreshBearerDeps {
+		return {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 }),
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0,
+			onRefreshed: vi.fn(),
+			now: () => nowMs,
+			...over
+		};
+	}
+
+	it('returns the current bearer untouched when the token is not near expiry', async () => {
+		const deps = freshDeps();
+		const acct = account({ access_token: 'current', expires_at_epoch_s: nowSec + 3600 });
+		const bearer = await freshBearer(deps, 'mal', acct);
+		expect(bearer).toBe('current');
+		expect(deps.refreshTokens).not.toHaveBeenCalled();
+		expect(deps.onRefreshed).not.toHaveBeenCalled();
+	});
+
+	it('refreshes a near-expiry token, commits it, and returns the fresh bearer', async () => {
+		const deps = freshDeps();
+		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
+		const bearer = await freshBearer(deps, 'mal', acct);
+		expect(bearer).toBe('fresh');
+		expect(deps.refreshTokens).toHaveBeenCalledWith('mal', 'rt');
+		expect(deps.onRefreshed).toHaveBeenCalledWith(
+			'mal',
+			account({ access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 })
+		);
+	});
+
+	it('falls back to the existing bearer when the refresh fails', async () => {
+		const deps = freshDeps({ refreshTokens: vi.fn().mockRejectedValue(new Error('401')) });
+		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
+		const bearer = await freshBearer(deps, 'mal', acct);
+		expect(bearer).toBe('old');
+		expect(deps.onRefreshed).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the existing bearer and does not commit when superseded mid-refresh', async () => {
+		let gen = 0;
+		const deps = freshDeps({
+			refreshTokens: vi.fn().mockImplementation(async () => {
+				gen = 1;
+				return { access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 };
+			}),
+			generation: () => gen
+		});
+		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
+		const bearer = await freshBearer(deps, 'mal', acct);
+		expect(bearer).toBe('old');
+		expect(deps.onRefreshed).not.toHaveBeenCalled();
 	});
 });
