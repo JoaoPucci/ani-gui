@@ -38,6 +38,29 @@ pub use error::{AniError, Result};
 /// Library version, sourced from Cargo.toml.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Append a `-dev` marker to a version when running the dev profile, so
+/// every surface that shows the version (renderer chip + the
+/// diagnostics page) marks a dev build distinctly from an installed
+/// release. Pure for testability; see [`display_version`].
+fn version_with_dev(version: &str, is_dev: bool) -> String {
+    if is_dev {
+        format!("{version}-dev")
+    } else {
+        version.to_string()
+    }
+}
+
+/// The version string for display surfaces, with `-dev` appended when
+/// `ANI_GUI_DEV` is set (the dev launcher) — the backend counterpart to
+/// the renderer's `versionLabel`.
+#[must_use]
+pub fn display_version() -> String {
+    version_with_dev(
+        VERSION,
+        std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1038,6 +1038,9 @@
 		letter-spacing: var(--tracking-micro);
 		color: var(--bone-400);
 		text-transform: uppercase;
+		/* Keep the version on one line — the `-dev` suffix on dev builds
+		   is long enough to wrap at the hyphen otherwise ("0.9.0-/dev"). */
+		white-space: nowrap;
 		text-decoration: none;
 		border-radius: var(--radius-card, 4px);
 		transition:

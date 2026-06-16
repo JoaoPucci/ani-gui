@@ -7,8 +7,8 @@ use crate::error::Result;
 /// Snapshot of build/runtime info the frontend may want at startup.
 #[derive(Debug, Clone, Serialize)]
 pub struct AppInfo {
-    /// Crate version from Cargo.toml.
-    pub version: &'static str,
+    /// Crate version from Cargo.toml, with a `-dev` marker under the dev profile.
+    pub version: String,
     /// Detected `ani-cli` script path.
     pub ani_cli_path: String,
     /// Where this build of ani-gui keeps its history (shared with the CLI).
@@ -24,7 +24,7 @@ pub struct AppInfo {
 /// future-compatible shape Tauri commands expect.
 pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
     Ok(AppInfo {
-        version: crate::VERSION,
+        version: crate::display_version(),
         ani_cli_path: state.ani_cli_path.display().to_string(),
         history_path: state.history_path.display().to_string(),
         proxy_base_url: state.proxy_origin.base.clone(),
@@ -66,7 +66,10 @@ mod tests {
     fn app_info_projects_state_fields() {
         let s = fake_state();
         let info = app_info(&s).unwrap();
-        assert_eq!(info.version, crate::VERSION);
+        // Robust to the dev profile's `-dev` suffix (and any parallel test
+        // toggling ANI_GUI_DEV): the version always starts with the crate
+        // version.
+        assert!(info.version.starts_with(crate::VERSION));
         assert_eq!(info.ani_cli_path, "/usr/local/bin/ani-cli");
         assert_eq!(info.history_path, "/home/u/.local/state/ani-cli/ani-hsts");
         assert_eq!(info.proxy_base_url, "http://127.0.0.1:42337");
