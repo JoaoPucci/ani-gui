@@ -67,5 +67,22 @@
 	"play_button_play": "Reproducir",
 	"play_button_resume": "Continuar · Episodio {episode}",
 	"play_button_resolving": "Resolviendo…",
-	"play_button_external_resolving": "Iniciando…"
+	"play_button_external_resolving": "Iniciando…",
+	"list_add": "Agregar a la lista",
+	"list_status_label": "Estado",
+	"list_status_planning": "Planeo ver",
+	"list_status_watching": "Viendo",
+	"list_status_completed": "Completado",
+	"list_status_paused": "En pausa",
+	"list_status_dropped": "Abandonado",
+	"list_status_rewatching": "Reviendo",
+	"list_episode_label": "Episodio",
+	"list_episode_increment": "Un episodio más",
+	"list_episode_decrement": "Un episodio menos",
+	"list_save": "Guardar",
+	"list_remove": "Quitar",
+	"list_editor_aria": "Editar entrada de la lista",
+	"list_saved": "Guardado en tu lista",
+	"list_removed": "Eliminado de tu lista",
+	"list_save_failed": "No se pudo actualizar tu lista"
 }
