@@ -131,7 +131,14 @@ async fn remove_entry_via(
     };
     let show_lock = state.account_write_locks.for_show(kind, native.0);
     let _write_guard = show_lock.lock().await;
-    provider.delete_entry(tokens, native).await?;
+    // A 404 means the title was already gone upstream (double-click
+    // Remove, or removed in another client) — the DELETE route is
+    // idempotent, so treat it as success and still drop the cache row
+    // below (Codex P2 #3423108945). Any other error propagates.
+    match provider.delete_entry(tokens, native).await {
+        Ok(()) | Err(AniError::Upstream { status: 404 }) => {}
+        Err(e) => return Err(e),
+    }
     // Drop the cache row (best-effort) so the rail stops showing it.
     if let Ok(profile) = provider.me(tokens).await {
         let _ = cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0);
