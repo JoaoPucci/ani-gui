@@ -119,6 +119,48 @@ describe('freshBearerFor', () => {
 		expect(refreshTokens).toHaveBeenCalledTimes(2);
 	});
 
+	it('does not coalesce onto a pending refresh after the generation changes mid-flight', async () => {
+		// Codex P2 #3420249568: a refresh is in flight for the current
+		// connection; the user reconnects the same provider (generation
+		// bumps, new account). A subsequent caller must NOT reuse the old
+		// promise — when that resolves `superseded`, freshBearer falls back
+		// to the PREVIOUS account's bearer, which would be sent for the new
+		// session (wrong user). The later caller starts its own refresh.
+		let release!: (v: unknown) => void;
+		refreshTokens.mockImplementationOnce(
+			() =>
+				new Promise((r) => {
+					release = r;
+				})
+		);
+		store.accountGeneration.mal = 0;
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'old', expires_at_epoch_s: nowSec() + 30 })
+		};
+		const p1 = freshBearerFor('mal'); // starts refresh at generation 0
+		await Promise.resolve();
+
+		// User reconnects mid-flight: generation advances, new session account.
+		store.accountGeneration.mal = 1;
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'new-session', expires_at_epoch_s: nowSec() + 30 })
+		};
+		refreshTokens.mockResolvedValue({
+			access_token: 'new-fresh',
+			refresh_token: 'rt3',
+			expires_at_epoch_s: nowSec() + 3600
+		});
+
+		const bearer2 = await freshBearerFor('mal'); // generation 1 → own refresh
+		expect(bearer2).toBe('new-fresh');
+		expect(refreshTokens).toHaveBeenCalledTimes(2);
+
+		release({ access_token: 'stale', refresh_token: 'rtX', expires_at_epoch_s: nowSec() + 3600 });
+		await p1;
+	});
+
 	it('refreshes again on a later call once the in-flight refresh has settled', async () => {
 		refreshTokens.mockResolvedValue({
 			access_token: 'fresh',
