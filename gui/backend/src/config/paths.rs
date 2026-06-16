@@ -174,6 +174,24 @@ mod tests {
     /// handful of tests here.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// The dev-profile policy, tested as a pure function so it's
+    /// independent of *this* test binary's own (always-debug) build
+    /// profile. The guarantee that matters: a release build with no
+    /// env override resolves to production. A debug build (the
+    /// standalone source-built backend dev flow that never sees
+    /// `ANI_GUI_DEV`) defaults to dev so it can't migrate the
+    /// installed app's DB.
+    #[test]
+    fn is_dev_profile_routes_debug_and_env_to_dev() {
+        // release build, no override → production (the critical case)
+        assert!(!is_dev_profile(false, false));
+        // explicit override on a release build → dev
+        assert!(is_dev_profile(true, false));
+        // debug build (standalone dev backend, no Electron env) → dev
+        assert!(is_dev_profile(false, true));
+        assert!(is_dev_profile(true, true));
+    }
+
     /// `ANI_GUI_DEV` must relocate every ani-gui-owned dir under
     /// `ani-gui-dev`, so a dev build never reads or migrates the
     /// installed app's config / cache / state / metadata.sqlite. The
