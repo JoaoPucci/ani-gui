@@ -234,7 +234,7 @@ describe('setEntry', () => {
 
 describe('removeEntry', () => {
 	it('DELETEs /api/account/entry/:provider?kitsu_id= with bearer', async () => {
-		const spy = mockFetchJson({}, 204);
+		const spy = mockFetchJson({}, 200);
 		await removeEntry('anilist', 'tok', 'kitsu-12');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/entry/anilist?kitsu_id=kitsu-12');
