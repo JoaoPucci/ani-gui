@@ -38,9 +38,39 @@ pub use error::{AniError, Result};
 /// Library version, sourced from Cargo.toml.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Append a `-dev` marker to a version when running the dev profile, so
+/// every surface that shows the version (renderer chip + the
+/// diagnostics page) marks a dev build distinctly from an installed
+/// release. Pure for testability; see [`display_version`].
+fn version_with_dev(version: &str, is_dev: bool) -> String {
+    if is_dev {
+        format!("{version}-dev")
+    } else {
+        version.to_string()
+    }
+}
+
+/// The version string for display surfaces, with `-dev` appended for
+/// dev builds — the backend counterpart to the renderer's
+/// `versionLabel`. A build is "dev" when it's a debug build (every
+/// source-built backend, incl. the standalone dev flow) or `ANI_GUI_DEV`
+/// is set, mirroring the data-dir profile in [`config::paths`] so the
+/// diagnostics version and the cache dir always agree on dev-vs-release.
+#[must_use]
+pub fn display_version() -> String {
+    let env_dev = std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty());
+    version_with_dev(VERSION, env_dev || cfg!(debug_assertions))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_with_dev_appends_suffix_only_in_dev() {
+        assert_eq!(version_with_dev("0.9.0", true), "0.9.0-dev");
+        assert_eq!(version_with_dev("0.9.0", false), "0.9.0");
+    }
 
     #[test]
     fn version_string_looks_like_semver() {

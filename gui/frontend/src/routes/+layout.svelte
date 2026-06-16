@@ -46,7 +46,7 @@
 	import { selectFfmpegMissingCopy } from '$lib/download/ffmpeg-missing-copy';
 	import { checkForUpdate } from '$lib/update/check';
 	import { updateStore } from '$lib/update/store.svelte';
-	import { APP_VERSION as appVersion } from '$lib/version';
+	import { APP_VERSION as appVersion, APP_VERSION_LABEL as appVersionLabel } from '$lib/version';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -575,7 +575,7 @@
 			title={m.app_about_link_title()}
 		>
 			<span class="rail-foot-key">v</span>
-			<span class="rail-foot-val">{appVersion}</span>
+			<span class="rail-foot-val">{appVersionLabel}</span>
 		</a>
 	</aside>
 
@@ -1032,12 +1032,17 @@
 		display: grid;
 		justify-items: center;
 		gap: 2px;
-		padding: var(--space-2) var(--space-3);
+		padding: var(--space-2);
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
 		color: var(--bone-400);
 		text-transform: uppercase;
+		/* Keep the version on one line — the `-dev` suffix on dev builds
+		   is long enough to wrap at the hyphen otherwise ("0.9.0-/dev").
+		   The value span drops the eyebrow tracking so it actually fits
+		   the 88px rail; see `.rail-foot-val`. */
+		white-space: nowrap;
 		text-decoration: none;
 		border-radius: var(--radius-card, 4px);
 		transition:
@@ -1130,6 +1135,12 @@
 	.rail-foot-val {
 		font-variant-numeric: tabular-nums lining-nums;
 		color: var(--bone-300);
+		/* The 0.12em eyebrow tracking is for the single-char `v` key; on
+		   a 9–10 char version like "0.9.0-dev" it adds ~13px and shoves
+		   the string past the 88px rail. Drop it (and trim a hair off
+		   the size) so the longest dev string clears the rail edges. */
+		font-size: 0.6875rem;
+		letter-spacing: 0;
 	}
 
 	.content {

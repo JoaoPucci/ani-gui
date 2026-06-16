@@ -34,18 +34,38 @@ const os = require("node:os");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
+const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
+
+// Dev builds run against a separate data profile so they never read or
+// migrate the installed app's data. The backend resolves its config /
+// cache / state (incl. metadata.sqlite) under `ani-gui-dev` when
+// ANI_GUI_DEV is set; spawnBackend inherits process.env, so exporting
+// it here is enough. The Electron-owned userData (tokens, Chromium
+// profile) is relocated below via app.setName.
+if (IS_DEV) {
+  process.env.ANI_GUI_DEV = "1";
+}
 
 // Pin the X11 WM_CLASS / Wayland app_id so GNOME matches the running
 // window to our `.desktop` entry's `StartupWMClass=ani-gui`. Without
 // this, the dock falls back to a generic icon — the .desktop's
 // `Icon=` line is only used in the app grid, not for live-window
 // matching. Must be set before app.whenReady().
-app.setName("ani-gui");
-process.title = "ani-gui";
+//
+// Under the dev profile we use a distinct name so Electron's userData
+// (tokens + Chromium profile) and config reads land in `…/ani-gui-dev`,
+// keeping dev runs off the installed app's profile — the counterpart to
+// the backend's ANI_GUI_DEV data-dir switch above. Derived from BOTH
+// signals (see isDevProfile): a packaged build launched with
+// ANI_GUI_DEV=1 has ELECTRON_DEV unset but must still align with the
+// backend, or locale + OAuth token paths leak across the boundary.
+const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
+app.setName(APP_NAME);
+process.title = APP_NAME;
 
 // Custom scheme used in packaged builds to serve the SvelteKit
 // static bundle. Loading the index.html via plain `file://` works
@@ -122,12 +142,17 @@ function resolveBackendBinary() {
 /**
  * Locate the user's config.toml using the same path the Rust backend
  * writes to. Mirrors `directories-next`'s ProjectDirs resolution
- * (`net.thirdmovement.ani-gui`) so we read the same file the user's
+ * (`net.thirdmovement.<app>`) so we read the same file the user's
  * Settings page persists to.
  *
- *   Linux:   $XDG_CONFIG_HOME (or ~/.config) /ani-gui/config.toml
- *   macOS:   ~/Library/Application Support/net.thirdmovement.ani-gui/config.toml
- *   Windows: %APPDATA% (or ~/AppData/Roaming) /thirdmovement/ani-gui/config/config.toml
+ * `<app>` is `APP_NAME` — `ani-gui-dev` in dev so we read the dev
+ * profile's config (the backend writes there under `ANI_GUI_DEV`),
+ * `ani-gui` otherwise. Without this, a dev session would seed the
+ * renderer locale from the installed app's config.
+ *
+ *   Linux:   $XDG_CONFIG_HOME (or ~/.config) /<app>/config.toml
+ *   macOS:   ~/Library/Application Support/net.thirdmovement.<app>/config.toml
+ *   Windows: %APPDATA% (or ~/AppData/Roaming) /thirdmovement/<app>/config/config.toml
  *
  * Returns null when the home dir can't be resolved — the only
  * platforms that lack one are headless CI containers, which don't
@@ -138,20 +163,20 @@ function resolveUserConfigPath() {
   if (!home) return null;
   if (process.platform === "linux" || process.platform === "freebsd") {
     const base = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
-    return path.join(base, "ani-gui", "config.toml");
+    return path.join(base, APP_NAME, "config.toml");
   }
   if (process.platform === "darwin") {
     return path.join(
       home,
       "Library",
       "Application Support",
-      "net.thirdmovement.ani-gui",
+      `net.thirdmovement.${APP_NAME}`,
       "config.toml",
     );
   }
   // win32
   const base = process.env.APPDATA || path.join(home, "AppData", "Roaming");
-  return path.join(base, "thirdmovement", "ani-gui", "config", "config.toml");
+  return path.join(base, "thirdmovement", APP_NAME, "config", "config.toml");
 }
 
 /**
