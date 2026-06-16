@@ -27,10 +27,30 @@ fn home_dir_xplat() -> Option<PathBuf> {
 const QUALIFIER: &str = "net";
 const ORG: &str = "thirdmovement";
 const APP: &str = "ani-gui";
+const APP_DEV: &str = "ani-gui-dev";
 
-/// Project directory bundle for ani-gui.
+/// The app-dir name to resolve under. When `ANI_GUI_DEV` is set (the
+/// Electron dev launcher exports it), every ani-gui-owned directory —
+/// config, cache (incl. `metadata.sqlite`), logs, state — resolves
+/// under `ani-gui-dev` instead of `ani-gui`. That keeps a dev /
+/// smoke-test build from reading or migrating the installed app's data:
+/// the installed binary would otherwise be handed a DB a newer dev
+/// build had already migrated forward and refuse to open it.
+///
+/// The CLI-shared history (`ani_cli_history`, under `ani-cli`) is
+/// deliberately NOT relocated — it carries no schema/migrations and is
+/// meant to stay shared with the actual `ani-cli`.
+fn app_name() -> &'static str {
+    if std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty()) {
+        APP_DEV
+    } else {
+        APP
+    }
+}
+
+/// Project directory bundle for ani-gui (dev-aware, see [`app_name`]).
 fn project_dirs() -> Option<ProjectDirs> {
-    ProjectDirs::from(QUALIFIER, ORG, APP)
+    ProjectDirs::from(QUALIFIER, ORG, app_name())
 }
 
 /// `$XDG_CONFIG_HOME/ani-gui/config.toml` (or platform-equivalent).
@@ -77,7 +97,7 @@ pub fn logs_dir() -> Option<PathBuf> {
 pub fn state_dir() -> Option<PathBuf> {
     if let Ok(state) = std::env::var("XDG_STATE_HOME") {
         if !state.is_empty() {
-            return Some(PathBuf::from(state).join("ani-gui"));
+            return Some(PathBuf::from(state).join(app_name()));
         }
     }
     // Linux defaults to ~/.local/state/<app> per the XDG Base
@@ -88,7 +108,7 @@ pub fn state_dir() -> Option<PathBuf> {
     // (`~/Library/Application Support/...`, `%LOCALAPPDATA%\...`).
     #[cfg(target_os = "linux")]
     if let Some(home) = home_dir_xplat() {
-        return Some(home.join(".local").join("state").join("ani-gui"));
+        return Some(home.join(".local").join("state").join(app_name()));
     }
     let pd = project_dirs()?;
     Some(pd.data_local_dir().to_path_buf())
@@ -154,7 +174,7 @@ mod tests {
     /// handful of tests here.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    /// #258: `ANI_GUI_DEV` must relocate every ani-gui-owned dir under
+    /// `ANI_GUI_DEV` must relocate every ani-gui-owned dir under
     /// `ani-gui-dev`, so a dev build never reads or migrates the
     /// installed app's config / cache / state / metadata.sqlite. The
     /// CLI-shared history (`ani-cli`) is deliberately NOT relocated.

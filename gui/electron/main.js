@@ -39,13 +39,29 @@ const { startOAuthServer } = require("./oauth-server");
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
 
+// Dev builds run against a separate data profile so they never read or
+// migrate the installed app's data. The backend resolves its config /
+// cache / state (incl. metadata.sqlite) under `ani-gui-dev` when
+// ANI_GUI_DEV is set; spawnBackend inherits process.env, so exporting
+// it here is enough. The Electron-owned userData (tokens, Chromium
+// profile) is relocated below via app.setName.
+if (IS_DEV) {
+  process.env.ANI_GUI_DEV = "1";
+}
+
 // Pin the X11 WM_CLASS / Wayland app_id so GNOME matches the running
 // window to our `.desktop` entry's `StartupWMClass=ani-gui`. Without
 // this, the dock falls back to a generic icon — the .desktop's
 // `Icon=` line is only used in the app grid, not for live-window
 // matching. Must be set before app.whenReady().
-app.setName("ani-gui");
-process.title = "ani-gui";
+//
+// In dev we use a distinct name so Electron's userData (tokens +
+// Chromium profile) lands in `…/ani-gui-dev`, keeping dev runs off the
+// installed app's profile — the counterpart to the backend's
+// ANI_GUI_DEV data-dir switch above.
+const APP_NAME = IS_DEV ? "ani-gui-dev" : "ani-gui";
+app.setName(APP_NAME);
+process.title = APP_NAME;
 
 // Custom scheme used in packaged builds to serve the SvelteKit
 // static bundle. Loading the index.html via plain `file://` works
