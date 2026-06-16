@@ -34,6 +34,7 @@ const os = require("node:os");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
+const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -55,11 +56,14 @@ if (IS_DEV) {
 // `Icon=` line is only used in the app grid, not for live-window
 // matching. Must be set before app.whenReady().
 //
-// In dev we use a distinct name so Electron's userData (tokens +
-// Chromium profile) lands in `…/ani-gui-dev`, keeping dev runs off the
-// installed app's profile — the counterpart to the backend's
-// ANI_GUI_DEV data-dir switch above.
-const APP_NAME = IS_DEV ? "ani-gui-dev" : "ani-gui";
+// Under the dev profile we use a distinct name so Electron's userData
+// (tokens + Chromium profile) and config reads land in `…/ani-gui-dev`,
+// keeping dev runs off the installed app's profile — the counterpart to
+// the backend's ANI_GUI_DEV data-dir switch above. Derived from BOTH
+// signals (see isDevProfile): a packaged build launched with
+// ANI_GUI_DEV=1 has ELECTRON_DEV unset but must still align with the
+// backend, or locale + OAuth token paths leak across the boundary.
+const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
 app.setName(APP_NAME);
 process.title = APP_NAME;
 
