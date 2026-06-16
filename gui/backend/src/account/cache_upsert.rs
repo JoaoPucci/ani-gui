@@ -94,7 +94,15 @@ fn upsert(
     let guard = if force {
         ""
     } else {
-        " WHERE excluded.progress >= user_list_cache.progress"
+        // Monotonic on progress (two racing mark-watched writes — Codex P2
+        // #3416732383) AND recency on the provider timestamp: a stale
+        // mark-watched write-through (higher progress but an older
+        // updated_at) must not clobber a newer explicit downward
+        // correction that already landed via the force path — its older
+        // timestamp loses (Codex P2 #3423044438). The explicit editor
+        // uses the unconditional `force` path, so it's never blocked here.
+        " WHERE excluded.progress >= user_list_cache.progress \
+          AND excluded.updated_at >= user_list_cache.updated_at"
     };
     let sql = format!(
         "INSERT INTO user_list_cache \
