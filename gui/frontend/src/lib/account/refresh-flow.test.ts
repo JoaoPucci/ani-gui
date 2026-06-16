@@ -192,7 +192,8 @@ describe('refreshExpiredAccounts', () => {
 				.fn()
 				.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 }),
 			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
-			generation: () => 0
+			generation: () => 0,
+			changing: () => false
 		});
 		expect(onRefreshed).toHaveBeenCalledTimes(1);
 		expect(onRefreshed).toHaveBeenCalledWith(
@@ -213,8 +214,38 @@ describe('refreshExpiredAccounts', () => {
 			onRefreshed,
 			refreshTokens: vi.fn().mockRejectedValue(new Error('boom')),
 			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
-			generation: () => 0
+			generation: () => 0,
+			changing: () => false
 		});
+		expect(onRefreshed).not.toHaveBeenCalled();
+	});
+
+	it('skips a provider whose account change is in progress (disconnecting)', async () => {
+		// Codex P2 #3421609159: the accountChanging gate must cover the
+		// expired-refresh path too, not just freshBearerFor. If the user
+		// disconnects an expired MAL account just as hydrate fires its
+		// refresh, refreshAccount would capture the already-bumped
+		// generation and its queued persist could land after the clear,
+		// resurrecting the removed token. A changing provider must be left
+		// untouched.
+		const byProvider = {
+			anilist: { kind: 'disconnected' },
+			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
+			inhouse: { kind: 'disconnected' }
+		} as unknown as Record<Provider, ProviderState>;
+		const onRefreshed = vi.fn();
+		const refreshTokens = vi
+			.fn()
+			.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 });
+		await refreshExpiredAccounts({
+			byProvider: () => byProvider,
+			onRefreshed,
+			refreshTokens,
+			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			generation: () => 0,
+			changing: (p) => p === 'mal'
+		});
+		expect(refreshTokens).not.toHaveBeenCalled();
 		expect(onRefreshed).not.toHaveBeenCalled();
 	});
 });
