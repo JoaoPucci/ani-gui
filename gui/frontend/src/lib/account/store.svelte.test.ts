@@ -312,6 +312,63 @@ describe('accountStore.refreshExpired', () => {
 	});
 });
 
+describe('accountStore.freshBearerFor', () => {
+	afterEach(() => {
+		(globalThis as { window?: unknown }).window = undefined;
+		vi.unstubAllGlobals();
+	});
+
+	it('returns null for a disconnected provider without refreshing', async () => {
+		const fetchSpy = vi.fn();
+		vi.stubGlobal('fetch', fetchSpy);
+		expect(await accountStore.freshBearerFor('mal')).toBeNull();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('returns the current bearer untouched when the token is far from expiry', async () => {
+		const fetchSpy = vi.fn();
+		vi.stubGlobal('fetch', fetchSpy);
+		accountStore.setConnected(
+			'mal',
+			payload({ access_token: 'current', expires_at_epoch_s: 4_000_000_000 })
+		);
+		expect(await accountStore.freshBearerFor('mal')).toBe('current');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('refreshes a near-expiry connected token, commits it, and returns the fresh bearer', async () => {
+		const setToken = vi.fn().mockResolvedValue({ ok: true });
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:0', account: { setToken } }
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					access_token: 'fresh-access',
+					refresh_token: 'fresh-rt',
+					expires_at_epoch_s: 4_000_000_000
+				})
+			})
+		);
+		// 30s from now → inside the 2-minute proactive-refresh skew window.
+		const soon = Math.floor(Date.now() / 1000) + 30;
+		accountStore.setConnected(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: soon })
+		);
+
+		const bearer = await accountStore.freshBearerFor('mal');
+
+		expect(bearer).toBe('fresh-access');
+		expect(setToken).toHaveBeenCalledTimes(1);
+		const s = accountStore.byProvider.mal;
+		expect(s.kind).toBe('connected');
+		if (s.kind === 'connected') expect(s.account.access_token).toBe('fresh-access');
+	});
+});
+
 describe('accountStore.hydrate triggers refresh', () => {
 	afterEach(() => {
 		(globalThis as { window?: unknown }).window = undefined;
