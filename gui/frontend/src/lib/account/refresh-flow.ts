@@ -105,6 +105,60 @@ export async function refreshAccount(
 	return { kind: 'refreshed', account: refreshed };
 }
 
+/**
+ * Seconds before a token's expiry at which a still-valid token is
+ * proactively refreshed, so a long-lived session never hands a
+ * just-expired bearer to a write-back or list refresh (Codex P2
+ * #3416883107). MAL access tokens last ~1h; a two-minute skew refreshes
+ * comfortably ahead of the boundary without churning on every call.
+ */
+export const REFRESH_SKEW_SECONDS = 120;
+
+/**
+ * True when `account` carries a refresh token and its access token is
+ * within `REFRESH_SKEW_SECONDS` of expiry (or already past it). A null
+ * refresh token (AniList) or unknown expiry (`<= 0`) returns false —
+ * neither can be silently refreshed here.
+ */
+export function needsProactiveRefresh(account: PersistedAccount, nowSec: number): boolean {
+	if (!account.refresh_token) return false;
+	if (account.expires_at_epoch_s <= 0) return false;
+	return account.expires_at_epoch_s - nowSec <= REFRESH_SKEW_SECONDS;
+}
+
+export interface FreshBearerDeps extends RefreshFlowDeps {
+	/** Commit the refreshed account back to the store (→ `setConnected`). */
+	onRefreshed(provider: Provider, account: PersistedAccount): void;
+	/** Current wall-clock in epoch ms. Injected for testability. */
+	now(): number;
+}
+
+/**
+ * Return a bearer for a *connected* provider that's safe to send on the
+ * next API call, refreshing it first when it's within the skew window
+ * of expiry. On a successful refresh the rotated account is committed
+ * via `onRefreshed` and the fresh access token is returned. Any failure
+ * (refresh threw, persist failed, or a disconnect/re-auth superseded
+ * the refresh) falls back to the current bearer — best-effort, the
+ * caller's request may still 401 exactly as it did before, but a
+ * refreshable token is never left to rot for the life of the session
+ * (Codex P2 #3416883107).
+ */
+export async function freshBearer(
+	deps: FreshBearerDeps,
+	provider: Provider,
+	account: PersistedAccount
+): Promise<string> {
+	const nowSec = Math.floor(deps.now() / 1000);
+	if (!needsProactiveRefresh(account, nowSec)) return account.access_token;
+	const outcome = await refreshAccount(deps, provider, account);
+	if (outcome.kind === 'refreshed') {
+		deps.onRefreshed(provider, outcome.account);
+		return outcome.account.access_token;
+	}
+	return account.access_token;
+}
+
 export interface RefreshExpiredDeps extends RefreshFlowDeps {
 	/** Snapshot of the store's per-provider state. */
 	byProvider(): Record<Provider, ProviderState>;

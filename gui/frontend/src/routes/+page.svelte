@@ -457,8 +457,12 @@
 				providers.map(async (p) => {
 					const cred = deps.credentials[p];
 					if (!cred) return;
+					// Authoritative tracker pull (no secret-gated fallback): refresh
+					// a near-expiry token first so a long-open session's refresh
+					// doesn't 401 against the provider API (Codex P2 #3416883107).
+					const bearer = (await accountStore.freshBearerFor(p)) ?? cred.bearer;
 					try {
-						await fetchAndCacheList(p, cred.bearer);
+						await fetchAndCacheList(p, bearer);
 						markRefreshed(p, Date.now());
 					} catch {
 						/* leave the stale snapshot in place; a later refresh

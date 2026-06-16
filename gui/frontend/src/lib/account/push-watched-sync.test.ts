@@ -18,7 +18,11 @@ vi.mock('./store.svelte', () => ({
 		},
 		get byProvider() {
 			return byProvider;
-		}
+		},
+		// Mirrors the real store: hand back the connected account's bearer
+		// (a non-near-expiry token needs no refresh). The proactive-refresh
+		// branch itself is unit-tested in refresh-flow.test.ts.
+		freshBearerFor: async (provider: string) => byProvider[provider]?.account?.access_token ?? null
 	}
 }));
 

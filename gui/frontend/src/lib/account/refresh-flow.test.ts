@@ -212,7 +212,10 @@ describe('needsProactiveRefresh', () => {
 	});
 
 	it('is false when the token is comfortably in the future', () => {
-		const acct = account({ refresh_token: 'rt', expires_at_epoch_s: nowSec + REFRESH_SKEW_SECONDS + 60 });
+		const acct = account({
+			refresh_token: 'rt',
+			expires_at_epoch_s: nowSec + REFRESH_SKEW_SECONDS + 60
+		});
 		expect(needsProactiveRefresh(acct, nowSec)).toBe(false);
 	});
 
@@ -238,9 +241,11 @@ describe('freshBearer', () => {
 
 	function freshDeps(over: Partial<FreshBearerDeps> = {}): FreshBearerDeps {
 		return {
-			refreshTokens: vi
-				.fn()
-				.mockResolvedValue({ access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 }),
+			refreshTokens: vi.fn().mockResolvedValue({
+				access_token: 'fresh',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: nowSec + 3600
+			}),
 			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
 			generation: () => 0,
 			onRefreshed: vi.fn(),
