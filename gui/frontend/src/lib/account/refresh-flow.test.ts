@@ -104,6 +104,22 @@ describe('refreshAccount', () => {
 		expect(out.kind).toBe('failed');
 	});
 
+	it('fails (does not throw) when persistAccount rejects', async () => {
+		// Codex P2 #3421439995: persistAccount now routes through the
+		// token-write queue, which preserves a rejected write for the
+		// caller. A rejection must surface as `failed`, not escape
+		// refreshAccount and abort the caller's best-effort flow.
+		const deps: RefreshFlowDeps = {
+			refreshTokens: vi
+				.fn()
+				.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 1 }),
+			persistAccount: vi.fn().mockRejectedValue(new Error('io_error')),
+			generation: () => 0
+		};
+		const out = await refreshAccount(deps, 'mal', account());
+		expect(out.kind).toBe('failed');
+	});
+
 	it('is superseded (no persist) when the generation moves during the refresh', async () => {
 		// Codex P2 #3416616176 / #3416668470: the user disconnected or
 		// re-authed while refreshTokens was in flight — the provider's
@@ -277,6 +293,16 @@ describe('freshBearer', () => {
 
 	it('falls back to the existing bearer when the refresh fails', async () => {
 		const deps = freshDeps({ refreshTokens: vi.fn().mockRejectedValue(new Error('401')) });
+		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
+		const bearer = await freshBearer(deps, 'mal', acct);
+		expect(bearer).toBe('old');
+		expect(deps.onRefreshed).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the existing bearer when persistAccount rejects (no throw)', async () => {
+		// Codex P2 #3421439995: a rejected safeStorage write must not escape
+		// freshBearer and abort the caller's best-effort write-back / refresh.
+		const deps = freshDeps({ persistAccount: vi.fn().mockRejectedValue(new Error('io_error')) });
 		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
 		const bearer = await freshBearer(deps, 'mal', acct);
 		expect(bearer).toBe('old');
