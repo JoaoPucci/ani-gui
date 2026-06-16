@@ -92,7 +92,17 @@ export async function refreshAccount(
 		refresh_token: tokens.refresh_token ?? account.refresh_token,
 		expires_at_epoch_s: tokens.expires_at_epoch_s
 	};
-	const persisted = await deps.persistAccount(provider, refreshed);
+	// persistAccount routes through the token-write queue, which preserves
+	// a rejected write for the caller (e.g. a safeStorage/IPC error). Treat
+	// a rejection the same as a resolved {ok:false}: a failed refresh, not
+	// an exception that escapes to abort the caller's best-effort flow
+	// (Codex P2 #3421439995).
+	let persisted;
+	try {
+		persisted = await deps.persistAccount(provider, refreshed);
+	} catch {
+		return { kind: 'failed' };
+	}
 	if (!persisted.ok) return { kind: 'failed' };
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
