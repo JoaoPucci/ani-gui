@@ -61,6 +61,26 @@ pub fn upsert_entry_force(
     upsert(pool, kind, user_id, entry, true)
 }
 
+/// Delete the single cache row for `(provider, user_id, media_id)`.
+/// Used by the explicit "Remove from list" path so the rail/editor stop
+/// showing a just-removed show without a full resync. A missing row is a
+/// no-op (0 rows affected).
+pub fn delete_entry_row(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    media_id: u32,
+) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    conn.execute(
+        "DELETE FROM user_list_cache \
+         WHERE provider = ?1 AND user_id = ?2 AND media_id = ?3",
+        params![kind.slug(), user_id, i64::from(media_id)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 /// Shared upsert. `force` drops the `WHERE excluded.progress >= …`
 /// guard so an explicit edit can lower the cached progress.
 fn upsert(
