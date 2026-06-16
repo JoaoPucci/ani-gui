@@ -32,7 +32,10 @@ export interface ListEntryView {
  * list) + the Kitsu episode total into the view model the action row and
  * editor consume.
  */
-export function deriveListEntryView(entry: EntryView | null, kitsuTotal: number | null): ListEntryView {
+export function deriveListEntryView(
+	entry: EntryView | null,
+	kitsuTotal: number | null
+): ListEntryView {
 	if (!entry) {
 		return { onList: false, status: null, progress: 0, total: kitsuTotal };
 	}

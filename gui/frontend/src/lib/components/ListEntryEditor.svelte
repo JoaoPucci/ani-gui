@@ -32,12 +32,11 @@
 		current = null
 	}: { kitsuId: string; total?: number | null; current?: EntryView | null } = $props();
 
-	// The live entry we display. Seeded from the prop (which the page
-	// loads on mount) and updated optimistically after a Save/Remove.
-	let live = $state<EntryView | null>(current);
-	$effect(() => {
-		live = current;
-	});
+	// The live entry we display. A writable `$derived` so it tracks the
+	// `current` prop (which the page loads + updates async) yet can be
+	// overwritten optimistically after a Save/Remove until the prop
+	// re-syncs.
+	let live = $derived(current);
 
 	const view = $derived(deriveListEntryView(live, total));
 

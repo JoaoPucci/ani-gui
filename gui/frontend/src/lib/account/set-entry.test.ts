@@ -76,9 +76,15 @@ describe('setEntryAcrossTrackers', () => {
 
 	it('no-ops with no connected providers or empty kitsu id', async () => {
 		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		expect(await setEntryAcrossTrackers({ connected: [], bearerFor: () => 't', setEntry }, 'k', {})).toBe(0);
 		expect(
-			await setEntryAcrossTrackers({ connected: ['anilist'], bearerFor: () => 't', setEntry }, '', {})
+			await setEntryAcrossTrackers({ connected: [], bearerFor: () => 't', setEntry }, 'k', {})
+		).toBe(0);
+		expect(
+			await setEntryAcrossTrackers(
+				{ connected: ['anilist'], bearerFor: () => 't', setEntry },
+				'',
+				{}
+			)
 		).toBe(0);
 		expect(setEntry).not.toHaveBeenCalled();
 	});
@@ -109,7 +115,9 @@ describe('removeEntryAcrossTrackers', () => {
 
 	it('no-ops with no connected providers', async () => {
 		const removeEntry = vi.fn(async () => undefined);
-		expect(await removeEntryAcrossTrackers({ connected: [], bearerFor: () => 't', removeEntry }, 'k')).toBe(0);
+		expect(
+			await removeEntryAcrossTrackers({ connected: [], bearerFor: () => 't', removeEntry }, 'k')
+		).toBe(0);
 		expect(removeEntry).not.toHaveBeenCalled();
 	});
 });

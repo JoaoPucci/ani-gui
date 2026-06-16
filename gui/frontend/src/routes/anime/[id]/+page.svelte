@@ -47,6 +47,12 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
+	import { accountStore } from '$lib/account/store.svelte';
+	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import { getEntry } from '$lib/account/entry-api';
+	import { freshBearerFor } from '$lib/account/fresh-bearer';
+	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
+	import type { EntryView } from '$lib/account/types';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -388,6 +394,37 @@
 
 	const id = $derived(page.params.id ?? '');
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
+
+	// The show's live list entry on the user's PRIMARY connected tracker,
+	// so the list editor opens on the real status/progress (the deviation
+	// safety) and the action-row button reflects it. Reloaded when the
+	// show id or the connected set changes; writes fan out to ALL
+	// connected trackers (see ListEntryEditor → set-entry).
+	let listEntry = $state<EntryView | null>(null);
+	$effect(() => {
+		const kitsuId = id;
+		const connected = accountStore.connected;
+		if (!kitsuId || connected.length === 0) {
+			listEntry = null;
+			return;
+		}
+		const primaryPref = primaryAccountStore.value;
+		const primary = primaryPref && connected.includes(primaryPref) ? primaryPref : connected[0];
+		let cancelled = false;
+		void (async () => {
+			const bearer = await freshBearerFor(primary);
+			if (!bearer || cancelled) return;
+			try {
+				const v = await getEntry(primary, bearer, kitsuId);
+				if (!cancelled) listEntry = v;
+			} catch {
+				// Leave the control in its add state on a read failure.
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	// Episodes-fallback derivations live in script so they can be used in
 	// the markup without {@const} (which only accepts Svelte-block parents).
@@ -1045,6 +1082,13 @@
 								<span aria-hidden="true">↓</span>
 								<span>{m.detail_download_button()}</span>
 							</button>
+							{#if accountStore.hasAny}
+								<ListEntryEditor
+									kitsuId={id}
+									total={detail.episode_count ?? null}
+									current={listEntry}
+								/>
+							{/if}
 						</div>
 					{/if}
 

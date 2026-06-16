@@ -57,6 +57,9 @@ describe('editorInitial', () => {
 	});
 
 	it('defaults to planning / 0 when not on the list', () => {
-		expect(editorInitial(deriveListEntryView(null, 24))).toEqual({ status: 'planning', progress: 0 });
+		expect(editorInitial(deriveListEntryView(null, 24))).toEqual({
+			status: 'planning',
+			progress: 0
+		});
 	});
 });
