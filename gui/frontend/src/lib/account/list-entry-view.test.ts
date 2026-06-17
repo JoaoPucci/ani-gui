@@ -92,31 +92,71 @@ describe('pickSeedEntry', () => {
 });
 
 describe('buildListEdit', () => {
-	it('adding a new entry sends status (creates with the chosen status)', () => {
+	it('a tracker without the row (current null) is created with the chosen status', () => {
 		expect(
-			buildListEdit({ onList: false, seededStatus: 'planning', status: 'planning', progress: 0 })
+			buildListEdit({ current: null, seededStatus: 'planning', status: 'planning', progress: 0 })
 		).toEqual({ status: 'planning', progress: 0 });
 	});
 
-	it('on-list with an unchanged status omits status (each tracker keeps its own)', () => {
+	it('an existing row with an unchanged status omits status (each tracker keeps its own)', () => {
 		// The seed picks one tracker's status; if the user only adjusts the
 		// episode count, status must NOT be written or a divergent
 		// rewatching/paused/dropped state on another tracker gets clobbered.
 		expect(
-			buildListEdit({ onList: true, seededStatus: 'completed', status: 'completed', progress: 12 })
+			buildListEdit({
+				current: 'completed',
+				seededStatus: 'completed',
+				status: 'completed',
+				progress: 12
+			})
 		).toEqual({ progress: 12 });
 	});
 
-	it('on-list with a changed status sends it (a deliberate convergence)', () => {
+	it('a changed status is sent (a deliberate convergence)', () => {
 		expect(
-			buildListEdit({ onList: true, seededStatus: 'completed', status: 'watching', progress: 12 })
+			buildListEdit({
+				current: 'completed',
+				seededStatus: 'completed',
+				status: 'watching',
+				progress: 12
+			})
 		).toEqual({ status: 'watching', progress: 12 });
+	});
+
+	it('promotes a planning row to watching when saving positive progress without a status change', () => {
+		// Seed came from another tracker as watching; the planning tracker only
+		// gets progress, which would leave it Plan-to-Watch with watched
+		// episodes. Promote it to watching (the explicit /set path skips the
+		// mark-watched promotion the auto path applies).
+		expect(
+			buildListEdit({
+				current: 'planning',
+				seededStatus: 'watching',
+				status: 'watching',
+				progress: 6
+			})
+		).toEqual({ status: 'watching', progress: 6 });
+	});
+
+	it('does not promote a planning row at zero progress', () => {
+		expect(
+			buildListEdit({
+				current: 'planning',
+				seededStatus: 'planning',
+				status: 'planning',
+				progress: 0
+			})
+		).toEqual({ progress: 0 });
 	});
 
 	it('always carries progress (the count converges per explicit-edits-win)', () => {
 		expect(
-			buildListEdit({ onList: true, seededStatus: 'watching', status: 'watching', progress: 7 })
-				.progress
+			buildListEdit({
+				current: 'watching',
+				seededStatus: 'watching',
+				status: 'watching',
+				progress: 7
+			}).progress
 		).toBe(7);
 	});
 });
