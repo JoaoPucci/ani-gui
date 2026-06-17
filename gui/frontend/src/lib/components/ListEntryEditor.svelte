@@ -16,11 +16,11 @@
 <script lang="ts">
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
+	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
 	import {
 		STATUS_OPTIONS,
 		deriveListEntryView,
 		editorInitial,
-		effectiveStatus,
 		listButtonLabel
 	} from '$lib/account/list-entry-view';
 	import type { EntryView, ListStatus } from '$lib/account/types';
@@ -128,63 +128,40 @@
 	}
 
 	async function save() {
-		// Belt to the disabled-gated button + auto-close effect: never write if
-		// the editor went stale (navigation/loading) between render and click.
-		if (disabled) return;
 		busy = true;
 		// Snapshot the form values before awaiting. The status/episode controls
 		// stay editable during the in-flight save, so reading editStatus/
 		// editProgress again after the await could optimistically show values
 		// the user changed mid-request that were never sent to the tracker.
-		const status = editStatus;
-		const progress = editProgress;
+		const save = { status: editStatus, seededStatus, progress: editProgress };
 		try {
-			// Per-tracker fan-out: setEntryAcrossTrackers reads each connected
-			// tracker and decides whether to write status (only where the row
-			// is missing or the user changed it off `seededStatus`), so a
-			// progress-only save can't flatten a divergent status elsewhere.
-			const { written, failed } = await syncSetEntry(kitsuId, { status, seededStatus, progress });
-			// Only report a clean save when every connected tracker the edit
-			// reached accepted it (failed === 0) and at least one was written.
-			// On any partial failure, leave `live` untouched and report failure
-			// rather than showing the new status/progress as if it saved
-			// everywhere while a tracker stayed stale.
-			if (failed === 0 && written > 0) {
-				// Mirror the status actually written: a started title saved at
-				// Planning is promoted to Watching by the fan-out, so the button
-				// + next open must reflect Watching, not the stale Planning.
-				live = { status: effectiveStatus(status, progress), progress };
+			// runEditorSave owns the state machine (disabled gate, per-tracker
+			// fan-out outcome interpretation, optimistic `live`); the component
+			// just applies the result + picks the toast. See editor-actions.ts.
+			const res = await runEditorSave({ syncSetEntry }, { kitsuId, disabled, save });
+			if (res.kind === 'saved') {
+				live = res.live;
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 				open = false;
-			} else {
+			} else if (res.kind === 'failed') {
 				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 			}
-		} catch {
-			toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove() {
-		if (disabled) return;
 		busy = true;
 		try {
-			const { removed, failed } = await syncRemoveEntry(kitsuId);
-			// Only report a clean removal when every tracker that had the entry
-			// was removed (failed === 0) and at least one actually was. If any
-			// present tracker's delete failed — or we couldn't reach one — the
-			// title still lives on a tracker, so keep the entry visible and
-			// report failure rather than pretending it's gone everywhere.
-			if (failed === 0 && removed > 0) {
+			const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled });
+			if (res.kind === 'removed') {
 				live = null;
 				toastStore.push({ kind: 'success', message: m.detail_list_removed() });
 				open = false;
-			} else {
+			} else if (res.kind === 'failed') {
 				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 			}
-		} catch {
-			toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 		} finally {
 			busy = false;
 		}
