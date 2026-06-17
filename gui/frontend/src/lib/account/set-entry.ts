@@ -3,17 +3,24 @@
 // stateless, so the renderer holds the per-provider bearers and
 // orchestrates the calls (mirrors push-watched.ts).
 
-import type { ListEntry, ListStatus, Provider } from './types';
-import { removeEntry, setEntry } from './entry-api';
+import type { EntryView, ListEntry, ListStatus, Provider } from './types';
+import { getEntry, removeEntry, setEntry } from './entry-api';
+import { buildListEdit } from './list-entry-view';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 
-/** A deliberate edit from the detail-page editor. Absent fields are left
- *  unchanged on the tracker. */
-export interface ListEdit {
-	status?: ListStatus;
-	progress?: number;
+/**
+ * A deliberate edit from the detail-page editor. `status` is the value
+ * shown in the editor (the seed, or what the user picked); `seededStatus`
+ * is what the editor opened on — the fan-out compares the two per tracker
+ * to decide whether to write status, so it only converges a divergent
+ * status when the user actually changed it.
+ */
+export interface EditorSave {
+	status: ListStatus;
+	seededStatus: ListStatus;
+	progress: number;
 }
 
 export interface SetEntryDeps {
@@ -22,7 +29,9 @@ export interface SetEntryDeps {
 	/** Resolve a provider's bearer, or null if unavailable. May be async
 	 *  so the caller can refresh a near-expiry token first. */
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
-	/** POST the explicit edit to one provider. */
+	/** Read one provider's current entry (null when the show isn't on it). */
+	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
+	/** POST the per-provider body to one provider. */
 	setEntry: (
 		provider: Provider,
 		bearer: string,
@@ -33,31 +42,38 @@ export interface SetEntryDeps {
 export interface RemoveEntryDeps {
 	connected: Provider[];
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
+	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
 }
 
 /**
- * Write an explicit edit to every connected tracker. Best-effort per
- * provider — a missing bearer is skipped, and an unmappable show (the
- * backend replies `null`) or a thrown error counts as not-written
- * without blocking the others. Returns how many providers accepted the
- * write, so the caller can toast success vs. "couldn't update".
+ * Write the editor's save to every connected tracker, deciding per
+ * provider off that provider's live entry: send `status` only where the
+ * row is missing (so it's created with the editor's status) or where the
+ * user changed it; otherwise send progress alone so a tracker keeps its
+ * own status. Best-effort — a missing bearer is skipped, and an unmappable
+ * show (`setEntry` → null) or a thrown error counts as not-written without
+ * blocking the others. Returns how many providers accepted the write.
  */
 export async function setEntryAcrossTrackers(
 	deps: SetEntryDeps,
 	kitsuId: string,
-	edit: ListEdit
+	save: EditorSave
 ): Promise<number> {
 	if (!kitsuId || deps.connected.length === 0) return 0;
-	const body: { kitsu_id: string; status?: string; progress?: number } = { kitsu_id: kitsuId };
-	if (edit.status !== undefined) body.status = edit.status;
-	if (edit.progress !== undefined) body.progress = edit.progress;
 	const results = await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return false;
 			try {
-				return (await deps.setEntry(provider, bearer, body)) !== null;
+				const current = await deps.getEntry(provider, bearer, kitsuId);
+				const edit = buildListEdit({
+					onList: current !== null,
+					seededStatus: save.seededStatus,
+					status: save.status,
+					progress: save.progress
+				});
+				return (await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit })) !== null;
 			} catch {
 				return false;
 			}
@@ -67,9 +83,11 @@ export async function setEntryAcrossTrackers(
 }
 
 /**
- * Remove a show from every connected tracker. Best-effort, returns the
- * count removed (the backend's delete is idempotent, so an
- * already-removed title still resolves successfully).
+ * Remove a show from every connected tracker that actually has it. Reads
+ * each provider first: a provider without the row is skipped (its delete
+ * would be a no-op and must not count toward success), so an already-absent
+ * tracker can't mask a real provider's failed delete. Returns the count of
+ * providers that had the entry and removed it.
  */
 export async function removeEntryAcrossTrackers(
 	deps: RemoveEntryDeps,
@@ -81,6 +99,8 @@ export async function removeEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return false;
 			try {
+				const current = await deps.getEntry(provider, bearer, kitsuId);
+				if (current === null) return false; // nothing to remove here
 				await deps.removeEntry(provider, bearer, kitsuId);
 				return true;
 			} catch {
@@ -92,17 +112,17 @@ export async function removeEntryAcrossTrackers(
 }
 
 /**
- * Live-store wiring: fan an explicit edit out to every connected tracker
+ * Live-store wiring: fan the editor's save out to every connected tracker
  * off the account store, refreshing a near-expiry bearer first, then
  * invalidate the Watch Later snapshot (a status change can cross the
  * planning boundary). Returns the success count for toast feedback.
  */
-export async function syncSetEntry(kitsuId: string, edit: ListEdit): Promise<number> {
+export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<number> {
 	const connected = accountStore.connected;
 	const n = await setEntryAcrossTrackers(
-		{ connected, bearerFor: (provider) => freshBearerFor(provider), setEntry },
+		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, setEntry },
 		kitsuId,
-		edit
+		save
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
 	return n;
@@ -112,7 +132,7 @@ export async function syncSetEntry(kitsuId: string, edit: ListEdit): Promise<num
 export async function syncRemoveEntry(kitsuId: string): Promise<number> {
 	const connected = accountStore.connected;
 	const n = await removeEntryAcrossTrackers(
-		{ connected, bearerFor: (provider) => freshBearerFor(provider), removeEntry },
+		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, removeEntry },
 		kitsuId
 	);
 	for (const provider of connected) invalidateWatchLater(provider);

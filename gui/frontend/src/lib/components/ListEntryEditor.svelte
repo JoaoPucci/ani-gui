@@ -18,7 +18,6 @@
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import {
 		STATUS_OPTIONS,
-		buildListEdit,
 		deriveListEntryView,
 		editorInitial,
 		listButtonLabel
@@ -138,12 +137,12 @@
 		// the user changed mid-request that were never sent to the tracker.
 		const status = editStatus;
 		const progress = editProgress;
-		const onList = view.onList;
 		try {
-			const n = await syncSetEntry(
-				kitsuId,
-				buildListEdit({ onList, seededStatus, status, progress })
-			);
+			// Per-tracker fan-out: setEntryAcrossTrackers reads each connected
+			// tracker and decides whether to write status (only where the row
+			// is missing or the user changed it off `seededStatus`), so a
+			// progress-only save can't flatten a divergent status elsewhere.
+			const n = await syncSetEntry(kitsuId, { status, seededStatus, progress });
 			if (n > 0) {
 				live = { status, progress };
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
