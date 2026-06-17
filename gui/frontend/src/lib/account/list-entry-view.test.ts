@@ -4,6 +4,7 @@ import {
 	clampProgress,
 	deriveListEntryView,
 	editorInitial,
+	effectiveProgress,
 	effectiveStatus,
 	listButtonLabel,
 	pickSeedEntry
@@ -182,6 +183,65 @@ describe('effectiveStatus', () => {
 	it('leaves any non-planning status untouched', () => {
 		expect(effectiveStatus('paused', 5)).toBe('paused');
 		expect(effectiveStatus('completed', 12)).toBe('completed');
+	});
+});
+
+describe('effectiveProgress', () => {
+	it('forces a completed entry to the full episode count (status wins over a partial)', () => {
+		expect(effectiveProgress('completed', 5, 12)).toBe(12);
+		expect(effectiveProgress('completed', 0, 12)).toBe(12);
+	});
+
+	it('leaves a completed entry on its given count when the total is unknown', () => {
+		expect(effectiveProgress('completed', 5, null)).toBe(5);
+	});
+
+	it('leaves non-completed statuses on the given count', () => {
+		expect(effectiveProgress('watching', 5, 12)).toBe(5);
+		expect(effectiveProgress('paused', 0, 12)).toBe(0);
+	});
+});
+
+describe('buildListEdit — completed stays at the full count', () => {
+	it('snaps progress up to total instead of writing a partial completed', () => {
+		expect(
+			buildListEdit({
+				current: 'completed',
+				seededStatus: 'completed',
+				status: 'completed',
+				progress: 0,
+				total: 12
+			})
+		).toEqual({ progress: 12 });
+	});
+
+	it('keeps a completed provider full even when the chosen status matches a stale seed', () => {
+		// Smoke-test repro: the tracker is really completed, the app seed was a
+		// stale watching, and the user "kept" watching. Status matches the seed
+		// so it's omitted — but the provider's real status is completed, so the
+		// progress we write must snap to the full count rather than leave it at
+		// completed/0.
+		expect(
+			buildListEdit({
+				current: 'completed',
+				seededStatus: 'watching',
+				status: 'watching',
+				progress: 0,
+				total: 12
+			})
+		).toEqual({ progress: 12 });
+	});
+
+	it('snaps to total when the user newly marks a provider completed', () => {
+		expect(
+			buildListEdit({
+				current: 'watching',
+				seededStatus: 'watching',
+				status: 'completed',
+				progress: 3,
+				total: 12
+			})
+		).toEqual({ status: 'completed', progress: 12 });
 	});
 });
 
