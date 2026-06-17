@@ -115,6 +115,30 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
     })
 }
 
+/// Like [`test_state`] but with the Kitsu client pointed at a wiremock
+/// server, so id-resolution can be driven (e.g. an unmappable show).
+fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
+    Arc::new(AppState {
+        secret: AppSecret::random(),
+        sessions: SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
+        ani_cli_path: PathBuf::from("/tmp/ani-cli"),
+        bash_path: None,
+        bundled_bin: None,
+        history_path: td.path().join("ani-hsts"),
+        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        image_cache_dir: td.path().join("images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
+        config_path: td.path().join("config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+    })
+}
+
 async fn body_text(resp: axum::response::Response) -> String {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     String::from_utf8(bytes.to_vec()).unwrap()
@@ -252,6 +276,46 @@ async fn delete_entry_requires_bearer() {
         .await
         .unwrap();
     assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn delete_entry_returns_not_found_when_no_provider_maps_the_show() {
+    // Codex P2 #3427461070: an unmappable provider removed nothing, so the
+    // route must NOT answer 204 — the renderer's removeEntryAcrossTrackers
+    // counts any resolved DELETE as a successful removal, which would let an
+    // unmappable provider's 204 mask a real provider's failed delete. We
+    // return 404 instead; the renderer's per-provider catch treats the
+    // rejected call as not-removed, mirroring the set path's null handling.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"id":"999","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    let td = TempDir::new().unwrap();
+    let r = router()
+        .with_state(test_state_with_kitsu(&td, &kitsu.uri()))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/account/entry/mal?kitsu_id=999")
+                .header("authorization", "Bearer tok")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn remove_entry_status_distinguishes_removed_from_unmappable() {
+    assert_eq!(remove_entry_status(true), StatusCode::NO_CONTENT);
+    assert_eq!(remove_entry_status(false), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

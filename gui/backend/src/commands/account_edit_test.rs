@@ -176,6 +176,52 @@ async fn get_entry_via_reads_live_current_entry() {
 }
 
 #[tokio::test]
+async fn get_entry_via_waits_for_an_in_flight_write_on_the_same_show() {
+    // Codex P2 #3427461062: a mark-watched sync holds the per-show lock
+    // while it reconciles and writes the newer progress. The editor's seed
+    // read must take the SAME lock, or it can read a value mid-overwrite —
+    // and a later explicit Save would then force-write that stale value back
+    // over the just-synced higher one. Proven here by holding the show lock
+    // (as the in-flight sync would) and asserting the read can't complete
+    // until it's released.
+    use std::time::Duration;
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"id":21,"my_list_status":{"status":"watching","num_episodes_watched":5}}"#,
+        ))
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    // Hold the per-show write lock keyed on the Kitsu id ("12"), as a
+    // mark-watched sync does before it resolves the native id. The seed
+    // read must take the SAME lock before its own resolve, so it blocks.
+    let show_lock = state
+        .account_write_locks
+        .for_show(ProviderKind::MyAnimeList, "12");
+    let guard = show_lock.lock().await;
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+        _ = get_entry_via(&state, ProviderKind::MyAnimeList, &provider, &tokens, "12") => {
+            panic!("get_entry_via read the entry while the show's write lock was held");
+        }
+    }
+    // Releasing the lock lets the queued read settle and return the entry.
+    drop(guard);
+    let got = get_entry_via(&state, ProviderKind::MyAnimeList, &provider, &tokens, "12")
+        .await
+        .expect("get ok")
+        .expect("on the list");
+    assert_eq!(got.progress_episodes, 5);
+}
+
+#[tokio::test]
 async fn set_entry_via_writes_explicit_lower_progress_verbatim() {
     // The editor can correct an over-count downward. set_entry_via does
     // NOT read current first (no monotonic reconcile), so the lower value
