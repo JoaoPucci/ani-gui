@@ -3,6 +3,7 @@ import {
 	buildListEdit,
 	deriveListEntryView,
 	editorInitial,
+	effectiveStatus,
 	listButtonLabel,
 	pickSeedEntry
 } from './list-entry-view';
@@ -98,6 +99,15 @@ describe('buildListEdit', () => {
 		).toEqual({ status: 'planning', progress: 0 });
 	});
 
+	it('creating a row at planning with positive progress promotes it to watching', () => {
+		// The Add path (current null) must promote too: a started title left at
+		// the default Planning would otherwise be created Plan-to-Watch with
+		// watched episodes and linger in Watch Later.
+		expect(
+			buildListEdit({ current: null, seededStatus: 'planning', status: 'planning', progress: 5 })
+		).toEqual({ status: 'watching', progress: 5 });
+	});
+
 	it('an existing row with an unchanged status omits status (each tracker keeps its own)', () => {
 		// The seed picks one tracker's status; if the user only adjusts the
 		// episode count, status must NOT be written or a divergent
@@ -158,6 +168,19 @@ describe('buildListEdit', () => {
 				progress: 7
 			}).progress
 		).toBe(7);
+	});
+});
+
+describe('effectiveStatus', () => {
+	it('promotes planning to watching at positive progress', () => {
+		expect(effectiveStatus('planning', 5)).toBe('watching');
+	});
+	it('leaves planning at zero progress', () => {
+		expect(effectiveStatus('planning', 0)).toBe('planning');
+	});
+	it('leaves any non-planning status untouched', () => {
+		expect(effectiveStatus('paused', 5)).toBe('paused');
+		expect(effectiveStatus('completed', 12)).toBe('completed');
 	});
 });
 
