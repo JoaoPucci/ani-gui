@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	buildListEdit,
 	deriveListEntryView,
 	editorInitial,
 	listButtonLabel,
@@ -87,6 +88,36 @@ describe('pickSeedEntry', () => {
 		const completed: EntryView = { status: 'completed', progress: 12 };
 		expect(pickSeedEntry([watching, completed])).toEqual(completed);
 		expect(pickSeedEntry([completed, watching])).toEqual(completed);
+	});
+});
+
+describe('buildListEdit', () => {
+	it('adding a new entry sends status (creates with the chosen status)', () => {
+		expect(
+			buildListEdit({ onList: false, seededStatus: 'planning', status: 'planning', progress: 0 })
+		).toEqual({ status: 'planning', progress: 0 });
+	});
+
+	it('on-list with an unchanged status omits status (each tracker keeps its own)', () => {
+		// The seed picks one tracker's status; if the user only adjusts the
+		// episode count, status must NOT be written or a divergent
+		// rewatching/paused/dropped state on another tracker gets clobbered.
+		expect(
+			buildListEdit({ onList: true, seededStatus: 'completed', status: 'completed', progress: 12 })
+		).toEqual({ progress: 12 });
+	});
+
+	it('on-list with a changed status sends it (a deliberate convergence)', () => {
+		expect(
+			buildListEdit({ onList: true, seededStatus: 'completed', status: 'watching', progress: 12 })
+		).toEqual({ status: 'watching', progress: 12 });
+	});
+
+	it('always carries progress (the count converges per explicit-edits-win)', () => {
+		expect(
+			buildListEdit({ onList: true, seededStatus: 'watching', status: 'watching', progress: 7 })
+				.progress
+		).toBe(7);
 	});
 });
 
