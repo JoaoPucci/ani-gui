@@ -312,6 +312,12 @@ async fn delete_entry_returns_not_found_when_no_provider_maps_the_show() {
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
 }
 
+#[test]
+fn remove_entry_status_distinguishes_removed_from_unmappable() {
+    assert_eq!(remove_entry_status(true), StatusCode::NO_CONTENT);
+    assert_eq!(remove_entry_status(false), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn post_list_requires_bearer() {
     let td = TempDir::new().unwrap();

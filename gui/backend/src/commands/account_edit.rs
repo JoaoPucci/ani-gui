@@ -53,6 +53,13 @@ async fn get_entry_via(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
+    // Take the same per-show lock set_entry/remove_entry hold, so the
+    // editor seed read can't observe a value mid-overwrite by an in-flight
+    // mark-watched sync. Without it the editor could open on the old
+    // progress and a later explicit Save would force-write that stale value
+    // back over the just-synced higher one.
+    let show_lock = state.account_write_locks.for_show(kind, native.0);
+    let _read_guard = show_lock.lock().await;
     provider.current_entry(tokens, native).await
 }
 
