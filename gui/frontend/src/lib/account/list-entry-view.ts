@@ -16,6 +16,43 @@ export const STATUS_OPTIONS: ListStatus[] = [
 	'rewatching'
 ];
 
+// How "committed" each status is, for breaking ties when two trackers
+// sit at the same episode count. A higher rank means further along the
+// watch lifecycle, so on a tie we seed from the more-engaged entry.
+const STATUS_COMMITMENT: Record<ListStatus, number> = {
+	planning: 0,
+	dropped: 1,
+	paused: 2,
+	watching: 3,
+	rewatching: 4,
+	completed: 5
+};
+
+/**
+ * Fold the live current entry read from every connected provider into the
+ * single entry the editor seeds from. The detail page reads each tracker
+ * but a Save fans the result out to ALL of them, so seeding from one
+ * provider that lacks the title (→ Add/Planning/0) would let a Save clobber
+ * another tracker that already has progress. Picking the furthest-along
+ * entry — greatest progress, tie-broken by the more-committed status —
+ * means writing the seed back never lowers a tracker below where it was.
+ * Returns null only when no provider has the show on its list.
+ */
+export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
+	let best: EntryView | null = null;
+	for (const e of entries) {
+		if (!e) continue;
+		if (
+			best === null ||
+			e.progress > best.progress ||
+			(e.progress === best.progress && STATUS_COMMITMENT[e.status] > STATUS_COMMITMENT[best.status])
+		) {
+			best = e;
+		}
+	}
+	return best;
+}
+
 export interface ListEntryView {
 	/** Whether the show is on the user's list. */
 	onList: boolean;

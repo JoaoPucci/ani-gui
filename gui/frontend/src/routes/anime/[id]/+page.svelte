@@ -48,8 +48,8 @@
 	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
-	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
+	import { pickSeedEntry } from '$lib/account/list-entry-view';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
 	import type { EntryView } from '$lib/account/types';
@@ -395,20 +395,25 @@
 	const id = $derived(page.params.id ?? '');
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
-	// The show's live list entry on the user's PRIMARY connected tracker,
-	// so the list editor opens on the real status/progress (the deviation
-	// safety) and the action-row button reflects it. Reloaded when the
-	// show id or the connected set changes; writes fan out to ALL
-	// connected trackers (see ListEntryEditor → set-entry).
+	// The show's live list entry, folded from EVERY connected tracker so the
+	// editor opens on the real status/progress (the deviation safety) and the
+	// action-row button reflects it. A Save fans out to ALL connected trackers
+	// (see ListEntryEditor → set-entry), so we must seed from all of them too:
+	// reading only one provider that lacks the title would seed Add/Planning/0
+	// and let a Save clobber another tracker that already has progress.
+	// pickSeedEntry keeps the furthest-along entry. Reloaded when the show id
+	// or the connected set changes.
 	let listEntry = $state<EntryView | null>(null);
-	// True while the primary provider's live entry is being read. The editor
-	// stays disabled in this window so a Save can't fire against a not-yet-
-	// known entry (which would seed Planning/0 and overwrite the real status).
+	// True while the providers' live entries are being read. The editor stays
+	// disabled in this window so a Save can't fire against a not-yet-known
+	// entry (which would seed Planning/0 and overwrite the real status).
 	let listEntryLoading = $state(false);
-	// True when the read couldn't establish the real tracker state (the bearer
-	// couldn't be refreshed, or getEntry threw). A null listEntry then means
+	// True when the read couldn't establish the real tracker state (a bearer
+	// couldn't be refreshed, or a getEntry threw). A null listEntry then means
 	// "unknown", not "not on the list", so the editor stays disabled rather
-	// than offering an Add that could overwrite an existing entry.
+	// than offering an Add that could overwrite an existing entry. Any single
+	// provider failing trips this — a partial read could miss the very tracker
+	// whose progress a Save would otherwise clobber.
 	let listEntryError = $state(false);
 	$effect(() => {
 		const kitsuId = id;
@@ -425,19 +430,21 @@
 			return;
 		}
 		listEntryLoading = true;
-		const primaryPref = primaryAccountStore.value;
-		const primary = primaryPref && connected.includes(primaryPref) ? primaryPref : connected[0];
+		const providers = [...connected];
 		let cancelled = false;
 		void (async () => {
 			try {
-				const bearer = await freshBearerFor(primary);
-				if (cancelled) return;
-				if (!bearer) {
-					listEntryError = true;
-					return;
-				}
-				const v = await getEntry(primary, bearer, kitsuId);
-				if (!cancelled) listEntry = v;
+				// Read every connected tracker. Promise.all rejects on the first
+				// failure, so any unreadable provider drops us into the catch and
+				// disables the editor rather than seeding from a partial picture.
+				const views = await Promise.all(
+					providers.map(async (p) => {
+						const bearer = await freshBearerFor(p);
+						if (!bearer) throw new Error(`no bearer for ${p}`);
+						return getEntry(p, bearer, kitsuId);
+					})
+				);
+				if (!cancelled) listEntry = pickSeedEntry(views);
 			} catch {
 				// Read failed transiently: treat the entry as unknown, not absent,
 				// so the editor stays disabled instead of offering a stale Add.
