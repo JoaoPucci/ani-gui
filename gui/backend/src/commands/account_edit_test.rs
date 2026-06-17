@@ -199,10 +199,12 @@ async fn get_entry_via_waits_for_an_in_flight_write_on_the_same_show() {
     let state = state_with_kitsu(&kitsu.uri());
     let provider = mal_provider(&mal.uri());
     let tokens = test_tokens();
-    // Hold the per-show write lock for MAL native id 21 (the mapping above).
+    // Hold the per-show write lock keyed on the Kitsu id ("12"), as a
+    // mark-watched sync does before it resolves the native id. The seed
+    // read must take the SAME lock before its own resolve, so it blocks.
     let show_lock = state
         .account_write_locks
-        .for_show(ProviderKind::MyAnimeList, 21);
+        .for_show(ProviderKind::MyAnimeList, "12");
     let guard = show_lock.lock().await;
     tokio::select! {
         _ = tokio::time::sleep(Duration::from_millis(200)) => {}
