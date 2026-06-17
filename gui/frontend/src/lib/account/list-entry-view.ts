@@ -133,9 +133,23 @@ export function buildListEdit(opts: {
 }): { status?: ListStatus; progress: number } {
 	const edit: { status?: ListStatus; progress: number } = { progress: opts.progress };
 	if (opts.current === null || opts.status !== opts.seededStatus) {
-		edit.status = opts.status;
+		// Creating the row, or an explicit status change — write the chosen
+		// status, promoted out of planning if it carries watched episodes.
+		edit.status = effectiveStatus(opts.status, opts.progress);
 	} else if (opts.current === 'planning' && opts.progress > 0) {
+		// An existing planning row gaining progress — promote it.
 		edit.status = 'watching';
 	}
 	return edit;
+}
+
+/**
+ * The status actually worth writing for a given chosen status + progress:
+ * `planning` with watched episodes is incoherent (and keeps the title in
+ * Watch Later), so a started title is `watching`. Everything else is left
+ * as chosen. Shared by the write fan-out and the editor's optimistic
+ * post-save state so they agree on the promoted status.
+ */
+export function effectiveStatus(status: ListStatus, progress: number): ListStatus {
+	return status === 'planning' && progress > 0 ? 'watching' : status;
 }

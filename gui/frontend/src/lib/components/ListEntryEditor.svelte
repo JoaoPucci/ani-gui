@@ -20,6 +20,7 @@
 		STATUS_OPTIONS,
 		deriveListEntryView,
 		editorInitial,
+		effectiveStatus,
 		listButtonLabel
 	} from '$lib/account/list-entry-view';
 	import type { EntryView, ListStatus } from '$lib/account/types';
@@ -149,7 +150,10 @@
 			// rather than showing the new status/progress as if it saved
 			// everywhere while a tracker stayed stale.
 			if (failed === 0 && written > 0) {
-				live = { status, progress };
+				// Mirror the status actually written: a started title saved at
+				// Planning is promoted to Watching by the fan-out, so the button
+				// + next open must reflect Watching, not the stale Planning.
+				live = { status: effectiveStatus(status, progress), progress };
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 				open = false;
 			} else {
