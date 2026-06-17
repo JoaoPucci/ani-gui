@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { deriveListEntryView, editorInitial, listButtonLabel } from './list-entry-view';
+import {
+	deriveListEntryView,
+	editorInitial,
+	listButtonLabel,
+	pickSeedEntry
+} from './list-entry-view';
 import type { EntryView } from './types';
 
 // A trivial status labeller for deterministic label assertions.
@@ -47,6 +52,41 @@ describe('listButtonLabel', () => {
 	it('completed shows the full count', () => {
 		const v = deriveListEntryView({ status: 'completed', progress: 24 }, 24);
 		expect(listButtonLabel(v, labels)).toBe('Completed · 24/24');
+	});
+});
+
+describe('pickSeedEntry', () => {
+	it('all providers absent → null (truly not on any list)', () => {
+		expect(pickSeedEntry([null, null])).toBeNull();
+	});
+
+	it('empty list → null', () => {
+		expect(pickSeedEntry([])).toBeNull();
+	});
+
+	it('single tracked provider → that entry', () => {
+		const e: EntryView = { status: 'watching', progress: 5 };
+		expect(pickSeedEntry([e])).toEqual(e);
+	});
+
+	it('one provider absent, another tracked → the tracked one (never seed Add over real data)', () => {
+		const e: EntryView = { status: 'watching', progress: 12 };
+		expect(pickSeedEntry([null, e])).toEqual(e);
+		expect(pickSeedEntry([e, null])).toEqual(e);
+	});
+
+	it('diverging progress → the furthest-along entry (writing it back never lowers a tracker)', () => {
+		const a: EntryView = { status: 'watching', progress: 3 };
+		const b: EntryView = { status: 'watching', progress: 12 };
+		expect(pickSeedEntry([a, b])).toEqual(b);
+		expect(pickSeedEntry([b, a])).toEqual(b);
+	});
+
+	it('equal progress → the more-committed status wins (completed over watching)', () => {
+		const watching: EntryView = { status: 'watching', progress: 12 };
+		const completed: EntryView = { status: 'completed', progress: 12 };
+		expect(pickSeedEntry([watching, completed])).toEqual(completed);
+		expect(pickSeedEntry([completed, watching])).toEqual(completed);
 	});
 });
 
