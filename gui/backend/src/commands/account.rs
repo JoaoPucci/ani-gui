@@ -38,8 +38,10 @@ use crate::meta::mal_user::MalProvider;
 
 /// The per-show async mutex callers hold across the read + upsert.
 type ShowLock = Arc<tokio::sync::Mutex<()>>;
-/// Process-wide map of `(provider, media id)` → its [`ShowLock`].
-type ShowLockMap = Mutex<HashMap<(ProviderKind, u32), ShowLock>>;
+/// Process-wide map of `(provider, Kitsu id)` → its [`ShowLock`]. Keyed on
+/// the Kitsu id (not the native media id) so the lock can be taken before
+/// `resolve_native_media_id`, serializing the whole resolve→read/write.
+type ShowLockMap = Mutex<HashMap<(ProviderKind, String), ShowLock>>;
 
 /// Per-(provider, native media id) serialization for write-back.
 ///
@@ -69,12 +71,14 @@ impl AccountWriteLocks {
         Self::default()
     }
 
-    /// The lock guarding writes to one `(provider, media id)`. The brief
-    /// std-mutex section only swaps the `Arc`; the returned async mutex
-    /// is what the caller holds across the network round-trips.
-    pub(crate) fn for_show(&self, kind: ProviderKind, media_id: u32) -> ShowLock {
+    /// The lock guarding writes to one `(provider, Kitsu id)`. Taken before
+    /// native-id resolution so a seed read and a mark-watched write for the
+    /// same show serialize across the whole resolve→read/write. The brief
+    /// std-mutex section only swaps the `Arc`; the returned async mutex is
+    /// what the caller holds across the network round-trips.
+    pub(crate) fn for_show(&self, kind: ProviderKind, kitsu_id: &str) -> ShowLock {
         let mut map = self.inner.lock().expect("account write-lock map poisoned");
-        Arc::clone(map.entry((kind, media_id)).or_default())
+        Arc::clone(map.entry((kind, kitsu_id.to_owned())).or_default())
     }
 }
 
@@ -524,6 +528,14 @@ async fn push_progress_with_anilist_base(
     update: EntryUpdate,
     anilist_base: Option<&str>,
 ) -> Result<Option<ListEntry>> {
+    // Take the per-show lock BEFORE resolving the native id, keyed on the
+    // Kitsu id, so this write serializes with the editor's seed read (which
+    // takes the same lock) across the whole resolve→read/write — closing the
+    // window where a read could resolve, win the lock, and read a value this
+    // write is about to change (Codex P2 #3428252253). Held across the GET +
+    // upsert since providers only upsert (no compare-and-set).
+    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
+    let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
         return Ok(None);
     };
@@ -535,8 +547,13 @@ async fn push_progress_with_anilist_base(
 
 /// The monotonic write-back with the provider injected, so tests drive
 /// it against a wiremock-backed provider (the public path builds the
-/// real one). Holds the per-show lock across the read → reconcile →
-/// write → cache write-through.
+/// real one). The per-show lock is held by the caller
+/// ([`push_progress_with_anilist_base`]) across resolve → this read →
+/// reconcile → write → cache write-through, so the read-then-write
+/// monotonic guard is atomic (Codex P2 #3387237642): the route callers
+/// fire syncWatchedToTrackers without awaiting, so two writes for the
+/// same show would otherwise both read the same count and the
+/// later-landing lower one would regress it.
 async fn push_progress_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -545,14 +562,6 @@ async fn push_progress_via(
     native: ProviderMediaId,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
-    // Serialize writes to this show so the read-then-write monotonic
-    // guard is atomic: the route callers fire syncWatchedToTrackers
-    // without awaiting, so two writes for the same show can otherwise
-    // both read the same current count and the later-landing lower one
-    // regresses it (Codex P2 #3387237642). Held across the GET + upsert
-    // since providers only upsert (no compare-and-set).
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _write_guard = show_lock.lock().await;
     // Monotonic guard (Codex P1 #3386909281 / P2 #3387051891): reconcile
     // the write against the tracker's current count so a replay can't
     // regress progress or downgrade a finished show, while still letting

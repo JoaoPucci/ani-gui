@@ -205,8 +205,24 @@ async fn get_entry(
     Ok(Json(view))
 }
 
-/// Remove a show from the user's tracker list (editor "Remove"). 204
-/// whether or not a row existed — idempotent.
+/// Map `remove_entry`'s result to a status: 204 when a tracker entry was
+/// actually removed (or was already gone — idempotent), 404 when no
+/// connected provider maps this show so nothing could be removed. The 404
+/// matters for the renderer's multi-tracker fan-out: it counts any
+/// resolved DELETE as a successful removal, so an unmappable provider must
+/// reject rather than mask a real provider's failed delete (mirrors the
+/// set path replying `null` for an unmappable show).
+fn remove_entry_status(removed: bool) -> StatusCode {
+    if removed {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+/// Remove a show from the user's tracker list (editor "Remove").
+/// Idempotent: 204 whether or not a row existed, as long as the show maps
+/// to the provider; 404 when it doesn't (see [`remove_entry_status`]).
 async fn delete_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -216,8 +232,8 @@ async fn delete_entry(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    account_edit::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    let removed = account_edit::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    Ok(remove_entry_status(removed))
 }
 
 async fn post_exchange_code(

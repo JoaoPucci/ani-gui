@@ -244,23 +244,58 @@ async fn push_progress_via_folds_the_cache_write_through_under_the_lock() {
 
 #[test]
 fn account_write_locks_share_one_mutex_per_show() {
-    // Codex P2 #3387237642: serialization only works if every call for
-    // the same (provider, show) gets the SAME mutex, and distinct shows
-    // get distinct ones (so they stay concurrent).
+    // Codex P2 #3387237642 / #3428252253: serialization only works if
+    // every call for the same (provider, show) gets the SAME mutex, and
+    // distinct shows get distinct ones. The key is the Kitsu id so the
+    // lock can be taken BEFORE native-id resolution — the editor's seed
+    // read and a mark-watched write serialize over the whole resolve →
+    // read/write sequence, not just the post-resolve tail.
     let locks = AccountWriteLocks::new();
-    let a1 = locks.for_show(ProviderKind::MyAnimeList, 21);
-    let a2 = locks.for_show(ProviderKind::MyAnimeList, 21);
+    let a1 = locks.for_show(ProviderKind::MyAnimeList, "12");
+    let a2 = locks.for_show(ProviderKind::MyAnimeList, "12");
     assert!(std::sync::Arc::ptr_eq(&a1, &a2), "same show → same mutex");
-    let other_show = locks.for_show(ProviderKind::MyAnimeList, 22);
+    let other_show = locks.for_show(ProviderKind::MyAnimeList, "99");
     assert!(
         !std::sync::Arc::ptr_eq(&a1, &other_show),
         "different show → different mutex"
     );
-    let other_provider = locks.for_show(ProviderKind::AniList, 21);
+    let other_provider = locks.for_show(ProviderKind::AniList, "12");
     assert!(
         !std::sync::Arc::ptr_eq(&a1, &other_provider),
         "same id, different provider → different mutex"
     );
+}
+
+#[tokio::test]
+async fn push_progress_waits_for_the_show_lock_before_resolving() {
+    // Codex P2 #3428252253: the mark-watched write must take the per-show
+    // lock BEFORE resolve_native_media_id, keyed on the Kitsu id, so it
+    // serializes with the editor's seed read (same lock) across the
+    // resolve window. Hold the Kitsu-id lock and assert push_progress
+    // can't begin (blocks at the lock, never reaching resolve) until it's
+    // released.
+    use std::time::Duration;
+    let state = state_with_kitsu("http://127.0.0.1:1");
+    let tokens = Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let show_lock = state
+        .account_write_locks
+        .for_show(ProviderKind::MyAnimeList, "12");
+    let guard = show_lock.lock().await;
+    let update = crate::account::provider::EntryUpdate {
+        progress_episodes: Some(5),
+        ..Default::default()
+    };
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+        _ = push_progress(&state, ProviderKind::MyAnimeList, &tokens, "12", update) => {
+            panic!("push_progress proceeded while the show's Kitsu-id lock was held");
+        }
+    }
+    drop(guard);
 }
 
 #[test]
