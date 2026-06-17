@@ -82,33 +82,48 @@ export async function setEntryAcrossTrackers(
 	return results.filter(Boolean).length;
 }
 
+/** The outcome of a multi-tracker removal, split so the caller can tell a
+ *  clean removal (`failed === 0`) from a partial one (some tracker still
+ *  has the row). Absent trackers contribute to neither tally. */
+export interface RemoveOutcome {
+	/** Trackers that had the entry and removed it. */
+	removed: number;
+	/** Trackers we couldn't confirm clean — a present tracker whose delete
+	 *  failed, a read that threw, or an unreachable (no-bearer) provider. */
+	failed: number;
+}
+
 /**
- * Remove a show from every connected tracker that actually has it. Reads
- * each provider first: a provider without the row is skipped (its delete
- * would be a no-op and must not count toward success), so an already-absent
- * tracker can't mask a real provider's failed delete. Returns the count of
- * providers that had the entry and removed it.
+ * Remove a show from every connected tracker that has it. Reads each
+ * provider first: a provider without the row is skipped (its delete would
+ * be a no-op and must not count). A present tracker whose delete fails — or
+ * any provider we can't confirm clean (read threw, no bearer) — is tallied
+ * as `failed`, so the caller keeps the entry visible rather than claiming a
+ * clean removal while a tracker still has the row.
  */
 export async function removeEntryAcrossTrackers(
 	deps: RemoveEntryDeps,
 	kitsuId: string
-): Promise<number> {
-	if (!kitsuId || deps.connected.length === 0) return 0;
+): Promise<RemoveOutcome> {
+	if (!kitsuId || deps.connected.length === 0) return { removed: 0, failed: 0 };
 	const results = await Promise.all(
-		deps.connected.map(async (provider) => {
+		deps.connected.map(async (provider): Promise<'removed' | 'failed' | 'absent'> => {
 			const bearer = await deps.bearerFor(provider);
-			if (!bearer) return false;
+			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
 				const current = await deps.getEntry(provider, bearer, kitsuId);
-				if (current === null) return false; // nothing to remove here
+				if (current === null) return 'absent'; // nothing to remove here
 				await deps.removeEntry(provider, bearer, kitsuId);
-				return true;
+				return 'removed';
 			} catch {
-				return false;
+				return 'failed';
 			}
 		})
 	);
-	return results.filter(Boolean).length;
+	return {
+		removed: results.filter((r) => r === 'removed').length,
+		failed: results.filter((r) => r === 'failed').length
+	};
 }
 
 /**
@@ -128,13 +143,15 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<n
 	return n;
 }
 
-/** Live-store wiring for "Remove from list". See [`syncSetEntry`]. */
-export async function syncRemoveEntry(kitsuId: string): Promise<number> {
+/** Live-store wiring for "Remove from list". See [`syncSetEntry`]. Returns
+ *  the split outcome so the editor only reports a clean removal when no
+ *  tracker that had the row was left behind. */
+export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 	const connected = accountStore.connected;
-	const n = await removeEntryAcrossTrackers(
+	const outcome = await removeEntryAcrossTrackers(
 		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, removeEntry },
 		kitsuId
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
-	return n;
+	return outcome;
 }

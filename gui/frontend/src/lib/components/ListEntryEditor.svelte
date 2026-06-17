@@ -161,13 +161,13 @@
 		if (disabled) return;
 		busy = true;
 		try {
-			const n = await syncRemoveEntry(kitsuId);
-			// The fan-out swallows per-provider failures and returns the
-			// success count, so mirror the save path: only clear local state
-			// and report success when at least one tracker actually removed
-			// the entry. n === 0 (offline/401/no bearer) is a failure — the
-			// entry is still on the tracker, so don't pretend it's gone.
-			if (n > 0) {
+			const { removed, failed } = await syncRemoveEntry(kitsuId);
+			// Only report a clean removal when every tracker that had the entry
+			// was removed (failed === 0) and at least one actually was. If any
+			// present tracker's delete failed — or we couldn't reach one — the
+			// title still lives on a tracker, so keep the entry visible and
+			// report failure rather than pretending it's gone everywhere.
+			if (failed === 0 && removed > 0) {
 				live = null;
 				toastStore.push({ kind: 'success', message: m.detail_list_removed() });
 				open = false;

@@ -81,8 +81,8 @@ describe('syncSetEntry', () => {
 describe('syncRemoveEntry', () => {
 	it('removes from every connected tracker and invalidates Watch Later', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
-		const n = await syncRemoveEntry('kitsu-12');
-		expect(n).toBe(1);
+		const out = await syncRemoveEntry('kitsu-12');
+		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledWith('anilist', 'tok-a', 'kitsu-12');
 		expect(invalidateWatchLater).toHaveBeenCalledTimes(1);
 	});
