@@ -18,12 +18,12 @@
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
 	import {
-		STATUS_OPTIONS,
 		clampProgress,
 		deriveListEntryView,
 		editorInitial,
 		effectiveProgress,
-		listButtonLabel
+		listButtonLabel,
+		statusOptionsFor
 	} from '$lib/account/list-entry-view';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -33,11 +33,14 @@
 		kitsuId,
 		total = null,
 		current = null,
+		airing = false,
 		disabled = false
 	}: {
 		kitsuId: string;
 		total?: number | null;
 		current?: EntryView | null;
+		/** The show hasn't finished airing — Completed/Rewatching are hidden. */
+		airing?: boolean;
 		disabled?: boolean;
 	} = $props();
 
@@ -48,6 +51,10 @@
 	let live = $derived(current);
 
 	const view = $derived(deriveListEntryView(live, total));
+
+	// While the show is airing, Completed/Rewatching are hidden — unless the
+	// entry is already set to one (keep it visible so we don't downgrade it).
+	const statusChoices = $derived(statusOptionsFor(airing, view.status));
 
 	function statusLabel(s: ListStatus): string {
 		switch (s) {
@@ -201,7 +208,7 @@
 						value={editStatus}
 						onchange={(e) => pickStatus((e.currentTarget as HTMLSelectElement).value as ListStatus)}
 					>
-						{#each STATUS_OPTIONS as s (s)}
+						{#each statusChoices as s (s)}
 							<option value={s}>{statusLabel(s)}</option>
 						{/each}
 					</select>

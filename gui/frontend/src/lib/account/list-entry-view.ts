@@ -16,6 +16,23 @@ export const STATUS_OPTIONS: ListStatus[] = [
 	'rewatching'
 ];
 
+/** Statuses that imply the show is finished — you can't have completed (or be
+ *  rewatching) a title that's still airing. Hidden from the picker while the
+ *  show is airing. */
+const FINISHED_ONLY_STATUSES: ListStatus[] = ['completed', 'rewatching'];
+
+/**
+ * The status options to offer given whether the show is still `airing` and
+ * the entry's `current` status. While airing, Completed and Rewatching are
+ * dropped (you can't finish an unfinished show) — except a status the entry
+ * is *already* set to (e.g. completed on another client) is kept, so the
+ * editor reflects reality and doesn't silently downgrade it.
+ */
+export function statusOptionsFor(airing: boolean, current: ListStatus | null): ListStatus[] {
+	if (!airing) return STATUS_OPTIONS;
+	return STATUS_OPTIONS.filter((s) => !FINISHED_ONLY_STATUSES.includes(s) || s === current);
+}
+
 // How "committed" each status is, for breaking ties when two trackers
 // sit at the same episode count. A higher rank means further along the
 // watch lifecycle, so on a tie we seed from the more-engaged entry.

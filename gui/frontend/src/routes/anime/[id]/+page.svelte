@@ -1119,6 +1119,7 @@
 									kitsuId={id}
 									total={detail.episode_count ?? null}
 									current={listEntry}
+									airing={detail.status != null && detail.status !== 'finished'}
 									disabled={listEntryLoading || listEntryError}
 								/>
 							{/if}
