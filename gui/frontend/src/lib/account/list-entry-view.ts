@@ -106,3 +106,27 @@ export function editorInitial(view: ListEntryView): { status: ListStatus; progre
 		progress: view.progress
 	};
 }
+
+/**
+ * Build the edit the editor's Save fans out to every connected tracker.
+ * Progress always rides along (the count converges per explicit-edits-win).
+ * Status is written only when it's meaningful: when adding a show (no
+ * tracker has it, so there's no divergent state to clobber) or when the
+ * user changed it from the seeded value. Otherwise status is omitted so a
+ * Save that only touched the episode count leaves each tracker's own
+ * status intact — the seed collapses divergent trackers to one status, and
+ * blindly writing it back would wipe a deliberate rewatching/paused/dropped
+ * state on another tracker.
+ */
+export function buildListEdit(opts: {
+	onList: boolean;
+	seededStatus: ListStatus;
+	status: ListStatus;
+	progress: number;
+}): { status?: ListStatus; progress: number } {
+	const edit: { status?: ListStatus; progress: number } = { progress: opts.progress };
+	if (!opts.onList || opts.status !== opts.seededStatus) {
+		edit.status = opts.status;
+	}
+	return edit;
+}

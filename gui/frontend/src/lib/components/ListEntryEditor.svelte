@@ -18,6 +18,7 @@
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import {
 		STATUS_OPTIONS,
+		buildListEdit,
 		deriveListEntryView,
 		editorInitial,
 		listButtonLabel
@@ -70,6 +71,10 @@
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let editStatus = $state<ListStatus>('planning');
 	let editProgress = $state(0);
+	// The status the editor opened on (the seed). Save sends status only when
+	// the user moved it off this, so a save that only touched the episode
+	// count doesn't converge a divergent status across trackers.
+	let seededStatus = $state<ListStatus>('planning');
 
 	const popoverControls = createPopoverControls({
 		getTrigger: () => trigger,
@@ -101,6 +106,7 @@
 		const init = editorInitial(view);
 		editStatus = init.status;
 		editProgress = init.progress;
+		seededStatus = init.status;
 		open = true;
 	}
 
@@ -132,8 +138,12 @@
 		// the user changed mid-request that were never sent to the tracker.
 		const status = editStatus;
 		const progress = editProgress;
+		const onList = view.onList;
 		try {
-			const n = await syncSetEntry(kitsuId, { status, progress });
+			const n = await syncSetEntry(
+				kitsuId,
+				buildListEdit({ onList, seededStatus, status, progress })
+			);
 			if (n > 0) {
 				live = { status, progress };
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
