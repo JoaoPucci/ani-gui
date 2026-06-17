@@ -50,16 +50,18 @@ async fn get_entry_via(
     tokens: &Tokens,
     kitsu_id: &str,
 ) -> Result<Option<CurrentEntry>> {
+    // Take the per-show lock keyed on the Kitsu id BEFORE resolving the
+    // native id, so the seed read serializes with a mark-watched write
+    // (which takes the same lock before its own resolve) across the entire
+    // resolve→read — the read can't slip in during the write's resolve
+    // window and observe a value the write is about to change (Codex P2
+    // #3427461062 / #3428252253). A later explicit Save would otherwise
+    // force-write that stale value over the just-synced higher one.
+    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
+    let _read_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
-    // Take the same per-show lock set_entry/remove_entry hold, so the
-    // editor seed read can't observe a value mid-overwrite by an in-flight
-    // mark-watched sync. Without it the editor could open on the old
-    // progress and a later explicit Save would force-write that stale value
-    // back over the just-synced higher one.
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _read_guard = show_lock.lock().await;
     provider.current_entry(tokens, native).await
 }
 
@@ -92,13 +94,14 @@ async fn set_entry_via(
     kitsu_id: &str,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
+    // Per-show lock keyed on the Kitsu id, taken before resolve so an
+    // explicit edit and a concurrent mark-watched write serialize across
+    // their whole resolve→write (Codex P2 #3428252253).
+    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
+    let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
-    // Per-show lock for symmetry with push_progress, so an explicit edit
-    // and a concurrent mark-watched write don't interleave.
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _write_guard = show_lock.lock().await;
     let entry = provider.update_entry(tokens, native, update).await?;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
@@ -133,11 +136,14 @@ async fn remove_entry_via(
     tokens: &Tokens,
     kitsu_id: &str,
 ) -> Result<bool> {
+    // Per-show lock keyed on the Kitsu id, taken before resolve so the
+    // delete serializes with a concurrent mark-watched write / editor read
+    // across their whole resolve→write (Codex P2 #3428252253).
+    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
+    let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(false);
     };
-    let show_lock = state.account_write_locks.for_show(kind, native.0);
-    let _write_guard = show_lock.lock().await;
     // The title may already be gone upstream (double-click Remove, or
     // removed in another client). Providers signal that differently —
     // MAL returns Upstream{404}, AniList fails the row-id lookup with a
