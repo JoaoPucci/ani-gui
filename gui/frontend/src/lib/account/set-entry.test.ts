@@ -25,12 +25,12 @@ describe('setEntryAcrossTrackers', () => {
 			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? present : null)
 		);
 		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const n = await setEntryAcrossTrackers(
+		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
 			{ status: 'watching', seededStatus: 'watching', progress: 6 }
 		);
-		expect(n).toBe(2);
+		expect(out).toEqual({ written: 2, failed: 0 });
 		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok', { kitsu_id: 'kitsu-12', progress: 6 });
 		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', {
 			kitsu_id: 'kitsu-12',
@@ -42,12 +42,12 @@ describe('setEntryAcrossTrackers', () => {
 	it('sends status to every provider when the user changed it (a deliberate convergence)', async () => {
 		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
 		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const n = await setEntryAcrossTrackers(
+		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
 			{ status: 'paused', seededStatus: 'watching', progress: 6 }
 		);
-		expect(n).toBe(2);
+		expect(out).toEqual({ written: 2, failed: 0 });
 		for (const p of ['anilist', 'mal'] as Provider[]) {
 			expect(setEntry).toHaveBeenCalledWith(p, 'tok', {
 				kitsu_id: 'kitsu-12',
@@ -57,10 +57,10 @@ describe('setEntryAcrossTrackers', () => {
 		}
 	});
 
-	it('skips providers with no bearer (no read, no write)', async () => {
+	it('a provider with no bearer is a failure (unreachable), and is neither read nor written', async () => {
 		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
 		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const n = await setEntryAcrossTrackers(
+		const out = await setEntryAcrossTrackers(
 			{
 				connected: ['anilist', 'mal'],
 				bearerFor: (p) => (p === 'anilist' ? 'tok-a' : null),
@@ -70,24 +70,24 @@ describe('setEntryAcrossTrackers', () => {
 			'kitsu-12',
 			{ status: 'planning', seededStatus: 'planning', progress: 0 }
 		);
-		expect(n).toBe(1);
+		expect(out).toEqual({ written: 1, failed: 1 });
 		expect(getEntry).toHaveBeenCalledTimes(1);
 		expect(setEntry).toHaveBeenCalledTimes(1);
 	});
 
-	it('an unmappable setEntry (null) is not counted, and a throw does not block others', async () => {
+	it('an unmappable setEntry (null) is neither written nor failed; a throw is a failure', async () => {
 		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
 		const setEntry = vi.fn(async (p: Provider) => {
-			if (p === 'anilist') throw new Error('network');
-			if (p === 'mal') return null; // unmappable
-			return fakeEntry(p);
+			if (p === 'anilist') throw new Error('network'); // failed
+			if (p === 'mal') return null; // unmappable → neither
+			return fakeEntry(p); // inhouse → written
 		});
-		const n = await setEntryAcrossTrackers(
+		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal', 'inhouse'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
 			{ status: 'planning', seededStatus: 'planning', progress: 0 }
 		);
-		expect(n).toBe(1); // only inhouse succeeded
+		expect(out).toEqual({ written: 1, failed: 1 });
 	});
 
 	it('no-ops with no connected providers or empty kitsu id', async () => {
@@ -100,14 +100,14 @@ describe('setEntryAcrossTrackers', () => {
 				'k',
 				save
 			)
-		).toBe(0);
+		).toEqual({ written: 0, failed: 0 });
 		expect(
 			await setEntryAcrossTrackers(
 				{ connected: ['anilist'], bearerFor: () => 't', getEntry, setEntry },
 				'',
 				save
 			)
-		).toBe(0);
+		).toEqual({ written: 0, failed: 0 });
 		expect(setEntry).not.toHaveBeenCalled();
 	});
 });
