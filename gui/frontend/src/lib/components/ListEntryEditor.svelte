@@ -142,8 +142,13 @@
 			// tracker and decides whether to write status (only where the row
 			// is missing or the user changed it off `seededStatus`), so a
 			// progress-only save can't flatten a divergent status elsewhere.
-			const n = await syncSetEntry(kitsuId, { status, seededStatus, progress });
-			if (n > 0) {
+			const { written, failed } = await syncSetEntry(kitsuId, { status, seededStatus, progress });
+			// Only report a clean save when every connected tracker the edit
+			// reached accepted it (failed === 0) and at least one was written.
+			// On any partial failure, leave `live` untouched and report failure
+			// rather than showing the new status/progress as if it saved
+			// everywhere while a tracker stayed stale.
+			if (failed === 0 && written > 0) {
 				live = { status, progress };
 				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 				open = false;

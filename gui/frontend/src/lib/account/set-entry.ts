@@ -46,25 +46,37 @@ export interface RemoveEntryDeps {
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
 }
 
+/** The outcome of a multi-tracker save, split so the caller can tell a
+ *  clean save (`failed === 0`) from a partial one (a connected tracker the
+ *  edit didn't reach). An unmappable provider counts toward neither. */
+export interface SetOutcome {
+	/** Trackers the edit was written to. */
+	written: number;
+	/** Trackers we couldn't confirm written — a write that threw, or an
+	 *  unreachable (no-bearer) provider. */
+	failed: number;
+}
+
 /**
  * Write the editor's save to every connected tracker, deciding per
  * provider off that provider's live entry: send `status` only where the
  * row is missing (so it's created with the editor's status) or where the
  * user changed it; otherwise send progress alone so a tracker keeps its
- * own status. Best-effort — a missing bearer is skipped, and an unmappable
- * show (`setEntry` → null) or a thrown error counts as not-written without
- * blocking the others. Returns how many providers accepted the write.
+ * own status. A write that throws — or a provider we can't reach (no
+ * bearer) — is tallied as `failed`; an unmappable show (`setEntry` → null)
+ * is neither, so the caller can require `failed === 0` before treating the
+ * save as clean rather than silently leaving a connected tracker stale.
  */
 export async function setEntryAcrossTrackers(
 	deps: SetEntryDeps,
 	kitsuId: string,
 	save: EditorSave
-): Promise<number> {
-	if (!kitsuId || deps.connected.length === 0) return 0;
+): Promise<SetOutcome> {
+	if (!kitsuId || deps.connected.length === 0) return { written: 0, failed: 0 };
 	const results = await Promise.all(
-		deps.connected.map(async (provider) => {
+		deps.connected.map(async (provider): Promise<'written' | 'failed' | 'skip'> => {
 			const bearer = await deps.bearerFor(provider);
-			if (!bearer) return false;
+			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
 				const current = await deps.getEntry(provider, bearer, kitsuId);
 				const edit = buildListEdit({
@@ -73,13 +85,17 @@ export async function setEntryAcrossTrackers(
 					status: save.status,
 					progress: save.progress
 				});
-				return (await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit })) !== null;
+				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
+				return res !== null ? 'written' : 'skip'; // null = unmappable → neither
 			} catch {
-				return false;
+				return 'failed';
 			}
 		})
 	);
-	return results.filter(Boolean).length;
+	return {
+		written: results.filter((r) => r === 'written').length,
+		failed: results.filter((r) => r === 'failed').length
+	};
 }
 
 /** The outcome of a multi-tracker removal, split so the caller can tell a
@@ -132,15 +148,15 @@ export async function removeEntryAcrossTrackers(
  * invalidate the Watch Later snapshot (a status change can cross the
  * planning boundary). Returns the success count for toast feedback.
  */
-export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<number> {
+export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<SetOutcome> {
 	const connected = accountStore.connected;
-	const n = await setEntryAcrossTrackers(
+	const outcome = await setEntryAcrossTrackers(
 		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, setEntry },
 		kitsuId,
 		save
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
-	return n;
+	return outcome;
 }
 
 /** Live-store wiring for "Remove from list". See [`syncSetEntry`]. Returns

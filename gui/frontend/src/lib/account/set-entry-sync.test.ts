@@ -56,12 +56,12 @@ describe('syncSetEntry', () => {
 		getEntry.mockResolvedValue(null);
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
-		const n = await syncSetEntry('kitsu-12', {
+		const out = await syncSetEntry('kitsu-12', {
 			status: 'watching',
 			seededStatus: 'watching',
 			progress: 3
 		});
-		expect(n).toBe(2);
+		expect(out).toEqual({ written: 2, failed: 0 });
 		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok-a', {
 			kitsu_id: 'kitsu-12',
 			status: 'watching',
@@ -73,7 +73,7 @@ describe('syncSetEntry', () => {
 	it('no-ops with no connected provider', async () => {
 		expect(
 			await syncSetEntry('kitsu-12', { status: 'planning', seededStatus: 'planning', progress: 0 })
-		).toBe(0);
+		).toEqual({ written: 0, failed: 0 });
 		expect(setEntry).not.toHaveBeenCalled();
 	});
 });
