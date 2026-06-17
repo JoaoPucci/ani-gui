@@ -19,6 +19,7 @@
 	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
 	import {
 		STATUS_OPTIONS,
+		clampProgress,
 		deriveListEntryView,
 		editorInitial,
 		listButtonLabel
@@ -118,13 +119,14 @@
 	}
 
 	function step(delta: number) {
-		const next = editProgress + delta;
-		editProgress = next < 0 ? 0 : next;
+		editProgress = clampProgress(editProgress + delta, total);
 	}
 
 	function onProgressInput(e: Event) {
-		const raw = Number.parseInt((e.currentTarget as HTMLInputElement).value, 10);
-		editProgress = Number.isFinite(raw) && raw > 0 ? raw : 0;
+		editProgress = clampProgress(
+			Number.parseInt((e.currentTarget as HTMLInputElement).value, 10),
+			total
+		);
 	}
 
 	async function save() {
@@ -187,15 +189,18 @@
 		<div id="list-entry-pop" class="le-pop" role="dialog" aria-label={m.detail_list_editor_aria()}>
 			<label class="le-field">
 				<span class="le-label">{m.detail_list_status_label()}</span>
-				<select
-					class="le-select"
-					value={editStatus}
-					onchange={(e) => pickStatus((e.currentTarget as HTMLSelectElement).value as ListStatus)}
-				>
-					{#each STATUS_OPTIONS as s (s)}
-						<option value={s}>{statusLabel(s)}</option>
-					{/each}
-				</select>
+				<div class="le-select-wrap">
+					<select
+						class="le-select"
+						value={editStatus}
+						onchange={(e) => pickStatus((e.currentTarget as HTMLSelectElement).value as ListStatus)}
+					>
+						{#each STATUS_OPTIONS as s (s)}
+							<option value={s}>{statusLabel(s)}</option>
+						{/each}
+					</select>
+					<span class="le-caret" aria-hidden="true">▾</span>
+				</div>
 			</label>
 
 			<div class="le-field">
@@ -211,6 +216,7 @@
 						class="le-count"
 						type="number"
 						min="0"
+						max={total ?? undefined}
 						inputmode="numeric"
 						value={editProgress}
 						oninput={onProgressInput}
@@ -306,13 +312,32 @@
 		text-transform: uppercase;
 		color: var(--bone-400);
 	}
+	.le-select-wrap {
+		position: relative;
+		display: block;
+	}
 	.le-select {
-		padding: var(--space-2) var(--space-3);
+		/* Drop the native arrow and draw our own caret (.le-caret) so it
+		   sits with breathing room from the edge, not jammed against it.
+		   inline-end padding reserves room for the caret. */
+		appearance: none;
+		inline-size: 100%;
+		padding: var(--space-2) calc(var(--space-3) + 1.25rem) var(--space-2) var(--space-3);
 		font: inherit;
 		color: var(--bone-100);
 		background: var(--ink-000);
 		border: 1px solid var(--ink-200);
 		border-radius: var(--radius-control, 6px);
+	}
+	.le-caret {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-end: var(--space-3);
+		display: grid;
+		place-items: center;
+		font-family: var(--font-mono);
+		color: var(--bone-300);
+		pointer-events: none;
 	}
 	.le-stepper {
 		display: inline-flex;
@@ -343,6 +368,15 @@
 		border: 1px solid var(--ink-200);
 		border-radius: var(--radius-control, 6px);
 		font-variant-numeric: tabular-nums;
+		/* The custom −/+ steppers replace the native spinners, which would
+		   otherwise double up the controls. */
+		appearance: textfield;
+		-moz-appearance: textfield;
+	}
+	.le-count::-webkit-outer-spin-button,
+	.le-count::-webkit-inner-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
 	}
 	.le-total {
 		font-family: var(--font-mono);

@@ -153,3 +153,16 @@ export function buildListEdit(opts: {
 export function effectiveStatus(status: ListStatus, progress: number): ListStatus {
 	return status === 'planning' && progress > 0 ? 'watching' : status;
 }
+
+/**
+ * Clamp an episode count the editor is about to set: floor at 0, coerce a
+ * non-finite entry (empty/NaN input) to 0, floor a fraction to a whole
+ * episode, and — when the show's total is known — cap at it, so the user
+ * can't confirm an episode the show doesn't have. The total is left
+ * uncapped when unknown (an ongoing show whose count metadata is missing).
+ */
+export function clampProgress(value: number, total: number | null): number {
+	if (!Number.isFinite(value) || value < 0) return 0;
+	const whole = Math.floor(value);
+	return total !== null && whole > total ? total : whole;
+}
