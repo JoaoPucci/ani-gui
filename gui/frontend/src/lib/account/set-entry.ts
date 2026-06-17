@@ -80,7 +80,7 @@ export async function setEntryAcrossTrackers(
 			try {
 				const current = await deps.getEntry(provider, bearer, kitsuId);
 				const edit = buildListEdit({
-					onList: current !== null,
+					current: current?.status ?? null,
 					seededStatus: save.seededStatus,
 					status: save.status,
 					progress: save.progress

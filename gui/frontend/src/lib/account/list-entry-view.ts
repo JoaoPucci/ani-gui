@@ -108,25 +108,34 @@ export function editorInitial(view: ListEntryView): { status: ListStatus; progre
 }
 
 /**
- * Build the edit the editor's Save fans out to every connected tracker.
- * Progress always rides along (the count converges per explicit-edits-win).
- * Status is written only when it's meaningful: when adding a show (no
- * tracker has it, so there's no divergent state to clobber) or when the
- * user changed it from the seeded value. Otherwise status is omitted so a
- * Save that only touched the episode count leaves each tracker's own
- * status intact — the seed collapses divergent trackers to one status, and
- * blindly writing it back would wipe a deliberate rewatching/paused/dropped
- * state on another tracker.
+ * Build the per-tracker edit the editor's Save sends to one connected
+ * tracker, given that tracker's own current status (`current`, null when
+ * it doesn't have the row). Progress always rides along (the count
+ * converges per explicit-edits-win). Status is written when:
+ *   - the tracker doesn't have the row yet (create it with the editor's
+ *     status), or
+ *   - the user changed status off the seeded value (a deliberate
+ *     convergence across trackers), or
+ *   - the tracker's own row is `planning` and we're saving positive
+ *     progress without a status change — promote it to `watching`, since
+ *     the explicit /set path skips the planning→watching promotion the
+ *     auto mark-watched path applies and a Plan-to-Watch row with watched
+ *     episodes would keep the title in Watch Later.
+ * Otherwise status is omitted so the tracker keeps its own status — the
+ * seed collapses divergent trackers to one status, and blindly writing it
+ * back would wipe a deliberate rewatching/paused/dropped state elsewhere.
  */
 export function buildListEdit(opts: {
-	onList: boolean;
+	current: ListStatus | null;
 	seededStatus: ListStatus;
 	status: ListStatus;
 	progress: number;
 }): { status?: ListStatus; progress: number } {
 	const edit: { status?: ListStatus; progress: number } = { progress: opts.progress };
-	if (!opts.onList || opts.status !== opts.seededStatus) {
+	if (opts.current === null || opts.status !== opts.seededStatus) {
 		edit.status = opts.status;
+	} else if (opts.current === 'planning' && opts.progress > 0) {
+		edit.status = 'watching';
 	}
 	return edit;
 }
