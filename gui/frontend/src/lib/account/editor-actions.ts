@@ -8,7 +8,7 @@
 
 import type { EntryView } from './types';
 import type { EditorSave, RemoveOutcome, SetOutcome } from './set-entry';
-import { effectiveStatus } from './list-entry-view';
+import { effectiveProgress, effectiveStatus } from './list-entry-view';
 
 /**
  * Outcome of a Save: `noop` when the editor was disabled (so nothing was
@@ -44,11 +44,12 @@ export async function runEditorSave(
 	try {
 		const { written, failed } = await deps.syncSetEntry(input.kitsuId, input.save);
 		if (failed === 0 && written > 0) {
+			const status = effectiveStatus(input.save.status, input.save.progress);
 			return {
 				kind: 'saved',
 				live: {
-					status: effectiveStatus(input.save.status, input.save.progress),
-					progress: input.save.progress
+					status,
+					progress: effectiveProgress(status, input.save.progress, input.save.total ?? null)
 				}
 			};
 		}

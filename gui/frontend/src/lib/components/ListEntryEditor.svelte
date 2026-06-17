@@ -22,6 +22,7 @@
 		clampProgress,
 		deriveListEntryView,
 		editorInitial,
+		effectiveProgress,
 		listButtonLabel
 	} from '$lib/account/list-entry-view';
 	import type { EntryView, ListStatus } from '$lib/account/types';
@@ -111,20 +112,25 @@
 		open = true;
 	}
 
+	// Completed always means the full count, so the episode field is locked to
+	// the total while Completed is selected (and editing is disabled below).
+	const episodeLocked = $derived(editStatus === 'completed' && total !== null);
+
 	function pickStatus(s: ListStatus) {
 		editStatus = s;
-		// Picking Completed pre-fills the episode count to the total — the
-		// common intent. The user can still adjust it before saving.
-		if (s === 'completed' && total !== null) editProgress = total;
+		// Completed snaps the episode count to the total — you can't be
+		// completed with fewer (status wins over a partial count).
+		editProgress = effectiveProgress(s, editProgress, total);
 	}
 
 	function step(delta: number) {
-		editProgress = clampProgress(editProgress + delta, total);
+		editProgress = effectiveProgress(editStatus, clampProgress(editProgress + delta, total), total);
 	}
 
 	function onProgressInput(e: Event) {
-		editProgress = clampProgress(
-			Number.parseInt((e.currentTarget as HTMLInputElement).value, 10),
+		editProgress = effectiveProgress(
+			editStatus,
+			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), total),
 			total
 		);
 	}
@@ -135,7 +141,7 @@
 		// stay editable during the in-flight save, so reading editStatus/
 		// editProgress again after the await could optimistically show values
 		// the user changed mid-request that were never sent to the tracker.
-		const save = { status: editStatus, seededStatus, progress: editProgress };
+		const save = { status: editStatus, seededStatus, progress: editProgress, total };
 		try {
 			// runEditorSave owns the state machine (disabled gate, per-tracker
 			// fan-out outcome interpretation, optimistic `live`); the component
@@ -210,6 +216,7 @@
 						type="button"
 						class="le-step"
 						aria-label={m.detail_list_episode_decrement()}
+						disabled={episodeLocked}
 						onclick={() => step(-1)}>−</button
 					>
 					<input
@@ -219,6 +226,7 @@
 						max={total ?? undefined}
 						inputmode="numeric"
 						value={editProgress}
+						disabled={episodeLocked}
 						oninput={onProgressInput}
 						aria-label={m.detail_list_episode_label()}
 					/>
@@ -226,6 +234,7 @@
 						type="button"
 						class="le-step"
 						aria-label={m.detail_list_episode_increment()}
+						disabled={episodeLocked}
 						onclick={() => step(1)}>+</button
 					>
 					{#if total !== null}
@@ -355,8 +364,13 @@
 		border-radius: var(--radius-control, 6px);
 		cursor: pointer;
 	}
-	.le-step:hover {
+	.le-step:hover:not(:disabled) {
 		border-color: var(--bone-300);
+	}
+	.le-step:disabled,
+	.le-count:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 	.le-count {
 		inline-size: 4rem;

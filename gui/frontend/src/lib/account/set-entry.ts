@@ -21,6 +21,9 @@ export interface EditorSave {
 	status: ListStatus;
 	seededStatus: ListStatus;
 	progress: number;
+	/** The show's episode total, so a completed save snaps to the full count
+	 *  per provider. Null when unknown (ongoing show). */
+	total?: number | null;
 }
 
 export interface SetEntryDeps {
@@ -83,7 +86,8 @@ export async function setEntryAcrossTrackers(
 					current: current?.status ?? null,
 					seededStatus: save.seededStatus,
 					status: save.status,
-					progress: save.progress
+					progress: save.progress,
+					total: save.total ?? null
 				});
 				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
 				return res !== null ? 'written' : 'skip'; // null = unmappable → neither

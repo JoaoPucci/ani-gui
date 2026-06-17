@@ -109,36 +109,40 @@ export function editorInitial(view: ListEntryView): { status: ListStatus; progre
 
 /**
  * Build the per-tracker edit the editor's Save sends to one connected
- * tracker, given that tracker's own current status (`current`, null when
- * it doesn't have the row). Progress always rides along (the count
- * converges per explicit-edits-win). Status is written when:
- *   - the tracker doesn't have the row yet (create it with the editor's
- *     status), or
- *   - the user changed status off the seeded value (a deliberate
- *     convergence across trackers), or
- *   - the tracker's own row is `planning` and we're saving positive
- *     progress without a status change — promote it to `watching`, since
- *     the explicit /set path skips the planning→watching promotion the
- *     auto mark-watched path applies and a Plan-to-Watch row with watched
- *     episodes would keep the title in Watch Later.
- * Otherwise status is omitted so the tracker keeps its own status — the
- * seed collapses divergent trackers to one status, and blindly writing it
- * back would wipe a deliberate rewatching/paused/dropped state elsewhere.
+ * tracker, given that tracker's own current status (`current`, null when it
+ * doesn't have the row) and the show's episode `total`.
+ *
+ * The target status for the tracker is the user's pick when they're creating
+ * the row or deliberately changed status off the seed; otherwise we preserve
+ * the tracker's own status (the seed collapses divergent trackers to one, so
+ * blindly writing it back would wipe a deliberate rewatching/paused/dropped
+ * state elsewhere). That target is then made coherent with the progress —
+ * `planning` with watched episodes becomes `watching`; `completed` always
+ * carries the full count ([`effectiveProgress`]) — and is judged against the
+ * tracker's *real* current status, not the app's (possibly stale) seed, so a
+ * provider that's actually completed never ends up at completed/0.
+ *
+ * Status is sent only when the coherent target differs from the tracker's
+ * current (or the row is new); progress always rides along.
  */
 export function buildListEdit(opts: {
 	current: ListStatus | null;
 	seededStatus: ListStatus;
 	status: ListStatus;
 	progress: number;
+	total?: number | null;
 }): { status?: ListStatus; progress: number } {
-	const edit: { status?: ListStatus; progress: number } = { progress: opts.progress };
-	if (opts.current === null || opts.status !== opts.seededStatus) {
-		// Creating the row, or an explicit status change — write the chosen
-		// status, promoted out of planning if it carries watched episodes.
-		edit.status = effectiveStatus(opts.status, opts.progress);
-	} else if (opts.current === 'planning' && opts.progress > 0) {
-		// An existing planning row gaining progress — promote it.
-		edit.status = 'watching';
+	const total = opts.total ?? null;
+	// The user's pick wins when creating the row or when they moved status off
+	// the seed; otherwise keep this tracker's own status.
+	const target =
+		opts.current === null || opts.status !== opts.seededStatus ? opts.status : opts.current;
+	const status = effectiveStatus(target, opts.progress);
+	const edit: { status?: ListStatus; progress: number } = {
+		progress: effectiveProgress(status, opts.progress, total)
+	};
+	if (opts.current === null || status !== opts.current) {
+		edit.status = status;
 	}
 	return edit;
 }
@@ -152,6 +156,22 @@ export function buildListEdit(opts: {
  */
 export function effectiveStatus(status: ListStatus, progress: number): ListStatus {
 	return status === 'planning' && progress > 0 ? 'watching' : status;
+}
+
+/**
+ * The episode count to write for a status: a `completed` entry always carries
+ * the full count — you can't be completed with fewer (status wins over a
+ * partial episode edit), and writing completed/0 is incoherent. Every other
+ * status keeps the given count. Left untouched when the total is unknown.
+ * Shared by the write fan-out and the editor (which locks the episode field
+ * to the total while Completed is selected).
+ */
+export function effectiveProgress(
+	status: ListStatus,
+	progress: number,
+	total: number | null
+): number {
+	return status === 'completed' && total !== null ? total : progress;
 }
 
 /**
