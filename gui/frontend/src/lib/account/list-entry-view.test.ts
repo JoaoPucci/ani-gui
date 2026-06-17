@@ -257,6 +257,15 @@ describe('editorInitial', () => {
 			progress: 0
 		});
 	});
+
+	it('shows a completed entry at the full count even if it was stored short', () => {
+		// A pre-existing completed/0 (e.g. from a divergent write) must open at
+		// the full count, not a locked 0 — completed always means all episodes.
+		expect(editorInitial(deriveListEntryView({ status: 'completed', progress: 0 }, 12))).toEqual({
+			status: 'completed',
+			progress: 12
+		});
+	});
 });
 
 describe('clampProgress', () => {
