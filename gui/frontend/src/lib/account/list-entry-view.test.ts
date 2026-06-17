@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	STATUS_OPTIONS,
 	buildListEdit,
 	clampProgress,
 	deriveListEntryView,
@@ -7,7 +8,8 @@ import {
 	effectiveProgress,
 	effectiveStatus,
 	listButtonLabel,
-	pickSeedEntry
+	pickSeedEntry,
+	statusOptionsFor
 } from './list-entry-view';
 import type { EntryView } from './types';
 
@@ -265,6 +267,33 @@ describe('editorInitial', () => {
 			status: 'completed',
 			progress: 12
 		});
+	});
+});
+
+describe('statusOptionsFor', () => {
+	it('a finished show offers every status', () => {
+		expect(statusOptionsFor(false, null)).toEqual(STATUS_OPTIONS);
+	});
+
+	it('an airing show hides Completed and Rewatching (you cannot finish an unfinished show)', () => {
+		expect(statusOptionsFor(true, null)).toEqual(['planning', 'watching', 'paused', 'dropped']);
+	});
+
+	it('an airing show keeps a status the entry is already set to (e.g. completed elsewhere)', () => {
+		expect(statusOptionsFor(true, 'completed')).toEqual([
+			'planning',
+			'watching',
+			'completed',
+			'paused',
+			'dropped'
+		]);
+		expect(statusOptionsFor(true, 'rewatching')).toEqual([
+			'planning',
+			'watching',
+			'paused',
+			'dropped',
+			'rewatching'
+		]);
 	});
 });
 
