@@ -113,32 +113,35 @@ describe('setEntryAcrossTrackers', () => {
 });
 
 describe('removeEntryAcrossTrackers', () => {
-	it('counts only providers that actually had the entry', async () => {
-		// anilist has the row; mal does not. Only anilist's delete counts —
-		// the absent tracker mustn't inflate the success total.
+	it('reports removed for present trackers only; an absent tracker is neither removed nor failed', async () => {
+		// anilist has the row; mal does not. Only anilist is deleted; mal is
+		// skipped (its no-op delete must not count toward success).
 		const getEntry = vi.fn(
 			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? present : null)
 		);
 		const removeEntry = vi.fn(async () => undefined);
-		const n = await removeEntryAcrossTrackers(
+		const out = await removeEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, removeEntry },
 			'kitsu-12'
 		);
-		expect(n).toBe(1);
+		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledWith('anilist', 'tok', 'kitsu-12');
 		expect(removeEntry).not.toHaveBeenCalledWith('mal', 'tok', 'kitsu-12');
 	});
 
-	it('a failed delete on the provider that had the row is not counted', async () => {
+	it('a present tracker whose delete fails is reported as failed (partial removal)', async () => {
+		// Both have the row; mal removes, anilist's delete throws. The result
+		// must surface the failure so the editor keeps the entry visible
+		// rather than claiming a clean removal.
 		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
 		const removeEntry = vi.fn(async (p: Provider) => {
 			if (p === 'anilist') throw new Error('boom');
 		});
-		const n = await removeEntryAcrossTrackers(
+		const out = await removeEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, removeEntry },
 			'kitsu-12'
 		);
-		expect(n).toBe(1); // mal removed; anilist failed → not counted
+		expect(out).toEqual({ removed: 1, failed: 1 });
 	});
 
 	it('no-ops with no connected providers', async () => {
@@ -149,7 +152,7 @@ describe('removeEntryAcrossTrackers', () => {
 				{ connected: [], bearerFor: () => 't', getEntry, removeEntry },
 				'k'
 			)
-		).toBe(0);
+		).toEqual({ removed: 0, failed: 0 });
 		expect(removeEntry).not.toHaveBeenCalled();
 	});
 });
