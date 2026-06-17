@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildListEdit,
+	clampProgress,
 	deriveListEntryView,
 	editorInitial,
 	effectiveStatus,
@@ -195,5 +196,36 @@ describe('editorInitial', () => {
 			status: 'planning',
 			progress: 0
 		});
+	});
+});
+
+describe('clampProgress', () => {
+	it('keeps an in-range count as-is', () => {
+		expect(clampProgress(5, 24)).toBe(5);
+		expect(clampProgress(24, 24)).toBe(24);
+		expect(clampProgress(0, 24)).toBe(0);
+	});
+
+	it('caps at the episode total — no confirming an episode the show does not have', () => {
+		expect(clampProgress(30, 24)).toBe(24);
+		expect(clampProgress(99999, 12)).toBe(12);
+	});
+
+	it('floors at zero (a step below 0 or a negative entry)', () => {
+		expect(clampProgress(-1, 24)).toBe(0);
+		expect(clampProgress(-50, 24)).toBe(0);
+	});
+
+	it('coerces a non-finite entry (empty/NaN input) to zero', () => {
+		expect(clampProgress(Number.NaN, 24)).toBe(0);
+		expect(clampProgress(Number.POSITIVE_INFINITY, 24)).toBe(0);
+	});
+
+	it('floors a fractional count to a whole episode', () => {
+		expect(clampProgress(5.9, 24)).toBe(5);
+	});
+
+	it('leaves the count uncapped when the total is unknown (ongoing show)', () => {
+		expect(clampProgress(500, null)).toBe(500);
 	});
 });
