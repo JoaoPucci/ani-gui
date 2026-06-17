@@ -75,6 +75,31 @@ fn upsert_entry_does_not_regress_progress() {
 }
 
 #[test]
+fn upsert_entry_force_overwrites_lower_progress() {
+    // The explicit detail-page editor lets the user correct an
+    // over-count downward (e.g. 6 → 3). That write must land in the
+    // cache so the rail/editor reflect the corrected value — the
+    // monotonic guard on `upsert_entry` would swallow it, so the
+    // explicit path uses `upsert_entry_force`, which overwrites
+    // unconditionally.
+    let pool = open_in_memory().unwrap();
+    let mut newer = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    newer.progress_episodes = 6;
+    upsert_entry(&pool, ProviderKind::AniList, "u", &newer).unwrap();
+
+    let mut corrected = entry(ProviderKind::AniList, 1, ListStatus::Watching);
+    corrected.progress_episodes = 3;
+    upsert_entry_force(&pool, ProviderKind::AniList, "u", &corrected).unwrap();
+
+    let got = list_entries(&pool, ProviderKind::AniList, "u").unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(
+        got[0].progress_episodes, 3,
+        "an explicit downward edit must overwrite the cache"
+    );
+}
+
+#[test]
 fn upsert_entry_inserts_when_absent() {
     let pool = open_in_memory().unwrap();
     upsert_entry(

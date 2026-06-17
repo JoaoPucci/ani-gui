@@ -126,6 +126,42 @@ pub struct DisconnectFallbackQuery {
     pub fallback_user_id: Option<String>,
 }
 
+/// Renderer-supplied payload for the explicit detail-page list editor
+/// (`POST /set/:provider`). Unlike [`UpdateProgressRequest`] (the
+/// automatic mark-watched fan-out) this is a deliberate user edit, so
+/// the backend writes it verbatim — no monotonic guard. At least one of
+/// `status` / `progress` must be present (enforced by `build_entry_update`).
+#[derive(Debug, Deserialize)]
+pub struct SetEntryRequest {
+    /// Kitsu id of the show being edited.
+    pub kitsu_id: String,
+    /// New unified status (snake_case), or `None` to leave unchanged.
+    #[serde(default)]
+    pub status: Option<String>,
+    /// New episodes-watched count, or `None` to leave unchanged.
+    #[serde(default)]
+    pub progress: Option<u32>,
+}
+
+/// Query string carrying the Kitsu id for the entry read/delete routes
+/// (`GET`/`DELETE /entry/:provider?kitsu_id=…`).
+#[derive(Debug, Deserialize)]
+pub struct EntryQuery {
+    /// Kitsu id of the show whose entry is read or removed.
+    pub kitsu_id: String,
+}
+
+/// The live current list entry for one show, returned by
+/// `GET /entry/:provider`. `null` (the route returns `Option`) means the
+/// show isn't on the user's list or isn't mapped to the provider.
+#[derive(Debug, Serialize)]
+pub struct EntryView {
+    /// Unified status (snake_case) — matches `SetEntryRequest::status`.
+    pub status: String,
+    /// Episodes watched so far.
+    pub progress: u32,
+}
+
 #[cfg(test)]
 #[path = "account_wire_test.rs"]
 mod tests;

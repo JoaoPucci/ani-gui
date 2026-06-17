@@ -165,6 +165,83 @@ async fn push_progress_skips_unmappable_show_without_writing() {
     assert!(got.is_none(), "unmappable show must short-circuit to None");
 }
 
+/// A MAL provider pointed at a wiremock server.
+#[cfg(test)]
+fn mal_provider(api_uri: &str) -> crate::meta::mal_user::MalProvider {
+    crate::meta::mal_user::MalProvider::with_bases(
+        reqwest::Client::new(),
+        api_uri.to_string(),
+        "http://unused-token".to_string(),
+        crate::meta::mal_user::MalRefreshState::new(),
+    )
+}
+
+#[cfg(test)]
+fn test_tokens() -> Tokens {
+    Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    }
+}
+
+#[tokio::test]
+async fn push_progress_via_folds_the_cache_write_through_under_the_lock() {
+    // Codex P2 #3423108941 / #3423044438: the mark-watched cache
+    // write-through must run under push_progress's per-show lock (not
+    // deferred to the route afterwards), so a stale write can't land
+    // after an explicit edit. push_progress_via writes the cache itself;
+    // assert the row lands. Mock current_entry (reconcile reads it),
+    // update_entry, and /users/@me (cache owner).
+    use crate::account::cache::list_entries;
+    use wiremock::matchers::{method, path};
+    let mal = wiremock::MockServer::start().await;
+    // Not yet on the list → reconcile treats it as new and advances.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"watching","num_episodes_watched":5,"is_rewatching":false}"#,
+        ))
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"s"}"#),
+        )
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let provider = mal_provider(&mal.uri());
+    let entry = push_progress_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &test_tokens(),
+        ProviderMediaId(21),
+        crate::account::provider::EntryUpdate {
+            progress_episodes: Some(5),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("push ok")
+    .expect("mapped + written");
+    assert_eq!(entry.progress_episodes, 5);
+    let cached = list_entries(&state.cache_pool, ProviderKind::MyAnimeList, "4242").unwrap();
+    assert_eq!(
+        cached.len(),
+        1,
+        "the mark-watched write-through landed in the cache under the lock"
+    );
+    assert_eq!(cached[0].progress_episodes, 5);
+}
+
 #[test]
 fn account_write_locks_share_one_mutex_per_show() {
     // Codex P2 #3387237642: serialization only works if every call for
@@ -458,38 +535,4 @@ fn upsert_cached_entry_writes_through_to_the_cache() {
     let got = cached_list(&state, ProviderKind::AniList, "u").unwrap();
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].status, ListStatus::Watching);
-}
-
-#[tokio::test]
-async fn write_through_after_update_noop_without_entry_or_owner() {
-    // Codex P2 #3412673593: best-effort cache write-through. A None
-    // entry returns immediately; a provider with no impl (inhouse →
-    // me() errors, no network) skips the upsert. Neither writes a row.
-    use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId, Tokens};
-    use crate::account::status::ListStatus;
-    let state = state_with_kitsu("http://127.0.0.1:0");
-    let tokens = Tokens {
-        access_token: "t".into(),
-        refresh_token: None,
-        expires_at_epoch_s: i64::MAX,
-    };
-    write_through_after_update(&state, ProviderKind::AniList, &tokens, None).await;
-    assert!(cached_list(&state, ProviderKind::AniList, "u")
-        .unwrap()
-        .is_empty());
-
-    let entry = ListEntry {
-        provider: ProviderKind::InHouse,
-        media_id: ProviderMediaId(1),
-        mal_id: None,
-        status: ListStatus::Watching,
-        progress_episodes: 1,
-        score_0_to_100: None,
-        updated_at_epoch_s: 0,
-        title: "Y".into(),
-    };
-    write_through_after_update(&state, ProviderKind::InHouse, &tokens, Some(&entry)).await;
-    assert!(cached_list(&state, ProviderKind::InHouse, "u")
-        .unwrap()
-        .is_empty());
 }

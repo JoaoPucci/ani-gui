@@ -30,7 +30,7 @@ use axum::{Json, Router};
 
 use crate::account::provider::{ListEntry, ProviderKind, Tokens, UserProfile};
 use crate::app::AppState;
-use crate::commands::account;
+use crate::commands::{account, account_edit};
 use crate::error::AniError;
 
 /// Mount the account routes onto the given app state. Called from
@@ -45,6 +45,11 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/account/refresh/:provider", post(post_refresh))
         .route("/api/account/me/:provider", post(post_me))
         .route("/api/account/update/:provider", post(post_update))
+        .route("/api/account/set/:provider", post(post_set))
+        .route(
+            "/api/account/entry/:provider",
+            get(get_entry).delete(delete_entry),
+        )
         .route("/api/account/list/:provider", post(post_list))
         .route("/api/account/list/:provider/cached", get(get_cached_list))
         .route(
@@ -63,8 +68,8 @@ pub fn router() -> Router<Arc<AppState>> {
 #[path = "account_wire.rs"]
 mod account_wire;
 use account_wire::{
-    AuthUrlRequest, AuthUrlResponse, DisconnectFallbackQuery, ExchangeCodeRequest, RefreshRequest,
-    TokensResponse, UpdateProgressRequest,
+    AuthUrlRequest, AuthUrlResponse, DisconnectFallbackQuery, EntryQuery, EntryView,
+    ExchangeCodeRequest, RefreshRequest, SetEntryRequest, TokensResponse, UpdateProgressRequest,
 };
 
 /// When the disconnect-path `me()` call fails, decide whether to fall
@@ -153,13 +158,66 @@ async fn post_update(
     // Reject empty / typo'd payloads before they reach the upsert
     // (Codex P2 #3381617932).
     let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
+    // push_progress writes the cache through under its per-show lock
+    // (Codex P2 #3412673593 reflects a started title; #3423108941 keeps
+    // it under the lock so a stale write can't clobber an explicit edit).
     let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
-    // Reflect the just-synced entry in the local cache (best-effort) so
-    // the Watch Later rail drops a started title without a full resync
-    // (Codex P2 #3412673593). Logic lives in commands to keep this
-    // handler — and the file's CRAP — slim.
-    account::write_through_after_update(&state, kind, &tokens, entry.as_ref()).await;
     Ok(Json(entry))
+}
+
+/// Explicit detail-page list edit: write the user's deliberate status /
+/// progress to the tracker verbatim (no monotonic guard — they can
+/// correct an over-count downward). Returns the upserted entry, or
+/// `null` when the show couldn't be mapped to the provider.
+async fn post_set(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<SetEntryRequest>,
+) -> Result<Json<Option<ListEntry>>, AniError> {
+    let kind = parse_provider(&provider)?;
+    let bearer = bearer_from_headers(&headers)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    let update = account::build_entry_update(req.status.as_deref(), req.progress, None)?;
+    // set_entry writes verbatim (no monotonic guard) and force-upserts
+    // the cache so a downward correction reflects immediately.
+    let entry = account_edit::set_entry(&state, kind, &tokens, &req.kitsu_id, update).await?;
+    Ok(Json(entry))
+}
+
+/// Read the user's live current entry for a show so the detail-page
+/// editor opens on the real tracker state. `null` when the show isn't on
+/// the list or isn't mapped to the provider.
+async fn get_entry(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<EntryQuery>,
+) -> Result<Json<Option<EntryView>>, AniError> {
+    let kind = parse_provider(&provider)?;
+    let bearer = bearer_from_headers(&headers)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    let current = account_edit::get_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    let view = current.map(|c| EntryView {
+        status: account::status_to_snake(c.status).to_owned(),
+        progress: c.progress_episodes,
+    });
+    Ok(Json(view))
+}
+
+/// Remove a show from the user's tracker list (editor "Remove"). 204
+/// whether or not a row existed — idempotent.
+async fn delete_entry(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<EntryQuery>,
+) -> Result<StatusCode, AniError> {
+    let kind = parse_provider(&provider)?;
+    let bearer = bearer_from_headers(&headers)?;
+    let tokens = account::tokens_from_bearer(&bearer);
+    account_edit::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn post_exchange_code(

@@ -44,8 +44,65 @@ pub fn upsert_entry(
     user_id: &str,
     entry: &ListEntry,
 ) -> Result<()> {
+    upsert(pool, kind, user_id, entry, false)
+}
+
+/// Like [`upsert_entry`] but overwrites unconditionally — no monotonic
+/// progress guard. Used by the explicit detail-page list editor, where
+/// the user can deliberately correct an over-count *downward*; the
+/// guarded variant would swallow that lower value. The automatic
+/// mark-watched write-through keeps [`upsert_entry`].
+pub fn upsert_entry_force(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+) -> Result<()> {
+    upsert(pool, kind, user_id, entry, true)
+}
+
+/// Delete the single cache row for `(provider, user_id, media_id)`.
+/// Used by the explicit "Remove from list" path so the rail/editor stop
+/// showing a just-removed show without a full resync. A missing row is a
+/// no-op (0 rows affected).
+pub fn delete_entry_row(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    media_id: u32,
+) -> Result<()> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     conn.execute(
+        "DELETE FROM user_list_cache \
+         WHERE provider = ?1 AND user_id = ?2 AND media_id = ?3",
+        params![kind.slug(), user_id, i64::from(media_id)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
+/// Shared upsert. `force` drops the `WHERE excluded.progress >= …`
+/// guard so an explicit edit can lower the cached progress.
+fn upsert(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    entry: &ListEntry,
+    force: bool,
+) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let guard = if force {
+        ""
+    } else {
+        // Monotonic on progress so two racing mark-watched writes can't
+        // regress the count (Codex P2 #3416732383). Coordination with the
+        // explicit editor's force-upsert is handled by the per-show lock:
+        // push_progress now writes the cache under that lock (see
+        // push_progress_via), so a stale write can't land after an
+        // explicit correction.
+        " WHERE excluded.progress >= user_list_cache.progress"
+    };
+    let sql = format!(
         "INSERT INTO user_list_cache \
          (provider, user_id, media_id, mal_id, status, progress, \
           score_x100, updated_at, fetched_at, title) \
@@ -54,8 +111,10 @@ pub fn upsert_entry(
             mal_id = excluded.mal_id, status = excluded.status, \
             progress = excluded.progress, score_x100 = excluded.score_x100, \
             updated_at = excluded.updated_at, fetched_at = excluded.fetched_at, \
-            title = excluded.title \
-         WHERE excluded.progress >= user_list_cache.progress",
+            title = excluded.title{guard}"
+    );
+    conn.execute(
+        &sql,
         params![
             kind.slug(),
             user_id,
