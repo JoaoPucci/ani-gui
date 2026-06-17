@@ -80,6 +80,15 @@
 		return popoverControls.attach({ onClose: () => (open = false) });
 	});
 
+	// Close the editor whenever it becomes disabled while open. The detail
+	// route reuses this component across shows, so navigating with the popover
+	// open would otherwise leave the previous show's form values visible — and
+	// Save-able — against the new kitsuId before its live tracker state is
+	// known. Closing forces a reopen, which reseeds from the new show's view.
+	$effect(() => {
+		if (disabled) open = false;
+	});
+
 	function toggle() {
 		// Don't open while disabled — the live entry is still loading or its
 		// read failed, so the form would seed Planning/0 and a Save could
@@ -113,6 +122,9 @@
 	}
 
 	async function save() {
+		// Belt to the disabled-gated button + auto-close effect: never write if
+		// the editor went stale (navigation/loading) between render and click.
+		if (disabled) return;
 		busy = true;
 		// Snapshot the form values before awaiting. The status/episode controls
 		// stay editable during the in-flight save, so reading editStatus/
@@ -137,6 +149,7 @@
 	}
 
 	async function remove() {
+		if (disabled) return;
 		busy = true;
 		try {
 			const n = await syncRemoveEntry(kitsuId);
@@ -222,11 +235,11 @@
 
 			<div class="le-actions">
 				{#if view.onList}
-					<button type="button" class="le-remove" disabled={busy} onclick={remove}>
+					<button type="button" class="le-remove" disabled={busy || disabled} onclick={remove}>
 						{m.detail_list_remove()}
 					</button>
 				{/if}
-				<button type="button" class="le-save" disabled={busy} onclick={save}>
+				<button type="button" class="le-save" disabled={busy || disabled} onclick={save}>
 					{m.detail_list_save()}
 				</button>
 			</div>
