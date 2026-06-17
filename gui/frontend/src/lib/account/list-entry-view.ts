@@ -101,10 +101,10 @@ export function listButtonLabel(view: ListEntryView, labels: ListButtonLabels): 
  * else default to a fresh Plan-to-Watch at episode 0.
  */
 export function editorInitial(view: ListEntryView): { status: ListStatus; progress: number } {
-	return {
-		status: view.status ?? 'planning',
-		progress: view.progress
-	};
+	const status = view.status ?? 'planning';
+	// A completed entry opens at the full count, never a stored-short value —
+	// the editor then locks the episode field while Completed is selected.
+	return { status, progress: effectiveProgress(status, view.progress, view.total) };
 }
 
 /**
