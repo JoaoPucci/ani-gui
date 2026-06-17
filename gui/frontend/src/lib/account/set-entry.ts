@@ -5,7 +5,7 @@
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
-import { buildListEdit } from './list-entry-view';
+import { buildListEdit } from './list-entry-edit';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';

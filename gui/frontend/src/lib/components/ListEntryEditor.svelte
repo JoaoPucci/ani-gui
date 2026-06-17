@@ -18,13 +18,11 @@
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
 	import {
-		clampProgress,
 		deriveListEntryView,
 		editorInitial,
-		effectiveProgress,
-		listButtonLabel,
-		statusOptionsFor
+		listButtonLabel
 	} from '$lib/account/list-entry-view';
+	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';

@@ -8,7 +8,7 @@
 
 import type { EntryView } from './types';
 import type { EditorSave, RemoveOutcome, SetOutcome } from './set-entry';
-import { effectiveProgress, effectiveStatus } from './list-entry-view';
+import { effectiveProgress, effectiveStatus } from './list-entry-edit';
 
 /**
  * Outcome of a Save: `noop` when the editor was disabled (so nothing was

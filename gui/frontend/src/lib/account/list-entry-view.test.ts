@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+	deriveListEntryView,
+	editorInitial,
+	listButtonLabel,
+	pickSeedEntry
+} from './list-entry-view';
+import {
 	STATUS_OPTIONS,
 	buildListEdit,
 	clampProgress,
-	deriveListEntryView,
-	editorInitial,
 	effectiveProgress,
 	effectiveStatus,
-	listButtonLabel,
-	pickSeedEntry,
 	statusOptionsFor
-} from './list-entry-view';
+} from './list-entry-edit';
 import type { EntryView } from './types';
 
 // A trivial status labeller for deterministic label assertions.
