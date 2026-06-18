@@ -30,17 +30,27 @@
 	let {
 		kitsuId,
 		total = null,
+		cap = null,
 		current = null,
 		airing = false,
 		disabled = false
 	}: {
 		kitsuId: string;
+		/** Announced episode total — the display denominator ("· 5/24") and
+		 *  the count a Completed entry snaps to. */
 		total?: number | null;
+		/** Highest episode you can set — the last aired/streamable one. You
+		 *  can't mark episodes that aren't out yet. Defaults to `total`. */
+		cap?: number | null;
 		current?: EntryView | null;
 		/** The show hasn't finished airing — Completed/Rewatching are hidden. */
 		airing?: boolean;
 		disabled?: boolean;
 	} = $props();
+
+	// The episode the stepper/input can't exceed: the last aired one when
+	// known, else the announced total.
+	const settableCap = $derived(cap ?? total);
 
 	// The live entry we display. A writable `$derived` so it tracks the
 	// `current` prop (which the page loads + updates async) yet can be
@@ -129,13 +139,17 @@
 	}
 
 	function step(delta: number) {
-		editProgress = effectiveProgress(editStatus, clampProgress(editProgress + delta, total), total);
+		editProgress = effectiveProgress(
+			editStatus,
+			clampProgress(editProgress + delta, settableCap),
+			total
+		);
 	}
 
 	function onProgressInput(e: Event) {
 		editProgress = effectiveProgress(
 			editStatus,
-			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), total),
+			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), settableCap),
 			total
 		);
 	}
@@ -228,7 +242,7 @@
 						class="le-count"
 						type="number"
 						min="0"
-						max={total ?? undefined}
+						max={settableCap ?? undefined}
 						inputmode="numeric"
 						value={editProgress}
 						disabled={episodeLocked}

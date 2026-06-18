@@ -1117,7 +1117,8 @@
 							{#if accountStore.hasAny}
 								<ListEntryEditor
 									kitsuId={id}
-									total={episodeCap}
+									total={detail.episode_count ?? null}
+									cap={episodeCap}
 									current={listEntry}
 									airing={detail.status != null && detail.status !== 'finished'}
 									disabled={listEntryLoading || listEntryError}
