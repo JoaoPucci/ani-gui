@@ -13,17 +13,6 @@
   through. Logic lives in tested helpers (list-entry-view, set-entry);
   this component is the thin view + wiring.
 -->
-<script module lang="ts">
-	import { createDebouncer } from '$lib/account/save-debounce';
-
-	// Shared across editor instances (the detail route remounts this per show)
-	// so a debounced write survives navigating away within the window. Keyed by
-	// Kitsu id: a burst of saves to one show coalesces into a single fan-out;
-	// distinct shows are independent. Mashing Save no longer hammers the
-	// trackers into a 429.
-	const saveWrites = createDebouncer(700);
-</script>
-
 <script lang="ts">
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
@@ -33,12 +22,7 @@
 		editorInitial,
 		listButtonLabel
 	} from '$lib/account/list-entry-view';
-	import {
-		clampProgress,
-		effectiveProgress,
-		effectiveStatus,
-		statusOptionsFor
-	} from '$lib/account/list-entry-edit';
+	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -107,6 +91,8 @@
 	const buttonLabel = $derived(listButtonLabel(view, { add: m.detail_list_add(), statusLabel }));
 
 	let open = $state(false);
+	let saving = $state(false);
+	let removing = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let editStatus = $state<ListStatus>('planning');
 	let editProgress = $state(0);
@@ -121,46 +107,38 @@
 		open = false;
 	}
 
-	// Optimistic: close instantly and apply the expected result to the button
-	// for instant feedback, then fan out to the trackers (debounced per show so
-	// mashing Save coalesces into one write). After the write settles we
-	// `onReconcile()` — a re-read of the live entry that overwrites the
-	// optimistic value with what the trackers actually hold, so a partial or
-	// failed write never leaves the button out of sync. Inputs are SNAPSHOT at
-	// click time: the debounced write must not read reactive props at fire time
-	// (`disabled` can transiently flip and silently no-op; `kitsuId` can change
-	// if the user navigated).
-	function save() {
+	// Blocking, NOT optimistic: the popover stays open showing "Saving…" with
+	// the controls disabled until the write confirms, so the button never shows
+	// a value that isn't really on a tracker and the user can't pile up edits
+	// while a result is pending. On success we apply the confirmed value, toast,
+	// close, and reconcile (multi-tracker truth). On failure we keep the popover
+	// open with an error so the edit can be retried.
+	async function save() {
+		if (disabled || saving || removing) return;
 		const id = kitsuId;
-		const wasDisabled = disabled;
-		const status = editStatus;
-		const seeded = seededStatus;
-		const progress = editProgress;
-		const tot = total;
-		const eff = effectiveStatus(status, progress);
-		live = { status: eff, progress: effectiveProgress(eff, progress, tot) };
-		open = false;
-		saveWrites.schedule(id, () => {
-			void runEditorSave(
-				{ syncSetEntry },
-				{
-					kitsuId: id,
-					disabled: wasDisabled,
-					save: { status, seededStatus: seeded, progress, total: tot }
-				}
-			).then((res) => {
-				if (res.kind === 'noop') return; // disabled — nothing was written
-				if (res.kind === 'partial') {
-					toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
-				} else if (res.kind === 'failed') {
-					toastStore.push({
-						kind: 'error',
-						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-					});
-				}
-				onReconcile(); // re-read the truth, overwriting the optimistic value
+		saving = true;
+		const res = await runEditorSave(
+			{ syncSetEntry },
+			{ kitsuId: id, disabled, save: { status: editStatus, seededStatus, progress: editProgress, total } }
+		);
+		saving = false;
+		if (kitsuId !== id) return; // navigated away mid-save — don't touch the new show
+		if (res.kind === 'noop') return;
+		if (res.kind === 'failed') {
+			toastStore.push({
+				kind: 'error',
+				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
 			});
-		});
+			return; // keep the popover open to retry
+		}
+		toastStore.push(
+			res.kind === 'partial'
+				? { kind: 'error', message: m.detail_list_save_partial() }
+				: { kind: 'success', message: m.detail_list_saved() }
+		);
+		live = res.live;
+		open = false;
+		onReconcile();
 	}
 
 	const popoverControls = createPopoverControls({
@@ -212,6 +190,8 @@
 	// the disabled button is the feedback that you've hit the limit.
 	const atCap = $derived(settableCap !== null && editProgress >= settableCap);
 	const atFloor = $derived(editProgress <= 0);
+	// A write is in flight — lock the whole popover until it confirms.
+	const busy = $derived(saving || removing);
 
 	function pickStatus(s: ListStatus) {
 		editStatus = s;
@@ -239,29 +219,28 @@
 		);
 	}
 
-	function remove() {
-		// Drop any queued save for this show — a removal supersedes it (and must
-		// not re-add the row after we delete it). Runs now, not debounced: a
-		// single deliberate action, not something you mash. Inputs snapshot as in
-		// save(). The optimistic null gives instant feedback; onReconcile re-reads
-		// the truth (so a partial/failed delete reflects what the trackers hold).
+	// Blocking, same shape as save(): "Removing…" with controls disabled until
+	// the delete confirms; success closes + toasts + reconciles; failure keeps
+	// the popover open with an error to retry.
+	async function remove() {
+		if (disabled || saving || removing) return;
 		const id = kitsuId;
-		const wasDisabled = disabled;
-		saveWrites.cancel(id);
-		live = null; // optimistic: button flips to "Add to list" at once
+		removing = true;
+		const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled });
+		removing = false;
+		if (kitsuId !== id) return; // navigated away mid-remove
+		if (res.kind === 'noop') return;
+		if (res.kind === 'failed') {
+			toastStore.push({
+				kind: 'error',
+				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+			});
+			return; // keep the popover open to retry
+		}
+		toastStore.push({ kind: 'success', message: m.detail_list_removed() });
+		live = null;
 		open = false;
-		void runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled: wasDisabled }).then(
-			(res) => {
-				if (res.kind === 'noop') return;
-				if (res.kind === 'failed') {
-					toastStore.push({
-						kind: 'error',
-						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-					});
-				}
-				onReconcile(); // re-read the truth, overwriting the optimistic value
-			}
-		);
+		onReconcile();
 	}
 </script>
 
@@ -298,6 +277,7 @@
 					<select
 						class="le-select"
 						value={editStatus}
+						disabled={busy}
 						onchange={(e) => pickStatus((e.currentTarget as HTMLSelectElement).value as ListStatus)}
 					>
 						{#each statusChoices as s (s)}
@@ -317,7 +297,7 @@
 							type="button"
 							class="le-step"
 							aria-label={m.detail_list_episode_decrement()}
-							disabled={episodeLocked || atFloor}
+							disabled={episodeLocked || atFloor || busy}
 							onclick={() => step(-1)}>−</button
 						>
 						<input
@@ -327,7 +307,7 @@
 							max={settableCap ?? undefined}
 							inputmode="numeric"
 							value={editProgress}
-							disabled={episodeLocked}
+							disabled={episodeLocked || busy}
 							oninput={onProgressInput}
 							aria-label={m.detail_list_episode_label()}
 						/>
@@ -335,7 +315,7 @@
 							type="button"
 							class="le-step"
 							aria-label={m.detail_list_episode_increment()}
-							disabled={episodeLocked || atCap}
+							disabled={episodeLocked || atCap || busy}
 							onclick={() => step(1)}>+</button
 						>
 						{#if total !== null}
@@ -347,12 +327,12 @@
 
 			<footer class="le-foot">
 				{#if view.onList}
-					<button type="button" class="le-remove" {disabled} onclick={remove}>
-						{m.detail_list_remove()}
+					<button type="button" class="le-remove" disabled={disabled || busy} onclick={remove}>
+						{removing ? m.detail_list_removing() : m.detail_list_remove()}
 					</button>
 				{/if}
-				<button type="button" class="le-save" {disabled} onclick={save}>
-					{m.detail_list_save()}
+				<button type="button" class="le-save" disabled={disabled || busy} onclick={save}>
+					{saving ? m.detail_list_saving() : m.detail_list_save()}
 				</button>
 			</footer>
 		</div>
