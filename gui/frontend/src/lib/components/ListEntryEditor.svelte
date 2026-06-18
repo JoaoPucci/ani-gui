@@ -130,6 +130,10 @@
 	// Completed always means the full count, so the episode field is locked to
 	// the total while Completed is selected (and editing is disabled below).
 	const episodeLocked = $derived(editStatus === 'completed' && total !== null);
+	// Stepper bounds: + stops at the last aired/settable episode, − at 0, so
+	// the disabled button is the feedback that you've hit the limit.
+	const atCap = $derived(settableCap !== null && editProgress >= settableCap);
+	const atFloor = $derived(editProgress <= 0);
 
 	function pickStatus(s: ListStatus) {
 		editStatus = s;
@@ -235,7 +239,7 @@
 						type="button"
 						class="le-step"
 						aria-label={m.detail_list_episode_decrement()}
-						disabled={episodeLocked}
+						disabled={episodeLocked || atFloor}
 						onclick={() => step(-1)}>−</button
 					>
 					<input
@@ -253,7 +257,7 @@
 						type="button"
 						class="le-step"
 						aria-label={m.detail_list_episode_increment()}
-						disabled={episodeLocked}
+						disabled={episodeLocked || atCap}
 						onclick={() => step(1)}>+</button
 					>
 					{#if total !== null}
