@@ -73,6 +73,11 @@ describe('listButtonLabel', () => {
 		const v = deriveListEntryView({ status: 'completed', progress: 24 }, 24);
 		expect(listButtonLabel(v, labels)).toBe('Completed · 24/24');
 	});
+
+	it('planning shows just the status — no episode count (not started)', () => {
+		const v = deriveListEntryView({ status: 'planning', progress: 0 }, 24);
+		expect(listButtonLabel(v, labels)).toBe('Planning');
+	});
 });
 
 describe('pickSeedEntry', () => {

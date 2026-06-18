@@ -232,39 +232,42 @@
 				</div>
 			</label>
 
-			<div class="le-field">
-				<span class="le-label">{m.detail_list_episode_label()}</span>
-				<div class="le-stepper">
-					<button
-						type="button"
-						class="le-step"
-						aria-label={m.detail_list_episode_decrement()}
-						disabled={episodeLocked || atFloor}
-						onclick={() => step(-1)}>−</button
-					>
-					<input
-						class="le-count"
-						type="number"
-						min="0"
-						max={settableCap ?? undefined}
-						inputmode="numeric"
-						value={editProgress}
-						disabled={episodeLocked}
-						oninput={onProgressInput}
-						aria-label={m.detail_list_episode_label()}
-					/>
-					<button
-						type="button"
-						class="le-step"
-						aria-label={m.detail_list_episode_increment()}
-						disabled={episodeLocked || atCap}
-						onclick={() => step(1)}>+</button
-					>
-					{#if total !== null}
-						<span class="le-total">/ {total}</span>
-					{/if}
+			<!-- Plan to Watch means not started, so there's no episode to set. -->
+			{#if editStatus !== 'planning'}
+				<div class="le-field">
+					<span class="le-label">{m.detail_list_episode_label()}</span>
+					<div class="le-stepper">
+						<button
+							type="button"
+							class="le-step"
+							aria-label={m.detail_list_episode_decrement()}
+							disabled={episodeLocked || atFloor}
+							onclick={() => step(-1)}>−</button
+						>
+						<input
+							class="le-count"
+							type="number"
+							min="0"
+							max={settableCap ?? undefined}
+							inputmode="numeric"
+							value={editProgress}
+							disabled={episodeLocked}
+							oninput={onProgressInput}
+							aria-label={m.detail_list_episode_label()}
+						/>
+						<button
+							type="button"
+							class="le-step"
+							aria-label={m.detail_list_episode_increment()}
+							disabled={episodeLocked || atCap}
+							onclick={() => step(1)}>+</button
+						>
+						{#if total !== null}
+							<span class="le-total">/ {total}</span>
+						{/if}
+					</div>
 				</div>
-			</div>
+			{/if}
 
 			<div class="le-actions">
 				{#if view.onList}

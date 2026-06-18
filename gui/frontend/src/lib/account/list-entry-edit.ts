@@ -85,18 +85,23 @@ export function effectiveStatus(status: ListStatus, progress: number): ListStatu
 }
 
 /**
- * The episode count to write for a status: a `completed` entry always carries
- * the full count — you can't be completed with fewer (status wins over a
- * partial episode edit), and writing completed/0 is incoherent. Every other
- * status keeps the given count. Left untouched when the total is unknown.
- * Shared by the write fan-out and the editor (which locks the episode field
- * to the total while Completed is selected).
+ * The episode count to write for a status:
+ *   - `planning` is always 0 — Plan to Watch means not started, and keeping
+ *     progress here would also promote it back to `watching`
+ *     ([`effectiveStatus`]);
+ *   - `completed` is always the full count — you can't be completed with
+ *     fewer (status wins over a partial edit), and completed/0 is incoherent
+ *     (left as-is only when the total is unknown);
+ *   - every other status keeps the given count.
+ * Shared by the write fan-out and the editor (which resets/locks the episode
+ * field accordingly).
  */
 export function effectiveProgress(
 	status: ListStatus,
 	progress: number,
 	total: number | null
 ): number {
+	if (status === 'planning') return 0;
 	return status === 'completed' && total !== null ? total : progress;
 }
 
