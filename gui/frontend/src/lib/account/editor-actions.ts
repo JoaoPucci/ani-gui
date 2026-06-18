@@ -62,7 +62,9 @@ export async function runEditorSave(
 				progress: effectiveProgress(status, input.save.progress, input.save.total ?? null)
 			};
 			if (failed === 0) return { kind: 'saved', live };
-			return outcome.rateLimited ? { kind: 'partial', live, rateLimited: true } : { kind: 'partial', live };
+			return outcome.rateLimited
+				? { kind: 'partial', live, rateLimited: true }
+				: { kind: 'partial', live };
 		}
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {

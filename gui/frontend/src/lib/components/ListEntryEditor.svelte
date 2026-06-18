@@ -119,7 +119,11 @@
 		saving = true;
 		const res = await runEditorSave(
 			{ syncSetEntry },
-			{ kitsuId: id, disabled, save: { status: editStatus, seededStatus, progress: editProgress, total } }
+			{
+				kitsuId: id,
+				disabled,
+				save: { status: editStatus, seededStatus, progress: editProgress, total }
+			}
 		);
 		saving = false;
 		if (kitsuId !== id) return; // navigated away mid-save — don't touch the new show
