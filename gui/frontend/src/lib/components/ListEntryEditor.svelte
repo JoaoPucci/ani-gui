@@ -156,6 +156,11 @@
 				const stillHere = kitsuId === id; // skip live mutation if navigated away
 				if (res.kind === 'saved') {
 					if (stillHere) live = res.live;
+				} else if (res.kind === 'partial') {
+					// At least one tracker took it — keep the landed value (it's the
+					// furthest-along across providers) but warn that some didn't sync.
+					if (stillHere) live = res.live;
+					toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 				} else if (res.kind === 'failed') {
 					if (stillHere) live = revertTo;
 					toastStore.push({

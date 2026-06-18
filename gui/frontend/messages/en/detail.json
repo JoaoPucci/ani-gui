@@ -86,5 +86,6 @@
 	"list_saved": "Saved",
 	"list_removed": "Removed from your list",
 	"list_save_failed": "Couldn't update your list",
+	"list_save_partial": "Saved to some trackers, but not all. Try again to finish syncing.",
 	"list_rate_limited": "Trackers are rate-limiting. Try again in a moment."
 }

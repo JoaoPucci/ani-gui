@@ -18,6 +18,10 @@ import { effectiveProgress, effectiveStatus } from './list-entry-edit';
 export type SaveResult =
 	| { kind: 'noop' }
 	| { kind: 'saved'; live: EntryView }
+	// At least one tracker accepted the edit but another failed. The edit is
+	// the furthest-along value across providers, so the button keeps `live`;
+	// the caller warns that not every tracker synced.
+	| { kind: 'partial'; live: EntryView; rateLimited?: boolean }
 	| { kind: 'failed'; rateLimited?: boolean };
 
 /** Outcome of a Remove. `removed` clears the entry; see {@link SaveResult}.
@@ -49,15 +53,16 @@ export async function runEditorSave(
 	try {
 		const outcome = await deps.syncSetEntry(input.kitsuId, input.save);
 		const { written, failed } = outcome;
-		if (failed === 0 && written > 0) {
+		if (written > 0) {
+			// Something landed → the edit is the furthest-along value across
+			// trackers, so surface it. `failed > 0` means a partial sync.
 			const status = effectiveStatus(input.save.status, input.save.progress);
-			return {
-				kind: 'saved',
-				live: {
-					status,
-					progress: effectiveProgress(status, input.save.progress, input.save.total ?? null)
-				}
+			const live = {
+				status,
+				progress: effectiveProgress(status, input.save.progress, input.save.total ?? null)
 			};
+			if (failed === 0) return { kind: 'saved', live };
+			return outcome.rateLimited ? { kind: 'partial', live, rateLimited: true } : { kind: 'partial', live };
 		}
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {

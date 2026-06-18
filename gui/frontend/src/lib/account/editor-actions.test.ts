@@ -38,11 +38,22 @@ describe('runEditorSave', () => {
 		expect(res).toEqual({ kind: 'saved', live: { status: 'watching', progress: 5 } });
 	});
 
-	it('a partial failure (failed > 0) → failed, no optimistic state', async () => {
+	it('a partial success (some written, some failed) → partial, keeping the landed value', async () => {
+		// At least one tracker accepted the edit, so the new value is the
+		// furthest-along across providers — the button must keep it (reverting
+		// would hide what MAL/AniList actually stored). The caller still warns
+		// that not every tracker synced.
 		const syncSetEntry = vi.fn(async () => ({ written: 1, failed: 1 }));
 		expect(
 			await runEditorSave({ syncSetEntry }, { kitsuId: 'k', disabled: false, save: baseSave })
-		).toEqual({ kind: 'failed' });
+		).toEqual({ kind: 'partial', live: { status: 'watching', progress: 6 } });
+	});
+
+	it('a partial success carries rateLimited when a tracker 429d', async () => {
+		const syncSetEntry = vi.fn(async () => ({ written: 1, failed: 1, rateLimited: true }));
+		expect(
+			await runEditorSave({ syncSetEntry }, { kitsuId: 'k', disabled: false, save: baseSave })
+		).toEqual({ kind: 'partial', live: { status: 'watching', progress: 6 }, rateLimited: true });
 	});
 
 	it('nothing written (written 0) → failed (e.g. every tracker unmappable)', async () => {

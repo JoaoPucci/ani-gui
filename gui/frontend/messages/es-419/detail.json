@@ -86,5 +86,6 @@
 	"list_saved": "Guardado",
 	"list_removed": "Eliminado de tu lista",
 	"list_save_failed": "No se pudo actualizar tu lista",
+	"list_save_partial": "Se guardó en algunos trackers, pero no en todos. Inténtalo de nuevo para terminar de sincronizar.",
 	"list_rate_limited": "Los trackers están limitando las solicitudes. Inténtalo de nuevo en un momento."
 }
