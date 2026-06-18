@@ -85,8 +85,10 @@ export async function runEditorRemove(
 	if (input.disabled) return { kind: 'noop' };
 	try {
 		const outcome = await deps.syncRemoveEntry(input.kitsuId);
-		const { removed, failed } = outcome;
-		if (failed === 0 && removed > 0) return { kind: 'removed' };
+		// `failed === 0` means no present tracker was left behind — whether we
+		// deleted the row (`removed > 0`) or it was already absent everywhere
+		// (`removed === 0`). Both satisfy "not on any list", so clear the entry.
+		if (outcome.failed === 0) return { kind: 'removed' };
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };

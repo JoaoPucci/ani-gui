@@ -195,12 +195,12 @@
 
 	function pickStatus(s: ListStatus) {
 		editStatus = s;
-		// Completed snaps the episode count to the total — you can't be completed
-		// with fewer (status wins over a partial count). Leaving Completed re-clamps
-		// to the settable cap first, so a count snapped up to `total` doesn't stay
-		// above `cap` (e.g. a dub-capped series) when the status is no longer
-		// Completed; Planning zeroes it.
-		editProgress = effectiveProgress(s, clampProgress(editProgress, settableCap), total);
+		// Completed snaps to the full count and Planning zeroes — but a plain
+		// status change does NOT clamp the existing count to the settable cap: a
+		// tracker can legitimately sit above the currently-streamable cap (e.g.
+		// 20/24 watched while dub exposes 12), and clamping here would silently
+		// lower it. Only user episode edits (step/onProgressInput) clamp.
+		editProgress = effectiveProgress(s, editProgress, total);
 	}
 
 	function step(delta: number) {

@@ -39,16 +39,26 @@ export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
 	return best;
 }
 
+/** A Planning row means "not started", so its coherent progress is 0 even if
+ *  a tracker stored a stray positive count — compare on that so it can't
+ *  outrank a real watched row (and later fan out progress:0, lowering it). */
+function coherentProgress(e: EntryView): number {
+	return e.status === 'planning' ? 0 : e.progress;
+}
+
 /**
  * Is entry `e` further along the watch lifecycle than `best`? A Completed
  * row always wins (it finished, even if its stored count is stale/zero);
- * otherwise more progress wins, and on a tie the more-committed status does.
+ * otherwise more (coherent) progress wins, and on a tie the more-committed
+ * status does.
  */
 function furtherAlong(e: EntryView, best: EntryView): boolean {
 	const eDone = e.status === 'completed';
 	const bDone = best.status === 'completed';
 	if (eDone !== bDone) return eDone;
-	if (e.progress !== best.progress) return e.progress > best.progress;
+	const ep = coherentProgress(e);
+	const bp = coherentProgress(best);
+	if (ep !== bp) return ep > bp;
 	return STATUS_COMMITMENT[e.status] > STATUS_COMMITMENT[best.status];
 }
 
