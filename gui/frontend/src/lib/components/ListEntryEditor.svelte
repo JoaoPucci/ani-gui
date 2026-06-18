@@ -22,7 +22,12 @@
 		editorInitial,
 		listButtonLabel
 	} from '$lib/account/list-entry-view';
-	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
+	import {
+		clampProgress,
+		effectiveProgress,
+		effectiveStatus,
+		statusOptionsFor
+	} from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -84,8 +89,6 @@
 	const buttonLabel = $derived(listButtonLabel(view, { add: m.detail_list_add(), statusLabel }));
 
 	let open = $state(false);
-	let removing = $state(false);
-	let saving = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let editStatus = $state<ListStatus>('planning');
 	let editProgress = $state(0);
@@ -100,25 +103,29 @@
 		open = false;
 	}
 
-	async function save() {
-		saving = true;
+	// Optimistic: close instantly and apply the expected result to the button,
+	// then fan out to the trackers in the background. Without this the popover
+	// hangs open for the whole multi-tracker round-trip (and never dismisses on
+	// failure). On a failed write we roll the button back and toast.
+	function save() {
 		const status = editStatus;
 		const progress = editProgress;
-		try {
-			const res = await runEditorSave(
-				{ syncSetEntry },
-				{ kitsuId, disabled, save: { status, seededStatus, progress, total } }
-			);
-			if (res.kind === 'saved') {
-				live = res.live;
-				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
-				open = false;
-			} else if (res.kind === 'failed') {
-				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+		const eff = effectiveStatus(status, progress);
+		const previous = live;
+		live = { status: eff, progress: effectiveProgress(eff, progress, total) };
+		open = false;
+		void runEditorSave(
+			{ syncSetEntry },
+			{ kitsuId, disabled, save: { status, seededStatus, progress, total } }
+		).then((res) => {
+			if (res.kind === 'saved') live = res.live;
+			else {
+				live = previous;
+				if (res.kind === 'failed') {
+					toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+				}
 			}
-		} finally {
-			saving = false;
-		}
+		});
 	}
 
 	const popoverControls = createPopoverControls({
@@ -186,20 +193,18 @@
 		);
 	}
 
-	async function remove() {
-		removing = true;
-		try {
-			const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled });
-			if (res.kind === 'removed') {
-				live = null;
-				toastStore.push({ kind: 'success', message: m.detail_list_removed() });
-				open = false;
-			} else if (res.kind === 'failed') {
+	function remove() {
+		const previous = live;
+		live = null; // optimistic: button flips to "Add to list" at once
+		open = false;
+		void runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled }).then((res) => {
+			if (res.kind === 'failed') {
+				live = previous;
 				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+			} else if (res.kind === 'noop') {
+				live = previous;
 			}
-		} finally {
-			removing = false;
-		}
+		});
 	}
 </script>
 
@@ -285,11 +290,11 @@
 
 			<footer class="le-foot">
 				{#if view.onList}
-					<button type="button" class="le-remove" disabled={removing || disabled} onclick={remove}>
+					<button type="button" class="le-remove" {disabled} onclick={remove}>
 						{m.detail_list_remove()}
 					</button>
 				{/if}
-				<button type="button" class="le-save" disabled={saving || disabled} onclick={save}>
+				<button type="button" class="le-save" {disabled} onclick={save}>
 					{m.detail_list_save()}
 				</button>
 			</footer>
