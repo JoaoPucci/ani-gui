@@ -15,10 +15,15 @@ import { effectiveProgress, effectiveStatus } from './list-entry-edit';
  * written), `saved` with the optimistic `live` entry to show until the
  * page re-reads, or `failed` when no clean write landed.
  */
-export type SaveResult = { kind: 'noop' } | { kind: 'saved'; live: EntryView } | { kind: 'failed' };
+export type SaveResult =
+	| { kind: 'noop' }
+	| { kind: 'saved'; live: EntryView }
+	| { kind: 'failed'; rateLimited?: boolean };
 
-/** Outcome of a Remove. `removed` clears the entry; see {@link SaveResult}. */
-export type RemoveResult = { kind: 'noop' | 'removed' | 'failed' };
+/** Outcome of a Remove. `removed` clears the entry; see {@link SaveResult}.
+ *  `failed` carries `rateLimited` so the editor can show a retry-specific
+ *  toast when a tracker 429'd. */
+export type RemoveResult = { kind: 'noop' | 'removed' } | { kind: 'failed'; rateLimited?: boolean };
 
 /**
  * Run the editor's Save against every connected tracker (via the injected
@@ -42,7 +47,8 @@ export async function runEditorSave(
 ): Promise<SaveResult> {
 	if (input.disabled) return { kind: 'noop' };
 	try {
-		const { written, failed } = await deps.syncSetEntry(input.kitsuId, input.save);
+		const outcome = await deps.syncSetEntry(input.kitsuId, input.save);
+		const { written, failed } = outcome;
 		if (failed === 0 && written > 0) {
 			const status = effectiveStatus(input.save.status, input.save.progress);
 			return {
@@ -53,7 +59,7 @@ export async function runEditorSave(
 				}
 			};
 		}
-		return { kind: 'failed' };
+		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };
 	}
@@ -73,8 +79,10 @@ export async function runEditorRemove(
 ): Promise<RemoveResult> {
 	if (input.disabled) return { kind: 'noop' };
 	try {
-		const { removed, failed } = await deps.syncRemoveEntry(input.kitsuId);
-		return failed === 0 && removed > 0 ? { kind: 'removed' } : { kind: 'failed' };
+		const outcome = await deps.syncRemoveEntry(input.kitsuId);
+		const { removed, failed } = outcome;
+		if (failed === 0 && removed > 0) return { kind: 'removed' };
+		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };
 	}

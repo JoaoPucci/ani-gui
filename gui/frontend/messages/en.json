@@ -202,6 +202,7 @@
 	"detail_list_saved": "Saved",
 	"detail_list_removed": "Removed from your list",
 	"detail_list_save_failed": "Couldn't update your list",
+	"detail_list_rate_limited": "Trackers are rate-limiting. Try again in a moment.",
 	"diagnostics_title": "ani-gui — Backend Status",
 	"diagnostics_section_app_info": "App info",
 	"diagnostics_section_history_title": "Continue Watching ({count})",

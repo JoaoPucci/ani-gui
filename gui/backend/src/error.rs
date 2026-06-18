@@ -164,6 +164,9 @@ impl AniError {
         match self {
             Self::NoResults => 404,
             Self::InvalidToken => 401,
+            // A rate-limit passes through verbatim so the frontend can tell it
+            // apart from a generic bad gateway and tell the user to retry.
+            Self::Upstream { status: 429 } => 429,
             Self::Upstream { .. } => 502,
             Self::Network => 503,
             Self::Timeout => 504,

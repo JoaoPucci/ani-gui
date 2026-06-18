@@ -122,7 +122,10 @@
 			else {
 				live = previous;
 				if (res.kind === 'failed') {
-					toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+					toastStore.push({
+						kind: 'error',
+						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+					});
 				}
 			}
 		});
@@ -208,7 +211,10 @@
 		void runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled }).then((res) => {
 			if (res.kind === 'failed') {
 				live = previous;
-				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
+				toastStore.push({
+					kind: 'error',
+					message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+				});
 			} else if (res.kind === 'noop') {
 				live = previous;
 			}

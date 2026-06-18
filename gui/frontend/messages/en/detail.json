@@ -85,5 +85,6 @@
 	"list_editor_aria": "Edit list entry",
 	"list_saved": "Saved",
 	"list_removed": "Removed from your list",
-	"list_save_failed": "Couldn't update your list"
+	"list_save_failed": "Couldn't update your list",
+	"list_rate_limited": "Trackers are rate-limiting. Try again in a moment."
 }

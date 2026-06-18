@@ -85,5 +85,6 @@
 	"list_editor_aria": "Editar item da lista",
 	"list_saved": "Salvo",
 	"list_removed": "Removido da sua lista",
-	"list_save_failed": "Não foi possível atualizar sua lista"
+	"list_save_failed": "Não foi possível atualizar sua lista",
+	"list_rate_limited": "Os trackers estão limitando as requisições. Tente de novo em instantes."
 }

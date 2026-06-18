@@ -85,5 +85,6 @@
 	"list_editor_aria": "Editar entrada de la lista",
 	"list_saved": "Guardado",
 	"list_removed": "Eliminado de tu lista",
-	"list_save_failed": "No se pudo actualizar tu lista"
+	"list_save_failed": "No se pudo actualizar tu lista",
+	"list_rate_limited": "Los trackers están limitando las solicitudes. Inténtalo de nuevo en un momento."
 }

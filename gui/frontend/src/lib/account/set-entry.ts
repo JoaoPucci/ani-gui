@@ -5,6 +5,7 @@
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
+import { isRateLimit, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { buildListEdit } from './list-entry-edit';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
@@ -58,6 +59,10 @@ export interface SetOutcome {
 	/** Trackers we couldn't confirm written — a write that threw, or an
 	 *  unreachable (no-bearer) provider. */
 	failed: number;
+	/** Present (and `true`) when at least one connected tracker rejected the
+	 *  call with a 429 (rate limit). Lets the editor show a "rate-limited, try
+	 *  again" toast instead of the generic failure copy. */
+	rateLimited?: boolean;
 }
 
 /**
@@ -77,7 +82,7 @@ export async function setEntryAcrossTrackers(
 ): Promise<SetOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { written: 0, failed: 0 };
 	const results = await Promise.all(
-		deps.connected.map(async (provider): Promise<'written' | 'failed' | 'skip'> => {
+		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
@@ -90,16 +95,16 @@ export async function setEntryAcrossTrackers(
 					total: save.total ?? null
 				});
 				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
-				return res !== null ? 'written' : 'skip'; // null = unmappable → neither
-			} catch {
-				return 'failed';
+				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
+			} catch (e) {
+				// A 429 is still a failure (nothing was written), but flagged so the
+				// editor can say "rate-limited" rather than a generic error.
+				return isRateLimit(e) ? 'ratelimited' : 'failed';
 			}
 		})
 	);
-	return {
-		written: results.filter((r) => r === 'written').length,
-		failed: results.filter((r) => r === 'failed').length
-	};
+	const t = tallyFanout(results);
+	return { written: t.ok, failed: t.failed, ...(t.rateLimited ? { rateLimited: true } : {}) };
 }
 
 /** The outcome of a multi-tracker removal, split so the caller can tell a
@@ -111,6 +116,9 @@ export interface RemoveOutcome {
 	/** Trackers we couldn't confirm clean — a present tracker whose delete
 	 *  failed, a read that threw, or an unreachable (no-bearer) provider. */
 	failed: number;
+	/** Present (and `true`) when a connected tracker rejected a call with a 429
+	 *  (rate limit) — see {@link SetOutcome.rateLimited}. */
+	rateLimited?: boolean;
 }
 
 /**
@@ -127,23 +135,21 @@ export async function removeEntryAcrossTrackers(
 ): Promise<RemoveOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { removed: 0, failed: 0 };
 	const results = await Promise.all(
-		deps.connected.map(async (provider): Promise<'removed' | 'failed' | 'absent'> => {
+		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
 				const current = await deps.getEntry(provider, bearer, kitsuId);
-				if (current === null) return 'absent'; // nothing to remove here
+				if (current === null) return 'neither'; // nothing to remove here
 				await deps.removeEntry(provider, bearer, kitsuId);
-				return 'removed';
-			} catch {
-				return 'failed';
+				return 'ok';
+			} catch (e) {
+				return isRateLimit(e) ? 'ratelimited' : 'failed';
 			}
 		})
 	);
-	return {
-		removed: results.filter((r) => r === 'removed').length,
-		failed: results.filter((r) => r === 'failed').length
-	};
+	const t = tallyFanout(results);
+	return { removed: t.ok, failed: t.failed, ...(t.rateLimited ? { rateLimited: true } : {}) };
 }
 
 /**
