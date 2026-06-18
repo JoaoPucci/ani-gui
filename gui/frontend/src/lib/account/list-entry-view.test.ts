@@ -212,9 +212,18 @@ describe('effectiveProgress', () => {
 		expect(effectiveProgress('completed', 5, null)).toBe(5);
 	});
 
-	it('leaves non-completed statuses on the given count', () => {
+	it('leaves watching/paused/dropped on the given count', () => {
 		expect(effectiveProgress('watching', 5, 12)).toBe(5);
 		expect(effectiveProgress('paused', 0, 12)).toBe(0);
+	});
+
+	it('zeroes a planning entry — Plan to Watch means not started', () => {
+		// Picking Plan to Watch resets progress to 0, which also keeps the
+		// status from being promoted back to watching (effectiveStatus only
+		// promotes planning when progress > 0).
+		expect(effectiveProgress('planning', 5, 12)).toBe(0);
+		expect(effectiveProgress('planning', 0, 12)).toBe(0);
+		expect(effectiveProgress('planning', 5, null)).toBe(0);
 	});
 });
 
