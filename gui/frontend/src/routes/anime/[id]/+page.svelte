@@ -416,28 +416,36 @@
 	// provider failing trips this — a partial read could miss the very tracker
 	// whose progress a Save would otherwise clobber.
 	let listEntryError = $state(false);
-	$effect(() => {
+	// Bumped on every read so a newer read (navigation or a post-write
+	// reconcile) supersedes any in-flight one.
+	let listEntryReadSeq = 0;
+	let listEntryRetryTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Read every connected tracker and fold to the seed entry, retrying a
+	// transient failure (e.g. a 429 while rate-limited) with backoff so a
+	// passing limit self-heals. Two modes:
+	//  - loud (navigation): reset to null + show loading + disable on hard
+	//    failure, so a Save can't fire against a not-yet-known entry.
+	//  - quiet (post-write reconcile): refresh in the background without a
+	//    loading/disabled flicker; on failure keep the optimistic value (the
+	//    write already toasted) and let the next read reconcile.
+	function readListEntry(quiet: boolean) {
+		const seq = ++listEntryReadSeq;
 		const kitsuId = id;
 		const connected = accountStore.connected;
-		// Reset synchronously on every id/connection change. The route reuses
-		// this component across shows, so a stale entry from the previously
-		// viewed anime must not linger while the async read is in flight or if
-		// it fails (offline/401/upstream) — otherwise the control would show
-		// the prior show's status and a Save could write it to the new id.
-		listEntry = null;
-		listEntryError = false;
+		clearTimeout(listEntryRetryTimer);
+		if (!quiet) {
+			// The route reuses this component across shows; a stale entry must not
+			// linger while the async read is in flight or if it fails.
+			listEntry = null;
+			listEntryError = false;
+		}
 		if (!kitsuId || connected.length === 0) {
-			listEntryLoading = false;
+			if (!quiet) listEntryLoading = false;
 			return;
 		}
-		listEntryLoading = true;
+		if (!quiet) listEntryLoading = true;
 		const providers = [...connected];
-		let cancelled = false;
-		let retryTimer: ReturnType<typeof setTimeout> | undefined;
-		// Read every connected tracker, retrying on a transient failure (e.g. a
-		// 429 while rate-limited) with backoff so a passing limit self-heals
-		// instead of leaving the editor stuck disabled. After the retries are
-		// exhausted we settle into the error state rather than spinning forever.
 		const attempt = (n: number) => {
 			void (async () => {
 				try {
@@ -451,29 +459,39 @@
 							return getEntry(p, bearer, kitsuId);
 						})
 					);
-					if (cancelled) return;
+					if (seq !== listEntryReadSeq) return; // superseded
 					listEntry = pickSeedEntry(views);
+					listEntryError = false;
 					listEntryLoading = false;
 				} catch {
-					if (cancelled) return;
+					if (seq !== listEntryReadSeq) return;
 					const delay = nextReadRetryMs(n);
-					if (delay === null) {
-						// Out of retries: unknown entry, not absent — the editor stays
-						// disabled rather than offering a stale Add.
+					if (delay !== null) {
+						listEntryRetryTimer = setTimeout(() => {
+							if (seq === listEntryReadSeq) attempt(n + 1);
+						}, delay);
+					} else if (!quiet) {
+						// Out of retries on a fresh read: unknown entry, not absent —
+						// the editor stays disabled rather than offering a stale Add.
 						listEntryError = true;
 						listEntryLoading = false;
-					} else {
-						retryTimer = setTimeout(() => {
-							if (!cancelled) attempt(n + 1);
-						}, delay);
 					}
+					// quiet: give up silently, keep whatever the editor optimistically
+					// set; the write itself already reported success/failure.
 				}
 			})();
 		};
 		attempt(0);
+	}
+
+	$effect(() => {
+		// Track id + the connected set; re-read (loud) whenever they change.
+		void id;
+		void accountStore.connected;
+		readListEntry(false);
 		return () => {
-			cancelled = true;
-			clearTimeout(retryTimer);
+			listEntryReadSeq += 1; // cancel any in-flight read on teardown
+			clearTimeout(listEntryRetryTimer);
 		};
 	});
 
@@ -1117,6 +1135,7 @@
 								current={listEntry}
 								airing={detail.status != null && detail.status !== 'finished'}
 								disabled={listEntryLoading || listEntryError}
+								onReconcile={() => readListEntry(true)}
 							/>
 						{/if}
 					{/snippet}

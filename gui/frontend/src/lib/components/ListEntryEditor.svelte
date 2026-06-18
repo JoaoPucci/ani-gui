@@ -49,7 +49,8 @@
 		cap = null,
 		current = null,
 		airing = false,
-		disabled = false
+		disabled = false,
+		onReconcile = () => {}
 	}: {
 		kitsuId: string;
 		/** Announced episode total — the display denominator ("· 5/24") and
@@ -62,6 +63,12 @@
 		/** The show hasn't finished airing — Completed/Rewatching are hidden. */
 		airing?: boolean;
 		disabled?: boolean;
+		/** Re-read the live entry from the trackers after a write settles. The
+		 *  button is optimistic for instant feedback, but this reconcile is the
+		 *  source of truth — it overwrites the optimistic value with what the
+		 *  trackers actually hold (and auto-retries through rate-limits), so the
+		 *  UI can't stay out of sync after a partial/failed write. */
+		onReconcile?: () => void;
 	} = $props();
 
 	// The episode the stepper/input can't exceed: the last aired one when
@@ -73,12 +80,6 @@
 	// overwritten optimistically after a Save/Remove until the prop
 	// re-syncs.
 	let live = $derived(current);
-
-	// The real server value captured at the start of a save/remove burst (when
-	// no write is queued). A failed write reverts the button to THIS, not the
-	// optimistic chain — so the UI reflects the true prior status, not a value
-	// that was never written.
-	let baseline: EntryView | null = null;
 
 	const view = $derived(deriveListEntryView(live, total));
 
@@ -120,18 +121,15 @@
 		open = false;
 	}
 
-	// Optimistic: close instantly and apply the expected result to the button,
-	// then fan out to the trackers. The fan-out is debounced per show
-	// (saveWrites) so mashing Save coalesces into one write; without the
-	// optimistic close the popover would hang for the round-trip (and never
-	// dismiss on failure). On a failed write we roll the button back and toast.
-	//
-	// Everything the debounced write needs is SNAPSHOT here at click time — it
-	// must not read the reactive props at fire time (700ms later): `disabled`
-	// can transiently flip true (a re-read / token refresh) and silently no-op
-	// the save, and `kitsuId` can change if the user navigated. We revert to
-	// `baseline` — the real server value captured at the start of a burst (not
-	// the optimistic chain) — so a failed write shows the true prior status.
+	// Optimistic: close instantly and apply the expected result to the button
+	// for instant feedback, then fan out to the trackers (debounced per show so
+	// mashing Save coalesces into one write). After the write settles we
+	// `onReconcile()` — a re-read of the live entry that overwrites the
+	// optimistic value with what the trackers actually hold, so a partial or
+	// failed write never leaves the button out of sync. Inputs are SNAPSHOT at
+	// click time: the debounced write must not read reactive props at fire time
+	// (`disabled` can transiently flip and silently no-op; `kitsuId` can change
+	// if the user navigated).
 	function save() {
 		const id = kitsuId;
 		const wasDisabled = disabled;
@@ -140,8 +138,6 @@
 		const progress = editProgress;
 		const tot = total;
 		const eff = effectiveStatus(status, progress);
-		if (!saveWrites.pending(id)) baseline = live; // pre-burst server truth
-		const revertTo = baseline;
 		live = { status: eff, progress: effectiveProgress(eff, progress, tot) };
 		open = false;
 		saveWrites.schedule(id, () => {
@@ -153,21 +149,16 @@
 					save: { status, seededStatus: seeded, progress, total: tot }
 				}
 			).then((res) => {
-				const stillHere = kitsuId === id; // skip live mutation if navigated away
-				if (res.kind === 'saved') {
-					if (stillHere) live = res.live;
-				} else if (res.kind === 'partial') {
-					// At least one tracker took it — keep the landed value (it's the
-					// furthest-along across providers) but warn that some didn't sync.
-					if (stillHere) live = res.live;
+				if (res.kind === 'noop') return; // disabled — nothing was written
+				if (res.kind === 'partial') {
 					toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 				} else if (res.kind === 'failed') {
-					if (stillHere) live = revertTo;
 					toastStore.push({
 						kind: 'error',
 						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
 					});
 				}
+				onReconcile(); // re-read the truth, overwriting the optimistic value
 			});
 		});
 	}
@@ -250,29 +241,25 @@
 
 	function remove() {
 		// Drop any queued save for this show — a removal supersedes it (and must
-		// not re-add the row after we delete it). Remove runs now, not debounced:
-		// it's a single deliberate action, not something you mash. Inputs are
-		// snapshot for the same reason save() snapshots them.
+		// not re-add the row after we delete it). Runs now, not debounced: a
+		// single deliberate action, not something you mash. Inputs snapshot as in
+		// save(). The optimistic null gives instant feedback; onReconcile re-reads
+		// the truth (so a partial/failed delete reflects what the trackers hold).
 		const id = kitsuId;
 		const wasDisabled = disabled;
-		// If a save was queued (optimistic live), the true prior value is the
-		// burst baseline; otherwise live already is the server truth.
-		const revertTo = saveWrites.pending(id) ? baseline : live;
 		saveWrites.cancel(id);
 		live = null; // optimistic: button flips to "Add to list" at once
 		open = false;
 		void runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled: wasDisabled }).then(
 			(res) => {
-				const stillHere = kitsuId === id;
+				if (res.kind === 'noop') return;
 				if (res.kind === 'failed') {
-					if (stillHere) live = revertTo;
 					toastStore.push({
 						kind: 'error',
 						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
 					});
-				} else if (res.kind === 'noop') {
-					if (stillHere) live = revertTo;
 				}
+				onReconcile(); // re-read the truth, overwriting the optimistic value
 			}
 		);
 	}
