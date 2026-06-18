@@ -397,6 +397,17 @@ mod tests {
     }
 
     #[test]
+    fn upstream_429_surfaces_as_too_many_requests() {
+        // A tracker rate-limit (429) must reach the frontend as 429 so the
+        // list editor can show a "rate-limited, try again" message instead of
+        // a generic failure; every other upstream status still collapses to
+        // 502 (a generic bad-gateway).
+        assert_eq!(AniError::Upstream { status: 429 }.http_status_code(), 429);
+        assert_eq!(AniError::Upstream { status: 500 }.http_status_code(), 502);
+        assert_eq!(AniError::Upstream { status: 503 }.http_status_code(), 502);
+    }
+
+    #[test]
     fn toml_error_maps_to_config_variant() {
         let toml_err: toml::de::Error =
             toml::from_str::<toml::Value>("not = valid = toml").unwrap_err();

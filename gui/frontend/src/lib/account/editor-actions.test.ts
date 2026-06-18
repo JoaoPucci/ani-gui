@@ -104,3 +104,23 @@ describe('runEditorRemove', () => {
 		});
 	});
 });
+
+describe('rate-limit flag passthrough', () => {
+	it('runEditorSave carries rateLimited from a failed outcome', async () => {
+		const syncSetEntry = vi.fn(async () => ({ written: 0, failed: 1, rateLimited: true }));
+		expect(
+			await runEditorSave(
+				{ syncSetEntry },
+				{ kitsuId: 'k', disabled: false, save: baseSave }
+			)
+		).toEqual({ kind: 'failed', rateLimited: true });
+	});
+
+	it('runEditorRemove carries rateLimited from a failed outcome', async () => {
+		const syncRemoveEntry = vi.fn(async () => ({ removed: 0, failed: 1, rateLimited: true }));
+		expect(await runEditorRemove({ syncRemoveEntry }, { kitsuId: 'k', disabled: false })).toEqual({
+			kind: 'failed',
+			rateLimited: true
+		});
+	});
+});

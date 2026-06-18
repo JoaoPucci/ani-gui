@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { removeEntryAcrossTrackers, setEntryAcrossTrackers } from './set-entry';
+import { AccountApiError } from './api';
 import type { EntryView, ListEntry, Provider } from './types';
 
 function fakeEntry(provider: Provider): ListEntry {
@@ -154,5 +155,51 @@ describe('removeEntryAcrossTrackers', () => {
 			)
 		).toEqual({ removed: 0, failed: 0 });
 		expect(removeEntry).not.toHaveBeenCalled();
+	});
+});
+
+describe('rate-limit detection (429 surfaced distinctly)', () => {
+	it('setEntryAcrossTrackers flags rateLimited when a provider call 429s', async () => {
+		// A 429 still counts as failed (the write didn't land), but the flag
+		// lets the editor show a "trackers are rate-limiting" toast instead of
+		// the generic failure copy.
+		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
+		const setEntry = vi.fn(async () => {
+			throw new AccountApiError(429, 'rate limited');
+		});
+		const out = await setEntryAcrossTrackers(
+			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-12',
+			{ status: 'watching', seededStatus: 'watching', progress: 5 }
+		);
+		expect(out.failed).toBe(1);
+		expect(out.rateLimited).toBe(true);
+	});
+
+	it('setEntryAcrossTrackers does not flag rateLimited for a non-429 failure', async () => {
+		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
+		const setEntry = vi.fn(async () => {
+			throw new AccountApiError(502, 'bad gateway');
+		});
+		const out = await setEntryAcrossTrackers(
+			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-12',
+			{ status: 'watching', seededStatus: 'watching', progress: 5 }
+		);
+		expect(out.failed).toBe(1);
+		expect(out.rateLimited).toBeFalsy();
+	});
+
+	it('removeEntryAcrossTrackers flags rateLimited when the read 429s', async () => {
+		const getEntry = vi.fn(async (): Promise<EntryView | null> => {
+			throw new AccountApiError(429, 'rate limited');
+		});
+		const removeEntry = vi.fn(async () => undefined);
+		const out = await removeEntryAcrossTrackers(
+			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, removeEntry },
+			'kitsu-12'
+		);
+		expect(out.failed).toBe(1);
+		expect(out.rateLimited).toBe(true);
 	});
 });
