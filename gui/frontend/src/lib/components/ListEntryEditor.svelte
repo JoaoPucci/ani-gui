@@ -271,10 +271,14 @@
 
 			<div class="le-actions">
 				{#if view.onList}
+					<!-- Destructive, kept apart from the dismiss/confirm pair on the right. -->
 					<button type="button" class="le-remove" disabled={busy || disabled} onclick={remove}>
 						{m.detail_list_remove()}
 					</button>
 				{/if}
+				<button type="button" class="le-cancel" disabled={busy} onclick={() => (open = false)}>
+					{m.detail_list_cancel()}
+				</button>
 				<button type="button" class="le-save" disabled={busy || disabled} onclick={save}>
 					{m.detail_list_save()}
 				</button>
@@ -430,6 +434,7 @@
 		margin-block-start: var(--space-1);
 	}
 	.le-save,
+	.le-cancel,
 	.le-remove {
 		padding: var(--space-2) var(--space-4);
 		font-family: var(--font-mono);
@@ -444,12 +449,24 @@
 		background: var(--accent, var(--brand));
 		border: 1px solid transparent;
 	}
+	/* Dismiss-only: quiet outline, sits left of Save. */
+	.le-cancel {
+		color: var(--bone-200);
+		background: transparent;
+		border: 1px solid var(--ink-200);
+	}
+	.le-cancel:hover:not(:disabled) {
+		border-color: var(--bone-300);
+	}
+	/* Destructive — pushed to the far left, away from Cancel/Save. */
 	.le-remove {
+		margin-inline-end: auto;
 		color: var(--accent-oxblood);
 		background: transparent;
 		border: 1px solid color-mix(in oklab, var(--accent-oxblood) 50%, transparent);
 	}
 	.le-save:disabled,
+	.le-cancel:disabled,
 	.le-remove:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
