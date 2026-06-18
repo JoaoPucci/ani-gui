@@ -109,10 +109,7 @@ describe('rate-limit flag passthrough', () => {
 	it('runEditorSave carries rateLimited from a failed outcome', async () => {
 		const syncSetEntry = vi.fn(async () => ({ written: 0, failed: 1, rateLimited: true }));
 		expect(
-			await runEditorSave(
-				{ syncSetEntry },
-				{ kitsuId: 'k', disabled: false, save: baseSave }
-			)
+			await runEditorSave({ syncSetEntry }, { kitsuId: 'k', disabled: false, save: baseSave })
 		).toEqual({ kind: 'failed', rateLimited: true });
 	});
 
