@@ -103,7 +103,11 @@
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
+	// Ignored while a write is in flight: dismissing mid-save would drop the
+	// pre-save seed, so a retry after a partial result couldn't re-send the
+	// status to the tracker that failed.
 	function closeEditor() {
+		if (saving || removing) return;
 		open = false;
 	}
 
@@ -276,6 +280,7 @@
 					type="button"
 					class="le-close"
 					aria-label={m.detail_list_close()}
+					disabled={busy}
 					onclick={closeEditor}>✕</button
 				>
 			</header>
