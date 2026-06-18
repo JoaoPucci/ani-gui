@@ -34,15 +34,22 @@ export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
 	let best: EntryView | null = null;
 	for (const e of entries) {
 		if (!e) continue;
-		if (
-			best === null ||
-			e.progress > best.progress ||
-			(e.progress === best.progress && STATUS_COMMITMENT[e.status] > STATUS_COMMITMENT[best.status])
-		) {
-			best = e;
-		}
+		if (best === null || furtherAlong(e, best)) best = e;
 	}
 	return best;
+}
+
+/**
+ * Is entry `e` further along the watch lifecycle than `best`? A Completed
+ * row always wins (it finished, even if its stored count is stale/zero);
+ * otherwise more progress wins, and on a tie the more-committed status does.
+ */
+function furtherAlong(e: EntryView, best: EntryView): boolean {
+	const eDone = e.status === 'completed';
+	const bDone = best.status === 'completed';
+	if (eDone !== bDone) return eDone;
+	if (e.progress !== best.progress) return e.progress > best.progress;
+	return STATUS_COMMITMENT[e.status] > STATUS_COMMITMENT[best.status];
 }
 
 export interface ListEntryView {

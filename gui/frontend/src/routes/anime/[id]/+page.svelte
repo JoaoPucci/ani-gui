@@ -1084,6 +1084,24 @@
 					     stale Kitsu counts. False → "Not in catalogue"
 					     notice. True → real Play/Download with the
 					     allmanga-truth count threaded through. -->
+					<!-- The tracker list editor only needs the Kitsu id + provider
+					     mapping, so it renders regardless of playback availability —
+					     a connected user can still add/edit/remove a list entry for a
+					     title allmanga can't stream. Defined once, rendered in both
+					     the available and unavailable branches. -->
+					{#snippet listEditor()}
+						{#if accountStore.hasAny && detail}
+							<ListEntryEditor
+								kitsuId={id}
+								total={detail.episode_count ?? null}
+								cap={episodeCap}
+								current={listEntry}
+								airing={detail.status != null && detail.status !== 'finished'}
+								disabled={listEntryLoading || listEntryError}
+							/>
+						{/if}
+					{/snippet}
+
 					{#if availability === null}
 						<div
 							class="actions actions-loading"
@@ -1098,6 +1116,11 @@
 							<span aria-hidden="true">⏵</span>
 							{m.detail_unavailable_message()}
 						</p>
+						{#if accountStore.hasAny}
+							<div class="actions" aria-label={m.detail_actions_aria_label()}>
+								{@render listEditor()}
+							</div>
+						{/if}
 					{:else}
 						<div class="actions" aria-label={m.detail_actions_aria_label()}>
 							<button
@@ -1114,16 +1137,7 @@
 								<span aria-hidden="true">↓</span>
 								<span>{m.detail_download_button()}</span>
 							</button>
-							{#if accountStore.hasAny}
-								<ListEntryEditor
-									kitsuId={id}
-									total={detail.episode_count ?? null}
-									cap={episodeCap}
-									current={listEntry}
-									airing={detail.status != null && detail.status !== 'finished'}
-									disabled={listEntryLoading || listEntryError}
-								/>
-							{/if}
+							{@render listEditor()}
 						</div>
 					{/if}
 

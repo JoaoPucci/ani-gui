@@ -13,6 +13,17 @@
   through. Logic lives in tested helpers (list-entry-view, set-entry);
   this component is the thin view + wiring.
 -->
+<script module lang="ts">
+	import { createDebouncer } from '$lib/account/save-debounce';
+
+	// Shared across editor instances (the detail route remounts this per show)
+	// so a debounced write survives navigating away within the window. Keyed by
+	// Kitsu id: a burst of saves to one show coalesces into a single fan-out;
+	// distinct shows are independent. Mashing Save no longer hammers the
+	// trackers into a 429.
+	const saveWrites = createDebouncer(700);
+</script>
+
 <script lang="ts">
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
@@ -104,9 +115,10 @@
 	}
 
 	// Optimistic: close instantly and apply the expected result to the button,
-	// then fan out to the trackers in the background. Without this the popover
-	// hangs open for the whole multi-tracker round-trip (and never dismisses on
-	// failure). On a failed write we roll the button back and toast.
+	// then fan out to the trackers. The fan-out is debounced per show
+	// (saveWrites) so mashing Save coalesces into one write; without the
+	// optimistic close the popover would hang for the round-trip (and never
+	// dismiss on failure). On a failed write we roll the button back and toast.
 	function save() {
 		const status = editStatus;
 		const progress = editProgress;
@@ -114,20 +126,22 @@
 		const previous = live;
 		live = { status: eff, progress: effectiveProgress(eff, progress, total) };
 		open = false;
-		void runEditorSave(
-			{ syncSetEntry },
-			{ kitsuId, disabled, save: { status, seededStatus, progress, total } }
-		).then((res) => {
-			if (res.kind === 'saved') live = res.live;
-			else {
-				live = previous;
-				if (res.kind === 'failed') {
-					toastStore.push({
-						kind: 'error',
-						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-					});
+		saveWrites.schedule(kitsuId, () => {
+			void runEditorSave(
+				{ syncSetEntry },
+				{ kitsuId, disabled, save: { status, seededStatus, progress, total } }
+			).then((res) => {
+				if (res.kind === 'saved') live = res.live;
+				else {
+					live = previous;
+					if (res.kind === 'failed') {
+						toastStore.push({
+							kind: 'error',
+							message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+						});
+					}
 				}
-			}
+			});
 		});
 	}
 
@@ -183,9 +197,12 @@
 
 	function pickStatus(s: ListStatus) {
 		editStatus = s;
-		// Completed snaps the episode count to the total — you can't be
-		// completed with fewer (status wins over a partial count).
-		editProgress = effectiveProgress(s, editProgress, total);
+		// Completed snaps the episode count to the total — you can't be completed
+		// with fewer (status wins over a partial count). Leaving Completed re-clamps
+		// to the settable cap first, so a count snapped up to `total` doesn't stay
+		// above `cap` (e.g. a dub-capped series) when the status is no longer
+		// Completed; Planning zeroes it.
+		editProgress = effectiveProgress(s, clampProgress(editProgress, settableCap), total);
 	}
 
 	function step(delta: number) {
@@ -205,6 +222,10 @@
 	}
 
 	function remove() {
+		// Drop any queued save for this show — a removal supersedes it (and must
+		// not re-add the row after we delete it). Remove runs now, not debounced:
+		// it's a single deliberate action, not something you mash.
+		saveWrites.cancel(kitsuId);
 		const previous = live;
 		live = null; // optimistic: button flips to "Add to list" at once
 		open = false;
