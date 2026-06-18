@@ -79,12 +79,11 @@
 	"list_episode_label": "Episodio",
 	"list_episode_increment": "Un episodio más",
 	"list_episode_decrement": "Un episodio menos",
+	"list_save": "Guardar",
 	"list_remove": "Quitar de la lista",
 	"list_close": "Cerrar",
 	"list_editor_aria": "Editar entrada de la lista",
-	"list_saving": "Guardando…",
 	"list_saved": "Guardado",
-	"list_save_error": "No se pudo guardar",
 	"list_removed": "Eliminado de tu lista",
 	"list_save_failed": "No se pudo actualizar tu lista"
 }
