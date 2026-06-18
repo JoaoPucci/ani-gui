@@ -84,14 +84,63 @@
 	const buttonLabel = $derived(listButtonLabel(view, { add: m.detail_list_add(), statusLabel }));
 
 	let open = $state(false);
-	let busy = $state(false);
+	let removing = $state(false);
+	// Auto-save state shown inline in the footer (no Save button): idle → no
+	// indicator, then saving → saved/error as the debounced write resolves.
+	let saveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let editStatus = $state<ListStatus>('planning');
 	let editProgress = $state(0);
-	// The status the editor opened on (the seed). Save sends status only when
-	// the user moved it off this, so a save that only touched the episode
-	// count doesn't converge a divergent status across trackers.
+	// The status the editor opened on (the seed). A save sends status only when
+	// the user moved it off this, so a progress-only edit doesn't converge a
+	// divergent status across trackers. Re-baselined after each successful
+	// auto-save so a later A→B→A round-trip is still detected as a change.
 	let seededStatus = $state<ListStatus>('planning');
+
+	// Debounce so a burst of +/- clicks or a status change fans out to the
+	// trackers once, not per keystroke. A monotonic seq lets an in-flight save
+	// ignore its result when a newer edit has already superseded it.
+	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	let editSeq = 0;
+
+	function scheduleSave() {
+		saveState = 'saving';
+		editSeq += 1;
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			saveTimer = undefined;
+			void runSave();
+		}, 700);
+	}
+
+	async function runSave() {
+		const seq = editSeq;
+		const status = editStatus;
+		const res = await runEditorSave(
+			{ syncSetEntry },
+			{ kitsuId, disabled, save: { status, seededStatus, progress: editProgress, total } }
+		);
+		if (seq !== editSeq) return; // a newer edit landed; its own save reflects it
+		if (res.kind === 'saved') {
+			live = res.live;
+			seededStatus = status;
+			saveState = 'saved';
+		} else if (res.kind === 'failed') {
+			saveState = 'error';
+		} else {
+			saveState = 'idle';
+		}
+	}
+
+	function closeEditor() {
+		// Flush a pending debounced write so closing never drops an edit.
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = undefined;
+			void runSave();
+		}
+		open = false;
+	}
 
 	const popoverControls = createPopoverControls({
 		getTrigger: () => trigger,
@@ -99,7 +148,7 @@
 	});
 	$effect(() => {
 		if (!open) return;
-		return popoverControls.attach({ onClose: () => (open = false) });
+		return popoverControls.attach({ onClose: closeEditor });
 	});
 
 	// Close the editor whenever it becomes disabled while open. The detail
@@ -124,6 +173,7 @@
 		editStatus = init.status;
 		editProgress = init.progress;
 		seededStatus = init.status;
+		saveState = 'idle';
 		open = true;
 	}
 
@@ -140,6 +190,7 @@
 		// Completed snaps the episode count to the total — you can't be
 		// completed with fewer (status wins over a partial count).
 		editProgress = effectiveProgress(s, editProgress, total);
+		scheduleSave();
 	}
 
 	function step(delta: number) {
@@ -148,6 +199,7 @@
 			clampProgress(editProgress + delta, settableCap),
 			total
 		);
+		scheduleSave();
 	}
 
 	function onProgressInput(e: Event) {
@@ -156,34 +208,11 @@
 			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), settableCap),
 			total
 		);
-	}
-
-	async function save() {
-		busy = true;
-		// Snapshot the form values before awaiting. The status/episode controls
-		// stay editable during the in-flight save, so reading editStatus/
-		// editProgress again after the await could optimistically show values
-		// the user changed mid-request that were never sent to the tracker.
-		const save = { status: editStatus, seededStatus, progress: editProgress, total };
-		try {
-			// runEditorSave owns the state machine (disabled gate, per-tracker
-			// fan-out outcome interpretation, optimistic `live`); the component
-			// just applies the result + picks the toast. See editor-actions.ts.
-			const res = await runEditorSave({ syncSetEntry }, { kitsuId, disabled, save });
-			if (res.kind === 'saved') {
-				live = res.live;
-				toastStore.push({ kind: 'success', message: m.detail_list_saved() });
-				open = false;
-			} else if (res.kind === 'failed') {
-				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
-			}
-		} finally {
-			busy = false;
-		}
+		scheduleSave();
 	}
 
 	async function remove() {
-		busy = true;
+		removing = true;
 		try {
 			const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled });
 			if (res.kind === 'removed') {
@@ -194,7 +223,7 @@
 				toastStore.push({ kind: 'error', message: m.detail_list_save_failed() });
 			}
 		} finally {
-			busy = false;
+			removing = false;
 		}
 	}
 </script>
@@ -216,6 +245,16 @@
 
 	{#if open}
 		<div id="list-entry-pop" class="le-pop" role="dialog" aria-label={m.detail_list_editor_aria()}>
+			<header class="le-head">
+				<span class="le-title">{m.detail_list_editor_aria()}</span>
+				<button
+					type="button"
+					class="le-close"
+					aria-label={m.detail_list_close()}
+					onclick={closeEditor}>✕</button
+				>
+			</header>
+
 			<label class="le-field">
 				<span class="le-label">{m.detail_list_status_label()}</span>
 				<div class="le-select-wrap">
@@ -269,20 +308,17 @@
 				</div>
 			{/if}
 
-			<div class="le-actions">
+			<footer class="le-foot">
 				{#if view.onList}
-					<!-- Destructive, kept apart from the dismiss/confirm pair on the right. -->
-					<button type="button" class="le-remove" disabled={busy || disabled} onclick={remove}>
+					<button type="button" class="le-remove" disabled={removing || disabled} onclick={remove}>
 						{m.detail_list_remove()}
 					</button>
 				{/if}
-				<button type="button" class="le-cancel" disabled={busy} onclick={() => (open = false)}>
-					{m.detail_list_cancel()}
-				</button>
-				<button type="button" class="le-save" disabled={busy || disabled} onclick={save}>
-					{m.detail_list_save()}
-				</button>
-			</div>
+				<!-- Auto-save status, in place of a Save button. -->
+				<span class="le-savestate" data-state={saveState} aria-live="polite">
+					{#if saveState === 'saving'}{m.detail_list_saving()}{:else if saveState === 'saved'}{m.detail_list_saved()}{:else if saveState === 'error'}{m.detail_list_save_error()}{/if}
+				</span>
+			</footer>
 		</div>
 	{/if}
 </div>
@@ -339,6 +375,37 @@
 		border-radius: var(--radius-card, 8px);
 		box-shadow: var(--shadow-card-hover, 0 14px 40px rgba(0, 0, 0, 0.45));
 		z-index: 60;
+	}
+	.le-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+	}
+	.le-title {
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-300);
+	}
+	.le-close {
+		display: grid;
+		place-items: center;
+		inline-size: 1.5rem;
+		block-size: 1.5rem;
+		margin-inline-end: calc(-1 * var(--space-1));
+		font-size: 0.9rem;
+		line-height: 1;
+		color: var(--bone-400);
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius-control, 6px);
+		cursor: pointer;
+	}
+	.le-close:hover {
+		color: var(--bone-100);
+		background: var(--ink-200);
 	}
 	.le-field {
 		display: grid;
@@ -427,48 +494,45 @@
 		font-size: var(--type-meta);
 		color: var(--bone-400);
 	}
-	.le-actions {
+	/* Footer: destructive Remove on the left, auto-save status on the right. */
+	.le-foot {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
 		gap: var(--space-2);
 		margin-block-start: var(--space-1);
+		min-block-size: 1.5rem;
 	}
-	.le-save,
-	.le-cancel,
 	.le-remove {
-		padding: var(--space-2) var(--space-4);
+		padding: 0;
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
-		border-radius: var(--radius-control, 6px);
-		cursor: pointer;
-	}
-	.le-save {
-		color: var(--ink-000);
-		background: var(--accent, var(--brand));
-		border: 1px solid transparent;
-	}
-	/* Dismiss-only: quiet outline, sits left of Save. */
-	.le-cancel {
-		color: var(--bone-200);
-		background: transparent;
-		border: 1px solid var(--ink-200);
-	}
-	.le-cancel:hover:not(:disabled) {
-		border-color: var(--bone-300);
-	}
-	/* Destructive — pushed to the far left, away from Cancel/Save. */
-	.le-remove {
-		margin-inline-end: auto;
 		color: var(--accent-oxblood);
 		background: transparent;
-		border: 1px solid color-mix(in oklab, var(--accent-oxblood) 50%, transparent);
+		border: 0;
+		cursor: pointer;
 	}
-	.le-save:disabled,
-	.le-cancel:disabled,
+	.le-remove:hover:not(:disabled) {
+		text-decoration: underline;
+	}
 	.le-remove:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+	/* Pushed to the right; reserves space so the row doesn't jump. */
+	.le-savestate {
+		margin-inline-start: auto;
+		font-family: var(--font-mono);
+		font-size: var(--type-micro);
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-400);
+	}
+	.le-savestate[data-state='saved'] {
+		color: color-mix(in oklab, var(--accent-jade) 70%, var(--bone-200));
+	}
+	.le-savestate[data-state='error'] {
+		color: var(--accent-oxblood);
 	}
 </style>
