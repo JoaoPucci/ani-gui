@@ -113,6 +113,16 @@ describe('pickSeedEntry', () => {
 		expect(pickSeedEntry([watching, completed])).toEqual(completed);
 		expect(pickSeedEntry([completed, watching])).toEqual(completed);
 	});
+
+	it('a Completed row wins over a higher-progress non-completed one (it is furthest along)', () => {
+		// A tracker left Completed at a stale/zero count is still further along
+		// than another reporting Watching with positive progress — seeding the
+		// editor from Watching would understate it. Completed always wins.
+		const watching: EntryView = { status: 'watching', progress: 5 };
+		const completedStale: EntryView = { status: 'completed', progress: 0 };
+		expect(pickSeedEntry([watching, completedStale])).toEqual(completedStale);
+		expect(pickSeedEntry([completedStale, watching])).toEqual(completedStale);
+	});
 });
 
 describe('buildListEdit', () => {
