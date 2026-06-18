@@ -68,7 +68,15 @@ export function deriveListEntryView(
 	if (!entry) {
 		return { onList: false, status: null, progress: 0, total: kitsuTotal };
 	}
-	return { onList: true, status: entry.status, progress: entry.progress, total: kitsuTotal };
+	// A completed entry always reads as the full count (status wins over a
+	// stored-short progress), so the button + editor agree with what a Save
+	// would write — never "Completed · 0/24".
+	return {
+		onList: true,
+		status: entry.status,
+		progress: effectiveProgress(entry.status, entry.progress, kitsuTotal),
+		total: kitsuTotal
+	};
 }
 
 export interface ListButtonLabels {
