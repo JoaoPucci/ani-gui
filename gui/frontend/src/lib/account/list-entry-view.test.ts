@@ -114,6 +114,16 @@ describe('pickSeedEntry', () => {
 		expect(pickSeedEntry([completed, watching])).toEqual(completed);
 	});
 
+	it('an incoherent Planning row with progress does not outrank a real watched row', () => {
+		// A planning row's coherent progress is 0 (deriveListEntryView zeroes it),
+		// so it must not win the seed on raw progress and then fan out progress:0
+		// to a tracker that is actually further along.
+		const planningWithProgress: EntryView = { status: 'planning', progress: 5 };
+		const watching: EntryView = { status: 'watching', progress: 3 };
+		expect(pickSeedEntry([planningWithProgress, watching])).toEqual(watching);
+		expect(pickSeedEntry([watching, planningWithProgress])).toEqual(watching);
+	});
+
 	it('a Completed row wins over a higher-progress non-completed one (it is furthest along)', () => {
 		// A tracker left Completed at a stale/zero count is still further along
 		// than another reporting Watching with positive progress — seeding the

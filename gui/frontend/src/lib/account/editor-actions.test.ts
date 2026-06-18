@@ -99,10 +99,13 @@ describe('runEditorRemove', () => {
 		});
 	});
 
-	it('nothing removed (removed 0) → failed (no tracker had the row)', async () => {
+	it('already absent on every tracker (removed 0, failed 0) → removed (postcondition met)', async () => {
+		// The row was removed elsewhere; no provider still has it and nothing
+		// failed, so "remove" is satisfied — clear the entry rather than treating
+		// it as a failure that restores the stale on-list state.
 		const syncRemoveEntry = vi.fn(async () => ({ removed: 0, failed: 0 }));
 		expect(await runEditorRemove({ syncRemoveEntry }, { kitsuId: 'k', disabled: false })).toEqual({
-			kind: 'failed'
+			kind: 'removed'
 		});
 	});
 
