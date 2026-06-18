@@ -404,7 +404,9 @@
 	}
 	.le-trigger:disabled {
 		opacity: 0.5;
-		cursor: progress;
+		/* not-allowed, not progress: a disabled trigger (entry still loading or a
+		   read that errored out) shouldn't read as an indefinite spinner. */
+		cursor: not-allowed;
 	}
 	.le-trigger.on-list {
 		border-color: color-mix(in oklab, var(--accent-jade) 55%, var(--bone-300));

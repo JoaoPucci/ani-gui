@@ -50,6 +50,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
 	import { pickSeedEntry } from '$lib/account/list-entry-view';
+	import { nextReadRetryMs } from '$lib/account/read-retry';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
 	import type { EntryView } from '$lib/account/types';
@@ -432,29 +433,47 @@
 		listEntryLoading = true;
 		const providers = [...connected];
 		let cancelled = false;
-		void (async () => {
-			try {
-				// Read every connected tracker. Promise.all rejects on the first
-				// failure, so any unreadable provider drops us into the catch and
-				// disables the editor rather than seeding from a partial picture.
-				const views = await Promise.all(
-					providers.map(async (p) => {
-						const bearer = await freshBearerFor(p);
-						if (!bearer) throw new Error(`no bearer for ${p}`);
-						return getEntry(p, bearer, kitsuId);
-					})
-				);
-				if (!cancelled) listEntry = pickSeedEntry(views);
-			} catch {
-				// Read failed transiently: treat the entry as unknown, not absent,
-				// so the editor stays disabled instead of offering a stale Add.
-				if (!cancelled) listEntryError = true;
-			} finally {
-				if (!cancelled) listEntryLoading = false;
-			}
-		})();
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		// Read every connected tracker, retrying on a transient failure (e.g. a
+		// 429 while rate-limited) with backoff so a passing limit self-heals
+		// instead of leaving the editor stuck disabled. After the retries are
+		// exhausted we settle into the error state rather than spinning forever.
+		const attempt = (n: number) => {
+			void (async () => {
+				try {
+					// Promise.all rejects on the first failure, so any unreadable
+					// provider drops us into the catch rather than seeding from a
+					// partial picture.
+					const views = await Promise.all(
+						providers.map(async (p) => {
+							const bearer = await freshBearerFor(p);
+							if (!bearer) throw new Error(`no bearer for ${p}`);
+							return getEntry(p, bearer, kitsuId);
+						})
+					);
+					if (cancelled) return;
+					listEntry = pickSeedEntry(views);
+					listEntryLoading = false;
+				} catch {
+					if (cancelled) return;
+					const delay = nextReadRetryMs(n);
+					if (delay === null) {
+						// Out of retries: unknown entry, not absent — the editor stays
+						// disabled rather than offering a stale Add.
+						listEntryError = true;
+						listEntryLoading = false;
+					} else {
+						retryTimer = setTimeout(() => {
+							if (!cancelled) attempt(n + 1);
+						}, delay);
+					}
+				}
+			})();
+		};
+		attempt(0);
 		return () => {
 			cancelled = true;
+			clearTimeout(retryTimer);
 		};
 	});
 
