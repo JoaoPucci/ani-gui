@@ -132,9 +132,17 @@
 		getTrigger: () => trigger,
 		getPopoverId: () => 'list-entry-pop'
 	});
+	// Attach the outside-click/Escape listener ONCE for the component's life and
+	// gate the close on `open` inside the handler. Re-attaching per open (an
+	// `$effect` that reads `open`) raced on a fast close→reopen — signal
+	// coalescing could skip the re-run, leaving no listener so the next outside
+	// click didn't dismiss.
 	$effect(() => {
-		if (!open) return;
-		return popoverControls.attach({ onClose: closeEditor });
+		return popoverControls.attach({
+			onClose: () => {
+				if (open) closeEditor();
+			}
+		});
 	});
 
 	// Close the editor whenever it becomes disabled while open. The detail
