@@ -92,6 +92,8 @@ export interface ListButtonLabels {
  */
 export function listButtonLabel(view: ListEntryView, labels: ListButtonLabels): string {
 	if (!view.onList || view.status === null) return labels.add;
+	// Plan to Watch means not started — show just the status, no count.
+	if (view.status === 'planning') return labels.statusLabel(view.status);
 	const count = view.total !== null ? `${view.progress}/${view.total}` : `${view.progress}`;
 	return `${labels.statusLabel(view.status)} · ${count}`;
 }
