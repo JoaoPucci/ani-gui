@@ -1111,6 +1111,13 @@
 							<span class="action-skel"></span>
 							<span class="action-skel action-skel-narrow"></span>
 						</div>
+						<!-- The tracker editor doesn't depend on the availability probe,
+						     so keep it usable while playback availability is still unknown. -->
+						{#if accountStore.hasAny}
+							<div class="actions" aria-label={m.detail_actions_aria_label()}>
+								{@render listEditor()}
+							</div>
+						{/if}
 					{:else if availability === false}
 						<p class="unavailable" role="status">
 							<span aria-hidden="true">⏵</span>

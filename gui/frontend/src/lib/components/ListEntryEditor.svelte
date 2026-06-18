@@ -74,6 +74,12 @@
 	// re-syncs.
 	let live = $derived(current);
 
+	// The real server value captured at the start of a save/remove burst (when
+	// no write is queued). A failed write reverts the button to THIS, not the
+	// optimistic chain — so the UI reflects the true prior status, not a value
+	// that was never written.
+	let baseline: EntryView | null = null;
+
 	const view = $derived(deriveListEntryView(live, total));
 
 	// While the show is airing, Completed/Rewatching are hidden — unless the
@@ -119,27 +125,43 @@
 	// (saveWrites) so mashing Save coalesces into one write; without the
 	// optimistic close the popover would hang for the round-trip (and never
 	// dismiss on failure). On a failed write we roll the button back and toast.
+	//
+	// Everything the debounced write needs is SNAPSHOT here at click time — it
+	// must not read the reactive props at fire time (700ms later): `disabled`
+	// can transiently flip true (a re-read / token refresh) and silently no-op
+	// the save, and `kitsuId` can change if the user navigated. We revert to
+	// `baseline` — the real server value captured at the start of a burst (not
+	// the optimistic chain) — so a failed write shows the true prior status.
 	function save() {
+		const id = kitsuId;
+		const wasDisabled = disabled;
 		const status = editStatus;
+		const seeded = seededStatus;
 		const progress = editProgress;
+		const tot = total;
 		const eff = effectiveStatus(status, progress);
-		const previous = live;
-		live = { status: eff, progress: effectiveProgress(eff, progress, total) };
+		if (!saveWrites.pending(id)) baseline = live; // pre-burst server truth
+		const revertTo = baseline;
+		live = { status: eff, progress: effectiveProgress(eff, progress, tot) };
 		open = false;
-		saveWrites.schedule(kitsuId, () => {
+		saveWrites.schedule(id, () => {
 			void runEditorSave(
 				{ syncSetEntry },
-				{ kitsuId, disabled, save: { status, seededStatus, progress, total } }
+				{
+					kitsuId: id,
+					disabled: wasDisabled,
+					save: { status, seededStatus: seeded, progress, total: tot }
+				}
 			).then((res) => {
-				if (res.kind === 'saved') live = res.live;
-				else {
-					live = previous;
-					if (res.kind === 'failed') {
-						toastStore.push({
-							kind: 'error',
-							message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-						});
-					}
+				const stillHere = kitsuId === id; // skip live mutation if navigated away
+				if (res.kind === 'saved') {
+					if (stillHere) live = res.live;
+				} else if (res.kind === 'failed') {
+					if (stillHere) live = revertTo;
+					toastStore.push({
+						kind: 'error',
+						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+					});
 				}
 			});
 		});
@@ -224,22 +246,30 @@
 	function remove() {
 		// Drop any queued save for this show — a removal supersedes it (and must
 		// not re-add the row after we delete it). Remove runs now, not debounced:
-		// it's a single deliberate action, not something you mash.
-		saveWrites.cancel(kitsuId);
-		const previous = live;
+		// it's a single deliberate action, not something you mash. Inputs are
+		// snapshot for the same reason save() snapshots them.
+		const id = kitsuId;
+		const wasDisabled = disabled;
+		// If a save was queued (optimistic live), the true prior value is the
+		// burst baseline; otherwise live already is the server truth.
+		const revertTo = saveWrites.pending(id) ? baseline : live;
+		saveWrites.cancel(id);
 		live = null; // optimistic: button flips to "Add to list" at once
 		open = false;
-		void runEditorRemove({ syncRemoveEntry }, { kitsuId, disabled }).then((res) => {
-			if (res.kind === 'failed') {
-				live = previous;
-				toastStore.push({
-					kind: 'error',
-					message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-				});
-			} else if (res.kind === 'noop') {
-				live = previous;
+		void runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled: wasDisabled }).then(
+			(res) => {
+				const stillHere = kitsuId === id;
+				if (res.kind === 'failed') {
+					if (stillHere) live = revertTo;
+					toastStore.push({
+						kind: 'error',
+						message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+					});
+				} else if (res.kind === 'noop') {
+					if (stillHere) live = revertTo;
+				}
 			}
-		});
+		);
 	}
 </script>
 
