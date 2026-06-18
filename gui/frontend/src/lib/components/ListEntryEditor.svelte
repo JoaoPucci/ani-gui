@@ -131,11 +131,16 @@
 			});
 			return; // keep the popover open to retry
 		}
-		toastStore.push(
-			res.kind === 'partial'
-				? { kind: 'error', message: m.detail_list_save_partial() }
-				: { kind: 'success', message: m.detail_list_saved() }
-		);
+		if (res.kind === 'partial') {
+			// Some trackers took it, others didn't. Keep the popover open (with the
+			// user's status change still seeded) so a retry re-sends the status to
+			// the trackers that failed — closing would reseed seededStatus from the
+			// landed value and buildListEdit would then treat it as unchanged.
+			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
+			onReconcile();
+			return;
+		}
+		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
 		open = false;
 		onReconcile();
