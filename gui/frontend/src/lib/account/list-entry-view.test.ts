@@ -40,6 +40,18 @@ describe('deriveListEntryView', () => {
 	it('unknown total is preserved as null', () => {
 		expect(deriveListEntryView({ status: 'watching', progress: 5 }, null).total).toBeNull();
 	});
+
+	it('shows a completed entry at the full count even when stored short', () => {
+		// A tracker left at completed/0 (e.g. a divergent write) must display as
+		// 24/24, not 0/24 — completed always means the full count. Matches what
+		// the editor opens at and what a Save would write back.
+		expect(deriveListEntryView({ status: 'completed', progress: 0 }, 24)).toEqual({
+			onList: true,
+			status: 'completed',
+			progress: 24,
+			total: 24
+		});
+	});
 });
 
 describe('listButtonLabel', () => {
