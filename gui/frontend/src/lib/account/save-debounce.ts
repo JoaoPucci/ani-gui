@@ -22,9 +22,13 @@ export interface Debouncer {
 
 export function createDebouncer(
 	delayMs: number,
+	// Arrow wrappers, not bare `setTimeout`/`clearTimeout` references: calling
+	// them as methods of this object (`timers.set(...)`) invokes them with the
+	// wrong receiver, which browsers reject with "Illegal invocation". The
+	// wrappers call them as free globals.
 	timers: { set: (cb: () => void, ms: number) => Handle; clear: (h: Handle) => void } = {
-		set: setTimeout,
-		clear: clearTimeout
+		set: (cb, ms) => setTimeout(cb, ms),
+		clear: (h) => clearTimeout(h)
 	}
 ): Debouncer {
 	const handles = new Map<string, Handle>();
