@@ -23,17 +23,22 @@ export interface PendingEdit {
 	kitsuId: string;
 	/** The status the user wants every tracker to reach. */
 	intendedStatus: ListStatus;
+	/** The episode count the user intended, captured at save time. Stored (not
+	 *  re-derived from the post-partial live view) so a retry replays the user's
+	 *  count rather than a lagging tracker's higher one folded back in. */
+	intendedProgress: number;
 }
 
 /**
- * The values to open the editor with for `kitsuId`. `status` pre-fills the
- * picker — the intended status when a pending edit for this show survives,
- * else the live view's status. `seededStatus` is the opened-on value (always
- * the live view) used to detect a deliberate status change in the no-pending
- * case. `progress` is made coherent with the seeded `status` (planning → 0,
- * completed → full count) exactly like pickStatus does for in-place edits — so
- * a pending planning retry doesn't open as planning + watched-episodes, which
- * effectiveStatus would promote straight back to watching on save.
+ * The values to open the editor with for `kitsuId`. When a pending edit for
+ * this show survives, `status` and `progress` are seeded WHOLESALE from the
+ * stored intent — never from the post-partial live view, which a reconcile can
+ * fold up to a lagging tracker's higher count and overwrite the user's intended
+ * progress. Otherwise both come from the live view. `seededStatus` is the
+ * opened-on value (always the live view) used to detect a deliberate status
+ * change in the no-pending case. `progress` is then made coherent with the
+ * seeded `status` (planning → 0, completed → full count) exactly like
+ * pickStatus does for in-place edits.
  */
 export function seedForOpen(
 	view: ListEntryView,
@@ -41,11 +46,13 @@ export function seedForOpen(
 	kitsuId: string
 ): { status: ListStatus; seededStatus: ListStatus; progress: number } {
 	const base = editorInitial(view);
-	const status = pending && pending.kitsuId === kitsuId ? pending.intendedStatus : base.status;
+	const match = pending !== null && pending.kitsuId === kitsuId;
+	const status = match ? pending.intendedStatus : base.status;
+	const rawProgress = match ? pending.intendedProgress : base.progress;
 	return {
 		status,
 		seededStatus: base.status,
-		progress: effectiveProgress(status, base.progress, view.total)
+		progress: effectiveProgress(status, rawProgress, view.total)
 	};
 }
 
@@ -81,9 +88,12 @@ export function pendingAfterSave(
 	kitsuId: string,
 	outcome: 'noop' | 'saved' | 'partial' | 'failed',
 	statusChanged: boolean,
-	intendedStatus: ListStatus
+	intendedStatus: ListStatus,
+	intendedProgress: number
 ): PendingEdit | null {
 	if (outcome === 'saved') return null;
-	if (outcome === 'partial' && statusChanged) return { kitsuId, intendedStatus };
+	if (outcome === 'partial' && statusChanged) {
+		return { kitsuId, intendedStatus, intendedProgress };
+	}
 	return prev;
 }

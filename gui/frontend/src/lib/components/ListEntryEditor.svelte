@@ -168,7 +168,14 @@
 			// Remember the intended status so a dismiss→reopen→retry still re-sends it
 			// (and marks the next save as a deliberate status write via pendingActive),
 			// even though the reopened form seeds from the landed `live`.
-			pendingEdit = pendingAfterSave(pendingEdit, id, 'partial', statusChanged, editStatus);
+			pendingEdit = pendingAfterSave(
+				pendingEdit,
+				id,
+				'partial',
+				statusChanged,
+				editStatus,
+				editProgress
+			);
 			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
@@ -176,7 +183,14 @@
 		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
 		// Every tracker took it — the divergence is gone, so drop any pending retry.
-		pendingEdit = pendingAfterSave(pendingEdit, id, 'saved', statusChanged, editStatus);
+		pendingEdit = pendingAfterSave(
+			pendingEdit,
+			id,
+			'saved',
+			statusChanged,
+			editStatus,
+			editProgress
+		);
 		open = false;
 		onReconcile();
 	}
