@@ -67,15 +67,23 @@ describe('pendingAfterSave', () => {
 		});
 	});
 
-	it('keeps the existing pending edit on a repeated partial (never advances the seed)', () => {
-		// A second partial must not move the recorded seed to the now-landed value,
-		// or the still-divergent tracker is lost on the next retry.
+	it('on a repeat same-show partial, keeps the original seed but refreshes the intended status', () => {
+		// The user changed status again while the popover stayed open after the
+		// first partial. The seed must stay at the ORIGINAL divergence point
+		// (planning) — never advance to the now-landed value, or the
+		// still-divergent tracker is lost — but the intended status has to track
+		// the LATEST edit (paused), or a later dismiss→reopen→retry resends the
+		// stale status. (Codex P2 #3442360116)
 		const prev: PendingEdit = {
 			kitsuId: 'k1',
 			seededStatus: 'planning',
 			intendedStatus: 'watching'
 		};
-		expect(pendingAfterSave(prev, 'k1', 'partial', 'watching', 'watching')).toBe(prev);
+		expect(pendingAfterSave(prev, 'k1', 'partial', 'watching', 'paused')).toEqual({
+			kitsuId: 'k1',
+			seededStatus: 'planning',
+			intendedStatus: 'paused'
+		});
 	});
 
 	it('replaces a pending edit from a different show on a partial', () => {
