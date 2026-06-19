@@ -69,7 +69,11 @@ describe('seedForOpen', () => {
 	});
 
 	it('ignores a pending edit belonging to a different show', () => {
-		const pending: PendingEdit = { kitsuId: 'other', intendedStatus: 'watching', intendedProgress: 0 };
+		const pending: PendingEdit = {
+			kitsuId: 'other',
+			intendedStatus: 'watching',
+			intendedProgress: 0
+		};
 		expect(seedForOpen(view('completed', 24), pending, 'k1')).toEqual({
 			status: 'completed',
 			seededStatus: 'completed',
