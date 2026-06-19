@@ -32,16 +32,37 @@ describe('seedForOpen', () => {
 		});
 	});
 
-	it('with a pending edit for THIS show, pre-fills the intended status (seed stays the live value)', () => {
-		// After a partial save the live view reflects the landed value; reopening
-		// pre-fills the status the user intended. The seed tracks the live value —
-		// the deliberate-write decision comes from the active pending edit, not a
-		// value comparison (see statusWriteIntended).
+	it('pre-fills a pending status and snaps progress coherent to it (completed → full count)', () => {
+		// After a partial save the live view reflects the still-lagging tracker's
+		// value; reopening pre-fills the intended status, and progress must be made
+		// coherent with THAT status — just like pickStatus does for in-place edits.
 		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'completed' };
 		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
 			status: 'completed',
 			seededStatus: 'watching',
-			progress: 5
+			progress: 24
+		});
+	});
+
+	it('zeroes progress when the pending status is planning (else effectiveStatus re-promotes it)', () => {
+		// The Codex P2 #3444274176 case: a reconcile leaves `live` at the lagging
+		// tracker's watching/5, but the user intended Plan-to-Watch. Seeding
+		// planning + progress 5 would promote back to watching on save, so the
+		// retry never writes planning. Coerce progress to 0.
+		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'planning' };
+		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
+			status: 'planning',
+			seededStatus: 'watching',
+			progress: 0
+		});
+	});
+
+	it('keeps progress for a pending status that carries a count (watching)', () => {
+		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
+		expect(seedForOpen(view('paused', 7), pending, 'k1')).toEqual({
+			status: 'watching',
+			seededStatus: 'paused',
+			progress: 7
 		});
 	});
 
