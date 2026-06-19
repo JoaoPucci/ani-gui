@@ -973,7 +973,10 @@ export function kitsuResolveAllmangaShowId(
 	// bypassCache: the resolver already read + rejected the reverse-cache row, so
 	// tell the backend to skip its fast path and go straight to the alias walk —
 	// otherwise it hands back the very id the caller just rejected.
-	const qs = bypassCache ? '?bypass_cache=1' : '';
+	// `=true`/`=false`, not `=1`: the backend deserializes this into a Rust bool
+	// and axum's query parser rejects "1" (400), which would silently null the
+	// stub fallback.
+	const qs = bypassCache ? '?bypass_cache=true' : '';
 	return getJson<KitsuAnimeRef | null>(
 		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
 	);
