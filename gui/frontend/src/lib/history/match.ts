@@ -49,7 +49,11 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 						// mismatch (the Love Live movie's show_id poisoned to the YOASOBI
 						// "Idol" MV), or a cross-cour slug mismatch. Self-heal: drop it so
 						// it re-resolves on every install without a manual cache wipe.
-						void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
+						// Awaited (not fire-and-forget): the step-4 enrichment endpoint
+						// reads this same reverse cache first, so the DELETE must commit
+						// before we fall through or a typo title whose search misses gets
+						// the just-rejected id straight back. Tolerate a failing delete.
+						await allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
 					}
 					// 'evict' / 'reresolve' both fall through to the title-search path.
 				} catch {
