@@ -212,6 +212,20 @@ describe('pickKitsuMatch', () => {
 		expect(pickKitsuMatch(hits, r)?.id).toBe('mid');
 	});
 
+	it('picks the ordinal-season sibling by slug ("2nd-season") for a "Second Season" entry', () => {
+		// cour=2 parsed from "Second Season"; the picker must recognize the
+		// numeric-ordinal slug form, not just "season-2".
+		const r = resolveHistoryEntry(entry('Foo Second Season (12 episodes)', '4'), null);
+		const hits = [slugHit('s1', 'foo', 'Foo'), slugHit('s2', 'foo-2nd-season', 'Foo 2nd Season')];
+		expect(pickKitsuMatch(hits, r)?.id).toBe('s2');
+	});
+
+	it('picks the ordinal-season sibling by title ("2nd Season") when slugs do not carry the cour', () => {
+		const r = resolveHistoryEntry(entry('Foo 2nd Season (12 episodes)', '4'), null);
+		const hits = [titledHit('s1', 'Foo'), titledHit('s2', 'Foo 2nd Season')];
+		expect(pickKitsuMatch(hits, r)?.id).toBe('s2');
+	});
+
 	it('does not false-match the parent series number ("Part 6" in JoJo)', () => {
 		// Searching for cour 2, the only "Part 6" in any title is
 		// the JoJo series number — should not be picked.
