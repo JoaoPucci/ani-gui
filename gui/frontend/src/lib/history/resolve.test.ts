@@ -101,6 +101,15 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.uiPage).toBe(1);
 	});
 
+	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
+		// resolveHistoryEntry only recognized "Season N"; the "Nth Season" /
+		// "<word> Season" forms left cour=1, so the cour-slug guard never ran and
+		// a sibling cour could be trusted. Both numeric and spelled ordinals set
+		// the cour.
+		expect(resolveHistoryEntry(entry('Foo 2nd Season (12 episodes)', '3'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo Fourth Season (12 episodes)', '3'), null).cour).toBe(4);
+	});
+
 	it('does not treat mid-title "Part N" as a cour disambiguator', () => {
 		const r = resolveHistoryEntry(
 			entry('JoJo no Kimyou na Bouken Part 6: Stone Ocean (12 episodes)', '4'),
@@ -494,6 +503,13 @@ describe('titlesPlausiblySameShow', () => {
 		expect(
 			titlesPlausiblySameShow('Frieren Second Season', ref('Bocchi the Rock Second Season'))
 		).toBe(false);
+	});
+
+	it('rejects unrelated shows sharing only a stop-word article (the)', () => {
+		// "The Reflection" vs "The SoulTaker" share only the article "the", which
+		// is not identity evidence; the guard must reject and self-heal.
+		expect(titlesPlausiblySameShow('The Reflection', ref('The SoulTaker'))).toBe(false);
+		expect(titlesPlausiblySameShow('The Reflection', ref('The Reflection'))).toBe(true);
 	});
 
 	it('judges a standalone numeric title (86) instead of stripping it to a stub', () => {
