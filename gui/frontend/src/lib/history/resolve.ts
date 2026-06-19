@@ -311,25 +311,19 @@ export function pickKitsuMatch(
 ): KitsuAnimeRef | null {
 	if (hits.length === 0) return null;
 
-	// Filter out hits whose episode_count is incompatible with the
-	// user's history record. Burichi (366 episodes) → "Burichi -"
-	// Kitsu search returns Doraemon Movie 14 (1 episode) first,
-	// fuzzy-matched on "Buriki"; the count filter rejects that
-	// before the slug/cour heuristics ever see it. If every hit
-	// fails the filter, fall through to the unfiltered list so the
-	// picker stays as permissive as before for incompatible-count
-	// cases.
-	const compatibleHits = hits.filter((h) =>
-		isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
+	// Drop hits that can't be the user's show:
+	//  - music videos (subtype `music`) never exist on allanime, so the
+	//    YOASOBI "Idol" MV must never win over a real entry; and
+	//  - hits whose episode_count is incompatible with the history record
+	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
+	// When nothing survives, surface null so resolveKitsuMatch falls through
+	// to the alias-enrichment path (retries with allmanga englishName / altNames)
+	// instead of the picker landing on a wrong match.
+	const candidates = hits.filter(
+		(h) =>
+			!isMusicSubtype(h.subtype) && isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
 	);
-	const candidates = compatibleHits.length > 0 ? compatibleHits : [];
-	if (preliminary.courSize != null && compatibleHits.length === 0) {
-		// Reject the entire result set when courSize is known but
-		// every hit is incompatible — the existing fallback would
-		// pick a wrong match (e.g. Doraemon for Burichi). Surfacing
-		// null lets resolveKitsuMatch fall through to the alias
-		// enrichment path, which retries with allmanga's
-		// englishName / nativeName / altNames.
+	if (candidates.length === 0) {
 		return null;
 	}
 
