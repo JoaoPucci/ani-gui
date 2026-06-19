@@ -176,6 +176,78 @@ export function deriveSlug(s: string): string {
 		.replace(/^-+|-+$/g, '');
 }
 
+/** Kitsu `subtype` for a music video / song clip. These never exist on
+ *  allanime (it indexes anime episodes, not MVs), so a music entry is never a
+ *  valid history/Continue match nor a playable target — it's filtered wherever
+ *  a match is chosen and treated as unavailable on the detail page. The YOASOBI
+ *  "Idol" MV (Kitsu `music`) is the canonical offender. Case-insensitive. */
+export function isMusicSubtype(subtype: string | null): boolean {
+	return (subtype ?? '').toLowerCase() === 'music';
+}
+
+/** Min weaker-direction token coverage for two titles to be treated as the
+ *  same show. Tuned to reject the Idol poison (one generic shared word) while
+ *  accepting typo stubs that share a distinctive token ("Nato"/"Naruto"
+ *  Shippuuden ≈ 0.5). */
+const TITLE_OVERLAP_MIN = 0.34;
+
+function titleTokens(s: string): Set<string> {
+	return new Set(
+		s
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean)
+	);
+}
+
+/** Whether the allanime/hsts title is specific enough that a near-zero overlap
+ *  with the Kitsu titles is real evidence of a mismatch. allanime indexes some
+ *  shows under terse stubs ("1P" for One Piece) that share no token with the
+ *  canonical title yet are correct — those carry no signal, so we never judge
+ *  them. Informative = ≥2 tokens, or a single token ≥5 chars. */
+function titleIsInformative(tokens: Set<string>): boolean {
+	if (tokens.size >= 2) return true;
+	if (tokens.size === 1) return [...tokens][0].length >= 5;
+	return false;
+}
+
+/**
+ * A *tripwire* (not the verdict) for whether an allanime title and a Kitsu ref
+ * plausibly name the same show. Used only to reject a poisoned reverse-map /
+ * title-match binding (e.g. the Love Live movie's allanime id bound to the
+ * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
+ * choose the final match, so a false reject costs at most one extra resolution
+ * (the alias-walk backstops stubs).
+ *
+ * Compares the allanime title's tokens against every Kitsu title (canonical +
+ * localized variants + de-slugged slug), scoring the best alias by the WEAKER
+ * of the two coverage directions so a short title being a subset of a long one
+ * ("Idol" ⊂ "…School Idol…") doesn't pass. Returns true — don't reject — when
+ * the allanime title is an uninformative stub or no Kitsu title is comparable.
+ */
+export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
+	const a = titleTokens(allanimeTitle.replace(EPISODE_TAIL_RE, ''));
+	if (!titleIsInformative(a)) return true;
+	const candidates: string[] = [];
+	if (ref.canonical_title) candidates.push(ref.canonical_title);
+	if (ref.titles) candidates.push(...Object.values(ref.titles));
+	if (ref.slug) candidates.push(ref.slug.replace(/-/g, ' '));
+	let sawCandidate = false;
+	let best = 0;
+	for (const c of candidates) {
+		const k = titleTokens(c);
+		if (k.size === 0) continue;
+		sawCandidate = true;
+		let inter = 0;
+		for (const t of a) if (k.has(t)) inter++;
+		best = Math.max(best, Math.min(inter / a.size, inter / k.size));
+	}
+	if (!sawCandidate) return true;
+	return best >= TITLE_OVERLAP_MIN;
+}
+
 /** Threshold above which courSize is treated as a "definitively
  *  finished long show" — null Kitsu counts get rejected at this size
  *  because long shows almost always have finalized counts in Kitsu.
