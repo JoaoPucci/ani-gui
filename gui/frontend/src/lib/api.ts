@@ -966,8 +966,17 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
  * has no Kitsu text-search hit. The backend persists the resolved
  * mapping into the reverse cache so subsequent calls short-circuit.
  */
-export function kitsuResolveAllmangaShowId(showId: string): Promise<KitsuAnimeRef | null> {
-	return getJson<KitsuAnimeRef | null>(`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}`);
+export function kitsuResolveAllmangaShowId(
+	showId: string,
+	bypassCache = false
+): Promise<KitsuAnimeRef | null> {
+	// bypassCache: the resolver already read + rejected the reverse-cache row, so
+	// tell the backend to skip its fast path and go straight to the alias walk —
+	// otherwise it hands back the very id the caller just rejected.
+	const qs = bypassCache ? '?bypass_cache=1' : '';
+	return getJson<KitsuAnimeRef | null>(
+		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
+	);
 }
 
 /**

@@ -147,7 +147,10 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {
 		try {
-			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId);
+			// bypassCache: step 0 already read + rejected this show's reverse-cache
+			// row (count/music/title guard), so the backend must NOT short-circuit
+			// on it again — go straight to the alias walk.
+			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId, true);
 		} catch {
 			// Enrichment endpoint failure is non-fatal — fall through
 			// to the null return below.

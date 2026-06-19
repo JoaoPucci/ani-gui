@@ -557,17 +557,26 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
 pub async fn resolve_allmanga_show_id(
     state: &AppState,
     show_id: &str,
+    bypass_cache: bool,
 ) -> Result<Option<KitsuAnimeRef>> {
     // 1) Reverse-cache fast path. If we've resolved this show before
     //    (or a successful play stamped the mapping), the kitsu_id is
     //    one cached IPC away. anime_detail itself is cached too, so
     //    a warm lookup is two synchronous SQLite reads.
-    if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
-        if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
-            return Ok(Some(detail));
+    //
+    //    Skipped when `bypass_cache` — the resolver (Continue Watching)
+    //    only reaches enrichment after it has already read AND rejected
+    //    this reverse row (count/music/title guard). Re-reading it here
+    //    would hand back the very id it just rejected, so the caller asks
+    //    us to go straight to the alias walk instead.
+    if !bypass_cache {
+        if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
+            if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
+                return Ok(Some(detail));
+            }
+            // Stale id (Kitsu removed it, or the cached row is bad) —
+            // fall through and re-resolve from allmanga.
         }
-        // Stale id (Kitsu removed it, or the cached row is bad) —
-        // fall through and re-resolve from allmanga.
     }
 
     // 2) Hit allmanga's Show GraphQL to get the alias surface
@@ -1152,7 +1161,7 @@ mod tests {
         let state = state_with_kitsu_at(&mock.uri());
         allmanga_kitsu_put(&state, "ReooPAxPMsHM4KPMY", "12").expect("seed cache");
 
-        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY")
+        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY", false)
             .await
             .expect("resolve ok");
         assert!(
@@ -1169,7 +1178,7 @@ mod tests {
         // is "fail soft" — Ok(None), not an error, so Continue
         // Watching can still render the bare allmanga title.
         let state = state_with_kitsu_at("http://127.0.0.1:1");
-        let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve").await;
+        let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve", false).await;
         // Either Ok(None) (no aliases, no Kitsu match) or Ok(Some(_))
         // is acceptable — we only assert the call doesn't panic and
         // doesn't surface a network error to the caller. Stub returns
@@ -1202,7 +1211,10 @@ mod tests {
         let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY", true)
             .await
             .expect("resolve ok");
-        assert!(got.is_none(), "bypass must skip the reverse cache; got {got:?}");
+        assert!(
+            got.is_none(),
+            "bypass must skip the reverse cache; got {got:?}"
+        );
     }
 
     #[test]
