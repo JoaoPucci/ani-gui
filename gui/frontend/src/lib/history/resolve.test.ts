@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { pickKitsuMatch, resolveHistoryEntry, resumeQueryString } from './resolve';
+import {
+	isMusicSubtype,
+	pickKitsuMatch,
+	resolveHistoryEntry,
+	resumeQueryString,
+	titlesPlausiblySameShow
+} from './resolve';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
@@ -393,5 +399,72 @@ describe('resumeQueryString', () => {
 	it('returns empty string when neither page nor ep is meaningful', () => {
 		const r = resolveHistoryEntry(entry('Show (12 episodes)', '0'), null);
 		expect(resumeQueryString(r)).toBe('');
+	});
+});
+
+describe('isMusicSubtype', () => {
+	it('is true for "music" (case-insensitive) — never playable on allanime', () => {
+		expect(isMusicSubtype('music')).toBe(true);
+		expect(isMusicSubtype('Music')).toBe(true);
+	});
+
+	it('is false for every streamable subtype and for null', () => {
+		for (const s of ['TV', 'movie', 'OVA', 'ONA', 'special', null]) {
+			expect(isMusicSubtype(s)).toBe(false);
+		}
+	});
+});
+
+describe('titlesPlausiblySameShow', () => {
+	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
+		...stubKitsu('x'),
+		canonical_title,
+		titles
+	});
+
+	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
+		// hsts/allanime title vs the YOASOBI "Idol" music video Kitsu entry:
+		// they share only "Idol", which is 1 of 9 allanime tokens → reject.
+		expect(
+			titlesPlausiblySameShow(
+				'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen',
+				ref('Idol', { ja_jp: 'アイドル', en: 'Idol' })
+			)
+		).toBe(false);
+	});
+
+	it('accepts the legitimate typo case (allanime stub vs canonical)', () => {
+		// The reverse-map exists for exactly this: "Nato: Shippuuden" is
+		// allanime's typo for "Naruto: Shippuuden" — they share the
+		// distinctive "Shippuuden", so the binding stays trusted.
+		expect(titlesPlausiblySameShow('Nato: Shippuuden', ref('Naruto: Shippuuden'))).toBe(true);
+	});
+
+	it('accepts an exact title', () => {
+		expect(titlesPlausiblySameShow('Demon Slayer', ref('Demon Slayer'))).toBe(true);
+	});
+
+	it('accepts a match found via an alternate (romanized) title', () => {
+		expect(
+			titlesPlausiblySameShow(
+				'Shingeki no Kyojin',
+				ref('Attack on Titan', { ja_jp: '進撃の巨人', en_jp: 'Shingeki no Kyojin' })
+			)
+		).toBe(true);
+	});
+
+	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
+		// THE extreme case: allanime indexes One Piece as "1P". It shares
+		// no token with "One Piece", but a 1-short-token stub carries no
+		// signal to reject on — the binding (recorded from a real play /
+		// alias-walk) must stay trusted. Only INFORMATIVE allanime titles
+		// (≥2 tokens, or one token ≥5 chars) are judged.
+		expect(titlesPlausiblySameShow('1P', ref('One Piece'))).toBe(true);
+		expect(titlesPlausiblySameShow('1P (1161 episodes)', ref('One Piece'))).toBe(true);
+	});
+
+	it('does not reject when there is no title signal to judge on', () => {
+		expect(titlesPlausiblySameShow('', ref('Whatever'))).toBe(true);
+		expect(titlesPlausiblySameShow('Something', ref(''))).toBe(true);
 	});
 });
