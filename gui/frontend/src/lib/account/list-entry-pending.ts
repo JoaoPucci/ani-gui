@@ -16,6 +16,7 @@
 
 import type { ListStatus } from './types';
 import { editorInitial, type ListEntryView } from './list-entry-view';
+import { effectiveProgress } from './list-entry-edit';
 
 export interface PendingEdit {
 	/** The show this pending edit belongs to. */
@@ -29,8 +30,10 @@ export interface PendingEdit {
  * picker — the intended status when a pending edit for this show survives,
  * else the live view's status. `seededStatus` is the opened-on value (always
  * the live view) used to detect a deliberate status change in the no-pending
- * case. Progress always comes from the live view (it rides along on every
- * per-tracker write regardless).
+ * case. `progress` is made coherent with the seeded `status` (planning → 0,
+ * completed → full count) exactly like pickStatus does for in-place edits — so
+ * a pending planning retry doesn't open as planning + watched-episodes, which
+ * effectiveStatus would promote straight back to watching on save.
  */
 export function seedForOpen(
 	view: ListEntryView,
@@ -39,7 +42,11 @@ export function seedForOpen(
 ): { status: ListStatus; seededStatus: ListStatus; progress: number } {
 	const base = editorInitial(view);
 	const status = pending && pending.kitsuId === kitsuId ? pending.intendedStatus : base.status;
-	return { status, seededStatus: base.status, progress: base.progress };
+	return {
+		status,
+		seededStatus: base.status,
+		progress: effectiveProgress(status, base.progress, view.total)
+	};
 }
 
 /**
