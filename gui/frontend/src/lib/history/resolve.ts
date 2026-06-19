@@ -271,10 +271,14 @@ export function cachedBindingVerdict(
 	preliminary: ResumeTarget,
 	trustOnAbsentSlug: boolean
 ): CachedBindingVerdict {
-	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
+	// Provable-wrongness (music subtype or gross title mismatch) is checked FIRST,
+	// before episode-count: a row that is both count-incompatible AND wrong must
+	// still be EVICTED (deleted), not skipped via the count fallback below — else
+	// the poisoned reverse row survives for enrichment to re-read.
 	if (isMusicSubtype(cached.subtype) || !titlesPlausiblySameShow(preliminary.searchTitle, cached)) {
 		return 'evict';
 	}
+	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
 		const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
