@@ -32,24 +32,22 @@ describe('seedForOpen', () => {
 		});
 	});
 
-	it('pre-fills a pending status and snaps progress coherent to it (completed → full count)', () => {
-		// After a partial save the live view reflects the still-lagging tracker's
-		// value; reopening pre-fills the intended status, and progress must be made
-		// coherent with THAT status — just like pickStatus does for in-place edits.
-		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'completed' };
-		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
-			status: 'completed',
+	it('reseeds a pending retry from the stored intent, not the folded live view', () => {
+		// Codex P2 #3444295964: the user saved watching/5, MAL (already completed
+		// at 24) rate-limited, and a reconcile folds the live view up to 24. The
+		// retry must replay the user's intended 5, not the lagging tracker's 24.
+		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
+		expect(seedForOpen(view('watching', 24), pending, 'k1')).toEqual({
+			status: 'watching',
 			seededStatus: 'watching',
-			progress: 24
+			progress: 5
 		});
 	});
 
-	it('zeroes progress when the pending status is planning (else effectiveStatus re-promotes it)', () => {
-		// The Codex P2 #3444274176 case: a reconcile leaves `live` at the lagging
-		// tracker's watching/5, but the user intended Plan-to-Watch. Seeding
-		// planning + progress 5 would promote back to watching on save, so the
-		// retry never writes planning. Coerce progress to 0.
-		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'planning' };
+	it('coerces the stored progress coherent to the pending status (planning → 0)', () => {
+		// Codex P2 #3444274176: planning + watched episodes would promote back to
+		// watching on save, so a pending planning retry seeds at 0.
+		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'planning', intendedProgress: 5 };
 		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
 			status: 'planning',
 			seededStatus: 'watching',
@@ -57,17 +55,21 @@ describe('seedForOpen', () => {
 		});
 	});
 
-	it('keeps progress for a pending status that carries a count (watching)', () => {
-		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
-		expect(seedForOpen(view('paused', 7), pending, 'k1')).toEqual({
-			status: 'watching',
-			seededStatus: 'paused',
-			progress: 7
+	it('coerces the stored progress coherent to the pending status (completed → full count)', () => {
+		const pending: PendingEdit = {
+			kitsuId: 'k1',
+			intendedStatus: 'completed',
+			intendedProgress: 5
+		};
+		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
+			status: 'completed',
+			seededStatus: 'watching',
+			progress: 24
 		});
 	});
 
 	it('ignores a pending edit belonging to a different show', () => {
-		const pending: PendingEdit = { kitsuId: 'other', intendedStatus: 'watching' };
+		const pending: PendingEdit = { kitsuId: 'other', intendedStatus: 'watching', intendedProgress: 0 };
 		expect(seedForOpen(view('completed', 24), pending, 'k1')).toEqual({
 			status: 'completed',
 			seededStatus: 'completed',
@@ -90,48 +92,48 @@ describe('statusWriteIntended', () => {
 });
 
 describe('pendingAfterSave', () => {
-	it('records the intended status on a partial save that changed status', () => {
-		expect(pendingAfterSave(null, 'k1', 'partial', true, 'watching')).toEqual({
+	it('records the intended status AND progress on a partial save that changed status', () => {
+		expect(pendingAfterSave(null, 'k1', 'partial', true, 'watching', 5)).toEqual({
 			kitsuId: 'k1',
-			intendedStatus: 'watching'
+			intendedStatus: 'watching',
+			intendedProgress: 5
 		});
 	});
 
 	it('does NOT record a pending edit when a progress-only partial fails', () => {
-		// statusChanged was false (the user only adjusted the episode count), so a
-		// retry must stay progress-only — recording a status intent would later
-		// force-write the seed status to every tracker and clobber a divergent
-		// one (e.g. MAL paused → watching). (Codex P2 #3442488294)
-		expect(pendingAfterSave(null, 'k1', 'partial', false, 'watching')).toBeNull();
+		// statusChanged was false (episode-only edit): a retry must stay
+		// progress-only and not force-write a status onto a divergent tracker.
+		// (Codex P2 #3442488294)
+		expect(pendingAfterSave(null, 'k1', 'partial', false, 'watching', 5)).toBeNull();
 	});
 
-	it('refreshes the intended status on a repeat same-show status partial', () => {
-		// The user changed status again while the popover stayed open after the
-		// first partial; the pending intent must track the LATEST edit so a later
-		// dismiss→reopen→retry propagates the newest status. (Codex P2 #3442360116)
-		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
-		expect(pendingAfterSave(prev, 'k1', 'partial', true, 'paused')).toEqual({
+	it('refreshes the intent on a repeat same-show status partial', () => {
+		// (Codex P2 #3442360116)
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
+		expect(pendingAfterSave(prev, 'k1', 'partial', true, 'paused', 8)).toEqual({
 			kitsuId: 'k1',
-			intendedStatus: 'paused'
+			intendedStatus: 'paused',
+			intendedProgress: 8
 		});
 	});
 
 	it('replaces a pending edit from a different show on a status partial', () => {
-		const prev: PendingEdit = { kitsuId: 'old', intendedStatus: 'watching' };
-		expect(pendingAfterSave(prev, 'k1', 'partial', true, 'completed')).toEqual({
+		const prev: PendingEdit = { kitsuId: 'old', intendedStatus: 'watching', intendedProgress: 1 };
+		expect(pendingAfterSave(prev, 'k1', 'partial', true, 'completed', 12)).toEqual({
 			kitsuId: 'k1',
-			intendedStatus: 'completed'
+			intendedStatus: 'completed',
+			intendedProgress: 12
 		});
 	});
 
 	it('clears the pending edit on a clean save (all trackers agree)', () => {
-		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
-		expect(pendingAfterSave(prev, 'k1', 'saved', true, 'watching')).toBeNull();
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
+		expect(pendingAfterSave(prev, 'k1', 'saved', true, 'watching', 5)).toBeNull();
 	});
 
 	it('leaves the pending edit untouched on a failed or noop save', () => {
-		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
-		expect(pendingAfterSave(prev, 'k1', 'failed', true, 'watching')).toBe(prev);
-		expect(pendingAfterSave(prev, 'k1', 'noop', true, 'watching')).toBe(prev);
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
+		expect(pendingAfterSave(prev, 'k1', 'failed', true, 'watching', 5)).toBe(prev);
+		expect(pendingAfterSave(prev, 'k1', 'noop', true, 'watching', 5)).toBe(prev);
 	});
 });
