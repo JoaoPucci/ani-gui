@@ -18,7 +18,12 @@
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
 	import { deriveListEntryView, listButtonLabel } from '$lib/account/list-entry-view';
-	import { seedForOpen, pendingAfterSave, type PendingEdit } from '$lib/account/list-entry-pending';
+	import {
+		seedForOpen,
+		pendingAfterSave,
+		statusWriteIntended,
+		type PendingEdit
+	} from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -108,6 +113,10 @@
 	// make the status look unchanged). Cleared on a clean save/remove. See
 	// list-entry-pending.ts.
 	let pendingEdit = $state<PendingEdit | null>(null);
+	// True while a partial-save retry is unresolved for the open show: it forces
+	// the next Save to write status to every tracker (so re-picking the original
+	// status reverts the one that moved, and a plain retry re-sends the intent).
+	const pendingActive = $derived(pendingEdit !== null && pendingEdit.kitsuId === kitsuId);
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
@@ -129,12 +138,13 @@
 		if (disabled || saving || removing) return;
 		const id = kitsuId;
 		saving = true;
+		const statusChanged = statusWriteIntended(pendingActive, editStatus, seededStatus);
 		const res = await runEditorSave(
 			{ syncSetEntry },
 			{
 				kitsuId: id,
 				disabled,
-				save: { status: editStatus, seededStatus, progress: editProgress, total }
+				save: { status: editStatus, statusChanged, progress: editProgress, total }
 			}
 		);
 		saving = false;
@@ -151,15 +161,14 @@
 			// Some trackers took it, others didn't. Apply the landed value to the
 			// button immediately so it reflects what at least one tracker now holds
 			// even if the reconcile read is delayed or rate-limited. Keep the popover
-			// open (with the user's status change still seeded) so a retry re-sends
-			// the status to the trackers that failed — closing would reseed
-			// seededStatus from the landed value and buildListEdit would then treat
-			// it as unchanged.
+			// open so an in-place retry re-sends the status to the trackers that
+			// failed; the pending edit below carries that intent across a
+			// dismiss/reopen too.
 			live = res.live;
-			// Remember the pre-save seed + intended status so a dismiss→reopen→retry
-			// still re-sends the status to the tracker(s) that failed (reopening
-			// reseeds from the landed `live`, which would otherwise look unchanged).
-			pendingEdit = pendingAfterSave(pendingEdit, id, 'partial', seededStatus, editStatus);
+			// Remember the intended status so a dismiss→reopen→retry still re-sends it
+			// (and marks the next save as a deliberate status write via pendingActive),
+			// even though the reopened form seeds from the landed `live`.
+			pendingEdit = pendingAfterSave(pendingEdit, id, 'partial', editStatus);
 			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
@@ -167,7 +176,7 @@
 		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
 		// Every tracker took it — the divergence is gone, so drop any pending retry.
-		pendingEdit = pendingAfterSave(pendingEdit, id, 'saved', seededStatus, editStatus);
+		pendingEdit = pendingAfterSave(pendingEdit, id, 'saved', editStatus);
 		open = false;
 		onReconcile();
 	}

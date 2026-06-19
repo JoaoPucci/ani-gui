@@ -12,15 +12,16 @@ import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 
 /**
- * A deliberate edit from the detail-page editor. `status` is the value
- * shown in the editor (the seed, or what the user picked); `seededStatus`
- * is what the editor opened on — the fan-out compares the two per tracker
- * to decide whether to write status, so it only converges a divergent
- * status when the user actually changed it.
+ * A deliberate edit from the detail-page editor. `status` is the value shown
+ * in the editor (what the user picked); `statusChanged` says whether the user
+ * deliberately set status this session — moved it off the opened-on value, OR
+ * a pending partial-save retry is active. When false the fan-out leaves each
+ * tracker's own status alone and writes progress only, so a progress-only edit
+ * doesn't converge a divergent status.
  */
 export interface EditorSave {
 	status: ListStatus;
-	seededStatus: ListStatus;
+	statusChanged: boolean;
 	progress: number;
 	/** The show's episode total, so a completed save snaps to the full count
 	 *  per provider. Null when unknown (ongoing show). */
@@ -89,7 +90,7 @@ export async function setEntryAcrossTrackers(
 				const current = await deps.getEntry(provider, bearer, kitsuId);
 				const edit = buildListEdit({
 					current: current?.status ?? null,
-					seededStatus: save.seededStatus,
+					statusChanged: save.statusChanged,
 					status: save.status,
 					progress: save.progress,
 					total: save.total ?? null

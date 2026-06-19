@@ -39,30 +39,34 @@ export function statusOptionsFor(airing: boolean, current: ListStatus | null): L
  * doesn't have the row) and the show's episode `total`.
  *
  * The target status for the tracker is the user's pick when they're creating
- * the row or deliberately changed status off the seed; otherwise we preserve
- * the tracker's own status (the seed collapses divergent trackers to one, so
- * blindly writing it back would wipe a deliberate rewatching/paused/dropped
- * state elsewhere). That target is then made coherent with the progress —
+ * the row or `statusChanged` is set (the user deliberately set status this
+ * session — moved it off the opened-on value, or a pending partial-save retry
+ * is active); otherwise we preserve the tracker's own status, so a progress-
+ * only edit doesn't wipe a divergent rewatching/paused/dropped state on
+ * another tracker. That target is then made coherent with the progress —
  * `planning` with watched episodes becomes `watching`; `completed` always
  * carries the full count ([`effectiveProgress`]) — and is judged against the
- * tracker's *real* current status, not the app's (possibly stale) seed, so a
- * provider that's actually completed never ends up at completed/0.
+ * tracker's *real* current status, so a provider that's actually completed
+ * never ends up at completed/0.
+ *
+ * Using an explicit `statusChanged` (rather than comparing the pick to a
+ * single seed) lets a user REVERT a partially-landed status: re-choosing the
+ * original value during a retry still writes it to the tracker that moved.
  *
  * Status is sent only when the coherent target differs from the tracker's
  * current (or the row is new); progress always rides along.
  */
 export function buildListEdit(opts: {
 	current: ListStatus | null;
-	seededStatus: ListStatus;
+	statusChanged: boolean;
 	status: ListStatus;
 	progress: number;
 	total?: number | null;
 }): { status?: ListStatus; progress: number } {
 	const total = opts.total ?? null;
-	// The user's pick wins when creating the row or when they moved status off
-	// the seed; otherwise keep this tracker's own status.
-	const target =
-		opts.current === null || opts.status !== opts.seededStatus ? opts.status : opts.current;
+	// The user's pick wins when creating the row or when they deliberately set
+	// status this session; otherwise keep this tracker's own status.
+	const target = opts.current === null || opts.statusChanged ? opts.status : opts.current;
 	const status = effectiveStatus(target, opts.progress);
 	const edit: { status?: ListStatus; progress: number } = {
 		progress: effectiveProgress(status, opts.progress, total)
