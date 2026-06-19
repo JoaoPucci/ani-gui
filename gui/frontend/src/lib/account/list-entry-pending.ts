@@ -71,7 +71,13 @@ export function pendingAfterSave(
 ): PendingEdit | null {
 	if (outcome === 'saved') return null;
 	if (outcome === 'partial') {
-		if (prev && prev.kitsuId === kitsuId) return prev;
+		// Same show, popover still open: keep the ORIGINAL pre-save seed (advancing
+		// it to the now-landed value would lose the still-divergent tracker) but
+		// refresh the intended status to the user's latest pick, so a later retry
+		// propagates the newest edit rather than a stale one.
+		if (prev && prev.kitsuId === kitsuId) {
+			return { kitsuId, seededStatus: prev.seededStatus, intendedStatus };
+		}
 		return { kitsuId, seededStatus, intendedStatus };
 	}
 	return prev;
