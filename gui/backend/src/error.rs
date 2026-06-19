@@ -164,6 +164,9 @@ impl AniError {
         match self {
             Self::NoResults => 404,
             Self::InvalidToken => 401,
+            // A rate-limit passes through verbatim so the frontend can tell it
+            // apart from a generic bad gateway and tell the user to retry.
+            Self::Upstream { status: 429 } => 429,
             Self::Upstream { .. } => 502,
             Self::Network => 503,
             Self::Timeout => 504,
@@ -394,6 +397,17 @@ mod tests {
             AniError::ParseFailed { detail } => assert!(!detail.is_empty()),
             other => panic!("expected ParseFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn upstream_429_surfaces_as_too_many_requests() {
+        // A tracker rate-limit (429) must reach the frontend as 429 so the
+        // list editor can show a "rate-limited, try again" message instead of
+        // a generic failure; every other upstream status still collapses to
+        // 502 (a generic bad-gateway).
+        assert_eq!(AniError::Upstream { status: 429 }.http_status_code(), 429);
+        assert_eq!(AniError::Upstream { status: 500 }.http_status_code(), 502);
+        assert_eq!(AniError::Upstream { status: 503 }.http_status_code(), 502);
     }
 
     #[test]

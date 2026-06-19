@@ -1,0 +1,136 @@
+// Pure read/display derivation for the detail-page list control: fold the
+// live current entries into the seed, and turn the seed + episode total into
+// the action-row button label and the editor's initial values. i18n is
+// injected so this stays pure + unit-tested (the component passes the
+// localized status names + "Add to list" label). Write-side helpers (status
+// options, coherence, clamping) live in `list-entry-edit.ts`.
+
+import type { EntryView, ListStatus } from './types';
+import { effectiveProgress } from './list-entry-edit';
+
+// How "committed" each status is, for breaking ties when two trackers
+// sit at the same episode count. A higher rank means further along the
+// watch lifecycle, so on a tie we seed from the more-engaged entry.
+const STATUS_COMMITMENT: Record<ListStatus, number> = {
+	planning: 0,
+	dropped: 1,
+	paused: 2,
+	watching: 3,
+	rewatching: 4,
+	completed: 5
+};
+
+/**
+ * Fold the live current entry read from every connected provider into the
+ * single entry the editor seeds from. The detail page reads each tracker
+ * but a Save fans the result out to ALL of them, so seeding from one
+ * provider that lacks the title (→ Add/Planning/0) would let a Save clobber
+ * another tracker that already has progress. Picking the furthest-along
+ * entry — greatest progress, tie-broken by the more-committed status —
+ * means writing the seed back never lowers a tracker below where it was.
+ * Returns null only when no provider has the show on its list.
+ */
+export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
+	let best: EntryView | null = null;
+	let maxProgress = 0;
+	for (const e of entries) {
+		if (!e) continue;
+		maxProgress = Math.max(maxProgress, coherentProgress(e));
+		if (best === null || furtherAlong(e, best)) best = e;
+	}
+	if (best === null) return null;
+	// Status from the furthest-along entry, but progress from the furthest-along
+	// *tracker*: a Save fans the seed out to ALL trackers, so seeding below the
+	// highest known count would lower one. This matters most for a stale
+	// Completed row (completed/0 over watching/5) when the total is unknown and
+	// can't inflate Completed to full — keep the 5. With a known total, a
+	// Completed seed still snaps up to it downstream (effectiveProgress).
+	return { status: best.status, progress: maxProgress };
+}
+
+/** A Planning row means "not started", so its coherent progress is 0 even if
+ *  a tracker stored a stray positive count — compare on that so it can't
+ *  outrank a real watched row (and later fan out progress:0, lowering it). */
+function coherentProgress(e: EntryView): number {
+	return e.status === 'planning' ? 0 : e.progress;
+}
+
+/**
+ * Is entry `e` further along the watch lifecycle than `best`? A Completed
+ * row always wins (it finished, even if its stored count is stale/zero);
+ * otherwise more (coherent) progress wins, and on a tie the more-committed
+ * status does.
+ */
+function furtherAlong(e: EntryView, best: EntryView): boolean {
+	const eDone = e.status === 'completed';
+	const bDone = best.status === 'completed';
+	if (eDone !== bDone) return eDone;
+	const ep = coherentProgress(e);
+	const bp = coherentProgress(best);
+	if (ep !== bp) return ep > bp;
+	return STATUS_COMMITMENT[e.status] > STATUS_COMMITMENT[best.status];
+}
+
+export interface ListEntryView {
+	/** Whether the show is on the user's list. */
+	onList: boolean;
+	/** Current unified status, or null when not on the list. */
+	status: ListStatus | null;
+	/** Episodes watched so far (0 when not on the list). */
+	progress: number;
+	/** The show's full episode total, or null when unknown. */
+	total: number | null;
+}
+
+/**
+ * Fold the live `EntryView` (from `getEntry`, `null` when not on the
+ * list) + the Kitsu episode total into the view model the action row and
+ * editor consume.
+ */
+export function deriveListEntryView(
+	entry: EntryView | null,
+	kitsuTotal: number | null
+): ListEntryView {
+	if (!entry) {
+		return { onList: false, status: null, progress: 0, total: kitsuTotal };
+	}
+	// A completed entry always reads as the full count (status wins over a
+	// stored-short progress), so the button + editor agree with what a Save
+	// would write — never "Completed · 0/24".
+	return {
+		onList: true,
+		status: entry.status,
+		progress: effectiveProgress(entry.status, entry.progress, kitsuTotal),
+		total: kitsuTotal
+	};
+}
+
+export interface ListButtonLabels {
+	/** Label when the show isn't on the list yet (e.g. "Add to list"). */
+	add: string;
+	/** Localized name for a status (e.g. 'watching' → "Watching"). */
+	statusLabel: (status: ListStatus) => string;
+}
+
+/**
+ * The action-row button text: the add label when not on the list, else
+ * "Status · n/total" (or "Status · n" when the total is unknown).
+ */
+export function listButtonLabel(view: ListEntryView, labels: ListButtonLabels): string {
+	if (!view.onList || view.status === null) return labels.add;
+	// Plan to Watch means not started — show just the status, no count.
+	if (view.status === 'planning') return labels.statusLabel(view.status);
+	const count = view.total !== null ? `${view.progress}/${view.total}` : `${view.progress}`;
+	return `${labels.statusLabel(view.status)} · ${count}`;
+}
+
+/**
+ * Initial editor values: seed from the live entry when on the list,
+ * else default to a fresh Plan-to-Watch at episode 0.
+ */
+export function editorInitial(view: ListEntryView): { status: ListStatus; progress: number } {
+	const status = view.status ?? 'planning';
+	// A completed entry opens at the full count, never a stored-short value —
+	// the editor then locks the episode field while Completed is selected.
+	return { status, progress: effectiveProgress(status, view.progress, view.total) };
+}

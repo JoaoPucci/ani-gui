@@ -47,6 +47,13 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
+	import { accountStore } from '$lib/account/store.svelte';
+	import { getEntry } from '$lib/account/entry-api';
+	import { pickSeedEntry } from '$lib/account/list-entry-view';
+	import { nextReadRetryMs } from '$lib/account/read-retry';
+	import { freshBearerFor } from '$lib/account/fresh-bearer';
+	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
+	import type { EntryView } from '$lib/account/types';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import { downloadDefaultDir as downloadDefaultDirApi } from '$lib/api';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -388,6 +395,105 @@
 
 	const id = $derived(page.params.id ?? '');
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
+
+	// The show's live list entry, folded from EVERY connected tracker so the
+	// editor opens on the real status/progress (the deviation safety) and the
+	// action-row button reflects it. A Save fans out to ALL connected trackers
+	// (see ListEntryEditor → set-entry), so we must seed from all of them too:
+	// reading only one provider that lacks the title would seed Add/Planning/0
+	// and let a Save clobber another tracker that already has progress.
+	// pickSeedEntry keeps the furthest-along entry. Reloaded when the show id
+	// or the connected set changes.
+	let listEntry = $state<EntryView | null>(null);
+	// True while the providers' live entries are being read. The editor stays
+	// disabled in this window so a Save can't fire against a not-yet-known
+	// entry (which would seed Planning/0 and overwrite the real status).
+	let listEntryLoading = $state(false);
+	// True when the read couldn't establish the real tracker state (a bearer
+	// couldn't be refreshed, or a getEntry threw). A null listEntry then means
+	// "unknown", not "not on the list", so the editor stays disabled rather
+	// than offering an Add that could overwrite an existing entry. Any single
+	// provider failing trips this — a partial read could miss the very tracker
+	// whose progress a Save would otherwise clobber.
+	let listEntryError = $state(false);
+	// Bumped on every read so a newer read (navigation or a post-write
+	// reconcile) supersedes any in-flight one.
+	let listEntryReadSeq = 0;
+	let listEntryRetryTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Read every connected tracker and fold to the seed entry, retrying a
+	// transient failure (e.g. a 429 while rate-limited) with backoff so a
+	// passing limit self-heals. Two modes:
+	//  - loud (navigation): reset to null + show loading + disable on hard
+	//    failure, so a Save can't fire against a not-yet-known entry.
+	//  - quiet (post-write reconcile): refresh in the background without a
+	//    loading/disabled flicker; on failure keep the optimistic value (the
+	//    write already toasted) and let the next read reconcile.
+	function readListEntry(quiet: boolean) {
+		const seq = ++listEntryReadSeq;
+		const kitsuId = id;
+		const connected = accountStore.connected;
+		clearTimeout(listEntryRetryTimer);
+		if (!quiet) {
+			// The route reuses this component across shows; a stale entry must not
+			// linger while the async read is in flight or if it fails.
+			listEntry = null;
+			listEntryError = false;
+		}
+		if (!kitsuId || connected.length === 0) {
+			if (!quiet) listEntryLoading = false;
+			return;
+		}
+		if (!quiet) listEntryLoading = true;
+		const providers = [...connected];
+		const attempt = (n: number) => {
+			void (async () => {
+				try {
+					// Promise.all rejects on the first failure, so any unreadable
+					// provider drops us into the catch rather than seeding from a
+					// partial picture.
+					const views = await Promise.all(
+						providers.map(async (p) => {
+							const bearer = await freshBearerFor(p);
+							if (!bearer) throw new Error(`no bearer for ${p}`);
+							return getEntry(p, bearer, kitsuId);
+						})
+					);
+					if (seq !== listEntryReadSeq) return; // superseded
+					listEntry = pickSeedEntry(views);
+					listEntryError = false;
+					listEntryLoading = false;
+				} catch {
+					if (seq !== listEntryReadSeq) return;
+					const delay = nextReadRetryMs(n);
+					if (delay !== null) {
+						listEntryRetryTimer = setTimeout(() => {
+							if (seq === listEntryReadSeq) attempt(n + 1);
+						}, delay);
+					} else if (!quiet) {
+						// Out of retries on a fresh read: unknown entry, not absent —
+						// the editor stays disabled rather than offering a stale Add.
+						listEntryError = true;
+						listEntryLoading = false;
+					}
+					// quiet: give up silently, keep whatever the editor optimistically
+					// set; the write itself already reported success/failure.
+				}
+			})();
+		};
+		attempt(0);
+	}
+
+	$effect(() => {
+		// Track id + the connected set; re-read (loud) whenever they change.
+		void id;
+		void accountStore.connected;
+		readListEntry(false);
+		return () => {
+			listEntryReadSeq += 1; // cancel any in-flight read on teardown
+			clearTimeout(listEntryRetryTimer);
+		};
+	});
 
 	// Episodes-fallback derivations live in script so they can be used in
 	// the markup without {@const} (which only accepts Svelte-block parents).
@@ -1015,6 +1121,25 @@
 					     stale Kitsu counts. False → "Not in catalogue"
 					     notice. True → real Play/Download with the
 					     allmanga-truth count threaded through. -->
+					<!-- The tracker list editor only needs the Kitsu id + provider
+					     mapping, so it renders regardless of playback availability —
+					     a connected user can still add/edit/remove a list entry for a
+					     title allmanga can't stream. Defined once, rendered in both
+					     the available and unavailable branches. -->
+					{#snippet listEditor()}
+						{#if accountStore.hasAny && detail}
+							<ListEntryEditor
+								kitsuId={id}
+								total={detail.episode_count ?? null}
+								cap={episodeCap}
+								current={listEntry}
+								airing={detail.status != null && detail.status !== 'finished'}
+								disabled={listEntryLoading || listEntryError}
+								onReconcile={() => readListEntry(true)}
+							/>
+						{/if}
+					{/snippet}
+
 					{#if availability === null}
 						<div
 							class="actions actions-loading"
@@ -1024,11 +1149,23 @@
 							<span class="action-skel"></span>
 							<span class="action-skel action-skel-narrow"></span>
 						</div>
+						<!-- The tracker editor doesn't depend on the availability probe,
+						     so keep it usable while playback availability is still unknown. -->
+						{#if accountStore.hasAny}
+							<div class="actions" aria-label={m.detail_actions_aria_label()}>
+								{@render listEditor()}
+							</div>
+						{/if}
 					{:else if availability === false}
 						<p class="unavailable" role="status">
 							<span aria-hidden="true">⏵</span>
 							{m.detail_unavailable_message()}
 						</p>
+						{#if accountStore.hasAny}
+							<div class="actions" aria-label={m.detail_actions_aria_label()}>
+								{@render listEditor()}
+							</div>
+						{/if}
 					{:else}
 						<div class="actions" aria-label={m.detail_actions_aria_label()}>
 							<button
@@ -1045,6 +1182,7 @@
 								<span aria-hidden="true">↓</span>
 								<span>{m.detail_download_button()}</span>
 							</button>
+							{@render listEditor()}
 						</div>
 					{/if}
 

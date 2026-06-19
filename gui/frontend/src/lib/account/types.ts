@@ -47,6 +47,17 @@ export interface ListEntry {
 }
 
 /**
+ * The user's live current list entry for one show, returned by
+ * `GET /api/account/entry/:provider`. `null` means the show isn't on the
+ * list (or isn't mapped to the provider). Used to seed the detail-page
+ * list editor so it opens on the real tracker state.
+ */
+export interface EntryView {
+	status: ListStatus;
+	progress: number;
+}
+
+/**
  * The blob we hand to Electron's safeStorage. Combines the OAuth
  * tokens (returned by the backend's `/api/account/exchange-code`)
  * with the user_id from the subsequent `/me` call so the renderer

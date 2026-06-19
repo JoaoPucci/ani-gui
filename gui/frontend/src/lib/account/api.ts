@@ -15,7 +15,10 @@ import type { ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types
 
 // ─── Wrappers around fetch() to the local backend ───────────────────
 
-async function apiBase(): Promise<string> {
+// Exported so the editor endpoints in `entry-api.ts` can build on the
+// same primitives without re-implementing the fetch boilerplate (and
+// without inflating this file's CCN past the coverage ratchet).
+export async function apiBase(): Promise<string> {
 	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
 	const base = w?.aniGui?.apiBase;
 	if (base) return base;
@@ -41,7 +44,7 @@ export async function readErrorBody(res: Response): Promise<string> {
 	}
 }
 
-async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
+export async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
 	if (bearer) headers.authorization = `Bearer ${bearer}`;
@@ -56,7 +59,7 @@ async function postJson<T>(path: string, body: unknown, bearer?: string): Promis
 	return (await res.json()) as T;
 }
 
-async function deleteEndpoint(
+export async function deleteEndpoint(
 	path: string,
 	bearer?: string,
 	extraHeaders?: Record<string, string>
