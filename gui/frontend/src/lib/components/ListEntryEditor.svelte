@@ -91,6 +91,10 @@
 	const buttonLabel = $derived(listButtonLabel(view, { add: m.detail_list_add(), statusLabel }));
 
 	let open = $state(false);
+	// The kitsuId the open popover was seeded for. When the detail route swaps
+	// shows (it reuses this component), this lets us close a form that's now
+	// stale against a different kitsuId — see the auto-close effect.
+	let openedFor = $state<string | null>(null);
 	let saving = $state(false);
 	let removing = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
@@ -175,18 +179,21 @@
 		});
 	});
 
-	// Close the editor whenever it becomes disabled while open. The detail
-	// route reuses this component across shows, so navigating with the popover
-	// open would otherwise leave the previous show's form values visible — and
-	// Save-able — against the new kitsuId before its live tracker state is
-	// known. Closing forces a reopen, which reseeds from the new show's view.
-	//
-	// But NOT mid-write: a save that refreshes a near-expiry token flips
-	// accountStore, which kicks a loud re-read that briefly disables us. Closing
-	// then would drop the pre-save seed a partial retry depends on. The save's
-	// own kitsuId guard handles real navigation, so it's safe to hold open while
-	// busy; once the write settles, this re-runs and closes if still disabled.
+	// Close a stale form. The detail route reuses this component across shows,
+	// so an open popover must not survive a navigation and stay Save-able against
+	// the new kitsuId.
 	$effect(() => {
+		// (1) The show actually changed (navigation): close even mid-write — the
+		// user left this title, so any in-flight save (guarded by its own kitsuId
+		// snapshot) won't touch the new show, and the abandoned retry is moot.
+		if (open && kitsuId !== openedFor) {
+			open = false;
+			return;
+		}
+		// (2) Same show, transiently disabled: a save that refreshes a near-expiry
+		// token flips accountStore and kicks a loud re-read that briefly disables
+		// us. Don't close mid-write — that would drop the pre-save seed a partial
+		// retry needs. Once the write settles this re-runs and closes if needed.
 		if (disabled && !saving && !removing) open = false;
 	});
 
@@ -203,6 +210,7 @@
 		editStatus = init.status;
 		editProgress = init.progress;
 		seededStatus = init.status;
+		openedFor = kitsuId;
 		open = true;
 	}
 
