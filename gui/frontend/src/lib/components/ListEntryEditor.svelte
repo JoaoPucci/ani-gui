@@ -140,10 +140,14 @@
 			return; // keep the popover open to retry
 		}
 		if (res.kind === 'partial') {
-			// Some trackers took it, others didn't. Keep the popover open (with the
-			// user's status change still seeded) so a retry re-sends the status to
-			// the trackers that failed — closing would reseed seededStatus from the
-			// landed value and buildListEdit would then treat it as unchanged.
+			// Some trackers took it, others didn't. Apply the landed value to the
+			// button immediately so it reflects what at least one tracker now holds
+			// even if the reconcile read is delayed or rate-limited. Keep the popover
+			// open (with the user's status change still seeded) so a retry re-sends
+			// the status to the trackers that failed — closing would reseed
+			// seededStatus from the landed value and buildListEdit would then treat
+			// it as unchanged.
+			live = res.live;
 			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
