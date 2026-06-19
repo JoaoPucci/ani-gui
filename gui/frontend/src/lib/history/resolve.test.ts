@@ -468,3 +468,27 @@ describe('titlesPlausiblySameShow', () => {
 		expect(titlesPlausiblySameShow('Something', ref(''))).toBe(true);
 	});
 });
+
+describe('pickKitsuMatch — music subtype is never playable', () => {
+	const hit = (
+		id: string,
+		canonical_title: string,
+		subtype: string,
+		episode_count: number
+	): KitsuAnimeRef => ({ ...stubKitsu(id), canonical_title, subtype, episode_count });
+
+	it('returns null when the only hit is a music video (even if the count matches)', () => {
+		const r = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		expect(pickKitsuMatch([hit('mv', 'Idol', 'music', 1)], r)).toBeNull();
+	});
+
+	it('skips a count-compatible music hit and picks the streamable one', () => {
+		// Without the filter the music MV (subtype music, 1 ep) is
+		// candidates[0] and wins; it must be dropped so the real entry is
+		// chosen.
+		const r = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		const music = hit('mv', 'Idol', 'music', 1);
+		const movie = hit('film', 'Idol Movie', 'movie', 1);
+		expect(pickKitsuMatch([music, movie], r)?.id).toBe('film');
+	});
+});
