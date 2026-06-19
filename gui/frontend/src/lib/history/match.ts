@@ -21,7 +21,14 @@ import {
 	kitsuTitleMatchPut,
 	type KitsuAnimeRef
 } from '$lib/api';
-import { deriveSlug, isEpisodeCountCompatible, pickKitsuMatch, type ResumeTarget } from './resolve';
+import {
+	deriveSlug,
+	isEpisodeCountCompatible,
+	isMusicSubtype,
+	pickKitsuMatch,
+	titlesPlausiblySameShow,
+	type ResumeTarget
+} from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// 0) Reverse-mapping lookup: allmanga show_id → kitsu_id. Recorded
@@ -42,34 +49,34 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 			if (kitsuId) {
 				try {
 					const cached = await kitsuAnimeDetail(kitsuId);
-					if (isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-						// Cour-slug guard mirrors step 1's check below. The
-						// reverse cache used to record cross-cour mappings
-						// (Stone Ocean Part 2's allmanga show_id paired with
-						// Part 1's Kitsu id) because the play picker can land
-						// on a sibling cour when ep-count + year tie. Episode-
-						// count compatibility passes for siblings that share a
-						// cour size (both 12 for Stone Ocean Parts 1/2), so
-						// the slug suffix is the only signal that catches the
-						// mismatch from this side. Evict the poisoned row on
-						// positive slug-mismatch evidence; an absent slug is
+					if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
+						// Count mismatch → cached mapping is wrong; fall through to re-resolve.
+					} else if (
+						isMusicSubtype(cached.subtype) ||
+						!titlesPlausiblySameShow(preliminary.searchTitle, cached)
+					) {
+						// Implausible binding: a music entry (never on allanime) or a gross
+						// title mismatch — the Love Live movie's show_id poisoned to the
+						// YOASOBI "Idol" MV. Self-heal: drop the row and re-resolve. The title
+						// check is a tripwire only; a terse stub ("1P" → One Piece) is never
+						// judged, so a correct stub binding is preserved.
+						void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
+					} else if (preliminary.cour > 1 && cached.slug) {
+						// Cour-slug guard: the reverse cache used to record cross-cour
+						// mappings (Stone Ocean Part 2's show_id paired with Part 1's Kitsu
+						// id). Evict on positive slug-mismatch evidence; an absent slug is
 						// missing evidence and the cached row stays.
-						if (preliminary.cour > 1 && cached.slug) {
-							const courRe = new RegExp(
-								`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
-								'i'
-							);
-							if (courRe.test(cached.slug)) {
-								return cached;
-							}
-							void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-						} else {
+						const courRe = new RegExp(
+							`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
+							'i'
+						);
+						if (courRe.test(cached.slug)) {
 							return cached;
 						}
+						void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
+					} else {
+						return cached;
 					}
-					// Count mismatch (or cour > 1 slug mismatch) → cached
-					// mapping is wrong; fall through and let later paths
-					// re-resolve.
 				} catch {
 					// Stale id — fall through to the title-search path.
 				}
@@ -100,6 +107,12 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 				const cached = await kitsuAnimeDetail(cachedId);
 				if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
 					// Poisoned cache row — fall through and re-resolve.
+				} else if (
+					isMusicSubtype(cached.subtype) ||
+					!titlesPlausiblySameShow(preliminary.searchTitle, cached)
+				) {
+					// Music entry or gross title mismatch — re-resolve. Step 5 re-Puts a
+					// corrected mapping (there is no title-match delete IPC).
 				} else if (preliminary.cour > 1) {
 					const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
 					if (cached.slug && courRe.test(cached.slug)) {
