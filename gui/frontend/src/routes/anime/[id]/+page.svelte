@@ -45,6 +45,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
+	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickNextEpisode } from '$lib/play/next-episode';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -552,32 +553,40 @@
 			.then((d) => {
 				if (id !== currentId) return; // navigation raced ahead
 				detail = d;
-				// Probe allmanga in the background. Result gates the
-				// Play + Download CTAs so titles outside the catalog
-				// (Western animation, etc.) get a calm "Not on
-				// allmanga" notice instead of a click → error overlay.
-				// Network errors leave availability null — the lazy
-				// click-failure path then handles it.
-				const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-				void checkAvailability({
-					title: d.canonical_title,
-					mode,
-					alt_titles: altTitlesFromKitsu(d),
-					episode_count: d.episode_count ?? undefined,
-					year: yearFromKitsuRef(d) ?? undefined,
-					kitsu_id: d.id,
-					status: d.status ?? undefined
-				})
-					.then((r) => {
-						if (id !== currentId) return;
-						availability = r.available;
-						playableEpisodeCount = r.episode_count;
-						extraEpisodes = r.extra_episodes;
+				if (isMusicSubtype(d.subtype)) {
+					// Music videos (a YOASOBI MV, say) never exist on allanime —
+					// it indexes anime episodes, not song clips. Mark the show
+					// unavailable up front instead of letting the probe fuzzy-match
+					// an unrelated anime and play the wrong show.
+					availability = false;
+				} else {
+					// Probe allmanga in the background. Result gates the
+					// Play + Download CTAs so titles outside the catalog
+					// (Western animation, etc.) get a calm "Not on
+					// allmanga" notice instead of a click → error overlay.
+					// Network errors leave availability null — the lazy
+					// click-failure path then handles it.
+					const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+					void checkAvailability({
+						title: d.canonical_title,
+						mode,
+						alt_titles: altTitlesFromKitsu(d),
+						episode_count: d.episode_count ?? undefined,
+						year: yearFromKitsuRef(d) ?? undefined,
+						kitsu_id: d.id,
+						status: d.status ?? undefined
 					})
-					.catch(() => {
-						// Leave null; lazy fallback in the click handler
-						// will still surface the error.
-					});
+						.then((r) => {
+							if (id !== currentId) return;
+							availability = r.available;
+							playableEpisodeCount = r.episode_count;
+							extraEpisodes = r.extra_episodes;
+						})
+						.catch(() => {
+							// Leave null; lazy fallback in the click handler
+							// will still surface the error.
+						});
+				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
 				// instead of "Anime".
