@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { runEditorRemove, runEditorSave } from './editor-actions';
 import type { EditorSave } from './set-entry';
 
-const baseSave: EditorSave = { status: 'watching', seededStatus: 'watching', progress: 6 };
+const baseSave: EditorSave = { status: 'watching', statusChanged: false, progress: 6 };
 
 describe('runEditorSave', () => {
 	it('does not write when the editor is disabled (stale between render and click)', async () => {
@@ -32,7 +32,7 @@ describe('runEditorSave', () => {
 			{
 				kitsuId: 'k',
 				disabled: false,
-				save: { status: 'planning', seededStatus: 'planning', progress: 5 }
+				save: { status: 'planning', statusChanged: false, progress: 5 }
 			}
 		);
 		expect(res).toEqual({ kind: 'saved', live: { status: 'watching', progress: 5 } });

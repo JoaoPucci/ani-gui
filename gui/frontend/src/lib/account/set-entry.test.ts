@@ -29,7 +29,7 @@ describe('setEntryAcrossTrackers', () => {
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
-			{ status: 'watching', seededStatus: 'watching', progress: 6 }
+			{ status: 'watching', statusChanged: false, progress: 6 }
 		);
 		expect(out).toEqual({ written: 2, failed: 0 });
 		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok', { kitsu_id: 'kitsu-12', progress: 6 });
@@ -46,7 +46,7 @@ describe('setEntryAcrossTrackers', () => {
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
-			{ status: 'paused', seededStatus: 'watching', progress: 6 }
+			{ status: 'paused', statusChanged: true, progress: 6 }
 		);
 		expect(out).toEqual({ written: 2, failed: 0 });
 		for (const p of ['anilist', 'mal'] as Provider[]) {
@@ -69,7 +69,7 @@ describe('setEntryAcrossTrackers', () => {
 				setEntry
 			},
 			'kitsu-12',
-			{ status: 'planning', seededStatus: 'planning', progress: 0 }
+			{ status: 'planning', statusChanged: false, progress: 0 }
 		);
 		expect(out).toEqual({ written: 1, failed: 1 });
 		expect(getEntry).toHaveBeenCalledTimes(1);
@@ -86,7 +86,7 @@ describe('setEntryAcrossTrackers', () => {
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal', 'inhouse'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
-			{ status: 'planning', seededStatus: 'planning', progress: 0 }
+			{ status: 'planning', statusChanged: false, progress: 0 }
 		);
 		expect(out).toEqual({ written: 1, failed: 1 });
 	});
@@ -94,7 +94,7 @@ describe('setEntryAcrossTrackers', () => {
 	it('no-ops with no connected providers or empty kitsu id', async () => {
 		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
 		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const save = { status: 'planning' as const, seededStatus: 'planning' as const, progress: 0 };
+		const save = { status: 'planning' as const, statusChanged: false, progress: 0 };
 		expect(
 			await setEntryAcrossTrackers(
 				{ connected: [], bearerFor: () => 't', getEntry, setEntry },
@@ -170,7 +170,7 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
-			{ status: 'watching', seededStatus: 'watching', progress: 5 }
+			{ status: 'watching', statusChanged: false, progress: 5 }
 		);
 		expect(out.failed).toBe(1);
 		expect(out.rateLimited).toBe(true);
@@ -184,7 +184,7 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
-			{ status: 'watching', seededStatus: 'watching', progress: 5 }
+			{ status: 'watching', statusChanged: false, progress: 5 }
 		);
 		expect(out.failed).toBe(1);
 		expect(out.rateLimited).toBeFalsy();

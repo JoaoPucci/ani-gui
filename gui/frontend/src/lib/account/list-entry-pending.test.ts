@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { seedForOpen, pendingAfterSave, type PendingEdit } from './list-entry-pending';
+import {
+	seedForOpen,
+	pendingAfterSave,
+	statusWriteIntended,
+	type PendingEdit
+} from './list-entry-pending';
 import type { ListEntryView } from './list-entry-view';
 
 const view = (
@@ -10,8 +15,8 @@ const view = (
 
 describe('seedForOpen', () => {
 	it('with no pending edit, seeds status AND seed from the live view', () => {
-		// The seed equals the opened-on status, so a progress-only edit doesn't
-		// converge a divergent status (matches the pre-pending behaviour).
+		// status === seededStatus, so a progress-only edit isn't a deliberate
+		// status write (statusWriteIntended stays false).
 		expect(seedForOpen(view('watching', 5), null, 'k1')).toEqual({
 			status: 'watching',
 			seededStatus: 'watching',
@@ -27,29 +32,21 @@ describe('seedForOpen', () => {
 		});
 	});
 
-	it('with a pending edit for THIS show, re-seeds the intended status but keeps the ORIGINAL pre-save seed', () => {
-		// After a partial save the live view reflects the landed value (watching),
-		// but the seed must stay at the pre-save divergence point (planning) so a
-		// retry's buildListEdit still treats the status as deliberately changed and
-		// re-sends it to the tracker that failed.
-		const pending: PendingEdit = {
-			kitsuId: 'k1',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
+	it('with a pending edit for THIS show, pre-fills the intended status (seed stays the live value)', () => {
+		// After a partial save the live view reflects the landed value; reopening
+		// pre-fills the status the user intended. The seed tracks the live value —
+		// the deliberate-write decision comes from the active pending edit, not a
+		// value comparison (see statusWriteIntended).
+		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'completed' };
 		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
-			status: 'watching',
-			seededStatus: 'planning',
+			status: 'completed',
+			seededStatus: 'watching',
 			progress: 5
 		});
 	});
 
 	it('ignores a pending edit belonging to a different show', () => {
-		const pending: PendingEdit = {
-			kitsuId: 'other',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
+		const pending: PendingEdit = { kitsuId: 'other', intendedStatus: 'watching' };
 		expect(seedForOpen(view('completed', 24), pending, 'k1')).toEqual({
 			status: 'completed',
 			seededStatus: 'completed',
@@ -58,63 +55,54 @@ describe('seedForOpen', () => {
 	});
 });
 
+describe('statusWriteIntended', () => {
+	it('an active pending edit forces a status write even when the pick equals the seed', () => {
+		// This is what lets a user REVERT a partially-landed status: reopening and
+		// re-choosing the original value still writes it to the tracker that moved.
+		expect(statusWriteIntended(true, 'planning', 'planning')).toBe(true);
+	});
+
+	it('without a pending edit, a status write is intended only when the pick differs from the seed', () => {
+		expect(statusWriteIntended(false, 'watching', 'planning')).toBe(true);
+		expect(statusWriteIntended(false, 'watching', 'watching')).toBe(false);
+	});
+});
+
 describe('pendingAfterSave', () => {
-	it('records the pre-save seed + intended status on a partial save', () => {
-		expect(pendingAfterSave(null, 'k1', 'partial', 'planning', 'watching')).toEqual({
+	it('records the intended status on a partial save', () => {
+		expect(pendingAfterSave(null, 'k1', 'partial', 'watching')).toEqual({
 			kitsuId: 'k1',
-			seededStatus: 'planning',
 			intendedStatus: 'watching'
 		});
 	});
 
-	it('on a repeat same-show partial, keeps the original seed but refreshes the intended status', () => {
+	it('refreshes the intended status on a repeat same-show partial', () => {
 		// The user changed status again while the popover stayed open after the
-		// first partial. The seed must stay at the ORIGINAL divergence point
-		// (planning) — never advance to the now-landed value, or the
-		// still-divergent tracker is lost — but the intended status has to track
-		// the LATEST edit (paused), or a later dismiss→reopen→retry resends the
-		// stale status. (Codex P2 #3442360116)
-		const prev: PendingEdit = {
+		// first partial; the pending intent must track the LATEST edit so a later
+		// dismiss→reopen→retry propagates the newest status. (Codex P2 #3442360116)
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
+		expect(pendingAfterSave(prev, 'k1', 'partial', 'paused')).toEqual({
 			kitsuId: 'k1',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
-		expect(pendingAfterSave(prev, 'k1', 'partial', 'watching', 'paused')).toEqual({
-			kitsuId: 'k1',
-			seededStatus: 'planning',
 			intendedStatus: 'paused'
 		});
 	});
 
 	it('replaces a pending edit from a different show on a partial', () => {
-		const prev: PendingEdit = {
-			kitsuId: 'old',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
-		expect(pendingAfterSave(prev, 'k1', 'partial', 'paused', 'completed')).toEqual({
+		const prev: PendingEdit = { kitsuId: 'old', intendedStatus: 'watching' };
+		expect(pendingAfterSave(prev, 'k1', 'partial', 'completed')).toEqual({
 			kitsuId: 'k1',
-			seededStatus: 'paused',
 			intendedStatus: 'completed'
 		});
 	});
 
 	it('clears the pending edit on a clean save (all trackers agree)', () => {
-		const prev: PendingEdit = {
-			kitsuId: 'k1',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
-		expect(pendingAfterSave(prev, 'k1', 'saved', 'planning', 'watching')).toBeNull();
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
+		expect(pendingAfterSave(prev, 'k1', 'saved', 'watching')).toBeNull();
 	});
 
 	it('leaves the pending edit untouched on a failed or noop save', () => {
-		const prev: PendingEdit = {
-			kitsuId: 'k1',
-			seededStatus: 'planning',
-			intendedStatus: 'watching'
-		};
-		expect(pendingAfterSave(prev, 'k1', 'failed', 'planning', 'watching')).toBe(prev);
-		expect(pendingAfterSave(prev, 'k1', 'noop', 'planning', 'watching')).toBe(prev);
+		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching' };
+		expect(pendingAfterSave(prev, 'k1', 'failed', 'watching')).toBe(prev);
+		expect(pendingAfterSave(prev, 'k1', 'noop', 'watching')).toBe(prev);
 	});
 });

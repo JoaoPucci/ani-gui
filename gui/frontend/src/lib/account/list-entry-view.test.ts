@@ -141,7 +141,7 @@ describe('pickSeedEntry', () => {
 describe('buildListEdit', () => {
 	it('a tracker without the row (current null) is created with the chosen status', () => {
 		expect(
-			buildListEdit({ current: null, seededStatus: 'planning', status: 'planning', progress: 0 })
+			buildListEdit({ current: null, statusChanged: false, status: 'planning', progress: 0 })
 		).toEqual({ status: 'planning', progress: 0 });
 	});
 
@@ -150,18 +150,18 @@ describe('buildListEdit', () => {
 		// the default Planning would otherwise be created Plan-to-Watch with
 		// watched episodes and linger in Watch Later.
 		expect(
-			buildListEdit({ current: null, seededStatus: 'planning', status: 'planning', progress: 5 })
+			buildListEdit({ current: null, statusChanged: false, status: 'planning', progress: 5 })
 		).toEqual({ status: 'watching', progress: 5 });
 	});
 
 	it('an existing row with an unchanged status omits status (each tracker keeps its own)', () => {
-		// The seed picks one tracker's status; if the user only adjusts the
-		// episode count, status must NOT be written or a divergent
-		// rewatching/paused/dropped state on another tracker gets clobbered.
+		// When the user only adjusts the episode count (statusChanged false),
+		// status must NOT be written or a divergent rewatching/paused/dropped
+		// state on another tracker gets clobbered.
 		expect(
 			buildListEdit({
 				current: 'completed',
-				seededStatus: 'completed',
+				statusChanged: false,
 				status: 'completed',
 				progress: 12
 			})
@@ -172,22 +172,37 @@ describe('buildListEdit', () => {
 		expect(
 			buildListEdit({
 				current: 'completed',
-				seededStatus: 'completed',
+				statusChanged: true,
 				status: 'watching',
 				progress: 12
 			})
 		).toEqual({ status: 'watching', progress: 12 });
 	});
 
+	it('reverts a tracker that already moved when the user re-picks the original status', () => {
+		// A pending partial-save retry forces statusChanged=true, so re-choosing
+		// the original value (e.g. Planning after Planning→Watching partially
+		// landed) is a deliberate write that reverts the tracker that moved —
+		// not a no-op. (Codex P2 #3442415909)
+		expect(
+			buildListEdit({
+				current: 'watching',
+				statusChanged: true,
+				status: 'planning',
+				progress: 0
+			})
+		).toEqual({ status: 'planning', progress: 0 });
+	});
+
 	it('promotes a planning row to watching when saving positive progress without a status change', () => {
-		// Seed came from another tracker as watching; the planning tracker only
-		// gets progress, which would leave it Plan-to-Watch with watched
-		// episodes. Promote it to watching (the explicit /set path skips the
-		// mark-watched promotion the auto path applies).
+		// The seed came from another tracker as watching; the planning tracker
+		// only gets progress (statusChanged false), which would leave it
+		// Plan-to-Watch with watched episodes. Promote it to watching (the
+		// explicit /set path skips the mark-watched promotion the auto path adds).
 		expect(
 			buildListEdit({
 				current: 'planning',
-				seededStatus: 'watching',
+				statusChanged: false,
 				status: 'watching',
 				progress: 6
 			})
@@ -198,7 +213,7 @@ describe('buildListEdit', () => {
 		expect(
 			buildListEdit({
 				current: 'planning',
-				seededStatus: 'planning',
+				statusChanged: false,
 				status: 'planning',
 				progress: 0
 			})
@@ -209,7 +224,7 @@ describe('buildListEdit', () => {
 		expect(
 			buildListEdit({
 				current: 'watching',
-				seededStatus: 'watching',
+				statusChanged: false,
 				status: 'watching',
 				progress: 7
 			}).progress
@@ -260,7 +275,7 @@ describe('buildListEdit — completed stays at the full count', () => {
 		expect(
 			buildListEdit({
 				current: 'completed',
-				seededStatus: 'completed',
+				statusChanged: false,
 				status: 'completed',
 				progress: 0,
 				total: 12
@@ -268,16 +283,15 @@ describe('buildListEdit — completed stays at the full count', () => {
 		).toEqual({ progress: 12 });
 	});
 
-	it('keeps a completed provider full even when the chosen status matches a stale seed', () => {
-		// Smoke-test repro: the tracker is really completed, the app seed was a
-		// stale watching, and the user "kept" watching. Status matches the seed
-		// so it's omitted — but the provider's real status is completed, so the
-		// progress we write must snap to the full count rather than leave it at
-		// completed/0.
+	it('keeps a completed provider full even when the status is unchanged', () => {
+		// Smoke-test repro: the tracker is really completed and the user didn't
+		// change status (statusChanged false), so status is omitted — but the
+		// provider's real status is completed, so the progress we write must snap
+		// to the full count rather than leave it at completed/0.
 		expect(
 			buildListEdit({
 				current: 'completed',
-				seededStatus: 'watching',
+				statusChanged: false,
 				status: 'watching',
 				progress: 0,
 				total: 12
@@ -289,7 +303,7 @@ describe('buildListEdit — completed stays at the full count', () => {
 		expect(
 			buildListEdit({
 				current: 'watching',
-				seededStatus: 'watching',
+				statusChanged: true,
 				status: 'completed',
 				progress: 3,
 				total: 12
