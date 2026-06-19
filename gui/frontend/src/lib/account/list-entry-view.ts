@@ -32,11 +32,20 @@ const STATUS_COMMITMENT: Record<ListStatus, number> = {
  */
 export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
 	let best: EntryView | null = null;
+	let maxProgress = 0;
 	for (const e of entries) {
 		if (!e) continue;
+		maxProgress = Math.max(maxProgress, coherentProgress(e));
 		if (best === null || furtherAlong(e, best)) best = e;
 	}
-	return best;
+	if (best === null) return null;
+	// Status from the furthest-along entry, but progress from the furthest-along
+	// *tracker*: a Save fans the seed out to ALL trackers, so seeding below the
+	// highest known count would lower one. This matters most for a stale
+	// Completed row (completed/0 over watching/5) when the total is unknown and
+	// can't inflate Completed to full — keep the 5. With a known total, a
+	// Completed seed still snaps up to it downstream (effectiveProgress).
+	return { status: best.status, progress: maxProgress };
 }
 
 /** A Planning row means "not started", so its coherent progress is 0 even if

@@ -180,8 +180,14 @@
 	// open would otherwise leave the previous show's form values visible — and
 	// Save-able — against the new kitsuId before its live tracker state is
 	// known. Closing forces a reopen, which reseeds from the new show's view.
+	//
+	// But NOT mid-write: a save that refreshes a near-expiry token flips
+	// accountStore, which kicks a loud re-read that briefly disables us. Closing
+	// then would drop the pre-save seed a partial retry depends on. The save's
+	// own kitsuId guard handles real navigation, so it's safe to hold open while
+	// busy; once the write settles, this re-runs and closes if still disabled.
 	$effect(() => {
-		if (disabled) open = false;
+		if (disabled && !saving && !removing) open = false;
 	});
 
 	function toggle() {
