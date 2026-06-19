@@ -484,6 +484,21 @@ describe('cachedBindingVerdict', () => {
 		).toBe('reresolve');
 	});
 
+	it('evicts a binding that is BOTH count-incompatible and provably wrong (music)', () => {
+		// A 12-ep allmanga show poisoned to a 1-ep music video: the count check
+		// must not short-circuit to 'reresolve' and skip the delete — a provably
+		// wrong row has to be EVICTED so enrichment can't re-read it. Title here is
+		// plausible, isolating the music-vs-count ordering.
+		const p = resolveHistoryEntry(entry('Idol Show (12 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Idol Show', subtype: 'music', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
 	it('evicts a music-subtype binding', () => {
 		const p = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
 		expect(
