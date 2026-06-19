@@ -70,12 +70,20 @@ describe('pendingAfterSave', () => {
 	it('keeps the existing pending edit on a repeated partial (never advances the seed)', () => {
 		// A second partial must not move the recorded seed to the now-landed value,
 		// or the still-divergent tracker is lost on the next retry.
-		const prev: PendingEdit = { kitsuId: 'k1', seededStatus: 'planning', intendedStatus: 'watching' };
+		const prev: PendingEdit = {
+			kitsuId: 'k1',
+			seededStatus: 'planning',
+			intendedStatus: 'watching'
+		};
 		expect(pendingAfterSave(prev, 'k1', 'partial', 'watching', 'watching')).toBe(prev);
 	});
 
 	it('replaces a pending edit from a different show on a partial', () => {
-		const prev: PendingEdit = { kitsuId: 'old', seededStatus: 'planning', intendedStatus: 'watching' };
+		const prev: PendingEdit = {
+			kitsuId: 'old',
+			seededStatus: 'planning',
+			intendedStatus: 'watching'
+		};
 		expect(pendingAfterSave(prev, 'k1', 'partial', 'paused', 'completed')).toEqual({
 			kitsuId: 'k1',
 			seededStatus: 'paused',
@@ -84,12 +92,20 @@ describe('pendingAfterSave', () => {
 	});
 
 	it('clears the pending edit on a clean save (all trackers agree)', () => {
-		const prev: PendingEdit = { kitsuId: 'k1', seededStatus: 'planning', intendedStatus: 'watching' };
+		const prev: PendingEdit = {
+			kitsuId: 'k1',
+			seededStatus: 'planning',
+			intendedStatus: 'watching'
+		};
 		expect(pendingAfterSave(prev, 'k1', 'saved', 'planning', 'watching')).toBeNull();
 	});
 
 	it('leaves the pending edit untouched on a failed or noop save', () => {
-		const prev: PendingEdit = { kitsuId: 'k1', seededStatus: 'planning', intendedStatus: 'watching' };
+		const prev: PendingEdit = {
+			kitsuId: 'k1',
+			seededStatus: 'planning',
+			intendedStatus: 'watching'
+		};
 		expect(pendingAfterSave(prev, 'k1', 'failed', 'planning', 'watching')).toBe(prev);
 		expect(pendingAfterSave(prev, 'k1', 'noop', 'planning', 'watching')).toBe(prev);
 	});

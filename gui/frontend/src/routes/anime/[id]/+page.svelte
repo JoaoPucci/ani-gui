@@ -1121,25 +1121,9 @@
 					     stale Kitsu counts. False → "Not in catalogue"
 					     notice. True → real Play/Download with the
 					     allmanga-truth count threaded through. -->
-					<!-- The tracker list editor only needs the Kitsu id + provider
-					     mapping, so it renders regardless of playback availability —
-					     a connected user can still add/edit/remove a list entry for a
-					     title allmanga can't stream. Defined once, rendered in both
-					     the available and unavailable branches. -->
-					{#snippet listEditor()}
-						{#if accountStore.hasAny && detail}
-							<ListEntryEditor
-								kitsuId={id}
-								total={detail.episode_count ?? null}
-								cap={episodeCap}
-								current={listEntry}
-								airing={detail.status != null && detail.status !== 'finished'}
-								disabled={listEntryLoading || listEntryError}
-								onReconcile={() => readListEntry(true)}
-							/>
-						{/if}
-					{/snippet}
-
+					<!-- Availability-specific, non-editor content: a loading skeleton
+					     while the probe is in flight; a "not in catalogue" notice when
+					     the show can't be streamed. -->
 					{#if availability === null}
 						<div
 							class="actions actions-loading"
@@ -1149,40 +1133,49 @@
 							<span class="action-skel"></span>
 							<span class="action-skel action-skel-narrow"></span>
 						</div>
-						<!-- The tracker editor doesn't depend on the availability probe,
-						     so keep it usable while playback availability is still unknown. -->
-						{#if accountStore.hasAny}
-							<div class="actions" aria-label={m.detail_actions_aria_label()}>
-								{@render listEditor()}
-							</div>
-						{/if}
 					{:else if availability === false}
 						<p class="unavailable" role="status">
 							<span aria-hidden="true">⏵</span>
 							{m.detail_unavailable_message()}
 						</p>
-						{#if accountStore.hasAny}
-							<div class="actions" aria-label={m.detail_actions_aria_label()}>
-								{@render listEditor()}
-							</div>
-						{/if}
-					{:else}
+					{/if}
+
+					<!-- The actions row: Play/Download (only when the show is streamable)
+					     plus the tracker list editor. The editor needs only the Kitsu id
+					     + provider mapping, so a connected user can manage a list entry
+					     even for a title allmanga can't stream — and it's rendered exactly
+					     ONCE here, never once per availability branch, so an availability
+					     flip can't remount it and drop an in-flight save or a pending
+					     partial-save retry. -->
+					{#if availability === true || (accountStore.hasAny && detail)}
 						<div class="actions" aria-label={m.detail_actions_aria_label()}>
-							<button
-								type="button"
-								class="btn btn-glass"
-								style:--btn-glow="var(--accent)"
-								onclick={onPlay}
-								disabled={actionBusy}
-							>
-								<span aria-hidden="true">▸</span>
-								<span>{playLabel}</span>
-							</button>
-							<button type="button" class="btn btn-outline" onclick={onDownload}>
-								<span aria-hidden="true">↓</span>
-								<span>{m.detail_download_button()}</span>
-							</button>
-							{@render listEditor()}
+							{#if availability === true}
+								<button
+									type="button"
+									class="btn btn-glass"
+									style:--btn-glow="var(--accent)"
+									onclick={onPlay}
+									disabled={actionBusy}
+								>
+									<span aria-hidden="true">▸</span>
+									<span>{playLabel}</span>
+								</button>
+								<button type="button" class="btn btn-outline" onclick={onDownload}>
+									<span aria-hidden="true">↓</span>
+									<span>{m.detail_download_button()}</span>
+								</button>
+							{/if}
+							{#if accountStore.hasAny && detail}
+								<ListEntryEditor
+									kitsuId={id}
+									total={detail.episode_count ?? null}
+									cap={episodeCap}
+									current={listEntry}
+									airing={detail.status != null && detail.status !== 'finished'}
+									disabled={listEntryLoading || listEntryError}
+									onReconcile={() => readListEntry(true)}
+								/>
+							{/if}
 						</div>
 					{/if}
 

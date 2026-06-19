@@ -17,11 +17,8 @@
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
-	import {
-		deriveListEntryView,
-		editorInitial,
-		listButtonLabel
-	} from '$lib/account/list-entry-view';
+	import { deriveListEntryView, listButtonLabel } from '$lib/account/list-entry-view';
+	import { seedForOpen, pendingAfterSave, type PendingEdit } from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -104,6 +101,13 @@
 	// the user moved it off this, so a progress-only edit doesn't converge a
 	// divergent status across trackers.
 	let seededStatus = $state<ListStatus>('planning');
+	// A partial save's unfinished business: the pre-save seed + the status the
+	// user wanted, kept per-show so a retry still re-sends the status to the
+	// tracker that failed even after the popover is dismissed and reopened (on
+	// reopen the live view has moved to the landed value, which would otherwise
+	// make the status look unchanged). Cleared on a clean save/remove. See
+	// list-entry-pending.ts.
+	let pendingEdit = $state<PendingEdit | null>(null);
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
@@ -152,12 +156,18 @@
 			// seededStatus from the landed value and buildListEdit would then treat
 			// it as unchanged.
 			live = res.live;
+			// Remember the pre-save seed + intended status so a dismiss→reopen→retry
+			// still re-sends the status to the tracker(s) that failed (reopening
+			// reseeds from the landed `live`, which would otherwise look unchanged).
+			pendingEdit = pendingAfterSave(pendingEdit, id, 'partial', seededStatus, editStatus);
 			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
 		}
 		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
+		// Every tracker took it — the divergence is gone, so drop any pending retry.
+		pendingEdit = pendingAfterSave(pendingEdit, id, 'saved', seededStatus, editStatus);
 		open = false;
 		onReconcile();
 	}
@@ -206,10 +216,12 @@
 			closeEditor(); // guarded: a no-op while a write is in flight (preserves the seed)
 			return;
 		}
-		const init = editorInitial(view);
-		editStatus = init.status;
-		editProgress = init.progress;
-		seededStatus = init.status;
+		// Re-seed from a surviving pending edit (an unfinished partial-save retry
+		// for this show) when present, else from the live view.
+		const seed = seedForOpen(view, pendingEdit, kitsuId);
+		editStatus = seed.status;
+		editProgress = seed.progress;
+		seededStatus = seed.seededStatus;
 		openedFor = kitsuId;
 		open = true;
 	}
@@ -270,6 +282,8 @@
 		}
 		toastStore.push({ kind: 'success', message: m.detail_list_removed() });
 		live = null;
+		// The entry's gone everywhere, so any pending status retry is moot.
+		pendingEdit = null;
 		open = false;
 		onReconcile();
 	}
