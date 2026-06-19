@@ -21,14 +21,7 @@ import {
 	kitsuTitleMatchPut,
 	type KitsuAnimeRef
 } from '$lib/api';
-import {
-	deriveSlug,
-	isEpisodeCountCompatible,
-	isMusicSubtype,
-	pickKitsuMatch,
-	titlesPlausiblySameShow,
-	type ResumeTarget
-} from './resolve';
+import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// 0) Reverse-mapping lookup: allmanga show_id → kitsu_id. Recorded
@@ -49,34 +42,16 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 			if (kitsuId) {
 				try {
 					const cached = await kitsuAnimeDetail(kitsuId);
-					if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-						// Count mismatch → cached mapping is wrong; fall through to re-resolve.
-					} else if (
-						isMusicSubtype(cached.subtype) ||
-						!titlesPlausiblySameShow(preliminary.searchTitle, cached)
-					) {
-						// Implausible binding: a music entry (never on allanime) or a gross
-						// title mismatch — the Love Live movie's show_id poisoned to the
-						// YOASOBI "Idol" MV. Self-heal: drop the row and re-resolve. The title
-						// check is a tripwire only; a terse stub ("1P" → One Piece) is never
-						// judged, so a correct stub binding is preserved.
+					const verdict = cachedBindingVerdict(cached, preliminary, true);
+					if (verdict === 'trust') return cached;
+					if (verdict === 'evict') {
+						// Provably wrong reverse-map row — a music entry, a gross title
+						// mismatch (the Love Live movie's show_id poisoned to the YOASOBI
+						// "Idol" MV), or a cross-cour slug mismatch. Self-heal: drop it so
+						// it re-resolves on every install without a manual cache wipe.
 						void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-					} else if (preliminary.cour > 1 && cached.slug) {
-						// Cour-slug guard: the reverse cache used to record cross-cour
-						// mappings (Stone Ocean Part 2's show_id paired with Part 1's Kitsu
-						// id). Evict on positive slug-mismatch evidence; an absent slug is
-						// missing evidence and the cached row stays.
-						const courRe = new RegExp(
-							`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
-							'i'
-						);
-						if (courRe.test(cached.slug)) {
-							return cached;
-						}
-						void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-					} else {
-						return cached;
 					}
+					// 'evict' / 'reresolve' both fall through to the title-search path.
 				} catch {
 					// Stale id — fall through to the title-search path.
 				}
@@ -105,23 +80,11 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 		if (cachedId) {
 			try {
 				const cached = await kitsuAnimeDetail(cachedId);
-				if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-					// Poisoned cache row — fall through and re-resolve.
-				} else if (
-					isMusicSubtype(cached.subtype) ||
-					!titlesPlausiblySameShow(preliminary.searchTitle, cached)
-				) {
-					// Music entry or gross title mismatch — re-resolve. Step 5 re-Puts a
-					// corrected mapping (there is no title-match delete IPC).
-				} else if (preliminary.cour > 1) {
-					const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
-					if (cached.slug && courRe.test(cached.slug)) {
-						return cached;
-					}
-					// Slug mismatch → cached mapping is wrong; fall through.
-				} else {
+				if (cachedBindingVerdict(cached, preliminary, false) === 'trust') {
 					return cached;
 				}
+				// Incompatible / implausible / cross-cour → fall through and re-resolve
+				// (step 5 re-Puts a corrected title-match row; no title-match delete).
 			} catch {
 				// Stale id (Kitsu removed the entry) — fall through to a
 				// live search and re-cache.

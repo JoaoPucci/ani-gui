@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	cachedBindingVerdict,
 	isMusicSubtype,
 	pickKitsuMatch,
 	resolveHistoryEntry,
@@ -466,6 +467,79 @@ describe('titlesPlausiblySameShow', () => {
 	it('does not reject when there is no title signal to judge on', () => {
 		expect(titlesPlausiblySameShow('', ref('Whatever'))).toBe(true);
 		expect(titlesPlausiblySameShow('Something', ref(''))).toBe(true);
+	});
+});
+
+describe('cachedBindingVerdict', () => {
+	const ref = (over: Partial<KitsuAnimeRef>): KitsuAnimeRef => ({ ...stubKitsu('k'), ...over });
+
+	it('re-resolves an episode-count-incompatible binding', () => {
+		const p = resolveHistoryEntry(entry('Some Long Title Here (24 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Long Title Here', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
+	it('evicts a music-subtype binding', () => {
+		const p = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Idol', subtype: 'music', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
+	it('evicts a grossly-mismatched title binding', () => {
+		const p = resolveHistoryEntry(entry('Some Very Specific Long Title (12 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Totally Unrelated Other Show', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
+	it('trusts a compatible, plausible single-cour binding', () => {
+		const p = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Demon Slayer', episode_count: 26 }), p, true)
+		).toBe('trust');
+	});
+
+	it('trusts a multi-cour binding whose slug carries the cour suffix', () => {
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime Part 2', slug: 'some-anime-part-2', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
+	it('evicts a multi-cour binding whose slug lacks the cour suffix', () => {
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime', slug: 'some-anime', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
+	it('an absent slug on a multi-cour binding is trusted only when trustOnAbsentSlug', () => {
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		const r = ref({ canonical_title: 'Some Anime Part 2', slug: null, episode_count: 12 });
+		expect(cachedBindingVerdict(r, p, true)).toBe('trust'); // step 0: missing evidence
+		expect(cachedBindingVerdict(r, p, false)).toBe('reresolve'); // step 1: re-resolve
 	});
 });
 

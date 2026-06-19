@@ -248,6 +248,41 @@ export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRe
 	return best >= TITLE_OVERLAP_MIN;
 }
 
+/** What to do with a cached Kitsu detail bound to a history entry. `trust` =
+ *  return it; `evict` = the binding is provably wrong (drop the cached row on
+ *  the reverse-map path); `reresolve` = inconclusive, fall through without
+ *  deleting. */
+export type CachedBindingVerdict = 'trust' | 'evict' | 'reresolve';
+
+/**
+ * Validate a cached allmanga→kitsu binding (step 0 reverse-map) or title-match
+ * (step 1) before trusting it. Shared so both paths apply the same guards in
+ * the same order: episode-count compatibility, then the music/title identity
+ * tripwire (see {@link titlesPlausiblySameShow}), then the cour-slug suffix.
+ *
+ * `trustOnAbsentSlug` differs by caller: the reverse-map (step 0) treats a
+ * missing slug as missing evidence and keeps the row (`trust`); the title-match
+ * cache (step 1) re-resolves it. `evict` vs `reresolve` only matters to step 0,
+ * which deletes the poisoned reverse-map row on `evict`; step 1 falls through on
+ * either (there's no title-match delete — step 5 re-Puts a corrected mapping).
+ */
+export function cachedBindingVerdict(
+	cached: KitsuAnimeRef,
+	preliminary: ResumeTarget,
+	trustOnAbsentSlug: boolean
+): CachedBindingVerdict {
+	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
+	if (isMusicSubtype(cached.subtype) || !titlesPlausiblySameShow(preliminary.searchTitle, cached)) {
+		return 'evict';
+	}
+	if (preliminary.cour > 1) {
+		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
+		const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
+		return courRe.test(cached.slug) ? 'trust' : 'evict';
+	}
+	return 'trust';
+}
+
 /** Threshold above which courSize is treated as a "definitively
  *  finished long show" — null Kitsu counts get rejected at this size
  *  because long shows almost always have finalized counts in Kitsu.
