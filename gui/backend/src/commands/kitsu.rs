@@ -1178,6 +1178,33 @@ mod tests {
         assert!(got.is_ok(), "resolver must not error: {got:?}");
     }
 
+    #[tokio::test]
+    async fn resolve_allmanga_show_id_bypass_skips_the_reverse_cache() {
+        // The frontend reaches enrichment only after step 0 has already read
+        // and REJECTED the reverse row (e.g. a count-incompatible binding). With
+        // bypass_cache=true the resolver must NOT short-circuit on that same row,
+        // or the just-rejected id round-trips straight back. Cache is seeded and
+        // /anime/12 is mocked; bypass means neither is consulted — the alias-walk
+        // (Kitsu search unmocked) finds nothing and fails soft to Ok(None).
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime/12"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(DETAIL_FIXTURE.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+        allmanga_kitsu_put(&state, "ReooPAxPMsHM4KPMY", "12").expect("seed cache");
+
+        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY", true)
+            .await
+            .expect("resolve ok");
+        assert!(got.is_none(), "bypass must skip the reverse cache; got {got:?}");
+    }
+
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
         // The enrichment alias-walk must skip music-video hits (a YOASOBI

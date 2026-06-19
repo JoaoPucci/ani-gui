@@ -464,7 +464,10 @@ describe('resolveKitsuMatch', () => {
 
 		expect(got?.id).toBe('12');
 		expect(got?.canonical_title).toBe('One Piece');
-		expect(mockedResolveAllmanga).toHaveBeenCalledWith('ReooPAxPMsHM4KPMY');
+		// bypassCache=true: step 0 already read + rejected the reverse row, so the
+		// backend enrichment must skip its reverse-cache fast path (else a
+		// count-rejected id round-trips back).
+		expect(mockedResolveAllmanga).toHaveBeenCalledWith('ReooPAxPMsHM4KPMY', true);
 	});
 
 	it('returns null when text search and allmanga enrichment both miss', async () => {
