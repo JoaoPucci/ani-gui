@@ -518,6 +518,16 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     }
 }
 
+/// Whether a Kitsu `subtype` is a music video. These never exist on allanime
+/// (it indexes anime episodes, not song clips), so the enrichment alias-walk
+/// skips them — otherwise an alias like "Idol" could resolve to, and persist,
+/// the YOASOBI MV's id. Case-insensitive; an absent subtype is not music.
+fn is_music_subtype(subtype: Option<&str>) -> bool {
+    subtype
+        .map(|s| s.eq_ignore_ascii_case("music"))
+        .unwrap_or(false)
+}
+
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
 /// walking allmanga's `Show` GraphQL aliases (`englishName`,
 /// `nativeName`, `altNames`) through Kitsu's text search. Returns the
@@ -587,11 +597,16 @@ pub async fn resolve_allmanga_show_id(
             Ok(h) => h,
             Err(_) => continue, // Single-term failure shouldn't break the walk.
         };
-        if let Some(first) = hits.into_iter().next() {
+        if let Some(first) = hits
+            .into_iter()
+            .find(|h| !is_music_subtype(h.subtype.as_deref()))
+        {
             // 4) Persist the mapping so subsequent calls short-circuit
             //    through step 1. Failure to write the cache is
             //    non-fatal — the resolution still succeeds for this
             //    request; the next call just walks aliases again.
+            //    Music-video hits are skipped above so a "music" alias
+            //    (the YOASOBI "Idol" MV) is never returned or persisted.
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
