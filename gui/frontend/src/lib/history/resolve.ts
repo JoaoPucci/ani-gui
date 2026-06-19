@@ -99,6 +99,49 @@ export interface ResumeTarget {
  *  disambiguator. */
 const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s+(\d+)\s*$/i;
 
+/** Ordinal-season forms — "Foo 2nd Season", "Foo 4th Part" — where the index
+ *  precedes the cour word. */
+const COUR_ORDINAL_NUM_RE = /(?:^|[\s:])(\d+)(?:st|nd|rd|th)\s+(?:Part|Cour|Season)\s*$/i;
+
+/** Spelled-out ordinal-season forms — "Foo Second Season", "Foo Fourth Part". */
+const COUR_ORDINAL_WORD_RE =
+	/(?:^|[\s:])(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:Part|Cour|Season)\s*$/i;
+
+const ORDINAL_TO_NUMBER: Record<string, number> = {
+	first: 1,
+	second: 2,
+	third: 3,
+	fourth: 4,
+	fifth: 5,
+	sixth: 6,
+	seventh: 7,
+	eighth: 8,
+	ninth: 9,
+	tenth: 10
+};
+
+/** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
+ *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
+function parseCour(stripped: string): number {
+	const numeric = stripped.match(COUR_SUFFIX_RE);
+	if (numeric) return parseInt(numeric[1], 10);
+	const ordinalNum = stripped.match(COUR_ORDINAL_NUM_RE);
+	if (ordinalNum) return parseInt(ordinalNum[1], 10);
+	const ordinalWord = stripped.match(COUR_ORDINAL_WORD_RE);
+	if (ordinalWord) return ORDINAL_TO_NUMBER[ordinalWord[1].toLowerCase()] ?? 1;
+	return 1;
+}
+
+/** Slug-cour matcher tolerant of both Kitsu orderings: "…-season-2" and the
+ *  ordinal form "…-2nd-season" / "…-2-season". Used to confirm a cached anime's
+ *  slug carries the cour the history entry expects. */
+function courSlugRegex(cour: number): RegExp {
+	return new RegExp(
+		`(?:^|-)(?:(?:part|cour|season)-${cour}|${cour}(?:st|nd|rd|th)?-(?:part|cour|season))(?:-|$)`,
+		'i'
+	);
+}
+
 /** Matches the "(N episodes)" parenthetical ani-cli appends. */
 const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*$/i;
 
@@ -114,8 +157,7 @@ export function resolveHistoryEntry(
 	const courSize = tailMatch ? parseInt(tailMatch[1], 10) : null;
 	const stripped = entry.title.replace(EPISODE_TAIL_RE, '').trim();
 
-	const courMatch = stripped.match(COUR_SUFFIX_RE);
-	const cour = courMatch ? parseInt(courMatch[1], 10) : 1;
+	const cour = parseCour(stripped);
 	// searchTitle keeps the cour suffix — see the comment on the
 	// interface field for why.
 	const searchTitle = stripped;
@@ -211,6 +253,10 @@ const ORDINAL_WORDS = new Set([
 	'tenth'
 ]);
 
+/** English articles — carry no identity, so two unrelated shows sharing only
+ *  "the" ("The Reflection" vs "The SoulTaker") must not count as a match. */
+const STOP_WORDS = new Set(['the', 'a', 'an']);
+
 /** A cour INDEX: a bare number ("2"), a numeric ordinal ("2nd"/"21st"), or a
  *  spelled ordinal. Stripped only when it sits beside a cour word, so a
  *  distinctive numeric title like "86" or "Mob Psycho 100" survives. */
@@ -234,7 +280,8 @@ function titleTokens(s: string): Set<string> {
 		if (i > 0 && isCourIndexToken(raw[i - 1])) keep[i - 1] = false;
 		if (i + 1 < raw.length && isCourIndexToken(raw[i + 1])) keep[i + 1] = false;
 	}
-	return new Set(raw.filter((_, i) => keep[i]));
+	// Also drop articles always — they're not identity evidence.
+	return new Set(raw.filter((_, i) => keep[i] && !STOP_WORDS.has(raw[i])));
 }
 
 /** Whether the allanime/hsts title is specific enough that a near-zero overlap
@@ -321,8 +368,7 @@ export function cachedBindingVerdict(
 	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
-		const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
-		return courRe.test(cached.slug) ? 'trust' : 'evict';
+		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'evict';
 	}
 	return 'trust';
 }

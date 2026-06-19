@@ -609,6 +609,30 @@ describe('cachedBindingVerdict', () => {
 		expect(cachedBindingVerdict(r, p, true)).toBe('trust'); // step 0: missing evidence
 		expect(cachedBindingVerdict(r, p, false)).toBe('reresolve'); // step 1: re-resolve
 	});
+
+	it('matches an ordinal-season slug ("2nd-season") and evicts a sibling lacking it', () => {
+		// "Some Anime 2nd Season" parses to cour 2; the slug guard must accept the
+		// ordinal slug form and evict the cour-1 sibling whose slug lacks it.
+		const p = resolveHistoryEntry(entry('Some Anime 2nd Season (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime', slug: 'some-anime', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('evict');
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: 'Some Anime 2nd Season',
+					slug: 'some-anime-2nd-season',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
 });
 
 describe('pickKitsuMatch — music subtype is never playable', () => {
