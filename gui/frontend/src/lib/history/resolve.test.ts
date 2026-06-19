@@ -495,6 +495,16 @@ describe('titlesPlausiblySameShow', () => {
 			titlesPlausiblySameShow('Frieren Second Season', ref('Bocchi the Rock Second Season'))
 		).toBe(false);
 	});
+
+	it('judges a standalone numeric title (86) instead of stripping it to a stub', () => {
+		// The cour-number strip must be contextual to season/part/cour — a bare
+		// numeric title ("86") is distinctive identity, not a cour marker, so it
+		// must still participate in the guard.
+		expect(titlesPlausiblySameShow('86', ref('Bocchi the Rock'))).toBe(false);
+		expect(titlesPlausiblySameShow('86', ref('86'))).toBe(true);
+		// …while a real cour number adjacent to "Season" is still ignored:
+		expect(titlesPlausiblySameShow('86 Season 2', ref('86'))).toBe(true);
+	});
 });
 
 describe('cachedBindingVerdict', () => {
