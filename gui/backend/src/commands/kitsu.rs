@@ -1163,6 +1163,18 @@ mod tests {
         assert!(got.is_ok(), "resolver must not error: {got:?}");
     }
 
+    #[test]
+    fn is_music_subtype_matches_case_insensitively() {
+        // The enrichment alias-walk must skip music-video hits (a YOASOBI
+        // "Idol" MV) so it never returns or persists one — music can't exist
+        // on allanime. Streamable subtypes and an absent subtype pass.
+        assert!(is_music_subtype(Some("music")));
+        assert!(is_music_subtype(Some("Music")));
+        assert!(!is_music_subtype(Some("TV")));
+        assert!(!is_music_subtype(Some("movie")));
+        assert!(!is_music_subtype(None));
+    }
+
     // — Watched-at timestamps for Continue Watching ordering ——————————
     //
     // ani-hsts is keyed by show_id and only stores ep_no/title — no
