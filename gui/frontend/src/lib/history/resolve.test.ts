@@ -468,6 +468,20 @@ describe('titlesPlausiblySameShow', () => {
 		expect(titlesPlausiblySameShow('', ref('Whatever'))).toBe(true);
 		expect(titlesPlausiblySameShow('Something', ref(''))).toBe(true);
 	});
+
+	it('rejects two unrelated shows sharing only generic cour tokens (Season N)', () => {
+		// "X Season 2" vs "Y Season 2": the only shared tokens are the structural
+		// "season" + the number, which are NOT identity evidence. Must reject.
+		expect(titlesPlausiblySameShow('Frieren Season 2', ref('Bocchi the Rock Season 2'))).toBe(
+			false
+		);
+		expect(titlesPlausiblySameShow('Some Anime Part 2', ref('Other Show Part 2'))).toBe(false);
+	});
+
+	it('still accepts the same base show across a cour suffix', () => {
+		// The distinctive base name matches; the cour suffix is ignored.
+		expect(titlesPlausiblySameShow('Frieren Season 2', ref('Frieren'))).toBe(true);
+	});
 });
 
 describe('cachedBindingVerdict', () => {
