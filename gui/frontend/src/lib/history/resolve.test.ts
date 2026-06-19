@@ -482,6 +482,19 @@ describe('titlesPlausiblySameShow', () => {
 		// The distinctive base name matches; the cour suffix is ignored.
 		expect(titlesPlausiblySameShow('Frieren Season 2', ref('Frieren'))).toBe(true);
 	});
+
+	it('rejects unrelated shows sharing only an ordinal cour marker (2nd / Second Season)', () => {
+		// "2nd"/"second" are structural like "season"/"2"; resolveHistoryEntry
+		// doesn't even flag the "2nd Season" form as cour > 1, so the slug guard
+		// never runs — the overlap must reject these on its own (the distinctive
+		// base names carry the signal).
+		expect(titlesPlausiblySameShow('Frieren 2nd Season', ref('Bocchi the Rock 2nd Season'))).toBe(
+			false
+		);
+		expect(
+			titlesPlausiblySameShow('Frieren Second Season', ref('Bocchi the Rock Second Season'))
+		).toBe(false);
+	});
 });
 
 describe('cachedBindingVerdict', () => {

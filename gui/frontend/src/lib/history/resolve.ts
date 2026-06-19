@@ -192,9 +192,32 @@ export function isMusicSubtype(subtype: string | null): boolean {
 const TITLE_OVERLAP_MIN = 0.34;
 
 /** Structural sequel words that carry no identity — two unrelated shows can
- *  both be a "Season 2", so these (and the bare cour number beside them) must
- *  not count as shared evidence in the overlap. */
-const STRUCTURAL_TITLE_TOKENS = new Set(['season', 'seasons', 'part', 'parts', 'cour']);
+ *  both be a "Season 2" / "2nd Season", so these (plus the cour number beside
+ *  them, bare or ordinal) must not count as shared evidence in the overlap. */
+const STRUCTURAL_TITLE_TOKENS = new Set([
+	'season',
+	'seasons',
+	'part',
+	'parts',
+	'cour',
+	// Spelled-out ordinals ("2nd Season" also appears as "Second Season").
+	'first',
+	'second',
+	'third',
+	'fourth',
+	'fifth',
+	'sixth',
+	'seventh',
+	'eighth',
+	'ninth',
+	'tenth'
+]);
+
+/** A bare number ("2") or a numeric ordinal ("2nd", "3rd", "21st") — the cour
+ *  index, which is not identity evidence. */
+function isCourNumberToken(t: string): boolean {
+	return /^\d+$/.test(t) || /^\d+(st|nd|rd|th)$/.test(t);
+}
 
 function titleTokens(s: string): Set<string> {
 	return new Set(
@@ -204,9 +227,9 @@ function titleTokens(s: string): Set<string> {
 			.trim()
 			.split(/\s+/)
 			.filter(Boolean)
-			// Drop structural cour words and bare numbers (the "2" in "Season 2"),
-			// so only distinctive tokens count toward the title overlap.
-			.filter((t) => !STRUCTURAL_TITLE_TOKENS.has(t) && !/^\d+$/.test(t))
+			// Drop structural cour words and the cour number (bare or ordinal), so
+			// only distinctive tokens count toward the title overlap.
+			.filter((t) => !STRUCTURAL_TITLE_TOKENS.has(t) && !isCourNumberToken(t))
 	);
 }
 
