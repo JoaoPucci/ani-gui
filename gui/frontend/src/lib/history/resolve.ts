@@ -142,6 +142,23 @@ function courSlugRegex(cour: number): RegExp {
 	);
 }
 
+const NUMBER_TO_ORDINAL: Record<number, string> = Object.fromEntries(
+	Object.entries(ORDINAL_TO_NUMBER).map(([word, n]) => [n, word])
+);
+
+/** Title-cour matcher across the forms Kitsu canonical titles use: "Season 2",
+ *  "2nd Season", and "Second Season" (plus Part/Cour). Mirrors
+ *  {@link courSlugRegex} for the live picker's title fallback. */
+function courTitleRegex(cour: number): RegExp {
+	const alts = [
+		`(?:part|cour|season)\\s+${cour}`,
+		`${cour}(?:st|nd|rd|th)\\s+(?:part|cour|season)`
+	];
+	const word = NUMBER_TO_ORDINAL[cour];
+	if (word) alts.push(`${word}\\s+(?:part|cour|season)`);
+	return new RegExp(`\\b(?:${alts.join('|')})\\b`, 'i');
+}
+
 /** Matches the "(N episodes)" parenthetical ani-cli appends. */
 const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*$/i;
 
@@ -460,11 +477,11 @@ export function pickKitsuMatch(
 
 	if (preliminary.cour <= 1) return candidates[0];
 
-	const slugRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
+	const slugRe = courSlugRegex(preliminary.cour);
 	const courInSlug = candidates.find((h) => slugRe.test(h.slug ?? ''));
 	if (courInSlug) return courInSlug;
 
-	const titleRe = new RegExp(`\\b(?:part|cour|season)\\s+${preliminary.cour}\\b`, 'i');
+	const titleRe = courTitleRegex(preliminary.cour);
 	const courInTitle = candidates.find((h) => titleRe.test(h.canonical_title ?? ''));
 	if (courInTitle) return courInTitle;
 
