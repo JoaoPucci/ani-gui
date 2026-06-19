@@ -59,10 +59,13 @@ export function statusWriteIntended(
 
 /**
  * The pending edit after a save outcome:
- *   - `partial`: record the intended status (latest pick) so a dismissed,
- *     reopened retry still re-sends it. A repeat partial for the same show
- *     just refreshes the intent; a partial for a different show replaces it
- *     (one slot, current show wins).
+ *   - `partial` that wrote status (`statusChanged`): record the intended status
+ *     (latest pick) so a dismissed, reopened retry still re-sends it. A repeat
+ *     status partial for the same show refreshes the intent; one for a
+ *     different show replaces it (one slot, current show wins).
+ *   - `partial` that was progress-only (`!statusChanged`): leave the record
+ *     as-is — there's no status intent to carry, so a retry stays progress-only
+ *     and can't force-write the seed status onto a divergent tracker.
  *   - `saved`: every tracker accepted it, so the divergence is gone — clear.
  *   - `failed` / `noop`: nothing changed, leave the record as-is.
  */
@@ -70,9 +73,10 @@ export function pendingAfterSave(
 	prev: PendingEdit | null,
 	kitsuId: string,
 	outcome: 'noop' | 'saved' | 'partial' | 'failed',
+	statusChanged: boolean,
 	intendedStatus: ListStatus
 ): PendingEdit | null {
 	if (outcome === 'saved') return null;
-	if (outcome === 'partial') return { kitsuId, intendedStatus };
+	if (outcome === 'partial' && statusChanged) return { kitsuId, intendedStatus };
 	return prev;
 }
