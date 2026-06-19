@@ -500,4 +500,84 @@ describe('resolveKitsuMatch', () => {
 		await resolveKitsuMatch(preliminary);
 		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
 	});
+
+	// — identity guard: music subtype + gross title mismatch ————————————
+
+	it('evicts a music-subtype reverse-map binding and re-resolves (the Idol bug)', async () => {
+		// The Love Live movie's allmanga show_id was poisoned to point at the
+		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). Music never
+		// exists on allanime, so step 0 must drop the row and re-resolve — the
+		// card stops showing "Idol" for a Love Live entry.
+		const preliminary = resolveHistoryEntry(
+			{
+				id: '9mJyPki2Hm4NmSrhG',
+				ep_no: '1',
+				title: 'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen (1 episodes)'
+			},
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('47328');
+		mockedDetail.mockResolvedValue({ ...stubKitsu('47328', 'Idol', 1), subtype: 'music' });
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([
+			stubKitsu('love-live', 'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen', 1)
+		]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('love-live');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('9mJyPki2Hm4NmSrhG');
+		expect(mockedSearch).toHaveBeenCalled();
+	});
+
+	it('evicts a reverse-map binding whose title grossly mismatches the entry', async () => {
+		// Non-music poison: an informative hsts title bound to an unrelated Kitsu
+		// entry. The title tripwire alone evicts + re-resolves.
+		const preliminary = resolveHistoryEntry(
+			{ id: 'show-x', ep_no: '5', title: 'Some Very Specific Long Title (12 episodes)' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('wrong');
+		mockedDetail.mockResolvedValue(stubKitsu('wrong', 'Totally Unrelated Other Show', 12));
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('right', 'Some Very Specific Long Title', 12)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('right');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('show-x');
+	});
+
+	it('keeps a reverse-map binding whose allmanga title is a plausible typo', async () => {
+		// Guard must not over-reject: "Nato: Shippuuden" (allmanga typo) shares
+		// the distinctive "Shippuuden" with "Naruto: Shippuuden", so the binding
+		// stays trusted — no eviction, no re-search.
+		const preliminary = resolveHistoryEntry(
+			{ id: 'naruto-id', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('11061');
+		mockedDetail.mockResolvedValue(stubKitsu('11061', 'Naruto: Shippuuden', 500));
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('11061');
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+		expect(mockedSearch).not.toHaveBeenCalled();
+	});
+
+	it('falls through a music-subtype title-match cache hit', async () => {
+		// Step 1 (title-match cache) applies the same guard. "Idol" is a stub the
+		// title tripwire can't judge, so this isolates the music gate.
+		const preliminary = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue('47328');
+		mockedDetail.mockResolvedValue({ ...stubKitsu('47328', 'Idol', 1), subtype: 'music' });
+		mockedSearch.mockResolvedValue([stubKitsu('real', 'Idol Anime', 1)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('real');
+		expect(mockedSearch).toHaveBeenCalled();
+	});
 });
