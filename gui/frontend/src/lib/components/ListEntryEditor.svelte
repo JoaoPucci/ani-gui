@@ -190,7 +190,7 @@
 		// overwrite a real entry whose status we don't actually know yet.
 		if (disabled) return;
 		if (open) {
-			open = false;
+			closeEditor(); // guarded: a no-op while a write is in flight (preserves the seed)
 			return;
 		}
 		const init = editorInitial(view);
