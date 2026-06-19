@@ -191,6 +191,11 @@ export function isMusicSubtype(subtype: string | null): boolean {
  *  Shippuuden ≈ 0.5). */
 const TITLE_OVERLAP_MIN = 0.34;
 
+/** Structural sequel words that carry no identity — two unrelated shows can
+ *  both be a "Season 2", so these (and the bare cour number beside them) must
+ *  not count as shared evidence in the overlap. */
+const STRUCTURAL_TITLE_TOKENS = new Set(['season', 'seasons', 'part', 'parts', 'cour']);
+
 function titleTokens(s: string): Set<string> {
 	return new Set(
 		s
@@ -199,6 +204,9 @@ function titleTokens(s: string): Set<string> {
 			.trim()
 			.split(/\s+/)
 			.filter(Boolean)
+			// Drop structural cour words and bare numbers (the "2" in "Season 2"),
+			// so only distinctive tokens count toward the title overlap.
+			.filter((t) => !STRUCTURAL_TITLE_TOKENS.has(t) && !/^\d+$/.test(t))
 	);
 }
 
