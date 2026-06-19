@@ -642,6 +642,11 @@
 	$effect(() => {
 		const title = detail?.canonical_title;
 		if (!id || !title || !config) return;
+		// Music videos can't exist on allanime; prefetching one spawns ani-cli
+		// with the music title and fuzzy-matches an unrelated show, warming the
+		// play cache with the wrong candidate. The Play/Download UI is already
+		// gated off for these (availability=false), so skip the warm too.
+		if (isMusicSubtype(detail?.subtype ?? null)) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 
