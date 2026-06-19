@@ -124,14 +124,17 @@ describe('pickSeedEntry', () => {
 		expect(pickSeedEntry([watching, planningWithProgress])).toEqual(watching);
 	});
 
-	it('a Completed row wins over a higher-progress non-completed one (it is furthest along)', () => {
-		// A tracker left Completed at a stale/zero count is still further along
-		// than another reporting Watching with positive progress — seeding the
-		// editor from Watching would understate it. Completed always wins.
+	it('a Completed row keeps its status but not at the cost of a higher known progress', () => {
+		// Completed is the furthest-along *status*, so it wins the status — but its
+		// stored count can be stale (completed/0 while another tracker has
+		// watching/5). The seed must keep the highest known progress: with an
+		// unknown total that can't inflate Completed to full, an unchanged Save
+		// would otherwise fan progress:0 out and silently lower the watching
+		// tracker. Status from Completed, progress from the furthest tracker.
 		const watching: EntryView = { status: 'watching', progress: 5 };
 		const completedStale: EntryView = { status: 'completed', progress: 0 };
-		expect(pickSeedEntry([watching, completedStale])).toEqual(completedStale);
-		expect(pickSeedEntry([completedStale, watching])).toEqual(completedStale);
+		expect(pickSeedEntry([watching, completedStale])).toEqual({ status: 'completed', progress: 5 });
+		expect(pickSeedEntry([completedStale, watching])).toEqual({ status: 'completed', progress: 5 });
 	});
 });
 
