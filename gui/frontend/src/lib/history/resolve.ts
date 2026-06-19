@@ -191,16 +191,14 @@ export function isMusicSubtype(subtype: string | null): boolean {
  *  Shippuuden ≈ 0.5). */
 const TITLE_OVERLAP_MIN = 0.34;
 
-/** Structural sequel words that carry no identity — two unrelated shows can
- *  both be a "Season 2" / "2nd Season", so these (plus the cour number beside
- *  them, bare or ordinal) must not count as shared evidence in the overlap. */
-const STRUCTURAL_TITLE_TOKENS = new Set([
-	'season',
-	'seasons',
-	'part',
-	'parts',
-	'cour',
-	// Spelled-out ordinals ("2nd Season" also appears as "Second Season").
+/** Structural cour words — always dropped; two unrelated shows can both be a
+ *  "Season 2", so the word carries no identity. */
+const COUR_WORDS = new Set(['season', 'seasons', 'part', 'parts', 'cour']);
+
+/** Spelled-out ordinals ("Second Season" ≡ "2nd Season"). Treated as a cour
+ *  index only when adjacent to a cour word (see below) — a bare "Second" that
+ *  isn't a cour marker stays. */
+const ORDINAL_WORDS = new Set([
 	'first',
 	'second',
 	'third',
@@ -213,24 +211,30 @@ const STRUCTURAL_TITLE_TOKENS = new Set([
 	'tenth'
 ]);
 
-/** A bare number ("2") or a numeric ordinal ("2nd", "3rd", "21st") — the cour
- *  index, which is not identity evidence. */
-function isCourNumberToken(t: string): boolean {
-	return /^\d+$/.test(t) || /^\d+(st|nd|rd|th)$/.test(t);
+/** A cour INDEX: a bare number ("2"), a numeric ordinal ("2nd"/"21st"), or a
+ *  spelled ordinal. Stripped only when it sits beside a cour word, so a
+ *  distinctive numeric title like "86" or "Mob Psycho 100" survives. */
+function isCourIndexToken(t: string): boolean {
+	return /^\d+$/.test(t) || /^\d+(st|nd|rd|th)$/.test(t) || ORDINAL_WORDS.has(t);
 }
 
 function titleTokens(s: string): Set<string> {
-	return new Set(
-		s
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, ' ')
-			.trim()
-			.split(/\s+/)
-			.filter(Boolean)
-			// Drop structural cour words and the cour number (bare or ordinal), so
-			// only distinctive tokens count toward the title overlap.
-			.filter((t) => !STRUCTURAL_TITLE_TOKENS.has(t) && !isCourNumberToken(t))
-	);
+	const raw = s
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	// Drop cour words and the cour index immediately beside them ("Season 2",
+	// "2nd Season"), but keep standalone numbers that are the title's identity.
+	const keep = raw.map(() => true);
+	for (let i = 0; i < raw.length; i++) {
+		if (!COUR_WORDS.has(raw[i])) continue;
+		keep[i] = false;
+		if (i > 0 && isCourIndexToken(raw[i - 1])) keep[i - 1] = false;
+		if (i + 1 < raw.length && isCourIndexToken(raw[i + 1])) keep[i + 1] = false;
+	}
+	return new Set(raw.filter((_, i) => keep[i]));
 }
 
 /** Whether the allanime/hsts title is specific enough that a near-zero overlap
@@ -240,7 +244,12 @@ function titleTokens(s: string): Set<string> {
  *  them. Informative = ≥2 tokens, or a single token ≥5 chars. */
 function titleIsInformative(tokens: Set<string>): boolean {
 	if (tokens.size >= 2) return true;
-	if (tokens.size === 1) return [...tokens][0].length >= 5;
+	if (tokens.size === 1) {
+		const t = [...tokens][0];
+		// A purely numeric title ("86") is distinctive identity despite being
+		// short — judge it. Short alphanumeric stubs ("1P") stay unjudged.
+		return t.length >= 5 || /^\d+$/.test(t);
+	}
 	return false;
 }
 
