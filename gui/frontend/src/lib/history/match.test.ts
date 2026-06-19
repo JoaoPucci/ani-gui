@@ -580,4 +580,47 @@ describe('resolveKitsuMatch', () => {
 		expect(got?.id).toBe('real');
 		expect(mockedSearch).toHaveBeenCalled();
 	});
+
+	it('awaits the reverse-map eviction before reaching allmanga enrichment', async () => {
+		// Race guard: the backend enrichment endpoint (resolve_allmanga_show_id)
+		// reads the reverse cache first, so the eviction DELETE must complete
+		// before enrichment runs — otherwise a typo title whose search misses
+		// gets the same poisoned id back. Informative title ("Nato: Shippuuden")
+		// bound to an unrelated Kitsu entry → evict; search misses → enrichment.
+		const preliminary = resolveHistoryEntry(
+			{ id: 'vDTSJHSpYnrkZnAvG', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('wrong-kitsu');
+		mockedDetail.mockResolvedValue(stubKitsu('wrong-kitsu', 'Mysterious Girlfriend X', 500));
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]); // title-search misses → reach enrichment
+
+		let deleteResolved = false;
+		let resolveDelete!: () => void;
+		mockedAllmangaDelete.mockImplementation(
+			() =>
+				new Promise<void>((res) => {
+					resolveDelete = () => {
+						deleteResolved = true;
+						res();
+					};
+				})
+		);
+		let enrichmentSawDeleteDone: boolean | null = null;
+		mockedResolveAllmanga.mockImplementation(async () => {
+			enrichmentSawDeleteDone = deleteResolved;
+			return stubKitsu('11061', 'Naruto: Shippuuden', 500);
+		});
+
+		const p = resolveKitsuMatch(preliminary);
+		await new Promise((r) => setTimeout(r, 0)); // let the resolver park on the awaited delete
+		resolveDelete();
+		const got = await p;
+
+		expect(got?.id).toBe('11061');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG');
+		// Enrichment must have observed the eviction as already committed.
+		expect(enrichmentSawDeleteDone).toBe(true);
+	});
 });
