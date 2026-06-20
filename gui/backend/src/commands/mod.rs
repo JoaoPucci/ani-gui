@@ -22,6 +22,7 @@ pub mod play_cache;
 pub mod play_external_command;
 pub mod play_referer;
 pub mod play_resolution_cache;
+pub mod play_resume;
 pub mod play_select;
 pub mod play_syncplay;
 pub mod proxy_url;

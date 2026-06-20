@@ -123,7 +123,6 @@ pub struct PlayArgs {
 // PlayArgs serde derive uses fully-qualified paths above, and the
 // rest of the play flow imports them via the `use` line at the top
 // of the file.
-use crate::commands::play_select::{index_of_show_id, select_by_show_id};
 pub use crate::commands::play_select::{
     select_first_with_hits, select_first_with_hits_opt, select_first_with_hits_with_candidate,
 };
@@ -294,45 +293,6 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
     AniError::NoResults
 }
 
-/// Resume fast-path: locate the exact recorded show by allanime id.
-/// Checks the pools we already searched first (free), then — only when
-/// the id is absent from them — pays for one `fetch_show` plus searches
-/// of the show's own names. The Kitsu title the resume sends often
-/// drops the franchise marker ("Part 6"), so the id is missing from the
-/// title/alt pools; the show's own `name` puts it back. Appends every
-/// fresh pool to `results` so the caller's logging/fallthrough sees
-/// them. Returns `None` when the id can't be found anywhere — the
-/// caller then keeps its heuristic pick.
-async fn resolve_by_show_id(
-    state: &AppState,
-    mode: &str,
-    show_id: &str,
-    results: &mut Vec<(String, Vec<Candidate>)>,
-) -> Option<(String, usize, Candidate)> {
-    if let Some(hit) = select_by_show_id(results, show_id) {
-        return Some(hit);
-    }
-    let meta = scraper::allanime::fetch_show(&state.proxy_http, show_id, None)
-        .await
-        .ok()?;
-    let names = std::iter::once(meta.name.clone()).chain(meta.search_terms());
-    for name in names {
-        if name.trim().is_empty() {
-            continue;
-        }
-        let Ok(cands) = scraper::search(&state.proxy_http, &name, mode, None).await else {
-            continue;
-        };
-        let hit = index_of_show_id(&cands, show_id)
-            .map(|idx| (name.clone(), idx, cands[idx - 1].clone()));
-        results.push((name, cands));
-        if hit.is_some() {
-            return hit;
-        }
-    }
-    None
-}
-
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
@@ -407,7 +367,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
         let heuristic_hit_id = chosen_so_far.as_ref().is_some_and(|c| c.id == sid);
         if !heuristic_hit_id {
             if let Some((title, idx, cand)) =
-                resolve_by_show_id(state, mode, sid, &mut results).await
+                super::play_resume::resolve_by_show_id(state, mode, sid, &mut results).await
             {
                 tracing::info!(
                     show_id = sid,
@@ -1090,7 +1050,9 @@ mod tests {
             "Stone Ocean".to_string(),
             vec![cand("aaa", "Other", 12), cand("pwdu", "Stone Ocean", 12)],
         )];
-        let hit = resolve_by_show_id(&state, "sub", "pwdu", &mut results).await;
+        let hit =
+            crate::commands::play_resume::resolve_by_show_id(&state, "sub", "pwdu", &mut results)
+                .await;
         assert_eq!(
             hit.map(|(title, idx, c)| (title, idx, c.id)),
             Some(("Stone Ocean".to_string(), 2, "pwdu".to_string()))
