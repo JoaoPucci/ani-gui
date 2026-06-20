@@ -568,7 +568,10 @@
 		resumeProgress = null;
 		try {
 			const session = await getOrFire(
-				makeKey(match.id, ep, mode, quality),
+				// Scope by the allanime show id so a title-based prefetch for
+				// the same Kitsu id + episode can't short-circuit this resume
+				// and skip sending show_id (which would play the sibling cour).
+				makeKey(match.id, ep, mode, quality, allmangaShowId),
 				(emit, signal) =>
 					playStream(
 						{

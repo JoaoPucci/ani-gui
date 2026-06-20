@@ -24,13 +24,27 @@ import type { CreateSessionResponse, PlayProgress } from '$lib/api';
 export type CacheKey = string & { readonly __brand: 'PlayCacheKey' };
 
 /**
- * Build a stable, deterministic key from the four axes that decide
- * whether two `play()` requests would resolve to the same session.
- * Mode + quality matter because the backend resolves a different
- * embed URL for each.
+ * Build a stable, deterministic key from the axes that decide whether
+ * two `play()` requests would resolve to the same session. Mode +
+ * quality matter because the backend resolves a different embed URL for
+ * each.
+ *
+ * `allmangaShowId` is optional and only passed by the resume path: it
+ * scopes the key to the exact recorded show so a resume can't reuse a
+ * title-based prefetch's in-flight entry for the same Kitsu id +
+ * episode (which would short-circuit `getOrFire` and never send the
+ * `show_id`, launching the sibling cour). Omitting it preserves the
+ * legacy key, so browse/detail plays are unaffected.
  */
-export function makeKey(showId: string, episode: number, mode: string, quality: string): CacheKey {
-	return `${showId}|${episode}|${mode}|${quality}` as CacheKey;
+export function makeKey(
+	showId: string,
+	episode: number,
+	mode: string,
+	quality: string,
+	allmangaShowId?: string
+): CacheKey {
+	const base = `${showId}|${episode}|${mode}|${quality}`;
+	return (allmangaShowId ? `${base}|${allmangaShowId}` : base) as CacheKey;
 }
 
 interface CacheEntry {
