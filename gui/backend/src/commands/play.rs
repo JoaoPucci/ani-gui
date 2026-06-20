@@ -1046,6 +1046,57 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn finalize_resolved_stream_builds_a_session_and_caches_the_resolution() {
+        // Covers the resolve-tail (referer + media-kind + cache write +
+        // session) offline: an `.mp4` URL classifies by extension, so no
+        // HEAD probe fires and the test stays hermetic.
+        let state = state_with_proxy_origin();
+        let args = external_args("Some Show", "3");
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
+        let resolved = crate::anicli::parser::DebugOutput {
+            selected_url: "https://cdn.example/file.mp4".into(),
+            all_links: vec![],
+            referer: Some("https://allmanga.to".into()),
+            subtitle_url: None,
+        };
+        let chosen = cand("showZ", "Some Show", 12);
+        let resp = finalize_resolved_stream(&state, &args, &key, resolved, Some(&chosen))
+            .await
+            .expect("finalize builds a session for an mp4 upstream");
+        assert_eq!(resp.media_kind, MediaKind::Mp4);
+        let cached = play_resolution_cache::get(&state.cache_pool, &key)
+            .unwrap()
+            .expect("resolution is cached for the next play");
+        assert_eq!(
+            cached.show_id, "showZ",
+            "cache row records the chosen show id"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_by_show_id_uses_an_already_searched_pool_without_fetching() {
+        // When the id is already among the pools the picker searched, the
+        // resume resolver returns it directly — no fetch_show round-trip.
+        let state = state_with_proxy_origin();
+        let mut results = vec![(
+            "Stone Ocean".to_string(),
+            vec![cand("aaa", "Other", 12), cand("pwdu", "Stone Ocean", 12)],
+        )];
+        let hit = resolve_by_show_id(&state, "sub", "pwdu", &mut results).await;
+        assert_eq!(
+            hit.map(|(title, idx, c)| (title, idx, c.id)),
+            Some(("Stone Ocean".to_string(), 2, "pwdu".to_string()))
+        );
+    }
+
     /// Same shape, but with a non-empty referer + show_id — exercises
     /// the cache-hit history-write branch (lines 266-282 in the file
     /// before this test landed). Without this the upsert-on-cache-hit
