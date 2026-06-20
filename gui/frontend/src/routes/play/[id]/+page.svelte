@@ -1171,7 +1171,8 @@
 				session_id: sessionId,
 				media_url: mediaUrl,
 				media_kind: mediaKind,
-				subtitle_url: subtitleUrl
+				subtitle_url: subtitleUrl,
+				show_id: recordedShowId || undefined
 			});
 			// User came back to a session that was paused on navigate-
 			// away (auto-PiP off path). Their click *was* a play

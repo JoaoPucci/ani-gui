@@ -39,6 +39,11 @@ export interface VideoSession {
 	media_url: string;
 	media_kind: MediaKind;
 	subtitle_url: string | null;
+	/** The recorded allanime show id this session resolved to, when it
+	 *  came from an exact resume. Lets the reuse predicate refuse a PiP
+	 *  session a title-based path resolved to a sibling cour. Absent for
+	 *  title-based plays. */
+	show_id?: string;
 }
 let currentSession: VideoSession | null = null;
 
@@ -131,11 +136,16 @@ export function canReuseSession(
 	session: VideoSession | null,
 	state: VideoStateSnapshot | null,
 	kitsuId: string,
-	episode: number
+	episode: number,
+	showId?: string
 ): VideoSession | null {
 	if (!session) return null;
 	if (session.kitsu_id !== kitsuId) return null;
 	if (session.episode !== episode) return null;
+	// An exact resume must only reuse a session tagged with that same
+	// allanime show id — a title-based PiP session can be a sibling cour.
+	// No requested id (browse / title play) keeps the legacy behaviour.
+	if (showId && session.show_id !== showId) return null;
 	if (!state) return null;
 	if (!state.hasSource) return null;
 	if (state.ended) return null;
@@ -147,14 +157,18 @@ export function canReuseSession(
  *  redundant ani-cli spawn when the user clicks an episode they're
  *  already watching in PiP — navigating with the cached session keeps
  *  playback at its current timestamp instead of restarting from zero. */
-export function reuseSessionIfMatching(kitsuId: string, episode: number): VideoSession | null {
+export function reuseSessionIfMatching(
+	kitsuId: string,
+	episode: number,
+	showId?: string
+): VideoSession | null {
 	const state: VideoStateSnapshot | null = videoEl
 		? {
 				hasSource: !!(videoEl.src || videoEl.currentSrc),
 				ended: videoEl.ended
 			}
 		: null;
-	return canReuseSession(currentSession, state, kitsuId, episode);
+	return canReuseSession(currentSession, state, kitsuId, episode, showId);
 }
 
 /** Replace the subtitle track on the singleton. Removes any

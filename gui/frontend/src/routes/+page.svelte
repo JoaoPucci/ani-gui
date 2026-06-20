@@ -549,7 +549,7 @@
 		// playback at its current timestamp instead of starting
 		// over when the user clicks back to a Continue Watching
 		// card they're already watching in PiP.
-		const cached = reuseSessionIfMatching(match.id, ep);
+		const cached = reuseSessionIfMatching(match.id, ep, allmangaShowId);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,

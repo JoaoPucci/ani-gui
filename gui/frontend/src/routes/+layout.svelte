@@ -247,6 +247,9 @@
 					`kind=${sess.media_kind}`
 				];
 				if (sess.subtitle_url) parts.push('sub=1');
+				// Preserve the recorded show id so the player route keeps
+				// resolving the recorded cour after a PiP re-dock. (Codex P2)
+				if (sess.show_id) parts.push(`show=${encodeURIComponent(sess.show_id)}`);
 				const target = resolve('/play/[id]', { id: sess.kitsu_id }) + `?${parts.join('&')}`;
 				/* eslint-disable svelte/no-navigation-without-resolve */
 				void goto(target);

@@ -900,7 +900,7 @@
 		// straight to the existing /play URL. Without this, a
 		// re-click on the episode the user is watching in PiP
 		// would tear down and restart playback at zero.
-		const cached = reuseSessionIfMatching(id, ep);
+		const cached = reuseSessionIfMatching(id, ep, resumeEntry?.id);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
