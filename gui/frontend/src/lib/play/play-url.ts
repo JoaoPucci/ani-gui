@@ -15,9 +15,20 @@ import type { CreateSessionResponse } from '$lib/api';
 /**
  * Compose the `?…` portion of a `/play/[id]` URL from a session
  * resolution + episode number. Always includes `session`, `episode`,
- * `kind`. Conditionally includes `cache_hit=1` and `sub=1`.
+ * `kind`. Conditionally includes `cache_hit=1`, `sub=1`, and `show=<id>`.
+ *
+ * `showId` is the recorded allanime show id of a resume. The player
+ * route rebuilds its own Next/Prev/autoplay/reload play requests from
+ * the URL, so carrying it here keeps every later episode resolving the
+ * recorded cour instead of falling back to the title heuristic — which,
+ * for a same-title split cour, can play the sibling. Omitted for
+ * browse / title-based plays.
  */
-export function buildPlayQuery(session: CreateSessionResponse, episode: number): string {
+export function buildPlayQuery(
+	session: CreateSessionResponse,
+	episode: number,
+	showId?: string
+): string {
 	const parts: string[] = [
 		`session=${encodeURIComponent(session.session_id)}`,
 		`episode=${episode}`,
@@ -28,6 +39,9 @@ export function buildPlayQuery(session: CreateSessionResponse, episode: number):
 	}
 	if (session.subtitle_url) {
 		parts.push('sub=1');
+	}
+	if (showId) {
+		parts.push(`show=${encodeURIComponent(showId)}`);
 	}
 	return `?${parts.join('&')}`;
 }

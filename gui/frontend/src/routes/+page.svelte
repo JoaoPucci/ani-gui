@@ -557,6 +557,9 @@
 				`kind=${cached.media_kind}`
 			];
 			if (cached.subtitle_url) parts.push('sub=1');
+			// Carry the recorded show id so the player route's Next/Prev/
+			// autoplay keeps resolving the recorded cour. (Codex P2)
+			if (allmangaShowId) parts.push(`show=${encodeURIComponent(allmangaShowId)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -614,7 +617,9 @@
 			// #3387467149), and only for a finished series (#3387184082).
 			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
+			void goto(
+				resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep, allmangaShowId)
+			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			resumeBusy = null;

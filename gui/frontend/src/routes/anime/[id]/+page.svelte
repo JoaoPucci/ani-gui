@@ -908,6 +908,9 @@
 				`kind=${cached.media_kind}`
 			];
 			if (cached.subtitle_url) parts.push('sub=1');
+			// Carry the recorded show id so the player route's Next/Prev/
+			// autoplay keeps resolving the recorded cour. (Codex P2)
+			if (resumeEntry?.id) parts.push(`show=${encodeURIComponent(resumeEntry.id)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -993,7 +996,7 @@
 				detail?.status === 'finished'
 			).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
+			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep, resumeEntry?.id));
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			actionBusy = false;

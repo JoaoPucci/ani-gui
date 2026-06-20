@@ -123,6 +123,12 @@
 	const id = $derived(page.params.id ?? '');
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	const episodeNum = $derived(parseInt(page.url.searchParams.get('episode') ?? '1', 10));
+	// The recorded allanime show id of a resume, carried in the URL. Used
+	// for this route's own play / mark-watched / external / syncplay calls
+	// and re-appended on every Next/Prev/autoplay/reload navigation so a
+	// same-title split cour keeps resolving the recorded cour rather than
+	// the title heuristic. Empty for browse / title-based plays. (Codex P2)
+	const recordedShowId = $derived(page.url.searchParams.get('show') ?? '');
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -1475,25 +1481,28 @@
 		for (const ep of episodes) {
 			const targetEp = ep.number ?? ep.relative_number ?? null;
 			if (targetEp === null) continue;
-			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
-				playStream(
-					{
-						title,
-						episode: String(targetEp),
-						mode,
-						quality,
-						episode_count: detail?.episode_count ?? null,
-						year: yearFromKitsuRef(detail),
-						alt_titles: altTitles,
-						// Prefetches must NOT update Continue Watching —
-						// switchToEpisode (the click path) does that
-						// directly via prefetch:false (default).
-						prefetch: true,
-						kitsu_id: id
-					},
-					emit,
-					signal
-				)
+			void getOrFire(
+				makeKey(id, targetEp, mode, quality, recordedShowId || undefined),
+				(emit, signal) =>
+					playStream(
+						{
+							title,
+							episode: String(targetEp),
+							mode,
+							quality,
+							episode_count: detail?.episode_count ?? null,
+							year: yearFromKitsuRef(detail),
+							alt_titles: altTitles,
+							// Prefetches must NOT update Continue Watching —
+							// switchToEpisode (the click path) does that
+							// directly via prefetch:false (default).
+							prefetch: true,
+							kitsu_id: id,
+							show_id: recordedShowId || undefined
+						},
+						emit,
+						signal
+					)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -1516,7 +1525,7 @@
 			// surfaces `<provider> ✓` ticks under the Lottie when the
 			// click races a prefetch that hasn't finished yet.
 			const session = await getOrFire(
-				makeKey(id, targetEp, mode, quality),
+				makeKey(id, targetEp, mode, quality, recordedShowId || undefined),
 				(emit, signal) =>
 					playStream(
 						{
@@ -1527,7 +1536,8 @@
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
 							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: id
+							kitsu_id: id,
+							show_id: recordedShowId || undefined
 						},
 						emit,
 						signal
@@ -1562,7 +1572,8 @@
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: id
+				kitsu_id: id,
+				show_id: recordedShowId || undefined
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
@@ -1584,9 +1595,13 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
-				replaceState: true
-			});
+			void goto(
+				resolve('/play/[id]', { id }) +
+					buildPlayQuery(session, targetEp, recordedShowId || undefined),
+				{
+					replaceState: true
+				}
+			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			// switchToEpisode is the play *call* failing — the user
@@ -1792,7 +1807,8 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
-				alt_titles: altTitlesFromKitsu(detail)
+				alt_titles: altTitlesFromKitsu(detail),
+				show_id: recordedShowId || undefined
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
 			// dismiss owned by the toast store). The shape comes
@@ -1847,7 +1863,8 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
-				alt_titles: altTitlesFromKitsu(detail)
+				alt_titles: altTitlesFromKitsu(detail),
+				show_id: recordedShowId || undefined
 			});
 			toastStore.push(
 				syncplayLaunchSuccessToast({ episode: episodeNum, isSingleVideo: singleVideo })
