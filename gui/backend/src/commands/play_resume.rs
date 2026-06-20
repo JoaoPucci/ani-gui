@@ -56,3 +56,56 @@ pub(crate) async fn resolve_by_show_id(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cand(id: &str) -> Candidate {
+        Candidate {
+            id: id.into(),
+            name: id.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn no_requested_show_id_keeps_the_heuristic_pick() {
+        // Title-based play (search / detail click): the heuristic stands.
+        let (t, i, c) = pick_for_requested_show(None, Some(cand("h")), None, "T".into(), 2);
+        assert_eq!(
+            (t, i, c.map(|c| c.id)),
+            ("T".to_string(), 2, Some("h".to_string()))
+        );
+    }
+
+    #[test]
+    fn heuristic_that_already_matches_the_requested_id_is_kept() {
+        let (_, _, c) = pick_for_requested_show(Some("x"), Some(cand("x")), None, "T".into(), 1);
+        assert_eq!(c.map(|c| c.id), Some("x".to_string()));
+    }
+
+    #[test]
+    fn exact_match_overrides_a_mismatched_heuristic() {
+        let exact = Some(("Real".to_string(), 3, cand("x")));
+        let (t, i, c) =
+            pick_for_requested_show(Some("x"), Some(cand("wrong")), exact, "T".into(), 1);
+        assert_eq!(
+            (t, i, c.map(|c| c.id)),
+            ("Real".to_string(), 3, Some("x".to_string()))
+        );
+    }
+
+    #[test]
+    fn requested_but_unresolved_drops_the_candidate_instead_of_launching_a_sibling() {
+        // Codex P2: a requested show_id that can't be confirmed must NOT
+        // fall back to a different show the heuristic happened to pick —
+        // the caller surfaces a miss (Network/NoResults) instead.
+        let (_, _, c) =
+            pick_for_requested_show(Some("x"), Some(cand("wrong")), None, "T".into(), 1);
+        assert!(
+            c.is_none(),
+            "mismatched heuristic must be dropped, not launched"
+        );
+    }
+}
