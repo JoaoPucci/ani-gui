@@ -385,6 +385,41 @@ pub fn pick_by_ep_count_v2(
             }
         }
     }
+
+    // 6) Year-closeness tie-break within the min-distance bucket.
+    //    Ep-count distance can't separate same-length sibling cours
+    //    (Stone Ocean Part 1 & Part 2 are both 12 eps), and the
+    //    exact-name check above can't fire when allmanga's name carries
+    //    a "Part N" the Kitsu title lacks. Left alone, `best_i` is just
+    //    allmanga's arbitrary result order, which can surface a later
+    //    cour first. Kitsu's per-cour year disambiguates: among the
+    //    min-distance candidates, prefer the one whose aired year is
+    //    closest to `expected_year`. Undated candidates keep their
+    //    distance-order standing (treated as the worst year diff), and
+    //    the whole step is a no-op when the caller passed no year.
+    if let Some(want) = expected_year {
+        let mut best_year_diff = AiredStart::year_value(candidates[best_i].aired_start.as_ref())
+            .map(|y| y.abs_diff(want))
+            .unwrap_or(u32::MAX);
+        for &i in &pool {
+            if candidates[i]
+                .available_episodes
+                .for_mode(mode)
+                .abs_diff(expected)
+                != best_dist
+            {
+                continue;
+            }
+            if let Some(diff) =
+                AiredStart::year_value(candidates[i].aired_start.as_ref()).map(|y| y.abs_diff(want))
+            {
+                if diff < best_year_diff {
+                    best_year_diff = diff;
+                    best_i = i;
+                }
+            }
+        }
+    }
     Some(best_i + 1)
 }
 
