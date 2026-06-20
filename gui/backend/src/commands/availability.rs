@@ -135,6 +135,11 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v6: picker gained a year-closeness tie-break for same-episode-count
+    //     sibling cours (Stone Ocean Part 1 & Part 2, both 12 eps). A v5
+    //     row probed under the old order-dependent pick could carry the
+    //     wrong cour's episode_count / extra_episodes; bumping evicts
+    //     them so list/detail availability re-derives from the new pick.
     // v5: picker now reads allmanga's `type`/`status`/`episodeCount`
     //     (b629127, Codex P2 #3242661503) and hard-rejects same-year
     //     OVA/Movie/Special and planned-count divergence. v4 rows
@@ -156,7 +161,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v5:{kitsu_id}:{m}")
+    format!("availability:v6:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
