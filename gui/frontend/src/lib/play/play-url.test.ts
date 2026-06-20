@@ -79,4 +79,19 @@ describe('buildPlayQuery', () => {
 		const q = buildPlayQuery(baseSession(), 1);
 		expect(q.startsWith('?')).toBe(true);
 	});
+
+	it('appends an encoded show=<id> when a recorded allanime show id is given', () => {
+		// Carries the exact recorded show across the player route so the
+		// route's own Next/Prev/autoplay/reload play requests resolve the
+		// recorded cour instead of falling back to the title heuristic.
+		// (Codex P2)
+		const q = buildPlayQuery(baseSession({ session_id: 's' }), 3, 'pwdu/Jk b');
+		expect(new URLSearchParams(q.replace(/^\?/, '')).get('show')).toBe('pwdu/Jk b');
+	});
+
+	it('omits show when no recorded show id is given (browse / title-based play)', () => {
+		expect(buildPlayQuery(baseSession(), 1)).not.toContain('show=');
+		expect(buildPlayQuery(baseSession(), 1, '')).not.toContain('show=');
+		expect(buildPlayQuery(baseSession(), 1, undefined)).not.toContain('show=');
+	});
 });
