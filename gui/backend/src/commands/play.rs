@@ -1177,6 +1177,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn try_launch_args_from_cache_rejects_a_row_for_a_different_show_id() {
+        // External/Syncplay must honor an exact show_id too: even a live
+        // (HEAD-ok) cached row for a *different* same-title sibling must
+        // not be launched — it has to fall through to the identity
+        // resolver. Mirrors try_cached_resolution. (Codex P2)
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let mut args = external_args("Stone Ocean", "5");
+        args.show_id = Some("pwduJkjBLytqiWCvM".into()); // seed_play_cache stores "abc"
+        seed_play_cache(&state, &args, &format!("{}/v.mp4", server.uri()), "");
+        let cfg = external_cfg();
+
+        let result = try_launch_args_from_cache(&state, &args, &cfg).await;
+        assert!(
+            result.is_none(),
+            "a live cache row for a different show_id must not launch"
+        );
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
+        assert!(
+            play_resolution_cache::get(&state.cache_pool, &key)
+                .unwrap()
+                .is_none(),
+            "the mismatched row must be evicted"
+        );
+    }
+
+    #[tokio::test]
     async fn try_launch_args_from_cache_evicts_and_returns_none_on_404() {
         // Stale upstream — HEAD 404. The cache row must be evicted so a
         // fresh ani-cli run will overwrite, AND we return None so the
