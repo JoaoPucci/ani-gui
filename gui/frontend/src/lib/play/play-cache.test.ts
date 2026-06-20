@@ -35,6 +35,20 @@ describe('makeKey', () => {
 		expect(makeKey('show-1', 1, 'dub', 'best')).not.toBe(base);
 		expect(makeKey('show-1', 1, 'sub', '1080')).not.toBe(base);
 	});
+
+	it('scopes the key by the allanime show id when given, without changing the bare form', () => {
+		// Resume passes the exact allanime show_id so its cache entry can't
+		// collide with a title-based prefetch for the same Kitsu id +
+		// episode (which would short-circuit getOrFire and never send the
+		// show_id — launching the sibling cour). Omitting it keeps the
+		// legacy key, so browse/detail plays are unaffected.
+		const bare = makeKey('kitsu-44294', 5, 'sub', 'best');
+		expect(makeKey('kitsu-44294', 5, 'sub', 'best', 'pwduJkjBLytqiWCvM')).not.toBe(bare);
+		expect(makeKey('kitsu-44294', 5, 'sub', 'best', 'pwduJkjBLytqiWCvM')).not.toBe(
+			makeKey('kitsu-44294', 5, 'sub', 'best', 'D5ksnsKtYAzzFXeSp')
+		);
+		expect(makeKey('kitsu-44294', 5, 'sub', 'best', undefined)).toBe(bare);
+	});
 });
 
 describe('getOrFire', () => {
