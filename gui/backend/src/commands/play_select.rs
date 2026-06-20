@@ -270,6 +270,33 @@ mod tests {
         assert_eq!(index_of_show_id(&cands, ""), None);
     }
 
+    #[test]
+    fn select_by_show_id_returns_the_first_results_list_holding_the_id() {
+        // Searching the Kitsu title ("Stone Ocean", which drops the
+        // "Part 6" franchise marker) returns the wrong cours; searching
+        // the show's own name returns Part 1. Selection is by id, and
+        // the returned (title, index) names the list the id lives in so
+        // ani-cli re-searches that exact title and counts to the same
+        // 1-based slot.
+        let results = vec![
+            (
+                "Stone Ocean".to_string(),
+                vec![cand("D5ksnsKtYAzzFXeSp", 12), cand("3LtStcZaR9iksAgAx", 14)],
+            ),
+            (
+                "JoJo no Kimyou na Bouken Part 6: Stone Ocean".to_string(),
+                vec![cand("aaa", 26), cand("pwduJkjBLytqiWCvM", 12)],
+            ),
+        ];
+        let (title, index, hit) =
+            select_by_show_id(&results, "pwduJkjBLytqiWCvM").expect("id present");
+        assert_eq!(title, "JoJo no Kimyou na Bouken Part 6: Stone Ocean");
+        assert_eq!(index, 2);
+        assert_eq!(hit.id, "pwduJkjBLytqiWCvM");
+        assert!(select_by_show_id(&results, "absent").is_none());
+        assert!(select_by_show_id(&results, "").is_none());
+    }
+
     // — Deserializer tests ———————————————————————————————
 
     #[derive(Deserialize)]
