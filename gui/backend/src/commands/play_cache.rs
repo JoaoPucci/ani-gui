@@ -94,6 +94,24 @@ pub(crate) async fn try_launch_args_from_cache(
         args.episode_count,
     );
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
+    // Resume-by-id guard: the cache key omits show_id, so a same-title
+    // franchise sibling could be launched here before the identity
+    // resolver runs. When the caller named a show_id, reject (and evict)
+    // a row resolved for a different show. Mirrors try_cached_resolution
+    // on the embedded play path. (Codex P2)
+    if let Some(want) = args.show_id.as_deref().filter(|s| !s.is_empty()) {
+        if cached.show_id != want {
+            play_resolution_cache::evict(&state.cache_pool, &cache_key);
+            tracing::info!(
+                title = %args.title,
+                episode = %args.episode,
+                want_show_id = want,
+                cached_show_id = cached.show_id.as_str(),
+                "play_external: cache row is a different show; evicting and re-resolving by id",
+            );
+            return None;
+        }
+    }
     let parsed = url::Url::parse(&cached.upstream_url).ok()?;
     if !upstream_head_ok(&state.proxy_http, &parsed, &cached.referer).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
