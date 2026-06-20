@@ -188,6 +188,9 @@ fn play_args_view(args: &DownloadArgs) -> PlayArgs {
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
+        // Downloads resolve by title (no resume context hands us an
+        // allanime show id); the picker's heuristic path applies.
+        show_id: None,
     }
 }
 

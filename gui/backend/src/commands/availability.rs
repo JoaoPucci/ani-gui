@@ -207,6 +207,8 @@ pub async fn check_availability(
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
+        // Availability is a title-keyed preflight; no specific show id.
+        show_id: None,
     };
     let picked = pick_title_and_index(state, &play_view).await;
     let chosen_candidate = picked.candidate;

@@ -104,6 +104,17 @@ pub struct PlayArgs {
     /// direct API user).
     #[serde(default)]
     pub kitsu_id: Option<String>,
+    /// allanime show id of the exact show to resolve, when the caller
+    /// already knows it — the Continue Watching resume path reads it
+    /// straight from the history row. When set, the picker selects this
+    /// show by identity and skips the title + ep-count heuristic, which
+    /// can't tell same-title franchise cours apart (Stone Ocean Part 1
+    /// vs Part 2: same title, same 12-ep count — the title search even
+    /// drops the disambiguating "Part 6", so the heuristic lands on the
+    /// wrong cour). Empty / absent for searches and detail-page clicks,
+    /// which have no specific show in hand and resolve by title.
+    #[serde(default)]
+    pub show_id: Option<String>,
 }
 
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
@@ -112,6 +123,7 @@ pub struct PlayArgs {
 // PlayArgs serde derive uses fully-qualified paths above, and the
 // rest of the play flow imports them via the `use` line at the top
 // of the file.
+use crate::commands::play_select::{index_of_show_id, select_by_show_id};
 pub use crate::commands::play_select::{
     select_first_with_hits, select_first_with_hits_opt, select_first_with_hits_with_candidate,
 };
@@ -282,6 +294,45 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
     AniError::NoResults
 }
 
+/// Resume fast-path: locate the exact recorded show by allanime id.
+/// Checks the pools we already searched first (free), then — only when
+/// the id is absent from them — pays for one `fetch_show` plus searches
+/// of the show's own names. The Kitsu title the resume sends often
+/// drops the franchise marker ("Part 6"), so the id is missing from the
+/// title/alt pools; the show's own `name` puts it back. Appends every
+/// fresh pool to `results` so the caller's logging/fallthrough sees
+/// them. Returns `None` when the id can't be found anywhere — the
+/// caller then keeps its heuristic pick.
+async fn resolve_by_show_id(
+    state: &AppState,
+    mode: &str,
+    show_id: &str,
+    results: &mut Vec<(String, Vec<Candidate>)>,
+) -> Option<(String, usize, Candidate)> {
+    if let Some(hit) = select_by_show_id(results, show_id) {
+        return Some(hit);
+    }
+    let meta = scraper::allanime::fetch_show(&state.proxy_http, show_id, None)
+        .await
+        .ok()?;
+    let names = std::iter::once(meta.name.clone()).chain(meta.search_terms());
+    for name in names {
+        if name.trim().is_empty() {
+            continue;
+        }
+        let Ok(cands) = scraper::search(&state.proxy_http, &name, mode, None).await else {
+            continue;
+        };
+        let hit = index_of_show_id(&cands, show_id)
+            .map(|idx| (name.clone(), idx, cands[idx - 1].clone()));
+        results.push((name, cands));
+        if hit.is_some() {
+            return hit;
+        }
+    }
+    None
+}
+
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
@@ -343,6 +394,35 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
             chosen_title_so_far = t;
             chosen_pick_so_far = p;
             break;
+        }
+    }
+
+    // Resume fast-path: when the caller handed us the exact allanime
+    // show_id (Continue Watching reads it from the history row), select
+    // that show by identity — the heuristic above can't separate
+    // same-title franchise cours (Stone Ocean Part 1 vs Part 2). Only
+    // runs when the heuristic didn't already land on the right id, so
+    // the common unique-title case pays nothing extra.
+    if let Some(sid) = args.show_id.as_deref().filter(|s| !s.is_empty()) {
+        let heuristic_hit_id = chosen_so_far.as_ref().is_some_and(|c| c.id == sid);
+        if !heuristic_hit_id {
+            if let Some((title, idx, cand)) =
+                resolve_by_show_id(state, mode, sid, &mut results).await
+            {
+                tracing::info!(
+                    show_id = sid,
+                    chosen_title = %title,
+                    pick = idx,
+                    "play: resume resolved exact show by id",
+                );
+                return PickedTitle {
+                    title,
+                    index: idx,
+                    candidate: Some(cand),
+                    any_search_succeeded: true,
+                    any_search_errored,
+                };
+            }
         }
     }
 
@@ -824,6 +904,7 @@ mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            show_id: None,
         }
     }
 
@@ -1094,6 +1175,7 @@ mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            show_id: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
@@ -1371,6 +1453,7 @@ mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            show_id: None,
         };
         let err = classify_picker_miss(&state, &args, &picked_miss(true, true));
         assert!(
