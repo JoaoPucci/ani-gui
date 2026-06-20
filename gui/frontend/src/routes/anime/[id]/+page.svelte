@@ -929,7 +929,11 @@
 			// variant feeds progress events into the overlay so the user
 			// sees `<provider> ✓` ticks while ani-cli runs.
 			const session = await getOrFire(
-				makeKey(id, ep, mode, quality),
+				// When resuming a show we have history for, scope by — and send —
+				// the exact allanime show_id so a same-title split cour resolves
+				// to the recorded cour, not a title-heuristic guess. Absent for
+				// shows with no history (browse), which resolve by title. (Codex P2)
+				makeKey(id, ep, mode, quality, resumeEntry?.id),
 				(emit, signal) =>
 					playStream(
 						{
@@ -940,7 +944,8 @@
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
 							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: id
+							kitsu_id: id,
+							show_id: resumeEntry?.id
 						},
 						emit,
 						signal
@@ -969,7 +974,10 @@
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
 				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: id
+				kitsu_id: id,
+				// Same exact-show resolution as the play above, so the history
+				// row this stamps records the right cour when resuming.
+				show_id: resumeEntry?.id
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
