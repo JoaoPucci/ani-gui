@@ -57,6 +57,42 @@ pub(crate) async fn resolve_by_show_id(
     None
 }
 
+/// Decide the final `(search_title, 1-based index, candidate)` for the
+/// picker, honouring an exact `show_id` request over the title/ep-count
+/// heuristic. `heuristic` is the heuristic pick; `exact` is the result
+/// of [`resolve_by_show_id`] (run only when a show_id was requested and
+/// the heuristic missed it). `fallback_*` are the heuristic's title and
+/// index, reused whenever the heuristic candidate is the right answer or
+/// no specific show was asked for.
+///
+/// When a show_id was requested but neither the heuristic nor the exact
+/// lookup confirms it, the candidate is dropped (`None`) so the caller
+/// surfaces a miss — launching a *different* same-title cour is exactly
+/// the wrong-cour bug this path prevents. Codex P2.
+pub(crate) fn pick_for_requested_show(
+    requested_show_id: Option<&str>,
+    heuristic: Option<Candidate>,
+    exact: Option<(String, usize, Candidate)>,
+    fallback_title: String,
+    fallback_index: usize,
+) -> (String, usize, Option<Candidate>) {
+    // No specific show requested → title-based play, heuristic stands.
+    let Some(want) = requested_show_id.filter(|s| !s.is_empty()) else {
+        return (fallback_title, fallback_index, heuristic);
+    };
+    // Heuristic already landed on the exact show.
+    if heuristic.as_ref().is_some_and(|c| c.id == want) {
+        return (fallback_title, fallback_index, heuristic);
+    }
+    // Exact id resolved to its own (title, index).
+    if let Some((title, index, candidate)) = exact {
+        return (title, index, Some(candidate));
+    }
+    // Requested but unconfirmed → drop the candidate; never launch a
+    // different show the heuristic happened to pick.
+    (fallback_title, fallback_index, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

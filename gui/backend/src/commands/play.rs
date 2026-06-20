@@ -357,36 +357,30 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
         }
     }
 
-    // Resume fast-path: when the caller handed us the exact allanime
-    // show_id (Continue Watching reads it from the history row), select
-    // that show by identity — the heuristic above can't separate
-    // same-title franchise cours (Stone Ocean Part 1 vs Part 2). Only
-    // runs when the heuristic didn't already land on the right id, so
-    // the common unique-title case pays nothing extra.
-    if let Some(sid) = args.show_id.as_deref().filter(|s| !s.is_empty()) {
-        let heuristic_hit_id = chosen_so_far.as_ref().is_some_and(|c| c.id == sid);
-        if !heuristic_hit_id {
-            if let Some((title, idx, cand)) =
-                super::play_resume::resolve_by_show_id(state, mode, sid, &mut results).await
-            {
-                tracing::info!(
-                    show_id = sid,
-                    chosen_title = %title,
-                    pick = idx,
-                    "play: resume resolved exact show by id",
-                );
-                return PickedTitle {
-                    title,
-                    index: idx,
-                    candidate: Some(cand),
-                    any_search_succeeded: true,
-                    any_search_errored,
-                };
-            }
+    // Resume fast-path: when the caller named an exact allanime show_id
+    // (Continue Watching reads it from the history row), resolve THAT show
+    // by identity — the heuristic above can't separate same-title
+    // franchise cours (Stone Ocean Part 1 vs Part 2). Only pays for the
+    // lookup when the heuristic didn't already land on the right id, and
+    // `pick_for_requested_show` drops the candidate (→ caller surfaces a
+    // miss) rather than launch a different show if the id can't be
+    // confirmed.
+    let requested_show_id = args.show_id.as_deref().filter(|s| !s.is_empty());
+    let heuristic_hit_id =
+        matches!((requested_show_id, chosen_so_far.as_ref()), (Some(w), Some(c)) if c.id == w);
+    let exact = match requested_show_id {
+        Some(sid) if !heuristic_hit_id => {
+            super::play_resume::resolve_by_show_id(state, mode, sid, &mut results).await
         }
-    }
-
-    let (chosen_title, pick, chosen) = (chosen_title_so_far, chosen_pick_so_far, chosen_so_far);
+        _ => None,
+    };
+    let (chosen_title, pick, chosen) = super::play_resume::pick_for_requested_show(
+        requested_show_id,
+        chosen_so_far,
+        exact,
+        chosen_title_so_far,
+        chosen_pick_so_far,
+    );
     tracing::info!(
         primary = %primary,
         alt_count = args.alt_titles.len(),
