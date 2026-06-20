@@ -1176,6 +1176,20 @@ mod tests {
         assert_eq!(launch.title.as_deref(), Some("Naruto · ep 5"));
     }
 
+    #[test]
+    fn cached_row_honors_request_only_matches_an_explicit_show_id() {
+        use crate::commands::play_cache::cached_row_honors_request;
+        // No requested id (legacy / browse) accepts any cached row.
+        assert!(cached_row_honors_request(None, "abc"));
+        assert!(cached_row_honors_request(Some(""), "abc"));
+        // An explicit id must match the cached row exactly — otherwise a
+        // sibling cour cached under the title key would be honored, e.g.
+        // by mark-watched stamping the wrong cour. (Codex P2)
+        assert!(cached_row_honors_request(Some("abc"), "abc"));
+        assert!(!cached_row_honors_request(Some("abc"), "xyz"));
+        assert!(!cached_row_honors_request(Some("abc"), ""));
+    }
+
     #[tokio::test]
     async fn try_launch_args_from_cache_rejects_a_row_for_a_different_show_id() {
         // External/Syncplay must honor an exact show_id too: even a live
