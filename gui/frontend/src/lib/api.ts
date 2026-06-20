@@ -462,6 +462,13 @@ export interface PlayArgs {
 	 *  allmanga title. Optional; missing on legacy click sites that
 	 *  haven't been updated yet. */
 	kitsu_id?: string;
+	/** allanime show id of the exact show to resolve. Continue Watching
+	 *  reads it from the history row and passes it so the backend selects
+	 *  that show by identity, skipping the title + ep-count heuristic that
+	 *  can't tell same-title franchise cours apart (Stone Ocean Part 1 vs
+	 *  Part 2). Absent on title-driven plays (search, detail-page clicks),
+	 *  which have no specific show in hand. */
+	show_id?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -555,6 +562,7 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.show_id) params.set('show_id', args.show_id);
 
 	return apiBase().then(
 		(base) =>

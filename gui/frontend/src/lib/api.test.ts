@@ -484,6 +484,32 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('includes show_id in the SSE query when the caller knows the exact allanime show', async () => {
+		// Continue Watching reads the allanime show_id from the history
+		// row and passes it so the backend resolves that exact show by
+		// identity — the only way to keep franchise cours apart (Stone
+		// Ocean Part 1 vs Part 2 share a title + ep count, and the Kitsu
+		// title drops the "Part 6" that would disambiguate them).
+		const promise = playStream(
+			{
+				title: "JoJo's Bizarre Adventure: Stone Ocean",
+				episode: '5',
+				mode: 'sub',
+				quality: 'best',
+				episode_count: 12,
+				show_id: 'pwduJkjBLytqiWCvM'
+			},
+			vi.fn()
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es).toBeTruthy();
+		expect(es.url).toContain('show_id=pwduJkjBLytqiWCvM');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it('joins alt_titles with `\\n` for the SSE query (matches backend deserializer)', async () => {
 		// Backend's deserialize_alt_titles splits on `\n`. URLSearchParams
 		// percent-encodes the newline as %0A. Stone Ocean's full

@@ -537,7 +537,8 @@
 		match: KitsuAnimeRef,
 		ep: number,
 		seriesTotal: number | null,
-		seriesFinished: boolean
+		seriesFinished: boolean,
+		allmangaShowId: string
 	) {
 		if (resumeBusy) return;
 		const title = match.canonical_title;
@@ -578,7 +579,10 @@
 							episode_count: match.episode_count ?? null,
 							year: yearFromKitsuRef(match),
 							alt_titles: altTitlesFromKitsu(match),
-							kitsu_id: match.id
+							kitsu_id: match.id,
+							// Resolve the exact show recorded in history, not a
+							// title guess — keeps franchise cours apart.
+							show_id: allmangaShowId
 						},
 						emit,
 						signal
@@ -595,7 +599,10 @@
 				episode_count: match.episode_count ?? null,
 				year: yearFromKitsuRef(match),
 				alt_titles: altTitlesFromKitsu(match),
-				kitsu_id: match.id
+				kitsu_id: match.id,
+				// Same exact-show resolution as the play above, so the
+				// history row this writes records the right cour.
+				show_id: allmangaShowId
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
@@ -871,7 +878,8 @@
 								match,
 								nextEpisode,
 								match?.episode_count ?? null,
-								match?.status === 'finished'
+								match?.status === 'finished',
+								entry.id
 							)}
 					>
 						<span class="resume-poster">
