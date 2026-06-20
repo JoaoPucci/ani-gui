@@ -475,6 +475,153 @@ pub(super) fn debug_options_for(
     }
 }
 
+/// Try the long-term play-resolution cache for this request. Returns
+/// `Some(resp)` when a fresh-enough row exists, still HEADs OK, and —
+/// when the caller named a specific `show_id` — was resolved for that
+/// exact show. Returns `None` (after evicting the offending row) on a
+/// miss, a dead upstream, or a row resolved for a different show.
+///
+/// That last case is the resume-by-id guard: cache keys are
+/// `(title, mode, quality, episode, year, episode_count)` and omit the
+/// show id, so a same-title franchise sibling (Stone Ocean Part 2 under
+/// a Part 1 request) would otherwise be served straight from cache —
+/// before the picker's identity check ever runs, and `mark-watched`
+/// would then rewrite history from the wrong show_id. Codex P1.
+async fn try_cached_resolution(
+    state: &AppState,
+    args: &PlayArgs,
+    cache_key: &str,
+) -> Option<CreateSessionResponse> {
+    let cached = play_resolution_cache::get(&state.cache_pool, cache_key)
+        .ok()
+        .flatten()?;
+    if let Some(want) = args.show_id.as_deref().filter(|s| !s.is_empty()) {
+        if cached.show_id != want {
+            tracing::info!(
+                title = %args.title,
+                episode = %args.episode,
+                want_show_id = want,
+                cached_show_id = cached.show_id.as_str(),
+                "play: cache row is a different show; evicting and re-resolving by id",
+            );
+            play_resolution_cache::evict(&state.cache_pool, cache_key);
+            return None;
+        }
+    }
+    if let Some(resp) = try_serve_cached(state, &cached).await {
+        tracing::info!(
+            title = %args.title,
+            episode = %args.episode,
+            upstream = cached.upstream_url.as_str(),
+            "play: cache hit (HEAD ok)",
+        );
+        write_history_on_cache_hit(state, args, &cached);
+        return Some(resp);
+    }
+    // HEAD failed — the cached URL is dead. Evict the row explicitly
+    // (not just overwrite-on-put): if the fresh ani-cli call ALSO
+    // fails, we don't want the stale row to linger and bite the next
+    // attempt.
+    play_resolution_cache::evict(&state.cache_pool, cache_key);
+    tracing::info!(
+        title = %args.title,
+        episode = %args.episode,
+        "play: cache row stale (HEAD failed), evicted, falling back to ani-cli",
+    );
+    None
+}
+
+/// Turn a resolved ani-cli upstream into a playable proxy session:
+/// infer the Referer (some CDNs 403 without it), classify the media
+/// kind (path-extension first, HEAD probe when opaque), persist the
+/// resolution to the long-term cache, and register the stream session.
+/// Split out of [`play_with_progress`] to keep its complexity in check.
+async fn finalize_resolved_stream(
+    state: &AppState,
+    args: &PlayArgs,
+    cache_key: &str,
+    resolved: crate::anicli::parser::DebugOutput,
+    chosen_candidate: Option<&Candidate>,
+) -> Result<CreateSessionResponse> {
+    // Decide media kind: cheap path-extension first, HEAD fallback
+    // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
+    let upstream_url =
+        url::Url::parse(&resolved.selected_url).map_err(|_| AniError::ParseFailed {
+            detail: format!("upstream_url: {} is not a valid URL", resolved.selected_url),
+        })?;
+
+    // Infer Referer when ani-cli's debug output didn't include one.
+    // Mirrors `refr_flag` switch in ani-cli (line ~209): the
+    // tools.fast4speed.rsvp CDN enforces Referer = https://allmanga.to
+    // and 403s requests without it. ani-cli sets the header internally
+    // when invoking the player but doesn't surface it on stdout, so
+    // the parser sees None for these URLs.
+    let referer = match resolved.referer {
+        Some(r) if !r.is_empty() => r,
+        _ => match upstream_url.host_str() {
+            Some(h) if h.ends_with("fast4speed.rsvp") => "https://allmanga.to".to_string(),
+            _ => String::new(),
+        },
+    };
+
+    let kind = match MediaKind::from_url(&upstream_url) {
+        Some(k) => k,
+        None => {
+            // HEAD failures fall back to MP4 — that's the safe default
+            // (binary streams, unknown CDNs). The proxy then serves
+            // /file.mp4 with byte-range support; if the upstream truly
+            // is an HLS manifest mislabelled, hls.js never enters the
+            // picture and the renderer surfaces a real error.
+            upstream::classify_via_head(&state.proxy_http, &upstream_url, &referer)
+                .await
+                .unwrap_or(MediaKind::Mp4)
+        }
+    };
+    tracing::info!(
+        title = %args.title,
+        episode = %args.episode,
+        upstream = upstream_url.as_str(),
+        referer = referer.as_str(),
+        kind = ?kind,
+        "play: ani-cli resolved upstream",
+    );
+
+    // Persist the resolution so the next play of the same episode
+    // skips ani-cli entirely (subject to TTL + HEAD validation).
+    // show_id + show_title come from the chosen allanime candidate
+    // (when our search picked one) so a future cache-hit can write to
+    // ani-hsts ourselves — ani-cli's update_history doesn't fire when
+    // we skip the subprocess on a cache hit.
+    let (show_id, show_title) = chosen_candidate
+        .map(|c| {
+            (
+                c.id.clone(),
+                format!(
+                    "{} ({} episodes)",
+                    c.name,
+                    c.available_episodes.for_mode(&args.mode)
+                ),
+            )
+        })
+        .unwrap_or_default();
+    let cached_resolution = CachedResolution {
+        upstream_url: resolved.selected_url.clone(),
+        referer: referer.clone(),
+        subtitle_url: resolved.subtitle_url.clone(),
+        media_kind: kind,
+        show_id,
+        show_title,
+    };
+    play_resolution_cache::put(&state.cache_pool, cache_key, &cached_resolution);
+
+    let session_args = CreateSessionArgs {
+        upstream_url: resolved.selected_url,
+        referer,
+        subtitle_url: resolved.subtitle_url,
+    };
+    create_session_with_kind(state, &session_args, kind)
+}
+
 /// Resolve `args` against ani-cli, register a stream session for the
 /// resulting upstream URL, and return the proxy URLs hls.js will
 /// consume.
@@ -532,28 +679,8 @@ where
         args.year,
         args.episode_count,
     );
-    if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-        if let Some(resp) = try_serve_cached(state, &cached).await {
-            tracing::info!(
-                title = %args.title,
-                episode = %args.episode,
-                upstream = cached.upstream_url.as_str(),
-                "play: cache hit (HEAD ok)",
-            );
-            write_history_on_cache_hit(state, args, &cached);
-            return Ok(resp);
-        }
-        // HEAD failed — the cached URL is dead. Evict the row and
-        // fall through to ani-cli. Eviction is explicit (not just
-        // overwrite-on-put) because if the fresh ani-cli call ALSO
-        // fails, we don't want the stale row to linger and bite the
-        // next attempt.
-        play_resolution_cache::evict(&state.cache_pool, &cache_key);
-        tracing::info!(
-            title = %args.title,
-            episode = %args.episode,
-            "play: cache row stale (HEAD failed), evicted, falling back to ani-cli",
-        );
+    if let Some(resp) = try_cached_resolution(state, args, &cache_key).await {
+        return Ok(resp);
     }
 
     // Pick which (title, candidate index) ani-cli should use. The title
@@ -618,85 +745,7 @@ where
         }
     })?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
-
-    // Decide media kind: cheap path-extension first, HEAD fallback
-    // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
-    let upstream_url =
-        url::Url::parse(&resolved.selected_url).map_err(|_| AniError::ParseFailed {
-            detail: format!("upstream_url: {} is not a valid URL", resolved.selected_url),
-        })?;
-
-    // Infer Referer when ani-cli's debug output didn't include one.
-    // Mirrors `refr_flag` switch in ani-cli (line ~209): the
-    // tools.fast4speed.rsvp CDN enforces Referer = https://allmanga.to
-    // and 403s requests without it. ani-cli sets the header internally
-    // when invoking the player but doesn't surface it on stdout, so
-    // the parser sees None for these URLs.
-    let referer = match resolved.referer {
-        Some(r) if !r.is_empty() => r,
-        _ => match upstream_url.host_str() {
-            Some(h) if h.ends_with("fast4speed.rsvp") => "https://allmanga.to".to_string(),
-            _ => String::new(),
-        },
-    };
-
-    let kind = match MediaKind::from_url(&upstream_url) {
-        Some(k) => k,
-        None => {
-            // HEAD failures fall back to MP4 — that's the safe default
-            // (binary streams, unknown CDNs). The proxy then serves
-            // /file.mp4 with byte-range support; if the upstream truly
-            // is an HLS manifest mislabelled, hls.js never enters the
-            // picture and the renderer surfaces a real error.
-            upstream::classify_via_head(&state.proxy_http, &upstream_url, &referer)
-                .await
-                .unwrap_or(MediaKind::Mp4)
-        }
-    };
-    tracing::info!(
-        title = %args.title,
-        episode = %args.episode,
-        upstream = upstream_url.as_str(),
-        referer = referer.as_str(),
-        kind = ?kind,
-        "play: ani-cli resolved upstream",
-    );
-
-    // Persist the resolution so the next play of the same episode
-    // skips ani-cli entirely (subject to TTL + HEAD validation).
-    // show_id + show_title come from the chosen allanime candidate
-    // (when our search picked one) so a future cache-hit can write to
-    // ani-hsts ourselves — ani-cli's update_history doesn't fire when
-    // we skip the subprocess on a cache hit.
-    let (show_id, show_title) = chosen_candidate
-        .as_ref()
-        .map(|c| {
-            (
-                c.id.clone(),
-                format!(
-                    "{} ({} episodes)",
-                    c.name,
-                    c.available_episodes.for_mode(&args.mode)
-                ),
-            )
-        })
-        .unwrap_or_default();
-    let cached_resolution = CachedResolution {
-        upstream_url: resolved.selected_url.clone(),
-        referer: referer.clone(),
-        subtitle_url: resolved.subtitle_url.clone(),
-        media_kind: kind,
-        show_id,
-        show_title,
-    };
-    play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
-
-    let session_args = CreateSessionArgs {
-        upstream_url: resolved.selected_url,
-        referer,
-        subtitle_url: resolved.subtitle_url,
-    };
-    create_session_with_kind(state, &session_args, kind)
+    finalize_resolved_stream(state, args, &cache_key, resolved, chosen_candidate.as_ref()).await
 }
 
 // `upstream_head_ok`, `try_serve_cached`, and
