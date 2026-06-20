@@ -68,6 +68,30 @@ describe('canReuseSession', () => {
 		// the new URL takes over. Force a fresh respawn instead.
 		expect(canReuseSession(session, { hasSource: true, ended: true }, 'kid-42', 5)).toBeNull();
 	});
+
+	it('returns null when an exact show_id is requested but the session is a different (or untagged) show', () => {
+		// PiP reuse matches on (kitsu_id, episode); a session loaded from
+		// a title-based path can be a sibling cour. When a resume names the
+		// exact allanime show id, only reuse a session tagged with that
+		// same id — otherwise full-resolve so the identity check runs.
+		// (Codex P2)
+		const tagged = { ...session, show_id: 'pwdu' };
+		expect(canReuseSession(tagged, livePlayback, 'kid-42', 5, 'D5ks')).toBeNull();
+		// Untagged (legacy / title-resolved) session can't satisfy an
+		// exact-id request either.
+		expect(canReuseSession(session, livePlayback, 'kid-42', 5, 'pwdu')).toBeNull();
+	});
+
+	it('reuses a session whose show_id matches the requested exact id', () => {
+		const tagged = { ...session, show_id: 'pwdu' };
+		expect(canReuseSession(tagged, livePlayback, 'kid-42', 5, 'pwdu')).toBe(tagged);
+	});
+
+	it('ignores show_id when none is requested (browse / title-based reuse)', () => {
+		const tagged = { ...session, show_id: 'pwdu' };
+		expect(canReuseSession(tagged, livePlayback, 'kid-42', 5)).toBe(tagged);
+		expect(canReuseSession(tagged, livePlayback, 'kid-42', 5, '')).toBe(tagged);
+	});
 });
 
 // The rest of the suite needs a real DOM. happy-dom (set via the
