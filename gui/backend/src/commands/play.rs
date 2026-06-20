@@ -965,6 +965,38 @@ mod tests {
         assert_eq!(resp.media_kind, MediaKind::Mp4);
     }
 
+    #[tokio::test]
+    async fn try_cached_resolution_skips_and_evicts_a_row_for_a_different_show_id() {
+        // The play cache is keyed by (title, mode, quality, ep, year,
+        // count) — which collides across same-title franchise cours. A
+        // resume that names a specific show_id must NOT be served a row
+        // resolved for a different show (the poisoned wrong cour); evict
+        // it and re-resolve by identity instead. (Codex P1.)
+        let state = state_with_proxy_origin();
+        let mut args = external_args("Stone Ocean", "5");
+        args.show_id = Some("pwduJkjBLytqiWCvM".into()); // seed_play_cache stores "abc"
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
+        seed_play_cache(&state, &args, "http://example.invalid/x.mp4", "");
+        let served = try_cached_resolution(&state, &args, &key).await;
+        assert!(
+            served.is_none(),
+            "must not serve a cache row resolved for a different show_id"
+        );
+        assert!(
+            play_resolution_cache::get(&state.cache_pool, &key)
+                .unwrap()
+                .is_none(),
+            "the mismatched row must be evicted so a fresh resolution replaces it"
+        );
+    }
+
     /// Same shape, but with a non-empty referer + show_id — exercises
     /// the cache-hit history-write branch (lines 266-282 in the file
     /// before this test landed). Without this the upsert-on-cache-hit
