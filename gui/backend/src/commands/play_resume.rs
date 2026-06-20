@@ -144,4 +144,31 @@ mod tests {
             "mismatched heuristic must be dropped, not launched"
         );
     }
+
+    #[tokio::test]
+    async fn resolve_by_show_id_flags_a_transient_fetch_show_failure() {
+        // A 5xx during the exact-id fetch_show is transient: it must be
+        // reported (errored) so the caller surfaces a retryable Network
+        // error, not a NoResults that negative-caches a valid show. (Codex
+        // P2)
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let mut results: Vec<(String, Vec<Candidate>)> = vec![];
+        let lookup = resolve_by_show_id(
+            &reqwest::Client::new(),
+            "sub",
+            "missing",
+            &mut results,
+            Some(&server.uri()),
+        )
+        .await;
+        assert!(lookup.hit.is_none());
+        assert!(
+            lookup.errored,
+            "a transient fetch_show failure must be flagged, not silently dropped to NoResults"
+        );
+    }
 }
