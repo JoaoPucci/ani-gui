@@ -368,16 +368,28 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     let requested_show_id = args.show_id.as_deref().filter(|s| !s.is_empty());
     let heuristic_hit_id =
         matches!((requested_show_id, chosen_so_far.as_ref()), (Some(w), Some(c)) if c.id == w);
-    let exact = match requested_show_id {
-        Some(sid) if !heuristic_hit_id => {
-            super::play_resume::resolve_by_show_id(state, mode, sid, &mut results).await
+    let mut exact_hit = None;
+    if let Some(sid) = requested_show_id {
+        if !heuristic_hit_id {
+            let lookup = super::play_resume::resolve_by_show_id(
+                &state.proxy_http,
+                mode,
+                sid,
+                &mut results,
+                None,
+            )
+            .await;
+            // A transient fetch_show/search failure here must surface as a
+            // retryable Network miss, not negative-cache the show as
+            // NoResults — OR it into the search-error flag. (Codex P2)
+            any_search_errored |= lookup.errored;
+            exact_hit = lookup.hit;
         }
-        _ => None,
-    };
+    }
     let (chosen_title, pick, chosen) = super::play_resume::pick_for_requested_show(
         requested_show_id,
         chosen_so_far,
-        exact,
+        exact_hit,
         chosen_title_so_far,
         chosen_pick_so_far,
     );
@@ -1039,18 +1051,23 @@ mod tests {
     async fn resolve_by_show_id_uses_an_already_searched_pool_without_fetching() {
         // When the id is already among the pools the picker searched, the
         // resume resolver returns it directly — no fetch_show round-trip.
-        let state = state_with_proxy_origin();
         let mut results = vec![(
             "Stone Ocean".to_string(),
             vec![cand("aaa", "Other", 12), cand("pwdu", "Stone Ocean", 12)],
         )];
-        let hit =
-            crate::commands::play_resume::resolve_by_show_id(&state, "sub", "pwdu", &mut results)
-                .await;
+        let lookup = crate::commands::play_resume::resolve_by_show_id(
+            &reqwest::Client::new(),
+            "sub",
+            "pwdu",
+            &mut results,
+            None,
+        )
+        .await;
         assert_eq!(
-            hit.map(|(title, idx, c)| (title, idx, c.id)),
+            lookup.hit.map(|(title, idx, c)| (title, idx, c.id)),
             Some(("Stone Ocean".to_string(), 2, "pwdu".to_string()))
         );
+        assert!(!lookup.errored, "a pool hit makes no upstream call");
     }
 
     /// Same shape, but with a non-empty referer + show_id — exercises

@@ -13,10 +13,22 @@
 //! offline; keeping it here stops those lines from dragging `play.rs`'s
 //! coverage.
 
-use crate::app::AppState;
 use crate::commands::play_select::{index_of_show_id, select_by_show_id};
 use crate::scraper;
 use crate::scraper::Candidate;
+
+/// Outcome of [`resolve_by_show_id`]: the exact-show pick (when found),
+/// plus whether a *transient* upstream error (a failed `fetch_show` or
+/// search) occurred during the lookup.
+///
+/// The caller ORs `errored` into its own search-error flag so a
+/// temporary allmanga/network blip surfaces as a retryable `Network`
+/// error rather than being negative-cached as `NoResults` — which would
+/// make a valid show look uncatalogued (Codex P2).
+pub(crate) struct ResumeLookup {
+    pub hit: Option<(String, usize, Candidate)>,
+    pub errored: bool,
+}
 
 /// Locate the exact recorded show by allanime id. Checks the pools the
 /// picker already searched first (free), then — only when the id is
@@ -24,37 +36,56 @@ use crate::scraper::Candidate;
 /// show's own names. The Kitsu title the resume sends often drops the
 /// franchise marker ("Part 6"), so the id is missing from the title/alt
 /// pools; the show's own `name` puts it back. Appends every fresh pool
-/// to `results` so the caller's logging/fallthrough sees them. Returns
-/// `None` when the id can't be found anywhere — the caller then keeps
-/// its heuristic pick.
+/// to `results` so the caller's logging/fallthrough sees them.
+///
+/// `base_override` mirrors the scraper helpers — `None` in prod, a
+/// wiremock URI in tests. The returned [`ResumeLookup`] reports both the
+/// pick and whether a transient error was hit so the caller doesn't
+/// negative-cache a valid show on a temporary failure.
 pub(crate) async fn resolve_by_show_id(
-    state: &AppState,
+    client: &reqwest::Client,
     mode: &str,
     show_id: &str,
     results: &mut Vec<(String, Vec<Candidate>)>,
-) -> Option<(String, usize, Candidate)> {
+    base_override: Option<&str>,
+) -> ResumeLookup {
     if let Some(hit) = select_by_show_id(results, show_id) {
-        return Some(hit);
+        return ResumeLookup {
+            hit: Some(hit),
+            errored: false,
+        };
     }
-    let meta = scraper::allanime::fetch_show(&state.proxy_http, show_id, None)
-        .await
-        .ok()?;
+    let meta = match scraper::allanime::fetch_show(client, show_id, base_override).await {
+        Ok(m) => m,
+        // Transient: don't let a fetch_show blip collapse into NoResults.
+        Err(_) => {
+            return ResumeLookup {
+                hit: None,
+                errored: true,
+            }
+        }
+    };
     let names = std::iter::once(meta.name.clone()).chain(meta.search_terms());
+    let mut errored = false;
     for name in names {
         if name.trim().is_empty() {
             continue;
         }
-        let Ok(cands) = scraper::search(&state.proxy_http, &name, mode, None).await else {
-            continue;
+        let cands = match scraper::search(client, &name, mode, base_override).await {
+            Ok(c) => c,
+            Err(_) => {
+                errored = true;
+                continue;
+            }
         };
         let hit = index_of_show_id(&cands, show_id)
             .map(|idx| (name.clone(), idx, cands[idx - 1].clone()));
         results.push((name, cands));
         if hit.is_some() {
-            return hit;
+            return ResumeLookup { hit, errored };
         }
     }
-    None
+    ResumeLookup { hit: None, errored }
 }
 
 /// Decide the final `(search_title, 1-based index, candidate)` for the
