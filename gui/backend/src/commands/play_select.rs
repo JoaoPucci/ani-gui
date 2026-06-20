@@ -230,6 +230,26 @@ pub fn index_of_show_id(candidates: &[Candidate], show_id: &str) -> Option<usize
         .map(|i| i + 1)
 }
 
+/// Scan accumulated `(search_title, candidates)` pools for the
+/// candidate matching `show_id` and return the title that found it,
+/// its 1-based index, and a clone of the candidate. First pool with a
+/// match wins. `None` when `show_id` is empty or absent everywhere.
+///
+/// The returned title is the search term ani-cli must re-run so its
+/// `-S <index>` lands on the same candidate — see [`index_of_show_id`].
+#[must_use]
+pub fn select_by_show_id(
+    results: &[(String, Vec<Candidate>)],
+    show_id: &str,
+) -> Option<(String, usize, Candidate)> {
+    for (title, cands) in results {
+        if let Some(idx) = index_of_show_id(cands, show_id) {
+            return Some((title.clone(), idx, cands[idx - 1].clone()));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
