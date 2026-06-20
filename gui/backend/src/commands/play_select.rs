@@ -233,6 +233,22 @@ mod tests {
         }
     }
 
+    // — Resume-by-id selector ————————————————————————————
+
+    #[test]
+    fn index_of_show_id_returns_the_one_based_position_of_the_matching_candidate() {
+        // Resume carries the exact allanime show_id from history, so
+        // selection must be by identity — title + ep-count can't tell
+        // Stone Ocean Part 1 (pwdu…) from Part 2 (D5ks…): same title,
+        // same 12-ep count. ani-cli's `-S N` counts 1-based; so does
+        // this, so the index we hand it lines up with its own search.
+        let cands = vec![cand("D5ksnsKtYAzzFXeSp", 12), cand("pwduJkjBLytqiWCvM", 12)];
+        assert_eq!(index_of_show_id(&cands, "pwduJkjBLytqiWCvM"), Some(2));
+        assert_eq!(index_of_show_id(&cands, "D5ksnsKtYAzzFXeSp"), Some(1));
+        assert_eq!(index_of_show_id(&cands, "not-in-the-list"), None);
+        assert_eq!(index_of_show_id(&cands, ""), None);
+    }
+
     // — Deserializer tests ———————————————————————————————
 
     #[derive(Deserialize)]
