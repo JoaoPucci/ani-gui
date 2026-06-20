@@ -573,78 +573,7 @@ async fn post_play_mark_watched(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-    );
-    if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
-        if !cached.show_id.is_empty() {
-            // History write — same as before the kitsu_id field landed.
-            let entry = crate::history::HistoryEntry {
-                ep_no: args.episode.clone(),
-                id: cached.show_id.clone(),
-                title: cached.show_title.clone(),
-            };
-            if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-                tracing::warn!(
-                    title = %args.title,
-                    episode = %args.episode,
-                    error = ?e,
-                    "play: history write failed in mark-watched",
-                );
-            }
-            // Watched-at stamp drives Continue Watching ordering.
-            // Runs BEFORE the cross-cour guard below because that
-            // guard fetches Kitsu detail on cache miss — letting it
-            // gate this write would stall home ordering whenever
-            // Kitsu is slow, even though the play itself succeeded.
-            // Only fires on click-side mark-watched (prefetches don't
-            // reach this handler). Failure is non-fatal.
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            if let Err(e) = kitsu_inner::watched_at_put(&state, &cached.show_id, now_ms) {
-                tracing::warn!(
-                    show_id = %cached.show_id,
-                    error = ?e,
-                    "play: watched-at stamp write failed",
-                );
-            }
-            // Reverse mapping — store (allmanga show_id → kitsu_id)
-            // when the frontend supplied kitsu_id. Errors are
-            // swallowed (logged) because the play already succeeded;
-            // the mapping is opportunistic.
-            //
-            // Cross-cour integrity guard: the play picker
-            // (`pick_by_ep_count_v2`) can land on a sibling cour's
-            // allmanga show_id when ep-count and year tie (e.g.
-            // Stone Ocean Parts 1/2/3 all 12 eps, 2021–2022). The
-            // frontend supplies kitsu_id from the URL or Continue
-            // Watching context, which then doesn't match the chosen
-            // show_id. Detect that by comparing the cour suffix on
-            // cached.show_title against the cour suffix on the Kitsu
-            // detail's slug. On disagreement, skip the write. The
-            // guard reads kitsu_anime_detail through its 7-day cache;
-            // mismatch when the detail can't be fetched is treated as
-            // "agree" so a network hiccup doesn't suppress legitimate
-            // writes.
-            if let Some(kid) = args.kitsu_id.as_deref().filter(|k| !k.is_empty()) {
-                kitsu_inner::try_put_allmanga_kitsu_mapping(
-                    &state,
-                    &cached.show_id,
-                    &cached.show_title,
-                    kid,
-                )
-                .await;
-            }
-        }
-    }
+    crate::commands::play_cache::stamp_watched_from_cache(&state, &args).await;
     StatusCode::NO_CONTENT
 }
 

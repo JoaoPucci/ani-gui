@@ -74,6 +74,94 @@ pub(crate) async fn try_serve_cached(
     Some(resp)
 }
 
+/// Whether a cached resolution row may be used for a request that named
+/// `want` as its show_id. The play-resolution cache key omits show_id, so
+/// a same-title franchise sibling can sit under the same key; a request
+/// that named an explicit show_id must only honor a row resolved for that
+/// exact show. An empty/absent show_id accepts any row (legacy title-based
+/// play). Used by both the embedded launch path and mark-watched so a
+/// resume can't reuse — or stamp Continue Watching from — the wrong cour.
+pub(crate) fn cached_row_honors_request(want: Option<&str>, cached_show_id: &str) -> bool {
+    match want.filter(|s| !s.is_empty()) {
+        Some(w) => cached_show_id == w,
+        None => true,
+    }
+}
+
+/// Body of `POST /api/play/mark-watched`: look up the cached resolution
+/// for this request and, when it belongs to the right show, stamp
+/// Continue Watching (history row + watched-at ordering) and
+/// opportunistically record the allmanga→kitsu mapping. Extracted from
+/// the HTTP layer so the resume-by-id guard is unit-testable and the
+/// handler stays thin.
+///
+/// No-op when there's no cached row. A request that named a show_id only
+/// honors a row resolved for that exact show; otherwise the row (a
+/// same-title sibling cour a bare prefetch left under the title key) is
+/// evicted and nothing is stamped, so Continue Watching can't be
+/// rewritten to the wrong cour. (Codex P2)
+pub(crate) async fn stamp_watched_from_cache(state: &AppState, args: &super::play::PlayArgs) {
+    let quality = args.quality.as_deref().unwrap_or("best");
+    let key = play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        quality,
+        &args.episode,
+        args.year,
+        args.episode_count,
+    );
+    let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &key) else {
+        return;
+    };
+    if !cached_row_honors_request(args.show_id.as_deref(), &cached.show_id) {
+        play_resolution_cache::evict(&state.cache_pool, &key);
+        return;
+    }
+    if cached.show_id.is_empty() {
+        return;
+    }
+    // History write — same as before the kitsu_id field landed.
+    let entry = crate::history::HistoryEntry {
+        ep_no: args.episode.clone(),
+        id: cached.show_id.clone(),
+        title: cached.show_title.clone(),
+    };
+    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+        tracing::warn!(
+            title = %args.title,
+            episode = %args.episode,
+            error = ?e,
+            "play: history write failed in mark-watched",
+        );
+    }
+    // Watched-at stamp drives Continue Watching ordering. Only fires on
+    // click-side mark-watched (prefetches don't reach this path). Failure
+    // is non-fatal.
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    if let Err(e) = crate::commands::kitsu::watched_at_put(state, &cached.show_id, now_ms) {
+        tracing::warn!(
+            show_id = %cached.show_id,
+            error = ?e,
+            "play: watched-at stamp write failed",
+        );
+    }
+    // Reverse mapping — opportunistically store (allmanga show_id →
+    // kitsu_id) when the frontend supplied one; the cross-cour integrity
+    // guard inside rejects a mismatched mapping. Best-effort.
+    if let Some(kid) = args.kitsu_id.as_deref().filter(|k| !k.is_empty()) {
+        crate::commands::kitsu::try_put_allmanga_kitsu_mapping(
+            state,
+            &cached.show_id,
+            &cached.show_title,
+            kid,
+        )
+        .await;
+    }
+}
+
 /// Cache-hit branch of `play_external`: returns ready-to-launch
 /// `LaunchArgs` when the play_resolution_cache has a live row,
 /// otherwise `None` (caller falls through to a fresh ani-cli spawn).
@@ -99,18 +187,16 @@ pub(crate) async fn try_launch_args_from_cache(
     // resolver runs. When the caller named a show_id, reject (and evict)
     // a row resolved for a different show. Mirrors try_cached_resolution
     // on the embedded play path. (Codex P2)
-    if let Some(want) = args.show_id.as_deref().filter(|s| !s.is_empty()) {
-        if cached.show_id != want {
-            play_resolution_cache::evict(&state.cache_pool, &cache_key);
-            tracing::info!(
-                title = %args.title,
-                episode = %args.episode,
-                want_show_id = want,
-                cached_show_id = cached.show_id.as_str(),
-                "play_external: cache row is a different show; evicting and re-resolving by id",
-            );
-            return None;
-        }
+    if !cached_row_honors_request(args.show_id.as_deref(), &cached.show_id) {
+        play_resolution_cache::evict(&state.cache_pool, &cache_key);
+        tracing::info!(
+            title = %args.title,
+            episode = %args.episode,
+            want_show_id = args.show_id.as_deref().unwrap_or(""),
+            cached_show_id = cached.show_id.as_str(),
+            "play_external: cache row is a different show; evicting and re-resolving by id",
+        );
+        return None;
     }
     let parsed = url::Url::parse(&cached.upstream_url).ok()?;
     if !upstream_head_ok(&state.proxy_http, &parsed, &cached.referer).await {

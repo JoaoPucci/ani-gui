@@ -1229,6 +1229,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stamp_watched_from_cache_skips_and_evicts_a_mismatched_show_id() {
+        // mark-watched must not rewrite Continue Watching to a sibling
+        // cour that a bare prefetch left under the title key. (Codex P2)
+        // Isolate history_path — the shared default is written by other
+        // tests, which would poison this negative assertion.
+        let mut state = state_with_proxy_origin();
+        let dir = std::env::temp_dir().join("ani-gui-test-mw-mismatch");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        state.history_path = dir.join("ani-hsts");
+        let mut args = external_args("Stone Ocean", "5");
+        args.show_id = Some("pwduJkjBLytqiWCvM".into()); // seed stores "abc"
+        seed_play_cache(&state, &args, "http://example.invalid/x.mp4", "");
+
+        crate::commands::play_cache::stamp_watched_from_cache(&state, &args).await;
+
+        let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
+        assert!(
+            body.is_empty(),
+            "a mismatched show_id must not be stamped; got {body:?}"
+        );
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+        );
+        assert!(
+            play_resolution_cache::get(&state.cache_pool, &key)
+                .unwrap()
+                .is_none(),
+            "the mismatched row must be evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn stamp_watched_from_cache_writes_history_for_a_matching_show_id() {
+        // The seeded row is show_id "abc"; a request naming it is honored.
+        let mut state = state_with_proxy_origin();
+        let dir = std::env::temp_dir().join("ani-gui-test-mw-match");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        state.history_path = dir.join("ani-hsts");
+        let mut args = external_args("Stone Ocean", "5");
+        args.show_id = Some("abc".into());
+        seed_play_cache(&state, &args, "http://example.invalid/x.mp4", "");
+
+        crate::commands::play_cache::stamp_watched_from_cache(&state, &args).await;
+
+        let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
+        assert!(
+            body.contains("abc"),
+            "a matching show_id must stamp history; got {body:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn try_launch_args_from_cache_evicts_and_returns_none_on_404() {
         // Stale upstream — HEAD 404. The cache row must be evicted so a
         // fresh ani-cli run will overwrite, AND we return None so the
