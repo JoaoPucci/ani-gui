@@ -209,6 +209,27 @@ fn pick_first_by_year(cands: &[Candidate], expected_year: Option<u32>) -> Option
     Some(first_undated.map_or(1, |i| i + 1))
 }
 
+/// 1-based index of the candidate whose allanime `_id` equals
+/// `show_id`, in the order [`scraper::search`](crate::scraper::search)
+/// returns them — which is the order ani-cli's `-S N` counts, so the
+/// index lines up with ani-cli's own search. `None` when `show_id` is
+/// empty or no candidate matches.
+///
+/// The resume path uses this to select the exact show recorded in the
+/// history row instead of guessing by title + ep-count — the only
+/// reliable way to disambiguate same-title franchise cours (Stone
+/// Ocean Part 1 vs Part 2).
+#[must_use]
+pub fn index_of_show_id(candidates: &[Candidate], show_id: &str) -> Option<usize> {
+    if show_id.is_empty() {
+        return None;
+    }
+    candidates
+        .iter()
+        .position(|c| c.id == show_id)
+        .map(|i| i + 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
