@@ -776,6 +776,60 @@ mod tests {
     }
 
     #[test]
+    fn pick_by_ep_count_v2_breaks_same_ep_count_cour_tie_by_year() {
+        // Stone Ocean repro (the detail-page-opens-wrong-cour bug):
+        // opening Part 1's page (Kitsu 44294 — 12 eps, 2021) searches
+        // allanime and gets all three cours back in allanime's order
+        // [Part 3, Part 2, Part 1]. Part 1 and Part 2 are both 12 eps,
+        // so they tie at available-distance 0; both clear the ±1 year
+        // gate (2021 / 2022); and neither name exactly matches Kitsu's
+        // title (allanime carries "Part 6" / "Part 2"). With no year
+        // tie-break the picker falls to allanime's order → Part 2.
+        // Kitsu's year (2021) exactly matches Part 1 (2021), not Part 2
+        // (2022): that exact-year signal must win the tie.
+        let cour = |id: &str, name: &str, eps: u32, year: u32| Candidate {
+            id: id.into(),
+            name: name.into(),
+            available_episodes: AvailableEpisodes { sub: eps, dub: eps },
+            aired_start: Some(AiredStart { year: Some(year) }),
+            show_type: Some("ONA".into()),
+            episode_count: Some(eps),
+            ..Default::default()
+        };
+        let cands = vec![
+            cour(
+                "3Lt",
+                "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3",
+                14,
+                2022,
+            ),
+            cour(
+                "D5ks",
+                "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2",
+                12,
+                2022,
+            ),
+            cour(
+                "pwdu",
+                "JoJo no Kimyou na Bouken Part 6: Stone Ocean",
+                12,
+                2021,
+            ),
+        ];
+        assert_eq!(
+            pick_by_ep_count_v2(
+                &cands,
+                12,
+                Some(2021),
+                "sub",
+                "JoJo no Kimyou na Bouken: Stone Ocean",
+            ),
+            Some(3),
+            "the 2021 cour (Part 1, index 3) must win the ep-count tie over the 2022 sibling",
+        );
+    }
+
+    #[test]
     fn pick_by_ep_count_v2_rejects_when_years_present_but_none_match() {
         // Closest sibling on ep-count would slip past the threshold
         // (45 eps vs expected 43 → distance 2 inside tolerance 4),
