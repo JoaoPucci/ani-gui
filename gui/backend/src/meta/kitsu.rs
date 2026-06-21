@@ -229,6 +229,28 @@ where
     }
 }
 
+/// allanime / ani-cli never index music videos, so a Kitsu `subtype ==
+/// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
+/// to playback. Drop these from every list surface so they never appear
+/// as a pickable card. Detail-by-id (`parse_anime_response`) is
+/// intentionally NOT filtered; a directly-opened music entry still loads
+/// and is shown as unavailable.
+fn is_music_subtype(subtype: Option<&str>) -> bool {
+    subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
+}
+
+/// Strip `subtype == "music"` entries from a list of refs. Applied both at
+/// parse time AND at the cache-serving layer — search, trending, and
+/// top-rated deserialize a cached `Vec<KitsuAnimeRef>` without re-parsing,
+/// so a list cached before this filter existed would still serve music
+/// unless sanitized on read. Self-healing: no cache version bump or manual
+/// eviction needed.
+pub fn drop_music(refs: Vec<KitsuAnimeRef>) -> Vec<KitsuAnimeRef> {
+    refs.into_iter()
+        .filter(|r| !is_music_subtype(r.subtype.as_deref()))
+        .collect()
+}
+
 fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
     KitsuAnimeRef {
         id: r.id,
@@ -267,7 +289,7 @@ pub fn parse_search_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
         serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
             detail: format!("kitsu search parse: {e}"),
         })?;
-    Ok(parsed.data.into_iter().map(into_ref).collect())
+    Ok(drop_music(parsed.data.into_iter().map(into_ref).collect()))
 }
 
 /// Parse `{ "data": {...} }` into a single ref. Used for `/anime/:id`.
@@ -333,7 +355,12 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         return Ok(None);
     };
     let anime = parsed.included.into_iter().find(|r| r.id == target_id);
-    Ok(anime.map(into_ref))
+    // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
+    // Watch Later rail): a music-subtype mapping resolves to None so it never
+    // reaches a list surface or the availability warmer.
+    Ok(anime
+        .map(into_ref)
+        .filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
 /// Pull the `myanimelist/anime` external id out of a Kitsu anime
@@ -718,6 +745,67 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_drops_music_subtype_entries() {
+        // ani-cli / allanime never indexes music videos (the YOASOBI
+        // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
+        // resolve to playback. It must not appear in ANY list surface —
+        // search, trending, and top-rated all route through here.
+        let body = br#"{"data":[
+            {"id":"1","type":"anime","attributes":{"canonicalTitle":"Real Show","subtype":"TV"}},
+            {"id":"2","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}
+        ]}"#;
+        let hits = parse_search_response(body).expect("parses");
+        assert_eq!(hits.len(), 1, "the music entry must be filtered out");
+        assert_eq!(hits[0].id, "1");
+        assert!(
+            !hits.iter().any(|h| h.subtype.as_deref() == Some("music")),
+            "no music-subtype entry may survive",
+        );
+    }
+
+    fn ref_with(id: &str, subtype: Option<&str>) -> KitsuAnimeRef {
+        KitsuAnimeRef {
+            id: id.into(),
+            canonical_title: id.into(),
+            titles: HashMap::new(),
+            slug: None,
+            synopsis: None,
+            start_date: None,
+            end_date: None,
+            episode_count: None,
+            average_rating: None,
+            subtype: subtype.map(|s| s.into()),
+            status: None,
+            age_rating: None,
+            popularity_rank: None,
+            poster_image: None,
+            cover_image: None,
+        }
+    }
+
+    #[test]
+    fn drop_music_removes_only_music_subtype_entries() {
+        // The serving layer (cache hits included) routes every Kitsu list
+        // through drop_music so a music video can't reach the UI even from
+        // a list that was cached BEFORE the filter existed — search /
+        // trending / top-rated all deserialize cached bodies without
+        // re-parsing, so parse-time filtering alone leaves stale caches
+        // poisoned. drop_music drops `music` (any case) and keeps the rest,
+        // including entries with no subtype.
+        let kept = drop_music(vec![
+            ref_with("1", Some("TV")),
+            ref_with("2", Some("music")),
+            ref_with("3", None),
+            ref_with("4", Some("Music")),
+            ref_with("5", Some("movie")),
+        ]);
+        assert_eq!(
+            kept.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["1", "3", "5"],
+        );
+    }
+
+    #[test]
     fn parse_search_surfaces_titles_map_with_localized_variants() {
         // Kitsu serves `attributes.titles: { en, en_jp, ja_jp[, en_us] }`
         // alongside `canonicalTitle`. The play flow needs the romanized
@@ -968,6 +1056,18 @@ mod tests {
         assert_eq!(anime.id, "12");
         assert_eq!(anime.canonical_title, "One Piece");
         assert_eq!(anime.status.as_deref(), Some("current"));
+    }
+
+    #[test]
+    fn parse_mappings_drops_music_subtype() {
+        // The MAL→Kitsu bridge (lookup_by_mal_id) feeds both the AniList
+        // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
+        // mapping to a Kitsu `subtype: music` item must not surface there —
+        // music can never resolve on allanime — so the mappings parser
+        // returns None for it (the single chokepoint for every bridge).
+        let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
+            "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;
+        assert!(parse_mappings_response(body).expect("parses").is_none());
     }
 
     #[test]

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { pickKitsuMatch, resolveHistoryEntry, resumeQueryString } from './resolve';
+import {
+	cachedBindingVerdict,
+	isMusicSubtype,
+	pickKitsuMatch,
+	resolveHistoryEntry,
+	resumeQueryString,
+	titlesPlausiblySameShow
+} from './resolve';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
@@ -92,6 +99,15 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.courSize).toBe(12);
 		expect(r.kitsuEpisode).toBe(4);
 		expect(r.uiPage).toBe(1);
+	});
+
+	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
+		// resolveHistoryEntry only recognized "Season N"; the "Nth Season" /
+		// "<word> Season" forms left cour=1, so the cour-slug guard never ran and
+		// a sibling cour could be trusted. Both numeric and spelled ordinals set
+		// the cour.
+		expect(resolveHistoryEntry(entry('Foo 2nd Season (12 episodes)', '3'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo Fourth Season (12 episodes)', '3'), null).cour).toBe(4);
 	});
 
 	it('does not treat mid-title "Part N" as a cour disambiguator', () => {
@@ -194,6 +210,20 @@ describe('pickKitsuMatch', () => {
 		];
 		// Slug-derived "jojo-stone-ocean-part-2" matches `mid` exactly.
 		expect(pickKitsuMatch(hits, r)?.id).toBe('mid');
+	});
+
+	it('picks the ordinal-season sibling by slug ("2nd-season") for a "Second Season" entry', () => {
+		// cour=2 parsed from "Second Season"; the picker must recognize the
+		// numeric-ordinal slug form, not just "season-2".
+		const r = resolveHistoryEntry(entry('Foo Second Season (12 episodes)', '4'), null);
+		const hits = [slugHit('s1', 'foo', 'Foo'), slugHit('s2', 'foo-2nd-season', 'Foo 2nd Season')];
+		expect(pickKitsuMatch(hits, r)?.id).toBe('s2');
+	});
+
+	it('picks the ordinal-season sibling by title ("2nd Season") when slugs do not carry the cour', () => {
+		const r = resolveHistoryEntry(entry('Foo 2nd Season (12 episodes)', '4'), null);
+		const hits = [titledHit('s1', 'Foo'), titledHit('s2', 'Foo 2nd Season')];
+		expect(pickKitsuMatch(hits, r)?.id).toBe('s2');
 	});
 
 	it('does not false-match the parent series number ("Part 6" in JoJo)', () => {
@@ -393,5 +423,306 @@ describe('resumeQueryString', () => {
 	it('returns empty string when neither page nor ep is meaningful', () => {
 		const r = resolveHistoryEntry(entry('Show (12 episodes)', '0'), null);
 		expect(resumeQueryString(r)).toBe('');
+	});
+});
+
+describe('isMusicSubtype', () => {
+	it('is true for "music" (case-insensitive) — never playable on allanime', () => {
+		expect(isMusicSubtype('music')).toBe(true);
+		expect(isMusicSubtype('Music')).toBe(true);
+	});
+
+	it('is false for every streamable subtype and for null', () => {
+		for (const s of ['TV', 'movie', 'OVA', 'ONA', 'special', null]) {
+			expect(isMusicSubtype(s)).toBe(false);
+		}
+	});
+});
+
+describe('titlesPlausiblySameShow', () => {
+	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
+		...stubKitsu('x'),
+		canonical_title,
+		titles
+	});
+
+	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
+		// hsts/allanime title vs the YOASOBI "Idol" music video Kitsu entry:
+		// they share only "Idol", which is 1 of 9 allanime tokens → reject.
+		expect(
+			titlesPlausiblySameShow(
+				'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen',
+				ref('Idol', { ja_jp: 'アイドル', en: 'Idol' })
+			)
+		).toBe(false);
+	});
+
+	it('accepts the legitimate typo case (allanime stub vs canonical)', () => {
+		// The reverse-map exists for exactly this: "Nato: Shippuuden" is
+		// allanime's typo for "Naruto: Shippuuden" — they share the
+		// distinctive "Shippuuden", so the binding stays trusted.
+		expect(titlesPlausiblySameShow('Nato: Shippuuden', ref('Naruto: Shippuuden'))).toBe(true);
+	});
+
+	it('accepts an exact title', () => {
+		expect(titlesPlausiblySameShow('Demon Slayer', ref('Demon Slayer'))).toBe(true);
+	});
+
+	it('accepts a match found via an alternate (romanized) title', () => {
+		expect(
+			titlesPlausiblySameShow(
+				'Shingeki no Kyojin',
+				ref('Attack on Titan', { ja_jp: '進撃の巨人', en_jp: 'Shingeki no Kyojin' })
+			)
+		).toBe(true);
+	});
+
+	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
+		// THE extreme case: allanime indexes One Piece as "1P". It shares
+		// no token with "One Piece", but a 1-short-token stub carries no
+		// signal to reject on — the binding (recorded from a real play /
+		// alias-walk) must stay trusted. Only INFORMATIVE allanime titles
+		// (≥2 tokens, or one token ≥5 chars) are judged.
+		expect(titlesPlausiblySameShow('1P', ref('One Piece'))).toBe(true);
+		expect(titlesPlausiblySameShow('1P (1161 episodes)', ref('One Piece'))).toBe(true);
+	});
+
+	it('does not reject when there is no title signal to judge on', () => {
+		expect(titlesPlausiblySameShow('', ref('Whatever'))).toBe(true);
+		expect(titlesPlausiblySameShow('Something', ref(''))).toBe(true);
+	});
+
+	it('rejects two unrelated shows sharing only generic cour tokens (Season N)', () => {
+		// "X Season 2" vs "Y Season 2": the only shared tokens are the structural
+		// "season" + the number, which are NOT identity evidence. Must reject.
+		expect(titlesPlausiblySameShow('Frieren Season 2', ref('Bocchi the Rock Season 2'))).toBe(
+			false
+		);
+		expect(titlesPlausiblySameShow('Some Anime Part 2', ref('Other Show Part 2'))).toBe(false);
+	});
+
+	it('still accepts the same base show across a cour suffix', () => {
+		// The distinctive base name matches; the cour suffix is ignored.
+		expect(titlesPlausiblySameShow('Frieren Season 2', ref('Frieren'))).toBe(true);
+	});
+
+	it('rejects unrelated shows sharing only an ordinal cour marker (2nd / Second Season)', () => {
+		// "2nd"/"second" are structural like "season"/"2"; resolveHistoryEntry
+		// doesn't even flag the "2nd Season" form as cour > 1, so the slug guard
+		// never runs — the overlap must reject these on its own (the distinctive
+		// base names carry the signal).
+		expect(titlesPlausiblySameShow('Frieren 2nd Season', ref('Bocchi the Rock 2nd Season'))).toBe(
+			false
+		);
+		expect(
+			titlesPlausiblySameShow('Frieren Second Season', ref('Bocchi the Rock Second Season'))
+		).toBe(false);
+	});
+
+	it('rejects unrelated shows sharing only a stop-word article (the)', () => {
+		// "The Reflection" vs "The SoulTaker" share only the article "the", which
+		// is not identity evidence; the guard must reject and self-heal.
+		expect(titlesPlausiblySameShow('The Reflection', ref('The SoulTaker'))).toBe(false);
+		expect(titlesPlausiblySameShow('The Reflection', ref('The Reflection'))).toBe(true);
+	});
+
+	it('judges a standalone numeric title (86) instead of stripping it to a stub', () => {
+		// The cour-number strip must be contextual to season/part/cour — a bare
+		// numeric title ("86") is distinctive identity, not a cour marker, so it
+		// must still participate in the guard.
+		expect(titlesPlausiblySameShow('86', ref('Bocchi the Rock'))).toBe(false);
+		expect(titlesPlausiblySameShow('86', ref('86'))).toBe(true);
+		// …while a real cour number adjacent to "Season" is still ignored:
+		expect(titlesPlausiblySameShow('86 Season 2', ref('86'))).toBe(true);
+	});
+});
+
+describe('cachedBindingVerdict', () => {
+	const ref = (over: Partial<KitsuAnimeRef>): KitsuAnimeRef => ({ ...stubKitsu('k'), ...over });
+
+	it('re-resolves an episode-count-incompatible binding', () => {
+		const p = resolveHistoryEntry(entry('Some Long Title Here (24 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Long Title Here', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
+	it('evicts a binding that is BOTH count-incompatible and provably wrong (music)', () => {
+		// A 12-ep allmanga show poisoned to a 1-ep music video: the count check
+		// must not short-circuit to 'reresolve' and skip the delete — a provably
+		// wrong row has to be EVICTED so enrichment can't re-read it. Title here is
+		// plausible, isolating the music-vs-count ordering.
+		const p = resolveHistoryEntry(entry('Idol Show (12 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Idol Show', subtype: 'music', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
+	it('evicts a music-subtype binding', () => {
+		const p = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Idol', subtype: 'music', episode_count: 1 }),
+				p,
+				true
+			)
+		).toBe('evict');
+	});
+
+	it('re-resolves (does not delete) a grossly-mismatched title binding', () => {
+		// Only music is deleted (evict). A fuzzy title mismatch is a guess, so it
+		// re-resolves without deleting — a real poison is overwritten by the
+		// corrected mapping on the next resolve; a valid binding the heuristic
+		// got wrong isn't destroyed.
+		const p = resolveHistoryEntry(entry('Some Very Specific Long Title (12 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Totally Unrelated Other Show', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
+	it('re-resolves a single-token romaji/typo binding instead of deleting it', () => {
+		// "Burichi" is allmanga's stub for BLEACH — zero literal overlap with the
+		// Kitsu title, but the cached row is correct. The old guard deleted it
+		// every load and depended on the network alias walk; now a fuzzy title
+		// miss only re-resolves (the title-match cache backstops it).
+		const p = resolveHistoryEntry(entry('Burichi (366 episodes)', '5'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Bleach', episode_count: 366 }), p, true)
+		).toBe('reresolve');
+	});
+
+	it('does not TRUST a movie poison that only overlaps on the format word', () => {
+		// "Gintama Movie 2" cached to an unrelated "Naruto Movie 2": same 1-ep
+		// count and a shared "movie"+"2" must not read as identity. The generic
+		// format suffix is excluded from the overlap, so gintama vs naruto fails
+		// the title check and the poison re-resolves rather than playing wrong.
+		const p = resolveHistoryEntry(entry('Gintama Movie 2 (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Naruto Movie 2', episode_count: 1 }), p, true)
+		).toBe('reresolve');
+	});
+
+	it('trusts a movie binding that matches on the real identity token', () => {
+		const p = resolveHistoryEntry(entry('Gintama Movie 2 (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Gintama Movie 2', episode_count: 1 }), p, true)
+		).toBe('trust');
+	});
+
+	it('trusts a compatible, plausible single-cour binding', () => {
+		const p = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Demon Slayer', episode_count: 26 }), p, true)
+		).toBe('trust');
+	});
+
+	it('trusts a multi-cour binding whose slug carries the cour suffix', () => {
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime Part 2', slug: 'some-anime-part-2', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
+	it('re-resolves a multi-cour binding whose slug lacks the cour suffix', () => {
+		// Cour-slug mismatch is fuzzy evidence too — re-resolve, don't delete.
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime', slug: 'some-anime', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
+	it('an absent slug on a multi-cour binding is trusted only when trustOnAbsentSlug', () => {
+		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
+		const r = ref({ canonical_title: 'Some Anime Part 2', slug: null, episode_count: 12 });
+		expect(cachedBindingVerdict(r, p, true)).toBe('trust'); // step 0: missing evidence
+		expect(cachedBindingVerdict(r, p, false)).toBe('reresolve'); // step 1: re-resolve
+	});
+
+	it('matches a spelled-ordinal-season slug ("second-season")', () => {
+		// Kitsu slugs sometimes spell the ordinal ("foo-second-season") instead
+		// of "season-2"/"2nd-season". parseCour reads "Second Season" as cour 2,
+		// so the slug guard must accept the spelled form too — otherwise a VALID
+		// cached binding is evicted and Continue Watching re-resolves every load.
+		const p = resolveHistoryEntry(entry('Some Anime Second Season (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: 'Some Anime Second Season',
+					slug: 'some-anime-second-season',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
+	it('matches an ordinal-season slug ("2nd-season") and re-resolves a sibling lacking it', () => {
+		// "Some Anime 2nd Season" parses to cour 2; the slug guard accepts the
+		// ordinal slug form (trust) and re-resolves the cour-1 sibling whose slug
+		// lacks it (fuzzy mismatch → re-resolve, not delete).
+		const p = resolveHistoryEntry(entry('Some Anime 2nd Season (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({ canonical_title: 'Some Anime', slug: 'some-anime', episode_count: 12 }),
+				p,
+				true
+			)
+		).toBe('reresolve');
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: 'Some Anime 2nd Season',
+					slug: 'some-anime-2nd-season',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+});
+
+describe('pickKitsuMatch — music subtype is never playable', () => {
+	const hit = (
+		id: string,
+		canonical_title: string,
+		subtype: string,
+		episode_count: number
+	): KitsuAnimeRef => ({ ...stubKitsu(id), canonical_title, subtype, episode_count });
+
+	it('returns null when the only hit is a music video (even if the count matches)', () => {
+		const r = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		expect(pickKitsuMatch([hit('mv', 'Idol', 'music', 1)], r)).toBeNull();
+	});
+
+	it('skips a count-compatible music hit and picks the streamable one', () => {
+		// Without the filter the music MV (subtype music, 1 ep) is
+		// candidates[0] and wins; it must be dropped so the real entry is
+		// chosen.
+		const r = resolveHistoryEntry(entry('Idol (1 episodes)', '1'), null);
+		const music = hit('mv', 'Idol', 'music', 1);
+		const movie = hit('film', 'Idol Movie', 'movie', 1);
+		expect(pickKitsuMatch([music, movie], r)?.id).toBe('film');
 	});
 });

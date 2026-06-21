@@ -21,7 +21,7 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
+use crate::meta::kitsu::{drop_music, KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
 
 // Schema version is encoded in the cache key prefix (`kitsu:v2:`).
 // Bump when KitsuAnimeRef gains a field consumers depend on — v2 was
@@ -50,7 +50,9 @@ pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnim
             // Catches the case where meta_cache outlives the image
             // cache (LRU evicted the bytes, response still warm).
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            // Sanitize music on read so caches written before the music
+            // filter existed don't keep serving MVs.
+            return Ok(drop_music(hits));
         }
         // Cached body deserialized as something else — treat as miss and
         // rebuild rather than hand the frontend bad data.
@@ -112,7 +114,7 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            return Ok(drop_music(hits));
         }
     }
 
@@ -135,6 +137,9 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
         bridged
     };
 
+    // Bridged refs come from lookup_by_mal_id (single-resource parse), not
+    // the list parser, so sanitize music here too.
+    let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
         warm_signed_image_urls(state, &body);
@@ -235,7 +240,7 @@ where
     if let Some(body) = meta_cache_get(&state.cache_pool, cache_key)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            return Ok(drop_music(hits));
         }
     }
     let hits = fetch(DISCOVERY_PAGE_LIMIT).await?;
@@ -518,6 +523,16 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     }
 }
 
+/// Whether a Kitsu `subtype` is a music video. These never exist on allanime
+/// (it indexes anime episodes, not song clips), so the enrichment alias-walk
+/// skips them — otherwise an alias like "Idol" could resolve to, and persist,
+/// the YOASOBI MV's id. Case-insensitive; an absent subtype is not music.
+fn is_music_subtype(subtype: Option<&str>) -> bool {
+    subtype
+        .map(|s| s.eq_ignore_ascii_case("music"))
+        .unwrap_or(false)
+}
+
 /// Bridge a history-recorded allmanga show_id to its Kitsu entry by
 /// walking allmanga's `Show` GraphQL aliases (`englishName`,
 /// `nativeName`, `altNames`) through Kitsu's text search. Returns the
@@ -547,17 +562,26 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
 pub async fn resolve_allmanga_show_id(
     state: &AppState,
     show_id: &str,
+    bypass_cache: bool,
 ) -> Result<Option<KitsuAnimeRef>> {
     // 1) Reverse-cache fast path. If we've resolved this show before
     //    (or a successful play stamped the mapping), the kitsu_id is
     //    one cached IPC away. anime_detail itself is cached too, so
     //    a warm lookup is two synchronous SQLite reads.
-    if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
-        if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
-            return Ok(Some(detail));
+    //
+    //    Skipped when `bypass_cache` — the resolver (Continue Watching)
+    //    only reaches enrichment after it has already read AND rejected
+    //    this reverse row (count/music/title guard). Re-reading it here
+    //    would hand back the very id it just rejected, so the caller asks
+    //    us to go straight to the alias walk instead.
+    if !bypass_cache {
+        if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
+            if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
+                return Ok(Some(detail));
+            }
+            // Stale id (Kitsu removed it, or the cached row is bad) —
+            // fall through and re-resolve from allmanga.
         }
-        // Stale id (Kitsu removed it, or the cached row is bad) —
-        // fall through and re-resolve from allmanga.
     }
 
     // 2) Hit allmanga's Show GraphQL to get the alias surface
@@ -587,11 +611,16 @@ pub async fn resolve_allmanga_show_id(
             Ok(h) => h,
             Err(_) => continue, // Single-term failure shouldn't break the walk.
         };
-        if let Some(first) = hits.into_iter().next() {
+        if let Some(first) = hits
+            .into_iter()
+            .find(|h| !is_music_subtype(h.subtype.as_deref()))
+        {
             // 4) Persist the mapping so subsequent calls short-circuit
             //    through step 1. Failure to write the cache is
             //    non-fatal — the resolution still succeeds for this
             //    request; the next call just walks aliases again.
+            //    Music-video hits are skipped above so a "music" alias
+            //    (the YOASOBI "Idol" MV) is never returned or persisted.
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
@@ -1137,7 +1166,7 @@ mod tests {
         let state = state_with_kitsu_at(&mock.uri());
         allmanga_kitsu_put(&state, "ReooPAxPMsHM4KPMY", "12").expect("seed cache");
 
-        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY")
+        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY", false)
             .await
             .expect("resolve ok");
         assert!(
@@ -1154,13 +1183,55 @@ mod tests {
         // is "fail soft" — Ok(None), not an error, so Continue
         // Watching can still render the bare allmanga title.
         let state = state_with_kitsu_at("http://127.0.0.1:1");
-        let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve").await;
+        let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve", false).await;
         // Either Ok(None) (no aliases, no Kitsu match) or Ok(Some(_))
         // is acceptable — we only assert the call doesn't panic and
         // doesn't surface a network error to the caller. Stub returns
         // Ok(None); the green-commit impl returns Ok(None) for this
         // synthetic id too.
         assert!(got.is_ok(), "resolver must not error: {got:?}");
+    }
+
+    #[tokio::test]
+    async fn resolve_allmanga_show_id_bypass_skips_the_reverse_cache() {
+        // The frontend reaches enrichment only after step 0 has already read
+        // and REJECTED the reverse row (e.g. a count-incompatible binding). With
+        // bypass_cache=true the resolver must NOT short-circuit on that same row,
+        // or the just-rejected id round-trips straight back. Cache is seeded and
+        // /anime/12 is mocked; bypass means neither is consulted — the alias-walk
+        // (Kitsu search unmocked) finds nothing and fails soft to Ok(None).
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime/12"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(DETAIL_FIXTURE.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+        allmanga_kitsu_put(&state, "ReooPAxPMsHM4KPMY", "12").expect("seed cache");
+
+        let got = resolve_allmanga_show_id(&state, "ReooPAxPMsHM4KPMY", true)
+            .await
+            .expect("resolve ok");
+        assert!(
+            got.is_none(),
+            "bypass must skip the reverse cache; got {got:?}"
+        );
+    }
+
+    #[test]
+    fn is_music_subtype_matches_case_insensitively() {
+        // The enrichment alias-walk must skip music-video hits (a YOASOBI
+        // "Idol" MV) so it never returns or persists one — music can't exist
+        // on allanime. Streamable subtypes and an absent subtype pass.
+        assert!(is_music_subtype(Some("music")));
+        assert!(is_music_subtype(Some("Music")));
+        assert!(!is_music_subtype(Some("TV")));
+        assert!(!is_music_subtype(Some("movie")));
+        assert!(!is_music_subtype(None));
     }
 
     // — Watched-at timestamps for Continue Watching ordering ——————————

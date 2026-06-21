@@ -1409,6 +1409,17 @@ describe('kitsuResolveAllmangaShowId', () => {
 		expect(got).toEqual(ref);
 	});
 
+	it('appends ?bypass_cache=true (a serde-parseable bool, not 1) when bypassing', async () => {
+		// The backend deserializes bypass_cache into a Rust bool; axum's query
+		// parser accepts "true"/"false" but rejects "1", which would 400 and
+		// silently null out the stub fallback (1P after cache clear).
+		const ref = { id: 'kid-1', canonical_title: 'One Piece' } as unknown as KitsuAnimeRef;
+		const fetchMock = mockFetchOnce(ref);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuResolveAllmangaShowId('1P', true);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/resolve-allmanga/1P?bypass_cache=true`);
+	});
+
 	it('returns null when no Kitsu match exists', async () => {
 		const fetchMock = mockFetchOnce(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;

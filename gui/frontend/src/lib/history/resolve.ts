@@ -99,6 +99,69 @@ export interface ResumeTarget {
  *  disambiguator. */
 const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s+(\d+)\s*$/i;
 
+/** Ordinal-season forms — "Foo 2nd Season", "Foo 4th Part" — where the index
+ *  precedes the cour word. */
+const COUR_ORDINAL_NUM_RE = /(?:^|[\s:])(\d+)(?:st|nd|rd|th)\s+(?:Part|Cour|Season)\s*$/i;
+
+/** Spelled-out ordinal-season forms — "Foo Second Season", "Foo Fourth Part". */
+const COUR_ORDINAL_WORD_RE =
+	/(?:^|[\s:])(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:Part|Cour|Season)\s*$/i;
+
+const ORDINAL_TO_NUMBER: Record<string, number> = {
+	first: 1,
+	second: 2,
+	third: 3,
+	fourth: 4,
+	fifth: 5,
+	sixth: 6,
+	seventh: 7,
+	eighth: 8,
+	ninth: 9,
+	tenth: 10
+};
+
+/** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
+ *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
+function parseCour(stripped: string): number {
+	const numeric = stripped.match(COUR_SUFFIX_RE);
+	if (numeric) return parseInt(numeric[1], 10);
+	const ordinalNum = stripped.match(COUR_ORDINAL_NUM_RE);
+	if (ordinalNum) return parseInt(ordinalNum[1], 10);
+	const ordinalWord = stripped.match(COUR_ORDINAL_WORD_RE);
+	if (ordinalWord) return ORDINAL_TO_NUMBER[ordinalWord[1].toLowerCase()] ?? 1;
+	return 1;
+}
+
+const NUMBER_TO_ORDINAL: Record<number, string> = Object.fromEntries(
+	Object.entries(ORDINAL_TO_NUMBER).map(([word, n]) => [n, word])
+);
+
+/** Slug-cour matcher tolerant of every Kitsu ordering: "…-season-2", the
+ *  numeric ordinal "…-2nd-season" / "…-2-season", and the spelled ordinal
+ *  "…-second-season". Used to confirm a cached anime's slug carries the cour
+ *  the history entry expects. The spelled form matters because Kitsu slugs
+ *  sometimes write it out — without it a valid binding gets evicted and
+ *  Continue Watching re-resolves on every load. */
+function courSlugRegex(cour: number): RegExp {
+	const alts = [`(?:part|cour|season)-${cour}`, `${cour}(?:st|nd|rd|th)?-(?:part|cour|season)`];
+	const word = NUMBER_TO_ORDINAL[cour];
+	if (word) alts.push(`${word}-(?:part|cour|season)`);
+	return new RegExp(`(?:^|-)(?:${alts.join('|')})(?:-|$)`, 'i');
+}
+
+/** Title-cour matcher across the forms Kitsu canonical titles use: "Season 2",
+ *  "2nd Season", and "Second Season" (plus Part/Cour). Mirrors
+ *  {@link courSlugRegex} for the live picker's title fallback. */
+function courTitleRegex(cour: number): RegExp {
+	const alts = [
+		`(?:part|cour|season)\\s+${cour}`,
+		`${cour}(?:st|nd|rd|th)\\s+(?:part|cour|season)`
+	];
+	const word = NUMBER_TO_ORDINAL[cour];
+	if (word) alts.push(`${word}\\s+(?:part|cour|season)`);
+	return new RegExp(`\\b(?:${alts.join('|')})\\b`, 'i');
+}
+
 /** Matches the "(N episodes)" parenthetical ani-cli appends. */
 const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*$/i;
 
@@ -114,8 +177,7 @@ export function resolveHistoryEntry(
 	const courSize = tailMatch ? parseInt(tailMatch[1], 10) : null;
 	const stripped = entry.title.replace(EPISODE_TAIL_RE, '').trim();
 
-	const courMatch = stripped.match(COUR_SUFFIX_RE);
-	const cour = courMatch ? parseInt(courMatch[1], 10) : 1;
+	const cour = parseCour(stripped);
 	// searchTitle keeps the cour suffix — see the comment on the
 	// interface field for why.
 	const searchTitle = stripped;
@@ -174,6 +236,192 @@ export function deriveSlug(s: string): string {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '');
+}
+
+/** Kitsu `subtype` for a music video / song clip. These never exist on
+ *  allanime (it indexes anime episodes, not MVs), so a music entry is never a
+ *  valid history/Continue match nor a playable target — it's filtered wherever
+ *  a match is chosen and treated as unavailable on the detail page. The YOASOBI
+ *  "Idol" MV (Kitsu `music`) is the canonical offender. Case-insensitive. */
+export function isMusicSubtype(subtype: string | null): boolean {
+	return (subtype ?? '').toLowerCase() === 'music';
+}
+
+/** Min weaker-direction token coverage for two titles to be treated as the
+ *  same show. Tuned to reject the Idol poison (one generic shared word) while
+ *  accepting typo stubs that share a distinctive token ("Nato"/"Naruto"
+ *  Shippuuden ≈ 0.5). */
+const TITLE_OVERLAP_MIN = 0.34;
+
+/** Structural cour words — always dropped; two unrelated shows can both be a
+ *  "Season 2", so the word carries no identity. */
+const COUR_WORDS = new Set(['season', 'seasons', 'part', 'parts', 'cour']);
+
+/** Spelled-out ordinals ("Second Season" ≡ "2nd Season"). Treated as a cour
+ *  index only when adjacent to a cour word (see below) — a bare "Second" that
+ *  isn't a cour marker stays. */
+const ORDINAL_WORDS = new Set([
+	'first',
+	'second',
+	'third',
+	'fourth',
+	'fifth',
+	'sixth',
+	'seventh',
+	'eighth',
+	'ninth',
+	'tenth'
+]);
+
+/** English articles — carry no identity, so two unrelated shows sharing only
+ *  "the" ("The Reflection" vs "The SoulTaker") must not count as a match. */
+const STOP_WORDS = new Set(['the', 'a', 'an']);
+
+/** Generic media-format words. Two unrelated movies/OVAs/specials both carry
+ *  "movie"/"ova"/"special" (plus a sequel number like "Movie 2"), so the word
+ *  is no identity — counting it as overlap lets "Gintama Movie 2" look like
+ *  "Naruto Movie 2". Stripped only when NOT the leading token, so a title whose
+ *  identity IS the word ("Special A") keeps it. */
+const MEDIA_FORMAT_WORDS = new Set([
+	'movie',
+	'movies',
+	'film',
+	'films',
+	'ova',
+	'ovas',
+	'oad',
+	'oads',
+	'ona',
+	'onas',
+	'special',
+	'specials'
+]);
+
+/** A cour INDEX: a bare number ("2"), a numeric ordinal ("2nd"/"21st"), or a
+ *  spelled ordinal. Stripped only when it sits beside a cour word, so a
+ *  distinctive numeric title like "86" or "Mob Psycho 100" survives. */
+function isCourIndexToken(t: string): boolean {
+	return /^\d+$/.test(t) || /^\d+(st|nd|rd|th)$/.test(t) || ORDINAL_WORDS.has(t);
+}
+
+function titleTokens(s: string): Set<string> {
+	const raw = s
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	// Drop cour words and the cour index immediately beside them ("Season 2",
+	// "2nd Season"), but keep standalone numbers that are the title's identity.
+	// Also drop a non-leading media-format word + its trailing sequel number
+	// ("… Movie 2", "… OVA") so two unrelated movies don't match on "movie"/"2".
+	const keep = raw.map(() => true);
+	for (let i = 0; i < raw.length; i++) {
+		if (COUR_WORDS.has(raw[i])) {
+			keep[i] = false;
+			if (i > 0 && isCourIndexToken(raw[i - 1])) keep[i - 1] = false;
+			if (i + 1 < raw.length && isCourIndexToken(raw[i + 1])) keep[i + 1] = false;
+		} else if (i > 0 && MEDIA_FORMAT_WORDS.has(raw[i])) {
+			keep[i] = false;
+			if (i + 1 < raw.length && /^\d+$/.test(raw[i + 1])) keep[i + 1] = false;
+		}
+	}
+	// Also drop articles always — they're not identity evidence.
+	return new Set(raw.filter((_, i) => keep[i] && !STOP_WORDS.has(raw[i])));
+}
+
+/** Whether the allanime/hsts title is specific enough that a near-zero overlap
+ *  with the Kitsu titles is real evidence of a mismatch. allanime indexes some
+ *  shows under terse stubs ("1P" for One Piece) that share no token with the
+ *  canonical title yet are correct — those carry no signal, so we never judge
+ *  them. Informative = ≥2 tokens, or a single token ≥5 chars. */
+function titleIsInformative(tokens: Set<string>): boolean {
+	if (tokens.size >= 2) return true;
+	if (tokens.size === 1) {
+		const t = [...tokens][0];
+		// A purely numeric title ("86") is distinctive identity despite being
+		// short — judge it. Short alphanumeric stubs ("1P") stay unjudged.
+		return t.length >= 5 || /^\d+$/.test(t);
+	}
+	return false;
+}
+
+/**
+ * A *tripwire* (not the verdict) for whether an allanime title and a Kitsu ref
+ * plausibly name the same show. Used only to reject a poisoned reverse-map /
+ * title-match binding (e.g. the Love Live movie's allanime id bound to the
+ * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
+ * choose the final match, so a false reject costs at most one extra resolution
+ * (the alias-walk backstops stubs).
+ *
+ * Compares the allanime title's tokens against every Kitsu title (canonical +
+ * localized variants + de-slugged slug), scoring the best alias by the WEAKER
+ * of the two coverage directions so a short title being a subset of a long one
+ * ("Idol" ⊂ "…School Idol…") doesn't pass. Returns true — don't reject — when
+ * the allanime title is an uninformative stub or no Kitsu title is comparable.
+ */
+export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
+	const a = titleTokens(allanimeTitle.replace(EPISODE_TAIL_RE, ''));
+	if (!titleIsInformative(a)) return true;
+	const candidates: string[] = [];
+	if (ref.canonical_title) candidates.push(ref.canonical_title);
+	if (ref.titles) candidates.push(...Object.values(ref.titles));
+	if (ref.slug) candidates.push(ref.slug.replace(/-/g, ' '));
+	let sawCandidate = false;
+	let best = 0;
+	for (const c of candidates) {
+		const k = titleTokens(c);
+		if (k.size === 0) continue;
+		sawCandidate = true;
+		let inter = 0;
+		for (const t of a) if (k.has(t)) inter++;
+		best = Math.max(best, Math.min(inter / a.size, inter / k.size));
+	}
+	if (!sawCandidate) return true;
+	return best >= TITLE_OVERLAP_MIN;
+}
+
+/** What to do with a cached Kitsu detail bound to a history entry. `trust` =
+ *  return it; `evict` = the binding is provably wrong (drop the cached row on
+ *  the reverse-map path); `reresolve` = inconclusive, fall through without
+ *  deleting. */
+export type CachedBindingVerdict = 'trust' | 'evict' | 'reresolve';
+
+/**
+ * Validate a cached allmanga→kitsu binding (step 0 reverse-map) or title-match
+ * (step 1) before trusting it. Shared so both paths apply the same guards in
+ * the same order: episode-count compatibility, then the music/title identity
+ * tripwire (see {@link titlesPlausiblySameShow}), then the cour-slug suffix.
+ *
+ * `trustOnAbsentSlug` differs by caller: the reverse-map (step 0) treats a
+ * missing slug as missing evidence and keeps the row (`trust`); the title-match
+ * cache (step 1) re-resolves it. `evict` vs `reresolve` only matters to step 0,
+ * which deletes the poisoned reverse-map row on `evict`; step 1 falls through on
+ * either (there's no title-match delete — step 5 re-Puts a corrected mapping).
+ */
+export function cachedBindingVerdict(
+	cached: KitsuAnimeRef,
+	preliminary: ResumeTarget,
+	trustOnAbsentSlug: boolean
+): CachedBindingVerdict {
+	// Music is the one PROVABLY-wrong case — an allmanga show is never a music
+	// video (the original Idol bug) — so it's the only verdict that DELETES the
+	// poisoned reverse-map row. Every other signal (title overlap, episode
+	// count, cour slug) is a fuzzy guess: a wrong guess there must NOT delete a
+	// possibly-valid binding, so it falls through to 'reresolve' (re-search,
+	// keep the row) instead. A real poison is overwritten by the corrected
+	// mapping on the next resolve; a valid binding survives a transient miss
+	// (no more deleting "Burichi"→BLEACH and depending on the network alias
+	// walk). titlesPlausiblySameShow still gates TRUST so a poison that shares
+	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.
+	if (isMusicSubtype(cached.subtype)) return 'evict';
+	if (!titlesPlausiblySameShow(preliminary.searchTitle, cached)) return 'reresolve';
+	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
+	if (preliminary.cour > 1) {
+		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
+		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
+	}
+	return 'trust';
 }
 
 /** Threshold above which courSize is treated as a "definitively
@@ -239,25 +487,19 @@ export function pickKitsuMatch(
 ): KitsuAnimeRef | null {
 	if (hits.length === 0) return null;
 
-	// Filter out hits whose episode_count is incompatible with the
-	// user's history record. Burichi (366 episodes) → "Burichi -"
-	// Kitsu search returns Doraemon Movie 14 (1 episode) first,
-	// fuzzy-matched on "Buriki"; the count filter rejects that
-	// before the slug/cour heuristics ever see it. If every hit
-	// fails the filter, fall through to the unfiltered list so the
-	// picker stays as permissive as before for incompatible-count
-	// cases.
-	const compatibleHits = hits.filter((h) =>
-		isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
+	// Drop hits that can't be the user's show:
+	//  - music videos (subtype `music`) never exist on allanime, so the
+	//    YOASOBI "Idol" MV must never win over a real entry; and
+	//  - hits whose episode_count is incompatible with the history record
+	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
+	// When nothing survives, surface null so resolveKitsuMatch falls through
+	// to the alias-enrichment path (retries with allmanga englishName / altNames)
+	// instead of the picker landing on a wrong match.
+	const candidates = hits.filter(
+		(h) =>
+			!isMusicSubtype(h.subtype) && isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
 	);
-	const candidates = compatibleHits.length > 0 ? compatibleHits : [];
-	if (preliminary.courSize != null && compatibleHits.length === 0) {
-		// Reject the entire result set when courSize is known but
-		// every hit is incompatible — the existing fallback would
-		// pick a wrong match (e.g. Doraemon for Burichi). Surfacing
-		// null lets resolveKitsuMatch fall through to the alias
-		// enrichment path, which retries with allmanga's
-		// englishName / nativeName / altNames.
+	if (candidates.length === 0) {
 		return null;
 	}
 
@@ -269,11 +511,11 @@ export function pickKitsuMatch(
 
 	if (preliminary.cour <= 1) return candidates[0];
 
-	const slugRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
+	const slugRe = courSlugRegex(preliminary.cour);
 	const courInSlug = candidates.find((h) => slugRe.test(h.slug ?? ''));
 	if (courInSlug) return courInSlug;
 
-	const titleRe = new RegExp(`\\b(?:part|cour|season)\\s+${preliminary.cour}\\b`, 'i');
+	const titleRe = courTitleRegex(preliminary.cour);
 	const courInTitle = candidates.find((h) => titleRe.test(h.canonical_title ?? ''));
 	if (courInTitle) return courInTitle;
 

@@ -317,6 +317,15 @@ struct TitleMatchQuery {
     cour: u32,
 }
 
+#[derive(Deserialize)]
+struct ResolveAllmangaQuery {
+    /// Skip the reverse-cache fast path. The Continue Watching resolver sets
+    /// this once it has already read + rejected the reverse row, so enrichment
+    /// goes straight to the alias walk instead of returning the rejected id.
+    #[serde(default)]
+    bypass_cache: bool,
+}
+
 async fn get_title_match(
     State(state): State<Arc<AppState>>,
     Query(q): Query<TitleMatchQuery>,
@@ -676,9 +685,10 @@ async fn delete_allmanga_kitsu_map(
 async fn get_kitsu_resolve_allmanga(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
+    Query(q): Query<ResolveAllmangaQuery>,
 ) -> Result<Json<Option<crate::meta::kitsu::KitsuAnimeRef>>, AniError> {
     Ok(Json(
-        kitsu_inner::resolve_allmanga_show_id(&state, &show_id).await?,
+        kitsu_inner::resolve_allmanga_show_id(&state, &show_id, q.bypass_cache).await?,
     ))
 }
 

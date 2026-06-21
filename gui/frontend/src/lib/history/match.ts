@@ -21,7 +21,7 @@ import {
 	kitsuTitleMatchPut,
 	type KitsuAnimeRef
 } from '$lib/api';
-import { deriveSlug, isEpisodeCountCompatible, pickKitsuMatch, type ResumeTarget } from './resolve';
+import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// 0) Reverse-mapping lookup: allmanga show_id → kitsu_id. Recorded
@@ -42,34 +42,20 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 			if (kitsuId) {
 				try {
 					const cached = await kitsuAnimeDetail(kitsuId);
-					if (isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-						// Cour-slug guard mirrors step 1's check below. The
-						// reverse cache used to record cross-cour mappings
-						// (Stone Ocean Part 2's allmanga show_id paired with
-						// Part 1's Kitsu id) because the play picker can land
-						// on a sibling cour when ep-count + year tie. Episode-
-						// count compatibility passes for siblings that share a
-						// cour size (both 12 for Stone Ocean Parts 1/2), so
-						// the slug suffix is the only signal that catches the
-						// mismatch from this side. Evict the poisoned row on
-						// positive slug-mismatch evidence; an absent slug is
-						// missing evidence and the cached row stays.
-						if (preliminary.cour > 1 && cached.slug) {
-							const courRe = new RegExp(
-								`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`,
-								'i'
-							);
-							if (courRe.test(cached.slug)) {
-								return cached;
-							}
-							void allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-						} else {
-							return cached;
-						}
+					const verdict = cachedBindingVerdict(cached, preliminary, true);
+					if (verdict === 'trust') return cached;
+					if (verdict === 'evict') {
+						// Provably wrong reverse-map row — a music entry, a gross title
+						// mismatch (the Love Live movie's show_id poisoned to the YOASOBI
+						// "Idol" MV), or a cross-cour slug mismatch. Self-heal: drop it so
+						// it re-resolves on every install without a manual cache wipe.
+						// Awaited (not fire-and-forget): the step-4 enrichment endpoint
+						// reads this same reverse cache first, so the DELETE must commit
+						// before we fall through or a typo title whose search misses gets
+						// the just-rejected id straight back. Tolerate a failing delete.
+						await allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
 					}
-					// Count mismatch (or cour > 1 slug mismatch) → cached
-					// mapping is wrong; fall through and let later paths
-					// re-resolve.
+					// 'evict' / 'reresolve' both fall through to the title-search path.
 				} catch {
 					// Stale id — fall through to the title-search path.
 				}
@@ -98,17 +84,11 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 		if (cachedId) {
 			try {
 				const cached = await kitsuAnimeDetail(cachedId);
-				if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) {
-					// Poisoned cache row — fall through and re-resolve.
-				} else if (preliminary.cour > 1) {
-					const courRe = new RegExp(`(?:^|-)(?:part|cour|season)-${preliminary.cour}(?:-|$)`, 'i');
-					if (cached.slug && courRe.test(cached.slug)) {
-						return cached;
-					}
-					// Slug mismatch → cached mapping is wrong; fall through.
-				} else {
+				if (cachedBindingVerdict(cached, preliminary, false) === 'trust') {
 					return cached;
 				}
+				// Incompatible / implausible / cross-cour → fall through and re-resolve
+				// (step 5 re-Puts a corrected title-match row; no title-match delete).
 			} catch {
 				// Stale id (Kitsu removed the entry) — fall through to a
 				// live search and re-cache.
@@ -167,7 +147,10 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {
 		try {
-			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId);
+			// bypassCache: step 0 already read + rejected this show's reverse-cache
+			// row (count/music/title guard), so the backend must NOT short-circuit
+			// on it again — go straight to the alias walk.
+			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId, true);
 		} catch {
 			// Enrichment endpoint failure is non-fatal — fall through
 			// to the null return below.
