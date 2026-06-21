@@ -60,6 +60,16 @@ describe('canReuseSession', () => {
 		expect(canReuseSession(session, livePlayback, 'kid-42', 5, 'worst', 'sub')).toBeNull();
 	});
 
+	it('treats an unknown (undefined) requested quality/mode as matching', () => {
+		// On a fresh mount or after settingsGet() fails, the caller can't
+		// know the desired quality/mode. Vetoing reuse then would tear
+		// down a live PiP session resolved at a non-default setting (e.g.
+		// dub/720) and restart it at the default. Unknown must NOT veto.
+		expect(canReuseSession(session, livePlayback, 'kid-42', 5, undefined, undefined)).toBe(session);
+		expect(canReuseSession(session, livePlayback, 'kid-42', 5, undefined, 'sub')).toBe(session);
+		expect(canReuseSession(session, livePlayback, 'kid-42', 5, 'best', undefined)).toBe(session);
+	});
+
 	it('returns null when the requested mode differs from the loaded session', () => {
 		// Same reasoning for a sub/dub switch — the loaded audio track is
 		// wrong, so don't reuse.
