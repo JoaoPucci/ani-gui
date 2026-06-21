@@ -138,17 +138,20 @@ export function canReuseSession(
 	state: VideoStateSnapshot | null,
 	kitsuId: string,
 	episode: number,
-	quality: string,
-	mode: string
+	quality?: string,
+	mode?: string
 ): VideoSession | null {
 	if (!session) return null;
 	if (session.kitsu_id !== kitsuId) return null;
 	if (session.episode !== episode) return null;
 	// A quality / sub-dub change must re-resolve — the loaded stream is
 	// the old quality/track, so reusing it would silently ignore the
-	// user's switch.
-	if (session.quality !== quality) return null;
-	if (session.mode !== mode) return null;
+	// user's switch. An UNDEFINED requested value means the caller doesn't
+	// know the setting yet (config still loading / settingsGet failed);
+	// treat that as a match so we don't tear down a live PiP session
+	// resolved at a non-default quality/mode and restart it at default.
+	if (quality !== undefined && session.quality !== quality) return null;
+	if (mode !== undefined && session.mode !== mode) return null;
 	if (!state) return null;
 	if (!state.hasSource) return null;
 	if (state.ended) return null;
@@ -163,8 +166,8 @@ export function canReuseSession(
 export function reuseSessionIfMatching(
 	kitsuId: string,
 	episode: number,
-	quality: string,
-	mode: string
+	quality?: string,
+	mode?: string
 ): VideoSession | null {
 	const state: VideoStateSnapshot | null = videoEl
 		? {

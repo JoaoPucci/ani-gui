@@ -903,7 +903,11 @@
 		// re-click on the episode the user is watching in PiP would tear
 		// down and restart playback at zero. A quality/mode change fails
 		// the match so the play re-resolves at the new setting.
-		const cached = reuseSessionIfMatching(id, ep, quality, mode);
+		// Pass the resolved quality/mode only when settings are loaded; when
+		// config is null we can't know the desired setting, so leave them
+		// undefined and let reuse match on (id, episode) — don't tear down a
+		// live PiP session resolved at a non-default setting. (Codex P2)
+		const cached = reuseSessionIfMatching(id, ep, config ? quality : undefined, config ? mode : undefined);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
