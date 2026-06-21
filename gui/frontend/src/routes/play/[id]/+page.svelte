@@ -129,6 +129,14 @@
 	const mediaKind = $derived<MediaKind>(
 		page.url.searchParams.get('kind') === 'mp4' ? 'mp4' : 'hls'
 	);
+	// The quality + mode this session was resolved at, carried in the URL
+	// by whoever navigated here. Recorded onto the session pointer so the
+	// reuse shortcut compares the TRUE resolved setting — read from the
+	// URL (changes only on navigation), never from mutable `config`, so a
+	// settings change can't retro-stamp a live session or re-run the
+	// media effect and replay paused video. (Codex P2)
+	const resolvedQuality = $derived(page.url.searchParams.get('q') ?? '');
+	const resolvedMode = $derived(page.url.searchParams.get('md') ?? '');
 	// Tracks whether the page has already burned its one-shot auto-
 	// recovery for the current session. Reset in switchToEpisode (a
 	// fresh session means a fresh shot). See $lib/play/stale-stream for
@@ -1165,7 +1173,12 @@
 				session_id: sessionId,
 				media_url: mediaUrl,
 				media_kind: mediaKind,
-				subtitle_url: subtitleUrl
+				subtitle_url: subtitleUrl,
+				// Record what this session was resolved at (from the URL,
+				// not current settings) so the reuse shortcut re-resolves
+				// after a quality / sub-dub change.
+				quality: resolvedQuality,
+				mode: resolvedMode
 			});
 			// User came back to a session that was paused on navigate-
 			// away (auto-PiP off path). Their click *was* a play
@@ -1260,7 +1273,12 @@
 			session_id: sessionId,
 			media_url: mediaUrl,
 			media_kind: mediaKind,
-			subtitle_url: subtitleUrl
+			subtitle_url: subtitleUrl,
+			// Record what this session was resolved at (from the URL, not
+			// current settings) so the reuse shortcut re-resolves after a
+			// quality / sub-dub change.
+			quality: resolvedQuality,
+			mode: resolvedMode
 		});
 
 		return () => {
@@ -1584,7 +1602,7 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
+			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp, quality, mode), {
 				replaceState: true
 			});
 			/* eslint-enable svelte/no-navigation-without-resolve */

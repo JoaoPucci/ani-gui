@@ -908,13 +908,25 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
 		// Persistent-PiP short-circuit: if the singleton video is
-		// already loaded for this exact (show, ep), bypass the
-		// ani-cli respawn + new session creation and navigate
-		// straight to the existing /play URL. Without this, a
-		// re-click on the episode the user is watching in PiP
-		// would tear down and restart playback at zero.
-		const cached = reuseSessionIfMatching(id, ep);
+		// already loaded for this exact (show, ep) AT THE SAME quality +
+		// mode, bypass the ani-cli respawn + new session creation and
+		// navigate straight to the existing /play URL. Without this, a
+		// re-click on the episode the user is watching in PiP would tear
+		// down and restart playback at zero. A quality/mode change fails
+		// the match so the play re-resolves at the new setting.
+		// Pass the resolved quality/mode only when settings are loaded; when
+		// config is null we can't know the desired setting, so leave them
+		// undefined and let reuse match on (id, episode) — don't tear down a
+		// live PiP session resolved at a non-default setting. (Codex P2)
+		const cached = reuseSessionIfMatching(
+			id,
+			ep,
+			config ? quality : undefined,
+			config ? mode : undefined
+		);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
@@ -922,13 +934,15 @@
 				`kind=${cached.media_kind}`
 			];
 			if (cached.subtitle_url) parts.push('sub=1');
+			// Carry the session's resolved quality/mode so /play records
+			// the true setting (and a later switch re-resolves).
+			if (cached.quality) parts.push(`q=${encodeURIComponent(cached.quality)}`);
+			if (cached.mode) parts.push(`md=${encodeURIComponent(cached.mode)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 			return;
 		}
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
 		// LoadingOverlay binds to actionBusy; it stays up until goto
 		// fires (which unmounts this page) or the catch branch resets
 		// busy and surfaces an error toast.
@@ -999,7 +1013,7 @@
 				detail?.status === 'finished'
 			).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
+			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep, quality, mode));
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			actionBusy = false;

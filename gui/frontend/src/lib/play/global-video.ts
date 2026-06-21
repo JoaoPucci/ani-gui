@@ -39,6 +39,12 @@ export interface VideoSession {
 	media_url: string;
 	media_kind: MediaKind;
 	subtitle_url: string | null;
+	/** The quality + mode this session was resolved at. The reuse
+	 *  shortcut compares these against the requested ones so a quality
+	 *  or sub/dub change re-resolves instead of resuming the stale
+	 *  stream. */
+	quality: string;
+	mode: string;
 }
 let currentSession: VideoSession | null = null;
 
@@ -131,11 +137,21 @@ export function canReuseSession(
 	session: VideoSession | null,
 	state: VideoStateSnapshot | null,
 	kitsuId: string,
-	episode: number
+	episode: number,
+	quality?: string,
+	mode?: string
 ): VideoSession | null {
 	if (!session) return null;
 	if (session.kitsu_id !== kitsuId) return null;
 	if (session.episode !== episode) return null;
+	// A quality / sub-dub change must re-resolve — the loaded stream is
+	// the old quality/track, so reusing it would silently ignore the
+	// user's switch. An UNDEFINED requested value means the caller doesn't
+	// know the setting yet (config still loading / settingsGet failed);
+	// treat that as a match so we don't tear down a live PiP session
+	// resolved at a non-default quality/mode and restart it at default.
+	if (quality !== undefined && session.quality !== quality) return null;
+	if (mode !== undefined && session.mode !== mode) return null;
 	if (!state) return null;
 	if (!state.hasSource) return null;
 	if (state.ended) return null;
@@ -147,14 +163,19 @@ export function canReuseSession(
  *  redundant ani-cli spawn when the user clicks an episode they're
  *  already watching in PiP — navigating with the cached session keeps
  *  playback at its current timestamp instead of restarting from zero. */
-export function reuseSessionIfMatching(kitsuId: string, episode: number): VideoSession | null {
+export function reuseSessionIfMatching(
+	kitsuId: string,
+	episode: number,
+	quality?: string,
+	mode?: string
+): VideoSession | null {
 	const state: VideoStateSnapshot | null = videoEl
 		? {
 				hasSource: !!(videoEl.src || videoEl.currentSrc),
 				ended: videoEl.ended
 			}
 		: null;
-	return canReuseSession(currentSession, state, kitsuId, episode);
+	return canReuseSession(currentSession, state, kitsuId, episode, quality, mode);
 }
 
 /** Replace the subtitle track on the singleton. Removes any
