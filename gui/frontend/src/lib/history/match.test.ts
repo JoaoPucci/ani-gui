@@ -308,17 +308,18 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaMap).not.toHaveBeenCalled();
 	});
 
-	it('cour > 1 reverse-map hit with slug mismatch evicts the bad row + falls through', async () => {
+	it('cour > 1 reverse-map hit with slug mismatch re-resolves (no delete) + falls through', async () => {
 		// The production poisoning case: Stone Ocean Part 2's allmanga
 		// show_id (D5ksnsKtYAzzFXeSp) was mapped to Stone Ocean Part 1's
 		// Kitsu id (44294) by a play through Part 1's detail page where
 		// the backend's picker landed on the Part 2 sibling. Step 0's
-		// existing ep-count check accepts (both parts are 12 eps);
-		// without a slug guard step 0 returns Part 1 and the Continue
-		// Watching card displays / navigates to the wrong show.
-		// Guard: when cour > 1 and the cached anime's slug doesn't
-		// carry the matching -part-N suffix, evict the bad mapping
-		// and fall through to the live slug-fetch path.
+		// existing ep-count check accepts (both parts are 12 eps).
+		// Guard: when cour > 1 and the cached anime's slug doesn't carry
+		// the matching -part-N suffix, the binding is INCONCLUSIVE — fall
+		// through to the live slug-fetch path WITHOUT deleting the row
+		// (only a music subtype is deleted). The correct mapping is
+		// re-PUT by the resolution, healing the row without risking a
+		// valid binding the slug heuristic merely guessed wrong.
 		const preliminary = resolveHistoryEntry(
 			{
 				id: 'D5ksnsKtYAzzFXeSp',
@@ -341,7 +342,7 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('46010');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('D5ksnsKtYAzzFXeSp');
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 		expect(mockedSlug).toHaveBeenCalled();
 	});
 
@@ -370,33 +371,24 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSlug).not.toHaveBeenCalled();
 	});
 
-	it('cour > 1 slug mismatch tolerates a failing eviction call (fire-and-forget)', async () => {
-		// The eviction call is fire-and-forget — the rest of step 1+ must
-		// still complete cleanly even if the cache-delete IPC rejects
-		// (transient backend hiccup, offline, etc.).
-		const preliminary = resolveHistoryEntry(
-			{
-				id: 'D5ksnsKtYAzzFXeSp',
-				ep_no: '4',
-				title: 'JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)'
-			},
-			null
-		);
-		mockedAllmangaMap.mockResolvedValue('44294');
+	it('music-binding eviction tolerates a failing delete call', async () => {
+		// Music is the one binding we delete, and that delete must not break
+		// the resolve if the cache-delete IPC rejects (transient backend
+		// hiccup, offline, etc.) — the resolver still falls through and heals.
+		const preliminary = resolveHistoryEntry(entry('Some Show (12 episodes)', '4'), null);
+		mockedAllmangaMap.mockResolvedValue('music-id');
 		mockedDetail.mockResolvedValueOnce({
-			...stubKitsu('44294', 'Stone Ocean', 12),
-			slug: 'jojo-no-kimyou-na-bouken-stone-ocean'
+			...stubKitsu('music-id', 'Some Show', 1),
+			subtype: 'music'
 		});
 		mockedAllmangaDelete.mockRejectedValue(new Error('cache backend down'));
-		mockedSlug.mockResolvedValue({
-			...stubKitsu('46010', 'JoJo no Kimyou na Bouken: Stone Ocean Part 2', 12),
-			slug: 'jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2'
-		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('real', 'Some Show', 12)]);
 
 		const got = await resolveKitsuMatch(preliminary);
 
-		expect(got?.id).toBe('46010');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('D5ksnsKtYAzzFXeSp');
+		expect(got?.id).toBe('real');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('allmanga-id');
 	});
 
 	it('cour > 1 reverse-map hit with matching slug keeps the cache + skips re-resolve', async () => {
@@ -533,9 +525,11 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it('evicts a reverse-map binding whose title grossly mismatches the entry', async () => {
+	it('re-resolves (does not delete) a reverse-map binding whose title grossly mismatches', async () => {
 		// Non-music poison: an informative hsts title bound to an unrelated Kitsu
-		// entry. The title tripwire alone evicts + re-resolves.
+		// entry. The title tripwire re-resolves WITHOUT deleting — the corrected
+		// mapping is re-PUT by the resolution, so the row heals without risking a
+		// valid binding the heuristic merely guessed wrong.
 		const preliminary = resolveHistoryEntry(
 			{ id: 'show-x', ep_no: '5', title: 'Some Very Specific Long Title (12 episodes)' },
 			null
@@ -548,7 +542,7 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('right');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('show-x');
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
 	it('keeps a reverse-map binding whose allmanga title is a plausible typo', async () => {
@@ -587,15 +581,18 @@ describe('resolveKitsuMatch', () => {
 	it('awaits the reverse-map eviction before reaching allmanga enrichment', async () => {
 		// Race guard: the backend enrichment endpoint (resolve_allmanga_show_id)
 		// reads the reverse cache first, so the eviction DELETE must complete
-		// before enrichment runs — otherwise a typo title whose search misses
-		// gets the same poisoned id back. Informative title ("Nato: Shippuuden")
-		// bound to an unrelated Kitsu entry → evict; search misses → enrichment.
+		// before enrichment runs — otherwise the poisoned id comes straight back.
+		// Music is the only binding we delete, so it drives this race: a music
+		// reverse-map hit → evict; search misses → enrichment.
 		const preliminary = resolveHistoryEntry(
 			{ id: 'vDTSJHSpYnrkZnAvG', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
 			null
 		);
 		mockedAllmangaMap.mockResolvedValue('wrong-kitsu');
-		mockedDetail.mockResolvedValue(stubKitsu('wrong-kitsu', 'Mysterious Girlfriend X', 500));
+		mockedDetail.mockResolvedValue({
+			...stubKitsu('wrong-kitsu', 'Some Music Video', 1),
+			subtype: 'music'
+		});
 		mockedGetMatch.mockResolvedValue(null);
 		mockedSearch.mockResolvedValue([]); // title-search misses → reach enrichment
 
