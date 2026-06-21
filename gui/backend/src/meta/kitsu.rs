@@ -718,6 +718,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_drops_music_subtype_entries() {
+        // ani-cli / allanime never indexes music videos (the YOASOBI
+        // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
+        // resolve to playback. It must not appear in ANY list surface —
+        // search, trending, and top-rated all route through here.
+        let body = br#"{"data":[
+            {"id":"1","type":"anime","attributes":{"canonicalTitle":"Real Show","subtype":"TV"}},
+            {"id":"2","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}
+        ]}"#;
+        let hits = parse_search_response(body).expect("parses");
+        assert_eq!(hits.len(), 1, "the music entry must be filtered out");
+        assert_eq!(hits[0].id, "1");
+        assert!(
+            !hits.iter().any(|h| h.subtype.as_deref() == Some("music")),
+            "no music-subtype entry may survive",
+        );
+    }
+
+    #[test]
     fn parse_search_surfaces_titles_map_with_localized_variants() {
         // Kitsu serves `attributes.titles: { en, en_jp, ja_jp[, en_us] }`
         // alongside `canonicalTitle`. The play flow needs the romanized
