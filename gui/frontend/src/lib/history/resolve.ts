@@ -143,10 +143,7 @@ const NUMBER_TO_ORDINAL: Record<number, string> = Object.fromEntries(
  *  sometimes write it out — without it a valid binding gets evicted and
  *  Continue Watching re-resolves on every load. */
 function courSlugRegex(cour: number): RegExp {
-	const alts = [
-		`(?:part|cour|season)-${cour}`,
-		`${cour}(?:st|nd|rd|th)?-(?:part|cour|season)`
-	];
+	const alts = [`(?:part|cour|season)-${cour}`, `${cour}(?:st|nd|rd|th)?-(?:part|cour|season)`];
 	const word = NUMBER_TO_ORDINAL[cour];
 	if (word) alts.push(`${word}-(?:part|cour|season)`);
 	return new RegExp(`(?:^|-)(?:${alts.join('|')})(?:-|$)`, 'i');
@@ -280,6 +277,26 @@ const ORDINAL_WORDS = new Set([
  *  "the" ("The Reflection" vs "The SoulTaker") must not count as a match. */
 const STOP_WORDS = new Set(['the', 'a', 'an']);
 
+/** Generic media-format words. Two unrelated movies/OVAs/specials both carry
+ *  "movie"/"ova"/"special" (plus a sequel number like "Movie 2"), so the word
+ *  is no identity — counting it as overlap lets "Gintama Movie 2" look like
+ *  "Naruto Movie 2". Stripped only when NOT the leading token, so a title whose
+ *  identity IS the word ("Special A") keeps it. */
+const MEDIA_FORMAT_WORDS = new Set([
+	'movie',
+	'movies',
+	'film',
+	'films',
+	'ova',
+	'ovas',
+	'oad',
+	'oads',
+	'ona',
+	'onas',
+	'special',
+	'specials'
+]);
+
 /** A cour INDEX: a bare number ("2"), a numeric ordinal ("2nd"/"21st"), or a
  *  spelled ordinal. Stripped only when it sits beside a cour word, so a
  *  distinctive numeric title like "86" or "Mob Psycho 100" survives. */
@@ -296,12 +313,18 @@ function titleTokens(s: string): Set<string> {
 		.filter(Boolean);
 	// Drop cour words and the cour index immediately beside them ("Season 2",
 	// "2nd Season"), but keep standalone numbers that are the title's identity.
+	// Also drop a non-leading media-format word + its trailing sequel number
+	// ("… Movie 2", "… OVA") so two unrelated movies don't match on "movie"/"2".
 	const keep = raw.map(() => true);
 	for (let i = 0; i < raw.length; i++) {
-		if (!COUR_WORDS.has(raw[i])) continue;
-		keep[i] = false;
-		if (i > 0 && isCourIndexToken(raw[i - 1])) keep[i - 1] = false;
-		if (i + 1 < raw.length && isCourIndexToken(raw[i + 1])) keep[i + 1] = false;
+		if (COUR_WORDS.has(raw[i])) {
+			keep[i] = false;
+			if (i > 0 && isCourIndexToken(raw[i - 1])) keep[i - 1] = false;
+			if (i + 1 < raw.length && isCourIndexToken(raw[i + 1])) keep[i + 1] = false;
+		} else if (i > 0 && MEDIA_FORMAT_WORDS.has(raw[i])) {
+			keep[i] = false;
+			if (i + 1 < raw.length && /^\d+$/.test(raw[i + 1])) keep[i + 1] = false;
+		}
 	}
 	// Also drop articles always — they're not identity evidence.
 	return new Set(raw.filter((_, i) => keep[i] && !STOP_WORDS.has(raw[i])));
@@ -381,17 +404,22 @@ export function cachedBindingVerdict(
 	preliminary: ResumeTarget,
 	trustOnAbsentSlug: boolean
 ): CachedBindingVerdict {
-	// Provable-wrongness (music subtype or gross title mismatch) is checked FIRST,
-	// before episode-count: a row that is both count-incompatible AND wrong must
-	// still be EVICTED (deleted), not skipped via the count fallback below — else
-	// the poisoned reverse row survives for enrichment to re-read.
-	if (isMusicSubtype(cached.subtype) || !titlesPlausiblySameShow(preliminary.searchTitle, cached)) {
-		return 'evict';
-	}
+	// Music is the one PROVABLY-wrong case — an allmanga show is never a music
+	// video (the original Idol bug) — so it's the only verdict that DELETES the
+	// poisoned reverse-map row. Every other signal (title overlap, episode
+	// count, cour slug) is a fuzzy guess: a wrong guess there must NOT delete a
+	// possibly-valid binding, so it falls through to 'reresolve' (re-search,
+	// keep the row) instead. A real poison is overwritten by the corrected
+	// mapping on the next resolve; a valid binding survives a transient miss
+	// (no more deleting "Burichi"→BLEACH and depending on the network alias
+	// walk). titlesPlausiblySameShow still gates TRUST so a poison that shares
+	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.
+	if (isMusicSubtype(cached.subtype)) return 'evict';
+	if (!titlesPlausiblySameShow(preliminary.searchTitle, cached)) return 'reresolve';
 	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
-		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'evict';
+		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
 	}
 	return 'trust';
 }
