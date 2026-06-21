@@ -231,13 +231,24 @@ where
 
 /// allanime / ani-cli never index music videos, so a Kitsu `subtype ==
 /// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
-/// to playback. Drop these from every list surface — search, trending,
-/// and top-rated all flow through [`parse_search_response`] — so they
-/// never appear as a pickable card. Detail-by-id (`parse_anime_response`)
-/// is intentionally NOT filtered; a directly-opened music entry still
-/// loads and is shown as unavailable.
+/// to playback. Drop these from every list surface so they never appear
+/// as a pickable card. Detail-by-id (`parse_anime_response`) is
+/// intentionally NOT filtered; a directly-opened music entry still loads
+/// and is shown as unavailable.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
+}
+
+/// Strip `subtype == "music"` entries from a list of refs. Applied both at
+/// parse time AND at the cache-serving layer — search, trending, and
+/// top-rated deserialize a cached `Vec<KitsuAnimeRef>` without re-parsing,
+/// so a list cached before this filter existed would still serve music
+/// unless sanitized on read. Self-healing: no cache version bump or manual
+/// eviction needed.
+pub fn drop_music(refs: Vec<KitsuAnimeRef>) -> Vec<KitsuAnimeRef> {
+    refs.into_iter()
+        .filter(|r| !is_music_subtype(r.subtype.as_deref()))
+        .collect()
 }
 
 fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
@@ -278,12 +289,7 @@ pub fn parse_search_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
         serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
             detail: format!("kitsu search parse: {e}"),
         })?;
-    Ok(parsed
-        .data
-        .into_iter()
-        .map(into_ref)
-        .filter(|r| !is_music_subtype(r.subtype.as_deref()))
-        .collect())
+    Ok(drop_music(parsed.data.into_iter().map(into_ref).collect()))
 }
 
 /// Parse `{ "data": {...} }` into a single ref. Used for `/anime/:id`.

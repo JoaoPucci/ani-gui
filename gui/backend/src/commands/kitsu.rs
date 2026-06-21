@@ -21,7 +21,7 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
+use crate::meta::kitsu::{drop_music, KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
 
 // Schema version is encoded in the cache key prefix (`kitsu:v2:`).
 // Bump when KitsuAnimeRef gains a field consumers depend on — v2 was
@@ -50,7 +50,9 @@ pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnim
             // Catches the case where meta_cache outlives the image
             // cache (LRU evicted the bytes, response still warm).
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            // Sanitize music on read so caches written before the music
+            // filter existed don't keep serving MVs.
+            return Ok(drop_music(hits));
         }
         // Cached body deserialized as something else — treat as miss and
         // rebuild rather than hand the frontend bad data.
@@ -112,7 +114,7 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            return Ok(drop_music(hits));
         }
     }
 
@@ -135,6 +137,9 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
         bridged
     };
 
+    // Bridged refs come from lookup_by_mal_id (single-resource parse), not
+    // the list parser, so sanitize music here too.
+    let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
         warm_signed_image_urls(state, &body);
@@ -235,7 +240,7 @@ where
     if let Some(body) = meta_cache_get(&state.cache_pool, cache_key)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
-            return Ok(hits);
+            return Ok(drop_music(hits));
         }
     }
     let hits = fetch(DISCOVERY_PAGE_LIMIT).await?;
