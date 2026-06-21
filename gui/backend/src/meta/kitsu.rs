@@ -355,7 +355,12 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         return Ok(None);
     };
     let anime = parsed.included.into_iter().find(|r| r.id == target_id);
-    Ok(anime.map(into_ref))
+    // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
+    // Watch Later rail): a music-subtype mapping resolves to None so it never
+    // reaches a list surface or the availability warmer.
+    Ok(anime
+        .map(into_ref)
+        .filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
 /// Pull the `myanimelist/anime` external id out of a Kitsu anime
