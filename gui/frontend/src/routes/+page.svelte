@@ -559,6 +559,10 @@
 				`kind=${cached.media_kind}`
 			];
 			if (cached.subtitle_url) parts.push('sub=1');
+			// Carry the session's resolved quality/mode so /play records
+			// the true setting (and a later switch re-resolves).
+			if (cached.quality) parts.push(`q=${encodeURIComponent(cached.quality)}`);
+			if (cached.mode) parts.push(`md=${encodeURIComponent(cached.mode)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -605,7 +609,9 @@
 			// #3387467149), and only for a finished series (#3387184082).
 			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
+			void goto(
+				resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep, quality, mode)
+			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			resumeBusy = null;
