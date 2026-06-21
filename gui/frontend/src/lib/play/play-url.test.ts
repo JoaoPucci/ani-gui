@@ -79,4 +79,22 @@ describe('buildPlayQuery', () => {
 		const q = buildPlayQuery(baseSession(), 1);
 		expect(q.startsWith('?')).toBe(true);
 	});
+
+	it('carries the resolved quality + mode so the player records the true stream setting', () => {
+		// The session-reuse shortcut compares the loaded session's
+		// quality/mode against the requested one. /play must learn what
+		// the stream was actually resolved at from the URL — not infer it
+		// from mutable current settings — so a later setting change can't
+		// retro-stamp a live session with the wrong value.
+		const q = buildPlayQuery(baseSession({ session_id: 's' }), 3, 'worst', 'dub');
+		const p = new URLSearchParams(q.replace(/^\?/, ''));
+		expect(p.get('q')).toBe('worst');
+		expect(p.get('md')).toBe('dub');
+	});
+
+	it('omits q/md when not provided', () => {
+		const q = buildPlayQuery(baseSession(), 1);
+		expect(q).not.toContain('q=');
+		expect(q).not.toContain('md=');
+	});
 });
