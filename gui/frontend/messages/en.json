@@ -585,5 +585,10 @@
 	"update_dialog_latest_label": "Latest",
 	"update_dialog_close_label": "Close",
 	"update_dialog_open_releases_label": "Open releases page",
-	"update_dialog_open_releases_aria_label": "Open the GitHub releases page in your browser"
+	"update_dialog_open_releases_aria_label": "Open the GitHub releases page in your browser",
+	"window_minimize": "Minimize",
+	"window_maximize": "Maximize",
+	"window_restore": "Restore",
+	"window_close": "Close",
+	"window_controls_group": "Window controls"
 }

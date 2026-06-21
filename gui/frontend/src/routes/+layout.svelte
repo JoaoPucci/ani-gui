@@ -34,6 +34,7 @@
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import AccountChip from '$lib/components/AccountChip.svelte';
+	import WindowControls from '$lib/components/WindowControls.svelte';
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
@@ -436,6 +437,25 @@
 		dropdownOpen = false;
 	}
 
+	// Frameless titlebar: double-clicking empty chrome toggles maximize,
+	// matching the OS titlebar people expect. Chromium auto-handles this on
+	// Windows/macOS but not Linux, so we wire it explicitly. An action (not
+	// an `ondblclick` attribute) keeps it off a non-interactive element
+	// without tripping the a11y lint. No-ops outside Electron.
+	function titlebarMaximize(node: HTMLElement) {
+		const handler = (e: MouseEvent) => {
+			if (
+				(e.target as HTMLElement | null)?.closest(
+					'button, a, input, select, textarea, [role="search"]'
+				)
+			)
+				return;
+			window.aniGui?.windowControls?.toggleMaximize();
+		};
+		node.addEventListener('dblclick', handler);
+		return { destroy: () => node.removeEventListener('dblclick', handler) };
+	}
+
 	function onTopbarSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		const items = liveResults ?? [];
@@ -584,7 +604,7 @@
 	</aside>
 
 	<div class="main-area">
-		<header class="topbar">
+		<header class="topbar" use:titlebarMaximize>
 			{#if canGoBack}
 				<Breadcrumb segments={$breadcrumb} />
 			{/if}
@@ -681,6 +701,7 @@
 			<UpdateBadge />
 			<DownloadDock />
 			<AccountChip />
+			<WindowControls />
 		</header>
 		<main class="content">
 			{@render children()}
@@ -1176,6 +1197,16 @@
 		backdrop-filter: blur(16px) saturate(1.3);
 		-webkit-backdrop-filter: blur(16px) saturate(1.3);
 		border-block-end: 1px solid color-mix(in oklab, var(--ink-200) 80%, transparent);
+		/* The topbar doubles as the window's drag handle now that the
+		   shell is frameless. Interactive descendants opt back out below
+		   (the `:global` reaches into child components like AccountChip and
+		   WindowControls whose markup is scoped elsewhere). */
+		-webkit-app-region: drag;
+		app-region: drag;
+	}
+	.topbar :global(:is(button, a, input, select, textarea, [role='search'])) {
+		-webkit-app-region: no-drag;
+		app-region: no-drag;
 	}
 	@media (max-inline-size: 720px) {
 		/* Narrow shell: .main-area drops its inline gutter, so the

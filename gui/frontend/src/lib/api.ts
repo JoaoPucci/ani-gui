@@ -73,6 +73,19 @@ declare global {
 			/** Account integration surface — present only in Electron
 			 *  builds. Shape mirrors gui/electron/preload.js. */
 			account?: import('./account/types').AniGuiAccountBridge;
+			/** Custom titlebar window controls — present only in the
+			 *  frameless Electron shell (absent in browser-only dev, where
+			 *  the WindowControls component renders nothing). Shape mirrors
+			 *  gui/electron/preload.js. */
+			windowControls?: {
+				minimize: () => void;
+				toggleMaximize: () => void;
+				close: () => void;
+				isMaximized: () => boolean;
+				/** Subscribe to WM-driven maximize/restore; returns an
+				 *  unsubscribe fn. */
+				onMaximizeChange: (cb: (isMaximized: boolean) => void) => () => void;
+			};
 		};
 	}
 }
