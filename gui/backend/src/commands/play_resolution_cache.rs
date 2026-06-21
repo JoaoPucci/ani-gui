@@ -68,7 +68,13 @@ use crate::proxy::MediaKind;
 ///   stay served on cache hit even though the new picker would now
 ///   resolve to a different show (or to NoResults). Bumping evicts
 ///   them so the next play re-resolves through the disambiguator.
-const SCHEMA: &str = "v5";
+/// - v6: picker gained a year-closeness tie-break so same-episode-count
+///   sibling cours (Stone Ocean Part 1 & Part 2, both 12 eps) resolve
+///   by Kitsu's per-cour year instead of allmanga's result order. A v5
+///   row warmed by the old order-dependent pick (e.g. Part 1's key
+///   pointing at Part 2's stream) would keep serving the wrong cour on
+///   a HEAD-passing hit; bumping evicts those so the new tie-break runs.
+const SCHEMA: &str = "v6";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -248,7 +254,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v5:"), "got {k}");
+        assert!(k.starts_with("play:v6:"), "got {k}");
     }
 
     #[test]
