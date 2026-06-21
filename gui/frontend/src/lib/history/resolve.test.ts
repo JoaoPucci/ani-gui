@@ -577,7 +577,11 @@ describe('cachedBindingVerdict', () => {
 		).toBe('evict');
 	});
 
-	it('evicts a grossly-mismatched title binding', () => {
+	it('re-resolves (does not delete) a grossly-mismatched title binding', () => {
+		// Only music is deleted (evict). A fuzzy title mismatch is a guess, so it
+		// re-resolves without deleting — a real poison is overwritten by the
+		// corrected mapping on the next resolve; a valid binding the heuristic
+		// got wrong isn't destroyed.
 		const p = resolveHistoryEntry(entry('Some Very Specific Long Title (12 episodes)', '1'), null);
 		expect(
 			cachedBindingVerdict(
@@ -585,7 +589,36 @@ describe('cachedBindingVerdict', () => {
 				p,
 				true
 			)
-		).toBe('evict');
+		).toBe('reresolve');
+	});
+
+	it('re-resolves a single-token romaji/typo binding instead of deleting it', () => {
+		// "Burichi" is allmanga's stub for BLEACH — zero literal overlap with the
+		// Kitsu title, but the cached row is correct. The old guard deleted it
+		// every load and depended on the network alias walk; now a fuzzy title
+		// miss only re-resolves (the title-match cache backstops it).
+		const p = resolveHistoryEntry(entry('Burichi (366 episodes)', '5'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Bleach', episode_count: 366 }), p, true)
+		).toBe('reresolve');
+	});
+
+	it('does not TRUST a movie poison that only overlaps on the format word', () => {
+		// "Gintama Movie 2" cached to an unrelated "Naruto Movie 2": same 1-ep
+		// count and a shared "movie"+"2" must not read as identity. The generic
+		// format suffix is excluded from the overlap, so gintama vs naruto fails
+		// the title check and the poison re-resolves rather than playing wrong.
+		const p = resolveHistoryEntry(entry('Gintama Movie 2 (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Naruto Movie 2', episode_count: 1 }), p, true)
+		).toBe('reresolve');
+	});
+
+	it('trusts a movie binding that matches on the real identity token', () => {
+		const p = resolveHistoryEntry(entry('Gintama Movie 2 (1 episodes)', '1'), null);
+		expect(
+			cachedBindingVerdict(ref({ canonical_title: 'Gintama Movie 2', episode_count: 1 }), p, true)
+		).toBe('trust');
 	});
 
 	it('trusts a compatible, plausible single-cour binding', () => {
@@ -606,7 +639,8 @@ describe('cachedBindingVerdict', () => {
 		).toBe('trust');
 	});
 
-	it('evicts a multi-cour binding whose slug lacks the cour suffix', () => {
+	it('re-resolves a multi-cour binding whose slug lacks the cour suffix', () => {
+		// Cour-slug mismatch is fuzzy evidence too — re-resolve, don't delete.
 		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
 		expect(
 			cachedBindingVerdict(
@@ -614,7 +648,7 @@ describe('cachedBindingVerdict', () => {
 				p,
 				true
 			)
-		).toBe('evict');
+		).toBe('reresolve');
 	});
 
 	it('an absent slug on a multi-cour binding is trusted only when trustOnAbsentSlug', () => {
@@ -643,9 +677,10 @@ describe('cachedBindingVerdict', () => {
 		).toBe('trust');
 	});
 
-	it('matches an ordinal-season slug ("2nd-season") and evicts a sibling lacking it', () => {
-		// "Some Anime 2nd Season" parses to cour 2; the slug guard must accept the
-		// ordinal slug form and evict the cour-1 sibling whose slug lacks it.
+	it('matches an ordinal-season slug ("2nd-season") and re-resolves a sibling lacking it', () => {
+		// "Some Anime 2nd Season" parses to cour 2; the slug guard accepts the
+		// ordinal slug form (trust) and re-resolves the cour-1 sibling whose slug
+		// lacks it (fuzzy mismatch → re-resolve, not delete).
 		const p = resolveHistoryEntry(entry('Some Anime 2nd Season (12 episodes)', '3'), null);
 		expect(
 			cachedBindingVerdict(
@@ -653,7 +688,7 @@ describe('cachedBindingVerdict', () => {
 				p,
 				true
 			)
-		).toBe('evict');
+		).toBe('reresolve');
 		expect(
 			cachedBindingVerdict(
 				ref({
