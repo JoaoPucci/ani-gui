@@ -624,6 +624,25 @@ describe('cachedBindingVerdict', () => {
 		expect(cachedBindingVerdict(r, p, false)).toBe('reresolve'); // step 1: re-resolve
 	});
 
+	it('matches a spelled-ordinal-season slug ("second-season")', () => {
+		// Kitsu slugs sometimes spell the ordinal ("foo-second-season") instead
+		// of "season-2"/"2nd-season". parseCour reads "Second Season" as cour 2,
+		// so the slug guard must accept the spelled form too — otherwise a VALID
+		// cached binding is evicted and Continue Watching re-resolves every load.
+		const p = resolveHistoryEntry(entry('Some Anime Second Season (12 episodes)', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: 'Some Anime Second Season',
+					slug: 'some-anime-second-season',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
 	it('matches an ordinal-season slug ("2nd-season") and evicts a sibling lacking it', () => {
 		// "Some Anime 2nd Season" parses to cour 2; the slug guard must accept the
 		// ordinal slug form and evict the cour-1 sibling whose slug lacks it.
