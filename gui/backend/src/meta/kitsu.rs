@@ -229,6 +229,17 @@ where
     }
 }
 
+/// allanime / ani-cli never index music videos, so a Kitsu `subtype ==
+/// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
+/// to playback. Drop these from every list surface — search, trending,
+/// and top-rated all flow through [`parse_search_response`] — so they
+/// never appear as a pickable card. Detail-by-id (`parse_anime_response`)
+/// is intentionally NOT filtered; a directly-opened music entry still
+/// loads and is shown as unavailable.
+fn is_music_subtype(subtype: Option<&str>) -> bool {
+    subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
+}
+
 fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
     KitsuAnimeRef {
         id: r.id,
@@ -267,7 +278,12 @@ pub fn parse_search_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
         serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
             detail: format!("kitsu search parse: {e}"),
         })?;
-    Ok(parsed.data.into_iter().map(into_ref).collect())
+    Ok(parsed
+        .data
+        .into_iter()
+        .map(into_ref)
+        .filter(|r| !is_music_subtype(r.subtype.as_deref()))
+        .collect())
 }
 
 /// Parse `{ "data": {...} }` into a single ref. Used for `/anime/:id`.
