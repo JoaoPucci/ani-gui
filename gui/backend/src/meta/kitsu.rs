@@ -752,6 +752,48 @@ mod tests {
         );
     }
 
+    fn ref_with(id: &str, subtype: Option<&str>) -> KitsuAnimeRef {
+        KitsuAnimeRef {
+            id: id.into(),
+            canonical_title: id.into(),
+            titles: HashMap::new(),
+            slug: None,
+            synopsis: None,
+            start_date: None,
+            end_date: None,
+            episode_count: None,
+            average_rating: None,
+            subtype: subtype.map(|s| s.into()),
+            status: None,
+            age_rating: None,
+            popularity_rank: None,
+            poster_image: None,
+            cover_image: None,
+        }
+    }
+
+    #[test]
+    fn drop_music_removes_only_music_subtype_entries() {
+        // The serving layer (cache hits included) routes every Kitsu list
+        // through drop_music so a music video can't reach the UI even from
+        // a list that was cached BEFORE the filter existed — search /
+        // trending / top-rated all deserialize cached bodies without
+        // re-parsing, so parse-time filtering alone leaves stale caches
+        // poisoned. drop_music drops `music` (any case) and keeps the rest,
+        // including entries with no subtype.
+        let kept = drop_music(vec![
+            ref_with("1", Some("TV")),
+            ref_with("2", Some("music")),
+            ref_with("3", None),
+            ref_with("4", Some("Music")),
+            ref_with("5", Some("movie")),
+        ]);
+        assert_eq!(
+            kept.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["1", "3", "5"],
+        );
+    }
+
     #[test]
     fn parse_search_surfaces_titles_map_with_localized_variants() {
         // Kitsu serves `attributes.titles: { en, en_jp, ja_jp[, en_us] }`
