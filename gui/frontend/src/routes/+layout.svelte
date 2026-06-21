@@ -247,6 +247,10 @@
 					`kind=${sess.media_kind}`
 				];
 				if (sess.subtitle_url) parts.push('sub=1');
+				// Carry the session's resolved quality/mode so the player
+				// records the true setting after a PiP re-dock.
+				if (sess.quality) parts.push(`q=${encodeURIComponent(sess.quality)}`);
+				if (sess.mode) parts.push(`md=${encodeURIComponent(sess.mode)}`);
 				const target = resolve('/play/[id]', { id: sess.kitsu_id }) + `?${parts.join('&')}`;
 				/* eslint-disable svelte/no-navigation-without-resolve */
 				void goto(target);

@@ -542,13 +542,25 @@
 		if (resumeBusy) return;
 		const title = match.canonical_title;
 		if (!title) return;
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
 		// Persistent-PiP short-circuit: if the singleton is still
-		// loaded for this exact (show, ep), skip the ani-cli
-		// respawn and navigate using the cached session — keeps
-		// playback at its current timestamp instead of starting
-		// over when the user clicks back to a Continue Watching
-		// card they're already watching in PiP.
-		const cached = reuseSessionIfMatching(match.id, ep);
+		// loaded for this exact (show, ep) AT THE SAME quality + mode,
+		// skip the ani-cli respawn and navigate using the cached session
+		// — keeps playback at its current timestamp instead of starting
+		// over when the user clicks back to a Continue Watching card
+		// they're already watching in PiP. A quality/mode change fails
+		// the match so the play re-resolves at the new setting.
+		// Pass the resolved quality/mode only when settings are loaded; when
+		// config is null we can't know the desired setting, so leave them
+		// undefined and let reuse match on (id, episode) — don't tear down a
+		// live PiP session resolved at a non-default setting. (Codex P2)
+		const cached = reuseSessionIfMatching(
+			match.id,
+			ep,
+			config ? quality : undefined,
+			config ? mode : undefined
+		);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
@@ -556,13 +568,15 @@
 				`kind=${cached.media_kind}`
 			];
 			if (cached.subtitle_url) parts.push('sub=1');
+			// Carry the session's resolved quality/mode so /play records
+			// the true setting (and a later switch re-resolves).
+			if (cached.quality) parts.push(`q=${encodeURIComponent(cached.quality)}`);
+			if (cached.mode) parts.push(`md=${encodeURIComponent(cached.mode)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: match.id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 			return;
 		}
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
 		resumeBusy = match.id;
 		resumeProgress = null;
 		try {
@@ -604,7 +618,9 @@
 			// #3387467149), and only for a finished series (#3387184082).
 			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep));
+			void goto(
+				resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep, quality, mode)
+			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			resumeBusy = null;
