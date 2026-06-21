@@ -132,19 +132,25 @@ function parseCour(stripped: string): number {
 	return 1;
 }
 
-/** Slug-cour matcher tolerant of both Kitsu orderings: "…-season-2" and the
- *  ordinal form "…-2nd-season" / "…-2-season". Used to confirm a cached anime's
- *  slug carries the cour the history entry expects. */
-function courSlugRegex(cour: number): RegExp {
-	return new RegExp(
-		`(?:^|-)(?:(?:part|cour|season)-${cour}|${cour}(?:st|nd|rd|th)?-(?:part|cour|season))(?:-|$)`,
-		'i'
-	);
-}
-
 const NUMBER_TO_ORDINAL: Record<number, string> = Object.fromEntries(
 	Object.entries(ORDINAL_TO_NUMBER).map(([word, n]) => [n, word])
 );
+
+/** Slug-cour matcher tolerant of every Kitsu ordering: "…-season-2", the
+ *  numeric ordinal "…-2nd-season" / "…-2-season", and the spelled ordinal
+ *  "…-second-season". Used to confirm a cached anime's slug carries the cour
+ *  the history entry expects. The spelled form matters because Kitsu slugs
+ *  sometimes write it out — without it a valid binding gets evicted and
+ *  Continue Watching re-resolves on every load. */
+function courSlugRegex(cour: number): RegExp {
+	const alts = [
+		`(?:part|cour|season)-${cour}`,
+		`${cour}(?:st|nd|rd|th)?-(?:part|cour|season)`
+	];
+	const word = NUMBER_TO_ORDINAL[cour];
+	if (word) alts.push(`${word}-(?:part|cour|season)`);
+	return new RegExp(`(?:^|-)(?:${alts.join('|')})(?:-|$)`, 'i');
+}
 
 /** Title-cour matcher across the forms Kitsu canonical titles use: "Season 2",
  *  "2nd Season", and "Second Season" (plus Part/Cour). Mirrors
