@@ -542,13 +542,16 @@
 		if (resumeBusy) return;
 		const title = match.canonical_title;
 		if (!title) return;
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
 		// Persistent-PiP short-circuit: if the singleton is still
-		// loaded for this exact (show, ep), skip the ani-cli
-		// respawn and navigate using the cached session — keeps
-		// playback at its current timestamp instead of starting
-		// over when the user clicks back to a Continue Watching
-		// card they're already watching in PiP.
-		const cached = reuseSessionIfMatching(match.id, ep);
+		// loaded for this exact (show, ep) AT THE SAME quality + mode,
+		// skip the ani-cli respawn and navigate using the cached session
+		// — keeps playback at its current timestamp instead of starting
+		// over when the user clicks back to a Continue Watching card
+		// they're already watching in PiP. A quality/mode change fails
+		// the match so the play re-resolves at the new setting.
+		const cached = reuseSessionIfMatching(match.id, ep, quality, mode);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
@@ -561,8 +564,6 @@
 			/* eslint-enable svelte/no-navigation-without-resolve */
 			return;
 		}
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
 		resumeBusy = match.id;
 		resumeProgress = null;
 		try {

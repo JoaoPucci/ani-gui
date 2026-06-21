@@ -894,13 +894,16 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const quality = config?.quality ?? 'best';
 		// Persistent-PiP short-circuit: if the singleton video is
-		// already loaded for this exact (show, ep), bypass the
-		// ani-cli respawn + new session creation and navigate
-		// straight to the existing /play URL. Without this, a
-		// re-click on the episode the user is watching in PiP
-		// would tear down and restart playback at zero.
-		const cached = reuseSessionIfMatching(id, ep);
+		// already loaded for this exact (show, ep) AT THE SAME quality +
+		// mode, bypass the ani-cli respawn + new session creation and
+		// navigate straight to the existing /play URL. Without this, a
+		// re-click on the episode the user is watching in PiP would tear
+		// down and restart playback at zero. A quality/mode change fails
+		// the match so the play re-resolves at the new setting.
+		const cached = reuseSessionIfMatching(id, ep, quality, mode);
 		if (cached) {
 			const parts = [
 				`session=${encodeURIComponent(cached.session_id)}`,
@@ -913,8 +916,6 @@
 			/* eslint-enable svelte/no-navigation-without-resolve */
 			return;
 		}
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
 		// LoadingOverlay binds to actionBusy; it stays up until goto
 		// fires (which unmounts this page) or the catch branch resets
 		// busy and surfaces an error toast.

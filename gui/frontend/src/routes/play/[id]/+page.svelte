@@ -1165,7 +1165,11 @@
 				session_id: sessionId,
 				media_url: mediaUrl,
 				media_kind: mediaKind,
-				subtitle_url: subtitleUrl
+				subtitle_url: subtitleUrl,
+				// Record what this session was resolved at so the reuse
+				// shortcut re-resolves after a quality / sub-dub change.
+				quality: config?.quality ?? 'best',
+				mode: config?.mode === 'dub' ? 'dub' : 'sub'
 			});
 			// User came back to a session that was paused on navigate-
 			// away (auto-PiP off path). Their click *was* a play
@@ -1260,7 +1264,11 @@
 			session_id: sessionId,
 			media_url: mediaUrl,
 			media_kind: mediaKind,
-			subtitle_url: subtitleUrl
+			subtitle_url: subtitleUrl,
+			// Record what this session was resolved at so the reuse
+			// shortcut re-resolves after a quality / sub-dub change.
+			quality: config?.quality ?? 'best',
+			mode: config?.mode === 'dub' ? 'dub' : 'sub'
 		});
 
 		return () => {
