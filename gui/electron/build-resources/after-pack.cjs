@@ -49,4 +49,8 @@ exec "$HERE/${exe}.bin" --enable-wayland-ime "$@"
 `;
 
   fs.writeFileSync(real, wrapper, { mode: 0o755 });
+  // `mode` on writeFileSync is masked by the process umask, so under a
+  // restrictive umask (e.g. 077) the wrapper would land as 0700 and ship
+  // root-owned + non-executable for normal users. chmod is not umask-masked.
+  fs.chmodSync(real, 0o755);
 };
