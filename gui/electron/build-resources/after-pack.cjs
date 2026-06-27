@@ -39,10 +39,13 @@ module.exports = async function afterPack(context) {
 # \`=auto\` resolves to Wayland under a Wayland session and X11 otherwise, so
 # this is a no-op on X11. Setting it here (pre-init) avoids the app.relaunch()
 # re-exec that crashed on Wayland. Honors a value the user already exported.
+# \`--enable-wayland-ime\` keeps IME composition (IBus/Fcitx — Japanese/Chinese/
+# Korean) working under native Wayland; Chromium does not infer it from the
+# ozone hint. It's safe here because this is a direct launch, not a relaunch.
 : "\${ELECTRON_OZONE_PLATFORM_HINT:=auto}"
 export ELECTRON_OZONE_PLATFORM_HINT
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/${exe}.bin" "$@"
+exec "$HERE/${exe}.bin" --enable-wayland-ime "$@"
 `;
 
   fs.writeFileSync(real, wrapper, { mode: 0o755 });

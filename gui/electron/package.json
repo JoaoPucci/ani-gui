@@ -10,7 +10,7 @@
 	"private": true,
 	"main": "main.js",
 	"scripts": {
-		"dev": "ELECTRON_OZONE_PLATFORM_HINT=auto ELECTRON_DEV=1 electron --no-sandbox .",
+		"dev": "ELECTRON_OZONE_PLATFORM_HINT=auto ELECTRON_DEV=1 electron --no-sandbox --enable-wayland-ime .",
 		"start": "electron .",
 		"build:backend": "cd ../backend && cargo build --bin ani-gui-backend --release",
 		"build:frontend": "cd ../frontend && pnpm build",
