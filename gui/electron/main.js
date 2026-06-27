@@ -412,7 +412,15 @@ async function createWindow(apiBase, internalSecret) {
     // build-resources/icon.png. Without this, GNOME's window list
     // shows the generic Electron logo while running unpackaged.
     icon: path.join(__dirname, "build-resources", "icon.png"),
-    // Frame/decorations match the Tauri config (system decorations).
+    // Frameless: we draw our own titlebar + window controls in the
+    // renderer. Under native Wayland/Ozone (the relaunch above), GNOME
+    // gives Chromium no server-side decorations, so Chromium drew its
+    // own CSD with the window buttons on the LEFT, ignoring GNOME's
+    // button-layout (electron/electron#48422). Owning the chrome puts
+    // minimize/maximize/close back where Linux users expect them and
+    // keeps them consistent across platforms. `resizable` stays true so
+    // the OS resize edges still work on a frameless window.
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -522,6 +530,18 @@ async function createWindow(apiBase, internalSecret) {
   // same guard so wording stays consistent across exit paths.
   win.on("close", (e) => maybePromptOnClose(win, e));
 
+  // Keep the renderer's custom maximize/restore button in sync with the
+  // real window state — the user can also maximize via the WM (super+up,
+  // double-click the drag strip, tiling), so the button can't rely on
+  // its own clicks alone. Frameless windows still emit these.
+  const sendMaxState = () => {
+    if (!win.isDestroyed()) {
+      win.webContents.send("ani-gui:window:maximize-changed", win.isMaximized());
+    }
+  };
+  win.on("maximize", sendMaxState);
+  win.on("unmaximize", sendMaxState);
+
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
     await win.loadURL(VITE_DEV_URL);
@@ -576,6 +596,29 @@ function registerAppProtocol() {
     }
   });
 }
+
+// Window controls for the renderer's custom (frameless) titlebar.
+// Each resolves the sender's own window, so they're correct even if a
+// second window ever exists. `close` goes through win.close() so the
+// existing close-prompt guard (win.on("close", …)) still fires.
+ipcMain.on("ani-gui:window:minimize", (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+ipcMain.on("ani-gui:window:toggle-maximize", (event) => {
+  const w = BrowserWindow.fromWebContents(event.sender);
+  if (!w) return;
+  if (w.isMaximized()) w.unmaximize();
+  else w.maximize();
+});
+ipcMain.on("ani-gui:window:close", (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+// Synchronous so the titlebar can paint the correct maximize/restore
+// icon on first render without a flash; the maximize-changed event keeps
+// it live afterwards.
+ipcMain.on("ani-gui:window:is-maximized", (event) => {
+  event.returnValue = Boolean(BrowserWindow.fromWebContents(event.sender)?.isMaximized());
+});
 
 // IPC handlers for the renderer's preload bridge. Exposed as
 // window.aniGui.pickDirectory() / .pickFile() / .revealInFolder(path).

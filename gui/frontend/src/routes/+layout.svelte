@@ -34,6 +34,7 @@
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
 	import AccountChip from '$lib/components/AccountChip.svelte';
+	import WindowControls from '$lib/components/WindowControls.svelte';
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
@@ -436,6 +437,14 @@
 		dropdownOpen = false;
 	}
 
+	// Double-click-to-maximize on the frameless titlebar is handled by the
+	// browser/compositor, not by us: `-webkit-app-region: drag` regions
+	// swallow every DOM pointer event (Electron docs; electron/electron#1354),
+	// so a renderer dblclick listener never fires. Chromium's own native layer
+	// detects the caption double-click and asks the compositor to maximize
+	// (works on GNOME/KDE/X11). The window-control buttons are the portable
+	// path everywhere. We deliberately wire nothing here.
+
 	function onTopbarSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		const items = liveResults ?? [];
@@ -681,6 +690,7 @@
 			<UpdateBadge />
 			<DownloadDock />
 			<AccountChip />
+			<WindowControls />
 		</header>
 		<main class="content">
 			{@render children()}
@@ -1176,6 +1186,16 @@
 		backdrop-filter: blur(16px) saturate(1.3);
 		-webkit-backdrop-filter: blur(16px) saturate(1.3);
 		border-block-end: 1px solid color-mix(in oklab, var(--ink-200) 80%, transparent);
+		/* The topbar doubles as the window's drag handle now that the
+		   shell is frameless. Interactive descendants opt back out below
+		   (the `:global` reaches into child components like AccountChip and
+		   WindowControls whose markup is scoped elsewhere). */
+		-webkit-app-region: drag;
+		app-region: drag;
+	}
+	.topbar :global(:is(button, a, input, select, textarea, [role='search'])) {
+		-webkit-app-region: no-drag;
+		app-region: no-drag;
 	}
 	@media (max-inline-size: 720px) {
 		/* Narrow shell: .main-area drops its inline gutter, so the

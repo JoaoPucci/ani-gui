@@ -107,6 +107,32 @@ contextBridge.exposeInMainWorld('aniGui', {
 		return ipcRenderer.invoke('ani-gui:open-external', url);
 	},
 
+	// Window controls for the custom frameless titlebar. The renderer
+	// draws its own minimize/maximize/close (Electron is frameless so the
+	// OS doesn't), and these relay the intent to the main process.
+	// `isMaximized()` is sync so the button paints the right icon on first
+	// render; `onMaximizeChange` keeps it live as the WM maximizes/restores
+	// out from under us. Returns an unsubscribe fn.
+	windowControls: {
+		minimize() {
+			ipcRenderer.send('ani-gui:window:minimize');
+		},
+		toggleMaximize() {
+			ipcRenderer.send('ani-gui:window:toggle-maximize');
+		},
+		close() {
+			ipcRenderer.send('ani-gui:window:close');
+		},
+		isMaximized() {
+			return ipcRenderer.sendSync('ani-gui:window:is-maximized');
+		},
+		onMaximizeChange(cb) {
+			const listener = (_e, isMax) => cb(Boolean(isMax));
+			ipcRenderer.on('ani-gui:window:maximize-changed', listener);
+			return () => ipcRenderer.removeListener('ani-gui:window:maximize-changed', listener);
+		}
+	},
+
 	// Account integration surface. Mirrors the lifecycle documented in
 	// .planning/account-integration.md §3.3 / §3.4:
 	//
