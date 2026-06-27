@@ -1,6 +1,6 @@
 {
 	"name": "ani-gui",
-	"version": "0.9.0",
+	"version": "0.9.1",
 	"description": "Browse and watch anime",
 	"homepage": "https://github.com/pucci/ani-gui",
 	"author": {
@@ -10,7 +10,7 @@
 	"private": true,
 	"main": "main.js",
 	"scripts": {
-		"dev": "ELECTRON_DEV=1 electron --no-sandbox .",
+		"dev": "ELECTRON_OZONE_PLATFORM_HINT=auto ELECTRON_DEV=1 electron --no-sandbox .",
 		"start": "electron .",
 		"build:backend": "cd ../backend && cargo build --bin ani-gui-backend --release",
 		"build:frontend": "cd ../frontend && pnpm build",
@@ -40,6 +40,7 @@
 	"build": {
 		"appId": "net.thirdmovement.ani-gui",
 		"productName": "ani-gui",
+		"afterPack": "build-resources/after-pack.cjs",
 		"directories": {
 			"output": "dist",
 			"buildResources": "build-resources"

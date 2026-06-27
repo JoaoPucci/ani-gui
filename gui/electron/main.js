@@ -35,7 +35,6 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
-const { waylandRelaunchArgs } = require("./lib/wayland-switches.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -51,24 +50,15 @@ if (IS_DEV) {
   process.env.ANI_GUI_DEV = "1";
 }
 
-// Run natively on Wayland instead of through the laggy XWayland bridge. The
-// ozone-platform-hint is read during Electron's early Ozone init — before this
-// file runs — so app.commandLine.appendSwitch is too late and silently
-// ignored (the app stays on XWayland). The flag must be in our real argv, so
-// when it's missing on a Wayland-capable Linux launch we relaunch once with it
-// appended. Session-aware (no-op on X11) and a no-op off Linux; the loop guard
-// lives in waylandRelaunchArgs. Must run before app.whenReady() and before the
-// backend is spawned (spawnBackend only fires in whenReady, which app.exit
-// preempts — so the relaunch never double-spawns the sidecar).
-const relaunchArgs = waylandRelaunchArgs(
-  process.platform,
-  process.argv,
-  process.env,
-);
-if (relaunchArgs.length > 0) {
-  app.relaunch({ args: process.argv.slice(1).concat(relaunchArgs) });
-  app.exit(0);
-}
+// Native Wayland is selected by `ELECTRON_OZONE_PLATFORM_HINT=auto`, exported
+// by the launcher (the .deb/AppImage wrapper written in afterPack, and the dev
+// script) BEFORE Electron's early Ozone init — there is no in-process knob for
+// it (app.commandLine.appendSwitch lands too late). We used to app.relaunch()
+// into `--ozone-platform-hint=auto` when the flag was missing, but on a Wayland
+// session that re-exec (the parent inits on XWayland, then re-execs into
+// Wayland) crashed the child with a fatal Ozone CHECK — SIGTRAP, 100% on
+// GNOME/ibus. Selecting the platform once, pre-init via the env hint, is the
+// fix and keeps a single clean process.
 
 // Pin the X11 WM_CLASS / Wayland app_id so GNOME matches the running
 // window to our `.desktop` entry's `StartupWMClass=ani-gui`. Without
