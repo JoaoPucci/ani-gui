@@ -437,24 +437,13 @@
 		dropdownOpen = false;
 	}
 
-	// Frameless titlebar: double-clicking empty chrome toggles maximize,
-	// matching the OS titlebar people expect. Chromium auto-handles this on
-	// Windows/macOS but not Linux, so we wire it explicitly. An action (not
-	// an `ondblclick` attribute) keeps it off a non-interactive element
-	// without tripping the a11y lint. No-ops outside Electron.
-	function titlebarMaximize(node: HTMLElement) {
-		const handler = (e: MouseEvent) => {
-			if (
-				(e.target as HTMLElement | null)?.closest(
-					'button, a, input, select, textarea, [role="search"]'
-				)
-			)
-				return;
-			window.aniGui?.windowControls?.toggleMaximize();
-		};
-		node.addEventListener('dblclick', handler);
-		return { destroy: () => node.removeEventListener('dblclick', handler) };
-	}
+	// Double-click-to-maximize on the frameless titlebar is handled by the
+	// browser/compositor, not by us: `-webkit-app-region: drag` regions
+	// swallow every DOM pointer event (Electron docs; electron/electron#1354),
+	// so a renderer dblclick listener never fires. Chromium's own native layer
+	// detects the caption double-click and asks the compositor to maximize
+	// (works on GNOME/KDE/X11). The window-control buttons are the portable
+	// path everywhere. We deliberately wire nothing here.
 
 	function onTopbarSubmit(e: SubmitEvent) {
 		e.preventDefault();
@@ -604,7 +593,7 @@
 	</aside>
 
 	<div class="main-area">
-		<header class="topbar" use:titlebarMaximize>
+		<header class="topbar">
 			{#if canGoBack}
 				<Breadcrumb segments={$breadcrumb} />
 			{/if}
