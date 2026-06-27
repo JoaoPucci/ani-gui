@@ -50,15 +50,11 @@ if (IS_DEV) {
   process.env.ANI_GUI_DEV = "1";
 }
 
-// Native Wayland is selected by `ELECTRON_OZONE_PLATFORM_HINT=auto`, exported
-// by the launcher (the .deb/AppImage wrapper written in afterPack, and the dev
-// script) BEFORE Electron's early Ozone init — there is no in-process knob for
-// it (app.commandLine.appendSwitch lands too late). We used to app.relaunch()
-// into `--ozone-platform-hint=auto` when the flag was missing, but on a Wayland
-// session that re-exec (the parent inits on XWayland, then re-execs into
-// Wayland) crashed the child with a fatal Ozone CHECK — SIGTRAP, 100% on
-// GNOME/ibus. Selecting the platform once, pre-init via the env hint, is the
-// fix and keeps a single clean process.
+// Native Wayland is selected via `ELECTRON_OZONE_PLATFORM_HINT=auto`, set by the
+// launcher (afterPack wrapper + dev script) before Electron's Ozone init —
+// there's no in-process knob (appendSwitch runs too late). Do NOT bring back the
+// app.relaunch()-into-the-flag path: that XWayland→Wayland re-exec crashed the
+// child (Ozone SIGTRAP) 100% on GNOME/ibus.
 
 // Pin the X11 WM_CLASS / Wayland app_id so GNOME matches the running
 // window to our `.desktop` entry's `StartupWMClass=ani-gui`. Without
