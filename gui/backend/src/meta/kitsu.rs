@@ -745,6 +745,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_extracts_abbreviated_titles() {
+        // Kitsu carries romanized mashup aliases under `abbreviatedTitles`
+        // (separate from the localized `titles` map). For some shows —
+        // Yu-Gi-Oh! 5D's — one of these is the ONLY string allmanga's
+        // fuzzy search resolves to the right series, so the resolver needs
+        // them as fallback queries. Parse them through to the ref.
+        let body = r#"{"data":[
+            {"id":"1","type":"anime","attributes":{"canonicalTitle":"Yu☆Gi☆Oh! 5D's","abbreviatedTitles":["Yuu Gi Ou: Duel Monsters 5DS","Yugioh 5 D's"]}}
+        ]}"#;
+        let hits = parse_search_response(body.as_bytes()).expect("parses");
+        assert_eq!(
+            hits[0].abbreviated_titles,
+            vec!["Yuu Gi Ou: Duel Monsters 5DS", "Yugioh 5 D's"],
+            "abbreviatedTitles must flow through to the ref",
+        );
+    }
+
+    #[test]
+    fn parse_search_defaults_abbreviated_titles_to_empty_when_absent_or_null() {
+        // Most entries omit the key entirely; some send `null`. Both must
+        // degrade to an empty list so consumers never have to guard it.
+        let absent = br#"{"data":[{"id":"1","type":"anime","attributes":{"canonicalTitle":"X"}}]}"#;
+        let null = br#"{"data":[{"id":"2","type":"anime","attributes":{"canonicalTitle":"Y","abbreviatedTitles":null}}]}"#;
+        assert!(
+            parse_search_response(absent).expect("parses")[0]
+                .abbreviated_titles
+                .is_empty(),
+            "missing abbreviatedTitles -> empty",
+        );
+        assert!(
+            parse_search_response(null).expect("parses")[0]
+                .abbreviated_titles
+                .is_empty(),
+            "null abbreviatedTitles -> empty",
+        );
+    }
+
+    #[test]
     fn parse_search_drops_music_subtype_entries() {
         // ani-cli / allanime never indexes music videos (the YOASOBI
         // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
