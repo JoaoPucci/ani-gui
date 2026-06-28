@@ -360,21 +360,32 @@ export interface KitsuAnimeRef {
  * Returns the localized variants (`en_jp`, `ja_jp`, `en`, `en_us`)
  * that aren't already the canonical, in priority order: romanized
  * Japanese first because allmanga indexes shows under that form, then
- * raw kana, then English alternates.
+ * raw kana, then English alternates. The romanized mashup aliases
+ * Kitsu carries under `abbreviated_titles` come LAST: they're noisier,
+ * but for some shows (Yu-Gi-Oh! 5D's) one of them is the only string
+ * allmanga resolves to the right series, so they're a genuine
+ * last-resort recovery path. Ordering them after the official titles
+ * means the resolver only reaches them when the clean names produced
+ * no accepted candidate — so a clean canonical hit is never displaced.
  *
  * Empty / null-ish titles are dropped. The output is deduped so the
  * backend never makes redundant allanime queries.
  */
 export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): string[] {
-	if (!ref?.titles) return [];
+	if (!ref) return [];
 	const seen = new Set<string>([ref.canonical_title]);
 	const out: string[] = [];
-	for (const key of ['en_jp', 'ja_jp', 'en', 'en_us']) {
-		const v = ref.titles[key];
+	const consider = (v: unknown): void => {
 		if (typeof v === 'string' && v.length > 0 && !seen.has(v)) {
 			seen.add(v);
 			out.push(v);
 		}
+	};
+	if (ref.titles) {
+		for (const key of ['en_jp', 'ja_jp', 'en', 'en_us']) consider(ref.titles[key]);
+	}
+	if (ref.abbreviated_titles) {
+		for (const v of ref.abbreviated_titles) consider(v);
 	}
 	return out;
 }
