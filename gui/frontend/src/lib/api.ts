@@ -333,6 +333,14 @@ export interface KitsuAnimeRef {
 	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
 	 *  produced before titles were surfaced; treat as `?:`. */
 	titles?: Record<string, string>;
+	/** Romanized mashup aliases Kitsu serves under
+	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
+	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
+	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
+	 *  the right series on allmanga, so {@link altTitlesFromKitsu} appends
+	 *  them as last-resort fallback queries. May be missing on cached
+	 *  responses produced before the field was surfaced; treat as `?:`. */
+	abbreviated_titles?: string[];
 	slug: string | null;
 	synopsis: string | null;
 	start_date: string | null;
