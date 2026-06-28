@@ -620,8 +620,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v6:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v6:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v7:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v7:kid-1:dub");
     }
 
     #[test]
