@@ -25,7 +25,7 @@ pub const KITSU_BASE: &str = "https://kitsu.io/api/edge";
 
 /// Sparse fieldset we ask Kitsu to return. Listed verbatim so the fixture
 /// HTTP requests in tests can match the same string.
-pub const ANIME_FIELDS: &str = "canonicalTitle,titles,slug,synopsis,startDate,endDate,episodeCount,averageRating,subtype,status,posterImage,coverImage,ageRating,popularityRank";
+pub const ANIME_FIELDS: &str = "canonicalTitle,titles,abbreviatedTitles,slug,synopsis,startDate,endDate,episodeCount,averageRating,subtype,status,posterImage,coverImage,ageRating,popularityRank";
 
 /// Sparse fieldset for the episode resource. Same convention as
 /// [`ANIME_FIELDS`] — kept verbatim so wiremock can match exactly.
@@ -49,6 +49,15 @@ pub struct KitsuAnimeRef {
     /// form when the canonical (often English) name doesn't match its
     /// index — see `commands/play.rs`. Always present, possibly empty.
     pub titles: HashMap<String, String>,
+    /// Romanized mashup aliases Kitsu serves under
+    /// `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
+    /// 5DS"`). Separate from the localized `titles` map and often the
+    /// ONLY string allmanga's fuzzy index resolves to the right show
+    /// when the canonical/localized names surface a wrong sibling — so
+    /// the play/availability resolver appends them as last-resort
+    /// fallback queries (see `altTitlesFromKitsu`). Always present,
+    /// possibly empty.
+    pub abbreviated_titles: Vec<String>,
     /// URL slug Kitsu uses on its public site (`kitsu.io/anime/<slug>`).
     pub slug: Option<String>,
     /// Long-form synopsis. Often several paragraphs.
@@ -200,6 +209,11 @@ struct AnimeAttributes {
     /// open map. Null on the wire is rare but handled — defaults to empty.
     #[serde(default)]
     titles: HashMap<String, Option<String>>,
+    /// `abbreviatedTitles` is an array of strings; some entries omit the
+    /// key and a few send `null`. `Option<Vec<_>>` + default tolerates
+    /// all three (missing → None, null → None, array → Some).
+    #[serde(default)]
+    abbreviated_titles: Option<Vec<String>>,
     slug: Option<String>,
     synopsis: Option<String>,
     start_date: Option<String>,
@@ -261,6 +275,15 @@ fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
             .titles
             .into_iter()
             .filter_map(|(k, v)| v.map(|s| (k, s)))
+            .collect(),
+        // Drop empty / whitespace-only aliases so the resolver never
+        // fires a junk allanime query.
+        abbreviated_titles: r
+            .attributes
+            .abbreviated_titles
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
             .collect(),
         slug: r.attributes.slug,
         synopsis: r.attributes.synopsis,
@@ -745,6 +768,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_extracts_abbreviated_titles() {
+        // Kitsu carries romanized mashup aliases under `abbreviatedTitles`
+        // (separate from the localized `titles` map). For some shows —
+        // Yu-Gi-Oh! 5D's — one of these is the ONLY string allmanga's
+        // fuzzy search resolves to the right series, so the resolver needs
+        // them as fallback queries. Parse them through to the ref.
+        let body = r#"{"data":[
+            {"id":"1","type":"anime","attributes":{"canonicalTitle":"Yu☆Gi☆Oh! 5D's","abbreviatedTitles":["Yuu Gi Ou: Duel Monsters 5DS","Yugioh 5 D's"]}}
+        ]}"#;
+        let hits = parse_search_response(body.as_bytes()).expect("parses");
+        assert_eq!(
+            hits[0].abbreviated_titles,
+            vec!["Yuu Gi Ou: Duel Monsters 5DS", "Yugioh 5 D's"],
+            "abbreviatedTitles must flow through to the ref",
+        );
+    }
+
+    #[test]
+    fn parse_search_defaults_abbreviated_titles_to_empty_when_absent_or_null() {
+        // Most entries omit the key entirely; some send `null`. Both must
+        // degrade to an empty list so consumers never have to guard it.
+        let absent = br#"{"data":[{"id":"1","type":"anime","attributes":{"canonicalTitle":"X"}}]}"#;
+        let null = br#"{"data":[{"id":"2","type":"anime","attributes":{"canonicalTitle":"Y","abbreviatedTitles":null}}]}"#;
+        assert!(
+            parse_search_response(absent).expect("parses")[0]
+                .abbreviated_titles
+                .is_empty(),
+            "missing abbreviatedTitles -> empty",
+        );
+        assert!(
+            parse_search_response(null).expect("parses")[0]
+                .abbreviated_titles
+                .is_empty(),
+            "null abbreviatedTitles -> empty",
+        );
+    }
+
+    #[test]
     fn parse_search_drops_music_subtype_entries() {
         // ani-cli / allanime never indexes music videos (the YOASOBI
         // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
@@ -768,6 +829,7 @@ mod tests {
             id: id.into(),
             canonical_title: id.into(),
             titles: HashMap::new(),
+            abbreviated_titles: Vec::new(),
             slug: None,
             synopsis: None,
             start_date: None,

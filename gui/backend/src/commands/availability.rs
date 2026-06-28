@@ -135,6 +135,16 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v7: resolver now also queries Kitsu's abbreviatedTitles as
+    //     fallback titles. Shows whose canonical/localized titles only
+    //     matched a wrong allmanga sibling (Yu-Gi-Oh! 5D's: every
+    //     official title resolves a 1-ep OVA; only an abbreviated alias
+    //     finds the 154-ep series) were cached available:false under v6.
+    //     check_availability short-circuits on cached false rows before
+    //     the picker runs, so those rows would keep pruning the show for
+    //     the full negative TTL; bumping forces a re-probe with the new
+    //     resolver input so list/detail filters self-heal. Codex P2
+    //     #3487673727.
     // v6: picker gained a year-closeness tie-break for same-episode-count
     //     sibling cours (Stone Ocean Part 1 & Part 2, both 12 eps). A v5
     //     row probed under the old order-dependent pick could carry the
@@ -161,7 +171,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v6:{kitsu_id}:{m}")
+    format!("availability:v7:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -620,8 +630,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v6:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v6:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v7:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v7:kid-1:dub");
     }
 
     #[test]

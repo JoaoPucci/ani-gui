@@ -793,6 +793,42 @@ describe('altTitlesFromKitsu', () => {
 		});
 		expect(altTitlesFromKitsu(ref)).toEqual(['enjp', 'ja', 'en', 'us']);
 	});
+
+	it('appends abbreviated_titles after the localized titles', () => {
+		// allmanga's fuzzy search surfaces a 1-ep OVA for every official
+		// Yu-Gi-Oh! 5D's title; only an abbreviated alias resolves the
+		// 154-ep series. Abbreviated aliases must be tried, but AFTER the
+		// official titles so they never outrank a clean canonical hit.
+		const ref = baseRef({
+			canonical_title: "Yu☆Gi☆Oh! 5D's",
+			titles: { en: "Yu-Gi-Oh! 5D's" },
+			abbreviated_titles: ['Yuu Gi Ou: Duel Monsters 5DS', "Yugioh 5 D's"]
+		});
+		expect(altTitlesFromKitsu(ref)).toEqual([
+			"Yu-Gi-Oh! 5D's",
+			'Yuu Gi Ou: Duel Monsters 5DS',
+			"Yugioh 5 D's"
+		]);
+	});
+
+	it('includes abbreviated_titles even when titles is missing', () => {
+		const ref = baseRef({ canonical_title: 'Canon', abbreviated_titles: ['alias'] });
+		expect(altTitlesFromKitsu(ref)).toEqual(['alias']);
+	});
+
+	it('dedupes abbreviated_titles against canonical and localized titles', () => {
+		const ref = baseRef({
+			canonical_title: 'Canon',
+			titles: { en: 'Dup' },
+			abbreviated_titles: ['Dup', 'Canon', 'Fresh']
+		});
+		expect(altTitlesFromKitsu(ref)).toEqual(['Dup', 'Fresh']);
+	});
+
+	it('skips empty abbreviated_titles entries', () => {
+		const ref = baseRef({ canonical_title: 'Canon', abbreviated_titles: ['', 'ok'] });
+		expect(altTitlesFromKitsu(ref)).toEqual(['ok']);
+	});
 });
 
 describe('apiBase configuration', () => {
