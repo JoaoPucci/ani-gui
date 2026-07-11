@@ -127,6 +127,133 @@ async fn resolve_native_media_id_none_when_anilist_unmapped() {
     assert_eq!(got, None);
 }
 
+/// Yani Neko's real mapping shape (Kitsu 50551): only anilist/anime,
+/// no MAL mapping yet. The MAL-pivot resolver returned None for every
+/// provider here, so fresh seasonal shows couldn't be written to ANY
+/// tracker even though the ids to reach both existed.
+#[cfg(test)]
+const KITSU_ANILIST_ONLY_MAPPING_BODY: &str = r#"{
+    "data": { "id": "50551", "type": "anime", "attributes": { "canonicalTitle": "Yani Neko" } },
+    "included": [{
+        "id": "1",
+        "type": "mappings",
+        "attributes": { "externalSite": "anilist/anime", "externalId": "207141" }
+    }]
+}"#;
+
+/// One Piece with BOTH mappings — the fixture for "primary path still
+/// wins / fallback only fires when the bridge comes up empty".
+#[cfg(test)]
+const KITSU_BOTH_MAPPINGS_BODY: &str = r#"{
+    "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "One Piece" } },
+    "included": [
+        { "id": "1", "type": "mappings", "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" } },
+        { "id": "2", "type": "mappings", "attributes": { "externalSite": "anilist/anime", "externalId": "207141" } }
+    ]
+}"#;
+
+#[tokio::test]
+async fn resolve_anilist_uses_direct_kitsu_mapping_when_mal_mapping_absent() {
+    // No AniList GraphQL mock mounted on purpose: the direct
+    // anilist/anime mapping must be enough — no bridge round-trip.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::AniList, "50551", None)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, Some(ProviderMediaId(207141)));
+}
+
+#[tokio::test]
+async fn resolve_mal_bridges_anilist_mapping_to_idmal_when_mal_mapping_absent() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Media":{"idMal":63403}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(
+        &state,
+        ProviderKind::MyAnimeList,
+        "50551",
+        Some(&anilist.uri()),
+    )
+    .await
+    .expect("resolve ok");
+    assert_eq!(got, Some(ProviderMediaId(63403)));
+}
+
+#[tokio::test]
+async fn resolve_anilist_falls_back_to_direct_mapping_when_bridge_unindexed() {
+    // MAL mapping present but AniList doesn't index that MAL id
+    // (Media:null from the bridge query) — the direct anilist/anime
+    // mapping must still win over giving up.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_BOTH_MAPPINGS_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = resolve_native_media_id(&state, ProviderKind::AniList, "12", Some(&anilist.uri()))
+        .await
+        .expect("resolve ok");
+    assert_eq!(got, Some(ProviderMediaId(207141)));
+}
+
+#[tokio::test]
+async fn resolve_none_when_kitsu_carries_no_tracker_mappings_at_all() {
+    // Belt-and-suspenders for the fallback era: with neither mapping,
+    // both providers resolve to None without any AniList round-trip.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/777"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"id":"777","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    for kind in [ProviderKind::MyAnimeList, ProviderKind::AniList] {
+        let got = resolve_native_media_id(&state, kind, "777", None)
+            .await
+            .expect("resolve ok");
+        assert_eq!(got, None);
+    }
+}
+
 #[tokio::test]
 async fn push_progress_skips_unmappable_show_without_writing() {
     // A show Kitsu can't map to MAL → resolve yields None → push_progress
