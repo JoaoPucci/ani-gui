@@ -231,6 +231,162 @@ async fn resolve_anilist_falls_back_to_direct_mapping_when_bridge_unindexed() {
     assert_eq!(got, Some(ProviderMediaId(207141)));
 }
 
+/// Kitsu `/mappings?filter[externalSite]=anilist/anime` hit for Yani
+/// Neko (Kitsu 50551 ← AniList 207141) — the Watch-Later bridge's
+/// fallback target when the MAL-id lookup comes up empty.
+#[cfg(test)]
+const KITSU_ANILIST_MAPPINGS_HIT_BODY: &str = r#"{
+    "data": [{
+        "id": "9001",
+        "type": "mappings",
+        "attributes": { "externalSite": "anilist/anime", "externalId": "207141" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "50551" } } }
+    }],
+    "included": [{
+        "id": "50551",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "Yani Neko",
+            "titles": { "en": "Chainsmoker Cat" },
+            "slug": "yani-neko",
+            "synopsis": "Catgirl with a smoking habit.",
+            "startDate": "2026-07-03",
+            "endDate": null,
+            "episodeCount": 12,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "R",
+            "popularityRank": 9000,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }]
+}"#;
+
+#[cfg(test)]
+const KITSU_MAPPINGS_EMPTY_BODY: &str = r#"{ "data": [], "included": [] }"#;
+
+#[tokio::test]
+async fn watch_later_bridge_falls_back_to_anilist_mapping_for_unmapped_mal_id() {
+    // Kitsu can't answer for MAL 63403 (no myanimelist/anime mapping),
+    // but AniList knows Media(idMal: 63403) = 207141 and Kitsu carries
+    // the anilist/anime mapping for it — the bridged card must render.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .and(query_param("filter[externalId]", "63403"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .and(query_param("filter[externalId]", "207141"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Media":{"id":207141}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].id, "50551");
+    assert_eq!(refs[0].canonical_title, "Yani Neko");
+}
+
+#[tokio::test]
+async fn watch_later_bridge_drops_id_when_anilist_does_not_know_it_either() {
+    use wiremock::matchers::method;
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let refs =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![99_999_999], Some(&anilist.uri())).await;
+    assert!(refs.is_empty());
+}
+
+#[tokio::test]
+async fn watch_later_bridge_direct_mal_hit_never_touches_anilist() {
+    // anilist_base points at an unroutable address — if the fallback
+    // fired on a direct hit, the entry would still survive (failures
+    // are swallowed), so assert via wiremock that zero AniList calls
+    // happen at all.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{
+                    "data": [{
+                        "id": "1175",
+                        "type": "mappings",
+                        "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+                        "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+                    }],
+                    "included": [{
+                        "id": "12",
+                        "type": "anime",
+                        "attributes": {
+                            "canonicalTitle": "One Piece",
+                            "titles": {},
+                            "slug": "one-piece",
+                            "synopsis": null,
+                            "startDate": "1999-10-20",
+                            "endDate": null,
+                            "episodeCount": null,
+                            "averageRating": null,
+                            "subtype": "TV",
+                            "status": "current",
+                            "ageRating": "PG",
+                            "popularityRank": 25,
+                            "posterImage": null,
+                            "coverImage": null
+                        }
+                    }]
+                }"#,
+        ))
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(0)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].id, "12");
+    // MockServer verifies the .expect(0) on drop.
+}
+
 #[tokio::test]
 async fn resolve_none_when_kitsu_carries_no_tracker_mappings_at_all() {
     // Belt-and-suspenders for the fallback era: with neither mapping,

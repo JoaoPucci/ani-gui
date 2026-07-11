@@ -658,6 +658,22 @@ impl KitsuClient {
         parse_mappings_response(&body)
     }
 
+    /// Mirror of [`Self::lookup_by_mal_id`] for the `anilist/anime`
+    /// external site — finds the Kitsu anime for a known AniList id.
+    /// The Watch-Later bridge falls back to it for shows Kitsu hasn't
+    /// MAL-mapped yet (fresh seasonal titles): the tracker entry's MAL
+    /// id can't be looked up directly, but AniList's id can.
+    ///
+    /// # Errors
+    /// - [`AniError::Upstream`] on non-2xx HTTP.
+    /// - [`AniError::Network`] on transport failure.
+    /// - [`AniError::ParseFailed`] on malformed JSON:API.
+    pub async fn lookup_by_anilist_id(&self, anilist_id: u32) -> Result<Option<KitsuAnimeRef>> {
+        // Green commit fills the fetch in.
+        let _ = anilist_id;
+        Ok(None)
+    }
+
     /// Top-rated anime above the noise floor (averageRating ≥ 70/100).
     ///
     /// # Errors
@@ -1334,6 +1350,43 @@ mod tests {
                 anilist: Some(207141),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn lookup_by_anilist_id_hits_the_right_endpoint() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/mappings"))
+            .and(wiremock::matchers::query_param(
+                "filter[externalSite]",
+                "anilist/anime",
+            ))
+            .and(wiremock::matchers::query_param("filter[externalId]", "21"))
+            .and(wiremock::matchers::query_param("include", "item"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAPPINGS_HIT_FIXTURE),
+            )
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let r = client.lookup_by_anilist_id(21).await.expect("ok");
+        let anime = r.expect("mapping found");
+        assert_eq!(anime.id, "12");
+        assert_eq!(anime.canonical_title, "One Piece");
+    }
+
+    #[tokio::test]
+    async fn lookup_by_anilist_id_returns_none_for_unmapped_show() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAPPINGS_EMPTY_FIXTURE),
+            )
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let r = client.lookup_by_anilist_id(99_999_999).await.expect("ok");
+        assert!(r.is_none());
     }
 
     #[tokio::test]

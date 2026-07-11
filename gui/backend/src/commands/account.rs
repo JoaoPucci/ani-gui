@@ -332,8 +332,21 @@ pub async fn kitsu_for_mal_ids(
     state: &Arc<AppState>,
     mal_ids: Vec<u32>,
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    kitsu_for_mal_ids_with_anilist_base(state, mal_ids, None).await
+}
+
+/// [`kitsu_for_mal_ids`] with the AniList endpoint override exposed
+/// for tests (the fallback hop below hits AniList). Production passes
+/// `None` via the public wrapper.
+pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
+    state: &Arc<AppState>,
+    mal_ids: Vec<u32>,
+    anilist_base: Option<&str>,
+) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
     use futures_util::stream::{self, StreamExt};
 
+    // Green commit wires the anilist-mapping fallback in.
+    let _ = anilist_base;
     let bounded = mal_ids
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
