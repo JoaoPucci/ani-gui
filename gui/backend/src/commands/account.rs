@@ -345,8 +345,6 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
     use futures_util::stream::{self, StreamExt};
 
-    // Green commit wires the anilist-mapping fallback in.
-    let _ = anilist_base;
     let bounded = mal_ids
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
@@ -354,7 +352,25 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     stream::iter(bounded)
         .map(|mal_id| {
             let kitsu = state.kitsu.clone();
-            async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
+            let http = state.proxy_http.clone();
+            let base = anilist_base.map(str::to_owned);
+            async move {
+                if let Some(r) = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() {
+                    return Some(r);
+                }
+                // Kitsu hasn't MAL-mapped the show (fresh seasonal titles) —
+                // bridge the MAL id through AniList's Media(idMal:){id} to
+                // the anilist/anime mapping Kitsu usually has first. Same
+                // gap resolve_native_media_id works around in the write
+                // direction; without this the just-written entry never
+                // renders in the rail.
+                let anilist_id =
+                    crate::meta::anilist::media_id_for_mal(&http, mal_id, base.as_deref())
+                        .await
+                        .ok()
+                        .flatten()?;
+                kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten()
+            }
         })
         .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
         .filter_map(|maybe_ref| async move { maybe_ref })

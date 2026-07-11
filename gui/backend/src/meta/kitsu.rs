@@ -637,25 +637,8 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn lookup_by_mal_id(&self, mal_id: u32) -> Result<Option<KitsuAnimeRef>> {
-        let resp = self
-            .http
-            .get(format!("{}/mappings", self.base))
-            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
-            .query(&[
-                ("filter[externalSite]", "myanimelist/anime".to_string()),
-                ("filter[externalId]", mal_id.to_string()),
-                ("include", "item".to_string()),
-            ])
-            .send()
+        self.lookup_by_external_id("myanimelist/anime", mal_id)
             .await
-            .map_err(|_| AniError::Network)?;
-        if !resp.status().is_success() {
-            return Err(AniError::Upstream {
-                status: resp.status().as_u16(),
-            });
-        }
-        let body = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_mappings_response(&body)
     }
 
     /// Mirror of [`Self::lookup_by_mal_id`] for the `anilist/anime`
@@ -669,9 +652,37 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn lookup_by_anilist_id(&self, anilist_id: u32) -> Result<Option<KitsuAnimeRef>> {
-        // Green commit fills the fetch in.
-        let _ = anilist_id;
-        Ok(None)
+        self.lookup_by_external_id("anilist/anime", anilist_id)
+            .await
+    }
+
+    /// Shared `/mappings?filter[externalSite]=<site>` fetch behind the
+    /// per-site lookups above. `?include=item` inlines the full anime
+    /// resource so no follow-up `/anime/:id` call is needed.
+    async fn lookup_by_external_id(
+        &self,
+        site: &str,
+        external_id: u32,
+    ) -> Result<Option<KitsuAnimeRef>> {
+        let resp = self
+            .http
+            .get(format!("{}/mappings", self.base))
+            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+            .query(&[
+                ("filter[externalSite]", site.to_string()),
+                ("filter[externalId]", external_id.to_string()),
+                ("include", "item".to_string()),
+            ])
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        if !resp.status().is_success() {
+            return Err(AniError::Upstream {
+                status: resp.status().as_u16(),
+            });
+        }
+        let body = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_mappings_response(&body)
     }
 
     /// Top-rated anime above the noise floor (averageRating ≥ 70/100).
