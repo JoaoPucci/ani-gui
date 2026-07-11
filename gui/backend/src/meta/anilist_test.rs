@@ -401,3 +401,91 @@ async fn mal_id_for_media_id_propagates_upstream_5xx() {
         .unwrap_err();
     assert!(matches!(err, AniError::Upstream { status: 502 }));
 }
+
+// `media_ids_for_mals` is the batched inverse bridge: the Watch-Later
+// rail resolves ALL its Kitsu-unmapped MAL ids in one Page query per
+// 50-chunk instead of one Media query each (Codex P2 #3565216298).
+#[test]
+fn parse_media_ids_by_mal_response_builds_the_idmal_map() {
+    let body = br#"{"data":{"Page":{"media":[
+        {"id":207141,"idMal":63403},
+        {"id":207142,"idMal":63404},
+        {"id":300000,"idMal":null}
+    ]}}}"#;
+    let got = parse_media_ids_by_mal_response(body).expect("ok");
+    assert_eq!(got.len(), 2);
+    assert_eq!(got.get(&63403), Some(&207141));
+    assert_eq!(got.get(&63404), Some(&207142));
+}
+
+#[test]
+fn parse_media_ids_by_mal_response_empty_page_is_empty_map() {
+    let body = br#"{"data":{"Page":{"media":[]}}}"#;
+    let got = parse_media_ids_by_mal_response(body).expect("ok");
+    assert!(got.is_empty());
+}
+
+#[test]
+fn parse_media_ids_by_mal_response_rejects_non_envelope_payload() {
+    let err = parse_media_ids_by_mal_response(br#"<html>nope</html>"#).unwrap_err();
+    assert!(matches!(err, AniError::ParseFailed { .. }));
+}
+
+#[tokio::test]
+async fn media_ids_for_mals_posts_one_query_for_a_small_batch() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_json(serde_json::json!({
+            "query": MEDIA_IDS_BY_MALS_GQL,
+            "variables": { "idMals": [63403, 63404] },
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403},{"id":207142,"idMal":63404}]}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = media_ids_for_mals(&client, &[63403, 63404], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&63403), Some(&207141));
+    assert_eq!(got.get(&63404), Some(&207142));
+}
+
+#[tokio::test]
+async fn media_ids_for_mals_makes_no_request_for_empty_input() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = media_ids_for_mals(&client, &[], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}
+
+#[tokio::test]
+async fn media_ids_for_mals_chunks_batches_over_the_page_cap() {
+    // 60 ids must split into two requests (50 + 10) — Page caps
+    // perPage at 50 and would silently truncate a single oversized
+    // batch.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        )
+        .expect(2)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let ids: Vec<u32> = (1..=60).collect();
+    let got = media_ids_for_mals(&client, &ids, Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}

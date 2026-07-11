@@ -293,10 +293,15 @@ async fn watch_later_bridge_falls_back_to_anilist_mapping_for_unmapped_mal_id() 
         .mount(&kitsu)
         .await;
     let anilist = wiremock::MockServer::start().await;
+    // Wire shape is the batched Page(idMal_in:) query — one request
+    // covers every Kitsu-missing id in the load (Codex P2 #3565216298),
+    // replacing the per-id Media(idMal:) call this mock originally
+    // spoke. The behavior under assertion (the card bridges) is
+    // unchanged.
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Media":{"id":207141}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -318,9 +323,12 @@ async fn watch_later_bridge_drops_id_when_anilist_does_not_know_it_either() {
         .mount(&kitsu)
         .await;
     let anilist = wiremock::MockServer::start().await;
+    // Batched wire shape (see the fallback test above): an id AniList
+    // doesn't index is simply absent from the Page result.
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -328,6 +336,93 @@ async fn watch_later_bridge_drops_id_when_anilist_does_not_know_it_either() {
     let refs =
         kitsu_for_mal_ids_with_anilist_base(&state, vec![99_999_999], Some(&anilist.uri())).await;
     assert!(refs.is_empty());
+}
+
+/// Second anilist-mapping hit (Kitsu 50552 ← AniList 207142) so the
+/// batching test can bridge two misses.
+#[cfg(test)]
+const KITSU_ANILIST_MAPPINGS_HIT_BODY_2: &str = r#"{
+    "data": [{
+        "id": "9002",
+        "type": "mappings",
+        "attributes": { "externalSite": "anilist/anime", "externalId": "207142" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "50552" } } }
+    }],
+    "included": [{
+        "id": "50552",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "Neko to Ryuu",
+            "titles": {},
+            "slug": "neko-to-ryuu",
+            "synopsis": null,
+            "startDate": "2026-07-04",
+            "endDate": null,
+            "episodeCount": 12,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 9001,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }]
+}"#;
+
+#[tokio::test]
+async fn watch_later_bridge_batches_anilist_lookups_into_one_request() {
+    // Two Kitsu-unmapped MAL ids must cost exactly ONE AniList call
+    // (the batched Page(idMal_in:) query), not one per miss — a rail
+    // load full of fresh seasonal titles would otherwise blow through
+    // AniList's 30 req/min budget (Codex P2 #3565216298).
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .and(query_param("filter[externalId]", "207141"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .and(query_param("filter[externalId]", "207142"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY_2),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[
+                {"id":207141,"idMal":63403},
+                {"id":207142,"idMal":63404}
+            ]}}}"#,
+        ))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let refs =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403, 63404], Some(&anilist.uri())).await;
+    assert_eq!(refs.len(), 2);
+    // Input order is preserved across the two-phase fill.
+    assert_eq!(refs[0].id, "50551");
+    assert_eq!(refs[1].id, "50552");
+    // MockServer verifies the .expect(1) on drop.
 }
 
 #[tokio::test]

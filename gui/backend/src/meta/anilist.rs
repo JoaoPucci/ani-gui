@@ -305,6 +305,48 @@ pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
     Ok(parsed.data.media.and_then(|m| m.id_mal))
 }
 
+/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → their
+/// AniList `mediaId`s in ONE request per [`MAL_BATCH_PAGE_SIZE`]-sized
+/// chunk. The Watch-Later bridge uses it so a rail load with many
+/// Kitsu-unmapped titles costs O(n/50) AniList calls instead of O(n)
+/// against the public 30 req/min limit (Codex P2 #3565216298).
+const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
+        Page(perPage: 50) { media(type: ANIME, idMal_in: $idMals) { id idMal } } \
+    }";
+
+/// Max MAL ids per [`media_ids_for_mals`] request — AniList's `Page`
+/// caps `perPage` at 50, so larger chunks would silently truncate.
+pub const MAL_BATCH_PAGE_SIZE: usize = 50;
+
+/// Resolve many MAL ids → AniList `mediaId`s, chunked at
+/// [`MAL_BATCH_PAGE_SIZE`] per request. Ids AniList doesn't index are
+/// simply absent from the returned map; empty input makes no request.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn media_ids_for_mals(
+    client: &reqwest::Client,
+    mal_ids: &[u32],
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, u32>> {
+    // Green commit fills the chunked fetch in.
+    let _ = (client, mal_ids, base_override);
+    Ok(std::collections::HashMap::new())
+}
+
+/// Pure parser for the batched by-MAL response: `{ data: { Page: {
+/// media: [{ id, idMal }] } } }` → `idMal → id` map. Entries without
+/// an `idMal` are skipped.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
+    // Green commit fills the extraction in.
+    let _ = body;
+    Ok(std::collections::HashMap::new())
+}
+
 /// Pure parser for the by-MAL `mediaId` response.
 ///
 /// # Errors
