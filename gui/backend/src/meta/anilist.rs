@@ -268,9 +268,13 @@ pub async fn mal_id_for_media_id(
     media_id: u32,
     base_override: Option<&str>,
 ) -> Result<Option<u32>> {
-    // Green commit fills the fetch in.
-    let _ = (client, media_id, base_override);
-    Ok(None)
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MAL_ID_BY_MEDIA_GQL,
+        "variables": { "id": media_id },
+    });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    parse_mal_id_response(&bytes)
 }
 
 /// Pure parser for the by-media `idMal` response.
@@ -281,9 +285,24 @@ pub async fn mal_id_for_media_id(
 /// (unknown media id) and `idMal: null` (no MAL link) map to
 /// `Ok(None)`, not an error.
 pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
-    // Green commit fills the extraction in.
-    let _ = body;
-    Ok(None)
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist idMal response: {e}"),
+    })?;
+    Ok(parsed.data.media.and_then(|m| m.id_mal))
 }
 
 /// Pure parser for the by-MAL `mediaId` response.
