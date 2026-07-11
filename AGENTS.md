@@ -145,7 +145,15 @@ When pausing for approval, explain what the action does, why it's needed, and wh
 - **No `git push --force` to `master`.** If a force-push is genuinely needed (e.g. accidentally committed credentials), pause and confirm with the user before doing it.
 - **Never `--no-verify` past hooks** unless the user explicitly directs it. If a pre-commit hook fails, fix the underlying issue.
 
-## 13. Pointers
+## 13. Release & versioning
+
+- **No post-tag pre-bump.** Do not bump the version after cutting a release. `master` stays at the **last shipped version**; the bump happens **inside the release PR** itself, so `master` never runs ahead of what's published.
+- **The four version files move in lockstep** in that release PR: `gui/backend/Cargo.toml`, `gui/backend/Cargo.lock` (`cargo update -p ani-gui`), `gui/frontend/package.json`, `gui/electron/package.json`.
+- **Hotfixes branch off `master`.** Because `master == last shipped`, a patch branches straight off it — apply the fix, bump the patch version in the same PR, merge, tag from `master`. No release branch, no version gap to bridge. (Lesson from the v0.9.1 Wayland-crash hotfix: a prior post-tag pre-bump had stranded `master` ahead of the released line, forcing an awkward version downgrade-merge that regressed `master`.)
+- **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
+- **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
+
+## 14. Pointers
 
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
