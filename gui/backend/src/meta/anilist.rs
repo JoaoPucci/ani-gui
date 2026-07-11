@@ -247,6 +247,45 @@ pub async fn media_id_for_mal(
     parse_media_id_response(&bytes)
 }
 
+/// By-AniList-id query resolving the show's MAL id — the inverse of
+/// [`MEDIA_ID_BY_MAL_GQL`]. Tracker id-resolution falls back to it
+/// when Kitsu carries only the `anilist/anime` mapping (fresh
+/// seasonal shows): the direct mapping reaches AniList, and this
+/// query bridges the rest of the way to MAL.
+const MAL_ID_BY_MEDIA_GQL: &str = "query MalIdByMedia($id: Int!) { \
+        Media(id: $id, type: ANIME) { idMal } \
+    }";
+
+/// Resolve an AniList numeric `mediaId` → the show's MAL id. `None`
+/// when AniList has no MAL link recorded. Mirrors
+/// [`media_id_for_mal`]'s network shape; `base_override` points at
+/// wiremock in tests.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn mal_id_for_media_id(
+    client: &reqwest::Client,
+    media_id: u32,
+    base_override: Option<&str>,
+) -> Result<Option<u32>> {
+    // Green commit fills the fetch in.
+    let _ = (client, media_id, base_override);
+    Ok(None)
+}
+
+/// Pure parser for the by-media `idMal` response.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// `{ data: { Media: { idMal } } }` envelope. Both `Media: null`
+/// (unknown media id) and `idMal: null` (no MAL link) map to
+/// `Ok(None)`, not an error.
+pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
+    // Green commit fills the extraction in.
+    let _ = body;
+    Ok(None)
+}
+
 /// Pure parser for the by-MAL `mediaId` response.
 ///
 /// # Errors
@@ -653,6 +692,72 @@ mod tests {
             .await;
         let client = reqwest::Client::new();
         let err = media_id_for_mal(&client, 52991, Some(&server.uri()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AniError::Upstream { status: 502 }));
+    }
+
+    // `mal_id_for_media_id` is the inverse bridge: Kitsu shows that
+    // carry only the anilist/anime mapping (Yani Neko, AniList 207141)
+    // still need a MAL id to write to MyAnimeList.
+    #[test]
+    fn parse_mal_id_response_returns_idmal_when_present() {
+        let body = br#"{"data":{"Media":{"idMal":63403}}}"#;
+        let got = parse_mal_id_response(body).expect("ok");
+        assert_eq!(got, Some(63403));
+    }
+
+    #[test]
+    fn parse_mal_id_response_returns_none_when_idmal_is_null() {
+        // AniList-only originals carry Media.idMal: null.
+        let body = br#"{"data":{"Media":{"idMal":null}}}"#;
+        let got = parse_mal_id_response(body).expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn parse_mal_id_response_returns_none_when_media_is_null() {
+        let body = br#"{"data":{"Media":null}}"#;
+        let got = parse_mal_id_response(body).expect("ok");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn parse_mal_id_response_rejects_non_envelope_payload() {
+        let err = parse_mal_id_response(br#"<html>nope</html>"#).unwrap_err();
+        assert!(matches!(err, AniError::ParseFailed { .. }));
+    }
+
+    #[tokio::test]
+    async fn mal_id_for_media_id_posts_media_query_and_returns_idmal() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "query": MAL_ID_BY_MEDIA_GQL,
+                "variables": { "id": 207141 },
+            })))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"data":{"Media":{"idMal":63403}}}"#),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let got = mal_id_for_media_id(&client, 207141, Some(&server.uri()))
+            .await
+            .expect("ok");
+        assert_eq!(got, Some(63403));
+    }
+
+    #[tokio::test]
+    async fn mal_id_for_media_id_propagates_upstream_5xx() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(502))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = mal_id_for_media_id(&client, 207141, Some(&server.uri()))
             .await
             .unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 502 }));
