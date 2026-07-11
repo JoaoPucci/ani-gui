@@ -349,33 +349,60 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
         .collect::<Vec<_>>();
-    stream::iter(bounded)
-        .map(|mal_id| {
-            let kitsu = state.kitsu.clone();
-            let http = state.proxy_http.clone();
-            let base = anilist_base.map(str::to_owned);
-            async move {
-                if let Some(r) = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() {
-                    return Some(r);
+    // Phase 1: the direct Kitsu lookup, one slot per input id so the
+    // fallback fill below preserves input order.
+    let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
+        stream::iter(bounded.iter().copied())
+            .map(|mal_id| {
+                let kitsu = state.kitsu.clone();
+                async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
+            })
+            .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
+            .collect()
+            .await;
+    // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
+    // titles) — resolve ALL of them to AniList ids in one batched
+    // Page(idMal_in:) query per 50-chunk (Codex P2 #3565216298: the
+    // per-miss Media(idMal:) call could burn AniList's 30 req/min
+    // budget on a single big rail load), then look each up under
+    // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
+    // works around in the write direction; without this the
+    // just-written entry never renders in the rail. A failed batch
+    // degrades to dropping those cards for this load, as before.
+    let misses: Vec<(usize, u32)> = slots
+        .iter()
+        .enumerate()
+        .filter(|(_, slot)| slot.is_none())
+        .map(|(i, _)| (i, bounded[i]))
+        .collect();
+    if !misses.is_empty() {
+        let miss_ids: Vec<u32> = misses.iter().map(|&(_, mal_id)| mal_id).collect();
+        let mal_to_anilist =
+            crate::meta::anilist::media_ids_for_mals(&state.proxy_http, &miss_ids, anilist_base)
+                .await
+                .unwrap_or_default();
+        let filled: Vec<(usize, Option<crate::meta::kitsu::KitsuAnimeRef>)> = stream::iter(misses)
+            .map(|(i, mal_id)| {
+                let kitsu = state.kitsu.clone();
+                let anilist_id = mal_to_anilist.get(&mal_id).copied();
+                async move {
+                    let Some(anilist_id) = anilist_id else {
+                        return (i, None);
+                    };
+                    (
+                        i,
+                        kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten(),
+                    )
                 }
-                // Kitsu hasn't MAL-mapped the show (fresh seasonal titles) —
-                // bridge the MAL id through AniList's Media(idMal:){id} to
-                // the anilist/anime mapping Kitsu usually has first. Same
-                // gap resolve_native_media_id works around in the write
-                // direction; without this the just-written entry never
-                // renders in the rail.
-                let anilist_id =
-                    crate::meta::anilist::media_id_for_mal(&http, mal_id, base.as_deref())
-                        .await
-                        .ok()
-                        .flatten()?;
-                kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten()
-            }
-        })
-        .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
-        .filter_map(|maybe_ref| async move { maybe_ref })
-        .collect()
-        .await
+            })
+            .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
+            .collect()
+            .await;
+        for (i, r) in filled {
+            slots[i] = r;
+        }
+    }
+    slots.into_iter().flatten().collect()
 }
 
 /// Resolve a show's Kitsu id into the provider-native media id needed

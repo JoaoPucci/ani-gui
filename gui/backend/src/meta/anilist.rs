@@ -329,9 +329,17 @@ pub async fn media_ids_for_mals(
     mal_ids: &[u32],
     base_override: Option<&str>,
 ) -> Result<std::collections::HashMap<u32, u32>> {
-    // Green commit fills the chunked fetch in.
-    let _ = (client, mal_ids, base_override);
-    Ok(std::collections::HashMap::new())
+    let url = base_override.unwrap_or(ANILIST_API);
+    let mut map = std::collections::HashMap::new();
+    for chunk in mal_ids.chunks(MAL_BATCH_PAGE_SIZE) {
+        let body = serde_json::json!({
+            "query": MEDIA_IDS_BY_MALS_GQL,
+            "variables": { "idMals": chunk },
+        });
+        let bytes = post_graphql_public(client, url, &body).await?;
+        map.extend(parse_media_ids_by_mal_response(&bytes)?);
+    }
+    Ok(map)
 }
 
 /// Pure parser for the batched by-MAL response: `{ data: { Page: {
@@ -342,9 +350,35 @@ pub async fn media_ids_for_mals(
 /// Returns [`AniError::ParseFailed`] when the body isn't the expected
 /// envelope.
 pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
-    // Green commit fills the extraction in.
-    let _ = body;
-    Ok(std::collections::HashMap::new())
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Page")]
+        page: Page,
+    }
+    #[derive(Deserialize)]
+    struct Page {
+        media: Vec<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        id: u32,
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist batched idMal response: {e}"),
+    })?;
+    Ok(parsed
+        .data
+        .page
+        .media
+        .into_iter()
+        .filter_map(|m| m.id_mal.map(|mal| (mal, m.id)))
+        .collect())
 }
 
 /// Pure parser for the by-MAL `mediaId` response.
