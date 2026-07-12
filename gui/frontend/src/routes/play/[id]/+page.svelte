@@ -836,6 +836,45 @@
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
+	// Probe allmanga for the playable episode count IN THE PLAYBACK
+	// MODE — dub catalogues lag sub, so a sub-mode probe would cap a
+	// dub session too high and Download All could request undubbed
+	// episodes (Codex P2 #3566111944). Re-runs when the mode flips
+	// (config landing, sub/dub toggle), resetting the resolved flag so
+	// the warm holds during the refetch. The cache stamp from the play
+	// handler that brought us here is usually in place, so this is
+	// sub-ms in the common case.
+	$effect(() => {
+		const d = detail;
+		if (!d) return;
+		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		availabilityResolved = false;
+		let cancelled = false;
+		void checkAvailability({
+			title: d.canonical_title,
+			mode,
+			alt_titles: altTitlesFromKitsu(d),
+			episode_count: d.episode_count ?? undefined,
+			year: yearFromKitsuRef(d) ?? undefined,
+			kitsu_id: d.id,
+			status: d.status ?? undefined
+		})
+			.then((r) => {
+				if (cancelled) return;
+				playableEpisodeCount = r.episode_count;
+				extraEpisodes = r.extra_episodes;
+			})
+			.catch(() => {
+				// Cap falls back to Kitsu's count; nothing else to do.
+			})
+			.finally(() => {
+				if (!cancelled) availabilityResolved = true;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	// Airing schedule (AniList via the backend), mirroring the detail
 	// page: unaired episodes render greyed instead of not existing,
 	// and every play path (tiles, arrows, auto-next) clamps to the
@@ -1470,29 +1509,6 @@
 		void kitsuAnimeDetail(id)
 			.then((d) => {
 				detail = d;
-				// Probe allmanga in the background to learn the playable
-				// episode count. Same surface the detail page uses; the
-				// cache stamp from the play handler that brought us here
-				// is usually already in place, so this is sub-ms.
-				void checkAvailability({
-					title: d.canonical_title,
-					mode: 'sub',
-					alt_titles: altTitlesFromKitsu(d),
-					episode_count: d.episode_count ?? undefined,
-					year: yearFromKitsuRef(d) ?? undefined,
-					kitsu_id: d.id,
-					status: d.status ?? undefined
-				})
-					.then((r) => {
-						playableEpisodeCount = r.episode_count;
-						extraEpisodes = r.extra_episodes;
-					})
-					.catch(() => {
-						// Cap falls back to Kitsu's count; nothing else to do.
-					})
-					.finally(() => {
-						availabilityResolved = true;
-					});
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
 					void kitsuSearch(seed)
