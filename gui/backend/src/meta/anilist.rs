@@ -419,9 +419,15 @@ pub async fn airing_status(
     mal_id: Option<u32>,
     base_override: Option<&str>,
 ) -> Result<Option<AiringStatus>> {
-    // Green commit fills the fetch in.
-    let _ = (client, anilist_id, mal_id, base_override);
-    Ok(None)
+    let variables = match (anilist_id, mal_id) {
+        (Some(id), _) => serde_json::json!({ "id": id }),
+        (None, Some(mal)) => serde_json::json!({ "idMal": mal }),
+        (None, None) => return Ok(None),
+    };
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({ "query": AIRING_GQL, "variables": variables });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    parse_airing_response(&bytes)
 }
 
 /// Pure parser + derivation for the airing response. `Media: null` →
@@ -438,9 +444,53 @@ pub async fn airing_status(
 /// Returns [`AniError::ParseFailed`] when the body isn't the expected
 /// envelope.
 pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
-    // Green commit fills the extraction in.
-    let _ = body;
-    Ok(None)
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        status: Option<String>,
+        episodes: Option<u32>,
+        #[serde(rename = "nextAiringEpisode")]
+        next_airing_episode: Option<NextAiring>,
+    }
+    #[derive(Deserialize)]
+    struct NextAiring {
+        episode: u32,
+        #[serde(rename = "airingAt")]
+        airing_at: u64,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist airing response: {e}"),
+    })?;
+    let Some(media) = parsed.data.media else {
+        return Ok(None);
+    };
+    let status = if let Some(next) = media.next_airing_episode {
+        AiringStatus {
+            aired: Some(next.episode.saturating_sub(1)),
+            next_episode: Some(next.episode),
+            next_airing_at: Some(next.airing_at),
+        }
+    } else {
+        let aired = match media.status.as_deref() {
+            Some("FINISHED") => media.episodes,
+            Some("NOT_YET_RELEASED") => Some(0),
+            _ => None,
+        };
+        AiringStatus {
+            aired,
+            next_episode: None,
+            next_airing_at: None,
+        }
+    };
+    Ok(Some(status))
 }
 
 /// Pure parser for the by-MAL `mediaId` response.
