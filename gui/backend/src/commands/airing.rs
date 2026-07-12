@@ -35,9 +35,27 @@ pub(crate) async fn airing_get_with_anilist_base(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<AiringStatus> {
-    // Green commit fills the bridge + cache in.
-    let _ = (state, kitsu_id, anilist_base);
-    Ok(AiringStatus::default())
+    let key = format!("airing:v1:{kitsu_id}");
+    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+        if let Ok(status) = serde_json::from_str::<AiringStatus>(&body) {
+            return Ok(status);
+        }
+        // Corrupt cache row — fall through to refetch.
+    }
+
+    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
+    let status = if ids.anilist.is_none() && ids.mal.is_none() {
+        AiringStatus::default()
+    } else {
+        crate::meta::anilist::airing_status(&state.proxy_http, ids.anilist, ids.mal, anilist_base)
+            .await?
+            .unwrap_or_default()
+    };
+
+    if let Ok(body) = serde_json::to_string(&status) {
+        meta_cache_put(&state.cache_pool, &key, &body, AIRING_TTL_SECS)?;
+    }
+    Ok(status)
 }
 
 #[cfg(test)]
