@@ -512,9 +512,13 @@ async fn post_graphql_public_retries_once_on_429() {
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
         .mount(&server)
         .await;
-    let got = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
-        .await
-        .expect("the retry after a single 429 must succeed");
+    let got = post_graphql_public(
+        &reqwest::Client::new(),
+        &server.uri(),
+        &serde_json::json!({}),
+    )
+    .await
+    .expect("the retry after a single 429 must succeed");
     assert_eq!(&got[..], br#"{"ok":true}"#);
 }
 
@@ -527,9 +531,13 @@ async fn post_graphql_public_gives_up_after_one_429_retry() {
         .expect(2)
         .mount(&server)
         .await;
-    let err = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
-        .await
-        .expect_err("persistent 429 must still fail");
+    let err = post_graphql_public(
+        &reqwest::Client::new(),
+        &server.uri(),
+        &serde_json::json!({}),
+    )
+    .await
+    .expect_err("persistent 429 must still fail");
     assert!(matches!(err, AniError::Upstream { status: 429 }));
     // MockServer verifies expect(2) on drop — exactly one retry.
 }
@@ -543,8 +551,12 @@ async fn post_graphql_public_does_not_retry_other_upstream_errors() {
         .expect(1)
         .mount(&server)
         .await;
-    let err = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
-        .await
-        .expect_err("500 must fail without a retry");
+    let err = post_graphql_public(
+        &reqwest::Client::new(),
+        &server.uri(),
+        &serde_json::json!({}),
+    )
+    .await
+    .expect_err("500 must fail without a retry");
     assert!(matches!(err, AniError::Upstream { status: 500 }));
 }
