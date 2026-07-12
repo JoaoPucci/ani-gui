@@ -37,6 +37,16 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 }
 
 /**
+ * Filter a prefetch target list down to aired episodes. The detail
+ * page's background warm must not spend scraper slots resolving
+ * greyed-out future episodes (Codex P2 #3565590966); unknown airing
+ * data passes everything through, mirroring {@link epAirState}.
+ */
+export function airedTargets(targets: number[], airing: AiringStatus | null): number[] {
+	return targets.filter((n) => !epAirState(n, airing).unaired);
+}
+
+/**
  * Short localized air-date label for the next-episode tile
  * (e.g. "Jul 17"). Epoch seconds in, display string out.
  */
