@@ -23,6 +23,20 @@ pub struct AiringStatus {
     pub next_episode: Option<u32>,
     /// Epoch seconds of the next airing, when one is scheduled.
     pub next_airing_at: Option<u64>,
+    /// Per-episode air dates for the announced future schedule, so
+    /// every unaired tile can label itself (weekly shows publish a
+    /// few weeks ahead; episodes past the published window simply
+    /// have no row here). `serde(default)` tolerates payloads and
+    /// cache rows written before the field existed.
+    #[serde(default)]
+    pub upcoming: Vec<UpcomingEpisode>,
+}
+
+/// One future schedule row: episode number + its air time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct UpcomingEpisode {
+    pub episode: u32,
+    pub airing_at: u64,
 }
 
 /// Airing-schedule query for one show, addressable by EITHER id
@@ -105,6 +119,8 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
             aired: Some(next.episode.saturating_sub(1)),
             next_episode: Some(next.episode),
             next_airing_at: Some(next.airing_at),
+            // Red stub: the green commit extracts airingSchedule here.
+            upcoming: Vec::new(),
         }
     } else {
         let aired = match media.status.as_deref() {
@@ -116,6 +132,7 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
             aired,
             next_episode: None,
             next_airing_at: None,
+            upcoming: Vec::new(),
         }
     };
     Ok(Some(status))

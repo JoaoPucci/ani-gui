@@ -20,6 +20,7 @@ fn parse_airing_releasing_show_derives_aired_from_next_episode() {
             aired: Some(2),
             next_episode: Some(3),
             next_airing_at: Some(1_784_215_800),
+            upcoming: vec![],
         }
     );
 }
@@ -125,4 +126,42 @@ async fn airing_status_without_any_id_makes_no_request() {
         .await
         .expect("ok");
     assert!(got.is_none());
+}
+
+// The upcoming schedule feeds per-episode dates on every unaired
+// tile, not just the next one.
+#[test]
+fn parse_airing_extracts_the_upcoming_schedule() {
+    let body = br#"{"data":{"Media":{
+        "status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
+        "airingSchedule":{"nodes":[
+            {"episode":3,"airingAt":1784215800},
+            {"episode":4,"airingAt":1784820600}
+        ]}
+    }}}"#;
+    let got = parse_airing_response(body).expect("ok").expect("some");
+    assert_eq!(
+        got.upcoming,
+        vec![
+            UpcomingEpisode {
+                episode: 3,
+                airing_at: 1_784_215_800,
+            },
+            UpcomingEpisode {
+                episode: 4,
+                airing_at: 1_784_820_600,
+            },
+        ]
+    );
+}
+
+#[test]
+fn parse_airing_missing_schedule_defaults_to_empty_upcoming() {
+    let body = br#"{"data":{"Media":{
+        "status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{"episode":3,"airingAt":1784215800}
+    }}}"#;
+    let got = parse_airing_response(body).expect("ok").expect("some");
+    assert!(got.upcoming.is_empty());
 }
