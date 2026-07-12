@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { airingPending, epAirState, formatAirDate, type AiringStatus } from './episode-airing';
-import { airedCap, airedTargets, beyondPlayable, displayCap } from './episode-caps';
+import { airedCap, airedTargets, beyondPlayable, displayCap, minCap } from './episode-caps';
 
 // Yani Neko's real shape at the time of writing: 12 announced, 2
 // aired, ep 3 lands 2026-07-17 00:30 JST (epoch 1784215800).
@@ -157,6 +157,27 @@ describe('displayCap', () => {
 		expect(displayCap(2, null, RELEASING)).toBe(2);
 		expect(displayCap(null, null, RELEASING)).toBe(null);
 		expect(displayCap(null, 12, null)).toBe(12);
+	});
+});
+
+describe('minCap', () => {
+	it('takes the smaller of two known caps', () => {
+		// Codex P2 #3566042284: with the padded strip,
+		// knownAvailableEpisodes is usually null, so the download
+		// modal's range clamped only to the aired count (5) even when
+		// allmanga has just 2 catalogued — a 1-5 download starts with
+		// episodes 3-5 doomed. The playable cap must join the clamp.
+		expect(minCap(10, 2)).toBe(2);
+		expect(minCap(2, 10)).toBe(2);
+	});
+
+	it('falls back to whichever cap is known', () => {
+		expect(minCap(null, 2)).toBe(2);
+		expect(minCap(10, null)).toBe(10);
+	});
+
+	it('stays unknown when neither is', () => {
+		expect(minCap(null, null)).toBe(null);
 	});
 });
 
