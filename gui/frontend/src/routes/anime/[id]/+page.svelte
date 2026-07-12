@@ -36,7 +36,13 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
-	import { airedCap, airedTargets, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import {
+		airedCap,
+		airedTargets,
+		airingPending,
+		epAirState,
+		formatAirDate
+	} from '$lib/detail/episode-airing';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
@@ -544,6 +550,11 @@
 		};
 	});
 
+	// In-flight beat between mount and the airing answer: tiles and
+	// the primary actions stay inert so a quick click can't race the
+	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
+	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+
 	/** Tile label for an unaired episode: air date on the very next
 	 *  one, the generic "Unaired" otherwise. */
 	function unairedLabel(airsAt: number | null): string {
@@ -699,9 +710,10 @@
 		// Wait for the airing answer before warming anything — firing
 		// on mount with airing still unknown would resolve the whole
 		// visible schedule, greyed-out future episodes included
-		// (Codex P2 #3565590966). Every path sets airingResolved once
-		// detail is loaded, so this can't deadlock the warm.
-		if (!airingResolved) return;
+		// (Codex P2 #3565590966). airingPending (not raw
+		// airingResolved) so a show without a Kitsu status — where no
+		// airing fetch ever starts — doesn't deadlock the warm.
+		if (airingIsPending) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 
@@ -1097,7 +1109,7 @@
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
 	function onPlay() {
-		if (nothingAiredYet) return;
+		if (nothingAiredYet || airingIsPending) return;
 		void startPlay(defaultEpisode());
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
@@ -1114,7 +1126,7 @@
 		.catch(() => {});
 
 	function onDownload() {
-		if (!detail || nothingAiredYet) return;
+		if (!detail || nothingAiredYet || airingIsPending) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
 		// `episode_count` must stay Kitsu's announced total — that's
@@ -1253,7 +1265,7 @@
 									class="btn btn-glass"
 									style:--btn-glow="var(--accent)"
 									onclick={onPlay}
-									disabled={actionBusy || nothingAiredYet}
+									disabled={actionBusy || nothingAiredYet || airingIsPending}
 									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">▸</span>
@@ -1267,7 +1279,7 @@
 									type="button"
 									class="btn btn-outline"
 									onclick={onDownload}
-									disabled={nothingAiredYet}
+									disabled={nothingAiredYet || airingIsPending}
 									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">↓</span>
@@ -1606,14 +1618,14 @@
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: availability === false
 													? m.detail_ep_disabled_tooltip()
 													: undefined}
 											onclick={() => {
-												if (!air.unaired) onPickEpisode(num ?? 0);
+												if (!air.unaired && !airingIsPending) onPickEpisode(num ?? 0);
 											}}
 										>
 											<span class="ep-thumb">
@@ -1668,14 +1680,14 @@
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: availability === false
 													? m.detail_ep_disabled_tooltip()
 													: undefined}
 											onclick={() => {
-												if (!air.unaired) onPickEpisode(n);
+												if (!air.unaired && !airingIsPending) onPickEpisode(n);
 											}}
 										>
 											<span class="ep-thumb">

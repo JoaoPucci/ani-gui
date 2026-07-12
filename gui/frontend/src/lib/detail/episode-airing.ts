@@ -48,6 +48,23 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 }
 
 /**
+ * True while the airing question is still being *asked* — a
+ * non-finished show whose airing fetch hasn't settled. Distinct from
+ * resolved-unknown (fetch failed, show unmapped), which must never
+ * gate: availability can return from cache before `airingGet`
+ * finishes, and treating that in-flight beat as unknown leaves tiles
+ * and the primary CTA interactive long enough for a quick click to
+ * start resolving an unaired episode (Codex P2 #3565710325).
+ * Finished shows skip the fetch; a missing Kitsu status means no
+ * fetch ever starts — neither may report pending, or the gate would
+ * never lift.
+ */
+export function airingPending(resolved: boolean, status: string | null | undefined): boolean {
+	if (resolved) return false;
+	return status != null && status !== 'finished';
+}
+
+/**
  * Clamp an episode cap to the aired count. The primary Play/Continue
  * CTA computes its target as `pickNextEpisode(last, cap)` — without
  * the clamp, a user watched through the aired count gets "Continue"
