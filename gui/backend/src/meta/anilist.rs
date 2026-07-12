@@ -15,11 +15,27 @@
 //! through Kitsu's `mappings` endpoint to keep nav + the rest of the
 //! app on Kitsu's id space.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
+
+/// Airing progress for a show as AniList schedules it. Drives the
+/// detail page's unaired-episode placeholders: tiles past `aired`
+/// render greyed instead of clickable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct AiringStatus {
+    /// Episodes aired so far, when derivable: `nextAiringEpisode - 1`
+    /// while releasing, the announced total once finished, `0` before
+    /// premiere. `None` = unknown (no schedule data) — callers must
+    /// NOT gate episodes on unknown.
+    pub aired: Option<u32>,
+    /// Number of the next episode to air, when one is scheduled.
+    pub next_episode: Option<u32>,
+    /// Epoch seconds of the next airing, when one is scheduled.
+    pub next_airing_at: Option<u64>,
+}
 
 /// One trending anime as AniList serves it. Fields chosen to match
 /// what the home-page bridge consumes: `id_mal` for the Kitsu lookup,
@@ -379,6 +395,52 @@ pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::
         .into_iter()
         .filter_map(|m| m.id_mal.map(|mal| (mal, m.id)))
         .collect())
+}
+
+/// Airing-schedule query for one show, addressable by EITHER id
+/// space: pass `id` (AniList) or `idMal` and omit the other — the
+/// detail page reaches shows Kitsu hasn't MAL-mapped through the
+/// direct anilist mapping, so both routes must work.
+const AIRING_GQL: &str = "query Airing($id: Int, $idMal: Int) { \
+        Media(id: $id, idMal: $idMal, type: ANIME) { \
+            status episodes nextAiringEpisode { episode airingAt } \
+        } \
+    }";
+
+/// Fetch a show's [`AiringStatus`] by AniList id (preferred) or MAL
+/// id. `Ok(None)` when AniList doesn't index the show or neither id
+/// is supplied.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn airing_status(
+    client: &reqwest::Client,
+    anilist_id: Option<u32>,
+    mal_id: Option<u32>,
+    base_override: Option<&str>,
+) -> Result<Option<AiringStatus>> {
+    // Green commit fills the fetch in.
+    let _ = (client, anilist_id, mal_id, base_override);
+    Ok(None)
+}
+
+/// Pure parser + derivation for the airing response. `Media: null` →
+/// `Ok(None)`. Derivation:
+///   - a scheduled `nextAiringEpisode` → aired = episode - 1;
+///   - else `FINISHED` → aired = the announced total (None when
+///     AniList doesn't know it — stays ungated);
+///   - else `NOT_YET_RELEASED` → aired = 0;
+///   - else (releasing without schedule data, hiatus, cancelled) →
+///     aired = None, deliberately: gating on a guess would hide real
+///     episodes.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
+    // Green commit fills the extraction in.
+    let _ = body;
+    Ok(None)
 }
 
 /// Pure parser for the by-MAL `mediaId` response.
