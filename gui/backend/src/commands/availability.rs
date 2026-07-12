@@ -278,6 +278,7 @@ pub async fn check_availability(
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+        seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
             id,
@@ -363,11 +364,49 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
     }
 }
 
+/// Seed the airing cache before a pre-premiere negative write. The
+/// premiere-aware TTL in [`negative_ttl_for`] reads the airing:v2
+/// row, but only the detail/play pages write it — the first negative
+/// probe for an upcoming title from the list-view warmer (or one that
+/// races detail's airing fetch) would otherwise decide on a missing
+/// schedule and cache a 24h row that outlives a premiere hours away
+/// (Codex P2 #3566017944). Scoped to exactly the rows where the
+/// schedule changes the decision: pre-premiere statuses on negative
+/// results — current/unknown shows cap at the ongoing window with or
+/// without a schedule, and `airing_get` itself is cache-first, so a
+/// row already seeded by the detail page costs no network.
+async fn seed_airing_for_negative(
+    state: &AppState,
+    kitsu_id: &str,
+    available: bool,
+    status: Option<&str>,
+) {
+    seed_airing_for_negative_with_base(state, kitsu_id, available, status, None).await;
+}
+
+/// [`seed_airing_for_negative`] with the AniList endpoint override
+/// exposed for tests. Production passes `None` via the wrapper.
+async fn seed_airing_for_negative_with_base(
+    state: &AppState,
+    kitsu_id: &str,
+    available: bool,
+    status: Option<&str>,
+    anilist_base: Option<&str>,
+) {
+    if available || !matches!(status, Some("unreleased" | "tba" | "upcoming")) {
+        return;
+    }
+    // Errors degrade to the schedule-less fallback TTL — same outcome
+    // as before the seed existed.
+    let _ =
+        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base).await;
+}
+
 /// Best-effort read of the show's next scheduled airing from the
-/// airing cache (`commands::airing` writes it on detail-page visits).
-/// Deliberately cache-only — the availability probe must not grow a
-/// network hop; a missing row just means the status-based fallback in
-/// [`negative_ttl_for`] applies.
+/// airing cache (`commands::airing` writes it on detail-page visits,
+/// [`seed_airing_for_negative`] on pre-premiere negative probes).
+/// Deliberately cache-only — a missing row just means the
+/// status-based fallback in [`negative_ttl_for`] applies.
 fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
     let key = format!("airing:v2:{kitsu_id}");
     let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
@@ -654,8 +693,7 @@ mod tests {
     /// anilist mapping.
     fn state_with_kitsu(td: &tempfile::TempDir, kitsu_uri: &str) -> AppState {
         let mut state = cache_only_state(td);
-        state.kitsu =
-            crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri);
+        state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri);
         state
     }
 
@@ -735,7 +773,11 @@ mod tests {
             Some(&anilist.uri()),
         )
         .await;
-        assert!(kitsu.received_requests().await.expect("recorded").is_empty());
+        assert!(kitsu
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty());
         assert_eq!(cached_next_airing_at(&state, "50551"), None);
     }
 
@@ -753,7 +795,11 @@ mod tests {
             Some(&anilist.uri()),
         )
         .await;
-        assert!(kitsu.received_requests().await.expect("recorded").is_empty());
+        assert!(kitsu
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty());
     }
 
     /// `write_cache_full` is the load-bearing serializer for every
