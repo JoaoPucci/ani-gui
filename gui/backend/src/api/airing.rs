@@ -6,8 +6,6 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-// Wired by the green commit's route mount.
-#[allow(unused_imports)]
 use axum::routing::get;
 use axum::{Json, Router};
 
@@ -18,17 +16,16 @@ use crate::meta::anilist::AiringStatus;
 /// Mount the airing route. Called from
 /// [`crate::api::build_api_router`].
 pub fn router() -> Router<Arc<AppState>> {
-    // Green commit mounts the route.
-    Router::new()
+    Router::new().route("/api/kitsu/airing/:kitsu_id", get(get_airing))
 }
 
-#[allow(dead_code)]
 async fn get_airing(
     State(state): State<Arc<AppState>>,
     Path(kitsu_id): Path<String>,
 ) -> Result<Json<AiringStatus>, AniError> {
-    let _ = (state, kitsu_id);
-    Err(AniError::Metadata)
+    Ok(Json(
+        crate::commands::airing::airing_get(&state, &kitsu_id).await?,
+    ))
 }
 
 #[cfg(test)]
