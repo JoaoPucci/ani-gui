@@ -36,6 +36,7 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
+	import { ctaState } from '$lib/detail/cta-state';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import {
 		airedCap,
@@ -206,6 +207,13 @@
 	// the primary actions stay inert so a quick click can't race the
 	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+
+	// CTA area render state. 'ready' includes the settled-but-unknown
+	// verdict (probe errored, e.g. throttled allmanga searches) — the
+	// old availability===null skeleton had no retry and pulsed forever
+	// when the first probe hit a rate limit; the lazy click path
+	// surfaces the real error instead.
+	const cta = $derived(ctaState(availabilityResolved, availability));
 
 	// How far the grid renders tiles: with airing data present the
 	// grid extends past allmanga's playable count to the announced
@@ -1268,7 +1276,7 @@
 					<!-- Availability-specific, non-editor content: a loading skeleton
 					     while the probe is in flight; a "not in catalogue" notice when
 					     the show can't be streamed. -->
-					{#if availability === null}
+					{#if cta === 'loading'}
 						<div
 							class="actions actions-loading"
 							aria-label={m.detail_actions_aria_label()}
@@ -1277,7 +1285,7 @@
 							<span class="action-skel"></span>
 							<span class="action-skel action-skel-narrow"></span>
 						</div>
-					{:else if availability === false}
+					{:else if cta === 'unavailable'}
 						<p class="unavailable" role="status">
 							<span aria-hidden="true">⏵</span>
 							{m.detail_unavailable_message()}
@@ -1291,9 +1299,9 @@
 					     ONCE here, never once per availability branch, so an availability
 					     flip can't remount it and drop an in-flight save or a pending
 					     partial-save retry. -->
-					{#if availability === true || (accountStore.hasAny && detail)}
+					{#if cta === 'ready' || (accountStore.hasAny && detail)}
 						<div class="actions" aria-label={m.detail_actions_aria_label()}>
-							{#if availability === true}
+							{#if cta === 'ready'}
 								<button
 									type="button"
 									class="btn btn-glass"
