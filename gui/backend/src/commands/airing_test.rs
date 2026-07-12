@@ -96,6 +96,41 @@ async fn airing_get_defaults_when_kitsu_has_no_mappings() {
     assert_eq!(got, AiringStatus::default());
 }
 
+// --- airing_ttl_for -----------------------------------------------
+// Codex P2 #3565710322: a row cached shortly before a scheduled
+// airing must not outlive the airing by the full fixed TTL, or the
+// just-dropped episode stays greyed for hours. The TTL caps at the
+// schedule boundary plus a short grace.
+
+const NOW: u64 = 1_784_000_000;
+
+#[test]
+fn ttl_stays_at_the_fixed_window_without_a_schedule() {
+    assert_eq!(airing_ttl_for(None, NOW), AIRING_TTL_SECS);
+}
+
+#[test]
+fn ttl_caps_at_the_next_airing_plus_grace() {
+    // Airing 30 minutes out: the row dies shortly after the drop, not
+    // 3 hours later.
+    let at = NOW + 30 * 60;
+    assert_eq!(airing_ttl_for(Some(at), NOW), 30 * 60 + AIRING_GRACE_SECS);
+}
+
+#[test]
+fn ttl_keeps_the_fixed_window_for_a_distant_airing() {
+    // Next episode is 5 days away — no reason to shrink the window.
+    let at = NOW + 5 * 24 * 60 * 60;
+    assert_eq!(airing_ttl_for(Some(at), NOW), AIRING_TTL_SECS);
+}
+
+#[test]
+fn ttl_collapses_to_grace_when_the_schedule_already_passed() {
+    // Stale AniList row / clock skew: recheck soon, but not per-request.
+    assert_eq!(airing_ttl_for(Some(NOW - 60), NOW), AIRING_GRACE_SECS);
+    assert_eq!(airing_ttl_for(Some(NOW), NOW), AIRING_GRACE_SECS);
+}
+
 #[tokio::test]
 async fn airing_get_caches_per_show() {
     use wiremock::matchers::{method, path};
