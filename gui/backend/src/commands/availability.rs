@@ -337,9 +337,32 @@ fn positive_ttl_for(status: Option<&str>) -> u64 {
 ///   - not finished, no
 ///     schedule known    → 24h, same as the ongoing positive TTL.
 fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
-    // Green commit fills the policy in.
-    let _ = (status, next_airing_at, now_epoch_s);
-    AVAILABILITY_TTL_NEGATIVE_SECS
+    const GRACE_SECS: u64 = 3 * 60 * 60;
+    const FLOOR_SECS: u64 = 60 * 60;
+    if status == Some("finished") {
+        return AVAILABILITY_TTL_NEGATIVE_SECS;
+    }
+    match next_airing_at {
+        // Already aired (or the airing row is stale) — re-probe soon.
+        Some(at) if at <= now_epoch_s => FLOOR_SECS,
+        Some(at) => {
+            (at - now_epoch_s + GRACE_SECS).clamp(FLOOR_SECS, AVAILABILITY_TTL_NEGATIVE_SECS)
+        }
+        None => AVAILABILITY_TTL_ONGOING_SECS,
+    }
+}
+
+/// Best-effort read of the show's next scheduled airing from the
+/// airing cache (`commands::airing` writes it on detail-page visits).
+/// Deliberately cache-only — the availability probe must not grow a
+/// network hop; a missing row just means the status-based fallback in
+/// [`negative_ttl_for`] applies.
+fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
+    let key = format!("airing:v2:{kitsu_id}");
+    let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
+    serde_json::from_str::<crate::meta::anilist_airing::AiringStatus>(&body)
+        .ok()?
+        .next_airing_at
 }
 
 /// Same as [`write_cache`] but lets the caller supply the episode
@@ -362,7 +385,11 @@ pub fn write_cache_full(
     let ttl = if available {
         positive_ttl_for(status)
     } else {
-        AVAILABILITY_TTL_NEGATIVE_SECS
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
     let body = AvailabilityResponse {
         available,
