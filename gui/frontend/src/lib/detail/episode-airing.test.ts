@@ -36,6 +36,20 @@ describe('epAirState', () => {
 		const unreleased: AiringStatus = { aired: 0, next_episode: null, next_airing_at: null };
 		expect(epAirState(1, unreleased)).toEqual({ unaired: true, airsAt: null });
 	});
+
+	it('keeps released decimal extras playable', () => {
+		// Codex P2 #3565610386: allmanga exposes recaps/specials as
+		// decimal tags (2.5 airs between regular eps 2 and 3). AniList
+		// only counts regular episodes, so a strict n <= aired check
+		// would grey a streamable 2.5 until ep 3 airs. Floor-compare:
+		// the extra is out once its base episode is.
+		expect(epAirState(2.5, RELEASING)).toEqual({ unaired: false });
+		expect(airedTargets([1, 2, 2.5, 3], RELEASING)).toEqual([1, 2, 2.5]);
+	});
+
+	it('still gates decimal extras beyond the aired count', () => {
+		expect(epAirState(3.5, RELEASING)).toEqual({ unaired: true, airsAt: null });
+	});
 });
 
 describe('airedTargets', () => {
