@@ -135,6 +135,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v8: negative TTLs became premiere-aware (negative_ttl_for +
+    //     the airing-cache seed), but check_availability
+    //     short-circuits on cached false rows before either runs. A
+    //     v7 negative written for an unreleased show carries the old
+    //     flat 7-day window and would keep the title blocked well
+    //     past its premiere; bumping re-probes those rows so the new
+    //     TTL applies to existing installs too. Codex P2 #3566444127.
     // v7: resolver now also queries Kitsu's abbreviatedTitles as
     //     fallback titles. Shows whose canonical/localized titles only
     //     matched a wrong allmanga sibling (Yu-Gi-Oh! 5D's: every
@@ -171,7 +178,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v7:{kitsu_id}:{m}")
+    format!("availability:v8:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -922,8 +929,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v7:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v7:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v8:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v8:kid-1:dub");
     }
 
     #[test]
