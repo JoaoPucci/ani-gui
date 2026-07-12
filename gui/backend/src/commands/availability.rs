@@ -649,6 +649,113 @@ mod tests {
         }
     }
 
+    /// Like [`cache_only_state`], but with the Kitsu client pointed at
+    /// a live wiremock server so the airing-seed path can resolve the
+    /// anilist mapping.
+    fn state_with_kitsu(td: &tempfile::TempDir, kitsu_uri: &str) -> AppState {
+        let mut state = cache_only_state(td);
+        state.kitsu =
+            crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri);
+        state
+    }
+
+    /// Yani Neko's mapping shape: anilist/anime only.
+    const KITSU_MAPPING_BODY: &str = r#"{
+        "data": { "id": "50551", "type": "anime", "attributes": { "canonicalTitle": "Yani Neko" } },
+        "included": [{
+            "id": "1",
+            "type": "mappings",
+            "attributes": { "externalSite": "anilist/anime", "externalId": "207141" }
+        }]
+    }"#;
+
+    const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
+        "status":"NOT_YET_RELEASED","episodes":12,
+        "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
+    }}}"#;
+
+    // Codex P2 #3566017944: the premiere-aware negative TTL only
+    // works when an airing:v2 row exists, but only the detail/play
+    // pages fetch the airing endpoint. When the FIRST negative probe
+    // for an upcoming title comes from the list-view warmer (or races
+    // detail's airingGet), negative_ttl_for saw None and wrote a 24h
+    // row that outlives a premiere hours away. Pre-premiere negatives
+    // must seed the airing cache before the TTL decision.
+
+    #[tokio::test]
+    async fn pre_premiere_negative_seeds_the_airing_cache() {
+        use wiremock::matchers::{method, path};
+        let kitsu = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/anime/50551"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPING_BODY))
+            .mount(&kitsu)
+            .await;
+        let anilist = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_UNRELEASED_BODY),
+            )
+            .mount(&anilist)
+            .await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        assert_eq!(cached_next_airing_at(&state, "50551"), None);
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            false,
+            Some("upcoming"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert_eq!(
+            cached_next_airing_at(&state, "50551"),
+            Some(1_784_215_800),
+            "the seed must leave an airing:v2 row for negative_ttl_for to read"
+        );
+    }
+
+    #[tokio::test]
+    async fn non_premiere_negative_skips_the_airing_fetch() {
+        // Already-airing shows cap at the ongoing window regardless of
+        // schedule (negative_ttl_current_show_caps_at_the_ongoing_window),
+        // so spending a fetch here would buy nothing.
+        let kitsu = wiremock::MockServer::start().await;
+        let anilist = wiremock::MockServer::start().await;
+        // No mounts: any request would 404 and, more importantly, the
+        // received-requests assertion below would catch it.
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            false,
+            Some("current"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert!(kitsu.received_requests().await.expect("recorded").is_empty());
+        assert_eq!(cached_next_airing_at(&state, "50551"), None);
+    }
+
+    #[tokio::test]
+    async fn positive_results_skip_the_airing_fetch() {
+        let kitsu = wiremock::MockServer::start().await;
+        let anilist = wiremock::MockServer::start().await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            true,
+            Some("upcoming"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert!(kitsu.received_requests().await.expect("recorded").is_empty());
+    }
+
     /// `write_cache_full` is the load-bearing serializer for every
     /// availability decision. A round-trip via `batch_cached` proves
     /// the JSON shape parses back without losing the fields the
