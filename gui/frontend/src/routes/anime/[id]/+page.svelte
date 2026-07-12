@@ -36,7 +36,7 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
-	import { epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { airedTargets, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
@@ -513,11 +513,21 @@
 	// interactive (epAirState never gates on unknown), so a failed
 	// fetch degrades to today's behavior.
 	let airing = $state<AiringStatus | null>(null);
+	// True once the airing question is answered for this show — fetched,
+	// failed (stays unknown/ungated), or skipped for finished shows. The
+	// prefetch warm waits on it so it can't race ahead of the schedule
+	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
+	let airingResolved = $state(false);
 	$effect(() => {
 		const currentId = id;
 		const status = detail?.status;
 		airing = null;
-		if (!currentId || !status || status === 'finished') return;
+		airingResolved = false;
+		if (!currentId || !status) return;
+		if (status === 'finished') {
+			airingResolved = true;
+			return;
+		}
 		let cancelled = false;
 		void airingGet(currentId)
 			.then((a) => {
@@ -525,6 +535,9 @@
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
+			})
+			.finally(() => {
+				if (!cancelled) airingResolved = true;
 			});
 		return () => {
 			cancelled = true;
@@ -683,21 +696,31 @@
 		// play cache with the wrong candidate. The Play/Download UI is already
 		// gated off for these (availability=false), so skip the warm too.
 		if (isMusicSubtype(detail?.subtype ?? null)) return;
+		// Wait for the airing answer before warming anything — firing
+		// on mount with airing still unknown would resolve the whole
+		// visible schedule, greyed-out future episodes included
+		// (Codex P2 #3565590966). Every path sets airingResolved once
+		// detail is loaded, so this can't deadlock the warm.
+		if (!airingResolved) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 
-		// Fan out a prefetch for every visible episode tile in the
-		// strip. The play-cache dedupes simultaneous calls — clicking
-		// any tile while the strip is still resolving shares the same
-		// in-flight promise. The default-episode prefetch (ep 1) falls
-		// out of the same loop; if `episodes` hasn't loaded yet we
-		// still warm ep 1 so the hero "Play" button is instant.
-		const targets = episodes
-			? episodes.flatMap((e) => {
-					const n = e.number ?? e.relative_number ?? null;
-					return n === null ? [] : [n];
-				})
-			: [defaultEpisode()];
+		// Fan out a prefetch for every visible AIRED episode tile in
+		// the strip. The play-cache dedupes simultaneous calls —
+		// clicking any tile while the strip is still resolving shares
+		// the same in-flight promise. The default-episode prefetch
+		// (ep 1) falls out of the same loop; if `episodes` hasn't
+		// loaded yet we still warm ep 1 so the hero "Play" button is
+		// instant.
+		const targets = airedTargets(
+			episodes
+				? episodes.flatMap((e) => {
+						const n = e.number ?? e.relative_number ?? null;
+						return n === null ? [] : [n];
+					})
+				: [defaultEpisode()],
+			airing
+		);
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
@@ -1574,6 +1597,10 @@
 											<span class="ep-thumb">
 												{#if thumb}
 													<img src={thumb} alt="" loading="lazy" decoding="async" />
+												{:else if air.unaired}
+													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
+														{unairedLabel(air.airsAt)}
+													</span>
 												{:else}
 													<span class="ep-thumb-placeholder" aria-hidden="true">
 														{num ? num.toString().padStart(2, '0') : '·'}
@@ -1590,9 +1617,9 @@
 														m.detail_episode_title_fallback({ num: String(num ?? '') })}
 												</span>
 												<span class="ep-meta">
-													{#if air.unaired}
+													{#if air.unaired && thumb}
 														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
-													{:else if ep.length}<span
+													{:else if !air.unaired && ep.length}<span
 															>{m.detail_episode_length_suffix({
 																minutes: String(ep.length)
 															})}</span
@@ -1630,9 +1657,15 @@
 											}}
 										>
 											<span class="ep-thumb">
-												<span class="ep-thumb-placeholder" aria-hidden="true">
-													{n.toString().padStart(2, '0')}
-												</span>
+												{#if air.unaired}
+													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
+														{unairedLabel(air.airsAt)}
+													</span>
+												{:else}
+													<span class="ep-thumb-placeholder" aria-hidden="true">
+														{n.toString().padStart(2, '0')}
+													</span>
+												{/if}
 												<span class="ep-tag" aria-hidden="true">
 													<span class="ep-tag-key">{m.detail_episode_frame_num_key()}</span>
 													<span class="ep-tag-num">{n}</span>
@@ -1642,11 +1675,7 @@
 												<span class="ep-title"
 													>{m.detail_episode_placeholder_title({ num: String(n) })}</span
 												>
-												<span class="ep-meta">
-													{#if air.unaired}
-														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
-													{:else}{m.detail_episode_placeholder_meta()}{/if}
-												</span>
+												<span class="ep-meta">{m.detail_episode_placeholder_meta()}</span>
 											</span>
 										</button>
 									</li>
@@ -2354,6 +2383,19 @@
 	.ep-unaired-label {
 		font-variant-caps: all-small-caps;
 		letter-spacing: 0.04em;
+	}
+	/* Center-of-tile variant: the airs info takes the number's place
+	   (the episode number stays visible in the corner tag). Sized to
+	   read at a glance without shouting like the display-size digits. */
+	.ep-thumb-airs {
+		font-family: inherit;
+		font-size: 1.05rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		line-height: 1.3;
+		text-align: center;
+		padding-inline: 0.75rem;
+		text-wrap: balance;
 	}
 
 	/* Spotlight: while the grid contains a highlighted tile, every
