@@ -16,6 +16,10 @@ export interface AiringStatus {
 	next_episode: number | null;
 	/** Epoch seconds of the next airing, when scheduled. */
 	next_airing_at: number | null;
+	/** Published future schedule (episode number → air time). Weekly
+	 *  shows publish a few weeks ahead; optional for tolerance to
+	 *  payloads written before the field existed. */
+	upcoming?: { episode: number; airing_at: number }[];
 }
 
 /** Per-tile verdict: aired tiles stay interactive; unaired ones grey

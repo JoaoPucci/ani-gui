@@ -930,6 +930,7 @@ export interface AiringStatus {
 	aired: number | null;
 	next_episode: number | null;
 	next_airing_at: number | null;
+	upcoming?: { episode: number; airing_at: number }[];
 }
 
 /** Airing schedule for a show — how many episodes are actually out

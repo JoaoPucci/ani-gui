@@ -37,6 +37,28 @@ describe('epAirState', () => {
 		expect(epAirState(1, unreleased)).toEqual({ unaired: true, airsAt: null });
 	});
 
+	it('labels every scheduled unaired episode with its own date', () => {
+		// The backend now carries the published future schedule, so
+		// tiles beyond the next episode get their dates too.
+		const withSchedule: AiringStatus = {
+			...RELEASING,
+			upcoming: [
+				{ episode: 3, airing_at: 1784215800 },
+				{ episode: 4, airing_at: 1784820600 }
+			]
+		};
+		expect(epAirState(3, withSchedule)).toEqual({ unaired: true, airsAt: 1784215800 });
+		expect(epAirState(4, withSchedule)).toEqual({ unaired: true, airsAt: 1784820600 });
+		// Past the published window: honestly dateless.
+		expect(epAirState(12, withSchedule)).toEqual({ unaired: true, airsAt: null });
+	});
+
+	it('falls back to next_airing_at when the schedule is absent', () => {
+		// RELEASING has no upcoming list — the next episode keeps its
+		// date via the nextAiringEpisode fallback.
+		expect(epAirState(3, RELEASING)).toEqual({ unaired: true, airsAt: 1784215800 });
+	});
+
 	it('keeps released decimal extras playable', () => {
 		// Codex P2 #3565610386: allmanga exposes recaps/specials as
 		// decimal tags (2.5 airs between regular eps 2 and 3). AniList
