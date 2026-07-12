@@ -105,6 +105,13 @@ describe('airedCap', () => {
 	it('stays unbounded when neither is known', () => {
 		expect(airedCap(null, null)).toBe(null);
 	});
+
+	it('collapses to zero for a not-yet-premiered show', () => {
+		// Drives the primary CTA block (Codex P2 #3565666393): a
+		// searchable allmanga stub with nothing aired must not offer
+		// Play episode 1.
+		expect(airedCap(12, { aired: 0, next_episode: null, next_airing_at: null })).toBe(0);
+	});
 });
 
 describe('airedTargets', () => {

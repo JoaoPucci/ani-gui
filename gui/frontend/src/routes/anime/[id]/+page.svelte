@@ -1089,7 +1089,15 @@
 		}
 	}
 
+	// Not-yet-premiered shows can exist as searchable allmanga stubs,
+	// so availability === true while zero episodes have aired. The
+	// tiles and prefetch are gated by epAirState, but pickNextEpisode's
+	// no-history branch returns 1 regardless of the cap — block the
+	// primary CTA too (Codex P2 #3565666393).
+	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
+
 	function onPlay() {
+		if (nothingAiredYet) return;
 		void startPlay(defaultEpisode());
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
@@ -1245,10 +1253,15 @@
 									class="btn btn-glass"
 									style:--btn-glow="var(--accent)"
 									onclick={onPlay}
-									disabled={actionBusy}
+									disabled={actionBusy || nothingAiredYet}
+									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">▸</span>
-									<span>{playLabel}</span>
+									<span
+										>{nothingAiredYet
+											? unairedLabel(airing?.next_airing_at ?? null)
+											: playLabel}</span
+									>
 								</button>
 								<button type="button" class="btn btn-outline" onclick={onDownload}>
 									<span aria-hidden="true">↓</span>
