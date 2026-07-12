@@ -1984,7 +1984,10 @@
 		.catch(() => {});
 
 	function onDownload() {
-		if (!detail) return;
+		// Same pending guard as switches/tiles: with airing still in
+		// flight the modal's cap would fall back to the announced
+		// total and an All download could range into unaired episodes.
+		if (!detail || airingIsPending) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
 		downloadArgs = buildDownloadArgs({
