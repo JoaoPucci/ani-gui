@@ -15,6 +15,17 @@ import {
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
 
+/** Whether an `available: false` verdict may hide this card. Only a
+ *  FINISHED show missing from allmanga is confidently gone; upcoming
+ *  seasons exist on Kitsu before allmanga catalogs them, and airing
+ *  shows can lag the catalog the same way. Those stay visible so the
+ *  user can open the page and plan them — the detail page's play
+ *  surfaces gate themselves on availability + airing separately.
+ *  Unknown status keeps the card: hide only on confident evidence. */
+function unavailableMayHide(status: string | null | undefined): boolean {
+	return status === 'finished';
+}
+
 /** Filter `items` against the availability cache, then warm uncached
  *  entries in the background. Returns the filtered list immediately;
  *  the warm Promise is intentionally swallowed (fire-and-forget). */
@@ -33,7 +44,7 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 		// still surfaces real errors.
 		return items;
 	}
-	const filtered = items.filter((i) => cached[i.id] !== false);
+	const filtered = items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
 
 	// Fire-and-forget warm for any item not in the cache. Skipping
 	// items whose availability is already known keeps the queue
@@ -78,7 +89,7 @@ export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 		// still surfaces real errors.
 		return items;
 	}
-	return items.filter((i) => cached[i.id] !== false);
+	return items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
 }
 
 /** Strict variant: probes uncached items inline (parallel, capped
@@ -129,5 +140,5 @@ export async function filterAvailableStrict<T extends KitsuAnimeRef>(
 		await Promise.all(workers);
 	}
 
-	return items.filter((i) => cached[i.id] !== false);
+	return items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
 }
