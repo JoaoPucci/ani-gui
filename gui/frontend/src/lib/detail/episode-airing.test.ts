@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { airedCap, airedTargets, epAirState, formatAirDate, type AiringStatus } from './episode-airing';
+import {
+	airedCap,
+	airedTargets,
+	epAirState,
+	formatAirDate,
+	type AiringStatus
+} from './episode-airing';
 
 // Yani Neko's real shape at the time of writing: 12 announced, 2
 // aired, ep 3 lands 2026-07-17 00:30 JST (epoch 1784215800).

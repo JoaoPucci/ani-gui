@@ -36,7 +36,7 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
-	import { airedTargets, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { airedCap, airedTargets, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
@@ -928,10 +928,13 @@
 	function defaultEpisode(): number {
 		// Delegated to the shared helper so the home Continue Watching
 		// card and this CTA compute the same answer from the same
-		// inputs. Behaviour is unchanged: no resume entry → 1, mid-
-		// show → last + 1, at cap → last (Replay branch).
+		// inputs: no resume entry → 1, mid-show → last + 1, at cap →
+		// last (Replay branch). The cap clamps to the aired count so a
+		// user watched through the aired episodes gets Replay of the
+		// last aired one instead of Continue into an unaired episode
+		// (Codex P2 #3565649454).
 		const last = resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null;
-		return pickNextEpisode(last, episodeCap);
+		return pickNextEpisode(last, airedCap(episodeCap, airing));
 	}
 
 	/** Label for the primary action button. Five-state machine

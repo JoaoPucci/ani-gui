@@ -48,6 +48,20 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 }
 
 /**
+ * Clamp an episode cap to the aired count. The primary Play/Continue
+ * CTA computes its target as `pickNextEpisode(last, cap)` — without
+ * the clamp, a user watched through the aired count gets "Continue"
+ * into an unaired episode, the same doomed resolution the tiles
+ * disable (Codex P2 #3565649454). Unknown airing data passes the cap
+ * through untouched.
+ */
+export function airedCap(cap: number | null, airing: AiringStatus | null): number | null {
+	const aired = airing?.aired ?? null;
+	if (aired === null) return cap;
+	return cap === null ? aired : Math.min(cap, aired);
+}
+
+/**
  * Filter a prefetch target list down to aired episodes. The detail
  * page's background warm must not spend scraper slots resolving
  * greyed-out future episodes (Codex P2 #3565590966); unknown airing
