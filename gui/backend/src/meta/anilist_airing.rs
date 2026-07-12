@@ -35,7 +35,9 @@ pub struct AiringStatus {
 /// One future schedule row: episode number + its air time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct UpcomingEpisode {
+    /// Episode number as AniList counts it (regular episodes only).
     pub episode: u32,
+    /// Epoch seconds of this episode's scheduled airing.
     pub airing_at: u64,
 }
 
@@ -46,6 +48,9 @@ pub struct UpcomingEpisode {
 const AIRING_GQL: &str = "query Airing($id: Int, $idMal: Int) { \
         Media(id: $id, idMal: $idMal, type: ANIME) { \
             status episodes nextAiringEpisode { episode airingAt } \
+            airingSchedule(notYetAired: true, perPage: 25) { \
+                nodes { episode airingAt } \
+            } \
         } \
     }";
 
@@ -101,6 +106,13 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
         episodes: Option<u32>,
         #[serde(rename = "nextAiringEpisode")]
         next_airing_episode: Option<NextAiring>,
+        #[serde(rename = "airingSchedule", default)]
+        airing_schedule: Option<Schedule>,
+    }
+    #[derive(Deserialize)]
+    struct Schedule {
+        #[serde(default)]
+        nodes: Vec<NextAiring>,
     }
     #[derive(Deserialize)]
     struct NextAiring {
@@ -114,13 +126,24 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
     let Some(media) = parsed.data.media else {
         return Ok(None);
     };
+    let upcoming: Vec<UpcomingEpisode> = media
+        .airing_schedule
+        .map(|s| {
+            s.nodes
+                .into_iter()
+                .map(|n| UpcomingEpisode {
+                    episode: n.episode,
+                    airing_at: n.airing_at,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let status = if let Some(next) = media.next_airing_episode {
         AiringStatus {
             aired: Some(next.episode.saturating_sub(1)),
             next_episode: Some(next.episode),
             next_airing_at: Some(next.airing_at),
-            // Red stub: the green commit extracts airingSchedule here.
-            upcoming: Vec::new(),
+            upcoming,
         }
     } else {
         let aired = match media.status.as_deref() {
@@ -132,7 +155,7 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
             aired,
             next_episode: None,
             next_airing_at: None,
-            upcoming: Vec::new(),
+            upcoming,
         }
     };
     Ok(Some(status))

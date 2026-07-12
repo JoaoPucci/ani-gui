@@ -71,7 +71,7 @@ mod tests {
         let state = test_state();
         meta_cache_put(
             &state.cache_pool,
-            "airing:v1:50551",
+            "airing:v2:50551",
             r#"{"aired":2,"next_episode":3,"next_airing_at":1784215800}"#,
             3600,
         )

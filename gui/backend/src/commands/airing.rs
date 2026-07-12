@@ -35,7 +35,9 @@ pub(crate) async fn airing_get_with_anilist_base(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<AiringStatus> {
-    let key = format!("airing:v1:{kitsu_id}");
+    // v2: AiringStatus gained `upcoming`; serde(default) parses v1 rows
+    // fine but they would render dateless tiles for up to the TTL.
+    let key = format!("airing:v2:{kitsu_id}");
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(status) = serde_json::from_str::<AiringStatus>(&body) {
             return Ok(status);
