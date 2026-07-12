@@ -27,13 +27,17 @@
 		kitsuSearch,
 		markWatched,
 		playStream,
+		airingGet,
 		settingsGet,
 		settingsPut,
+		type AiringStatus,
 		type Config,
 		type HistoryEntry,
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
+	import { epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -502,6 +506,38 @@
 		detail?.episode_count ? Math.min(UI_PAGE_SIZE, detail.episode_count) : UI_PAGE_SIZE
 	);
 	const showEpPlaceholders = $derived(episodes !== null && episodes.length === 0);
+
+	// Airing schedule (AniList via the backend) for non-finished shows:
+	// tiles past `airing.aired` render greyed instead of inviting a
+	// doomed source resolution. null = unknown → every tile stays
+	// interactive (epAirState never gates on unknown), so a failed
+	// fetch degrades to today's behavior.
+	let airing = $state<AiringStatus | null>(null);
+	$effect(() => {
+		const currentId = id;
+		const status = detail?.status;
+		airing = null;
+		if (!currentId || !status || status === 'finished') return;
+		let cancelled = false;
+		void airingGet(currentId)
+			.then((a) => {
+				if (!cancelled) airing = a;
+			})
+			.catch(() => {
+				/* unknown airing data → tiles stay ungated */
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	/** Tile label for an unaired episode: air date on the very next
+	 *  one, the generic "Unaired" otherwise. */
+	function unairedLabel(airsAt: number | null): string {
+		return airsAt
+			? m.detail_ep_airs({ date: formatAirDate(airsAt, getLocale()) })
+			: m.detail_ep_unaired();
+	}
 
 	const QUALITIES: Array<{ key: string; label: string }> = [
 		{ key: 'best', label: 'Best' },
@@ -1512,6 +1548,8 @@
 								{#each episodes as ep, i (ep.id)}
 									{@const thumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
 									{@const num = ep.number ?? ep.relative_number ?? null}
+									{@const air =
+										num !== null ? epAirState(num, airing) : { unaired: false as const }}
 									<li
 										class:ep-highlight={num !== null && num === highlightEp}
 										data-ep-num={num ?? ''}
@@ -1522,9 +1560,16 @@
 											type="button"
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
-											aria-disabled={availability === false}
-											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-											onclick={() => onPickEpisode(num ?? 0)}
+											class:ep-tile-unaired={air.unaired}
+											aria-disabled={availability === false || air.unaired}
+											title={air.unaired
+												? m.detail_ep_unaired_tooltip()
+												: availability === false
+													? m.detail_ep_disabled_tooltip()
+													: undefined}
+											onclick={() => {
+												if (!air.unaired) onPickEpisode(num ?? 0);
+											}}
 										>
 											<span class="ep-thumb">
 												{#if thumb}
@@ -1545,7 +1590,9 @@
 														m.detail_episode_title_fallback({ num: String(num ?? '') })}
 												</span>
 												<span class="ep-meta">
-													{#if ep.length}<span
+													{#if air.unaired}
+														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
+													{:else if ep.length}<span
 															>{m.detail_episode_length_suffix({
 																minutes: String(ep.length)
 															})}</span
@@ -1560,6 +1607,7 @@
 						     gives us a usable count. Render numbered placeholder tiles
 						     so the user isn't blocked from poking the panel. -->
 								{#each Array.from({ length: epPlaceholderCount }, (_, k) => k + 1) as n, i (n)}
+									{@const air = epAirState(n, airing)}
 									<li
 										class:ep-highlight={n === highlightEp}
 										data-ep-num={n}
@@ -1570,9 +1618,16 @@
 											type="button"
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
-											aria-disabled={availability === false}
-											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-											onclick={() => onPickEpisode(n)}
+											class:ep-tile-unaired={air.unaired}
+											aria-disabled={availability === false || air.unaired}
+											title={air.unaired
+												? m.detail_ep_unaired_tooltip()
+												: availability === false
+													? m.detail_ep_disabled_tooltip()
+													: undefined}
+											onclick={() => {
+												if (!air.unaired) onPickEpisode(n);
+											}}
 										>
 											<span class="ep-thumb">
 												<span class="ep-thumb-placeholder" aria-hidden="true">
@@ -1587,7 +1642,11 @@
 												<span class="ep-title"
 													>{m.detail_episode_placeholder_title({ num: String(n) })}</span
 												>
-												<span class="ep-meta">{m.detail_episode_placeholder_meta()}</span>
+												<span class="ep-meta">
+													{#if air.unaired}
+														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
+													{:else}{m.detail_episode_placeholder_meta()}{/if}
+												</span>
 											</span>
 										</button>
 									</li>
@@ -2279,6 +2338,22 @@
 		cursor: not-allowed;
 		opacity: 0.55;
 		filter: saturate(0.6);
+	}
+
+	/* Unaired episodes: visible so the season's shape stays readable,
+	   but clearly out of reach — dimmer + desaturated, no hover lift,
+	   default cursor (nothing to do here yet). */
+	.ep-tile-unaired {
+		cursor: default;
+		opacity: 0.45;
+		filter: saturate(0.35);
+	}
+	.ep-tile:hover.ep-tile-unaired {
+		transform: none;
+	}
+	.ep-unaired-label {
+		font-variant-caps: all-small-caps;
+		letter-spacing: 0.04em;
 	}
 
 	/* Spotlight: while the grid contains a highlighted tile, every
