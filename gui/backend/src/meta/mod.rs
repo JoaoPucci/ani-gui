@@ -6,6 +6,7 @@
 //! Implementation lands in M2 (Kitsu) and M3 (AniList).
 
 pub mod anilist;
+pub mod anilist_airing;
 pub mod anilist_streaming_eps;
 pub mod anilist_user;
 pub mod aniskip;

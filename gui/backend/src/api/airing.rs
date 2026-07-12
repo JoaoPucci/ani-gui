@@ -11,7 +11,7 @@ use axum::{Json, Router};
 
 use crate::app::AppState;
 use crate::error::AniError;
-use crate::meta::anilist::AiringStatus;
+use crate::meta::anilist_airing::AiringStatus;
 
 /// Mount the airing route. Called from
 /// [`crate::api::build_api_router`].
@@ -91,7 +91,7 @@ mod tests {
         let body = axum::body::to_bytes(r.into_body(), 64 * 1024)
             .await
             .expect("body");
-        let got: crate::meta::anilist::AiringStatus =
+        let got: crate::meta::anilist_airing::AiringStatus =
             serde_json::from_slice(&body).expect("parses");
         assert_eq!(got.aired, Some(2));
         assert_eq!(got.next_episode, Some(3));

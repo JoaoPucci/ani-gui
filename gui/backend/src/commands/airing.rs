@@ -3,14 +3,14 @@
 //!
 //! Resolution reuses the tracker mapping chain: Kitsu's mappings give
 //! the `anilist/anime` id (present even on fresh seasonal shows Kitsu
-//! hasn't MAL-mapped) or the MAL id, and [`crate::meta::anilist::
+//! hasn't MAL-mapped) or the MAL id, and [`crate::meta::anilist_airing::
 //! airing_status`] accepts either. No mapping at all → the default
 //! all-`None` status, which the UI treats as "unknown, don't gate".
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::Result;
-use crate::meta::anilist::AiringStatus;
+use crate::meta::anilist_airing::AiringStatus;
 
 /// 3 hours. Airing data only moves once per weekly episode, but the
 /// aired count must tick up reasonably soon after a premiere — a
@@ -47,9 +47,14 @@ pub(crate) async fn airing_get_with_anilist_base(
     let status = if ids.anilist.is_none() && ids.mal.is_none() {
         AiringStatus::default()
     } else {
-        crate::meta::anilist::airing_status(&state.proxy_http, ids.anilist, ids.mal, anilist_base)
-            .await?
-            .unwrap_or_default()
+        crate::meta::anilist_airing::airing_status(
+            &state.proxy_http,
+            ids.anilist,
+            ids.mal,
+            anilist_base,
+        )
+        .await?
+        .unwrap_or_default()
     };
 
     if let Ok(body) = serde_json::to_string(&status) {
