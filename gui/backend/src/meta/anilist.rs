@@ -247,6 +247,140 @@ pub async fn media_id_for_mal(
     parse_media_id_response(&bytes)
 }
 
+/// By-AniList-id query resolving the show's MAL id — the inverse of
+/// [`MEDIA_ID_BY_MAL_GQL`]. Tracker id-resolution falls back to it
+/// when Kitsu carries only the `anilist/anime` mapping (fresh
+/// seasonal shows): the direct mapping reaches AniList, and this
+/// query bridges the rest of the way to MAL.
+const MAL_ID_BY_MEDIA_GQL: &str = "query MalIdByMedia($id: Int!) { \
+        Media(id: $id, type: ANIME) { idMal } \
+    }";
+
+/// Resolve an AniList numeric `mediaId` → the show's MAL id. `None`
+/// when AniList has no MAL link recorded. Mirrors
+/// [`media_id_for_mal`]'s network shape; `base_override` points at
+/// wiremock in tests.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn mal_id_for_media_id(
+    client: &reqwest::Client,
+    media_id: u32,
+    base_override: Option<&str>,
+) -> Result<Option<u32>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MAL_ID_BY_MEDIA_GQL,
+        "variables": { "id": media_id },
+    });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    parse_mal_id_response(&bytes)
+}
+
+/// Pure parser for the by-media `idMal` response.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// `{ data: { Media: { idMal } } }` envelope. Both `Media: null`
+/// (unknown media id) and `idMal: null` (no MAL link) map to
+/// `Ok(None)`, not an error.
+pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist idMal response: {e}"),
+    })?;
+    Ok(parsed.data.media.and_then(|m| m.id_mal))
+}
+
+/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → their
+/// AniList `mediaId`s in ONE request per [`MAL_BATCH_PAGE_SIZE`]-sized
+/// chunk. The Watch-Later bridge uses it so a rail load with many
+/// Kitsu-unmapped titles costs O(n/50) AniList calls instead of O(n)
+/// against the public 30 req/min limit (Codex P2 #3565216298).
+const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
+        Page(perPage: 50) { media(type: ANIME, idMal_in: $idMals) { id idMal } } \
+    }";
+
+/// Max MAL ids per [`media_ids_for_mals`] request — AniList's `Page`
+/// caps `perPage` at 50, so larger chunks would silently truncate.
+pub const MAL_BATCH_PAGE_SIZE: usize = 50;
+
+/// Resolve many MAL ids → AniList `mediaId`s, chunked at
+/// [`MAL_BATCH_PAGE_SIZE`] per request. Ids AniList doesn't index are
+/// simply absent from the returned map; empty input makes no request.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn media_ids_for_mals(
+    client: &reqwest::Client,
+    mal_ids: &[u32],
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, u32>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let mut map = std::collections::HashMap::new();
+    for chunk in mal_ids.chunks(MAL_BATCH_PAGE_SIZE) {
+        let body = serde_json::json!({
+            "query": MEDIA_IDS_BY_MALS_GQL,
+            "variables": { "idMals": chunk },
+        });
+        let bytes = post_graphql_public(client, url, &body).await?;
+        map.extend(parse_media_ids_by_mal_response(&bytes)?);
+    }
+    Ok(map)
+}
+
+/// Pure parser for the batched by-MAL response: `{ data: { Page: {
+/// media: [{ id, idMal }] } } }` → `idMal → id` map. Entries without
+/// an `idMal` are skipped.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Page")]
+        page: Page,
+    }
+    #[derive(Deserialize)]
+    struct Page {
+        media: Vec<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        id: u32,
+        #[serde(rename = "idMal")]
+        id_mal: Option<u32>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist batched idMal response: {e}"),
+    })?;
+    Ok(parsed
+        .data
+        .page
+        .media
+        .into_iter()
+        .filter_map(|m| m.id_mal.map(|mal| (mal, m.id)))
+        .collect())
+}
+
 /// Pure parser for the by-MAL `mediaId` response.
 ///
 /// # Errors
@@ -325,336 +459,5 @@ pub fn parse_trending(body: &[u8]) -> Result<Vec<AniListAnimeRef>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Real shape lifted from a live AniList trending probe. Three
-    /// entries; covers the optional fields (idMal, episodes,
-    /// bannerImage) hitting both Some and null variants so the
-    /// derive's `Option` handling is exercised.
-    fn fixture_body() -> &'static [u8] {
-        // Regular raw string (not byte raw) because the JSON contains
-        // Japanese characters; `br#"…"#` rejects non-ASCII.
-        FIXTURE_JSON.as_bytes()
-    }
-
-    const FIXTURE_JSON: &str = r##"{
-            "data": {
-                "Page": {
-                    "media": [
-                        {
-                            "id": 182205,
-                            "idMal": 59970,
-                            "title": {
-                                "romaji": "Tensei Shitara Slime Datta Ken 4th Season",
-                                "english": "That Time I Got Reincarnated as a Slime Season 4",
-                                "native": "転生したらスライムだった件 第4期",
-                                "userPreferred": "Tensei Shitara Slime Datta Ken 4th Season"
-                            },
-                            "coverImage": {
-                                "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx182205-q.jpg",
-                                "large": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx182205-q.jpg",
-                                "medium": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx182205-q.jpg",
-                                "color": "#1abbd6"
-                            },
-                            "bannerImage": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/182205-f.jpg",
-                            "status": "RELEASING",
-                            "episodes": null,
-                            "trending": 273,
-                            "averageScore": 80
-                        },
-                        {
-                            "id": 21,
-                            "idMal": 21,
-                            "title": {
-                                "romaji": "ONE PIECE",
-                                "english": "ONE PIECE",
-                                "native": "ONE PIECE",
-                                "userPreferred": "ONE PIECE"
-                            },
-                            "coverImage": {
-                                "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-E.jpg",
-                                "large": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21-E.jpg",
-                                "medium": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx21-E.jpg",
-                                "color": "#e49335"
-                            },
-                            "bannerImage": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-w.jpg",
-                            "status": "RELEASING",
-                            "episodes": null,
-                            "trending": 167,
-                            "averageScore": 87
-                        },
-                        {
-                            "id": 999999,
-                            "idMal": null,
-                            "title": {
-                                "romaji": "Hypothetical Show With No MAL Id",
-                                "english": null,
-                                "native": null,
-                                "userPreferred": "Hypothetical Show With No MAL Id"
-                            },
-                            "coverImage": {
-                                "extraLarge": null,
-                                "large": null,
-                                "medium": null,
-                                "color": null
-                            },
-                            "bannerImage": null,
-                            "status": null,
-                            "episodes": null,
-                            "trending": null,
-                            "averageScore": null
-                        }
-                    ]
-                }
-            }
-        }"##;
-
-    #[test]
-    fn parse_trending_yields_expected_count_and_first_entry() {
-        let v = parse_trending(fixture_body()).expect("parses");
-        assert_eq!(v.len(), 3);
-        let first = &v[0];
-        assert_eq!(first.id, 182205);
-        assert_eq!(first.id_mal, Some(59970));
-        assert_eq!(
-            first.title.user_preferred.as_deref(),
-            Some("Tensei Shitara Slime Datta Ken 4th Season")
-        );
-        assert_eq!(first.cover_image.color.as_deref(), Some("#1abbd6"));
-        assert!(first.banner_image.is_some());
-        assert_eq!(first.status.as_deref(), Some("RELEASING"));
-        assert_eq!(first.trending, Some(273));
-    }
-
-    #[test]
-    fn parse_trending_handles_missing_optionals() {
-        let v = parse_trending(fixture_body()).expect("parses");
-        let third = &v[2];
-        assert_eq!(third.id, 999999);
-        assert_eq!(third.id_mal, None);
-        assert_eq!(third.title.english, None);
-        assert_eq!(third.cover_image.extra_large, None);
-        assert_eq!(third.banner_image, None);
-        assert_eq!(third.status, None);
-        assert_eq!(third.episodes, None);
-        assert_eq!(third.trending, None);
-        assert_eq!(third.average_score, None);
-    }
-
-    #[test]
-    fn parse_trending_rejects_html_or_garbage() {
-        let r = parse_trending(b"<html>not json</html>");
-        assert!(matches!(r, Err(AniError::ParseFailed { .. })));
-    }
-
-    #[tokio::test]
-    async fn trending_makes_correct_post_request() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .and(wiremock::matchers::path("/"))
-            .and(wiremock::matchers::header(
-                "content-type",
-                "application/json",
-            ))
-            .and(wiremock::matchers::body_json(serde_json::json!({
-                "query": TRENDING_GQL,
-                "variables": { "perPage": 5 },
-            })))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(fixture_body()))
-            .mount(&server)
-            .await;
-
-        let client = reqwest::Client::new();
-        let v = trending(&client, 5, Some(&server.uri())).await.expect("ok");
-        assert_eq!(v.len(), 3);
-        assert_eq!(v[0].id, 182205);
-    }
-
-    #[tokio::test]
-    async fn trending_propagates_5xx_as_upstream() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(503))
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let err = trending(&client, 5, Some(&server.uri())).await.unwrap_err();
-        assert!(matches!(err, AniError::Upstream { status: 503 }));
-    }
-
-    #[tokio::test]
-    async fn trending_surfaces_429_for_rate_limit() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(429))
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let err = trending(&client, 5, Some(&server.uri())).await.unwrap_err();
-        assert!(matches!(err, AniError::Upstream { status: 429 }));
-    }
-
-    /// `parse_banner_response` is the pure half of the banner-
-    /// backfill flow. Three branches matter: media present + banner
-    /// present, media present + banner null, and media itself null
-    /// (AniList didn't index this MAL id at all).
-    #[test]
-    fn parse_banner_response_returns_url_when_present() {
-        let body = br#"{"data":{"Media":{"bannerImage":"https://example.com/b.jpg"}}}"#;
-        let got = parse_banner_response(body).expect("ok");
-        assert_eq!(got.as_deref(), Some("https://example.com/b.jpg"));
-    }
-
-    #[test]
-    fn parse_banner_response_returns_none_when_banner_is_null() {
-        let body = br#"{"data":{"Media":{"bannerImage":null}}}"#;
-        let got = parse_banner_response(body).expect("ok");
-        assert!(got.is_none());
-    }
-
-    #[test]
-    fn parse_banner_response_returns_none_when_media_is_null() {
-        // AniList answers with `Media: null` when the MAL id isn't
-        // in their catalogue. Treating that as a hard error would
-        // break the detail page for any show AniList missed.
-        let body = br#"{"data":{"Media":null}}"#;
-        let got = parse_banner_response(body).expect("ok");
-        assert!(got.is_none());
-    }
-
-    #[test]
-    fn parse_banner_response_rejects_non_envelope_payload() {
-        let body = br#"<html>error</html>"#;
-        let err = parse_banner_response(body).unwrap_err();
-        assert!(matches!(err, AniError::ParseFailed { .. }));
-    }
-
-    #[tokio::test]
-    async fn banner_for_mal_id_posts_correct_query() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .and(wiremock::matchers::body_json(serde_json::json!({
-                "query": BANNER_BY_MAL_GQL,
-                "variables": { "idMal": 21 },
-            })))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"data":{"Media":{"bannerImage":"https://example.com/op.jpg"}}}"#,
-            ))
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let got = banner_for_mal_id(&client, 21, Some(&server.uri()))
-            .await
-            .expect("ok");
-        assert_eq!(got.as_deref(), Some("https://example.com/op.jpg"));
-    }
-
-    #[tokio::test]
-    async fn banner_for_mal_id_propagates_upstream_5xx() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(502))
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let err = banner_for_mal_id(&client, 21, Some(&server.uri()))
-            .await
-            .unwrap_err();
-        assert!(matches!(err, AniError::Upstream { status: 502 }));
-    }
-
-    #[tokio::test]
-    async fn banner_for_mal_id_returns_none_when_media_unmapped() {
-        // End-to-end through the network layer for the "AniList
-        // doesn't have this MAL id" case — the most common failure
-        // mode in production for niche shows.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
-            )
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let got = banner_for_mal_id(&client, 99_999_999, Some(&server.uri()))
-            .await
-            .expect("ok");
-        assert!(got.is_none());
-    }
-
-    // `media_id_for_mal` resolves a MAL id → AniList numeric mediaId,
-    // the keystone the write-back path needs: mark-watched knows the
-    // Kitsu id → mal_id, but SaveMediaListEntry wants AniList's own id.
-    #[test]
-    fn parse_media_id_response_returns_id_when_present() {
-        let body = br#"{"data":{"Media":{"id":154587}}}"#;
-        let got = parse_media_id_response(body).expect("ok");
-        assert_eq!(got, Some(154587));
-    }
-
-    #[test]
-    fn parse_media_id_response_returns_none_when_media_is_null() {
-        // AniList answers Media: null when the MAL id isn't indexed.
-        let body = br#"{"data":{"Media":null}}"#;
-        let got = parse_media_id_response(body).expect("ok");
-        assert!(got.is_none());
-    }
-
-    #[test]
-    fn parse_media_id_response_rejects_non_envelope_payload() {
-        let err = parse_media_id_response(br#"<html>nope</html>"#).unwrap_err();
-        assert!(matches!(err, AniError::ParseFailed { .. }));
-    }
-
-    #[tokio::test]
-    async fn media_id_for_mal_posts_idmal_query_and_returns_media_id() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .and(wiremock::matchers::body_json(serde_json::json!({
-                "query": MEDIA_ID_BY_MAL_GQL,
-                "variables": { "idMal": 52991 },
-            })))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string(r#"{"data":{"Media":{"id":154587}}}"#),
-            )
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let got = media_id_for_mal(&client, 52991, Some(&server.uri()))
-            .await
-            .expect("ok");
-        assert_eq!(got, Some(154587));
-    }
-
-    #[tokio::test]
-    async fn media_id_for_mal_returns_none_when_unmapped() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
-            )
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let got = media_id_for_mal(&client, 99_999_999, Some(&server.uri()))
-            .await
-            .expect("ok");
-        assert!(got.is_none());
-    }
-
-    #[tokio::test]
-    async fn media_id_for_mal_propagates_upstream_5xx() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(502))
-            .mount(&server)
-            .await;
-        let client = reqwest::Client::new();
-        let err = media_id_for_mal(&client, 52991, Some(&server.uri()))
-            .await
-            .unwrap_err();
-        assert!(matches!(err, AniError::Upstream { status: 502 }));
-    }
-}
+#[path = "anilist_test.rs"]
+mod tests;

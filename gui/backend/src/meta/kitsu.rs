@@ -400,6 +400,30 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
 /// JSON:API for an anime resource.
 pub fn parse_mal_id_from_mappings(body: &[u8]) -> Result<Option<u32>> {
+    Ok(parse_external_ids_from_mappings(body)?.mal)
+}
+
+/// External-site ids Kitsu's mappings carry for one anime. Tracker
+/// id-resolution needs more than the MAL id: shows Kitsu hasn't
+/// MAL-mapped yet (fresh seasonal titles) often already carry the
+/// direct `anilist/anime` mapping, which is enough to reach both
+/// providers (AniList directly, MAL via AniList's `idMal`).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ExternalIds {
+    /// `myanimelist/anime` mapping, when present.
+    pub mal: Option<u32>,
+    /// `anilist/anime` mapping, when present.
+    pub anilist: Option<u32>,
+}
+
+/// Extract every tracker-relevant mapping from a Kitsu
+/// `/anime/:id?include=mappings` payload in one pass. Non-numeric
+/// external ids and non-anime sites (`anilist/manga`, …) are ignored.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't valid
+/// JSON:API for an anime resource.
+pub fn parse_external_ids_from_mappings(body: &[u8]) -> Result<ExternalIds> {
     #[derive(Deserialize)]
     struct Wrap {
         #[serde(default)]
@@ -419,21 +443,23 @@ pub fn parse_mal_id_from_mappings(body: &[u8]) -> Result<Option<u32>> {
         external_id: Option<String>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("kitsu mal-id mappings parse: {e}"),
+        detail: format!("kitsu mappings parse: {e}"),
     })?;
-    Ok(parsed
+    let mut ids = ExternalIds::default();
+    for r in parsed
         .included
         .into_iter()
         .filter(|r| r.type_ == "mappings")
-        .find_map(|r| {
-            let attrs = r.attributes?;
-            if attrs.external_site.as_deref() == Some("myanimelist/anime") {
-                attrs.external_id
-            } else {
-                None
-            }
-        })
-        .and_then(|s| s.parse::<u32>().ok()))
+    {
+        let Some(attrs) = r.attributes else { continue };
+        let parsed_id = attrs.external_id.and_then(|s| s.parse::<u32>().ok());
+        match attrs.external_site.as_deref() {
+            Some("myanimelist/anime") => ids.mal = ids.mal.or(parsed_id),
+            Some("anilist/anime") => ids.anilist = ids.anilist.or(parsed_id),
+            _ => {}
+        }
+    }
+    Ok(ids)
 }
 
 /// Parse `{ "data": [...] }` into a list of episodes. Used for
@@ -558,6 +584,20 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn mal_id_for_kitsu_id(&self, kitsu_id: &str) -> Result<Option<u32>> {
+        Ok(self.external_ids_for_kitsu_id(kitsu_id).await?.mal)
+    }
+
+    /// Every tracker-relevant external id for a Kitsu anime — the same
+    /// single `/anime/:id?include=mappings` round-trip as
+    /// [`Self::mal_id_for_kitsu_id`], but keeping the `anilist/anime`
+    /// mapping too so tracker id-resolution can fall back to it when
+    /// the MAL mapping is missing (fresh seasonal shows).
+    ///
+    /// # Errors
+    /// - [`AniError::Upstream`] on non-2xx HTTP.
+    /// - [`AniError::Network`] on transport failure.
+    /// - [`AniError::ParseFailed`] on malformed JSON:API.
+    pub async fn external_ids_for_kitsu_id(&self, kitsu_id: &str) -> Result<ExternalIds> {
         // Kitsu's /mappings endpoint rejects filter[itemType] /
         // filter[itemId] (returns "Filter not allowed"). Walk the
         // anime resource's included mappings array instead — one
@@ -580,7 +620,7 @@ impl KitsuClient {
             });
         }
         let body = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_mal_id_from_mappings(&body)
+        parse_external_ids_from_mappings(&body)
     }
 
     /// Look up the Kitsu anime that maps to a given MyAnimeList id.
@@ -597,13 +637,40 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn lookup_by_mal_id(&self, mal_id: u32) -> Result<Option<KitsuAnimeRef>> {
+        self.lookup_by_external_id("myanimelist/anime", mal_id)
+            .await
+    }
+
+    /// Mirror of [`Self::lookup_by_mal_id`] for the `anilist/anime`
+    /// external site — finds the Kitsu anime for a known AniList id.
+    /// The Watch-Later bridge falls back to it for shows Kitsu hasn't
+    /// MAL-mapped yet (fresh seasonal titles): the tracker entry's MAL
+    /// id can't be looked up directly, but AniList's id can.
+    ///
+    /// # Errors
+    /// - [`AniError::Upstream`] on non-2xx HTTP.
+    /// - [`AniError::Network`] on transport failure.
+    /// - [`AniError::ParseFailed`] on malformed JSON:API.
+    pub async fn lookup_by_anilist_id(&self, anilist_id: u32) -> Result<Option<KitsuAnimeRef>> {
+        self.lookup_by_external_id("anilist/anime", anilist_id)
+            .await
+    }
+
+    /// Shared `/mappings?filter[externalSite]=<site>` fetch behind the
+    /// per-site lookups above. `?include=item` inlines the full anime
+    /// resource so no follow-up `/anime/:id` call is needed.
+    async fn lookup_by_external_id(
+        &self,
+        site: &str,
+        external_id: u32,
+    ) -> Result<Option<KitsuAnimeRef>> {
         let resp = self
             .http
             .get(format!("{}/mappings", self.base))
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
-                ("filter[externalSite]", "myanimelist/anime".to_string()),
-                ("filter[externalId]", mal_id.to_string()),
+                ("filter[externalSite]", site.to_string()),
+                ("filter[externalId]", external_id.to_string()),
                 ("include", "item".to_string()),
             ])
             .send()
@@ -1211,6 +1278,137 @@ mod tests {
             .await;
         let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
         let err = client.lookup_by_mal_id(21).await.unwrap_err();
+        assert!(matches!(err, AniError::Upstream { status: 503 }));
+    }
+
+    // Yani Neko's real mapping shape (Kitsu 50551): anilist/anime only,
+    // no MAL mapping yet — the case that motivated ExternalIds.
+    const MAPPINGS_ANILIST_ONLY_BODY: &str = r#"{
+        "data": { "id": "50551", "type": "anime", "attributes": { "canonicalTitle": "Yani Neko" } },
+        "included": [{
+            "id": "1",
+            "type": "mappings",
+            "attributes": { "externalSite": "anilist/anime", "externalId": "207141" }
+        }]
+    }"#;
+
+    const MAPPINGS_BOTH_SITES_BODY: &str = r#"{
+        "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "One Piece" } },
+        "included": [
+            { "id": "1", "type": "mappings", "attributes": { "externalSite": "anilist/anime", "externalId": "21" } },
+            { "id": "2", "type": "mappings", "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" } },
+            { "id": "3", "type": "mappings", "attributes": { "externalSite": "anilist/manga", "externalId": "30013" } }
+        ]
+    }"#;
+
+    #[test]
+    fn parse_external_ids_extracts_mal_and_anilist() {
+        let ids =
+            parse_external_ids_from_mappings(MAPPINGS_BOTH_SITES_BODY.as_bytes()).expect("parses");
+        assert_eq!(
+            ids,
+            ExternalIds {
+                mal: Some(21),
+                anilist: Some(21),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_external_ids_reads_anilist_when_mal_mapping_absent() {
+        let ids = parse_external_ids_from_mappings(MAPPINGS_ANILIST_ONLY_BODY.as_bytes())
+            .expect("parses");
+        assert_eq!(
+            ids,
+            ExternalIds {
+                mal: None,
+                anilist: Some(207141),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_external_ids_ignores_non_anime_sites_and_non_numeric_ids() {
+        let body = r#"{
+            "data": { "id": "7", "type": "anime" },
+            "included": [
+                { "id": "1", "type": "mappings", "attributes": { "externalSite": "anilist/manga", "externalId": "5" } },
+                { "id": "2", "type": "mappings", "attributes": { "externalSite": "anilist/anime", "externalId": "not-a-number" } },
+                { "id": "3", "type": "mappings", "attributes": { "externalSite": "thetvdb/series", "externalId": "8" } }
+            ]
+        }"#;
+        let ids = parse_external_ids_from_mappings(body.as_bytes()).expect("parses");
+        assert_eq!(ids, ExternalIds::default());
+    }
+
+    #[tokio::test]
+    async fn external_ids_for_kitsu_id_reads_the_mappings_include() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/anime/50551"))
+            .and(wiremock::matchers::query_param("include", "mappings"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAPPINGS_ANILIST_ONLY_BODY),
+            )
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let ids = client.external_ids_for_kitsu_id("50551").await.expect("ok");
+        assert_eq!(
+            ids,
+            ExternalIds {
+                mal: None,
+                anilist: Some(207141),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn lookup_by_anilist_id_hits_the_right_endpoint() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/mappings"))
+            .and(wiremock::matchers::query_param(
+                "filter[externalSite]",
+                "anilist/anime",
+            ))
+            .and(wiremock::matchers::query_param("filter[externalId]", "21"))
+            .and(wiremock::matchers::query_param("include", "item"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAPPINGS_HIT_FIXTURE),
+            )
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let r = client.lookup_by_anilist_id(21).await.expect("ok");
+        let anime = r.expect("mapping found");
+        assert_eq!(anime.id, "12");
+        assert_eq!(anime.canonical_title, "One Piece");
+    }
+
+    #[tokio::test]
+    async fn lookup_by_anilist_id_returns_none_for_unmapped_show() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAPPINGS_EMPTY_FIXTURE),
+            )
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let r = client.lookup_by_anilist_id(99_999_999).await.expect("ok");
+        assert!(r.is_none());
+    }
+
+    #[tokio::test]
+    async fn external_ids_for_kitsu_id_propagates_5xx() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+        let err = client.external_ids_for_kitsu_id("50551").await.unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 503 }));
     }
 }

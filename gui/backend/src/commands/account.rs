@@ -332,31 +332,96 @@ pub async fn kitsu_for_mal_ids(
     state: &Arc<AppState>,
     mal_ids: Vec<u32>,
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    kitsu_for_mal_ids_with_anilist_base(state, mal_ids, None).await
+}
+
+/// [`kitsu_for_mal_ids`] with the AniList endpoint override exposed
+/// for tests (the fallback hop below hits AniList). Production passes
+/// `None` via the public wrapper.
+pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
+    state: &Arc<AppState>,
+    mal_ids: Vec<u32>,
+    anilist_base: Option<&str>,
+) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
     use futures_util::stream::{self, StreamExt};
 
     let bounded = mal_ids
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
         .collect::<Vec<_>>();
-    stream::iter(bounded)
-        .map(|mal_id| {
-            let kitsu = state.kitsu.clone();
-            async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
-        })
-        .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
-        .filter_map(|maybe_ref| async move { maybe_ref })
-        .collect()
-        .await
+    // Phase 1: the direct Kitsu lookup, one slot per input id so the
+    // fallback fill below preserves input order.
+    let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
+        stream::iter(bounded.iter().copied())
+            .map(|mal_id| {
+                let kitsu = state.kitsu.clone();
+                async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
+            })
+            .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
+            .collect()
+            .await;
+    // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
+    // titles) — resolve ALL of them to AniList ids in one batched
+    // Page(idMal_in:) query per 50-chunk (Codex P2 #3565216298: the
+    // per-miss Media(idMal:) call could burn AniList's 30 req/min
+    // budget on a single big rail load), then look each up under
+    // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
+    // works around in the write direction; without this the
+    // just-written entry never renders in the rail. A failed batch
+    // degrades to dropping those cards for this load, as before.
+    let misses: Vec<(usize, u32)> = slots
+        .iter()
+        .enumerate()
+        .filter(|(_, slot)| slot.is_none())
+        .map(|(i, _)| (i, bounded[i]))
+        .collect();
+    if !misses.is_empty() {
+        let miss_ids: Vec<u32> = misses.iter().map(|&(_, mal_id)| mal_id).collect();
+        let mal_to_anilist =
+            crate::meta::anilist::media_ids_for_mals(&state.proxy_http, &miss_ids, anilist_base)
+                .await
+                .unwrap_or_default();
+        let filled: Vec<(usize, Option<crate::meta::kitsu::KitsuAnimeRef>)> = stream::iter(misses)
+            .map(|(i, mal_id)| {
+                let kitsu = state.kitsu.clone();
+                let anilist_id = mal_to_anilist.get(&mal_id).copied();
+                async move {
+                    let Some(anilist_id) = anilist_id else {
+                        return (i, None);
+                    };
+                    (
+                        i,
+                        kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten(),
+                    )
+                }
+            })
+            .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
+            .collect()
+            .await;
+        for (i, r) in filled {
+            slots[i] = r;
+        }
+    }
+    slots.into_iter().flatten().collect()
 }
 
 /// Resolve a show's Kitsu id into the provider-native media id needed
-/// by `update_entry`: MAL's anime id (the Kitsu→MAL mapping) for
-/// MyAnimeList, and AniList's numeric `mediaId` (MAL id → AniList
-/// `Media(idMal:)`) for AniList. `Ok(None)` when the show can't be
-/// mapped (no MAL mapping, or AniList doesn't index it) — a non-error
-/// "nothing to push" so the mark-watched fan-out skips it rather than
-/// reporting a failure. `anilist_base` overrides the AniList endpoint
-/// in tests; production passes `None`.
+/// by `update_entry`: MAL's anime id for MyAnimeList, AniList's
+/// numeric `mediaId` for AniList. `Ok(None)` when no mapping route
+/// reaches the provider — a non-error "nothing to push" so the
+/// mark-watched fan-out skips it rather than reporting a failure.
+/// `anilist_base` overrides the AniList endpoint in tests; production
+/// passes `None`.
+///
+/// The primary route pivots on the show's MAL id from Kitsu's
+/// mappings (MAL directly; AniList via `Media(idMal:)`). But fresh
+/// seasonal shows often carry only the `anilist/anime` mapping —
+/// Yani Neko (Kitsu 50551) stayed unwritable on every tracker for
+/// months that way — so each provider falls back to that direct
+/// mapping when the MAL pivot yields nothing: AniList uses it as-is,
+/// MAL bridges it through AniList's `Media(id:){idMal}`. The
+/// fallbacks only fire where the primary route returns `None`, so
+/// shows that resolved before resolve to the same ids.
 ///
 /// This is the live id-lookup foundation for write-back: both
 /// providers' `update_entry` upsert, so resolving the native id is
@@ -368,20 +433,37 @@ pub(crate) async fn resolve_native_media_id(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<Option<ProviderMediaId>> {
-    // Every provider's native id keys off the show's MAL id, which
-    // Kitsu's mappings carry. No MAL mapping → can't push anywhere.
-    let Some(mal_id) = state.kitsu.mal_id_for_kitsu_id(kitsu_id).await? else {
-        return Ok(None);
-    };
+    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
     match kind {
-        // MAL's anime id IS the mapped MAL id.
-        ProviderKind::MyAnimeList => Ok(Some(ProviderMediaId(mal_id))),
-        // AniList keys on its own numeric mediaId; bridge MAL → AniList.
+        // MAL's anime id IS the mapped MAL id; else anilist mapping →
+        // AniList's recorded idMal.
+        ProviderKind::MyAnimeList => {
+            if let Some(mal_id) = ids.mal {
+                return Ok(Some(ProviderMediaId(mal_id)));
+            }
+            let Some(anilist_id) = ids.anilist else {
+                return Ok(None);
+            };
+            let mal_id = crate::meta::anilist::mal_id_for_media_id(
+                &state.proxy_http,
+                anilist_id,
+                anilist_base,
+            )
+            .await?;
+            Ok(mal_id.map(ProviderMediaId))
+        }
+        // AniList keys on its own numeric mediaId: MAL bridge first
+        // (unchanged primary), direct anilist/anime mapping second.
         ProviderKind::AniList => {
-            let media_id =
-                crate::meta::anilist::media_id_for_mal(&state.proxy_http, mal_id, anilist_base)
-                    .await?;
-            Ok(media_id.map(ProviderMediaId))
+            if let Some(mal_id) = ids.mal {
+                let media_id =
+                    crate::meta::anilist::media_id_for_mal(&state.proxy_http, mal_id, anilist_base)
+                        .await?;
+                if media_id.is_some() {
+                    return Ok(media_id.map(ProviderMediaId));
+                }
+            }
+            Ok(ids.anilist.map(ProviderMediaId))
         }
         // In-house provider has no external id space yet.
         ProviderKind::InHouse => Ok(None),
