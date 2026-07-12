@@ -51,7 +51,7 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	});
 
 	it('drops cards the cache marks unavailable, keeps cached-true and uncached', async () => {
-		const items = [ref('a'), ref('b'), ref('c')];
+		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
 		apiMock.availabilityBatch.mockResolvedValueOnce({
 			cached: { a: true, b: false /* c uncached */ }
 		});
@@ -60,6 +60,25 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		// b drops; a (true) and c (uncached, unknown) survive — the
 		// home strip's "render now, prune later" UX requirement.
 		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
+	});
+
+	it('keeps unaired and airing shows visible even when unavailable', async () => {
+		// Upcoming seasons routinely exist on Kitsu before allmanga
+		// catalogs them (and airing shows can lag). Hiding them blocks
+		// planning; only a FINISHED show missing from the catalog is
+		// confidently gone. Play surfaces stay gated separately.
+		const items = [
+			ref('up', { status: 'unreleased' }),
+			ref('air', { status: 'current' }),
+			ref('tba', { status: 'tba' }),
+			ref('gone', { status: 'finished' })
+		];
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { up: false, air: false, tba: false, gone: false }
+		});
+		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
+		const out = await filterAvailable(items, 'sub');
+		expect(out.map((i) => i.id)).toEqual(['up', 'air', 'tba']);
 	});
 
 	it('warms only the uncached items and forwards mode + alt titles', async () => {
@@ -135,12 +154,23 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 	});
 
 	it('drops cards the cache marks unavailable, keeps cached-true and uncached', async () => {
-		const items = [ref('a'), ref('b'), ref('c')];
+		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
 		apiMock.availabilityBatch.mockResolvedValueOnce({
 			cached: { a: true, b: false /* c uncached */ }
 		});
 		const out = await filterAvailableCacheOnly(items, 'sub');
 		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
+	});
+
+	it('keeps unaired and airing shows visible even when unavailable', async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { up: false, gone: false }
+		});
+		const out = await filterAvailableCacheOnly(
+			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
+			'sub'
+		);
+		expect(out.map((r) => r.id)).toEqual(['up']);
 	});
 
 	it('NEVER calls availabilityWarm — high-frequency surfaces stay cache-only', async () => {
@@ -179,10 +209,27 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 		apiMock.checkAvailability.mockImplementation(async (args) =>
 			args.kitsu_id === 'c' ? { available: true } : { available: false }
 		);
-		const out = await filterAvailableStrict([ref('a'), ref('b'), ref('c'), ref('d')], 'sub', 2);
+		const out = await filterAvailableStrict(
+			[ref('a'), ref('b', { status: 'finished' }), ref('c'), ref('d', { status: 'finished' })],
+			'sub',
+			2
+		);
 		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
 		// Two probes, one per uncached id.
 		expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps unaired and airing shows visible even when the probe says unavailable', async () => {
+		// The strict path probes inline; an upcoming season allmanga
+		// hasn't catalogued yet still renders so the user can open and
+		// plan it.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: false });
+		const out = await filterAvailableStrict(
+			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
+			'sub'
+		);
+		expect(out.map((r) => r.id)).toEqual(['up']);
 	});
 
 	it('forwards the Kitsu start year to inline probes', async () => {

@@ -27,13 +27,24 @@
 		kitsuSearch,
 		markWatched,
 		playStream,
+		airingGet,
 		settingsGet,
 		settingsPut,
+		type AiringStatus,
 		type Config,
 		type HistoryEntry,
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
+	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import {
+		airedCap,
+		airedTargets,
+		beyondPlayable,
+		displayCap,
+		minCap
+	} from '$lib/detail/episode-caps';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -65,6 +76,8 @@
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
+	const id = $derived(page.params.id ?? '');
+	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
 
@@ -83,6 +96,12 @@
 	// isn't in allmanga's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
 	let availability = $state<boolean | null>(null);
+	// True once the availability probe settled (result, error, or the
+	// music-subtype skip). The prefetch warm waits on it: firing while
+	// playableEpisodeCount is still null would treat the cap as
+	// unbounded and resolve aired-but-uncatalogued padded tiles
+	// (Codex P2 #3566100686).
+	let availabilityResolved = $state(false);
 
 	// allmanga's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
@@ -126,7 +145,10 @@
 	// One UI page therefore maps to 1 or 2 Kitsu pages, kept in an
 	// in-memory cache (kitsuPageCache) so prev/next is instant after
 	// the first hop. Adjacent UI pages are prefetched after every load.
-	let episodes = $state<KitsuEpisode[] | null>(null);
+	// `rawWindowed` holds the unpadded Kitsu rows for the current
+	// page; the rendered `episodes` view (declared after the airing
+	// state it depends on) pads it reactively.
+	let rawWindowed = $state<KitsuEpisode[] | null>(null);
 	let episodesError = $state<string | null>(null);
 	let episodesPage = $state(1);
 	let episodesLoading = $state(false);
@@ -142,6 +164,91 @@
 	// /anime/A → /anime/B navigation doesn't serve A's cached page 1
 	// thumbnails for the first paint of B. See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
+
+	// Airing schedule (AniList via the backend) for non-finished shows:
+	// tiles past `airing.aired` render greyed instead of inviting a
+	// doomed source resolution. null = unknown → every tile stays
+	// interactive (epAirState never gates on unknown), so a failed
+	// fetch degrades to today's behavior.
+	let airing = $state<AiringStatus | null>(null);
+	// True once the airing question is answered for this show — fetched,
+	// failed (stays unknown/ungated), or skipped for finished shows. The
+	// prefetch warm waits on it so it can't race ahead of the schedule
+	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
+	let airingResolved = $state(false);
+	$effect(() => {
+		const currentId = id;
+		const status = detail?.status;
+		airing = null;
+		airingResolved = false;
+		if (!currentId || !status) return;
+		if (status === 'finished') {
+			airingResolved = true;
+			return;
+		}
+		let cancelled = false;
+		void airingGet(currentId)
+			.then((a) => {
+				if (!cancelled) airing = a;
+			})
+			.catch(() => {
+				/* unknown airing data → tiles stay ungated */
+			})
+			.finally(() => {
+				if (!cancelled) airingResolved = true;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// In-flight beat between mount and the airing answer: tiles and
+	// the primary actions stay inert so a quick click can't race the
+	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
+	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+
+	// How far the grid renders tiles: with airing data present the
+	// grid extends past allmanga's playable count to the announced
+	// total, so a season allmanga hasn't fully listed still shows its
+	// unaired tail as greyed dated tiles. Actions keep `episodeCap`.
+	const stripCap = $derived(
+		displayCap(playableEpisodeCount, detail?.episode_count ?? null, airing)
+	);
+
+	/** Padded view of `rawWindowed` for the current page — the same
+	 *  reactive shape as the play page's strip. Re-runs when the raw
+	 *  fetch lands OR the caps/extras/airing land, so a page fetched
+	 *  before availability or the airing schedule resolves still gets
+	 *  its placeholder and greyed-unaired tiles: placeholders fill
+	 *  episode numbers allmanga has but Kitsu doesn't (One Piece:
+	 *  Kitsu stops at 1106, allmanga has 1161) plus the announced
+	 *  unaired tail, and non-integer extras ("1061.5" recaps) splice
+	 *  in — `String(number)` round-trips those to ani-cli fine. */
+	const episodes: KitsuEpisode[] | null = $derived.by(() => {
+		if (rawWindowed === null) return null;
+		const out = rawWindowed.slice();
+		const cap = stripCap;
+		if (cap !== null) {
+			const start = (episodesPage - 1) * UI_PAGE_SIZE + 1;
+			const end = episodesPage * UI_PAGE_SIZE;
+			const have = new Set(out.map((ep) => ep.number ?? ep.relative_number ?? -1));
+			const padTo = Math.min(end, cap);
+			for (let n = start; n <= padTo; n++) {
+				if (have.has(n)) continue;
+				out.push(placeholderEpisode(n));
+			}
+			for (const tag of extraEpisodes) {
+				const n = parseFloat(tag);
+				if (!Number.isFinite(n)) continue;
+				if (n < start || n > end) continue;
+				out.push(placeholderEpisode(n));
+			}
+			out.sort(
+				(a, b) => (a.number ?? a.relative_number ?? 0) - (b.number ?? b.relative_number ?? 0)
+			);
+		}
+		return out;
+	});
 	// Number of episodes Kitsu actually indexed for this show. When the
 	// user is on page 1 and Kitsu returned fewer than UI_PAGE_SIZE,
 	// that's the entire dataset — Kitsu doesn't have more. Different
@@ -156,12 +263,11 @@
 		return null;
 	});
 	const totalEpisodePages = $derived.by(() => {
-		// Prefer allmanga's count (`episodeCap` once availability lands)
-		// over Kitsu's announced number — for ongoing shows Kitsu can
-		// pre-allocate placeholder rows past anything streamable. If we
+		// Display bound (stripCap), not the action cap — the pager must
+		// reach the greyed unaired pages the grid renders. If we
 		// already know Kitsu only has K (< UI_PAGE_SIZE) episodes,
 		// there's nothing on page 2.
-		const total = episodeCap;
+		const total = stripCap;
 		if (knownAvailableEpisodes !== null) return 1;
 		if (!total) return null;
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
@@ -196,46 +302,15 @@
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
 			const end = wantPage * UI_PAGE_SIZE;
 			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
-			const windowed = merged.filter((ep) => {
+			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
 			});
-			// Pad with placeholder tiles for episode numbers in the page
-			// range that allmanga has but Kitsu doesn't (ongoing shows
-			// where Kitsu's cataloguers lag the streaming source — One
-			// Piece: Kitsu stops at 1106, allmanga has 1161). Without
-			// padding, the last few pages would render short and the
-			// user couldn't click 1107+. The cap (`episodeCap`) prefers
-			// allmanga's count when known.
-			const cap = episodeCap;
-			if (cap !== null) {
-				const have = new Set(windowed.map((ep) => ep.number ?? ep.relative_number ?? -1));
-				const padTo = Math.min(end, cap);
-				for (let n = start; n <= padTo; n++) {
-					if (have.has(n)) continue;
-					windowed.push(placeholderEpisode(n));
-				}
-				// Splice in non-integer extras (recap / special tags
-				// like "1061.5") that fall in this page's range. The
-				// renderer reads `number` as the display value; the
-				// click handler sends `String(number)` to ani-cli —
-				// "1061.5" round-trips through Number → String fine.
-				for (const tag of extraEpisodes) {
-					const n = parseFloat(tag);
-					if (!Number.isFinite(n)) continue;
-					if (n < start || n > end) continue;
-					windowed.push(placeholderEpisode(n));
-				}
-				windowed.sort(
-					(a, b) => (a.number ?? a.relative_number ?? 0) - (b.number ?? b.relative_number ?? 0)
-				);
-			}
-			episodes = windowed;
 			episodesPage = wantPage;
 			episodesError = null;
 			void prefetchAdjacent(wantPage);
 		} catch (e) {
-			if (opts.initial) episodes = [];
+			if (opts.initial) rawWindowed = [];
 			episodesError = describeErrorString(e);
 		} finally {
 			episodesLoading = false;
@@ -394,9 +469,6 @@
 		}
 	}
 
-	const id = $derived(page.params.id ?? '');
-	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
-
 	// The show's live list entry, folded from EVERY connected tracker so the
 	// editor opens on the real status/progress (the deviation safety) and the
 	// action-row button reflects it. A Save fans out to ALL connected trackers
@@ -503,6 +575,14 @@
 	);
 	const showEpPlaceholders = $derived(episodes !== null && episodes.length === 0);
 
+	/** Tile label for an unaired episode: air date on the very next
+	 *  one, the generic "Unaired" otherwise. */
+	function unairedLabel(airsAt: number | null): string {
+		return airsAt
+			? m.detail_ep_airs({ date: formatAirDate(airsAt, getLocale()) })
+			: m.detail_ep_unaired();
+	}
+
 	const QUALITIES: Array<{ key: string; label: string }> = [
 		{ key: 'best', label: 'Best' },
 		{ key: '1080', label: '1080' },
@@ -532,11 +612,12 @@
 			return;
 		}
 		detail = null;
-		episodes = null;
+		rawWindowed = null;
 		episodesError = null;
 		similar = null;
 		error = null;
 		availability = null;
+		availabilityResolved = false;
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
@@ -559,6 +640,7 @@
 					// unavailable up front instead of letting the probe fuzzy-match
 					// an unrelated anime and play the wrong show.
 					availability = false;
+					availabilityResolved = true;
 				} else {
 					// Probe allmanga in the background. Result gates the
 					// Play + Download CTAs so titles outside the catalog
@@ -585,6 +667,9 @@
 						.catch(() => {
 							// Leave null; lazy fallback in the click handler
 							// will still surface the error.
+						})
+						.finally(() => {
+							if (id === currentId) availabilityResolved = true;
 						});
 				}
 				// Override the layout's URL-only default with the
@@ -647,21 +732,41 @@
 		// play cache with the wrong candidate. The Play/Download UI is already
 		// gated off for these (availability=false), so skip the warm too.
 		if (isMusicSubtype(detail?.subtype ?? null)) return;
+		// Wait for the airing answer before warming anything — firing
+		// on mount with airing still unknown would resolve the whole
+		// visible schedule, greyed-out future episodes included
+		// (Codex P2 #3565590966). airingPending (not raw
+		// airingResolved) so a show without a Kitsu status — where no
+		// airing fetch ever starts — doesn't deadlock the warm.
+		if (airingIsPending) return;
+		// ...and for the availability probe: until it settles,
+		// playableEpisodeCount is null and beyondPlayable reads the
+		// cap as unbounded, so the warm would resolve
+		// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+		if (!availabilityResolved) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 
-		// Fan out a prefetch for every visible episode tile in the
-		// strip. The play-cache dedupes simultaneous calls — clicking
-		// any tile while the strip is still resolving shares the same
-		// in-flight promise. The default-episode prefetch (ep 1) falls
-		// out of the same loop; if `episodes` hasn't loaded yet we
-		// still warm ep 1 so the hero "Play" button is instant.
-		const targets = episodes
-			? episodes.flatMap((e) => {
-					const n = e.number ?? e.relative_number ?? null;
-					return n === null ? [] : [n];
-				})
-			: [defaultEpisode()];
+		// Fan out a prefetch for every visible AIRED episode tile in
+		// the strip. The play-cache dedupes simultaneous calls —
+		// clicking any tile while the strip is still resolving shares
+		// the same in-flight promise. The default-episode prefetch
+		// (ep 1) falls out of the same loop; if `episodes` hasn't
+		// loaded yet we still warm ep 1 so the hero "Play" button is
+		// instant.
+		// Aired per AniList AND catalogued by allmanga — the grid can
+		// render aired-but-uncatalogued tiles (displayCap), and warming
+		// those is the same doomed resolution the availability probe
+		// already capped out (Codex P2 #3565988141).
+		const targets = airedTargets(
+			episodes
+				? episodes.flatMap((e) => {
+						const n = e.number ?? e.relative_number ?? null;
+						return n === null ? [] : [n];
+					})
+				: [defaultEpisode()],
+			airing
+		).filter((n) => !beyondPlayable(n, playableEpisodeCount));
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
@@ -869,10 +974,13 @@
 	function defaultEpisode(): number {
 		// Delegated to the shared helper so the home Continue Watching
 		// card and this CTA compute the same answer from the same
-		// inputs. Behaviour is unchanged: no resume entry → 1, mid-
-		// show → last + 1, at cap → last (Replay branch).
+		// inputs: no resume entry → 1, mid-show → last + 1, at cap →
+		// last (Replay branch). The cap clamps to the aired count so a
+		// user watched through the aired episodes gets Replay of the
+		// last aired one instead of Continue into an unaired episode
+		// (Codex P2 #3565649454).
 		const last = resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null;
-		return pickNextEpisode(last, episodeCap);
+		return pickNextEpisode(last, airedCap(episodeCap, airing));
 	}
 
 	/** Label for the primary action button. Five-state machine
@@ -1027,7 +1135,15 @@
 		}
 	}
 
+	// Not-yet-premiered shows can exist as searchable allmanga stubs,
+	// so availability === true while zero episodes have aired. The
+	// tiles and prefetch are gated by epAirState, but pickNextEpisode's
+	// no-history branch returns 1 regardless of the cap — block the
+	// primary CTA too (Codex P2 #3565666393).
+	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
+
 	function onPlay() {
+		if (nothingAiredYet || airingIsPending) return;
 		void startPlay(defaultEpisode());
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
@@ -1044,7 +1160,7 @@
 		.catch(() => {});
 
 	function onDownload() {
-		if (!detail) return;
+		if (!detail || nothingAiredYet || airingIsPending) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
 		// `episode_count` must stay Kitsu's announced total — that's
@@ -1183,12 +1299,23 @@
 									class="btn btn-glass"
 									style:--btn-glow="var(--accent)"
 									onclick={onPlay}
-									disabled={actionBusy}
+									disabled={actionBusy || nothingAiredYet || airingIsPending}
+									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">▸</span>
-									<span>{playLabel}</span>
+									<span
+										>{nothingAiredYet
+											? unairedLabel(airing?.next_airing_at ?? null)
+											: playLabel}</span
+									>
 								</button>
-								<button type="button" class="btn btn-outline" onclick={onDownload}>
+								<button
+									type="button"
+									class="btn btn-outline"
+									onclick={onDownload}
+									disabled={nothingAiredYet || airingIsPending}
+									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
+								>
 									<span aria-hidden="true">↓</span>
 									<span>{m.detail_download_button()}</span>
 								</button>
@@ -1512,6 +1639,10 @@
 								{#each episodes as ep, i (ep.id)}
 									{@const thumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
 									{@const num = ep.number ?? ep.relative_number ?? null}
+									{@const air =
+										num !== null ? epAirState(num, airing) : { unaired: false as const }}
+									{@const capGated =
+										!air.unaired && num !== null && beyondPlayable(num, playableEpisodeCount)}
 									<li
 										class:ep-highlight={num !== null && num === highlightEp}
 										data-ep-num={num ?? ''}
@@ -1521,14 +1652,28 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false}
-											aria-disabled={availability === false}
-											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-											onclick={() => onPickEpisode(num ?? 0)}
+											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-unaired={air.unaired}
+											aria-disabled={availability === false ||
+												air.unaired ||
+												airingIsPending ||
+												capGated}
+											title={air.unaired
+												? m.detail_ep_unaired_tooltip()
+												: availability === false || capGated
+													? m.detail_ep_disabled_tooltip()
+													: undefined}
+											onclick={() => {
+												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(num ?? 0);
+											}}
 										>
 											<span class="ep-thumb">
 												{#if thumb}
 													<img src={thumb} alt="" loading="lazy" decoding="async" />
+												{:else if air.unaired}
+													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
+														{unairedLabel(air.airsAt)}
+													</span>
 												{:else}
 													<span class="ep-thumb-placeholder" aria-hidden="true">
 														{num ? num.toString().padStart(2, '0') : '·'}
@@ -1545,7 +1690,9 @@
 														m.detail_episode_title_fallback({ num: String(num ?? '') })}
 												</span>
 												<span class="ep-meta">
-													{#if ep.length}<span
+													{#if air.unaired && thumb}
+														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
+													{:else if !air.unaired && ep.length}<span
 															>{m.detail_episode_length_suffix({
 																minutes: String(ep.length)
 															})}</span
@@ -1560,6 +1707,8 @@
 						     gives us a usable count. Render numbered placeholder tiles
 						     so the user isn't blocked from poking the panel. -->
 								{#each Array.from({ length: epPlaceholderCount }, (_, k) => k + 1) as n, i (n)}
+									{@const air = epAirState(n, airing)}
+									{@const capGated = !air.unaired && beyondPlayable(n, playableEpisodeCount)}
 									<li
 										class:ep-highlight={n === highlightEp}
 										data-ep-num={n}
@@ -1569,15 +1718,31 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false}
-											aria-disabled={availability === false}
-											title={availability === false ? m.detail_ep_disabled_tooltip() : undefined}
-											onclick={() => onPickEpisode(n)}
+											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-unaired={air.unaired}
+											aria-disabled={availability === false ||
+												air.unaired ||
+												airingIsPending ||
+												capGated}
+											title={air.unaired
+												? m.detail_ep_unaired_tooltip()
+												: availability === false || capGated
+													? m.detail_ep_disabled_tooltip()
+													: undefined}
+											onclick={() => {
+												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(n);
+											}}
 										>
 											<span class="ep-thumb">
-												<span class="ep-thumb-placeholder" aria-hidden="true">
-													{n.toString().padStart(2, '0')}
-												</span>
+												{#if air.unaired}
+													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
+														{unairedLabel(air.airsAt)}
+													</span>
+												{:else}
+													<span class="ep-thumb-placeholder" aria-hidden="true">
+														{n.toString().padStart(2, '0')}
+													</span>
+												{/if}
 												<span class="ep-tag" aria-hidden="true">
 													<span class="ep-tag-key">{m.detail_episode_frame_num_key()}</span>
 													<span class="ep-tag-num">{n}</span>
@@ -1640,7 +1805,7 @@
 	bind:open={downloadModalOpen}
 	args={downloadArgs}
 	defaultDir={downloadDefaultDir}
-	availableEpisodes={knownAvailableEpisodes}
+	availableEpisodes={airedCap(minCap(knownAvailableEpisodes, playableEpisodeCount), airing)}
 	showThisEpisode={false}
 	onClose={() => (downloadModalOpen = false)}
 />
@@ -2279,6 +2444,35 @@
 		cursor: not-allowed;
 		opacity: 0.55;
 		filter: saturate(0.6);
+	}
+
+	/* Unaired episodes: visible so the season's shape stays readable,
+	   but clearly out of reach — dimmer + desaturated, no hover lift,
+	   default cursor (nothing to do here yet). */
+	.ep-tile-unaired {
+		cursor: default;
+		opacity: 0.45;
+		filter: saturate(0.35);
+	}
+	.ep-tile:hover.ep-tile-unaired {
+		transform: none;
+	}
+	.ep-unaired-label {
+		font-variant-caps: all-small-caps;
+		letter-spacing: 0.04em;
+	}
+	/* Center-of-tile variant: the airs info takes the number's place
+	   (the episode number stays visible in the corner tag). Sized to
+	   read at a glance without shouting like the display-size digits. */
+	.ep-thumb-airs {
+		font-family: inherit;
+		font-size: 1.05rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		line-height: 1.3;
+		text-align: center;
+		padding-inline: 0.75rem;
+		text-wrap: balance;
 	}
 
 	/* Spotlight: while the grid contains a highlighted tile, every

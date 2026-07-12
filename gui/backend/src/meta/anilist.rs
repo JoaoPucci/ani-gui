@@ -19,7 +19,7 @@ use serde::Deserialize;
 
 use crate::error::{AniError, Result};
 
-const ANILIST_API: &str = "https://graphql.anilist.co";
+pub(crate) const ANILIST_API: &str = "https://graphql.anilist.co";
 
 /// One trending anime as AniList serves it. Fields chosen to match
 /// what the home-page bridge consumes: `id_mal` for the Kitsu lookup,
@@ -133,7 +133,7 @@ const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 /// # Errors
 /// [`AniError::Network`] on transport failure, [`AniError::Upstream`]
 /// on non-2xx.
-async fn post_graphql_public(
+pub(crate) async fn post_graphql_public(
     client: &reqwest::Client,
     url: &str,
     body: &serde_json::Value,

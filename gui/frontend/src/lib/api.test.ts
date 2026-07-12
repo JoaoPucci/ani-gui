@@ -5,6 +5,7 @@ import {
 	allmangaKitsuMapGet,
 	altTitlesFromKitsu,
 	anicliUpdateLog,
+	airingGet,
 	aniskipGet,
 	appInfo,
 	availabilityBatch,
@@ -1432,6 +1433,18 @@ describe('aniskipGet', () => {
 		const fetchMock = mockFetchOnce([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await aniskipGet('kid-1', '1', 1200)).toEqual([]);
+	});
+});
+
+describe('airingGet', () => {
+	it('GETs /api/kitsu/airing/<kitsuId> and returns the status', async () => {
+		const status = { aired: 2, next_episode: 3, next_airing_at: 1784215800 };
+		const fetchMock = mockFetchOnce(status);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await airingGet('kid 50551');
+		const { url } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/kitsu/airing/kid%2050551`);
+		expect(got).toEqual(status);
 	});
 });
 

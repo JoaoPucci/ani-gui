@@ -25,6 +25,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tower_http::cors::CorsLayer;
 
 mod account;
+mod airing;
 mod syncplay;
 mod update;
 
@@ -133,6 +134,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/watched-at", get(get_watched_at_all))
         .route("/api/anicli/update-log", get(get_anicli_update_log))
         .merge(account::router())
+        .merge(airing::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`
         // while we bind 127.0.0.1:<random> — that's cross-origin, so

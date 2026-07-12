@@ -135,6 +135,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v8: negative TTLs became premiere-aware (negative_ttl_for +
+    //     the airing-cache seed), but check_availability
+    //     short-circuits on cached false rows before either runs. A
+    //     v7 negative written for an unreleased show carries the old
+    //     flat 7-day window and would keep the title blocked well
+    //     past its premiere; bumping re-probes those rows so the new
+    //     TTL applies to existing installs too. Codex P2 #3566444127.
     // v7: resolver now also queries Kitsu's abbreviatedTitles as
     //     fallback titles. Shows whose canonical/localized titles only
     //     matched a wrong allmanga sibling (Yu-Gi-Oh! 5D's: every
@@ -171,7 +178,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v7:{kitsu_id}:{m}")
+    format!("availability:v8:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -278,6 +285,7 @@ pub async fn check_availability(
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+        seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
             id,
@@ -323,6 +331,97 @@ fn positive_ttl_for(status: Option<&str>) -> u64 {
     }
 }
 
+/// Pick the negative cache TTL. A flat 7-day negative is right for
+/// finished shows (catalog adds are rare) but wrong around premieres:
+/// a show probed unavailable the day before airing would stay hidden
+/// from home/search for up to a week AFTER its first episode lands.
+/// With the airing schedule available, expire the negative shortly
+/// after the next scheduled airing instead:
+///
+///   - finished          → 7 days (unchanged);
+///   - premiere known    → time until `next_airing_at` + 3h grace,
+///     clamped to [1h, 7d] (a passed timestamp means the airing row
+///     is stale or the episode just dropped — re-probe within 1h);
+///   - not finished, no
+///     schedule known    → 24h, same as the ongoing positive TTL.
+fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
+    const GRACE_SECS: u64 = 3 * 60 * 60;
+    const FLOOR_SECS: u64 = 60 * 60;
+    if status == Some("finished") {
+        return AVAILABILITY_TTL_NEGATIVE_SECS;
+    }
+    // The schedule stretch is only valid PRE-premiere: for a current
+    // show, next_airing_at points at the FOLLOWING episode, and
+    // stretching the negative to it would hide a catalog-lagged show
+    // for almost a week after episode 1 appears (Codex P2
+    // #3565701272). Current/unknown rows cap at the ongoing window.
+    let pre_premiere = matches!(status, Some("unreleased" | "tba" | "upcoming"));
+    let scheduled = match next_airing_at {
+        // Already aired (or the airing row is stale) — re-probe soon.
+        Some(at) if at <= now_epoch_s => FLOOR_SECS,
+        Some(at) => {
+            (at - now_epoch_s + GRACE_SECS).clamp(FLOOR_SECS, AVAILABILITY_TTL_NEGATIVE_SECS)
+        }
+        None => return AVAILABILITY_TTL_ONGOING_SECS,
+    };
+    if pre_premiere {
+        scheduled
+    } else {
+        scheduled.min(AVAILABILITY_TTL_ONGOING_SECS)
+    }
+}
+
+/// Seed the airing cache before a pre-premiere negative write. The
+/// premiere-aware TTL in [`negative_ttl_for`] reads the airing:v2
+/// row, but only the detail/play pages write it — the first negative
+/// probe for an upcoming title from the list-view warmer (or one that
+/// races detail's airing fetch) would otherwise decide on a missing
+/// schedule and cache a 24h row that outlives a premiere hours away
+/// (Codex P2 #3566017944). Scoped to exactly the rows where the
+/// schedule changes the decision: pre-premiere statuses on negative
+/// results — current/unknown shows cap at the ongoing window with or
+/// without a schedule, and `airing_get` itself is cache-first, so a
+/// row already seeded by the detail page costs no network.
+async fn seed_airing_for_negative(
+    state: &AppState,
+    kitsu_id: &str,
+    available: bool,
+    status: Option<&str>,
+) {
+    seed_airing_for_negative_with_base(state, kitsu_id, available, status, None).await;
+}
+
+/// [`seed_airing_for_negative`] with the AniList endpoint override
+/// exposed for tests. Production passes `None` via the wrapper.
+async fn seed_airing_for_negative_with_base(
+    state: &AppState,
+    kitsu_id: &str,
+    available: bool,
+    status: Option<&str>,
+    anilist_base: Option<&str>,
+) {
+    if available || !matches!(status, Some("unreleased" | "tba" | "upcoming")) {
+        return;
+    }
+    // Errors degrade to the schedule-less fallback TTL — same outcome
+    // as before the seed existed.
+    let _ =
+        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base).await;
+}
+
+/// Best-effort read of the show's next scheduled airing from the
+/// airing cache (`commands::airing` writes it on detail-page visits,
+/// [`seed_airing_for_negative`] on pre-premiere negative probes).
+/// Deliberately cache-only — a missing row just means the
+/// status-based fallback in [`negative_ttl_for`] applies.
+fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
+    let key = format!("airing:v2:{kitsu_id}");
+    let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
+    serde_json::from_str::<crate::meta::anilist_airing::AiringStatus>(&body)
+        .ok()?
+        .next_airing_at
+}
+
 /// Same as [`write_cache`] but lets the caller supply the episode
 /// count + extras when it knows. Used by `check_availability` after
 /// running the play picker; everything else stays on the simpler
@@ -343,7 +442,11 @@ pub fn write_cache_full(
     let ttl = if available {
         positive_ttl_for(status)
     } else {
-        AVAILABILITY_TTL_NEGATIVE_SECS
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
     let body = AvailabilityResponse {
         available,
@@ -466,6 +569,88 @@ mod tests {
     /// wastes a network probe; misclassifying an ongoing show as
     /// finished would hide weekly drops for 30 days. Both directions
     /// must be guarded.
+    // negative_ttl_for: the premiere-week fix. A show probed
+    // unavailable just before airing must not stay hidden for the
+    // full 7-day negative window after its first episode lands.
+    const NOW: u64 = 1_784_000_000;
+
+    #[test]
+    fn negative_ttl_finished_keeps_the_seven_day_window() {
+        assert_eq!(
+            negative_ttl_for(Some("finished"), Some(NOW + 3600), NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+        assert_eq!(
+            negative_ttl_for(Some("finished"), None, NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_expires_shortly_after_a_known_premiere() {
+        // Premiere in 2 days → negative dies 3h after it airs.
+        let two_days = 2 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("unreleased"), Some(NOW + two_days), NOW),
+            two_days + 3 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn negative_ttl_floors_at_one_hour_when_the_premiere_passed() {
+        // Stale airing row or the episode just dropped — re-probe soon.
+        assert_eq!(
+            negative_ttl_for(Some("current"), Some(NOW - 600), NOW),
+            60 * 60
+        );
+    }
+
+    #[test]
+    fn negative_ttl_current_show_caps_at_the_ongoing_window() {
+        // Codex P2 #3565701272: for an already-premiered show,
+        // next_airing_at points at the FOLLOWING episode — stretching
+        // the negative to it would hide a catalog-lagged show for
+        // almost a week after episode 1 appears. Current shows cap at
+        // the 24h ongoing window; the schedule stretch is only for
+        // pre-premiere rows.
+        let five_days = 5 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("current"), Some(NOW + five_days), NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_unknown_status_caps_at_the_ongoing_window() {
+        // Unknown status could be an already-airing show — same cap.
+        let five_days = 5 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(None, Some(NOW + five_days), NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_caps_at_seven_days_for_far_premieres() {
+        let thirty_days = 30 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("unreleased"), Some(NOW + thirty_days), NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_unfinished_without_schedule_uses_the_ongoing_window() {
+        assert_eq!(
+            negative_ttl_for(Some("current"), None, NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+        assert_eq!(
+            negative_ttl_for(None, None, NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+    }
+
     #[test]
     fn positive_ttl_for_finished_returns_30_day_window() {
         assert_eq!(positive_ttl_for(Some("finished")), 30 * 24 * 60 * 60);
@@ -508,6 +693,120 @@ mod tests {
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         }
+    }
+
+    /// Like [`cache_only_state`], but with the Kitsu client pointed at
+    /// a live wiremock server so the airing-seed path can resolve the
+    /// anilist mapping.
+    fn state_with_kitsu(td: &tempfile::TempDir, kitsu_uri: &str) -> AppState {
+        let mut state = cache_only_state(td);
+        state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri);
+        state
+    }
+
+    /// Yani Neko's mapping shape: anilist/anime only.
+    const KITSU_MAPPING_BODY: &str = r#"{
+        "data": { "id": "50551", "type": "anime", "attributes": { "canonicalTitle": "Yani Neko" } },
+        "included": [{
+            "id": "1",
+            "type": "mappings",
+            "attributes": { "externalSite": "anilist/anime", "externalId": "207141" }
+        }]
+    }"#;
+
+    const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
+        "status":"NOT_YET_RELEASED","episodes":12,
+        "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
+    }}}"#;
+
+    // Codex P2 #3566017944: the premiere-aware negative TTL only
+    // works when an airing:v2 row exists, but only the detail/play
+    // pages fetch the airing endpoint. When the FIRST negative probe
+    // for an upcoming title comes from the list-view warmer (or races
+    // detail's airingGet), negative_ttl_for saw None and wrote a 24h
+    // row that outlives a premiere hours away. Pre-premiere negatives
+    // must seed the airing cache before the TTL decision.
+
+    #[tokio::test]
+    async fn pre_premiere_negative_seeds_the_airing_cache() {
+        use wiremock::matchers::{method, path};
+        let kitsu = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/anime/50551"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPING_BODY))
+            .mount(&kitsu)
+            .await;
+        let anilist = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_UNRELEASED_BODY),
+            )
+            .mount(&anilist)
+            .await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        assert_eq!(cached_next_airing_at(&state, "50551"), None);
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            false,
+            Some("upcoming"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert_eq!(
+            cached_next_airing_at(&state, "50551"),
+            Some(1_784_215_800),
+            "the seed must leave an airing:v2 row for negative_ttl_for to read"
+        );
+    }
+
+    #[tokio::test]
+    async fn non_premiere_negative_skips_the_airing_fetch() {
+        // Already-airing shows cap at the ongoing window regardless of
+        // schedule (negative_ttl_current_show_caps_at_the_ongoing_window),
+        // so spending a fetch here would buy nothing.
+        let kitsu = wiremock::MockServer::start().await;
+        let anilist = wiremock::MockServer::start().await;
+        // No mounts: any request would 404 and, more importantly, the
+        // received-requests assertion below would catch it.
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            false,
+            Some("current"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert!(kitsu
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty());
+        assert_eq!(cached_next_airing_at(&state, "50551"), None);
+    }
+
+    #[tokio::test]
+    async fn positive_results_skip_the_airing_fetch() {
+        let kitsu = wiremock::MockServer::start().await;
+        let anilist = wiremock::MockServer::start().await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = state_with_kitsu(&td, &kitsu.uri());
+        seed_airing_for_negative_with_base(
+            &state,
+            "50551",
+            true,
+            Some("upcoming"),
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert!(kitsu
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty());
     }
 
     /// `write_cache_full` is the load-bearing serializer for every
@@ -630,8 +929,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v7:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v7:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v8:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v8:kid-1:dub");
     }
 
     #[test]
