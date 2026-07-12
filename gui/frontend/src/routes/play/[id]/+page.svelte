@@ -37,6 +37,7 @@
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
+		airingGet,
 		aniskipGet,
 		downloadDefaultDir as downloadDefaultDirApi,
 		evictPlayCache,
@@ -51,6 +52,7 @@
 		playSyncplay,
 		settingsGet,
 		settingsPut,
+		type AiringStatus,
 		type Config,
 		type DownloadArgs,
 		type KitsuAnimeRef,
@@ -58,6 +60,14 @@
 		type MediaKind,
 		type SkipInterval
 	} from '$lib/api';
+	import {
+		airedCap,
+		airingPending,
+		displayCap,
+		epAirState,
+		formatAirDate
+	} from '$lib/detail/episode-airing';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
@@ -826,6 +836,55 @@
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
+	// Airing schedule (AniList via the backend), mirroring the detail
+	// page: unaired episodes render greyed instead of not existing,
+	// and every play path (tiles, arrows, auto-next) clamps to the
+	// aired count. null = unknown → nothing gates.
+	let airing = $state<AiringStatus | null>(null);
+	let airingResolved = $state(false);
+	$effect(() => {
+		const currentId = id;
+		const status = detail?.status;
+		airing = null;
+		airingResolved = false;
+		if (!currentId || !status) return;
+		if (status === 'finished') {
+			airingResolved = true;
+			return;
+		}
+		let cancelled = false;
+		void airingGet(currentId)
+			.then((a) => {
+				if (!cancelled) airing = a;
+			})
+			.catch(() => {
+				/* unknown airing data → tiles stay ungated */
+			})
+			.finally(() => {
+				if (!cancelled) airingResolved = true;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+
+	// How far the strip renders tiles: with airing data present it
+	// extends past allmanga's count to the announced total, so the
+	// unaired tail shows as greyed dated tiles (same treatment as the
+	// detail page) instead of being absent.
+	const stripCap = $derived(
+		displayCap(playableEpisodeCount, detail?.episode_count ?? null, airing)
+	);
+
+	/** Tile label for an unaired episode: air date when the schedule
+	 *  has one, the generic "Unaired" otherwise. */
+	function unairedLabel(airsAt: number | null): string {
+		return airsAt
+			? m.detail_ep_airs({ date: formatAirDate(airsAt, getLocale()) })
+			: m.detail_ep_unaired();
+	}
+
 	/** Padded view of `rawWindowed` for the current page. Re-runs
 	 *  whenever the raw fetch lands OR the cap/extras change so a
 	 *  fetch that completed before detail/availability still gets
@@ -833,7 +892,7 @@
 	const episodes: KitsuEpisode[] | null = $derived.by(() => {
 		if (rawWindowed === null) return null;
 		const out = rawWindowed.slice();
-		const cap = episodeCap;
+		const cap = stripCap;
 		if (cap !== null) {
 			const start = (episodesPage - 1) * UI_PAGE_SIZE + 1;
 			const end = episodesPage * UI_PAGE_SIZE;
@@ -874,7 +933,10 @@
 		}
 		return out;
 	});
-	const totalEpisodes = $derived(episodeCap);
+	// Navigation ceiling: the playable cap clamped to the aired count,
+	// so the next arrow and auto-play-next can't walk into a greyed
+	// tile. Unknown airing passes the cap through untouched.
+	const totalEpisodes = $derived(airedCap(episodeCap, airing));
 	const hasPrev = $derived(episodeNum > 1);
 	const hasNext = $derived(totalEpisodes === null || episodeNum < totalEpisodes);
 
@@ -897,10 +959,9 @@
 	});
 
 	const totalEpisodePages = $derived.by(() => {
-		// Prefer allmanga's count over Kitsu's — same logic as on the
-		// detail page; ongoing shows (One Piece) have far more
-		// streamable episodes than Kitsu has catalogued.
-		const total = episodeCap;
+		// Display bound (stripCap), not the action cap — the pager must
+		// be able to reach the greyed unaired pages the strip renders.
+		const total = stripCap;
 		if (!total) return null;
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
 	});
@@ -1485,6 +1546,9 @@
 	// not acquired — bumping the radius is what surfaces the need.
 	$effect(() => {
 		if (!detail || !config || !episodes) return;
+		// Wait for the airing answer — warming on mount with airing
+		// still in flight would resolve greyed-out future episodes.
+		if (airingIsPending) return;
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
@@ -1493,6 +1557,12 @@
 		for (const ep of episodes) {
 			const targetEp = ep.number ?? ep.relative_number ?? null;
 			if (targetEp === null) continue;
+			// The strip now renders unaired tiles (stripCap) — skip
+			// them, and skip anything past allmanga's playable count:
+			// both are doomed resolutions the warm must not spend
+			// scraper slots on.
+			if (epAirState(targetEp, airing).unaired) continue;
+			if (playableEpisodeCount !== null && targetEp > playableEpisodeCount) continue;
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
 				playStream(
 					{
@@ -1521,6 +1591,10 @@
 
 	async function switchToEpisode(targetEp: number) {
 		if (!detail || switchBusy) return;
+		// Single choke point for every navigation path — tile clicks,
+		// prev/next, auto-play-next: an unaired target is a doomed
+		// resolution, no matter who asked.
+		if (epAirState(targetEp, airing).unaired) return;
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
@@ -2948,6 +3022,7 @@
 							{@const n = ep.number ?? ep.relative_number ?? 0}
 							{@const isCurrent = n === episodeNum}
 							{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
+							{@const air = epAirState(n, airing)}
 							<!-- in: only, no out:. With a 5-col grid, simultaneously
 						     mounting outgoing + incoming cards wraps to two
 						     rows for ~320ms during a page change, pushing the
@@ -2964,12 +3039,18 @@
 									type="button"
 									class="ep-card"
 									class:ep-card-current={isCurrent}
-									disabled={switchBusy && !isCurrent}
+									class:ep-card-unaired={air.unaired}
+									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
+									title={air.unaired ? m.detail_ep_unaired_tooltip() : undefined}
 									onclick={() => onPickEpisode(ep)}
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
 											<img src={epThumb} alt="" loading="lazy" />
+										{:else if air.unaired}
+											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
+												{unairedLabel(air.airsAt)}
+											</span>
 										{:else}
 											<span class="ep-card-thumb-placeholder" aria-hidden="true">
 												{n.toString().padStart(2, '0')}
@@ -2991,7 +3072,10 @@
 											<span class="ep-card-foot-num"
 												>{m.play_episode_card_num({ episode: String(n) })}</span
 											>
-											{#if ep.length}
+											{#if air.unaired && epThumb}
+												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
+												<span class="ep-card-foot-len">{unairedLabel(air.airsAt)}</span>
+											{:else if !air.unaired && ep.length}
 												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len"
 													>{m.play_episode_card_length_minutes({
@@ -4432,6 +4516,29 @@
 		font-weight: 600;
 		font-variant-numeric: tabular-nums lining-nums;
 		color: var(--bone-300);
+	}
+
+	/* Unaired tiles: same greyed treatment as the detail page's
+	   episode grid — visibly present (the user can see the season's
+	   shape) but not inviting a doomed click. */
+	.ep-card-unaired {
+		cursor: default;
+		opacity: 0.45;
+		filter: saturate(0.35);
+	}
+	.ep-card-unaired .ep-card-thumb-play {
+		display: none;
+	}
+	/* Center-of-thumb airs label replaces the display-size number.
+	   Smaller than the detail grid's — these cards are ~1/5 row. */
+	.ep-card-airs {
+		font-size: 0.85rem;
+		letter-spacing: 0.03em;
+		line-height: 1.3;
+		text-align: center;
+		padding-inline: 0.5rem;
+		text-wrap: balance;
+		font-variant-numeric: normal;
 	}
 
 	/* Card foot — sits BELOW the 16:9 thumb. EP number + duration on

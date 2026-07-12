@@ -40,6 +40,7 @@
 		airedCap,
 		airedTargets,
 		airingPending,
+		displayCap,
 		epAirState,
 		formatAirDate
 	} from '$lib/detail/episode-airing';
@@ -75,6 +76,8 @@
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
+	const id = $derived(page.params.id ?? '');
+	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
 
@@ -136,7 +139,10 @@
 	// One UI page therefore maps to 1 or 2 Kitsu pages, kept in an
 	// in-memory cache (kitsuPageCache) so prev/next is instant after
 	// the first hop. Adjacent UI pages are prefetched after every load.
-	let episodes = $state<KitsuEpisode[] | null>(null);
+	// `rawWindowed` holds the unpadded Kitsu rows for the current
+	// page; the rendered `episodes` view (declared after the airing
+	// state it depends on) pads it reactively.
+	let rawWindowed = $state<KitsuEpisode[] | null>(null);
 	let episodesError = $state<string | null>(null);
 	let episodesPage = $state(1);
 	let episodesLoading = $state(false);
@@ -152,6 +158,91 @@
 	// /anime/A → /anime/B navigation doesn't serve A's cached page 1
 	// thumbnails for the first paint of B. See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
+
+	// Airing schedule (AniList via the backend) for non-finished shows:
+	// tiles past `airing.aired` render greyed instead of inviting a
+	// doomed source resolution. null = unknown → every tile stays
+	// interactive (epAirState never gates on unknown), so a failed
+	// fetch degrades to today's behavior.
+	let airing = $state<AiringStatus | null>(null);
+	// True once the airing question is answered for this show — fetched,
+	// failed (stays unknown/ungated), or skipped for finished shows. The
+	// prefetch warm waits on it so it can't race ahead of the schedule
+	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
+	let airingResolved = $state(false);
+	$effect(() => {
+		const currentId = id;
+		const status = detail?.status;
+		airing = null;
+		airingResolved = false;
+		if (!currentId || !status) return;
+		if (status === 'finished') {
+			airingResolved = true;
+			return;
+		}
+		let cancelled = false;
+		void airingGet(currentId)
+			.then((a) => {
+				if (!cancelled) airing = a;
+			})
+			.catch(() => {
+				/* unknown airing data → tiles stay ungated */
+			})
+			.finally(() => {
+				if (!cancelled) airingResolved = true;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// In-flight beat between mount and the airing answer: tiles and
+	// the primary actions stay inert so a quick click can't race the
+	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
+	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+
+	// How far the grid renders tiles: with airing data present the
+	// grid extends past allmanga's playable count to the announced
+	// total, so a season allmanga hasn't fully listed still shows its
+	// unaired tail as greyed dated tiles. Actions keep `episodeCap`.
+	const stripCap = $derived(
+		displayCap(playableEpisodeCount, detail?.episode_count ?? null, airing)
+	);
+
+	/** Padded view of `rawWindowed` for the current page — the same
+	 *  reactive shape as the play page's strip. Re-runs when the raw
+	 *  fetch lands OR the caps/extras/airing land, so a page fetched
+	 *  before availability or the airing schedule resolves still gets
+	 *  its placeholder and greyed-unaired tiles: placeholders fill
+	 *  episode numbers allmanga has but Kitsu doesn't (One Piece:
+	 *  Kitsu stops at 1106, allmanga has 1161) plus the announced
+	 *  unaired tail, and non-integer extras ("1061.5" recaps) splice
+	 *  in — `String(number)` round-trips those to ani-cli fine. */
+	const episodes: KitsuEpisode[] | null = $derived.by(() => {
+		if (rawWindowed === null) return null;
+		const out = rawWindowed.slice();
+		const cap = stripCap;
+		if (cap !== null) {
+			const start = (episodesPage - 1) * UI_PAGE_SIZE + 1;
+			const end = episodesPage * UI_PAGE_SIZE;
+			const have = new Set(out.map((ep) => ep.number ?? ep.relative_number ?? -1));
+			const padTo = Math.min(end, cap);
+			for (let n = start; n <= padTo; n++) {
+				if (have.has(n)) continue;
+				out.push(placeholderEpisode(n));
+			}
+			for (const tag of extraEpisodes) {
+				const n = parseFloat(tag);
+				if (!Number.isFinite(n)) continue;
+				if (n < start || n > end) continue;
+				out.push(placeholderEpisode(n));
+			}
+			out.sort(
+				(a, b) => (a.number ?? a.relative_number ?? 0) - (b.number ?? b.relative_number ?? 0)
+			);
+		}
+		return out;
+	});
 	// Number of episodes Kitsu actually indexed for this show. When the
 	// user is on page 1 and Kitsu returned fewer than UI_PAGE_SIZE,
 	// that's the entire dataset — Kitsu doesn't have more. Different
@@ -166,12 +257,11 @@
 		return null;
 	});
 	const totalEpisodePages = $derived.by(() => {
-		// Prefer allmanga's count (`episodeCap` once availability lands)
-		// over Kitsu's announced number — for ongoing shows Kitsu can
-		// pre-allocate placeholder rows past anything streamable. If we
+		// Display bound (stripCap), not the action cap — the pager must
+		// reach the greyed unaired pages the grid renders. If we
 		// already know Kitsu only has K (< UI_PAGE_SIZE) episodes,
 		// there's nothing on page 2.
-		const total = episodeCap;
+		const total = stripCap;
 		if (knownAvailableEpisodes !== null) return 1;
 		if (!total) return null;
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
@@ -206,46 +296,15 @@
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
 			const end = wantPage * UI_PAGE_SIZE;
 			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
-			const windowed = merged.filter((ep) => {
+			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
 			});
-			// Pad with placeholder tiles for episode numbers in the page
-			// range that allmanga has but Kitsu doesn't (ongoing shows
-			// where Kitsu's cataloguers lag the streaming source — One
-			// Piece: Kitsu stops at 1106, allmanga has 1161). Without
-			// padding, the last few pages would render short and the
-			// user couldn't click 1107+. The cap (`episodeCap`) prefers
-			// allmanga's count when known.
-			const cap = episodeCap;
-			if (cap !== null) {
-				const have = new Set(windowed.map((ep) => ep.number ?? ep.relative_number ?? -1));
-				const padTo = Math.min(end, cap);
-				for (let n = start; n <= padTo; n++) {
-					if (have.has(n)) continue;
-					windowed.push(placeholderEpisode(n));
-				}
-				// Splice in non-integer extras (recap / special tags
-				// like "1061.5") that fall in this page's range. The
-				// renderer reads `number` as the display value; the
-				// click handler sends `String(number)` to ani-cli —
-				// "1061.5" round-trips through Number → String fine.
-				for (const tag of extraEpisodes) {
-					const n = parseFloat(tag);
-					if (!Number.isFinite(n)) continue;
-					if (n < start || n > end) continue;
-					windowed.push(placeholderEpisode(n));
-				}
-				windowed.sort(
-					(a, b) => (a.number ?? a.relative_number ?? 0) - (b.number ?? b.relative_number ?? 0)
-				);
-			}
-			episodes = windowed;
 			episodesPage = wantPage;
 			episodesError = null;
 			void prefetchAdjacent(wantPage);
 		} catch (e) {
-			if (opts.initial) episodes = [];
+			if (opts.initial) rawWindowed = [];
 			episodesError = describeErrorString(e);
 		} finally {
 			episodesLoading = false;
@@ -404,9 +463,6 @@
 		}
 	}
 
-	const id = $derived(page.params.id ?? '');
-	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
-
 	// The show's live list entry, folded from EVERY connected tracker so the
 	// editor opens on the real status/progress (the deviation safety) and the
 	// action-row button reflects it. A Save fans out to ALL connected trackers
@@ -513,48 +569,6 @@
 	);
 	const showEpPlaceholders = $derived(episodes !== null && episodes.length === 0);
 
-	// Airing schedule (AniList via the backend) for non-finished shows:
-	// tiles past `airing.aired` render greyed instead of inviting a
-	// doomed source resolution. null = unknown → every tile stays
-	// interactive (epAirState never gates on unknown), so a failed
-	// fetch degrades to today's behavior.
-	let airing = $state<AiringStatus | null>(null);
-	// True once the airing question is answered for this show — fetched,
-	// failed (stays unknown/ungated), or skipped for finished shows. The
-	// prefetch warm waits on it so it can't race ahead of the schedule
-	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
-	let airingResolved = $state(false);
-	$effect(() => {
-		const currentId = id;
-		const status = detail?.status;
-		airing = null;
-		airingResolved = false;
-		if (!currentId || !status) return;
-		if (status === 'finished') {
-			airingResolved = true;
-			return;
-		}
-		let cancelled = false;
-		void airingGet(currentId)
-			.then((a) => {
-				if (!cancelled) airing = a;
-			})
-			.catch(() => {
-				/* unknown airing data → tiles stay ungated */
-			})
-			.finally(() => {
-				if (!cancelled) airingResolved = true;
-			});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// In-flight beat between mount and the airing answer: tiles and
-	// the primary actions stay inert so a quick click can't race the
-	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
-	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
-
 	/** Tile label for an unaired episode: air date on the very next
 	 *  one, the generic "Unaired" otherwise. */
 	function unairedLabel(airsAt: number | null): string {
@@ -592,7 +606,7 @@
 			return;
 		}
 		detail = null;
-		episodes = null;
+		rawWindowed = null;
 		episodesError = null;
 		similar = null;
 		error = null;

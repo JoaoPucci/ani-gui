@@ -48,6 +48,27 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 }
 
 /**
+ * How far the episode strip should render tiles. Actions (play,
+ * download, prefetch, next/prev) keep the playable-first cap; this
+ * governs *display only*. With airing data present, extend to the
+ * announced total so a season allmanga hasn't fully listed renders
+ * its unaired tail as greyed dated tiles instead of not existing at
+ * all. Without airing data nothing could grey that tail — padded
+ * extras would be interactive doomed tiles — so stick to the
+ * playable-first cap.
+ */
+export function displayCap(
+	playable: number | null,
+	announced: number | null,
+	airing: AiringStatus | null
+): number | null {
+	const base = playable ?? announced;
+	if (airing == null || airing.aired == null) return base;
+	if (playable === null || announced === null) return base;
+	return Math.max(playable, announced);
+}
+
+/**
  * True while the airing question is still being *asked* — a
  * non-finished show whose airing fetch hasn't settled. Distinct from
  * resolved-unknown (fetch failed, show unmapped), which must never
