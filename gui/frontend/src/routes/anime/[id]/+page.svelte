@@ -37,7 +37,13 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
-	import { airedCap, airedTargets, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
+	import {
+		airedCap,
+		airedTargets,
+		beyondPlayable,
+		displayCap,
+		minCap
+	} from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
@@ -1783,7 +1789,7 @@
 	bind:open={downloadModalOpen}
 	args={downloadArgs}
 	defaultDir={downloadDefaultDir}
-	availableEpisodes={airedCap(knownAvailableEpisodes, airing)}
+	availableEpisodes={airedCap(minCap(knownAvailableEpisodes, playableEpisodeCount), airing)}
 	showThisEpisode={false}
 	onClose={() => (downloadModalOpen = false)}
 />

@@ -45,6 +45,20 @@ export function displayCap(
 }
 
 /**
+ * Null-tolerant min of two caps. The download modal's range ceiling
+ * must respect BOTH what Kitsu indexed and what allmanga has
+ * catalogued: with the padded strip, `knownAvailableEpisodes` is
+ * usually null, and clamping only to the aired count let a default
+ * "All" download start a range whose tail allmanga doesn't carry yet
+ * (Codex P2 #3566042284).
+ */
+export function minCap(a: number | null, b: number | null): number | null {
+	if (a === null) return b;
+	if (b === null) return a;
+	return Math.min(a, b);
+}
+
+/**
  * Clamp an episode cap to the aired count. The primary Play/Continue
  * CTA computes its target as `pickNextEpisode(last, cap)` — without
  * the clamp, a user watched through the aired count gets "Continue"
