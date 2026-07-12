@@ -323,6 +323,25 @@ fn positive_ttl_for(status: Option<&str>) -> u64 {
     }
 }
 
+/// Pick the negative cache TTL. A flat 7-day negative is right for
+/// finished shows (catalog adds are rare) but wrong around premieres:
+/// a show probed unavailable the day before airing would stay hidden
+/// from home/search for up to a week AFTER its first episode lands.
+/// With the airing schedule available, expire the negative shortly
+/// after the next scheduled airing instead:
+///
+///   - finished          → 7 days (unchanged);
+///   - premiere known    → time until `next_airing_at` + 3h grace,
+///     clamped to [1h, 7d] (a passed timestamp means the airing row
+///     is stale or the episode just dropped — re-probe within 1h);
+///   - not finished, no
+///     schedule known    → 24h, same as the ongoing positive TTL.
+fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
+    // Green commit fills the policy in.
+    let _ = (status, next_airing_at, now_epoch_s);
+    AVAILABILITY_TTL_NEGATIVE_SECS
+}
+
 /// Same as [`write_cache`] but lets the caller supply the episode
 /// count + extras when it knows. Used by `check_availability` after
 /// running the play picker; everything else stays on the simpler
@@ -466,6 +485,63 @@ mod tests {
     /// wastes a network probe; misclassifying an ongoing show as
     /// finished would hide weekly drops for 30 days. Both directions
     /// must be guarded.
+    // negative_ttl_for: the premiere-week fix. A show probed
+    // unavailable just before airing must not stay hidden for the
+    // full 7-day negative window after its first episode lands.
+    const NOW: u64 = 1_784_000_000;
+
+    #[test]
+    fn negative_ttl_finished_keeps_the_seven_day_window() {
+        assert_eq!(
+            negative_ttl_for(Some("finished"), Some(NOW + 3600), NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+        assert_eq!(
+            negative_ttl_for(Some("finished"), None, NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_expires_shortly_after_a_known_premiere() {
+        // Premiere in 2 days → negative dies 3h after it airs.
+        let two_days = 2 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("unreleased"), Some(NOW + two_days), NOW),
+            two_days + 3 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn negative_ttl_floors_at_one_hour_when_the_premiere_passed() {
+        // Stale airing row or the episode just dropped — re-probe soon.
+        assert_eq!(
+            negative_ttl_for(Some("current"), Some(NOW - 600), NOW),
+            60 * 60
+        );
+    }
+
+    #[test]
+    fn negative_ttl_caps_at_seven_days_for_far_premieres() {
+        let thirty_days = 30 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("unreleased"), Some(NOW + thirty_days), NOW),
+            AVAILABILITY_TTL_NEGATIVE_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_unfinished_without_schedule_uses_the_ongoing_window() {
+        assert_eq!(
+            negative_ttl_for(Some("current"), None, NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+        assert_eq!(
+            negative_ttl_for(None, None, NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+    }
+
     #[test]
     fn positive_ttl_for_finished_returns_30_day_window() {
         assert_eq!(positive_ttl_for(Some("finished")), 30 * 24 * 60 * 60);
