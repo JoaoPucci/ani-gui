@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { airedTargets, epAirState, formatAirDate, type AiringStatus } from './episode-airing';
+import { airedCap, airedTargets, epAirState, formatAirDate, type AiringStatus } from './episode-airing';
 
 // Yani Neko's real shape at the time of writing: 12 announced, 2
 // aired, ep 3 lands 2026-07-17 00:30 JST (epoch 1784215800).
@@ -71,6 +71,33 @@ describe('epAirState', () => {
 
 	it('still gates decimal extras beyond the aired count', () => {
 		expect(epAirState(3.5, RELEASING)).toEqual({ unaired: true, airsAt: null });
+	});
+});
+
+describe('airedCap', () => {
+	it('clamps the episode cap to the aired count', () => {
+		// Codex P2 #3565649454: the primary Play/Continue CTA computes
+		// its target from the cap; without the clamp a user watched
+		// through the aired count gets "Continue" into an unaired
+		// episode — the same doomed resolution the tiles disable.
+		expect(airedCap(12, RELEASING)).toBe(2);
+	});
+
+	it('passes the cap through on unknown airing data', () => {
+		expect(airedCap(12, null)).toBe(12);
+		expect(airedCap(12, { aired: null, next_episode: null, next_airing_at: null })).toBe(12);
+	});
+
+	it('uses the aired count when no cap is known', () => {
+		expect(airedCap(null, RELEASING)).toBe(2);
+	});
+
+	it('keeps a smaller cap over a larger aired count', () => {
+		expect(airedCap(2, { ...RELEASING, aired: 10 })).toBe(2);
+	});
+
+	it('stays unbounded when neither is known', () => {
+		expect(airedCap(null, null)).toBe(null);
 	});
 });
 
