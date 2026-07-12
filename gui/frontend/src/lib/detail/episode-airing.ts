@@ -38,9 +38,12 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 	// strict compare would grey a released special until the NEXT
 	// regular episode airs (Codex P2 #3565610386).
 	if (Math.floor(n) <= airing.aired) return { unaired: false };
+	// Prefer the published schedule (every episode gets its own date);
+	// fall back to nextAiringEpisode for shows without a schedule list.
+	const scheduled = airing.upcoming?.find((u) => u.episode === n)?.airing_at ?? null;
 	return {
 		unaired: true,
-		airsAt: n === airing.next_episode ? airing.next_airing_at : null
+		airsAt: scheduled ?? (n === airing.next_episode ? airing.next_airing_at : null)
 	};
 }
 
