@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { epAirState, formatAirDate, type AiringStatus } from './episode-airing';
+import { airedTargets, epAirState, formatAirDate, type AiringStatus } from './episode-airing';
 
 // Yani Neko's real shape at the time of writing: 12 announced, 2
 // aired, ep 3 lands 2026-07-17 00:30 JST (epoch 1784215800).
@@ -35,6 +35,27 @@ describe('epAirState', () => {
 	it('gates everything for a not-yet-premiered show', () => {
 		const unreleased: AiringStatus = { aired: 0, next_episode: null, next_airing_at: null };
 		expect(epAirState(1, unreleased)).toEqual({ unaired: true, airsAt: null });
+	});
+});
+
+describe('airedTargets', () => {
+	it('drops unaired episode numbers from a prefetch list', () => {
+		// Codex P2 #3565590966: the detail-page warm must not spend
+		// scraper slots resolving greyed-out future episodes.
+		expect(airedTargets([1, 2, 3, 4, 12], RELEASING)).toEqual([1, 2]);
+	});
+
+	it('passes everything through on unknown airing data', () => {
+		expect(airedTargets([1, 2, 3], null)).toEqual([1, 2, 3]);
+		expect(airedTargets([5], { aired: null, next_episode: null, next_airing_at: null })).toEqual([
+			5
+		]);
+	});
+
+	it('empties the list for a not-yet-premiered show', () => {
+		expect(airedTargets([1, 2], { aired: 0, next_episode: null, next_airing_at: null })).toEqual(
+			[]
+		);
 	});
 });
 
