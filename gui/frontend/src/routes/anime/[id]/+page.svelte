@@ -96,6 +96,12 @@
 	// isn't in allmanga's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
 	let availability = $state<boolean | null>(null);
+	// True once the availability probe settled (result, error, or the
+	// music-subtype skip). The prefetch warm waits on it: firing while
+	// playableEpisodeCount is still null would treat the cap as
+	// unbounded and resolve aired-but-uncatalogued padded tiles
+	// (Codex P2 #3566100686).
+	let availabilityResolved = $state(false);
 
 	// allmanga's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
@@ -611,6 +617,7 @@
 		similar = null;
 		error = null;
 		availability = null;
+		availabilityResolved = false;
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
@@ -633,6 +640,7 @@
 					// unavailable up front instead of letting the probe fuzzy-match
 					// an unrelated anime and play the wrong show.
 					availability = false;
+					availabilityResolved = true;
 				} else {
 					// Probe allmanga in the background. Result gates the
 					// Play + Download CTAs so titles outside the catalog
@@ -659,6 +667,9 @@
 						.catch(() => {
 							// Leave null; lazy fallback in the click handler
 							// will still surface the error.
+						})
+						.finally(() => {
+							if (id === currentId) availabilityResolved = true;
 						});
 				}
 				// Override the layout's URL-only default with the
@@ -728,6 +739,11 @@
 		// airingResolved) so a show without a Kitsu status — where no
 		// airing fetch ever starts — doesn't deadlock the warm.
 		if (airingIsPending) return;
+		// ...and for the availability probe: until it settles,
+		// playableEpisodeCount is null and beyondPlayable reads the
+		// cap as unbounded, so the warm would resolve
+		// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+		if (!availabilityResolved) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 

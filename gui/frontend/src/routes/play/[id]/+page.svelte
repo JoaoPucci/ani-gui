@@ -827,6 +827,11 @@
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
+	// True once the availability probe settled (result or error). The
+	// strip warm waits on it — until then the playable cap is null and
+	// beyondPlayable reads it as unbounded, so the warm would resolve
+	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+	let availabilityResolved = $state(false);
 	// Non-integer episode tags allmanga has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
@@ -1484,6 +1489,9 @@
 					})
 					.catch(() => {
 						// Cap falls back to Kitsu's count; nothing else to do.
+					})
+					.finally(() => {
+						availabilityResolved = true;
 					});
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
@@ -1544,6 +1552,10 @@
 		// Wait for the airing answer — warming on mount with airing
 		// still in flight would resolve greyed-out future episodes.
 		if (airingIsPending) return;
+		// ...and for the availability probe, or the null playable cap
+		// reads as unbounded and the warm resolves padded tiles
+		// allmanga hasn't catalogued (Codex P2 #3566100686).
+		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
