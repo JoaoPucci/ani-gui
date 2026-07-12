@@ -4,6 +4,7 @@ import {
 	airedCap,
 	airedTargets,
 	airingPending,
+	displayCap,
 	epAirState,
 	formatAirDate,
 	type AiringStatus
@@ -133,6 +134,36 @@ describe('airedTargets', () => {
 		expect(airedTargets([1, 2], { aired: 0, next_episode: null, next_airing_at: null })).toEqual(
 			[]
 		);
+	});
+});
+
+describe('displayCap', () => {
+	it('extends the strip to the announced total when the airing gate can grey the tail', () => {
+		// allmanga lists only released episodes; Kitsu announces the
+		// season. With airing data present, the strip pads to the
+		// announced total so the unaired tail renders as greyed dated
+		// tiles instead of not existing at all.
+		expect(displayCap(2, 12, RELEASING)).toBe(12);
+	});
+
+	it('never extends past the playable count without airing data', () => {
+		// Unknown airing (failed fetch, unmapped show) can't grey
+		// anything — padded extras would render as interactive doomed
+		// tiles. Stick to the playable-first cap.
+		expect(displayCap(2, 12, null)).toBe(2);
+		expect(displayCap(2, 12, { aired: null, next_episode: null, next_airing_at: null })).toBe(2);
+	});
+
+	it('keeps allmanga ahead of a stale announced total', () => {
+		// One Piece: allmanga streams past Kitsu's catalogued number.
+		expect(displayCap(1161, 1106, RELEASING)).toBe(1161);
+	});
+
+	it('falls back across missing inputs', () => {
+		expect(displayCap(null, 12, RELEASING)).toBe(12);
+		expect(displayCap(2, null, RELEASING)).toBe(2);
+		expect(displayCap(null, null, RELEASING)).toBe(null);
+		expect(displayCap(null, 12, null)).toBe(12);
 	});
 });
 
