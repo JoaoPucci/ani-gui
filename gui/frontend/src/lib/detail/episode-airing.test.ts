@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	airedCap,
 	airedTargets,
+	airingPending,
 	epAirState,
 	formatAirDate,
 	type AiringStatus
@@ -132,6 +133,35 @@ describe('airedTargets', () => {
 		expect(airedTargets([1, 2], { aired: 0, next_episode: null, next_airing_at: null })).toEqual(
 			[]
 		);
+	});
+});
+
+describe('airingPending', () => {
+	it('reports pending while a non-finished show awaits its airing fetch', () => {
+		// Codex P2 #3565710325: availability can return from cache
+		// before airingGet finishes; treating the in-flight lookup as
+		// "unknown airing data" leaves every tile and the primary CTA
+		// interactive for a beat — long enough for a quick click to
+		// start resolving an unaired episode.
+		expect(airingPending(false, 'current')).toBe(true);
+		expect(airingPending(false, 'upcoming')).toBe(true);
+	});
+
+	it('clears once the airing question is answered', () => {
+		expect(airingPending(true, 'current')).toBe(false);
+	});
+
+	it('never reports pending for finished shows', () => {
+		// Finished shows skip the airing fetch entirely.
+		expect(airingPending(false, 'finished')).toBe(false);
+	});
+
+	it('never reports pending while the Kitsu status is unknown', () => {
+		// No status → the airing effect hasn't started a fetch; gating
+		// here would freeze tiles for shows whose detail never loads a
+		// status at all.
+		expect(airingPending(false, null)).toBe(false);
+		expect(airingPending(false, undefined)).toBe(false);
 	});
 });
 
