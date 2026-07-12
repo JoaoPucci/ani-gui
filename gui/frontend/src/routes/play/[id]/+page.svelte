@@ -3178,6 +3178,7 @@
 	bind:open={downloadModalOpen}
 	args={downloadArgs}
 	defaultDir={downloadDefaultDir}
+	availableEpisodes={airedCap(playableEpisodeCount, airing)}
 	onClose={() => (downloadModalOpen = false)}
 />
 
