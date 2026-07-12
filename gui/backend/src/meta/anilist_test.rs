@@ -489,3 +489,62 @@ async fn media_ids_for_mals_chunks_batches_over_the_page_cap() {
         .expect("ok");
     assert!(got.is_empty());
 }
+
+// --- post_graphql_public 429 handling ------------------------------
+// AniList's public API rate-limits aggressively (degraded to 30
+// req/min), and the app's own fan-out — trending, episode thumbs,
+// airing lookups, availability seeds — can burst past it right after
+// launch. A 429 that surfaces as a hard error makes the airing gate
+// fall back to "unknown" (unaired tiles turn clickable) and strands
+// the detail page's availability skeleton. One bounded retry absorbs
+// the burst; anything else still fails fast.
+
+#[tokio::test]
+async fn post_graphql_public_retries_once_on_429() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "1"))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+        .mount(&server)
+        .await;
+    let got = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
+        .await
+        .expect("the retry after a single 429 must succeed");
+    assert_eq!(&got[..], br#"{"ok":true}"#);
+}
+
+#[tokio::test]
+async fn post_graphql_public_gives_up_after_one_429_retry() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "0"))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let err = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
+        .await
+        .expect_err("persistent 429 must still fail");
+    assert!(matches!(err, AniError::Upstream { status: 429 }));
+    // MockServer verifies expect(2) on drop — exactly one retry.
+}
+
+#[tokio::test]
+async fn post_graphql_public_does_not_retry_other_upstream_errors() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let err = post_graphql_public(&reqwest::Client::new(), &server.uri(), &serde_json::json!({}))
+        .await
+        .expect_err("500 must fail without a retry");
+    assert!(matches!(err, AniError::Upstream { status: 500 }));
+}
