@@ -1114,7 +1114,7 @@
 		.catch(() => {});
 
 	function onDownload() {
-		if (!detail) return;
+		if (!detail || nothingAiredYet) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
 		// `episode_count` must stay Kitsu's announced total — that's
@@ -1263,7 +1263,13 @@
 											: playLabel}</span
 									>
 								</button>
-								<button type="button" class="btn btn-outline" onclick={onDownload}>
+								<button
+									type="button"
+									class="btn btn-outline"
+									onclick={onDownload}
+									disabled={nothingAiredYet}
+									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
+								>
 									<span aria-hidden="true">↓</span>
 									<span>{m.detail_download_button()}</span>
 								</button>
@@ -1744,7 +1750,7 @@
 	bind:open={downloadModalOpen}
 	args={downloadArgs}
 	defaultDir={downloadDefaultDir}
-	availableEpisodes={knownAvailableEpisodes}
+	availableEpisodes={airedCap(knownAvailableEpisodes, airing)}
 	showThisEpisode={false}
 	onClose={() => (downloadModalOpen = false)}
 />

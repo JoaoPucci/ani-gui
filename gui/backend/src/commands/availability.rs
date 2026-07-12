@@ -342,13 +342,24 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
     if status == Some("finished") {
         return AVAILABILITY_TTL_NEGATIVE_SECS;
     }
-    match next_airing_at {
+    // The schedule stretch is only valid PRE-premiere: for a current
+    // show, next_airing_at points at the FOLLOWING episode, and
+    // stretching the negative to it would hide a catalog-lagged show
+    // for almost a week after episode 1 appears (Codex P2
+    // #3565701272). Current/unknown rows cap at the ongoing window.
+    let pre_premiere = matches!(status, Some("unreleased" | "tba" | "upcoming"));
+    let scheduled = match next_airing_at {
         // Already aired (or the airing row is stale) — re-probe soon.
         Some(at) if at <= now_epoch_s => FLOOR_SECS,
         Some(at) => {
             (at - now_epoch_s + GRACE_SECS).clamp(FLOOR_SECS, AVAILABILITY_TTL_NEGATIVE_SECS)
         }
-        None => AVAILABILITY_TTL_ONGOING_SECS,
+        None => return AVAILABILITY_TTL_ONGOING_SECS,
+    };
+    if pre_premiere {
+        scheduled
+    } else {
+        scheduled.min(AVAILABILITY_TTL_ONGOING_SECS)
     }
 }
 
@@ -545,6 +556,31 @@ mod tests {
         assert_eq!(
             negative_ttl_for(Some("current"), Some(NOW - 600), NOW),
             60 * 60
+        );
+    }
+
+    #[test]
+    fn negative_ttl_current_show_caps_at_the_ongoing_window() {
+        // Codex P2 #3565701272: for an already-premiered show,
+        // next_airing_at points at the FOLLOWING episode — stretching
+        // the negative to it would hide a catalog-lagged show for
+        // almost a week after episode 1 appears. Current shows cap at
+        // the 24h ongoing window; the schedule stretch is only for
+        // pre-premiere rows.
+        let five_days = 5 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(Some("current"), Some(NOW + five_days), NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
+        );
+    }
+
+    #[test]
+    fn negative_ttl_unknown_status_caps_at_the_ongoing_window() {
+        // Unknown status could be an already-airing show — same cap.
+        let five_days = 5 * 24 * 60 * 60;
+        assert_eq!(
+            negative_ttl_for(None, Some(NOW + five_days), NOW),
+            AVAILABILITY_TTL_ONGOING_SECS
         );
     }
 
