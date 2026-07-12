@@ -48,6 +48,20 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 }
 
 /**
+ * True when episode `n` sits above allmanga's playable count — aired
+ * per AniList, but not streamable yet (catalog lag: aired=5 while
+ * allmanga lists 2). `displayCap` renders such tiles; clicks and
+ * prefetches must not fire on them (Codex P2 #3565988141/#3565988143).
+ * Floor-compare mirrors {@link epAirState}: decimal extras come from
+ * allmanga itself, so a streamable "2.5" recap isn't gated by a
+ * playable count of 2. Unknown count never gates.
+ */
+export function beyondPlayable(n: number, playable: number | null): boolean {
+	if (playable === null) return false;
+	return Math.floor(n) > playable;
+}
+
+/**
  * How far the episode strip should render tiles. Actions (play,
  * download, prefetch, next/prev) keep the playable-first cap; this
  * governs *display only*. With airing data present, extend to the

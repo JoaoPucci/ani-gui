@@ -63,6 +63,7 @@
 	import {
 		airedCap,
 		airingPending,
+		beyondPlayable,
 		displayCap,
 		epAirState,
 		formatAirDate
@@ -1560,9 +1561,10 @@
 			// The strip now renders unaired tiles (stripCap) — skip
 			// them, and skip anything past allmanga's playable count:
 			// both are doomed resolutions the warm must not spend
-			// scraper slots on.
+			// scraper slots on. beyondPlayable floor-compares so
+			// allmanga's own decimal extras stay warmable.
 			if (epAirState(targetEp, airing).unaired) continue;
-			if (playableEpisodeCount !== null && targetEp > playableEpisodeCount) continue;
+			if (beyondPlayable(targetEp, playableEpisodeCount)) continue;
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
 				playStream(
 					{
@@ -1593,8 +1595,18 @@
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
 		// prev/next, auto-play-next: an unaired target is a doomed
-		// resolution, no matter who asked.
-		if (epAirState(targetEp, airing).unaired) return;
+		// resolution, no matter who asked. While the airing lookup is
+		// in flight everything reads as aired (airing is null), so
+		// switches hold until the answer lands (Codex P2 #3565988145);
+		// aired-but-uncatalogued targets above allmanga's count are
+		// equally doomed (catalog lag).
+		if (
+			epAirState(targetEp, airing).unaired ||
+			airingIsPending ||
+			beyondPlayable(targetEp, playableEpisodeCount)
+		) {
+			return;
+		}
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
@@ -2688,7 +2700,7 @@
 							type="button"
 							class="ep-btn"
 							onclick={onNext}
-							disabled={!hasNext || switchBusy}
+							disabled={!hasNext || switchBusy || airingIsPending}
 							aria-label={m.play_episode_nav_next_aria_label()}
 						>
 							<span>{m.play_episode_nav_next_label({ episode: String(episodeNum + 1) })}</span>
@@ -3023,6 +3035,7 @@
 							{@const isCurrent = n === episodeNum}
 							{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
 							{@const air = epAirState(n, airing)}
+							{@const capGated = !air.unaired && beyondPlayable(n, playableEpisodeCount)}
 							<!-- in: only, no out:. With a 5-col grid, simultaneously
 						     mounting outgoing + incoming cards wraps to two
 						     rows for ~320ms during a page change, pushing the
@@ -3039,9 +3052,16 @@
 									type="button"
 									class="ep-card"
 									class:ep-card-current={isCurrent}
-									class:ep-card-unaired={air.unaired}
-									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
-									title={air.unaired ? m.detail_ep_unaired_tooltip() : undefined}
+									class:ep-card-unaired={air.unaired || capGated}
+									disabled={(switchBusy && !isCurrent) ||
+										air.unaired ||
+										airingIsPending ||
+										capGated}
+									title={air.unaired
+										? m.detail_ep_unaired_tooltip()
+										: capGated
+											? m.detail_ep_disabled_tooltip()
+											: undefined}
 									onclick={() => onPickEpisode(ep)}
 								>
 									<span class="ep-card-thumb">

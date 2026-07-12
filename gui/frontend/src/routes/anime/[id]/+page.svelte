@@ -40,6 +40,7 @@
 		airedCap,
 		airedTargets,
 		airingPending,
+		beyondPlayable,
 		displayCap,
 		epAirState,
 		formatAirDate
@@ -738,6 +739,10 @@
 		// (ep 1) falls out of the same loop; if `episodes` hasn't
 		// loaded yet we still warm ep 1 so the hero "Play" button is
 		// instant.
+		// Aired per AniList AND catalogued by allmanga — the grid can
+		// render aired-but-uncatalogued tiles (displayCap), and warming
+		// those is the same doomed resolution the availability probe
+		// already capped out (Codex P2 #3565988141).
 		const targets = airedTargets(
 			episodes
 				? episodes.flatMap((e) => {
@@ -746,7 +751,7 @@
 					})
 				: [defaultEpisode()],
 			airing
-		);
+		).filter((n) => !beyondPlayable(n, playableEpisodeCount));
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
@@ -1621,6 +1626,8 @@
 									{@const num = ep.number ?? ep.relative_number ?? null}
 									{@const air =
 										num !== null ? epAirState(num, airing) : { unaired: false as const }}
+									{@const capGated =
+										!air.unaired && num !== null && beyondPlayable(num, playableEpisodeCount)}
 									<li
 										class:ep-highlight={num !== null && num === highlightEp}
 										data-ep-num={num ?? ''}
@@ -1630,16 +1637,19 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false}
+											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-disabled={availability === false ||
+												air.unaired ||
+												airingIsPending ||
+												capGated}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false
+												: availability === false || capGated
 													? m.detail_ep_disabled_tooltip()
 													: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending) onPickEpisode(num ?? 0);
+												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(num ?? 0);
 											}}
 										>
 											<span class="ep-thumb">
@@ -1683,6 +1693,7 @@
 						     so the user isn't blocked from poking the panel. -->
 								{#each Array.from({ length: epPlaceholderCount }, (_, k) => k + 1) as n, i (n)}
 									{@const air = epAirState(n, airing)}
+									{@const capGated = !air.unaired && beyondPlayable(n, playableEpisodeCount)}
 									<li
 										class:ep-highlight={n === highlightEp}
 										data-ep-num={n}
@@ -1692,16 +1703,19 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false}
+											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-disabled={availability === false ||
+												air.unaired ||
+												airingIsPending ||
+												capGated}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false
+												: availability === false || capGated
 													? m.detail_ep_disabled_tooltip()
 													: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending) onPickEpisode(n);
+												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(n);
 											}}
 										>
 											<span class="ep-thumb">
