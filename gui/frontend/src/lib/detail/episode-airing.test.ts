@@ -4,6 +4,7 @@ import {
 	airedCap,
 	airedTargets,
 	airingPending,
+	beyondPlayable,
 	displayCap,
 	epAirState,
 	formatAirDate,
@@ -164,6 +165,33 @@ describe('displayCap', () => {
 		expect(displayCap(2, null, RELEASING)).toBe(2);
 		expect(displayCap(null, null, RELEASING)).toBe(null);
 		expect(displayCap(null, 12, null)).toBe(12);
+	});
+});
+
+describe('beyondPlayable', () => {
+	it('gates integer episodes above allmanga playable count', () => {
+		// Codex P2 #3565988141/#3565988143: AniList can report more
+		// aired episodes than allmanga has catalogued (aired=5,
+		// playable=2 during lag). Those tiles are aired per epAirState
+		// but not streamable — clicks and prefetches must not fire.
+		expect(beyondPlayable(3, 2)).toBe(true);
+		expect(beyondPlayable(5, 2)).toBe(true);
+	});
+
+	it('keeps episodes at or below the playable count streamable', () => {
+		expect(beyondPlayable(2, 2)).toBe(false);
+		expect(beyondPlayable(1, 2)).toBe(false);
+	});
+
+	it('never gates when the playable count is unknown', () => {
+		expect(beyondPlayable(12, null)).toBe(false);
+	});
+
+	it('floor-compares so decimal extras from allmanga stay playable', () => {
+		// extraEpisodes come from allmanga itself — a streamable "2.5"
+		// recap must not be gated by a playable count of 2.
+		expect(beyondPlayable(2.5, 2)).toBe(false);
+		expect(beyondPlayable(3.5, 2)).toBe(true);
 	});
 });
 
