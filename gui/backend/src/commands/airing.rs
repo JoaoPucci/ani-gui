@@ -17,6 +17,26 @@ use crate::meta::anilist_airing::AiringStatus;
 /// longer TTL would keep a just-aired episode greyed out for hours.
 const AIRING_TTL_SECS: u64 = 3 * 60 * 60;
 
+/// Grace past the scheduled airing before the cache row must die.
+/// AniList flips `nextAiringEpisode` within minutes of the drop; a
+/// short overlap avoids refetch-hammering while that propagates.
+const AIRING_GRACE_SECS: u64 = 10 * 60;
+
+/// Cache TTL for one airing row. A row written shortly before a
+/// scheduled airing must not outlive the airing by the full fixed
+/// window — the just-dropped episode would stay greyed out until the
+/// TTL expired (Codex P2 #3565710322). Cap at the schedule boundary
+/// plus a short grace; an already-passed timestamp (stale AniList
+/// row, clock skew) collapses to the grace so the next read soon
+/// refetches without hammering per-request.
+fn airing_ttl_for(next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
+    match next_airing_at {
+        Some(at) if at <= now_epoch_s => AIRING_GRACE_SECS,
+        Some(at) => (at - now_epoch_s + AIRING_GRACE_SECS).min(AIRING_TTL_SECS),
+        None => AIRING_TTL_SECS,
+    }
+}
+
 /// Fetch the airing status for a Kitsu anime id. Cached per show.
 /// Unknown (unmapped show, AniList doesn't index it) collapses to the
 /// default all-`None` [`AiringStatus`] — a non-error the UI renders
@@ -60,7 +80,12 @@ pub(crate) async fn airing_get_with_anilist_base(
     };
 
     if let Ok(body) = serde_json::to_string(&status) {
-        meta_cache_put(&state.cache_pool, &key, &body, AIRING_TTL_SECS)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let ttl = airing_ttl_for(status.next_airing_at, now);
+        meta_cache_put(&state.cache_pool, &key, &body, ttl)?;
     }
     Ok(status)
 }
