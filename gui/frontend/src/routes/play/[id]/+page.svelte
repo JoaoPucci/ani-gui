@@ -60,14 +60,8 @@
 		type MediaKind,
 		type SkipInterval
 	} from '$lib/api';
-	import {
-		airedCap,
-		airingPending,
-		beyondPlayable,
-		displayCap,
-		epAirState,
-		formatAirDate
-	} from '$lib/detail/episode-airing';
+	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';

@@ -36,15 +36,8 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode
 	} from '$lib/api';
-	import {
-		airedCap,
-		airedTargets,
-		airingPending,
-		beyondPlayable,
-		displayCap,
-		epAirState,
-		formatAirDate
-	} from '$lib/detail/episode-airing';
+	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { airedCap, airedTargets, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
