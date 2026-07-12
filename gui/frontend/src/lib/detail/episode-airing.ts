@@ -28,10 +28,12 @@ export type EpAirState = { unaired: false } | { unaired: true; airsAt: number | 
  * hiding real episodes on a guess is worse than a doomed click.
  */
 export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
-	// Green commit fills the policy in.
-	void n;
-	void airing;
-	return { unaired: false };
+	if (airing == null || airing.aired == null) return { unaired: false };
+	if (n <= airing.aired) return { unaired: false };
+	return {
+		unaired: true,
+		airsAt: n === airing.next_episode ? airing.next_airing_at : null
+	};
 }
 
 /**
@@ -39,8 +41,7 @@ export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
  * (e.g. "Jul 17"). Epoch seconds in, display string out.
  */
 export function formatAirDate(epochSeconds: number, locale: string): string {
-	// Green commit fills the formatting in.
-	void epochSeconds;
-	void locale;
-	return '';
+	return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(
+		new Date(epochSeconds * 1000)
+	);
 }

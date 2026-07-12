@@ -923,6 +923,22 @@ export function aniskipGet(
 	);
 }
 
+/** Mirror of the backend's `meta::anilist::AiringStatus`. All-null =
+ *  unknown airing data — the detail page must not gate episode tiles
+ *  on it (see $lib/detail/episode-airing). */
+export interface AiringStatus {
+	aired: number | null;
+	next_episode: number | null;
+	next_airing_at: number | null;
+}
+
+/** Airing schedule for a show — how many episodes are actually out
+ *  and when the next one lands. Detail page fetches it for airing
+ *  shows to grey out unaired tiles. */
+export function airingGet(kitsuId: string): Promise<AiringStatus> {
+	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}`);
+}
+
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }
