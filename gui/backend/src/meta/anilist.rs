@@ -138,15 +138,33 @@ pub(crate) async fn post_graphql_public(
     url: &str,
     body: &serde_json::Value,
 ) -> Result<bytes::Bytes> {
-    let resp = client
-        .post(url)
-        .header("user-agent", ANILIST_UA)
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
+    let send = || {
+        client
+            .post(url)
+            .header("user-agent", ANILIST_UA)
+            .header("content-type", "application/json")
+            .header("accept", "application/json")
+            .json(body)
+            .send()
+    };
+    let mut resp = send().await.map_err(|_| AniError::Network)?;
+    // AniList rate-limits aggressively (the public API runs degraded
+    // at 30 req/min) and the app's own fan-out — trending, episode
+    // thumbs, airing lookups, availability seeds — can burst past it
+    // right after launch. One bounded retry absorbs the burst; the
+    // Retry-After honor is capped so a handler never stalls behind a
+    // hostile header.
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let wait = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(1)
+            .min(3);
+        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        resp = send().await.map_err(|_| AniError::Network)?;
+    }
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {
