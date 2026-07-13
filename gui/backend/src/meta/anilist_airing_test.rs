@@ -227,5 +227,9 @@ async fn airing_status_batch_skips_the_network_for_no_ids() {
         .await
         .expect("ok");
     assert!(got.is_empty());
-    assert!(server.received_requests().await.expect("recorded").is_empty());
+    assert!(server
+        .received_requests()
+        .await
+        .expect("recorded")
+        .is_empty());
 }

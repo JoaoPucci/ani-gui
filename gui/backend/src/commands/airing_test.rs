@@ -246,6 +246,14 @@ async fn seed_airing_rows_batch_skips_shows_with_fresh_rows() {
     crate::cache::meta_cache_put(&state.cache_pool, "airing:v2:50551", &row, 3600)
         .expect("seed row");
     seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
-    assert!(kitsu.received_requests().await.expect("recorded").is_empty());
-    assert!(anilist.received_requests().await.expect("recorded").is_empty());
+    assert!(kitsu
+        .received_requests()
+        .await
+        .expect("recorded")
+        .is_empty());
+    assert!(anilist
+        .received_requests()
+        .await
+        .expect("recorded")
+        .is_empty());
 }
