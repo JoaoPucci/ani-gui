@@ -176,3 +176,76 @@ async fn airing_get_caches_per_show() {
     // Both MockServers verify their .expect(1) on drop — the second
     // call must be served from the cache.
 }
+
+// --- batch seeding ---------------------------------------------------
+// The home-rail warm used to seed airing rows one AniList request per
+// pre-premiere show; seed_airing_rows_batch collapses a rail into one.
+
+const KITSU_MAPPING_49444: &str = r#"{
+    "data": { "id": "49444", "type": "anime", "attributes": { "canonicalTitle": "Kashin-tan" } },
+    "included": [{
+        "id": "2",
+        "type": "mappings",
+        "attributes": { "externalSite": "anilist/anime", "externalId": "185874" }
+    }]
+}"#;
+
+const ANILIST_BATCH_BODY: &str = r#"{"data":{"Page":{"media":[
+    {"id":207141,"status":"RELEASING","episodes":12,
+     "nextAiringEpisode":{"episode":3,"airingAt":1784215800}},
+    {"id":185874,"status":"NOT_YET_RELEASED","episodes":13,
+     "nextAiringEpisode":{"episode":1,"airingAt":1784988000}}
+]}}}"#;
+
+#[tokio::test]
+async fn seed_airing_rows_batch_writes_all_rows_with_one_anilist_request() {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/49444"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPING_49444))
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_BATCH_BODY))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_airing_rows_batch(
+        &state,
+        &["50551".to_string(), "49444".to_string()],
+        Some(&anilist.uri()),
+    )
+    .await;
+    for (id, expected_next) in [("50551", 1_784_215_800u64), ("49444", 1_784_988_000u64)] {
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &format!("airing:v2:{id}"))
+            .expect("cache read")
+            .expect("row written");
+        let status: AiringStatus = serde_json::from_str(&body).expect("parses");
+        assert_eq!(status.next_airing_at, Some(expected_next));
+    }
+    // AniList MockServer verifies expect(1) on drop.
+}
+
+#[tokio::test]
+async fn seed_airing_rows_batch_skips_shows_with_fresh_rows() {
+    let kitsu = wiremock::MockServer::start().await;
+    let anilist = wiremock::MockServer::start().await;
+    // No mounts: a fresh row must produce zero Kitsu or AniList calls.
+    let state = state_with_kitsu(&kitsu.uri());
+    let row = serde_json::to_string(&AiringStatus::default()).expect("serializes");
+    crate::cache::meta_cache_put(&state.cache_pool, "airing:v2:50551", &row, 3600)
+        .expect("seed row");
+    seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
+    assert!(kitsu.received_requests().await.expect("recorded").is_empty());
+    assert!(anilist.received_requests().await.expect("recorded").is_empty());
+}
