@@ -197,6 +197,7 @@ fn state_for_cache_only_tests() -> AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         ani_cli_path: PathBuf::from("/x"),
         bash_path: None,

@@ -40,6 +40,14 @@ pub struct AppState {
     pub sessions: SessionTable,
     /// Outbound http client used by the proxy.
     pub proxy_http: reqwest::Client,
+    /// Outbound HTTP client for metadata calls (Kitsu, AniList,
+    /// allanime search, images, GitHub release polls). Separate from
+    /// `proxy_http` so these calls carry tight timeouts: the proxy
+    /// client's 120s ceiling is sized for streaming bodies, and a
+    /// stalled metadata connection could hold a probe handler for two
+    /// minutes. Same User-Agent as the proxy client — CDN HEAD probes
+    /// (`upstream_head_ok`) rely on the client default.
+    pub meta_http: reqwest::Client,
     /// Public base URL the frontend uses to reach the proxy
     /// (`http://127.0.0.1:<port>`). Set after the listener binds.
     pub proxy_origin: ProxyOrigin,
@@ -147,13 +155,15 @@ impl AppState {
             std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
         }
         let cache_pool = crate::cache::open_pool(&metadata_db)?;
-        let kitsu = KitsuClient::new(proxy_http.clone());
+        let meta_http = crate::proxy::upstream::build_meta_client();
+        let kitsu = KitsuClient::new(meta_http.clone());
         let config_path = paths::config_file().ok_or(AniError::Io)?;
         let state_dir = paths::state_dir().ok_or(AniError::Io)?;
         Ok(Self {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http,
+            meta_http,
             proxy_origin,
             ani_cli_path,
             bash_path,
@@ -281,6 +291,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,

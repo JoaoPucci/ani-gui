@@ -261,7 +261,7 @@ pub async fn check_availability(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.proxy_http, &c.id, None).await {
+        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
             Ok(detail) => {
                 episode_count = detail.max_integer_episode(mode);
                 extra_episodes = detail
@@ -503,6 +503,27 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
     use tokio::time::{sleep, Duration};
+    // Batch-seed airing rows for the pre-premiere entries that will
+    // actually probe (no fresh availability row): one AniList request
+    // for the whole rail, so each probe's per-show seed below becomes
+    // a cache hit instead of its own AniList call.
+    let mut premiere_ids: Vec<String> = Vec::new();
+    for args in &items {
+        let mode = if args.mode == "dub" { "dub" } else { "sub" };
+        let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &cache_key(id, mode)) {
+            continue;
+        }
+        if matches!(
+            args.status.as_deref(),
+            Some("unreleased" | "tba" | "upcoming")
+        ) {
+            premiere_ids.push(id.to_string());
+        }
+    }
+    crate::commands::airing::seed_airing_rows_batch(&state, &premiere_ids, None).await;
     for args in items {
         let mode = if args.mode == "dub" { "dub" } else { "sub" };
         let id = match args.kitsu_id.as_deref() {
@@ -678,6 +699,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,

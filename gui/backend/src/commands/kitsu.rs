@@ -120,7 +120,7 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
 
     // AniList → MAL ids → bridge to Kitsu refs.
     let anilist =
-        crate::meta::anilist::trending(&state.proxy_http, ANILIST_TRENDING_LIMIT, None).await;
+        crate::meta::anilist::trending(&state.meta_http, ANILIST_TRENDING_LIMIT, None).await;
     if let Err(ref e) = anilist {
         tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
     }
@@ -588,7 +588,7 @@ pub async fn resolve_allmanga_show_id(
     //    (englishName / nativeName / altNames). Network failure is
     //    soft — Continue Watching can still render the bare
     //    allmanga title, so we return Ok(None).
-    let show = match crate::scraper::allanime::fetch_show(&state.proxy_http, show_id, None).await {
+    let show = match crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!(
@@ -716,7 +716,7 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
     if detail.cover_image.is_none() {
         if let Ok(Some(mal_id)) = state.kitsu.mal_id_for_kitsu_id(id).await {
             if let Ok(Some(banner)) =
-                crate::meta::anilist::banner_for_mal_id(&state.proxy_http, mal_id, None).await
+                crate::meta::anilist::banner_for_mal_id(&state.meta_http, mal_id, None).await
             {
                 detail.cover_image = Some(KitsuCoverImage {
                     tiny: None,
@@ -767,6 +767,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/x"),
             bash_path: None,
@@ -1141,7 +1142,7 @@ mod tests {
     // text search → cache result) is exercised against a MockServer
     // whose URI we stamp into BOTH the Kitsu client base AND the
     // allanime base override (via state_with_kitsu_at hijacking the
-    // Kitsu client; the allanime call uses state.proxy_http with no
+    // Kitsu client; the allanime call uses state.meta_http with no
     // override, so production prod plumbing isn't exercised here —
     // see the green commit for the with_bases helper that threads a
     // test override into the allanime call too).

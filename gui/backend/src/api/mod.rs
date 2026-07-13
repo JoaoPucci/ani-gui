@@ -386,7 +386,7 @@ async fn get_image(State(state): State<Arc<AppState>>, Query(q): Query<ImageQuer
     if !q.url.starts_with("https://") {
         return (StatusCode::BAD_REQUEST, "url must be https://").into_response();
     }
-    match crate::meta::images::get_or_fetch(&state.proxy_http, &state.image_cache_dir, &q.url).await
+    match crate::meta::images::get_or_fetch(&state.meta_http, &state.image_cache_dir, &q.url).await
     {
         Ok((bytes, mime)) => {
             // Opportunistic LRU prune — fire-and-forget, only walks
@@ -785,6 +785,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,

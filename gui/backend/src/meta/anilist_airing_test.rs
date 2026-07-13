@@ -165,3 +165,71 @@ fn parse_airing_missing_schedule_defaults_to_empty_upcoming() {
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert!(got.upcoming.is_empty());
 }
+
+// --- batch fetch ----------------------------------------------------
+// One Page(media(id_in: [...])) request answers airing for a whole
+// rail; per-show requests were the app's most frequent AniList
+// caller and the main rate-limit burst source at launch.
+
+const BATCH_BODY: &str = r#"{"data":{"Page":{"media":[
+    {"id":207141,"status":"RELEASING","episodes":12,
+     "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
+     "airingSchedule":{"nodes":[{"episode":3,"airingAt":1784215800}]}},
+    {"id":185874,"status":"NOT_YET_RELEASED","episodes":13,
+     "nextAiringEpisode":{"episode":1,"airingAt":1784988000},
+     "airingSchedule":{"nodes":[{"episode":1,"airingAt":1784988000},{"episode":2,"airingAt":1785592800}]}}
+]}}}"#;
+
+#[test]
+fn parse_airing_batch_maps_each_media_by_id() {
+    let got = parse_airing_batch_response(BATCH_BODY.as_bytes()).expect("parses");
+    assert_eq!(got.len(), 2);
+    let releasing = &got[&207141];
+    assert_eq!(releasing.aired, Some(2));
+    assert_eq!(releasing.next_episode, Some(3));
+    let unreleased = &got[&185874];
+    assert_eq!(unreleased.aired, Some(0));
+    assert_eq!(unreleased.next_airing_at, Some(1_784_988_000));
+    assert_eq!(unreleased.upcoming.len(), 2);
+}
+
+#[test]
+fn parse_airing_batch_tolerates_an_empty_page() {
+    let got = parse_airing_batch_response(br#"{"data":{"Page":{"media":[]}}}"#).expect("parses");
+    assert!(got.is_empty());
+}
+
+#[tokio::test]
+async fn airing_status_batch_answers_many_ids_with_one_request() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(BATCH_BODY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let got = airing_status_batch(
+        &reqwest::Client::new(),
+        &[207141, 185874],
+        Some(&server.uri()),
+    )
+    .await
+    .expect("ok");
+    assert_eq!(got.len(), 2);
+    // MockServer verifies expect(1) on drop — one request, two answers.
+}
+
+#[tokio::test]
+async fn airing_status_batch_skips_the_network_for_no_ids() {
+    let server = wiremock::MockServer::start().await;
+    // No mounts; any request would be recorded.
+    let got = airing_status_batch(&reqwest::Client::new(), &[], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+    assert!(server
+        .received_requests()
+        .await
+        .expect("recorded")
+        .is_empty());
+}

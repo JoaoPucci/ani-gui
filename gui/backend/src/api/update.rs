@@ -44,7 +44,7 @@ pub(super) async fn get_update_check(
     Query(q): Query<UpdateCheckQuery>,
 ) -> Response {
     let release =
-        crate::meta::github::fetch_latest_release(&state.proxy_http, q.include_prereleases, None)
+        crate::meta::github::fetch_latest_release(&state.meta_http, q.include_prereleases, None)
             .await;
     match release {
         Some(r) => Json(r).into_response(),

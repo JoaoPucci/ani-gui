@@ -58,7 +58,7 @@ pub(crate) async fn try_serve_cached(
     cached: &CachedResolution,
 ) -> Option<CreateSessionResponse> {
     let url = url::Url::parse(&cached.upstream_url).ok()?;
-    if !upstream_head_ok(&state.proxy_http, &url, &cached.referer).await {
+    if !upstream_head_ok(&state.meta_http, &url, &cached.referer).await {
         return None;
     }
     let session_args = CreateSessionArgs {
@@ -95,7 +95,7 @@ pub(crate) async fn try_launch_args_from_cache(
     );
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     let parsed = url::Url::parse(&cached.upstream_url).ok()?;
-    if !upstream_head_ok(&state.proxy_http, &parsed, &cached.referer).await {
+    if !upstream_head_ok(&state.meta_http, &parsed, &cached.referer).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
             title = %args.title,
