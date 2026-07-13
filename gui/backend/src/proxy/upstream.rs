@@ -38,6 +38,23 @@ pub fn build_client() -> Result<reqwest::Client> {
         .map_err(|_| AniError::Network)
 }
 
+/// Build the metadata HTTP client (Kitsu, AniList, allanime search,
+/// images, GitHub polls). A stalled metadata connection must fail a
+/// probe in seconds, not ride [`build_client`]'s streaming-sized
+/// 120s ceiling. Same UA so CDN HEAD probes keep their accepted
+/// fingerprint. Falls back to the default client if the builder
+/// fails (never observed in practice).
+#[must_use]
+pub fn build_meta_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(UA)
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .gzip(true)
+        .build()
+        .unwrap_or_default()
+}
+
 /// Fetch a manifest (HTTP body) from upstream with the right `Referer:`.
 /// Used for master.m3u8 + media .m3u8 + .vtt.
 ///
@@ -228,6 +245,13 @@ mod tests {
     #[test]
     fn build_client_succeeds() {
         let _c = build_client().expect("client builds");
+    }
+
+    #[test]
+    fn build_meta_client_succeeds() {
+        // Covers the tight-timeout builder; the fallback arm is the
+        // never-observed builder failure.
+        let _c = build_meta_client();
     }
 
     /// classify_via_head() resolves the media kind for upstreams whose
