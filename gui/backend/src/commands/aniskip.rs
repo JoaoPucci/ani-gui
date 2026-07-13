@@ -51,7 +51,7 @@ pub async fn aniskip_get(
     }
 
     let intervals = crate::meta::aniskip::fetch_skip_times(
-        &state.proxy_http,
+        &state.meta_http,
         mal_id,
         episode,
         episode_length,
@@ -87,6 +87,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/x"),
             bash_path: None,
@@ -197,7 +198,7 @@ mod tests {
         let mut state = state_with_kitsu_at(&kitsu.uri());
 
         // 2. Spin up an aniskip mock and inject its base URL by
-        // re-using `state.proxy_http` against the wiremock URI —
+        // re-using `state.meta_http` against the wiremock URI —
         // the underlying meta::aniskip client takes a
         // `base_override` we don't have a hook for here, so cheat
         // via fetch_skip_times directly… actually we do: the
@@ -248,7 +249,7 @@ mod tests {
         // fetch_skip_times which makes a real HTTP call —
         // suppress it by setting proxy_http to a client whose
         // resolver fails fast.
-        state.proxy_http = reqwest::Client::builder()
+        state.meta_http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .expect("client");

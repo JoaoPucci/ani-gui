@@ -200,7 +200,7 @@ async fn enrich_availability_after_success(
     };
     let mode_str = args.mode.as_str();
     let (episode_count, extras) =
-        match crate::scraper::allanime::fetch_show(&state.proxy_http, &c.id, None).await {
+        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
             Ok(detail) => {
                 let cap = detail.max_integer_episode(mode_str);
                 let ex: Vec<String> = detail
@@ -311,7 +311,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
-        match scraper::search(&state.proxy_http, title, mode, None).await {
+        match scraper::search(&state.meta_http, title, mode, None).await {
             Ok(cands) => {
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
@@ -568,7 +568,7 @@ where
             // /file.mp4 with byte-range support; if the upstream truly
             // is an HLS manifest mislabelled, hls.js never enters the
             // picture and the renderer surfaces a real error.
-            upstream::classify_via_head(&state.proxy_http, &upstream_url, &referer)
+            upstream::classify_via_head(&state.meta_http, &upstream_url, &referer)
                 .await
                 .unwrap_or(MediaKind::Mp4)
         }
@@ -698,6 +698,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
             bash_path: None,

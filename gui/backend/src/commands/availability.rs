@@ -261,7 +261,7 @@ pub async fn check_availability(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.proxy_http, &c.id, None).await {
+        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
             Ok(detail) => {
                 episode_count = detail.max_integer_episode(mode);
                 extra_episodes = detail
@@ -678,6 +678,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,

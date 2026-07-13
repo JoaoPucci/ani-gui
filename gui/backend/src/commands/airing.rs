@@ -77,7 +77,7 @@ pub(crate) async fn airing_get_with_anilist_base(
         AiringStatus::default()
     } else {
         crate::meta::anilist_airing::airing_status(
-            &state.proxy_http,
+            &state.meta_http,
             ids.anilist,
             ids.mal,
             anilist_base,

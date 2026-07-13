@@ -98,7 +98,7 @@ pub fn provider_for_kind(
     state: &Arc<AppState>,
     kind: ProviderKind,
 ) -> Option<Box<dyn UserListProvider>> {
-    let client = state.proxy_http.clone();
+    let client = state.meta_http.clone();
     match kind {
         ProviderKind::AniList => Some(Box::new(AniListProvider::new(client))),
         ProviderKind::MyAnimeList => Some(Box::new(MalProvider::new(
@@ -378,7 +378,7 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     if !misses.is_empty() {
         let miss_ids: Vec<u32> = misses.iter().map(|&(_, mal_id)| mal_id).collect();
         let mal_to_anilist =
-            crate::meta::anilist::media_ids_for_mals(&state.proxy_http, &miss_ids, anilist_base)
+            crate::meta::anilist::media_ids_for_mals(&state.meta_http, &miss_ids, anilist_base)
                 .await
                 .unwrap_or_default();
         let filled: Vec<(usize, Option<crate::meta::kitsu::KitsuAnimeRef>)> = stream::iter(misses)
@@ -445,7 +445,7 @@ pub(crate) async fn resolve_native_media_id(
                 return Ok(None);
             };
             let mal_id = crate::meta::anilist::mal_id_for_media_id(
-                &state.proxy_http,
+                &state.meta_http,
                 anilist_id,
                 anilist_base,
             )
@@ -457,7 +457,7 @@ pub(crate) async fn resolve_native_media_id(
         ProviderKind::AniList => {
             if let Some(mal_id) = ids.mal {
                 let media_id =
-                    crate::meta::anilist::media_id_for_mal(&state.proxy_http, mal_id, anilist_base)
+                    crate::meta::anilist::media_id_for_mal(&state.meta_http, mal_id, anilist_base)
                         .await?;
                 if media_id.is_some() {
                     return Ok(media_id.map(ProviderMediaId));

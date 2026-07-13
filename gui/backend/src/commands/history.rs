@@ -100,6 +100,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 0),
             ani_cli_path: PathBuf::from("/x/ani-cli"),
             bash_path: None,

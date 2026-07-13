@@ -75,20 +75,16 @@ async fn fetch_anilist_eps_thumbs(
         .await
         .map_err(|e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mal_id lookup failed"))?
         .ok_or(())?;
-    crate::meta::anilist_streaming_eps::streaming_eps_map_for_mal_id(
-        &state.proxy_http,
-        mal_id,
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::warn!(
-            kitsu_id,
-            mal_id,
-            error = ?e,
-            "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
-        );
-    })
+    crate::meta::anilist_streaming_eps::streaming_eps_map_for_mal_id(&state.meta_http, mal_id, None)
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                kitsu_id,
+                mal_id,
+                error = ?e,
+                "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
+            );
+        })
 }
 
 /// Returns `true` when at least one episode in the page has a

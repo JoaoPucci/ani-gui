@@ -14,6 +14,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<AppState> {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        meta_http: reqwest::Client::new(),
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         ani_cli_path: PathBuf::from("/tmp/ani-cli"),
         bash_path: None,
