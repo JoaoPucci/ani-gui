@@ -22,6 +22,13 @@ const AIRING_TTL_SECS: u64 = 3 * 60 * 60;
 /// short overlap avoids refetch-hammering while that propagates.
 const AIRING_GRACE_SECS: u64 = 10 * 60;
 
+/// Ceiling for rows whose next airing is far away. The aired count
+/// cannot move before the scheduled airing, so re-asking every 3h
+/// buys nothing — a daily ceiling keeps AniList rate-limit pressure
+/// ~8x lower while the schedule cap still expires the row right
+/// after a drop.
+const AIRING_TTL_MAX_SECS: u64 = 24 * 60 * 60;
+
 /// Cache TTL for one airing row. A row written shortly before a
 /// scheduled airing must not outlive the airing by the full fixed
 /// window — the just-dropped episode would stay greyed out until the
@@ -32,7 +39,7 @@ const AIRING_GRACE_SECS: u64 = 10 * 60;
 fn airing_ttl_for(next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
     match next_airing_at {
         Some(at) if at <= now_epoch_s => AIRING_GRACE_SECS,
-        Some(at) => (at - now_epoch_s + AIRING_GRACE_SECS).min(AIRING_TTL_SECS),
+        Some(at) => (at - now_epoch_s + AIRING_GRACE_SECS).min(AIRING_TTL_MAX_SECS),
         None => AIRING_TTL_SECS,
     }
 }
