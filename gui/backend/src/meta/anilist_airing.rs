@@ -77,8 +77,74 @@ pub async fn airing_status(
     parse_airing_response(&bytes)
 }
 
-/// Pure parser + derivation for the airing response. `Media: null` →
-/// `Ok(None)`. Derivation:
+/// Batch variant of [`AIRING_GQL`]: one `Page` request answers
+/// airing for a whole rail. Includes `id` so the response maps back
+/// to the requested shows.
+const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
+        Page(page: 1, perPage: 50) { \
+            media(id_in: $ids, type: ANIME) { \
+                id status episodes nextAiringEpisode { episode airingAt } \
+                airingSchedule(notYetAired: true, perPage: 25) { \
+                    nodes { episode airingAt } \
+                } \
+            } \
+        } \
+    }";
+
+/// Fetch [`AiringStatus`] for many AniList ids in as few requests as
+/// possible (chunks of 50 — the `Page` cap). Ids AniList doesn't
+/// return are simply absent from the map. Empty input skips the
+/// network entirely.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed from the underlying client.
+pub async fn airing_status_batch(
+    client: &reqwest::Client,
+    anilist_ids: &[u32],
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let mut out = std::collections::HashMap::with_capacity(anilist_ids.len());
+    for chunk in anilist_ids.chunks(50) {
+        let body = serde_json::json!({
+            "query": AIRING_BATCH_GQL,
+            "variables": { "ids": chunk },
+        });
+        let bytes = post_graphql_public(client, url, &body).await?;
+        out.extend(parse_airing_batch_response(&bytes)?);
+    }
+    Ok(out)
+}
+
+/// Raw serde shape of one `Media` node, shared by the single and
+/// batch parsers. `id` is only present in the batch query's
+/// selection set, hence the default.
+#[derive(Deserialize)]
+struct MediaShape {
+    #[serde(default)]
+    id: Option<u32>,
+    status: Option<String>,
+    episodes: Option<u32>,
+    #[serde(rename = "nextAiringEpisode")]
+    next_airing_episode: Option<ScheduleNode>,
+    #[serde(rename = "airingSchedule", default)]
+    airing_schedule: Option<Schedule>,
+}
+
+#[derive(Deserialize)]
+struct Schedule {
+    #[serde(default)]
+    nodes: Vec<ScheduleNode>,
+}
+
+#[derive(Deserialize)]
+struct ScheduleNode {
+    episode: u32,
+    #[serde(rename = "airingAt")]
+    airing_at: u64,
+}
+
+/// Derivation shared by both parsers:
 ///   - a scheduled `nextAiringEpisode` → aired = episode - 1;
 ///   - else `FINISHED` → aired = the announced total (None when
 ///     AniList doesn't know it — stays ungated);
@@ -86,46 +152,7 @@ pub async fn airing_status(
 ///   - else (releasing without schedule data, hiatus, cancelled) →
 ///     aired = None, deliberately: gating on a guess would hide real
 ///     episodes.
-///
-/// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't the expected
-/// envelope.
-pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        data: Data,
-    }
-    #[derive(Deserialize)]
-    struct Data {
-        #[serde(rename = "Media")]
-        media: Option<Media>,
-    }
-    #[derive(Deserialize)]
-    struct Media {
-        status: Option<String>,
-        episodes: Option<u32>,
-        #[serde(rename = "nextAiringEpisode")]
-        next_airing_episode: Option<NextAiring>,
-        #[serde(rename = "airingSchedule", default)]
-        airing_schedule: Option<Schedule>,
-    }
-    #[derive(Deserialize)]
-    struct Schedule {
-        #[serde(default)]
-        nodes: Vec<NextAiring>,
-    }
-    #[derive(Deserialize)]
-    struct NextAiring {
-        episode: u32,
-        #[serde(rename = "airingAt")]
-        airing_at: u64,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("anilist airing response: {e}"),
-    })?;
-    let Some(media) = parsed.data.media else {
-        return Ok(None);
-    };
+fn derive_status(media: MediaShape) -> AiringStatus {
     let upcoming: Vec<UpcomingEpisode> = media
         .airing_schedule
         .map(|s| {
@@ -138,7 +165,7 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
                 .collect()
         })
         .unwrap_or_default();
-    let status = if let Some(next) = media.next_airing_episode {
+    if let Some(next) = media.next_airing_episode {
         AiringStatus {
             aired: Some(next.episode.saturating_sub(1)),
             next_episode: Some(next.episode),
@@ -157,8 +184,65 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
             next_airing_at: None,
             upcoming,
         }
-    };
-    Ok(Some(status))
+    }
+}
+
+/// Pure parser + derivation for the single-show airing response.
+/// `Media: null` → `Ok(None)`. Derivation rules live in
+/// [`derive_status`].
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<MediaShape>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist airing response: {e}"),
+    })?;
+    Ok(parsed.data.media.map(derive_status))
+}
+
+/// Pure parser for the batch response: every returned media node
+/// with an `id` becomes a map entry via [`derive_status`].
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_airing_batch_response(
+    body: &[u8],
+) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Page")]
+        page: Page,
+    }
+    #[derive(Deserialize)]
+    struct Page {
+        #[serde(default)]
+        media: Vec<MediaShape>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist airing batch response: {e}"),
+    })?;
+    Ok(parsed
+        .data
+        .page
+        .media
+        .into_iter()
+        .filter_map(|m| m.id.map(|id| (id, derive_status(m))))
+        .collect())
 }
 
 #[cfg(test)]

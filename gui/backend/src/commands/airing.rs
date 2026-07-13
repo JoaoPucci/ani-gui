@@ -86,15 +86,71 @@ pub(crate) async fn airing_get_with_anilist_base(
         .unwrap_or_default()
     };
 
-    if let Ok(body) = serde_json::to_string(&status) {
+    write_airing_row(state, kitsu_id, &status);
+    Ok(status)
+}
+
+/// Serialize + cache one airing row under the schedule-aware TTL. A
+/// failed cache write is swallowed — the fetched status is still
+/// good, it just won't be remembered.
+fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
+    if let Ok(body) = serde_json::to_string(status) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let ttl = airing_ttl_for(status.next_airing_at, now);
-        meta_cache_put(&state.cache_pool, &key, &body, ttl)?;
+        let _ = meta_cache_put(
+            &state.cache_pool,
+            &format!("airing:v2:{kitsu_id}"),
+            &body,
+            ttl,
+        );
     }
-    Ok(status)
+}
+
+/// Batch-seed airing rows for many shows: the home-rail warm calls
+/// this once, so its pre-premiere negative writes find their
+/// schedule in the cache instead of paying one AniList request per
+/// show. One `Page(media(id_in))` request covers the whole rail.
+/// Best-effort throughout — mapping or fetch failures leave rows
+/// unwritten and the per-show seed path covers them later. Shows
+/// whose airing row is still fresh cost nothing; MAL-only mappings
+/// keep the per-show path (`idMal` isn't batchable alongside
+/// `id_in`), which is rare for fresh seasonals.
+pub(crate) async fn seed_airing_rows_batch(
+    state: &AppState,
+    kitsu_ids: &[String],
+    anilist_base: Option<&str>,
+) {
+    let mut pairs: Vec<(String, u32)> = Vec::new();
+    for kitsu_id in kitsu_ids {
+        let key = format!("airing:v2:{kitsu_id}");
+        if matches!(meta_cache_get(&state.cache_pool, &key), Ok(Some(_))) {
+            continue;
+        }
+        let Ok(ids) = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await else {
+            continue;
+        };
+        if let Some(anilist_id) = ids.anilist {
+            pairs.push((kitsu_id.clone(), anilist_id));
+        }
+    }
+    if pairs.is_empty() {
+        return;
+    }
+    let ids: Vec<u32> = pairs.iter().map(|(_, a)| *a).collect();
+    let Ok(map) =
+        crate::meta::anilist_airing::airing_status_batch(&state.meta_http, &ids, anilist_base)
+            .await
+    else {
+        return;
+    };
+    for (kitsu_id, anilist_id) in pairs {
+        if let Some(status) = map.get(&anilist_id) {
+            write_airing_row(state, &kitsu_id, status);
+        }
+    }
 }
 
 #[cfg(test)]
