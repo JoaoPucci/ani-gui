@@ -118,10 +118,24 @@ fn ttl_caps_at_the_next_airing_plus_grace() {
 }
 
 #[test]
-fn ttl_keeps_the_fixed_window_for_a_distant_airing() {
-    // Next episode is 5 days away — no reason to shrink the window.
+fn ttl_stretches_to_a_day_for_a_distant_airing() {
+    // Next episode is 5 days away — the aired count cannot move until
+    // then, so re-asking AniList every 3 hours buys nothing. A daily
+    // ceiling keeps rate-limit pressure ~8x lower while still snapping
+    // to the schedule boundary as it approaches.
     let at = NOW + 5 * 24 * 60 * 60;
-    assert_eq!(airing_ttl_for(Some(at), NOW), AIRING_TTL_SECS);
+    assert_eq!(airing_ttl_for(Some(at), NOW), AIRING_TTL_MAX_SECS);
+}
+
+#[test]
+fn ttl_tracks_the_schedule_inside_the_daily_ceiling() {
+    // Airing 5 hours out: the row dies just after the drop — the
+    // ceiling only bites for airings further than a day away.
+    let five_hours = 5 * 60 * 60;
+    assert_eq!(
+        airing_ttl_for(Some(NOW + five_hours), NOW),
+        five_hours + AIRING_GRACE_SECS
+    );
 }
 
 #[test]
