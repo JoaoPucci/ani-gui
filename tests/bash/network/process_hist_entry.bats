@@ -8,7 +8,8 @@
 #   - Takes the episode AFTER the current ep_no.
 #   - Updates the "(N episodes)" suffix in title to the latest ep count.
 #   - If a next episode exists, prints "id\ttitle - episode N".
-#   - If at the last episode, prints nothing (no next episode line).
+#   - If at the last episode, prints "id\ttitle - episode N (up to date)"
+#     (ani-cli 4.14.5 keeps caught-up shows selectable in -c).
 #
 # We mock episodes_list as a function override so this test stays hermetic.
 
@@ -34,12 +35,26 @@ setup() {
     [ "$output" = "$expected" ]
 }
 
-@test "process_hist_entry: emits nothing when caller is at the last episode" {
+@test "process_hist_entry: marks the entry up-to-date at the last episode" {
     id='abc123'
     title='Test Anime (5 episodes)'
     ep_no='5'
     output=$(process_hist_entry)
-    [ -z "$output" ]
+    # ani-cli 4.14.5 keeps caught-up shows in the -c list (with a
+    # next-episode countdown) instead of dropping them.
+    expected="abc123"$'\t'"Test Anime (5 episodes) - episode 5 (up to date)"
+    [ "$output" = "$expected" ]
+}
+
+@test "process_hist_entry: preserves the year tail while refreshing the count" {
+    id='abc123'
+    title='Test Anime (3 episodes) (2026)'
+    ep_no='1'
+    output=$(process_hist_entry)
+    # Titles written by ani-cli >= 4.14.5 carry a release-year
+    # parenthetical after the count; only the count may change.
+    expected="abc123"$'\t'"Test Anime (5 episodes) (2026) - episode 2"
+    [ "$output" = "$expected" ]
 }
 
 @test "process_hist_entry: refreshes title's episode count from the mocked list" {
