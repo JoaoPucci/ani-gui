@@ -1620,6 +1620,17 @@ mod tests {
     }
 
     #[test]
+    fn half_open_stale_window_covers_the_gated_spawn_timeout() {
+        // The half-open trial can be a prefetch ani-cli spawn, which
+        // legitimately runs up to RUN_DEBUG_TIMEOUT before reporting.
+        // A shorter stale window would sanction a second trial while
+        // the first is still running — two background probes on a
+        // possibly still-limited upstream during what the gate
+        // documents as one.
+        assert!(crate::scraper::gate::HALF_OPEN_TRIAL_STALE >= RUN_DEBUG_TIMEOUT);
+    }
+
+    #[test]
     fn no_results_spawn_failure_does_not_write_a_negative_availability_row() {
         // The gate treats a spawn-level NoResults as transient — the
         // picker confirmed the show exists moments earlier — so

@@ -61,6 +61,28 @@ describe('getOrFire', () => {
 		expect(fire).toHaveBeenCalledTimes(1);
 	});
 
+	it('promotes a queued prefetch to the foreground fire on click', async () => {
+		// A detail-page warm registers the entry with a prefetch:true
+		// closure. When the user clicks before it starts, the click's
+		// own foreground closure must replace it — otherwise the request
+		// still runs as Background and the backend's scraper gate can
+		// refuse it (AniError::Network) instead of taking the
+		// interactive bypass a click is promised.
+		const never = () => new Promise<CreateSessionResponse>(() => {});
+		// Saturate the concurrency cap so the prefetch entry queues
+		// without starting.
+		void getOrFire(makeKey('sat1', '1', 'sub', 'best'), never);
+		void getOrFire(makeKey('sat2', '1', 'sub', 'best'), never);
+		const key = makeKey('show', '3', 'sub', 'best');
+		const prefetchFire = vi.fn(never);
+		void getOrFire(key, prefetchFire);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const resolved = await getOrFire(key, foregroundFire, () => {});
+		expect(resolved.session_id).toBe('fg');
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+		expect(prefetchFire).not.toHaveBeenCalled();
+	});
+
 	it('drops failed entries so a retry can fire fresh', async () => {
 		const fire = vi
 			.fn<(emit: (p: PlayProgress) => void) => Promise<CreateSessionResponse>>()
