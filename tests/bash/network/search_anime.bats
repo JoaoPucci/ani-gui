@@ -27,15 +27,26 @@ setup() {
     mode='sub'
 }
 
-@test "search_anime: parses four sub results from canned response" {
+@test "search_anime: parses five sub results from canned response" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/search_one_piece.json"
     output=$(search_anime "one+piece")
     line_count=$(printf '%s\n' "$output" | wc -l | tr -d ' ')
-    [ "$line_count" -eq 4 ]
+    [ "$line_count" -eq 5 ]
     # First edge in the fixture: the main TV series with 1100 sub episodes.
     [[ "$output" == *"ReooPAxPMsHM4KPMY"$'\t'"One Piece (1100 episodes) (1999)"* ]]
     # Second edge: a film, single episode.
     [[ "$output" == *"yWebgvMsxR8FAEpw9"$'\t'"One Piece Movie 14: Stampede (1 episodes) (2019)"* ]]
+}
+
+@test "search_anime: keeps a result whose title contains an escaped quote" {
+    export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/search_one_piece.json"
+    output=$(search_anime "one+piece")
+    # Fifth edge: the JSON name carries an escaped quote. A [^\"]
+    # title capture stops at it and drops the row — shifting the
+    # GUI's -S index. The row must come through; the trailing sed
+    # strips the escaped quotes from the display form, as ani-cli
+    # always has.
+    [[ "$output" == *"qEscapedTitle001"$'\t'"One Piece Log Special (1 episodes) (2020)"* ]]
 }
 
 @test "search_anime: keeps a result whose airedStart is null (no year suffix)" {
