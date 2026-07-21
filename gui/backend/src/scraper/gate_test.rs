@@ -198,6 +198,58 @@ async fn abandoned_half_open_trial_unblocks_after_the_stale_window() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn opening_the_breaker_drops_queued_slot_reservations() {
+    // A cold burst can reserve slots minutes past the cooldown.
+    // Those callers all get refused at wake once the breaker opens,
+    // but their reservations must not make the half-open trial wait
+    // behind requests that will never run — the documented 60 s
+    // recovery would silently become minutes.
+    let gate = ScraperGate::new();
+    // Reserve 300 slots (~150 s of schedule) and drop the callers —
+    // polling each admit once runs its reservation section, and the
+    // reservation outlives the future. Exactly the starvation input.
+    for _ in 0..300 {
+        let mut fut = Box::pin(gate.admit(ScrapePriority::Background));
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        let _ = std::future::Future::poll(fut.as_mut(), &mut cx);
+    }
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background)
+        .await
+        .expect("half-open trial");
+    assert!(
+        Instant::now() - t0 < BACKGROUND_INTERVAL,
+        "the trial must not wait behind dead reservations"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn straggler_failures_keep_the_original_staleness_boundary() {
+    // While the breaker is open, a leftover in-flight failure must
+    // not refresh opened_at: an interactive request that started
+    // during the cooldown (after the real opening) is fresh evidence
+    // and must still be able to close the breaker even when an older
+    // failure reports in between.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, Instant::now());
+    }
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let fresh_start = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record_outcome(false, Instant::now());
+    gate.record_outcome(true, fresh_start);
+    assert!(
+        gate.admit(ScrapePriority::Background).await.is_ok(),
+        "a success started after the ORIGINAL opening must close the breaker"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn stale_success_does_not_close_an_open_breaker() {
     // Admits are spaced 500 ms apart but the HTTP calls complete
     // independently: a slow request admitted before the storm can
