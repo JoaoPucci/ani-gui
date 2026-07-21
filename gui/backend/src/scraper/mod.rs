@@ -31,5 +31,6 @@
 //!   patch the same way upstream does.
 
 pub mod allanime;
+pub mod gate;
 
 pub use allanime::{pick_by_ep_count, pick_by_ep_count_v2, search, Candidate};
