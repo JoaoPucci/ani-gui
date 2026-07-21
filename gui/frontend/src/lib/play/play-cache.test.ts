@@ -83,6 +83,48 @@ describe('getOrFire', () => {
 		expect(prefetchFire).not.toHaveBeenCalled();
 	});
 
+	it('refires a started prefetch as foreground when it fails under a click', async () => {
+		// Promotion only helps before the fire starts. When a click
+		// attaches to an in-flight prefetch whose backend request runs
+		// as Background, a breaker refusal fails that promise — the
+		// click must transparently refire once with its own foreground
+		// closure instead of surfacing Network for a user action.
+		const key = makeKey('show', 4, 'sub', 'best');
+		let rejectPrefetch: (e: Error) => void = () => {};
+		const prefetchFire = vi.fn(
+			() =>
+				new Promise<CreateSessionResponse>((_, reject) => {
+					rejectPrefetch = reject;
+				})
+		);
+		void getOrFire(key, prefetchFire).catch(() => {});
+		expect(prefetchFire).toHaveBeenCalledTimes(1);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const clicked = getOrFire(key, foregroundFire, () => {});
+		rejectPrefetch(new Error('gate refused'));
+		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not refire when the failing entry was aborted', async () => {
+		// clearForShow on unmount aborts in-flight fires; a foreground
+		// subscriber must not resurrect the request after the page is
+		// gone.
+		const key = makeKey('gone', 1, 'sub', 'best');
+		const prefetchFire = vi.fn(
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
+				new Promise<CreateSessionResponse>((_, reject) => {
+					signal.addEventListener('abort', () => reject(new Error('aborted')));
+				})
+		);
+		void getOrFire(key, prefetchFire).catch(() => {});
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const clicked = getOrFire(key, foregroundFire, () => {});
+		clearForShow('gone');
+		await expect(clicked).rejects.toThrow();
+		expect(foregroundFire).not.toHaveBeenCalled();
+	});
+
 	it('drops failed entries so a retry can fire fresh', async () => {
 		const fire = vi
 			.fn<(emit: (p: PlayProgress) => void) => Promise<CreateSessionResponse>>()
