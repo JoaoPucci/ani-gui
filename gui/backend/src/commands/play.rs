@@ -338,7 +338,7 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// verdicts are content-level answers ("Episode not released" from
 /// an ep+1 prefetch at the season edge, dep_ch complaints) and move
 /// the breaker in neither direction.
-fn record_prefetch_spawn_outcome<T>(state: &AppState, args: &PlayArgs, result: &Result<T>) {
+fn record_spawn_outcome<T>(state: &AppState, args: &PlayArgs, result: &Result<T>) {
     if !args.prefetch {
         return;
     }
@@ -626,7 +626,7 @@ where
             }
         }
     });
-    record_prefetch_spawn_outcome(state, args, &resolved);
+    record_spawn_outcome(state, args, &resolved);
     let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
@@ -1551,7 +1551,7 @@ mod tests {
         let state = state_with_proxy_origin();
         let args = gate_args(true, "Gate Test", &[]);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_prefetch_spawn_outcome::<()>(&state, &args, &Err(AniError::Io));
+            record_spawn_outcome::<()>(&state, &args, &Err(AniError::Io));
         }
         assert!(
             state
@@ -1568,7 +1568,7 @@ mod tests {
         // this message), not absence.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_prefetch_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+            record_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
         }
         assert!(
             state
@@ -1581,6 +1581,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn interactive_spawn_failures_feed_the_breaker_too() {
+        use crate::scraper::gate::ScrapePriority;
+        // A user click bypasses admission, but its subprocess outcome
+        // still matters: the preflight search just reset the breaker
+        // with a success, so if the spawn is what hits the rate limit,
+        // background traffic must back off — not resume immediately
+        // after a user-visible failure.
+        let state = state_with_proxy_origin();
+        let args = gate_args(false, "Gate Test", &[]);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
     async fn prefetch_spawn_scraper_verdicts_leave_the_breaker_alone() {
         use crate::scraper::gate::ScrapePriority;
         // Scraper{} carries content-level verdicts — an ep+1 prefetch
@@ -1590,7 +1610,7 @@ mod tests {
         let state = state_with_proxy_origin();
         let args = gate_args(true, "Gate Test", &[]);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
-            record_prefetch_spawn_outcome::<()>(
+            record_spawn_outcome::<()>(
                 &state,
                 &args,
                 &Err(AniError::Scraper {
