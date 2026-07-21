@@ -1606,6 +1606,31 @@ mod tests {
             .is_err());
     }
 
+    #[test]
+    fn no_results_spawn_failure_does_not_write_a_negative_availability_row() {
+        // The gate treats a spawn-level NoResults as transient — the
+        // picker confirmed the show exists moments earlier — so
+        // persisting available=false from the same signal would hide
+        // a real show behind the negative TTL. Genuine absence is
+        // recorded by the picker path (classify_picker_miss), which
+        // reaches its verdict from clean zero-candidate searches.
+        let state = state_with_proxy_origin();
+        let mut args = gate_args(false, "Gate Test", &[]);
+        args.kitsu_id = Some("777".into());
+        note_spawn_failure(&state, &args, "Gate Test", 1, &AniError::NoResults);
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["777".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            cached.cached.is_empty(),
+            "transient spawn miss must not poison the availability cache"
+        );
+    }
+
     #[tokio::test]
     async fn prefetch_spawn_scraper_verdicts_leave_the_breaker_alone() {
         use crate::scraper::gate::ScrapePriority;
