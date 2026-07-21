@@ -199,21 +199,34 @@ async fn enrich_availability_after_success(
         return;
     };
     let mode_str = args.mode.as_str();
-    let (episode_count, extras) =
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
-            Ok(detail) => {
-                let cap = detail.max_integer_episode(mode_str);
-                let ex: Vec<String> = detail
-                    .available_episodes_detail
-                    .for_mode(mode_str)
-                    .iter()
-                    .filter(|t| t.parse::<u32>().is_err())
-                    .cloned()
-                    .collect();
-                (cap, ex)
-            }
-            Err(_) => (None, Vec::new()),
-        };
+    let detail = if state
+        .scraper_gate
+        .admit(scrape_priority(args))
+        .await
+        .is_ok()
+    {
+        let got = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
+        state.scraper_gate.record_outcome(got.is_ok());
+        got.ok()
+    } else {
+        // Breaker open — skip the enrichment round-trip; the plain
+        // write below still records availability.
+        None
+    };
+    let (episode_count, extras) = match detail {
+        Some(detail) => {
+            let cap = detail.max_integer_episode(mode_str);
+            let ex: Vec<String> = detail
+                .available_episodes_detail
+                .for_mode(mode_str)
+                .iter()
+                .filter(|t| t.parse::<u32>().is_err())
+                .cloned()
+                .collect();
+            (cap, ex)
+        }
+        None => (None, Vec::new()),
+    };
     // Status unknown at this layer (PlayArgs doesn't carry it).
     // None → write_cache_full uses the conservative ongoing TTL
     // (24h); the next detail-page probe knows status and will
@@ -286,6 +299,18 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     pick_title_and_index_with_base(state, args, None).await
 }
 
+/// Scraper-gate priority for a play-shaped request: prefetches (and
+/// availability probes flagged background, which arrive here with
+/// `prefetch = true` on their synthesized view) are opportunistic;
+/// everything else is a user waiting.
+fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
+    if args.prefetch {
+        crate::scraper::gate::ScrapePriority::Background
+    } else {
+        crate::scraper::gate::ScrapePriority::Interactive
+    }
+}
+
 /// [`pick_title_and_index`] with the allanime endpoint override
 /// exposed for tests. Production passes `None` via the wrapper.
 pub(super) async fn pick_title_and_index_with_base(
@@ -318,16 +343,27 @@ pub(super) async fn pick_title_and_index_with_base(
     let mut chosen_pick_so_far = 1usize;
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    let prio = scrape_priority(args);
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
+        // Background walks stop as soon as the breaker opens — the
+        // remaining alt titles would fail identically and each doomed
+        // request deepens allanime's rate limit.
+        if state.scraper_gate.admit(prio).await.is_err() {
+            tracing::warn!(title, "play: scraper gate open; abandoning candidate walk");
+            any_search_errored = true;
+            break;
+        }
         match scraper::search(&state.meta_http, title, mode, allanime_base).await {
             Ok(cands) => {
+                state.scraper_gate.record_outcome(true);
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
                 any_search_succeeded = true;
             }
             Err(e) => {
+                state.scraper_gate.record_outcome(false);
                 tracing::warn!(
                     title,
                     error = ?e,

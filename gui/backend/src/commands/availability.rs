@@ -283,8 +283,21 @@ pub(crate) async fn check_availability_with_base(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await {
-            Ok(detail) => {
+        let prio = if args.background {
+            crate::scraper::gate::ScrapePriority::Background
+        } else {
+            crate::scraper::gate::ScrapePriority::Interactive
+        };
+        let detail = if state.scraper_gate.admit(prio).await.is_ok() {
+            let got =
+                crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
+            state.scraper_gate.record_outcome(got.is_ok());
+            got.ok()
+        } else {
+            None
+        };
+        match detail {
+            Some(detail) => {
                 episode_count = detail.max_integer_episode(mode);
                 extra_episodes = detail
                     .available_episodes_detail
@@ -294,10 +307,11 @@ pub(crate) async fn check_availability_with_base(
                     .cloned()
                     .collect();
             }
-            Err(_) => {
-                // Show fetch failed — fall back to the count from the
-                // search hit. Off by one for shows with halves, but
-                // good enough for the cap until next probe.
+            None => {
+                // Show fetch failed or the gate is closed — fall back
+                // to the count from the search hit. Off by one for
+                // shows with halves, but good enough for the cap
+                // until next probe.
                 let n = c.available_episodes.for_mode(mode);
                 if n > 0 {
                     episode_count = Some(n);
@@ -557,6 +571,12 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &key) {
             continue;
         }
+        // Warm probes are background by definition — enforce it
+        // server-side regardless of what the caller sent, so the
+        // scraper gate paces them and skips them while its breaker
+        // is open.
+        let mut args = args;
+        args.background = true;
         let _ = check_availability(&state, &args).await;
         sleep(Duration::from_millis(500)).await;
     }

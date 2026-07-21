@@ -588,7 +588,22 @@ pub async fn resolve_allmanga_show_id(
     //    (englishName / nativeName / altNames). Network failure is
     //    soft — Continue Watching can still render the bare
     //    allmanga title, so we return Ok(None).
-    let show = match crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await {
+    // Alias enrichment is opportunistic cache filling — the card can
+    // render the bare allmanga title, so the fetch goes through the
+    // scraper gate as background traffic and is skipped while the
+    // breaker is open.
+    if state
+        .scraper_gate
+        .admit(crate::scraper::gate::ScrapePriority::Background)
+        .await
+        .is_err()
+    {
+        tracing::warn!(show_id, "scraper gate open; skipping reverse-resolve fetch");
+        return Ok(None);
+    }
+    let fetched = crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await;
+    state.scraper_gate.record_outcome(fetched.is_ok());
+    let show = match fetched {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!(
