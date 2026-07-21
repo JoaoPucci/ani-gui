@@ -371,9 +371,18 @@ process_hist_entry() {
     ep_list=$(episodes_list "$id")
     latest_ep=$(printf "%s\n" "$ep_list" | tail -n1)
     title=$(printf "%s\n" "$title" | sed "s|[0-9]\+ episodes|${latest_ep} episodes|")
+    # ani-gui patch: remember the saved episode before the lookup
+    # below overwrites it — the up-to-date fallback must only fire
+    # when the saved episode is really in a non-empty list, or a
+    # transient episodes_list failure emits a selectable row with a
+    # blank or unrelated latest episode.
+    watched_ep_no=$ep_no
     ep_no=$(printf "%s" "$ep_list" | sed -n "/^${ep_no}$/{n;p;}") 2>/dev/null
     [ -n "$ep_no" ] && printf "%s\t%s - episode %s\n" "$id" "$title" "$ep_no"
-    [ -n "$ep_no" ] || printf "%s\t%s - episode %s (up to date)\n" "$id" "$title" "$latest_ep"
+    [ -n "$ep_no" ] || {
+        [ -n "$latest_ep" ] && printf "%s\n" "$ep_list" | grep -Fqx "$watched_ep_no" &&
+            printf "%s\t%s - episode %s (up to date)\n" "$id" "$title" "$latest_ep"
+    }
 }
 
 update_history() {
