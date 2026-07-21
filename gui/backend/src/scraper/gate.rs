@@ -67,6 +67,10 @@ struct GateState {
     next_background_at: Instant,
     consecutive_failures: u32,
     open_until: Option<Instant>,
+    /// When the breaker last opened; `None` when it has never opened
+    /// or a fresh success closed it. Successes started before this
+    /// instant are stale evidence and cannot close the breaker.
+    opened_at: Option<Instant>,
     /// When the current half-open trial probe was admitted; `None`
     /// when no trial is outstanding.
     half_open_trial_at: Option<Instant>,
@@ -89,6 +93,7 @@ impl ScraperGate {
                 next_background_at: Instant::now(),
                 consecutive_failures: 0,
                 open_until: None,
+                opened_at: None,
                 half_open_trial_at: None,
             }),
         }
@@ -170,16 +175,27 @@ impl ScraperGate {
     /// after the breaker opened — a slow pre-storm request reporting
     /// success later is stale evidence, not proof of recovery.
     pub fn record_outcome(&self, ok: bool, started_at: Instant) {
-        let _ = started_at;
         let mut s = self.inner.lock().expect("gate lock");
         if ok {
+            if let Some(opened) = s.opened_at {
+                if started_at < opened {
+                    // Pre-storm evidence: the request was already in
+                    // flight when the breaker opened, so its success
+                    // says nothing about the upstream's state NOW.
+                    // Leave the breaker (and the failure run) alone.
+                    return;
+                }
+            }
             s.consecutive_failures = 0;
             s.open_until = None;
+            s.opened_at = None;
             s.half_open_trial_at = None;
         } else {
             s.consecutive_failures += 1;
             if s.consecutive_failures >= FAILURE_THRESHOLD {
-                s.open_until = Some(Instant::now() + BREAKER_COOLDOWN);
+                let now = Instant::now();
+                s.open_until = Some(now + BREAKER_COOLDOWN);
+                s.opened_at = Some(now);
                 s.half_open_trial_at = None;
             }
         }
