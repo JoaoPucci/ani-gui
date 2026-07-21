@@ -339,11 +339,10 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// `NoResults` counts as a failure: the spawn only happens after the
 /// picker confirmed the show exists on allanime, so the subprocess
 /// finding nothing moments later is transient/upstream evidence — a
-/// rate-limited ani-cli dies with exactly that message. Only the
-/// typed "Episode not released" verdict is exempt — a content-level
-/// answer an ep+1 prefetch at the season edge gets routinely; every
-/// other Scraper exit (the catch-all covers curl transport deaths
-/// inside ani-cli) counts as a failure.
+/// rate-limited ani-cli dies with exactly that message. The typed
+/// "Episode not released" verdict counts as a success — see the
+/// comment in the body. Every other Scraper exit (the catch-all
+/// covers curl transport deaths inside ani-cli) counts as a failure.
 /// Side effects of a failed ani-cli spawn: an explicit error log, so
 /// `RUST_LOG=ani_gui=info` surfaces the actual reason instead of
 /// leaving the user staring at an overlay that flashed and
@@ -373,13 +372,21 @@ pub(super) fn record_spawn_outcome<T>(
     started_at: tokio::time::Instant,
     result: &Result<T>,
 ) {
-    match result {
-        Ok(_) => state.scraper_gate.record_outcome(true, started_at),
-        Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-        }) => {}
-        Err(_) => state.scraper_gate.record_outcome(false, started_at),
-    }
+    // The typed "Episode not released" verdict counts as a SUCCESS:
+    // ani-cli only reaches it after completing its search and episode
+    // listing against allanime, so it's a content-level answer from a
+    // healthy upstream — recovery evidence. Recording nothing here
+    // would leave a half-open trial that ends in this verdict
+    // dangling, refusing all background traffic for the rest of the
+    // stale window after a routine season-edge ep+1 prefetch.
+    let ok = matches!(
+        result,
+        Ok(_)
+            | Err(AniError::Scraper {
+                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+            })
+    );
+    state.scraper_gate.record_outcome(ok, started_at);
 }
 
 /// [`pick_title_and_index`] with the allanime endpoint override
@@ -1663,7 +1670,8 @@ mod tests {
         use crate::scraper::gate::ScrapePriority;
         // "Episode not released" is a content-level answer — an ep+1
         // prefetch at the season edge gets it routinely. Counting it
-        // would open the breaker from ordinary prefetching.
+        // as a failure would open the breaker from ordinary
+        // prefetching (it records as a success instead).
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
             record_spawn_outcome::<()>(
@@ -1729,7 +1737,7 @@ mod tests {
         // The catch-all Scraper key covers generic non-zero ani-cli
         // exits — including curl transport deaths inside the script.
         // Those are upstream evidence and must feed the breaker; only
-        // the typed unreleased verdict is exempt.
+        // the typed unreleased verdict doesn't count as a failure.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             record_spawn_outcome::<()>(
