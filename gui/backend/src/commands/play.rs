@@ -283,6 +283,16 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
 }
 
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
+    pick_title_and_index_with_base(state, args, None).await
+}
+
+/// [`pick_title_and_index`] with the allanime endpoint override
+/// exposed for tests. Production passes `None` via the wrapper.
+pub(super) async fn pick_title_and_index_with_base(
+    state: &AppState,
+    args: &PlayArgs,
+    allanime_base: Option<&str>,
+) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
@@ -311,7 +321,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
-        match scraper::search(&state.meta_http, title, mode, None).await {
+        match scraper::search(&state.meta_http, title, mode, allanime_base).await {
             Ok(cands) => {
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
@@ -1393,5 +1403,72 @@ mod tests {
         assert_eq!(title, "Naruto: Shippuden");
         // Index 2 = the 500-ep main show.
         assert_eq!(idx, 2);
+    }
+
+    /// PlayArgs shaped like a background prefetch / interactive click
+    /// for the scraper-gate tests.
+    fn gate_args(prefetch: bool, title: &str, alts: &[&str]) -> PlayArgs {
+        PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            alt_titles: alts.iter().map(|s| (*s).to_string()).collect(),
+            prefetch,
+            kitsu_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn background_pick_stops_probing_after_the_breaker_opens() {
+        // A cold-cache warm walked every alt title of every show even
+        // while allanime was refusing us — hundreds of doomed calls
+        // that deepened the rate limit. Once the gate's breaker opens
+        // the walk must stop.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = gate_args(true, "Gate Test", &["a", "b", "c", "d", "e"]);
+        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(picked.candidate.is_none());
+        assert!(picked.any_search_errored);
+        let hits = server.received_requests().await.expect("recorded").len();
+        assert_eq!(
+            hits,
+            crate::scraper::gate::FAILURE_THRESHOLD as usize,
+            "the alt-title walk must stop at the breaker threshold, not visit all six titles"
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_pick_bypasses_an_open_breaker() {
+        // Guard for the other direction: a user's click goes through
+        // even when background traffic tripped the breaker.
+        let server = wiremock::MockServer::start().await;
+        let body = serde_json::json!({
+            "data": { "shows": { "edges": [{
+                "_id": "abc",
+                "name": "Gate Test",
+                "availableEpisodes": {"sub": 12, "dub": 0, "raw": 0},
+                "__typename": "Show"
+            }]}}
+        });
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state.scraper_gate.record_outcome(false);
+        }
+        let args = gate_args(false, "Gate Test", &[]);
+        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(picked.any_search_succeeded);
+        assert!(picked.candidate.is_some());
     }
 }
