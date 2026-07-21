@@ -1681,6 +1681,48 @@ mod tests {
             .is_ok());
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn unreleased_spawn_verdict_counts_as_recovery_evidence() {
+        use crate::scraper::gate::ScrapePriority;
+        // The typed verdict is a completed content-level answer:
+        // ani-cli got through search and episode listing and reported
+        // the episode isn't out. When the half-open trial ends this
+        // way the upstream has provably recovered — recording nothing
+        // would leave the trial dangling and keep refusing all
+        // background traffic for the rest of the stale window after a
+        // routine season-edge ep+1 prefetch.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
+        }
+        tokio::time::advance(crate::scraper::gate::BREAKER_COOLDOWN).await;
+        let trial_started = tokio::time::Instant::now();
+        state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .expect("half-open trial");
+        record_spawn_outcome::<()>(
+            &state,
+            trial_started,
+            &Err(AniError::Scraper {
+                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+            }),
+        );
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "an unreleased trial verdict must close the breaker, not wedge it"
+        );
+    }
+
     #[tokio::test]
     async fn generic_scraper_exits_count_toward_the_breaker() {
         use crate::scraper::gate::ScrapePriority;
