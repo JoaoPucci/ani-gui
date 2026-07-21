@@ -266,6 +266,42 @@ mod tests {
     }
 
     #[test]
+    fn download_gate_signal_counts_success_and_no_results_only() {
+        // Success proves the resolution stage got through allanime;
+        // NoResults after the picker confirmed the show exists is
+        // the rate-limit signature. Both are gate-relevant.
+        assert_eq!(download_gate_signal::<()>(&Ok(())), Some(true));
+        assert_eq!(
+            download_gate_signal::<()>(&Err(AniError::NoResults)),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn download_gate_signal_ignores_local_and_transfer_stage_failures() {
+        // ffmpeg missing is a pre-spawn local check; MissingBinary
+        // never reached the network; the 1 h timeout and the generic
+        // Scraper catch-all are dominated by aria2c / yt-dlp / ffmpeg
+        // transfer deaths on this path. None of them says anything
+        // about allanime's health, so none may move the breaker.
+        assert_eq!(
+            download_gate_signal::<()>(&Err(AniError::FfmpegMissing)),
+            None
+        );
+        assert_eq!(
+            download_gate_signal::<()>(&Err(AniError::MissingBinary)),
+            None
+        );
+        assert_eq!(download_gate_signal::<()>(&Err(AniError::Timeout)), None);
+        assert_eq!(
+            download_gate_signal::<()>(&Err(AniError::Scraper {
+                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+            })),
+            None
+        );
+    }
+
+    #[test]
     fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         let a = DownloadArgs {
             title: "x".into(),
