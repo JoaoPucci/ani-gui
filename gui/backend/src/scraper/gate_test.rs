@@ -103,6 +103,34 @@ async fn one_failure_after_the_cooldown_reopens_immediately() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn queued_background_admit_rechecks_the_breaker_after_waiting() {
+    // Cold-start burst: several background probes reserve future
+    // slots before any of the first requests report failures. A
+    // caller already sleeping toward its slot must re-check the
+    // breaker when it wakes — otherwise the whole queued burst
+    // proceeds against an open breaker and the gate never stops
+    // within the failure threshold.
+    let gate = std::sync::Arc::new(ScraperGate::new());
+    gate.admit(ScrapePriority::Background)
+        .await
+        .expect("first slot");
+    let queued = {
+        let gate = gate.clone();
+        tokio::spawn(async move { gate.admit(ScrapePriority::Background).await })
+    };
+    // Let the queued admit reserve its slot and enter its sleep.
+    tokio::task::yield_now().await;
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false);
+    }
+    assert_eq!(
+        queued.await.expect("join"),
+        Err(GateClosed),
+        "a queued admit must not proceed once the breaker opened during its wait"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn success_closes_the_breaker_and_resets_the_run() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
