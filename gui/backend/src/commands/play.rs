@@ -330,18 +330,21 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
         .map_err(|_| AniError::Network)
 }
 
-/// Feed a prefetch spawn's outcome back to the gate. `NoResults` is
-/// a valid verdict (the show is genuinely absent) and — because a
-/// rate-limited ani-cli also dies with "No results found!" — is
-/// deliberately not counted in either direction; the gated searches
-/// that precede every spawn are the reliable throttle signal.
+/// Feed a prefetch spawn's outcome back to the gate. `NoResults`
+/// counts as a failure: the spawn only happens after the picker just
+/// confirmed the show exists on allanime, so the subprocess finding
+/// nothing moments later is transient/upstream evidence — a
+/// rate-limited ani-cli dies with exactly that message. `Scraper{}`
+/// verdicts are content-level answers ("Episode not released" from
+/// an ep+1 prefetch at the season edge, dep_ch complaints) and move
+/// the breaker in neither direction.
 fn record_prefetch_spawn_outcome<T>(state: &AppState, args: &PlayArgs, result: &Result<T>) {
     if !args.prefetch {
         return;
     }
     match result {
         Ok(_) => state.scraper_gate.record_outcome(true),
-        Err(AniError::NoResults) => {}
+        Err(AniError::Scraper { .. }) => {}
         Err(_) => state.scraper_gate.record_outcome(false),
     }
 }
