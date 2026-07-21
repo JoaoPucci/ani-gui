@@ -1,6 +1,6 @@
 #!/bin/sh
 
-version_number="4.14.1"
+version_number="4.14.5"
 
 # UI
 
@@ -327,17 +327,26 @@ get_episode_url() {
 # search the query and give results
 search_anime() {
     #shellcheck disable=SC2016
-    search_gql='query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes __typename } }}'
+    search_gql='query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes airedStart __typename } }}'
 
+    # ani-gui patches (both about keeping rows the GUI's 1-based -S
+    # index counts on — a dropped row shifts every later index onto
+    # the wrong anime):
+    #   - the second expression keeps rows whose airedStart has no
+    #     year, in the pre-4.14.5 shape; the t branch skips it once
+    #     the year form matched.
+    #   - the name capture is the greedy (.+) upstream used before
+    #     4.14.5, not [^\"]*, so titles containing escaped quotes
+    #     still match (the trailing sed strips them as always).
     curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" --data "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$1\"},\"limit\":40,\"page\":1,\"translationType\":\"$mode\",\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}" -A "$agent" | sed 's|Show|\
-| g' | sed -nE "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*|\1	\2 (\3 episodes)|p" | sed 's/\\"//g'
+| g' | sed -nE -e "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*year\":([1-9][^,]*).*|\1	\2 (\3 episodes) (\4)|p" -e t -e "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*|\1	\2 (\3 episodes)|p" | sed 's/\\"//g'
 }
 
 time_until_next_ep() {
     animeschedule="https://animeschedule.net"
     query="$(printf "%s\n" "$*" | tr ' ' '+')"
     curl -s -G "$animeschedule/api/v3/anime" --data "q=${query}" | sed 's|"id"|\n|g' | sed -nE 's|.*,"route":"([^"]*)","premier.*|\1|p' | while read -r anime; do
-        data=$(curl -s "$animeschedule/anime/$anime" | sed '1,/"anime-header-list-buttons-wrapper"/d' | sed -nE 's|.*countdown-time-raw" datetime="([^"]*)">.*|Next Raw Release: \1|p;s|.*countdown-time" datetime="([^"]*)">.*|Next Sub Release: \1|p;s|.*english-title">([^<]*)<.*|English Title: \1|p;s|.*main-title".*>([^<]*)<.*|Japanese Title: \1|p')
+        data=$(curl -s "$animeschedule/anime/$anime" | sed '1,/"anime-header-list-buttons-wrapper"/d' | sed -nE 's|.*countdown-time-raw" datetime="([^"]*)".*|Next Raw Release: \1|p;s|.*countdown-time" datetime="([^"]*)".*|Next Sub Release: \1|p;s|.*english-title">([^<]*)<.*|English Title: \1|p;s|.*main-title".*>([^<]*)<.*|Japanese Title: \1|p')
         status="Ongoing"
         color="33"
         printf "%s\n" "$data"
@@ -362,13 +371,25 @@ process_hist_entry() {
     ep_list=$(episodes_list "$id")
     latest_ep=$(printf "%s\n" "$ep_list" | tail -n1)
     title=$(printf "%s\n" "$title" | sed "s|[0-9]\+ episodes|${latest_ep} episodes|")
+    # ani-gui patch: remember the saved episode before the lookup
+    # below overwrites it — the up-to-date fallback must only fire
+    # when the saved episode is really in a non-empty list, or a
+    # transient episodes_list failure emits a selectable row with a
+    # blank or unrelated latest episode.
+    watched_ep_no=$ep_no
     ep_no=$(printf "%s" "$ep_list" | sed -n "/^${ep_no}$/{n;p;}") 2>/dev/null
     [ -n "$ep_no" ] && printf "%s\t%s - episode %s\n" "$id" "$title" "$ep_no"
+    [ -n "$ep_no" ] || {
+        [ -n "$latest_ep" ] && printf "%s\n" "$ep_list" | grep -Fqx "$watched_ep_no" &&
+            printf "%s\t%s - episode %s (up to date)\n" "$id" "$title" "$latest_ep"
+    }
 }
 
 update_history() {
     if grep -q -- "$id" "$histfile"; then
-        sed -E "s|^[^	]+	${id}	[^	]+$|${ep_no}	${id}	${title}|" "$histfile" >"${histfile}.new"
+        # escape sed special chars in replacement: & and \ and delimiter |
+        safe_title=$(printf '%s' "$title" | sed 's/[&\|]/\\&/g')
+        sed -E "s|^[^	]+	${id}	[^	]+$|${ep_no}	${id}	${safe_title}|" "$histfile" >"${histfile}.new"
     else
         cp "$histfile" "${histfile}.new"
         printf "%s\t%s\t%s\n" "$ep_no" "$id" "$title" >>"${histfile}.new"
@@ -623,6 +644,7 @@ case "$search" in
         ep_list=$(episodes_list "$id")
         ep_no=$(printf "%s" "$anime_list" | grep "$id" | cut -f2 | sed -nE 's/.*- episode (.+)$/\1/p')
         allanime_title="$(printf "%s" "$title" | cut -d'(' -f1 | tr -d '[:punct:]')"
+        printf "%s" "$anime_list" | grep "$id" | cut -f2 | grep -q "(up to date)" && time_until_next_ep "$allanime_title"
         ;;
     *)
         if [ "$use_external_menu" = "0" ]; then

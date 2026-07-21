@@ -34,6 +34,26 @@ fn parse_search_handles_parens_in_title() {
 }
 
 #[test]
+fn parse_search_year_suffixed_line() {
+    // ani-cli 4.14.5 appends the release year after the episode count:
+    // `id\ttitle (N episodes) (YYYY)`.
+    let line = "abc123\tOne Piece (1100 episodes) (1999)";
+    let parsed = parse_search_results(line);
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].title, "One Piece");
+    assert_eq!(parsed[0].episode_count, 1100);
+}
+
+#[test]
+fn parse_search_year_suffix_with_parens_in_title() {
+    let line = "xyz\tFullmetal Alchemist (Brotherhood) (64 episodes) (2009)";
+    let parsed = parse_search_results(line);
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].title, "Fullmetal Alchemist (Brotherhood)");
+    assert_eq!(parsed[0].episode_count, 64);
+}
+
+#[test]
 fn parse_search_skips_non_matching_lines() {
     let stdout = "Checking dependencies...\n\
                       abc\tFoo (12 episodes)\n\

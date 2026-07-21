@@ -3,10 +3,10 @@
   "fixtures": [
     {
       "file": "search_one_piece.json",
-      "purpose": "Mock GraphQL response for search_anime when query='one+piece'. Three edges: the main One Piece TV series and two films, each with availableEpisodes counts.",
+      "purpose": "Mock GraphQL response for search_anime when query='one+piece'. Three edges: the main One Piece TV series and two films, each with availableEpisodes counts and an airedStart date.",
       "captured_at": "2026-05-06",
       "captured_via": "Synthetic — values match the shape of real allanime API responses; ids are real (visible in the public API).",
-      "notes": "Used by tests/bash/network/search_anime.bats."
+      "notes": "Used by tests/bash/network/search_anime.bats. airedStart added 2026-07-20 for ani-cli 4.14.5, whose search selection requests it and whose result sed requires a year field."
     },
     {
       "file": "search_empty.json",

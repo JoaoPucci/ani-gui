@@ -162,8 +162,11 @@ function courTitleRegex(cour: number): RegExp {
 	return new RegExp(`\\b(?:${alts.join('|')})\\b`, 'i');
 }
 
-/** Matches the "(N episodes)" parenthetical ani-cli appends. */
-const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*$/i;
+/** Matches the "(N episodes)" parenthetical ani-cli appends, plus the
+ *  "(YYYY)" release-year tail ani-cli ≥ 4.14.5 adds after it. Both are
+ *  bookkeeping, not part of the show's name; rows written by older
+ *  versions lack the year, so it stays optional. */
+const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*(?:\(\s*\d{1,4}\s*\)\s*)?$/i;
 
 export function resolveHistoryEntry(
 	entry: HistoryEntry,

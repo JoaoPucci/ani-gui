@@ -56,6 +56,20 @@ setup() {
     grep -E "^1"$'\t'"abc123"$'\t'"Test \(10 episodes\)$" "$histfile" >/dev/null
 }
 
+@test "update_history: escapes sed specials in the replacement title" {
+    # ani-cli 4.14.5 escapes & \ | in the sed replacement; before
+    # that, an ampersand expanded to the whole matched line and
+    # corrupted the history row.
+    printf '1\tesc1\tFoo & Bar (2 episodes)\n' >"$histfile"
+    id='esc1'
+    ep_no='2'
+    title='Foo & Bar (2 episodes)'
+    update_history
+    grep -F "2"$'\t'"esc1"$'\t'"Foo & Bar (2 episodes)" "$histfile" >/dev/null
+    line_count=$(wc -l <"$histfile" | tr -d ' ')
+    [ "$line_count" -eq 1 ]
+}
+
 @test "update_history: leaves no .new sidecar after the atomic move" {
     cp "$FIXTURES_DIR/history/single.tsv" "$histfile"
     id='abc123'
