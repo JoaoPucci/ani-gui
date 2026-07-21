@@ -330,18 +330,19 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
         .map_err(|_| AniError::Network)
 }
 
-/// Feed a prefetch spawn's outcome back to the gate. `NoResults`
-/// counts as a failure: the spawn only happens after the picker just
-/// confirmed the show exists on allanime, so the subprocess finding
-/// nothing moments later is transient/upstream evidence — a
+/// Feed a spawn's outcome back to the gate — every spawn, not just
+/// prefetches: interactive plays bypass admission, but the preflight
+/// search just reset the breaker with a success, so when the spawn
+/// itself hits the rate limit background traffic must back off
+/// instead of resuming right after a user-visible failure.
+/// `NoResults` counts as a failure: the spawn only happens after the
+/// picker confirmed the show exists on allanime, so the subprocess
+/// finding nothing moments later is transient/upstream evidence — a
 /// rate-limited ani-cli dies with exactly that message. `Scraper{}`
 /// verdicts are content-level answers ("Episode not released" from
 /// an ep+1 prefetch at the season edge, dep_ch complaints) and move
 /// the breaker in neither direction.
-fn record_spawn_outcome<T>(state: &AppState, args: &PlayArgs, result: &Result<T>) {
-    if !args.prefetch {
-        return;
-    }
+fn record_spawn_outcome<T>(state: &AppState, result: &Result<T>) {
     match result {
         Ok(_) => state.scraper_gate.record_outcome(true),
         Err(AniError::Scraper { .. }) => {}
@@ -626,7 +627,7 @@ where
             }
         }
     });
-    record_spawn_outcome(state, args, &resolved);
+    record_spawn_outcome(state, &resolved);
     let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
@@ -1549,9 +1550,8 @@ mod tests {
         use crate::scraper::gate::ScrapePriority;
         // Transport-ish spawn failures count toward the breaker...
         let state = state_with_proxy_origin();
-        let args = gate_args(true, "Gate Test", &[]);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &args, &Err(AniError::Io));
+            record_spawn_outcome::<()>(&state, &Err(AniError::Io));
         }
         assert!(
             state
@@ -1568,7 +1568,7 @@ mod tests {
         // this message), not absence.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+            record_spawn_outcome::<()>(&state, &Err(AniError::NoResults));
         }
         assert!(
             state
@@ -1589,9 +1589,8 @@ mod tests {
         // background traffic must back off — not resume immediately
         // after a user-visible failure.
         let state = state_with_proxy_origin();
-        let args = gate_args(false, "Gate Test", &[]);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+            record_spawn_outcome::<()>(&state, &Err(AniError::NoResults));
         }
         assert!(state
             .scraper_gate
@@ -1608,11 +1607,9 @@ mod tests {
         // is a correct answer, not network trouble. Counting it would
         // open the breaker from ordinary prefetching.
         let state = state_with_proxy_origin();
-        let args = gate_args(true, "Gate Test", &[]);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
             record_spawn_outcome::<()>(
                 &state,
-                &args,
                 &Err(AniError::Scraper {
                     key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
                 }),
