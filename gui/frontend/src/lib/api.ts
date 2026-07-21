@@ -786,6 +786,11 @@ export interface AvailabilityArgs {
 	 *  TTL: ongoing shows refresh in 24h, finished in 30d. Optional;
 	 *  unknown status defaults to the short TTL. */
 	status?: string;
+	/** True for opportunistic probes nobody is waiting on (rail
+	 *  fills, cache warms). The backend's scraper gate paces
+	 *  background probes and skips them while its breaker is open;
+	 *  interactive checks (detail-page CTA) omit it. */
+	background?: boolean;
 }
 
 /** Response from {@link checkAvailability}. `episode_count` is the
