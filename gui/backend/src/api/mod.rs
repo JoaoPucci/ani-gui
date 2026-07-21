@@ -18,7 +18,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use futures_util::stream::{Stream, StreamExt};
+use futures_util::stream::Stream;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -26,8 +26,11 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod sse_abort;
 mod syncplay;
 mod update;
+
+use sse_abort::abort_on_drop;
 
 use crate::app::AppState;
 use crate::commands::{
@@ -428,33 +431,6 @@ async fn post_play(
     Ok(Json(play_inner::play(&state, &args).await?))
 }
 
-/// Wrap an SSE body stream so dropping it aborts the task feeding it.
-/// Axum drops the body when the client disconnects (page unmount,
-/// EventSource.close, the play-cache's click bypass aborting a
-/// prefetch, the download dock's Cancel) — without this, the detached
-/// resolution task keeps its ani-cli child running against allanime
-/// with nobody listening. Aborting the task drops its in-flight
-/// future, and the child is spawned `kill_on_drop`, so the subprocess
-/// is reaped with it. When the stream instead ends naturally (channel
-/// closed after the terminal event), the task has already finished
-/// and the abort is a no-op.
-fn abort_on_drop<S: Stream>(
-    stream: S,
-    handle: tokio::task::JoinHandle<()>,
-) -> impl Stream<Item = S::Item> {
-    struct AbortGuard(tokio::task::JoinHandle<()>);
-    impl Drop for AbortGuard {
-        fn drop(&mut self) {
-            self.0.abort();
-        }
-    }
-    let guard = AbortGuard(handle);
-    stream.map(move |item| {
-        let _guard = &guard;
-        item
-    })
-}
-
 /// SSE variant of `/api/play`. Same resolution chain, but the body is
 /// a `text/event-stream` that emits a `progress` event for every
 /// parsed `<provider> Links Fetched` line on ani-cli's stderr, then a
@@ -780,47 +756,6 @@ mod tests {
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    /// Dropping an SSE response stream (client disconnected: page
-    /// unmount, EventSource.close, the play-cache's click bypass
-    /// aborting a prefetch, the download dock's Cancel) must abort the
-    /// resolution task driving it. A detached task would keep its
-    /// ani-cli child hitting allanime with nobody listening — the
-    /// renderer-side abort would be a lie.
-    #[tokio::test]
-    async fn dropping_the_sse_stream_aborts_the_resolution_task() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        struct SetOnDrop(Arc<AtomicBool>);
-        impl Drop for SetOnDrop {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-        let reaped = Arc::new(AtomicBool::new(false));
-        let canary = SetOnDrop(reaped.clone());
-        let (tx, rx) = mpsc::unbounded_channel::<i32>();
-        let handle = tokio::spawn(async move {
-            let _canary = canary;
-            std::future::pending::<()>().await;
-            drop(tx);
-        });
-        let stream = abort_on_drop(UnboundedReceiverStream::new(rx), handle);
-        drop(stream);
-        // Abortion lands asynchronously — yield until the runtime
-        // reaps the task and drops its future (and with it, in
-        // production, the kill_on_drop ani-cli child).
-        for _ in 0..100 {
-            if reaped.load(Ordering::SeqCst) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-        assert!(
-            reaped.load(Ordering::SeqCst),
-            "dropping the stream must abort the driving task"
-        );
-    }
-
     /// The SSE error envelope must carry both the snake_case `kind`
     /// discriminator (so the frontend can branch on it — e.g. opening
     /// the layout-level ffmpeg-missing modal) and the `key` (so a
@@ -883,6 +818,38 @@ mod tests {
             .expect("collect body")
             .to_bytes();
         String::from_utf8(bytes.to_vec()).expect("utf-8")
+    }
+
+    /// The play SSE endpoint must drive its resolution task to a
+    /// terminal `error` event and close the stream. Forcing the
+    /// breaker open and asking for a prefetch makes the whole path
+    /// run without touching the network: every gate admit is refused
+    /// before any allanime request is built, so the handler's spawn,
+    /// terminal-event send, and abort_on_drop passthrough (natural
+    /// completion) are all exercised hermetically.
+    #[tokio::test]
+    async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let router = build_api_router(Arc::new(state));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/play/stream?title=Gate%20Test&episode=1&mode=sub&prefetch=true")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("event: error"), "body: {body}");
     }
 
     #[tokio::test]
