@@ -195,7 +195,18 @@ impl ScraperGate {
             if s.consecutive_failures >= FAILURE_THRESHOLD {
                 let now = Instant::now();
                 s.open_until = Some(now + BREAKER_COOLDOWN);
-                s.opened_at = Some(now);
+                if s.opened_at.is_none() {
+                    // Closed → open transition only: stragglers that
+                    // fail while already open must not move the
+                    // staleness boundary (a fresh interactive success
+                    // started during the cooldown could never close
+                    // the breaker), and the queued slot schedule is
+                    // dropped so the half-open trial doesn't wait
+                    // behind reservations from callers that will all
+                    // be refused at wake.
+                    s.opened_at = Some(now);
+                    s.next_background_at = now;
+                }
                 s.half_open_trial_at = None;
             }
         }
