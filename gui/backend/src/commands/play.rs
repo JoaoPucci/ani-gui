@@ -1542,7 +1542,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prefetch_spawn_outcomes_feed_the_breaker_except_no_results() {
+    async fn prefetch_spawn_no_results_counts_toward_the_breaker() {
         use crate::scraper::gate::ScrapePriority;
         // Transport-ish spawn failures count toward the breaker...
         let state = state_with_proxy_origin();
@@ -1558,11 +1558,42 @@ mod tests {
                 .is_err(),
             "repeated spawn failures must open the breaker"
         );
-        // ...but NoResults is a valid verdict, not network evidence —
-        // it must move the breaker in neither direction.
+        // ...and so does NoResults: a spawn only happens after the
+        // picker just confirmed the show exists on allanime, so the
+        // subprocess finding nothing moments later is transient or
+        // upstream evidence (a rate-limited ani-cli dies with exactly
+        // this message), not absence.
         let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             record_prefetch_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "repeated NoResults spawns must open the breaker"
+        );
+    }
+
+    #[tokio::test]
+    async fn prefetch_spawn_scraper_verdicts_leave_the_breaker_alone() {
+        use crate::scraper::gate::ScrapePriority;
+        // Scraper{} carries content-level verdicts — an ep+1 prefetch
+        // at the season edge dies with "Episode not released", which
+        // is a correct answer, not network trouble. Counting it would
+        // open the breaker from ordinary prefetching.
+        let state = state_with_proxy_origin();
+        let args = gate_args(true, "Gate Test", &[]);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_prefetch_spawn_outcome::<()>(
+                &state,
+                &args,
+                &Err(AniError::Scraper {
+                    key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+                }),
+            );
         }
         assert!(state
             .scraper_gate
