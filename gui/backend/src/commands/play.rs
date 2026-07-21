@@ -1656,14 +1656,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prefetch_spawn_scraper_verdicts_leave_the_breaker_alone() {
+    async fn unreleased_episode_verdicts_leave_the_breaker_alone() {
         use crate::scraper::gate::ScrapePriority;
-        // Scraper{} carries content-level verdicts — an ep+1 prefetch
-        // at the season edge dies with "Episode not released", which
-        // is a correct answer, not network trouble. Counting it would
-        // open the breaker from ordinary prefetching.
+        // "Episode not released" is a content-level answer — an ep+1
+        // prefetch at the season edge gets it routinely. Counting it
+        // would open the breaker from ordinary prefetching.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Scraper {
+                    key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+                }),
+            );
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn generic_scraper_exits_count_toward_the_breaker() {
+        use crate::scraper::gate::ScrapePriority;
+        // The catch-all Scraper key covers generic non-zero ani-cli
+        // exits — including curl transport deaths inside the script.
+        // Those are upstream evidence and must feed the breaker; only
+        // the typed unreleased verdict is exempt.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             record_spawn_outcome::<()>(
                 &state,
                 tokio::time::Instant::now(),
@@ -1676,7 +1699,7 @@ mod tests {
             .scraper_gate
             .admit(ScrapePriority::Background)
             .await
-            .is_ok());
+            .is_err());
     }
 
     #[tokio::test]
