@@ -114,6 +114,17 @@ impl ScraperGate {
         };
         if !wait.is_zero() {
             tokio::time::sleep(wait).await;
+            // Re-check on wake: a cold-start burst reserves slots
+            // before its first requests report failures, so the
+            // breaker can open while this caller slept. The slot
+            // reservation above stands either way — later probes
+            // would be refused anyway while the breaker is open.
+            let s = self.inner.lock().expect("gate lock");
+            if let Some(until) = s.open_until {
+                if Instant::now() < until {
+                    return Err(GateClosed);
+                }
+            }
         }
         Ok(())
     }
