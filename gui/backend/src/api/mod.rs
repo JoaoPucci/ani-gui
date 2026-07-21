@@ -18,7 +18,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use futures_util::stream::Stream;
+use futures_util::stream::{Stream, StreamExt};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -428,6 +428,33 @@ async fn post_play(
     Ok(Json(play_inner::play(&state, &args).await?))
 }
 
+/// Wrap an SSE body stream so dropping it aborts the task feeding it.
+/// Axum drops the body when the client disconnects (page unmount,
+/// EventSource.close, the play-cache's click bypass aborting a
+/// prefetch, the download dock's Cancel) — without this, the detached
+/// resolution task keeps its ani-cli child running against allanime
+/// with nobody listening. Aborting the task drops its in-flight
+/// future, and the child is spawned `kill_on_drop`, so the subprocess
+/// is reaped with it. When the stream instead ends naturally (channel
+/// closed after the terminal event), the task has already finished
+/// and the abort is a no-op.
+fn abort_on_drop<S: Stream>(
+    stream: S,
+    handle: tokio::task::JoinHandle<()>,
+) -> impl Stream<Item = S::Item> {
+    struct AbortGuard(tokio::task::JoinHandle<()>);
+    impl Drop for AbortGuard {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let guard = AbortGuard(handle);
+    stream.map(move |item| {
+        let _guard = &guard;
+        item
+    })
+}
+
 /// SSE variant of `/api/play`. Same resolution chain, but the body is
 /// a `text/event-stream` that emits a `progress` event for every
 /// parsed `<provider> Links Fetched` line on ani-cli's stderr, then a
@@ -450,7 +477,7 @@ async fn get_play_stream(
     // terminal `done` / `error` event and the channel closes — which
     // ends the stream and returns axum's response.
     let tx_for_progress = tx.clone();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let result = play_inner::play_with_progress(&state, &args, move |progress| {
             if let Ok(ev) = Event::default().event("progress").json_data(&progress) {
                 let _ = tx_for_progress.send(Ok(ev));
@@ -471,7 +498,8 @@ async fn get_play_stream(
         // tx drops here → channel closes → stream ends.
     });
 
-    Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(KeepAlive::default())
+    Sse::new(abort_on_drop(UnboundedReceiverStream::new(rx), handle))
+        .keep_alive(KeepAlive::default())
 }
 
 /// SSE entry point for the Download action. Mirrors get_play_stream:
@@ -489,7 +517,11 @@ async fn get_download_stream(
     let (tx, rx) = mpsc::unbounded_channel();
     let tx_for_progress = tx.clone();
 
-    tokio::spawn(async move {
+    // abort_on_drop is what makes the dock's Cancel real: the
+    // frontend cancels the fetch, the connection closes, and the
+    // aria2c / yt-dlp / ffmpeg pipeline dies with the task instead of
+    // finishing a download nobody asked to keep.
+    let handle = tokio::spawn(async move {
         let result = download_inner::download_with_progress(&state, &args, move |progress| {
             if let Ok(ev) = Event::default().event("progress").json_data(&progress) {
                 let _ = tx_for_progress.send(Ok(ev));
@@ -509,7 +541,8 @@ async fn get_download_stream(
         }
     });
 
-    Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(KeepAlive::default())
+    Sse::new(abort_on_drop(UnboundedReceiverStream::new(rx), handle))
+        .keep_alive(KeepAlive::default())
 }
 
 async fn post_availability(
