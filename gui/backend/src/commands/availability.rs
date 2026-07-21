@@ -289,9 +289,10 @@ pub(crate) async fn check_availability_with_base(
             crate::scraper::gate::ScrapePriority::Interactive
         };
         let detail = if state.scraper_gate.admit(prio).await.is_ok() {
+            let started_at = tokio::time::Instant::now();
             let got =
                 crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
-            state.scraper_gate.record_outcome(got.is_ok());
+            state.scraper_gate.record_outcome(got.is_ok(), started_at);
             got.ok()
         } else {
             None
@@ -1085,7 +1086,9 @@ mod tests {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state.scraper_gate.record_outcome(false);
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
         }
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Gate Test",

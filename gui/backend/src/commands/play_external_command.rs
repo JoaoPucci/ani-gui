@@ -55,6 +55,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     }
     let search_title = picked.title;
     let select_index = picked.index;
+    let spawn_started_at = tokio::time::Instant::now();
     let resolved = run_debug(
         &opts,
         &search_title,
@@ -67,7 +68,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // The subprocess makes its own allanime requests — feed its
     // outcome to the scraper gate so a rate-limited failure here
     // backs background traffic off (same policy as embedded play).
-    crate::commands::play::record_spawn_outcome(state, &resolved);
+    crate::commands::play::record_spawn_outcome(state, spawn_started_at, &resolved);
     let resolved = resolved?;
 
     let referer = infer_referer(&resolved);

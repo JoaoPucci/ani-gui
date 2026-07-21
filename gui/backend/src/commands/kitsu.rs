@@ -601,8 +601,11 @@ pub async fn resolve_allmanga_show_id(
         tracing::warn!(show_id, "scraper gate open; skipping reverse-resolve fetch");
         return Ok(None);
     }
+    let started_at = tokio::time::Instant::now();
     let fetched = crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await;
-    state.scraper_gate.record_outcome(fetched.is_ok());
+    state
+        .scraper_gate
+        .record_outcome(fetched.is_ok(), started_at);
     let show = match fetched {
         Ok(s) => s,
         Err(e) => {

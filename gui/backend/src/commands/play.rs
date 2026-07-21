@@ -205,8 +205,9 @@ async fn enrich_availability_after_success(
         .await
         .is_ok()
     {
+        let started_at = tokio::time::Instant::now();
         let got = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
-        state.scraper_gate.record_outcome(got.is_ok());
+        state.scraper_gate.record_outcome(got.is_ok(), started_at);
         got.ok()
     } else {
         // Breaker open — skip the enrichment round-trip; the plain
@@ -366,11 +367,15 @@ fn note_spawn_failure(args: &PlayArgs, search_title: &str, select_index: usize, 
     );
 }
 
-pub(super) fn record_spawn_outcome<T>(state: &AppState, result: &Result<T>) {
+pub(super) fn record_spawn_outcome<T>(
+    state: &AppState,
+    started_at: tokio::time::Instant,
+    result: &Result<T>,
+) {
     match result {
-        Ok(_) => state.scraper_gate.record_outcome(true),
+        Ok(_) => state.scraper_gate.record_outcome(true, started_at),
         Err(AniError::Scraper { .. }) => {}
-        Err(_) => state.scraper_gate.record_outcome(false),
+        Err(_) => state.scraper_gate.record_outcome(false, started_at),
     }
 }
 
@@ -418,15 +423,16 @@ pub(super) async fn pick_title_and_index_with_base(
             any_search_errored = true;
             break;
         }
+        let started_at = tokio::time::Instant::now();
         match scraper::search(&state.meta_http, title, mode, allanime_base).await {
             Ok(cands) => {
-                state.scraper_gate.record_outcome(true);
+                state.scraper_gate.record_outcome(true, started_at);
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
                 any_search_succeeded = true;
             }
             Err(e) => {
-                state.scraper_gate.record_outcome(false);
+                state.scraper_gate.record_outcome(false, started_at);
                 tracing::warn!(
                     title,
                     error = ?e,
@@ -601,6 +607,7 @@ where
     // are background traffic and go through the gate (paced, refused
     // while the breaker is open). User clicks pass untouched.
     admit_prefetch_spawn(state, args).await?;
+    let spawn_started_at = tokio::time::Instant::now();
 
     tracing::info!(
         search_title = %search_title,
@@ -630,7 +637,7 @@ where
     )
     .await
     .inspect_err(|e| note_spawn_failure(args, &search_title, select_index, e));
-    record_spawn_outcome(state, &resolved);
+    record_spawn_outcome(state, spawn_started_at, &resolved);
     let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
@@ -1537,7 +1544,9 @@ mod tests {
         // breaker is open. Interactive plays pass untouched.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state.scraper_gate.record_outcome(false);
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
         }
         let prefetch = gate_args(true, "Gate Test", &[]);
         assert!(matches!(
@@ -1554,7 +1563,7 @@ mod tests {
         // Transport-ish spawn failures count toward the breaker...
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &Err(AniError::Io));
+            record_spawn_outcome::<()>(&state, tokio::time::Instant::now(), &Err(AniError::Io));
         }
         assert!(
             state
@@ -1571,7 +1580,11 @@ mod tests {
         // this message), not absence.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &Err(AniError::NoResults));
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
         }
         assert!(
             state
@@ -1593,7 +1606,11 @@ mod tests {
         // after a user-visible failure.
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, &Err(AniError::NoResults));
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
         }
         assert!(state
             .scraper_gate
@@ -1638,6 +1655,7 @@ mod tests {
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
             record_spawn_outcome::<()>(
                 &state,
+                tokio::time::Instant::now(),
                 &Err(AniError::Scraper {
                     key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
                 }),
@@ -1669,7 +1687,9 @@ mod tests {
             .await;
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state.scraper_gate.record_outcome(false);
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
         }
         let args = gate_args(false, "Gate Test", &[]);
         let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;

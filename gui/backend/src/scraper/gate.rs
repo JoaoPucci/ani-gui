@@ -163,9 +163,14 @@ impl ScraperGate {
         Ok(())
     }
 
-    /// Report how the admitted request went. Failures count toward
-    /// the breaker; a success resets it.
-    pub fn record_outcome(&self, ok: bool) {
+    /// Report how the admitted request went. `started_at` is when
+    /// the caller began the request (capture `Instant::now()` before
+    /// firing): failures count toward the breaker regardless, but a
+    /// success only closes an open breaker when the request started
+    /// after the breaker opened — a slow pre-storm request reporting
+    /// success later is stale evidence, not proof of recovery.
+    pub fn record_outcome(&self, ok: bool, started_at: Instant) {
+        let _ = started_at;
         let mut s = self.inner.lock().expect("gate lock");
         if ok {
             s.consecutive_failures = 0;

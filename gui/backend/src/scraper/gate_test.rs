@@ -43,7 +43,7 @@ async fn interactive_admits_never_wait() {
 async fn fewer_than_threshold_failures_keep_the_gate_open_for_background() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD - 1 {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert!(gate.admit(ScrapePriority::Background).await.is_ok());
 }
@@ -52,7 +52,7 @@ async fn fewer_than_threshold_failures_keep_the_gate_open_for_background() {
 async fn threshold_failures_open_the_breaker_for_background() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert_eq!(
         gate.admit(ScrapePriority::Background).await,
@@ -64,7 +64,7 @@ async fn threshold_failures_open_the_breaker_for_background() {
 async fn interactive_admits_even_while_the_breaker_is_open() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert!(gate.admit(ScrapePriority::Interactive).await.is_ok());
 }
@@ -73,7 +73,7 @@ async fn interactive_admits_even_while_the_breaker_is_open() {
 async fn breaker_lets_a_probe_through_after_the_cooldown() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert!(gate.admit(ScrapePriority::Background).await.is_err());
     tokio::time::advance(BREAKER_COOLDOWN).await;
@@ -87,7 +87,7 @@ async fn breaker_lets_a_probe_through_after_the_cooldown() {
 async fn one_failure_after_the_cooldown_reopens_immediately() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     tokio::time::advance(BREAKER_COOLDOWN).await;
     gate.admit(ScrapePriority::Background)
@@ -95,7 +95,7 @@ async fn one_failure_after_the_cooldown_reopens_immediately() {
         .expect("half-open probe");
     // The probe failed too — the run of failures never broke, so the
     // breaker snaps shut without needing three more.
-    gate.record_outcome(false);
+    gate.record_outcome(false, Instant::now());
     assert_eq!(
         gate.admit(ScrapePriority::Background).await,
         Err(GateClosed)
@@ -121,7 +121,7 @@ async fn queued_background_admit_rechecks_the_breaker_after_waiting() {
     // Let the queued admit reserve its slot and enter its sleep.
     tokio::task::yield_now().await;
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert_eq!(
         queued.await.expect("join"),
@@ -134,7 +134,7 @@ async fn queued_background_admit_rechecks_the_breaker_after_waiting() {
 async fn half_open_admits_exactly_one_probe_until_it_reports() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     tokio::time::advance(BREAKER_COOLDOWN).await;
     gate.admit(ScrapePriority::Background)
@@ -150,7 +150,7 @@ async fn half_open_admits_exactly_one_probe_until_it_reports() {
         Err(GateClosed)
     );
     // Trial succeeds → the gate opens for everyone again.
-    gate.record_outcome(true);
+    gate.record_outcome(true, Instant::now());
     assert!(gate.admit(ScrapePriority::Background).await.is_ok());
 }
 
@@ -158,11 +158,11 @@ async fn half_open_admits_exactly_one_probe_until_it_reports() {
 async fn failed_half_open_trial_reopens_for_the_full_cooldown() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     tokio::time::advance(BREAKER_COOLDOWN).await;
     gate.admit(ScrapePriority::Background).await.expect("trial");
-    gate.record_outcome(false);
+    gate.record_outcome(false, Instant::now());
     assert_eq!(
         gate.admit(ScrapePriority::Background).await,
         Err(GateClosed)
@@ -184,7 +184,7 @@ async fn abandoned_half_open_trial_unblocks_after_the_stale_window() {
     // after the stale window a new trial may start.
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     tokio::time::advance(BREAKER_COOLDOWN).await;
     gate.admit(ScrapePriority::Background)
@@ -198,20 +198,56 @@ async fn abandoned_half_open_trial_unblocks_after_the_stale_window() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn stale_success_does_not_close_an_open_breaker() {
+    // Admits are spaced 500 ms apart but the HTTP calls complete
+    // independently: a slow request admitted before the storm can
+    // report success after three later failures opened the breaker.
+    // That success is pre-storm evidence and must not cancel the
+    // cooldown — only a request STARTED after the breaker opened
+    // (the half-open trial, or an interactive request during the
+    // cooldown) proves the upstream recovered.
+    let gate = ScraperGate::new();
+    let started_before_storm = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, Instant::now());
+    }
+    assert!(gate.admit(ScrapePriority::Background).await.is_err());
+    gate.record_outcome(true, started_before_storm);
+    assert!(
+        gate.admit(ScrapePriority::Background).await.is_err(),
+        "a success that predates the opening must not close the breaker"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn fresh_success_during_the_cooldown_still_closes_the_breaker() {
+    // An interactive request that started after the breaker opened
+    // and succeeded is fresh evidence — it closes the breaker early.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, Instant::now());
+    }
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record_outcome(true, Instant::now());
+    assert!(gate.admit(ScrapePriority::Background).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
 async fn success_closes_the_breaker_and_resets_the_run() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
-        gate.record_outcome(false);
+        gate.record_outcome(false, Instant::now());
     }
     assert!(gate.admit(ScrapePriority::Background).await.is_err());
-    gate.record_outcome(true);
+    gate.record_outcome(true, Instant::now());
     assert!(
         gate.admit(ScrapePriority::Background).await.is_ok(),
         "a success (e.g. an interactive request got through) closes the breaker"
     );
     // And the consecutive counter restarted: two more failures stay
     // under the threshold.
-    gate.record_outcome(false);
-    gate.record_outcome(false);
+    gate.record_outcome(false, Instant::now());
+    gate.record_outcome(false, Instant::now());
     assert!(gate.admit(ScrapePriority::Background).await.is_ok());
 }

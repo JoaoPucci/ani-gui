@@ -138,6 +138,7 @@ where
         "download: spawning ani-cli -d",
     );
 
+    let spawn_started_at = tokio::time::Instant::now();
     let spawned = spawn_download(
         &opts,
         &DownloadRequest {
@@ -159,7 +160,7 @@ where
     // The subprocess makes its own allanime requests — feed its
     // outcome to the scraper gate so a rate-limited failure here
     // backs background traffic off (same policy as embedded play).
-    crate::commands::play::record_spawn_outcome(state, &spawned);
+    crate::commands::play::record_spawn_outcome(state, spawn_started_at, &spawned);
     spawned?;
 
     Ok(DownloadResponse {
