@@ -52,10 +52,12 @@ interface CacheEntry {
 	promote?: (fire: FireFn) => void;
 	/** True while the entry's request still runs the closure it was
 	 *  created with by a background caller (prefetch). Cleared when a
-	 *  promotion swaps in a foreground closure. Drives the click-side
-	 *  failure shield: a foreground caller attached to a started
-	 *  background entry refires once with its own closure when the
-	 *  shared promise rejects. */
+	 *  promotion swaps in a foreground closure pre-start, or when the
+	 *  promise fulfills — a resolved prefetch is a plain cache hit.
+	 *  Drives the click-side bypass: a foreground caller attaching to
+	 *  a started background entry aborts it and refires with its own
+	 *  Interactive closure instead of waiting behind the backend
+	 *  gate's Background pacing. */
 	createdInBackground?: boolean;
 	/** Whether the underlying fire has begun (withSlot released it). */
 	hasStarted?: () => boolean;
@@ -196,15 +198,35 @@ export function getOrFire(
 			}
 		};
 		cached.set(key, newEntry);
-		newEntry.promise.catch(() => {
-			// Only drop if this is still the current entry — a race where
-			// the same key was re-fired after rejection should leave the
-			// newer attempt in place.
-			if (cached.get(key) === newEntry) cached.delete(key);
-		});
+		newEntry.promise.then(
+			() => {
+				// A fulfilled prefetch is a plain cache hit from here on
+				// — later clicks reuse the session, never refire past it.
+				newEntry.createdInBackground = false;
+			},
+			() => {
+				// Only drop if this is still the current entry — a race
+				// where the same key was re-fired after rejection should
+				// leave the newer attempt in place.
+				if (cached.get(key) === newEntry) cached.delete(key);
+			}
+		);
 		entry = newEntry;
 	}
 	if (onProgress) {
+		// The fire already started with the background closure — its
+		// request may be sleeping behind the backend gate's Background
+		// pacing, or heading into a refusal a click must never see.
+		// Either way the click doesn't wait on it: abort the shared
+		// request (keeping it running would double allanime traffic
+		// for the same episode) and fire fresh with the click's own
+		// Interactive closure. Fulfilled entries never get here —
+		// reuse is the point of warming.
+		if (entry.createdInBackground && entry.hasStarted?.()) {
+			entry.abortController.abort();
+			cached.delete(key);
+			return getOrFire(key, fire, onProgress);
+		}
 		entry.subscribers.add(onProgress);
 		// Replay the most recent event so a late subscriber sees the
 		// state the rest of the band is already in.
@@ -214,19 +236,6 @@ export function getOrFire(
 		// cutting the queue. Both are no-ops once already running.
 		entry.promote?.(fire);
 		entry.startNow?.();
-		// The fire already started with the background closure — the
-		// shared promise can fail on a gate refusal that a click must
-		// never see. Shield: on rejection, refire once with the
-		// click's own foreground closure (the failed entry drops
-		// itself first, so this creates a fresh entry). Aborted
-		// entries are exempt — page unmount must stay final.
-		if (entry.createdInBackground && entry.hasStarted?.()) {
-			const shielded = entry;
-			return shielded.promise.catch((err: unknown) => {
-				if (shielded.abortController.signal.aborted) throw err;
-				return getOrFire(key, fire, onProgress);
-			});
-		}
 	}
 	return entry.promise;
 }

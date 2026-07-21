@@ -241,8 +241,10 @@ describe('getOrFire', () => {
 				})
 		);
 
-		// Prefetch fires with a no-op subscriber.
-		getOrFire(k, fire);
+		// A foreground caller opens the entry. (A *background* entry
+		// wouldn't replay: a click attaching to a started prefetch
+		// refires fresh with its own stream — see the bypass tests.)
+		getOrFire(k, fire, () => {});
 		emitFn!({ kind: 'links_fetched', provider: 'youtube' });
 		emitFn!({ kind: 'links_fetched', provider: 'sharepoint' });
 
