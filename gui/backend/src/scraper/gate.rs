@@ -44,9 +44,12 @@ pub const BREAKER_COOLDOWN: Duration = Duration::from_secs(60);
 
 /// How long an unreported half-open trial blocks the next one. A
 /// trial whose future was dropped (cancelled prefetch) never records
-/// an outcome; after this window — the meta client's total request
-/// timeout — a new trial may start instead of wedging the gate shut.
-pub const HALF_OPEN_TRIAL_STALE: Duration = Duration::from_secs(30);
+/// an outcome; after this window a new trial may start instead of
+/// wedging the gate shut. Sized past the longest gated operation —
+/// the 60 s prefetch ani-cli spawn timeout, not just the 30 s meta
+/// client — with margin, or a slow spawn-trial still legitimately
+/// running would see a second trial sanctioned beside it.
+pub const HALF_OPEN_TRIAL_STALE: Duration = Duration::from_secs(90);
 
 /// Who is asking for a scraper slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
