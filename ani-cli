@@ -329,13 +329,17 @@ search_anime() {
     #shellcheck disable=SC2016
     search_gql='query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes airedStart __typename } }}'
 
-    # ani-gui patch: also keep rows whose airedStart has no year (the
-    # fallback expression below) — the GUI passes a 1-based -S index
-    # computed against its own full scraper result list, so dropping
-    # no-year rows here would shift every later index onto the wrong
-    # anime. The t branch skips the fallback once the year form matched.
+    # ani-gui patches (both about keeping rows the GUI's 1-based -S
+    # index counts on — a dropped row shifts every later index onto
+    # the wrong anime):
+    #   - the second expression keeps rows whose airedStart has no
+    #     year, in the pre-4.14.5 shape; the t branch skips it once
+    #     the year form matched.
+    #   - the name capture is the greedy (.+) upstream used before
+    #     4.14.5, not [^\"]*, so titles containing escaped quotes
+    #     still match (the trailing sed strips them as always).
     curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" --data "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$1\"},\"limit\":40,\"page\":1,\"translationType\":\"$mode\",\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}" -A "$agent" | sed 's|Show|\
-| g' | sed -nE -e "s|.*_id\":\"([^\"]*)\",\"name\":\"([^\"]*)\",.*${mode}\":([1-9][^,]*).*year\":([1-9][^,]*).*|\1	\2 (\3 episodes) (\4)|p" -e t -e "s|.*_id\":\"([^\"]*)\",\"name\":\"([^\"]*)\",.*${mode}\":([1-9][^,]*).*|\1	\2 (\3 episodes)|p" | sed 's/\\"//g'
+| g' | sed -nE -e "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*year\":([1-9][^,]*).*|\1	\2 (\3 episodes) (\4)|p" -e t -e "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*|\1	\2 (\3 episodes)|p" | sed 's/\\"//g'
 }
 
 time_until_next_ep() {
