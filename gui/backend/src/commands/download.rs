@@ -287,11 +287,15 @@ mod tests {
     }
 
     #[test]
-    fn download_gate_signal_counts_success_and_no_results_only() {
-        // Success proves the resolution stage got through allanime;
+    fn download_gate_signal_counts_only_no_results() {
         // NoResults after the picker confirmed the show exists is
-        // the rate-limit signature. Both are gate-relevant.
-        assert_eq!(download_gate_signal::<()>(&Ok(())), Some(true));
+        // the rate-limit signature, and ani-cli dies with it at the
+        // search stage — before any transfer — so it's still fresh
+        // when reported. A full-run success is NOT gate evidence:
+        // it lands after minutes of transfer, so its resolution
+        // proof is stale by construction and recording it would
+        // reset a failure run that built up during the download.
+        assert_eq!(download_gate_signal::<()>(&Ok(())), None);
         assert_eq!(
             download_gate_signal::<()>(&Err(AniError::NoResults)),
             Some(false)
