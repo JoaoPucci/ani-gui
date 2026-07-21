@@ -50,6 +50,15 @@ interface CacheEntry {
 	 *  keeps Background priority and the backend's scraper gate can
 	 *  refuse the user's play. No-op once the fire is running. */
 	promote?: (fire: FireFn) => void;
+	/** True while the entry's request still runs the closure it was
+	 *  created with by a background caller (prefetch). Cleared when a
+	 *  promotion swaps in a foreground closure. Drives the click-side
+	 *  failure shield: a foreground caller attached to a started
+	 *  background entry refires once with its own closure when the
+	 *  shared promise rejects. */
+	createdInBackground?: boolean;
+	/** Whether the underlying fire has begun (withSlot released it). */
+	hasStarted?: () => boolean;
 	/** When the entry is still waiting for a slot in `withSlot`'s queue,
 	 *  this is the resolver that, when called, lets it run. A click
 	 *  (priority subscriber) calls this to cut the queue rather than
@@ -178,8 +187,13 @@ export function getOrFire(
 		const slot = withSlot(() => fireRef.current(emit, abortController.signal));
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
+		newEntry.hasStarted = slot.hasStarted;
+		newEntry.createdInBackground = !onProgress;
 		newEntry.promote = (f) => {
-			if (!slot.hasStarted()) fireRef.current = f;
+			if (!slot.hasStarted()) {
+				fireRef.current = f;
+				newEntry.createdInBackground = false;
+			}
 		};
 		cached.set(key, newEntry);
 		newEntry.promise.catch(() => {
@@ -200,6 +214,19 @@ export function getOrFire(
 		// cutting the queue. Both are no-ops once already running.
 		entry.promote?.(fire);
 		entry.startNow?.();
+		// The fire already started with the background closure — the
+		// shared promise can fail on a gate refusal that a click must
+		// never see. Shield: on rejection, refire once with the
+		// click's own foreground closure (the failed entry drops
+		// itself first, so this creates a fresh entry). Aborted
+		// entries are exempt — page unmount must stay final.
+		if (entry.createdInBackground && entry.hasStarted?.()) {
+			const shielded = entry;
+			return shielded.promise.catch((err: unknown) => {
+				if (shielded.abortController.signal.aborted) throw err;
+				return getOrFire(key, fire, onProgress);
+			});
+		}
 	}
 	return entry.promise;
 }
