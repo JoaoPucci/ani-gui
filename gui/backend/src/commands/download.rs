@@ -171,19 +171,24 @@ where
 }
 
 /// Classify a full [`spawn_download`] run for the scraper gate. The
-/// play paths record every spawn outcome because their subprocess only
-/// performs allanime resolution, but `ani-cli -d` spans two phases:
-/// resolution, then up to an hour of aria2c / yt-dlp / ffmpeg
-/// transfer. A success proves resolution got through; `NoResults`
-/// after the picker confirmed the show exists is the rate-limit
-/// signature. Everything else — the pre-spawn ffmpeg check, a missing
-/// binary, the transfer timeout, and the generic `Scraper` catch-all
-/// that any non-zero tool exit maps to — is dominated by local or
-/// transfer-stage causes and must not open a breaker that would
-/// suppress unrelated background traffic while allanime is healthy.
+/// play paths record every upstream-proving outcome because their
+/// subprocess ends at resolution, but `ani-cli -d` spans resolution
+/// plus up to an hour of aria2c / yt-dlp / ffmpeg transfer. Its
+/// success signal is stale by construction: `started_at` predates the
+/// allmanga lookup by the whole transfer, and the gate's staleness
+/// guard only rejects stale successes while the breaker is already
+/// open — recording one here would reset a failure run building up
+/// mid-download and let the breaker need more than three current
+/// failures to open. Only `NoResults` feeds the gate: ani-cli dies
+/// with it at the search stage, before any transfer, so it's still
+/// fresh when reported — and the picker just confirmed the show
+/// exists, making it the rate-limit signature. Everything else (the
+/// pre-spawn ffmpeg check, a missing binary, the transfer timeout,
+/// the generic `Scraper` catch-all any non-zero tool exit maps to)
+/// is local or transfer-stage noise and records nothing.
 fn download_gate_signal<T>(result: &Result<T>) -> Option<bool> {
     match result {
-        Ok(_) => Some(true),
+        Ok(_) => None,
         Err(AniError::NoResults) => Some(false),
         Err(_) => None,
     }
