@@ -42,6 +42,12 @@ pub const FAILURE_THRESHOLD: u32 = 3;
 /// probe through again.
 pub const BREAKER_COOLDOWN: Duration = Duration::from_secs(60);
 
+/// How long an unreported half-open trial blocks the next one. A
+/// trial whose future was dropped (cancelled prefetch) never records
+/// an outcome; after this window — the meta client's total request
+/// timeout — a new trial may start instead of wedging the gate shut.
+pub const HALF_OPEN_TRIAL_STALE: Duration = Duration::from_secs(30);
+
 /// Who is asking for a scraper slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrapePriority {
@@ -61,6 +67,9 @@ struct GateState {
     next_background_at: Instant,
     consecutive_failures: u32,
     open_until: Option<Instant>,
+    /// When the current half-open trial probe was admitted; `None`
+    /// when no trial is outstanding.
+    half_open_trial_at: Option<Instant>,
 }
 
 /// See the module docs. One instance lives in `AppState`; every
@@ -80,6 +89,7 @@ impl ScraperGate {
                 next_background_at: Instant::now(),
                 consecutive_failures: 0,
                 open_until: None,
+                half_open_trial_at: None,
             }),
         }
     }
@@ -136,10 +146,12 @@ impl ScraperGate {
         if ok {
             s.consecutive_failures = 0;
             s.open_until = None;
+            s.half_open_trial_at = None;
         } else {
             s.consecutive_failures += 1;
             if s.consecutive_failures >= FAILURE_THRESHOLD {
                 s.open_until = Some(Instant::now() + BREAKER_COOLDOWN);
+                s.half_open_trial_at = None;
             }
         }
     }

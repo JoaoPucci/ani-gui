@@ -131,6 +131,73 @@ async fn queued_background_admit_rechecks_the_breaker_after_waiting() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn half_open_admits_exactly_one_probe_until_it_reports() {
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false);
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    gate.admit(ScrapePriority::Background)
+        .await
+        .expect("the single half-open trial");
+    // A second background caller arriving before the trial reports
+    // must be refused — with 500 ms slot spacing but ~1 s+ request
+    // latency, letting it queue would put extra probes on a possibly
+    // still-limited upstream during what the gate documents as one
+    // half-open probe.
+    assert_eq!(
+        gate.admit(ScrapePriority::Background).await,
+        Err(GateClosed)
+    );
+    // Trial succeeds → the gate opens for everyone again.
+    gate.record_outcome(true);
+    assert!(gate.admit(ScrapePriority::Background).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_half_open_trial_reopens_for_the_full_cooldown() {
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false);
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    gate.admit(ScrapePriority::Background).await.expect("trial");
+    gate.record_outcome(false);
+    assert_eq!(
+        gate.admit(ScrapePriority::Background).await,
+        Err(GateClosed)
+    );
+    // And the next trial needs a fresh cooldown, not just a slot.
+    tokio::time::advance(BACKGROUND_INTERVAL).await;
+    assert_eq!(
+        gate.admit(ScrapePriority::Background).await,
+        Err(GateClosed)
+    );
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    assert!(gate.admit(ScrapePriority::Background).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn abandoned_half_open_trial_unblocks_after_the_stale_window() {
+    // A trial whose future was dropped (cancelled prefetch) never
+    // records an outcome. It must not wedge the gate shut forever —
+    // after the stale window a new trial may start.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false);
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    gate.admit(ScrapePriority::Background)
+        .await
+        .expect("first trial, then abandoned");
+    tokio::time::advance(HALF_OPEN_TRIAL_STALE).await;
+    assert!(
+        gate.admit(ScrapePriority::Background).await.is_ok(),
+        "stale trial must not block a new probe"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn success_closes_the_breaker_and_resets_the_run() {
     let gate = ScraperGate::new();
     for _ in 0..FAILURE_THRESHOLD {
