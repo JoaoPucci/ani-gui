@@ -342,7 +342,8 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// rate-limited ani-cli dies with exactly that message. The typed
 /// "Episode not released" verdict counts as a success — see the
 /// comment in the body. Every other Scraper exit (the catch-all
-/// covers curl transport deaths inside ani-cli) counts as a failure.
+/// covers curl transport deaths inside ani-cli) counts as a failure,
+/// while local errors that never reached allanime record nothing.
 /// Side effects of a failed ani-cli spawn: an explicit error log, so
 /// `RUST_LOG=ani_gui=info` surfaces the actual reason instead of
 /// leaving the user staring at an overlay that flashed and
@@ -372,20 +373,27 @@ pub(super) fn record_spawn_outcome<T>(
     started_at: tokio::time::Instant,
     result: &Result<T>,
 ) {
-    // The typed "Episode not released" verdict counts as a SUCCESS:
-    // ani-cli only reaches it after completing its search and episode
-    // listing against allanime, so it's a content-level answer from a
-    // healthy upstream — recovery evidence. Recording nothing here
-    // would leave a half-open trial that ends in this verdict
-    // dangling, refusing all background traffic for the rest of the
-    // stale window after a routine season-edge ep+1 prefetch.
-    let ok = matches!(
-        result,
-        Ok(_)
-            | Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-            })
-    );
+    // Only outcomes that prove the subprocess reached allanime move
+    // the gate. The typed "Episode not released" verdict counts as a
+    // SUCCESS: ani-cli only reaches it after completing its search
+    // and episode listing, so it's a content-level answer from a
+    // healthy upstream — recovery evidence that also releases a
+    // half-open trial. NoResults, other Scraper exits (ani-cli ran
+    // and died mid-scrape; the catch-all covers curl transport
+    // deaths), and timeouts (a rate-limited upstream hangs ani-cli in
+    // curl retries until the wall clock kills it) are failures.
+    // Everything else — MissingBinary from a broken install, Io from
+    // a dead pipe — is a local error that says nothing about the
+    // upstream: recording it would let three clicks against a broken
+    // binary cut off unrelated background traffic for a cooldown.
+    let ok = match result {
+        Ok(_) => true,
+        Err(AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+        }) => true,
+        Err(AniError::NoResults | AniError::Scraper { .. } | AniError::Timeout) => false,
+        Err(_) => return,
+    };
     state.scraper_gate.record_outcome(ok, started_at);
 }
 
