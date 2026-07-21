@@ -81,7 +81,10 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         &args.mode,
         select_index,
     )
-    .await?;
+    .await;
+    // Same gate feedback as embedded play — see record_spawn_outcome.
+    crate::commands::play::record_spawn_outcome(state, &resolved);
+    let resolved = resolved?;
 
     let referer = infer_referer(&resolved);
 

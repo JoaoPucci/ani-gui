@@ -138,7 +138,7 @@ where
         "download: spawning ani-cli -d",
     );
 
-    spawn_download(
+    let spawned = spawn_download(
         &opts,
         &DownloadRequest {
             query: &search_title,
@@ -155,7 +155,12 @@ where
             });
         },
     )
-    .await?;
+    .await;
+    // The subprocess makes its own allanime requests — feed its
+    // outcome to the scraper gate so a rate-limited failure here
+    // backs background traffic off (same policy as embedded play).
+    crate::commands::play::record_spawn_outcome(state, &spawned);
+    spawned?;
 
     Ok(DownloadResponse {
         dest_dir: dest.to_string_lossy().into_owned(),
