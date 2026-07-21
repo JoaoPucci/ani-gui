@@ -106,21 +106,32 @@ impl ScraperGate {
         if prio == ScrapePriority::Interactive {
             return Ok(());
         }
-        let wait = {
+        let (wait, is_trial) = {
             let mut s = self.inner.lock().expect("gate lock");
             let now = Instant::now();
+            let mut is_trial = false;
             if let Some(until) = s.open_until {
                 if now < until {
                     return Err(GateClosed);
                 }
-                // Cooldown elapsed — half-open: let probes through
-                // again. `consecutive_failures` stays where it is, so
-                // a single failed probe snaps the breaker shut.
-                s.open_until = None;
+                // Cooldown elapsed — half-open. Exactly one trial
+                // probe goes out; everyone else stays refused until
+                // it reports (`open_until` stays set — only a
+                // recorded outcome moves the breaker). A trial whose
+                // future was dropped stops blocking after the stale
+                // window. `consecutive_failures` stays where it is,
+                // so a single failed trial snaps the breaker shut.
+                if let Some(t) = s.half_open_trial_at {
+                    if now - t < HALF_OPEN_TRIAL_STALE {
+                        return Err(GateClosed);
+                    }
+                }
+                s.half_open_trial_at = Some(now);
+                is_trial = true;
             }
             let slot = s.next_background_at.max(now);
             s.next_background_at = slot + BACKGROUND_INTERVAL;
-            slot - now
+            (slot - now, is_trial)
         };
         if !wait.is_zero() {
             tokio::time::sleep(wait).await;
@@ -128,11 +139,24 @@ impl ScraperGate {
             // before its first requests report failures, so the
             // breaker can open while this caller slept. The slot
             // reservation above stands either way — later probes
-            // would be refused anyway while the breaker is open.
-            let s = self.inner.lock().expect("gate lock");
-            if let Some(until) = s.open_until {
-                if Instant::now() < until {
-                    return Err(GateClosed);
+            // would be refused anyway while the breaker is open. The
+            // half-open trial itself skips this: it was sanctioned
+            // under the same open state it would now observe.
+            if !is_trial {
+                let mut s = self.inner.lock().expect("gate lock");
+                if let Some(until) = s.open_until {
+                    let now = Instant::now();
+                    if now < until {
+                        return Err(GateClosed);
+                    }
+                    // The cooldown elapsed while this caller slept —
+                    // it may take the trial role if it's free.
+                    if let Some(t) = s.half_open_trial_at {
+                        if now - t < HALF_OPEN_TRIAL_STALE {
+                            return Err(GateClosed);
+                        }
+                    }
+                    s.half_open_trial_at = Some(now);
                 }
             }
         }
