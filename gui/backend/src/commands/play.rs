@@ -1570,10 +1570,17 @@ mod tests {
     #[tokio::test]
     async fn prefetch_spawn_no_results_counts_toward_the_breaker() {
         use crate::scraper::gate::ScrapePriority;
-        // Transport-ish spawn failures count toward the breaker...
+        // Timeouts count toward the breaker: a rate-limited allanime
+        // makes ani-cli hang in curl retries until the wall clock
+        // kills it, so a run that spawned fine and then timed out is
+        // upstream evidence (unlike local spawn/read errors)...
         let state = state_with_proxy_origin();
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(&state, tokio::time::Instant::now(), &Err(AniError::Io));
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Timeout),
+            );
         }
         assert!(
             state
@@ -1687,6 +1694,32 @@ mod tests {
             .admit(ScrapePriority::Background)
             .await
             .is_ok());
+    }
+
+    #[tokio::test]
+    async fn local_spawn_errors_leave_the_breaker_alone() {
+        use crate::scraper::gate::ScrapePriority;
+        // A broken local install (deleted ani-cli binary, dead stderr
+        // pipe) says nothing about allanime's health — repeated clicks
+        // against a broken binary must not open the breaker and cut
+        // off unrelated background availability/prefetch traffic.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::MissingBinary),
+            );
+            record_spawn_outcome::<()>(&state, tokio::time::Instant::now(), &Err(AniError::Io));
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "local spawn/read errors must not move the breaker"
+        );
     }
 
     #[tokio::test(start_paused = true)]
