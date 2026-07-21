@@ -157,15 +157,36 @@ where
         },
     )
     .await;
-    // The subprocess makes its own allanime requests — feed its
-    // outcome to the scraper gate so a rate-limited failure here
-    // backs background traffic off (same policy as embedded play).
-    crate::commands::play::record_spawn_outcome(state, spawn_started_at, &spawned);
+    // The subprocess makes its own allanime requests, but unlike the
+    // play paths this run also spans the transfer stage — only feed
+    // the gate the signals that speak to allanime's health.
+    if let Some(ok) = download_gate_signal(&spawned) {
+        state.scraper_gate.record_outcome(ok, spawn_started_at);
+    }
     spawned?;
 
     Ok(DownloadResponse {
         dest_dir: dest.to_string_lossy().into_owned(),
     })
+}
+
+/// Classify a full [`spawn_download`] run for the scraper gate. The
+/// play paths record every spawn outcome because their subprocess only
+/// performs allanime resolution, but `ani-cli -d` spans two phases:
+/// resolution, then up to an hour of aria2c / yt-dlp / ffmpeg
+/// transfer. A success proves resolution got through; `NoResults`
+/// after the picker confirmed the show exists is the rate-limit
+/// signature. Everything else — the pre-spawn ffmpeg check, a missing
+/// binary, the transfer timeout, and the generic `Scraper` catch-all
+/// that any non-zero tool exit maps to — is dominated by local or
+/// transfer-stage causes and must not open a breaker that would
+/// suppress unrelated background traffic while allanime is healthy.
+fn download_gate_signal<T>(result: &Result<T>) -> Option<bool> {
+    match result {
+        Ok(_) => Some(true),
+        Err(AniError::NoResults) => Some(false),
+        Err(_) => None,
+    }
 }
 
 /// Resolve the destination directory from args + paths::download_dir.
