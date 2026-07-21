@@ -319,9 +319,15 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
 ///
 /// # Errors
 /// [`AniError::Network`] when the gate refuses a background admit.
-async fn admit_prefetch_spawn(_state: &AppState, _args: &PlayArgs) -> Result<()> {
-    // test(red) stub — no admission yet.
-    Ok(())
+async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
+    if !args.prefetch {
+        return Ok(());
+    }
+    state
+        .scraper_gate
+        .admit(crate::scraper::gate::ScrapePriority::Background)
+        .await
+        .map_err(|_| AniError::Network)
 }
 
 /// Feed a prefetch spawn's outcome back to the gate. `NoResults` is
@@ -329,8 +335,15 @@ async fn admit_prefetch_spawn(_state: &AppState, _args: &PlayArgs) -> Result<()>
 /// rate-limited ani-cli also dies with "No results found!" — is
 /// deliberately not counted in either direction; the gated searches
 /// that precede every spawn are the reliable throttle signal.
-fn record_prefetch_spawn_outcome<T>(_state: &AppState, _args: &PlayArgs, _result: &Result<T>) {
-    // test(red) stub — outcomes not recorded yet.
+fn record_prefetch_spawn_outcome<T>(state: &AppState, args: &PlayArgs, result: &Result<T>) {
+    if !args.prefetch {
+        return;
+    }
+    match result {
+        Ok(_) => state.scraper_gate.record_outcome(true),
+        Err(AniError::NoResults) => {}
+        Err(_) => state.scraper_gate.record_outcome(false),
+    }
 }
 
 /// [`pick_title_and_index`] with the allanime endpoint override
@@ -556,6 +569,11 @@ where
     let select_index = picked.index;
     let chosen_candidate = picked.candidate;
 
+    // The subprocess makes its own allanime requests: prefetch spawns
+    // are background traffic and go through the gate (paced, refused
+    // while the breaker is open). User clicks pass untouched.
+    admit_prefetch_spawn(state, args).await?;
+
     tracing::info!(
         search_title = %search_title,
         episode = %args.episode,
@@ -604,7 +622,9 @@ where
                 crate::commands::availability::write_cache(state, id, &args.mode, false);
             }
         }
-    })?;
+    });
+    record_prefetch_spawn_outcome(state, args, &resolved);
+    let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
     // Decide media kind: cheap path-extension first, HEAD fallback
