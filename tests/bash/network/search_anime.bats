@@ -7,8 +7,11 @@
 #   - Calls curl POST to ${allanime_api}/api with a GraphQL "search" query.
 #   - Parses the response shows.edges[*] into one line per result:
 #         <id>\t<name> (<count> episodes) (<year>)
-#     The year comes from airedStart.year (ani-cli 4.14.5); edges
-#     without one are dropped by the result sed.
+#     The year comes from airedStart.year (ani-cli 4.14.5). Edges
+#     without one keep the pre-4.14.5 shape (no year suffix) — a fork
+#     patch: upstream drops them, but the GUI passes a 1-based -S
+#     index computed against its own full scraper list, so a dropped
+#     row would shift every later index onto the wrong anime.
 #   - $count is taken from availableEpisodes.${mode} where mode is sub|dub.
 #
 # We mock curl to return canned JSON fixtures so tests are hermetic.
@@ -24,15 +27,24 @@ setup() {
     mode='sub'
 }
 
-@test "search_anime: parses three sub results from canned response" {
+@test "search_anime: parses four sub results from canned response" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/search_one_piece.json"
     output=$(search_anime "one+piece")
     line_count=$(printf '%s\n' "$output" | wc -l | tr -d ' ')
-    [ "$line_count" -eq 3 ]
+    [ "$line_count" -eq 4 ]
     # First edge in the fixture: the main TV series with 1100 sub episodes.
     [[ "$output" == *"ReooPAxPMsHM4KPMY"$'\t'"One Piece (1100 episodes) (1999)"* ]]
     # Second edge: a film, single episode.
     [[ "$output" == *"yWebgvMsxR8FAEpw9"$'\t'"One Piece Movie 14: Stampede (1 episodes) (2019)"* ]]
+}
+
+@test "search_anime: keeps a result whose airedStart is null (no year suffix)" {
+    export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/search_one_piece.json"
+    output=$(search_anime "one+piece")
+    # Fourth edge: a stub row with airedStart null, as allmanga returns
+    # for older/uncatalogued entries. It must stay in the list (in the
+    # pre-4.14.5 shape) or the GUI's -S index misaligns.
+    [[ "$output" == *"nQstubNoYearRow01"$'\t'"One Piece: Recap Special (1 episodes)"$'\n'* || "$output" == *"nQstubNoYearRow01"$'\t'"One Piece: Recap Special (1 episodes)" ]]
 }
 
 @test "search_anime: dub mode picks the dub episode count" {
