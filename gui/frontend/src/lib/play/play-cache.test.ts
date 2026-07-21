@@ -71,9 +71,9 @@ describe('getOrFire', () => {
 		const never = () => new Promise<CreateSessionResponse>(() => {});
 		// Saturate the concurrency cap so the prefetch entry queues
 		// without starting.
-		void getOrFire(makeKey('sat1', '1', 'sub', 'best'), never);
-		void getOrFire(makeKey('sat2', '1', 'sub', 'best'), never);
-		const key = makeKey('show', '3', 'sub', 'best');
+		void getOrFire(makeKey('sat1', 1, 'sub', 'best'), never);
+		void getOrFire(makeKey('sat2', 1, 'sub', 'best'), never);
+		const key = makeKey('show', 3, 'sub', 'best');
 		const prefetchFire = vi.fn(never);
 		void getOrFire(key, prefetchFire);
 		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
