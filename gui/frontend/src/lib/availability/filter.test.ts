@@ -199,6 +199,19 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 		apiMock.checkAvailability.mockReset();
 	});
 
+	it('marks inline probes as background so the scraper gate paces them', async () => {
+		// Rail fills are opportunistic; the backend gate paces
+		// background probes and skips them while its breaker is open,
+		// so a cold cache can't rate-limit the IP before the user's
+		// first click.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		await filterAvailableStrict([ref('a')], 'sub');
+		expect(apiMock.checkAvailability).toHaveBeenCalledWith(
+			expect.objectContaining({ background: true })
+		);
+	});
+
 	it('inline-probes uncached items and applies their results', async () => {
 		// b is cached false → drops. a is cached true → kept. c is
 		// uncached → probed inline → kept (probe says available).

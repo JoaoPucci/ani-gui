@@ -65,4 +65,21 @@ describe('makeFetchAvailability', () => {
 		expect(call.year).toBeUndefined();
 		expect(call.status).toBeUndefined();
 	});
+
+	it('marks the probe as background so the scraper gate paces it', async () => {
+		// The home loader's cache fills are opportunistic — nobody is
+		// waiting on a specific probe. The backend's scraper gate paces
+		// background probes and skips them while its breaker is open,
+		// which is what stops a cold-cache launch from rate-limiting
+		// the IP out from under the user's first play click.
+		const ipc = vi.fn().mockResolvedValue({
+			available: true,
+			episode_count: 12,
+			extra_episodes: []
+		} satisfies AvailabilityResponse);
+		const fetcher = makeFetchAvailability(ipc);
+		await fetcher(makeMatch(), 'sub');
+		const call = ipc.mock.calls[0][0] as AvailabilityArgs;
+		expect(call.background).toBe(true);
+	});
 });
