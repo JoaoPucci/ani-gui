@@ -83,20 +83,52 @@ impl ScraperGate {
     }
 
     /// Wait for (background) or immediately take (interactive) a
-    /// scraper slot.
+    /// scraper slot. The wait happens outside the lock: concurrent
+    /// background callers each reserve the next 500 ms slot under the
+    /// lock and then sleep until their slot, so a fan-out queues up
+    /// evenly instead of bursting.
     ///
     /// # Errors
     /// [`GateClosed`] for background admits while the breaker is open.
-    pub async fn admit(&self, _prio: ScrapePriority) -> Result<(), GateClosed> {
-        // test(red) stub — no pacing, no breaker.
+    pub async fn admit(&self, prio: ScrapePriority) -> Result<(), GateClosed> {
+        if prio == ScrapePriority::Interactive {
+            return Ok(());
+        }
+        let wait = {
+            let mut s = self.inner.lock().expect("gate lock");
+            let now = Instant::now();
+            if let Some(until) = s.open_until {
+                if now < until {
+                    return Err(GateClosed);
+                }
+                // Cooldown elapsed — half-open: let probes through
+                // again. `consecutive_failures` stays where it is, so
+                // a single failed probe snaps the breaker shut.
+                s.open_until = None;
+            }
+            let slot = s.next_background_at.max(now);
+            s.next_background_at = slot + BACKGROUND_INTERVAL;
+            slot - now
+        };
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
         Ok(())
     }
 
     /// Report how the admitted request went. Failures count toward
     /// the breaker; a success resets it.
-    pub fn record_outcome(&self, _ok: bool) {
-        // test(red) stub.
-        let _ = &self.inner;
+    pub fn record_outcome(&self, ok: bool) {
+        let mut s = self.inner.lock().expect("gate lock");
+        if ok {
+            s.consecutive_failures = 0;
+            s.open_until = None;
+        } else {
+            s.consecutive_failures += 1;
+            if s.consecutive_failures >= FAILURE_THRESHOLD {
+                s.open_until = Some(Instant::now() + BREAKER_COOLDOWN);
+            }
+        }
     }
 }
 
