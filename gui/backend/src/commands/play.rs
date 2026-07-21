@@ -342,6 +342,34 @@ async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
 /// verdicts are content-level answers ("Episode not released" from
 /// an ep+1 prefetch at the season edge, dep_ch complaints) and move
 /// the breaker in neither direction.
+/// Side effects of a failed ani-cli spawn: an explicit error log (so
+/// `RUST_LOG=ani_gui=info` surfaces the actual reason instead of
+/// leaving the user staring at an overlay that flashed and
+/// disappeared — the `?` would propagate it but nothing between here
+/// and the SSE serializer prints it) and the negative availability
+/// write for NoResults clicks so home/search list filters learn from
+/// the click without an extra round-trip.
+fn note_spawn_failure(
+    state: &AppState,
+    args: &PlayArgs,
+    search_title: &str,
+    select_index: usize,
+    e: &AniError,
+) {
+    tracing::error!(
+        search_title = %search_title,
+        episode = %args.episode,
+        select_index = select_index,
+        error = ?e,
+        "play: ani-cli step failed",
+    );
+    if matches!(e, AniError::NoResults) {
+        if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+            crate::commands::availability::write_cache(state, id, &args.mode, false);
+        }
+    }
+}
+
 fn record_spawn_outcome<T>(state: &AppState, result: &Result<T>) {
     match result {
         Ok(_) => state.scraper_gate.record_outcome(true),
@@ -605,28 +633,7 @@ where
         },
     )
     .await
-    .inspect_err(|e| {
-        // Log explicitly so `RUST_LOG=ani_gui=info` surfaces the
-        // actual reason instead of leaving the user staring at an
-        // overlay that flashed and disappeared. The `?` would
-        // propagate it but no logger between here and the SSE
-        // serializer prints it.
-        tracing::error!(
-            search_title = %search_title,
-            episode = %args.episode,
-            select_index = select_index,
-            error = ?e,
-            "play: ani-cli step failed",
-        );
-        // Persist the negative outcome for the availability cache so
-        // home/search list filters learn from this click without an
-        // extra round-trip. NoResults = not in catalogue, period.
-        if matches!(e, AniError::NoResults) {
-            if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-                crate::commands::availability::write_cache(state, id, &args.mode, false);
-            }
-        }
-    });
+    .inspect_err(|e| note_spawn_failure(state, args, &search_title, select_index, e));
     record_spawn_outcome(state, &resolved);
     let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
