@@ -311,6 +311,28 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
     }
 }
 
+/// Admit the ani-cli spawn itself through the scraper gate for
+/// prefetches. The picker's searches are admitted per request, but
+/// the subprocess performs its own allanime traffic — background
+/// prefetch spawns must be paced the same way and skipped while the
+/// breaker is open. Interactive plays pass untouched.
+///
+/// # Errors
+/// [`AniError::Network`] when the gate refuses a background admit.
+async fn admit_prefetch_spawn(_state: &AppState, _args: &PlayArgs) -> Result<()> {
+    // test(red) stub — no admission yet.
+    Ok(())
+}
+
+/// Feed a prefetch spawn's outcome back to the gate. `NoResults` is
+/// a valid verdict (the show is genuinely absent) and — because a
+/// rate-limited ani-cli also dies with "No results found!" — is
+/// deliberately not counted in either direction; the gated searches
+/// that precede every spawn are the reliable throttle signal.
+fn record_prefetch_spawn_outcome<T>(_state: &AppState, _args: &PlayArgs, _result: &Result<T>) {
+    // test(red) stub — outcomes not recorded yet.
+}
+
 /// [`pick_title_and_index`] with the allanime endpoint override
 /// exposed for tests. Production passes `None` via the wrapper.
 pub(super) async fn pick_title_and_index_with_base(
@@ -1479,6 +1501,54 @@ mod tests {
             crate::scraper::gate::FAILURE_THRESHOLD as usize,
             "the alt-title walk must stop at the breaker threshold, not visit all six titles"
         );
+    }
+
+    #[tokio::test]
+    async fn prefetch_spawn_admission_respects_an_open_breaker() {
+        // The subprocess makes its own allanime requests; a prefetch
+        // spawn is background traffic and must be refused while the
+        // breaker is open. Interactive plays pass untouched.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state.scraper_gate.record_outcome(false);
+        }
+        let prefetch = gate_args(true, "Gate Test", &[]);
+        assert!(matches!(
+            admit_prefetch_spawn(&state, &prefetch).await,
+            Err(AniError::Network)
+        ));
+        let interactive = gate_args(false, "Gate Test", &[]);
+        assert!(admit_prefetch_spawn(&state, &interactive).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn prefetch_spawn_outcomes_feed_the_breaker_except_no_results() {
+        use crate::scraper::gate::ScrapePriority;
+        // Transport-ish spawn failures count toward the breaker...
+        let state = state_with_proxy_origin();
+        let args = gate_args(true, "Gate Test", &[]);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_prefetch_spawn_outcome::<()>(&state, &args, &Err(AniError::Io));
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "repeated spawn failures must open the breaker"
+        );
+        // ...but NoResults is a valid verdict, not network evidence —
+        // it must move the breaker in neither direction.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_prefetch_spawn_outcome::<()>(&state, &args, &Err(AniError::NoResults));
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_ok());
     }
 
     #[tokio::test]
