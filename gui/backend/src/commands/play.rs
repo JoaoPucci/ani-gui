@@ -689,11 +689,9 @@ mod tests {
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
     fn state_with_proxy_origin() -> AppState {
-        use crate::app::SCRAPER_CONCURRENCY;
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
-        use tokio::sync::Semaphore;
         AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -704,7 +702,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),

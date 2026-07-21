@@ -187,12 +187,10 @@ fn anilist_eps_thumbs_key_namespace_separates_kitsu_ids() {
 /// `thumbs_for_show`'s miss path errors out — exercising the
 /// happy hit path without standing up a wiremock.
 fn state_for_cache_only_tests() -> AppState {
-    use crate::app::SCRAPER_CONCURRENCY;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::Semaphore;
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -203,7 +201,7 @@ fn state_for_cache_only_tests() -> AppState {
         bash_path: None,
         bundled_bin: None,
         history_path: PathBuf::from("/y/ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

@@ -71,6 +71,8 @@ pub struct ScraperGate {
 }
 
 impl ScraperGate {
+    /// A fresh gate: breaker closed, first background slot available
+    /// immediately.
     #[must_use]
     pub fn new() -> Self {
         Self {

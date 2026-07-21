@@ -12,7 +12,6 @@ use crate::account::pkce::PkceMethod;
 fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::Semaphore;
     Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -23,7 +22,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         bash_path: None,
         bundled_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(crate::app::SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
@@ -846,7 +845,6 @@ fn build_entry_update_rejects_empty_and_unknown_status() {
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::Semaphore;
     let state = Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -857,7 +855,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         bash_path: None,
         bundled_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(crate::app::SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
