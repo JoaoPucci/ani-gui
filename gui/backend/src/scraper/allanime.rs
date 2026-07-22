@@ -1239,6 +1239,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_decode_failure_reports_status_and_body_evidence() {
+        // A 200 whose body isn't the expected GraphQL shape — an
+        // errors payload, a bot-filter interstitial, a truncated
+        // stream — must surface WHAT came back: the status plus a
+        // bounded body snippet. The generic "error decoding response
+        // body" alone leaves cold-start warm blips undiagnosable
+        // after the fact.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"errors": [{"message": "operation limited"}], "data": null}),
+            ))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = search(&client, "One Piece", "sub", Some(&server.uri()))
+            .await
+            .expect_err("decode must fail");
+        let AniError::ParseFailed { detail } = err else {
+            panic!("expected ParseFailed, got {err:?}");
+        };
+        assert!(detail.contains("200"), "status missing: {detail}");
+        assert!(
+            detail.contains("operation limited"),
+            "body evidence missing: {detail}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_show_decode_failure_reports_status_and_body_evidence() {
+        // Same evidence contract for the show lookup: a non-JSON 200
+        // (e.g. an HTML interstitial) must land in the error detail.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string("<html>bot check</html>"),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = fetch_show(&client, "abc123", Some(&server.uri()))
+            .await
+            .expect_err("decode must fail");
+        let AniError::ParseFailed { detail } = err else {
+            panic!("expected ParseFailed, got {err:?}");
+        };
+        assert!(detail.contains("200"), "status missing: {detail}");
+        assert!(
+            detail.contains("bot check"),
+            "body evidence missing: {detail}"
+        );
+    }
+
+    #[tokio::test]
     async fn search_parses_allanime_graphql_response() {
         // Body shape from a real allanime response. Wiremock returns
         // it; the parser pulls out the edges array verbatim.
