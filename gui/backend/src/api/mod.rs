@@ -26,8 +26,11 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod sse_abort;
 mod syncplay;
 mod update;
+
+use sse_abort::abort_on_drop;
 
 use crate::app::AppState;
 use crate::commands::{
@@ -450,7 +453,7 @@ async fn get_play_stream(
     // terminal `done` / `error` event and the channel closes — which
     // ends the stream and returns axum's response.
     let tx_for_progress = tx.clone();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let result = play_inner::play_with_progress(&state, &args, move |progress| {
             if let Ok(ev) = Event::default().event("progress").json_data(&progress) {
                 let _ = tx_for_progress.send(Ok(ev));
@@ -471,7 +474,8 @@ async fn get_play_stream(
         // tx drops here → channel closes → stream ends.
     });
 
-    Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(KeepAlive::default())
+    Sse::new(abort_on_drop(UnboundedReceiverStream::new(rx), handle))
+        .keep_alive(KeepAlive::default())
 }
 
 /// SSE entry point for the Download action. Mirrors get_play_stream:
@@ -489,7 +493,11 @@ async fn get_download_stream(
     let (tx, rx) = mpsc::unbounded_channel();
     let tx_for_progress = tx.clone();
 
-    tokio::spawn(async move {
+    // abort_on_drop is what makes the dock's Cancel real: the
+    // frontend cancels the fetch, the connection closes, and the
+    // aria2c / yt-dlp / ffmpeg pipeline dies with the task instead of
+    // finishing a download nobody asked to keep.
+    let handle = tokio::spawn(async move {
         let result = download_inner::download_with_progress(&state, &args, move |progress| {
             if let Ok(ev) = Event::default().event("progress").json_data(&progress) {
                 let _ = tx_for_progress.send(Ok(ev));
@@ -509,7 +517,8 @@ async fn get_download_stream(
         }
     });
 
-    Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(KeepAlive::default())
+    Sse::new(abort_on_drop(UnboundedReceiverStream::new(rx), handle))
+        .keep_alive(KeepAlive::default())
 }
 
 async fn post_availability(
@@ -737,7 +746,6 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::SCRAPER_CONCURRENCY;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use axum::body::Body;
@@ -746,7 +754,6 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use tempfile::TempDir;
-    use tokio::sync::Semaphore;
     use tower::ServiceExt;
 
     /// The SSE error envelope must carry both the snake_case `kind`
@@ -791,7 +798,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: td.path().join("ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
@@ -811,6 +818,38 @@ mod tests {
             .expect("collect body")
             .to_bytes();
         String::from_utf8(bytes.to_vec()).expect("utf-8")
+    }
+
+    /// The play SSE endpoint must drive its resolution task to a
+    /// terminal `error` event and close the stream. Forcing the
+    /// breaker open and asking for a prefetch makes the whole path
+    /// run without touching the network: every gate admit is refused
+    /// before any allanime request is built, so the handler's spawn,
+    /// terminal-event send, and abort_on_drop passthrough (natural
+    /// completion) are all exercised hermetically.
+    #[tokio::test]
+    async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let router = build_api_router(Arc::new(state));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/play/stream?title=Gate%20Test&episode=1&mode=sub&prefetch=true")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("event: error"), "body: {body}");
     }
 
     #[tokio::test]

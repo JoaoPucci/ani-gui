@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
-use crate::commands::play::{pick_title_and_index, PlayArgs};
+use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
@@ -70,6 +70,14 @@ pub struct AvailabilityArgs {
     /// safer to refresh too often than to serve a stale cap.
     #[serde(default)]
     pub status: Option<String>,
+    /// True for opportunistic probes nobody is waiting on (rail
+    /// warms, the home loader's cache fills). Background probes pass
+    /// through the scraper gate: paced, and skipped entirely while
+    /// the breaker is open. Interactive checks (detail-page CTA)
+    /// leave this false and always go through. Defaults false so
+    /// legacy callers keep interactive semantics.
+    #[serde(default)]
+    pub background: bool,
 }
 
 /// Result of an availability probe — does allmanga carry the show in
@@ -196,6 +204,16 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
+    check_availability_with_base(state, args, None).await
+}
+
+/// [`check_availability`] with the allanime endpoint override exposed
+/// for tests. Production passes `None` via the public wrapper.
+pub(crate) async fn check_availability_with_base(
+    state: &AppState,
+    args: &AvailabilityArgs,
+    allanime_base: Option<&str>,
+) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
@@ -227,10 +245,14 @@ pub async fn check_availability(
         episode_count: args.episode_count,
         year: args.year,
         alt_titles: args.alt_titles.clone(),
-        prefetch: false,
+        // `prefetch` doubles as the scraper-gate priority: background
+        // probes (rail warms, home-loader fills) are paced and refused
+        // while the breaker is open; interactive checks (detail-page
+        // CTA) always go through.
+        prefetch: args.background,
         kitsu_id: args.kitsu_id.clone(),
     };
-    let picked = pick_title_and_index(state, &play_view).await;
+    let picked = pick_title_and_index_with_base(state, &play_view, allanime_base).await;
     let chosen_candidate = picked.candidate;
     // Transient: every allanime preflight search errored. Don't
     // poison the availability row with `available=false` — the show
@@ -261,8 +283,22 @@ pub async fn check_availability(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
-            Ok(detail) => {
+        let prio = if args.background {
+            crate::scraper::gate::ScrapePriority::Background
+        } else {
+            crate::scraper::gate::ScrapePriority::Interactive
+        };
+        let detail = if state.scraper_gate.admit(prio).await.is_ok() {
+            let started_at = tokio::time::Instant::now();
+            let got =
+                crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
+            state.scraper_gate.record_outcome(got.is_ok(), started_at);
+            got.ok()
+        } else {
+            None
+        };
+        match detail {
+            Some(detail) => {
                 episode_count = detail.max_integer_episode(mode);
                 extra_episodes = detail
                     .available_episodes_detail
@@ -272,10 +308,11 @@ pub async fn check_availability(
                     .cloned()
                     .collect();
             }
-            Err(_) => {
-                // Show fetch failed — fall back to the count from the
-                // search hit. Off by one for shows with halves, but
-                // good enough for the cap until next probe.
+            None => {
+                // Show fetch failed or the gate is closed — fall back
+                // to the count from the search hit. Off by one for
+                // shows with halves, but good enough for the cap
+                // until next probe.
                 let n = c.available_episodes.for_mode(mode);
                 if n > 0 {
                     episode_count = Some(n);
@@ -535,6 +572,12 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &key) {
             continue;
         }
+        // Warm probes are background by definition — enforce it
+        // server-side regardless of what the caller sent, so the
+        // scraper gate paces them and skips them while its breaker
+        // is open.
+        let mut args = args;
+        args.background = true;
         let _ = check_availability(&state, &args).await;
         sleep(Duration::from_millis(500)).await;
     }
@@ -694,7 +737,6 @@ mod tests {
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::path::PathBuf;
         use std::sync::Arc;
-        use tokio::sync::Semaphore;
         AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -705,7 +747,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: td.path().join("ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(1)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -1033,5 +1075,37 @@ mod tests {
         assert_eq!(resp.playable_episode_counts.get("finished-show"), Some(&12));
         assert!(!resp.playable_episode_counts.contains_key("blocked-show"));
         assert!(!resp.playable_episode_counts.contains_key("uncached-show"));
+    }
+
+    #[tokio::test]
+    async fn background_probe_skips_the_network_while_the_breaker_is_open() {
+        // Once the breaker is open, a background probe must not touch
+        // allanime at all — it surfaces the same transient Network
+        // error as an all-errored search, and the row stays unwritten.
+        let server = wiremock::MockServer::start().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Gate Test",
+            "mode": "sub",
+            "kitsu_id": "999",
+            "background": true
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(matches!(got, Err(crate::error::AniError::Network)));
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "an open breaker must produce zero allanime requests"
+        );
     }
 }

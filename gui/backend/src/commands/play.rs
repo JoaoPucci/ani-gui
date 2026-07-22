@@ -199,21 +199,35 @@ async fn enrich_availability_after_success(
         return;
     };
     let mode_str = args.mode.as_str();
-    let (episode_count, extras) =
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
-            Ok(detail) => {
-                let cap = detail.max_integer_episode(mode_str);
-                let ex: Vec<String> = detail
-                    .available_episodes_detail
-                    .for_mode(mode_str)
-                    .iter()
-                    .filter(|t| t.parse::<u32>().is_err())
-                    .cloned()
-                    .collect();
-                (cap, ex)
-            }
-            Err(_) => (None, Vec::new()),
-        };
+    let detail = if state
+        .scraper_gate
+        .admit(scrape_priority(args))
+        .await
+        .is_ok()
+    {
+        let started_at = tokio::time::Instant::now();
+        let got = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
+        state.scraper_gate.record_outcome(got.is_ok(), started_at);
+        got.ok()
+    } else {
+        // Breaker open — skip the enrichment round-trip; the plain
+        // write below still records availability.
+        None
+    };
+    let (episode_count, extras) = match detail {
+        Some(detail) => {
+            let cap = detail.max_integer_episode(mode_str);
+            let ex: Vec<String> = detail
+                .available_episodes_detail
+                .for_mode(mode_str)
+                .iter()
+                .filter(|t| t.parse::<u32>().is_err())
+                .cloned()
+                .collect();
+            (cap, ex)
+        }
+        None => (None, Vec::new()),
+    };
     // Status unknown at this layer (PlayArgs doesn't carry it).
     // None → write_cache_full uses the conservative ongoing TTL
     // (24h); the next detail-page probe knows status and will
@@ -283,6 +297,113 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
 }
 
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
+    pick_title_and_index_with_base(state, args, None).await
+}
+
+/// Scraper-gate priority for a play-shaped request: prefetches (and
+/// availability probes flagged background, which arrive here with
+/// `prefetch = true` on their synthesized view) are opportunistic;
+/// everything else is a user waiting.
+fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
+    if args.prefetch {
+        crate::scraper::gate::ScrapePriority::Background
+    } else {
+        crate::scraper::gate::ScrapePriority::Interactive
+    }
+}
+
+/// Admit the ani-cli spawn itself through the scraper gate for
+/// prefetches. The picker's searches are admitted per request, but
+/// the subprocess performs its own allanime traffic — background
+/// prefetch spawns must be paced the same way and skipped while the
+/// breaker is open. Interactive plays pass untouched.
+///
+/// # Errors
+/// [`AniError::Network`] when the gate refuses a background admit.
+async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
+    if !args.prefetch {
+        return Ok(());
+    }
+    state
+        .scraper_gate
+        .admit(crate::scraper::gate::ScrapePriority::Background)
+        .await
+        .map_err(|_| AniError::Network)
+}
+
+/// Feed a spawn's outcome back to the gate — every spawn, not just
+/// prefetches: interactive plays bypass admission, but the preflight
+/// search just reset the breaker with a success, so when the spawn
+/// itself hits the rate limit background traffic must back off
+/// instead of resuming right after a user-visible failure.
+/// `NoResults` counts as a failure: the spawn only happens after the
+/// picker confirmed the show exists on allanime, so the subprocess
+/// finding nothing moments later is transient/upstream evidence — a
+/// rate-limited ani-cli dies with exactly that message. The typed
+/// "Episode not released" verdict counts as a success — see the
+/// comment in the body. Every other Scraper exit (the catch-all
+/// covers curl transport deaths inside ani-cli) counts as a failure,
+/// while local errors that never reached allanime record nothing.
+/// Side effects of a failed ani-cli spawn: an explicit error log, so
+/// `RUST_LOG=ani_gui=info` surfaces the actual reason instead of
+/// leaving the user staring at an overlay that flashed and
+/// disappeared — the `?` would propagate it but nothing between here
+/// and the SSE serializer prints it.
+///
+/// Deliberately NO availability write: a spawn-level NoResults is
+/// transient evidence (the picker confirmed the show exists moments
+/// earlier — see [`record_spawn_outcome`]), and persisting
+/// available=false from it would hide a real show behind the
+/// negative TTL during exactly the rate-limited window the scraper
+/// gate exists for. Genuine absence is recorded by the picker path
+/// ([`classify_picker_miss`]), whose verdict comes from clean
+/// zero-candidate searches.
+fn note_spawn_failure(args: &PlayArgs, search_title: &str, select_index: usize, e: &AniError) {
+    tracing::error!(
+        search_title = %search_title,
+        episode = %args.episode,
+        select_index = select_index,
+        error = ?e,
+        "play: ani-cli step failed",
+    );
+}
+
+pub(super) fn record_spawn_outcome<T>(
+    state: &AppState,
+    started_at: tokio::time::Instant,
+    result: &Result<T>,
+) {
+    // Only outcomes that prove the subprocess reached allanime move
+    // the gate. The typed "Episode not released" verdict counts as a
+    // SUCCESS: ani-cli only reaches it after completing its search
+    // and episode listing, so it's a content-level answer from a
+    // healthy upstream — recovery evidence that also releases a
+    // half-open trial. NoResults, other Scraper exits (ani-cli ran
+    // and died mid-scrape; the catch-all covers curl transport
+    // deaths), and timeouts (a rate-limited upstream hangs ani-cli in
+    // curl retries until the wall clock kills it) are failures.
+    // Everything else — MissingBinary from a broken install, Io from
+    // a dead pipe — is a local error that says nothing about the
+    // upstream: recording it would let three clicks against a broken
+    // binary cut off unrelated background traffic for a cooldown.
+    let ok = match result {
+        Ok(_) => true,
+        Err(AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+        }) => true,
+        Err(AniError::NoResults | AniError::Scraper { .. } | AniError::Timeout) => false,
+        Err(_) => return,
+    };
+    state.scraper_gate.record_outcome(ok, started_at);
+}
+
+/// [`pick_title_and_index`] with the allanime endpoint override
+/// exposed for tests. Production passes `None` via the wrapper.
+pub(super) async fn pick_title_and_index_with_base(
+    state: &AppState,
+    args: &PlayArgs,
+    allanime_base: Option<&str>,
+) -> PickedTitle {
     let primary = args.title.clone();
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
@@ -308,16 +429,28 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     let mut chosen_pick_so_far = 1usize;
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    let prio = scrape_priority(args);
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
-        match scraper::search(&state.meta_http, title, mode, None).await {
+        // Background walks stop as soon as the breaker opens — the
+        // remaining alt titles would fail identically and each doomed
+        // request deepens allanime's rate limit.
+        if state.scraper_gate.admit(prio).await.is_err() {
+            tracing::warn!(title, "play: scraper gate open; abandoning candidate walk");
+            any_search_errored = true;
+            break;
+        }
+        let started_at = tokio::time::Instant::now();
+        match scraper::search(&state.meta_http, title, mode, allanime_base).await {
             Ok(cands) => {
+                state.scraper_gate.record_outcome(true, started_at);
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
                 any_search_succeeded = true;
             }
             Err(e) => {
+                state.scraper_gate.record_outcome(false, started_at);
                 tracing::warn!(
                     title,
                     error = ?e,
@@ -488,6 +621,12 @@ where
     let select_index = picked.index;
     let chosen_candidate = picked.candidate;
 
+    // The subprocess makes its own allanime requests: prefetch spawns
+    // are background traffic and go through the gate (paced, refused
+    // while the breaker is open). User clicks pass untouched.
+    admit_prefetch_spawn(state, args).await?;
+    let spawn_started_at = tokio::time::Instant::now();
+
     tracing::info!(
         search_title = %search_title,
         episode = %args.episode,
@@ -515,28 +654,9 @@ where
         },
     )
     .await
-    .inspect_err(|e| {
-        // Log explicitly so `RUST_LOG=ani_gui=info` surfaces the
-        // actual reason instead of leaving the user staring at an
-        // overlay that flashed and disappeared. The `?` would
-        // propagate it but no logger between here and the SSE
-        // serializer prints it.
-        tracing::error!(
-            search_title = %search_title,
-            episode = %args.episode,
-            select_index = select_index,
-            error = ?e,
-            "play: ani-cli step failed",
-        );
-        // Persist the negative outcome for the availability cache so
-        // home/search list filters learn from this click without an
-        // extra round-trip. NoResults = not in catalogue, period.
-        if matches!(e, AniError::NoResults) {
-            if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-                crate::commands::availability::write_cache(state, id, &args.mode, false);
-            }
-        }
-    })?;
+    .inspect_err(|e| note_spawn_failure(args, &search_title, select_index, e));
+    record_spawn_outcome(state, spawn_started_at, &resolved);
+    let resolved = resolved?;
     enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
 
     // Decide media kind: cheap path-extension first, HEAD fallback
@@ -689,11 +809,9 @@ mod tests {
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
     fn state_with_proxy_origin() -> AppState {
-        use crate::app::SCRAPER_CONCURRENCY;
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
-        use tokio::sync::Semaphore;
         AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -704,7 +822,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -1395,5 +1513,315 @@ mod tests {
         assert_eq!(title, "Naruto: Shippuden");
         // Index 2 = the 500-ep main show.
         assert_eq!(idx, 2);
+    }
+
+    /// PlayArgs shaped like a background prefetch / interactive click
+    /// for the scraper-gate tests.
+    fn gate_args(prefetch: bool, title: &str, alts: &[&str]) -> PlayArgs {
+        PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            alt_titles: alts.iter().map(|s| (*s).to_string()).collect(),
+            prefetch,
+            kitsu_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn background_pick_stops_probing_after_the_breaker_opens() {
+        // A cold-cache warm walked every alt title of every show even
+        // while allanime was refusing us — hundreds of doomed calls
+        // that deepened the rate limit. Once the gate's breaker opens
+        // the walk must stop.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = gate_args(true, "Gate Test", &["a", "b", "c", "d", "e"]);
+        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(picked.candidate.is_none());
+        assert!(picked.any_search_errored);
+        let hits = server.received_requests().await.expect("recorded").len();
+        assert_eq!(
+            hits,
+            crate::scraper::gate::FAILURE_THRESHOLD as usize,
+            "the alt-title walk must stop at the breaker threshold, not visit all six titles"
+        );
+    }
+
+    #[tokio::test]
+    async fn prefetch_spawn_admission_respects_an_open_breaker() {
+        // The subprocess makes its own allanime requests; a prefetch
+        // spawn is background traffic and must be refused while the
+        // breaker is open. Interactive plays pass untouched.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let prefetch = gate_args(true, "Gate Test", &[]);
+        assert!(matches!(
+            admit_prefetch_spawn(&state, &prefetch).await,
+            Err(AniError::Network)
+        ));
+        let interactive = gate_args(false, "Gate Test", &[]);
+        assert!(admit_prefetch_spawn(&state, &interactive).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn prefetch_spawn_no_results_counts_toward_the_breaker() {
+        use crate::scraper::gate::ScrapePriority;
+        // Timeouts count toward the breaker: a rate-limited allanime
+        // makes ani-cli hang in curl retries until the wall clock
+        // kills it, so a run that spawned fine and then timed out is
+        // upstream evidence (unlike local spawn/read errors)...
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Timeout),
+            );
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "repeated spawn failures must open the breaker"
+        );
+        // ...and so does NoResults: a spawn only happens after the
+        // picker just confirmed the show exists on allanime, so the
+        // subprocess finding nothing moments later is transient or
+        // upstream evidence (a rate-limited ani-cli dies with exactly
+        // this message), not absence.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "repeated NoResults spawns must open the breaker"
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_spawn_failures_feed_the_breaker_too() {
+        use crate::scraper::gate::ScrapePriority;
+        // A user click bypasses admission, but its subprocess outcome
+        // still matters: the preflight search just reset the breaker
+        // with a success, so if the spawn is what hits the rate limit,
+        // background traffic must back off — not resume immediately
+        // after a user-visible failure.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn half_open_stale_window_covers_the_gated_spawn_timeout() {
+        // The half-open trial can be a prefetch ani-cli spawn, which
+        // legitimately runs up to RUN_DEBUG_TIMEOUT before reporting.
+        // A shorter stale window would sanction a second trial while
+        // the first is still running — two background probes on a
+        // possibly still-limited upstream during what the gate
+        // documents as one.
+        assert!(crate::scraper::gate::HALF_OPEN_TRIAL_STALE >= RUN_DEBUG_TIMEOUT);
+    }
+
+    #[test]
+    fn no_results_spawn_failure_does_not_write_a_negative_availability_row() {
+        // The gate treats a spawn-level NoResults as transient — the
+        // picker confirmed the show exists moments earlier — so
+        // persisting available=false from the same signal would hide
+        // a real show behind the negative TTL. Genuine absence is
+        // recorded by the picker path (classify_picker_miss), which
+        // reaches its verdict from clean zero-candidate searches.
+        let state = state_with_proxy_origin();
+        let mut args = gate_args(false, "Gate Test", &[]);
+        args.kitsu_id = Some("777".into());
+        note_spawn_failure(&args, "Gate Test", 1, &AniError::NoResults);
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["777".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            cached.cached.is_empty(),
+            "transient spawn miss must not poison the availability cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn unreleased_episode_verdicts_leave_the_breaker_alone() {
+        use crate::scraper::gate::ScrapePriority;
+        // "Episode not released" is a content-level answer — an ep+1
+        // prefetch at the season edge gets it routinely. Counting it
+        // as a failure would open the breaker from ordinary
+        // prefetching (it records as a success instead).
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Scraper {
+                    key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+                }),
+            );
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn local_spawn_errors_leave_the_breaker_alone() {
+        use crate::scraper::gate::ScrapePriority;
+        // A broken local install (deleted ani-cli binary, dead stderr
+        // pipe) says nothing about allanime's health — repeated clicks
+        // against a broken binary must not open the breaker and cut
+        // off unrelated background availability/prefetch traffic.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::MissingBinary),
+            );
+            record_spawn_outcome::<()>(&state, tokio::time::Instant::now(), &Err(AniError::Io));
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "local spawn/read errors must not move the breaker"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unreleased_spawn_verdict_counts_as_recovery_evidence() {
+        use crate::scraper::gate::ScrapePriority;
+        // The typed verdict is a completed content-level answer:
+        // ani-cli got through search and episode listing and reported
+        // the episode isn't out. When the half-open trial ends this
+        // way the upstream has provably recovered — recording nothing
+        // would leave the trial dangling and keep refusing all
+        // background traffic for the rest of the stale window after a
+        // routine season-edge ep+1 prefetch.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::NoResults),
+            );
+        }
+        tokio::time::advance(crate::scraper::gate::BREAKER_COOLDOWN).await;
+        let trial_started = tokio::time::Instant::now();
+        state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .expect("half-open trial");
+        record_spawn_outcome::<()>(
+            &state,
+            trial_started,
+            &Err(AniError::Scraper {
+                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+            }),
+        );
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "an unreleased trial verdict must close the breaker, not wedge it"
+        );
+    }
+
+    #[tokio::test]
+    async fn generic_scraper_exits_count_toward_the_breaker() {
+        use crate::scraper::gate::ScrapePriority;
+        // The catch-all Scraper key covers generic non-zero ani-cli
+        // exits — including curl transport deaths inside the script.
+        // Those are upstream evidence and must feed the breaker; only
+        // the typed unreleased verdict doesn't count as a failure.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Scraper {
+                    key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+                }),
+            );
+        }
+        assert!(state
+            .scraper_gate
+            .admit(ScrapePriority::Background)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn interactive_pick_bypasses_an_open_breaker() {
+        // Guard for the other direction: a user's click goes through
+        // even when background traffic tripped the breaker.
+        let server = wiremock::MockServer::start().await;
+        let body = serde_json::json!({
+            "data": { "shows": { "edges": [{
+                "_id": "abc",
+                "name": "Gate Test",
+                "availableEpisodes": {"sub": 12, "dub": 0, "raw": 0},
+                "__typename": "Show"
+            }]}}
+        });
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let args = gate_args(false, "Gate Test", &[]);
+        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(picked.any_search_succeeded);
+        assert!(picked.candidate.is_some());
     }
 }

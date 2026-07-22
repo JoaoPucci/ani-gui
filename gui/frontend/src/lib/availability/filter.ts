@@ -128,7 +128,9 @@ export async function filterAvailableStrict<T extends KitsuAnimeRef>(
 						episode_count: item.episode_count ?? undefined,
 						year: yearFromKitsuRef(item) ?? undefined,
 						kitsu_id: item.id,
-						status: item.status ?? undefined
+						status: item.status ?? undefined,
+						// Rail fills are opportunistic — gate-paced.
+						background: true
 					});
 					cached[item.id] = r.available;
 				} catch {

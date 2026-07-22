@@ -244,7 +244,7 @@ pub async fn run_debug(
         }
         if stderr_text.contains("Episode not released") {
             return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
             });
         }
         return Err(AniError::Scraper {
@@ -406,7 +406,7 @@ where
         }
         if stderr_text.contains("Episode not released") {
             return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
             });
         }
         return Err(AniError::Scraper {

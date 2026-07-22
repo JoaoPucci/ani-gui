@@ -50,6 +50,12 @@ pub mod keys {
     pub const SCRAPER_MISSING_BINARY: &str = "error.scraper.missing_binary";
     /// `ani-cli` stdout could not be parsed.
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
+    /// ani-cli's "Episode not released" verdict — a content-level
+    /// answer, not infrastructure trouble. Carries its own key so the
+    /// scraper gate's outcome recorder can tell it apart from the
+    /// generic non-zero-exit catch-all (which includes curl transport
+    /// deaths and must count toward the breaker).
+    pub const SCRAPER_EPISODE_NOT_RELEASED: &str = "error.scraper.episode_not_released";
     /// `ani-cli` subprocess exceeded its timeout.
     pub const SCRAPER_TIMEOUT: &str = "error.scraper.timeout";
 

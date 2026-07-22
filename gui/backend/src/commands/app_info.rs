@@ -38,7 +38,6 @@ mod tests {
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::Semaphore;
 
     fn fake_state() -> AppState {
         AppState {
@@ -51,7 +50,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: PathBuf::from("/home/u/.local/state/ani-cli/ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(2)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
