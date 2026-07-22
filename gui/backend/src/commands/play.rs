@@ -1331,6 +1331,59 @@ mod tests {
     }
 
     #[test]
+    fn picker_miss_caller_error_surfaces_rate_limits_with_their_hint() {
+        // A walk that died on allanime's in-band rate limit must
+        // surface the typed 429 + advertised wait, never the generic
+        // Network verdict — the retry layers and the frontend key off
+        // retry_after_secs, which the Network collapse would discard.
+        let mut picked = picked_miss(false, true);
+        picked.rate_limited = Some(Some(9));
+        let err = picker_miss_caller_error(&picked);
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: Some(9)
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn classify_picker_miss_surfaces_rate_limits_before_other_verdicts() {
+        // Same policy on the embedded-play surface, and crucially: no
+        // negative availability write — a rate-limited window says
+        // nothing about whether the show exists.
+        let state = state_with_proxy_origin();
+        let mut args = external_args("Gate Test", "1");
+        args.kitsu_id = Some("888".into());
+        let mut picked = picked_miss(true, true);
+        picked.rate_limited = Some(None);
+        let err = classify_picker_miss(&state, &args, &picked);
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: None
+                }
+            ),
+            "got {err:?}"
+        );
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["888".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            cached.cached.is_empty(),
+            "rate-limited pick must not poison the availability cache"
+        );
+    }
+
+    #[test]
     fn picker_miss_caller_error_treats_partial_failure_as_network() {
         // Mixed: at least one search succeeded but another errored.
         // Sibling callers (download/syncplay/external) prefer the
