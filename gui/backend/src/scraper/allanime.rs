@@ -592,10 +592,27 @@ pub async fn fetch_show(
     struct Data {
         show: Option<ShowMetadata>,
     }
-    let parsed: Wrap = resp.json().await.map_err(|e| AniError::ParseFailed {
-        detail: format!("allanime show response: {e}"),
+    let text = resp.text().await.map_err(|_| AniError::Network)?;
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
+        detail: format!(
+            "allanime show response: {e}; status {status}; body: {}",
+            body_evidence(&text)
+        ),
     })?;
     Ok(parsed.data.show.unwrap_or_default())
+}
+
+/// First ~200 characters of an undecodable upstream body, whitespace-
+/// collapsed. Enough to tell a GraphQL errors payload from a
+/// bot-filter interstitial from a truncated stream in the log line
+/// without dumping pages of HTML. Diagnostic only — never parsed.
+fn body_evidence(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(200)
+        .collect()
 }
 
 /// Replace ASCII space with `+` to match ani-cli's `search_anime`
@@ -692,8 +709,12 @@ pub async fn search(
     struct Shows {
         edges: Vec<Candidate>,
     }
-    let parsed: Wrap = resp.json().await.map_err(|e| AniError::ParseFailed {
-        detail: format!("allanime search response: {e}"),
+    let text = resp.text().await.map_err(|_| AniError::Network)?;
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
+        detail: format!(
+            "allanime search response: {e}; status {status}; body: {}",
+            body_evidence(&text)
+        ),
     })?;
     Ok(parsed.data.shows.edges)
 }
