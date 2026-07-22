@@ -593,13 +593,36 @@ pub async fn fetch_show(
         show: Option<ShowMetadata>,
     }
     let text = resp.text().await.map_err(|_| AniError::Network)?;
-    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
-        detail: format!(
-            "allanime show response: {e}; status {status}; body: {}",
-            body_evidence(&text)
-        ),
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| {
+        classify_undecodable(&text).unwrap_or_else(|| AniError::ParseFailed {
+            detail: format!(
+                "allanime show response: {e}; status {status}; body: {}",
+                body_evidence(&text)
+            ),
+        })
     })?;
     Ok(parsed.data.show.unwrap_or_default())
+}
+
+/// Classify a 200-status body that failed to decode into the expected
+/// GraphQL shape. allanime expresses its application-level rate limit
+/// in-band — HTTP 200 with `{"errors":[{"message":"Too many requests,
+/// please try again in N seconds."}],"data":null}` (captured live) —
+/// which the typed [`AniError::RateLimited`] carries upward, wait hint
+/// included, so retry and backoff layers can act on the server's own
+/// number instead of guessing. Anything else returns `None` and falls
+/// through to the evidence-carrying `ParseFailed`.
+fn classify_undecodable(text: &str) -> Option<AniError> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let msg = v.get("errors")?.get(0)?.get("message")?.as_str()?;
+    if !msg.to_ascii_lowercase().contains("too many requests") {
+        return None;
+    }
+    let retry_after_secs = msg
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|s| !s.is_empty())
+        .and_then(|s| s.parse().ok());
+    Some(AniError::RateLimited { retry_after_secs })
 }
 
 /// First ~200 characters of an undecodable upstream body, whitespace-
@@ -710,11 +733,13 @@ pub async fn search(
         edges: Vec<Candidate>,
     }
     let text = resp.text().await.map_err(|_| AniError::Network)?;
-    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
-        detail: format!(
-            "allanime search response: {e}; status {status}; body: {}",
-            body_evidence(&text)
-        ),
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| {
+        classify_undecodable(&text).unwrap_or_else(|| AniError::ParseFailed {
+            detail: format!(
+                "allanime search response: {e}; status {status}; body: {}",
+                body_evidence(&text)
+            ),
+        })
     })?;
     Ok(parsed.data.shows.edges)
 }
