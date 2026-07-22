@@ -1677,6 +1677,39 @@ mod tests {
             proptest::prop_assert_eq!(m.max_integer_episode("dub"), want_dub);
         }
 
+        // classify_undecodable must never panic on arbitrary input —
+        // it runs on whatever bytes the upstream chose to send.
+        #[test]
+        fn classify_undecodable_never_panics(s in ".*") {
+            let _ = classify_undecodable(&s);
+        }
+
+        // Any canonical "Too many requests, please try again in N
+        // seconds." payload must type as RateLimited carrying exactly
+        // N, for every N — not just the captured value.
+        #[test]
+        fn classify_undecodable_extracts_every_advertised_wait(n in 0u64..=1_000_000u64) {
+            let body = format!(
+                r#"{{"errors":[{{"message":"Too many requests, please try again in {n} seconds."}}],"data":null}}"#
+            );
+            let got = classify_undecodable(&body);
+            let typed_with_wait = matches!(
+                &got,
+                Some(AniError::RateLimited { retry_after_secs: Some(m) }) if *m == n
+            );
+            proptest::prop_assert!(typed_with_wait, "got {:?}", got);
+        }
+
+        // GraphQL error payloads that are NOT the rate limit must fall
+        // through to None (→ evidence-carrying ParseFailed), whatever
+        // the message text — as long as it doesn't claim rate limiting.
+        #[test]
+        fn classify_undecodable_ignores_other_graphql_errors(msg in "[a-zA-Z0-9 .,!]{0,80}") {
+            proptest::prop_assume!(!msg.to_ascii_lowercase().contains("too many requests"));
+            let body = format!(r#"{{"errors":[{{"message":"{msg}"}}],"data":null}}"#);
+            proptest::prop_assert!(classify_undecodable(&body).is_none());
+        }
+
         // Picker invariants for `pick_by_ep_count`:
         //
         //   • Empty input → None.
