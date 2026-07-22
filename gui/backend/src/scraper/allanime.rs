@@ -592,10 +592,27 @@ pub async fn fetch_show(
     struct Data {
         show: Option<ShowMetadata>,
     }
-    let parsed: Wrap = resp.json().await.map_err(|e| AniError::ParseFailed {
-        detail: format!("allanime show response: {e}"),
+    let text = resp.text().await.map_err(|_| AniError::Network)?;
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
+        detail: format!(
+            "allanime show response: {e}; status {status}; body: {}",
+            body_evidence(&text)
+        ),
     })?;
     Ok(parsed.data.show.unwrap_or_default())
+}
+
+/// First ~200 characters of an undecodable upstream body, whitespace-
+/// collapsed. Enough to tell a GraphQL errors payload from a
+/// bot-filter interstitial from a truncated stream in the log line
+/// without dumping pages of HTML. Diagnostic only — never parsed.
+fn body_evidence(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(200)
+        .collect()
 }
 
 /// Replace ASCII space with `+` to match ani-cli's `search_anime`
@@ -692,8 +709,12 @@ pub async fn search(
     struct Shows {
         edges: Vec<Candidate>,
     }
-    let parsed: Wrap = resp.json().await.map_err(|e| AniError::ParseFailed {
-        detail: format!("allanime search response: {e}"),
+    let text = resp.text().await.map_err(|_| AniError::Network)?;
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
+        detail: format!(
+            "allanime search response: {e}; status {status}; body: {}",
+            body_evidence(&text)
+        ),
     })?;
     Ok(parsed.data.shows.edges)
 }
@@ -1236,6 +1257,60 @@ mod tests {
         // Looking for 500 dub-eps: B wins (dub=500), even though A
         // would win for sub.
         assert_eq!(pick_by_ep_count(&cands, 500, "dub", ""), Some(2));
+    }
+
+    #[tokio::test]
+    async fn search_decode_failure_reports_status_and_body_evidence() {
+        // A 200 whose body isn't the expected GraphQL shape — an
+        // errors payload, a bot-filter interstitial, a truncated
+        // stream — must surface WHAT came back: the status plus a
+        // bounded body snippet. The generic "error decoding response
+        // body" alone leaves cold-start warm blips undiagnosable
+        // after the fact.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"errors": [{"message": "operation limited"}], "data": null}),
+            ))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = search(&client, "One Piece", "sub", Some(&server.uri()))
+            .await
+            .expect_err("decode must fail");
+        let AniError::ParseFailed { detail } = err else {
+            panic!("expected ParseFailed, got {err:?}");
+        };
+        assert!(detail.contains("200"), "status missing: {detail}");
+        assert!(
+            detail.contains("operation limited"),
+            "body evidence missing: {detail}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_show_decode_failure_reports_status_and_body_evidence() {
+        // Same evidence contract for the show lookup: a non-JSON 200
+        // (e.g. an HTML interstitial) must land in the error detail.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string("<html>bot check</html>"),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = fetch_show(&client, "abc123", Some(&server.uri()))
+            .await
+            .expect_err("decode must fail");
+        let AniError::ParseFailed { detail } = err else {
+            panic!("expected ParseFailed, got {err:?}");
+        };
+        assert!(detail.contains("200"), "status missing: {detail}");
+        assert!(
+            detail.contains("bot check"),
+            "body evidence missing: {detail}"
+        );
     }
 
     #[tokio::test]
