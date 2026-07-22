@@ -223,6 +223,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rate_limited_maps_to_429_and_a_dedicated_key() {
+        // The typed rate-limit answer (allanime's in-band "Too many
+        // requests" GraphQL payload) must surface as HTTP 429 so the
+        // frontend can distinguish "wait a few seconds" from a
+        // generic upstream failure, and carry its own i18n key.
+        let e = AniError::RateLimited {
+            retry_after_secs: Some(9),
+        };
+        assert_eq!(e.http_status_code(), 429);
+        assert_eq!(e.key(), "error.network.rate_limited");
+    }
+
+    #[test]
     fn every_variant_has_a_stable_key() {
         // A representative of each variant — if a new variant lands without
         // a matching arm in `key()`, this test forces the author to think

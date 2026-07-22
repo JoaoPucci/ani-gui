@@ -1260,6 +1260,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_detects_allanime_rate_limit_and_carries_retry_after() {
+        // Exact in-band answer captured live on 2026-07-22: HTTP 200
+        // with a GraphQL errors payload. This must become the typed
+        // RateLimited error with the advertised wait, not a generic
+        // ParseFailed — every retry/backoff layer keys off it.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "errors": [{
+                        "message": "Too many requests, please try again in 9 seconds.",
+                        "locations": [{"line": 1, "column": 146}],
+                        "path": ["shows"],
+                        "extensions": {"code": "INTERNAL_SERVER_ERROR"}
+                    }],
+                    "data": null
+                })),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = search(&client, "One Piece", "sub", Some(&server.uri()))
+            .await
+            .expect_err("rate limit must fail");
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: Some(9)
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_show_detects_rate_limit_without_a_parseable_wait() {
+        // Same classification on the show lookup; a message with no
+        // number still types as RateLimited, just without the hint.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "errors": [{"message": "Too many requests."}],
+                    "data": null
+                })),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = fetch_show(&client, "abc123", Some(&server.uri()))
+            .await
+            .expect_err("rate limit must fail");
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: None
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn search_decode_failure_reports_status_and_body_evidence() {
         // A 200 whose body isn't the expected GraphQL shape — an
         // errors payload, a bot-filter interstitial, a truncated
