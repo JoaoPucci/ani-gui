@@ -153,6 +153,22 @@ pub(super) struct PickedTitle {
     /// writes (no `write_cache(false)`) when this is true even if
     /// `any_search_succeeded` is also true.
     pub any_search_errored: bool,
+    /// Set when a search died on allanime's in-band rate limit: the
+    /// first hit's advertised wait (inner `None` = the message had no
+    /// parseable number). The walk stops the moment this is seen —
+    /// every further alt-title search inside the limit window is a
+    /// doomed request that deepens the limit — and callers surface
+    /// the typed 429 ahead of every other miss verdict so the
+    /// frontend and retry layers keep `retry_after_secs`.
+    pub rate_limited: Option<Option<u64>>,
+}
+
+impl PickedTitle {
+    /// The typed rate-limit error carried by this pick, if any.
+    pub(super) fn rate_limit_error(&self) -> Option<AniError> {
+        self.rate_limited
+            .map(|retry_after_secs| AniError::RateLimited { retry_after_secs })
+    }
 }
 
 /// Update Continue Watching on a play-cache hit. The cache-miss
@@ -239,6 +255,9 @@ async fn enrich_availability_after_success(
 /// branch); the non-play callers don't touch that cache so this
 /// pure variant is enough for them.
 pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
+    if let Some(e) = picked.rate_limit_error() {
+        return e;
+    }
     if picked.any_search_succeeded && !picked.any_search_errored {
         AniError::NoResults
     } else {
@@ -251,6 +270,16 @@ pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
 /// see the comments inside for the policy. Extracted out of
 /// `play_with_progress` to keep its ccn under the firm CRAP ceiling.
 fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle) -> AniError {
+    if let Some(e) = picked.rate_limit_error() {
+        // Rate-limited window: the typed 429 (with the server's own
+        // retry hint) beats every other verdict, and says nothing
+        // about whether the show exists — no cache write.
+        tracing::info!(
+            kitsu_id = ?args.kitsu_id,
+            "play: allanime rate-limited during picking; surfacing 429",
+        );
+        return e;
+    }
     if !picked.any_search_succeeded {
         tracing::warn!(
             kitsu_id = ?args.kitsu_id,
@@ -308,6 +337,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
     let mut chosen_pick_so_far = 1usize;
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    let mut rate_limited: Option<Option<u64>> = None;
     for title in
         std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
     {
@@ -316,6 +346,20 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
                 tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
                 results.push((title.to_string(), cands));
                 any_search_succeeded = true;
+            }
+            Err(AniError::RateLimited { retry_after_secs }) => {
+                // The window is refusing everything — walking the
+                // remaining alt titles would burn budget on doomed
+                // requests and extend the limit. Stop and carry the
+                // advertised wait upward.
+                tracing::warn!(
+                    title,
+                    retry_after_secs = ?retry_after_secs,
+                    "play: allanime rate limited; abandoning candidate walk",
+                );
+                any_search_errored = true;
+                rate_limited = Some(retry_after_secs);
+                break;
             }
             Err(e) => {
                 tracing::warn!(
@@ -363,6 +407,7 @@ pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> P
         candidate: chosen,
         any_search_succeeded,
         any_search_errored,
+        rate_limited,
     }
 }
 
@@ -1327,6 +1372,7 @@ mod tests {
             candidate: None,
             any_search_succeeded: any_success,
             any_search_errored: any_error,
+            rate_limited: None,
         }
     }
 

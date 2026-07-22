@@ -231,6 +231,14 @@ pub async fn check_availability(
         kitsu_id: args.kitsu_id.clone(),
     };
     let picked = pick_title_and_index(state, &play_view).await;
+    // Rate-limited window: surface the typed 429 with the server's
+    // retry hint instead of the generic Network below — retry layers
+    // key off it, and the row stays unwritten either way.
+    if picked.candidate.is_none() {
+        if let Some(e) = picked.rate_limit_error() {
+            return Err(e);
+        }
+    }
     let chosen_candidate = picked.candidate;
     // Transient: every allanime preflight search errored. Don't
     // poison the availability row with `available=false` — the show
