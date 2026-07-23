@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { describeError, describeExternalLaunchFailure, describePlayFailure } from './error-copy';
+import {
+	describeError,
+	describeExternalLaunchFailure,
+	describePlayFailure,
+	describeRateLimit
+} from './error-copy';
+
+describe('describeRateLimit', () => {
+	it('maps the typed rate limit with its wait for reuse by route-local mappers', () => {
+		// The detail and home pages keep their own surface-specific
+		// mappers for the older kinds; this shared first-chance helper
+		// is what lets all surfaces render the busy-source copy (and
+		// the upstream's advertised wait) without duplicating it.
+		const msg = describeRateLimit({ kind: 'rate_limited', retry_after_secs: 7 });
+		expect(msg).toMatch(/busy/i);
+		expect(msg).toMatch(/7/);
+	});
+
+	it('returns null for every other error so surface copy stays local', () => {
+		expect(describeRateLimit({ kind: 'timeout' })).toBeNull();
+		expect(describeRateLimit({ kind: 'network' })).toBeNull();
+		expect(describeRateLimit(new Error('x'))).toBeNull();
+		expect(describeRateLimit(null)).toBeNull();
+	});
+});
 
 describe('describeError', () => {
 	it('formats AniError envelopes as "<kind>: <detail>"', () => {
