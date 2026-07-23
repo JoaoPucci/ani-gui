@@ -269,27 +269,10 @@ pub async fn check_availability(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
-            Ok(detail) => {
-                episode_count = detail.max_integer_episode(mode);
-                extra_episodes = detail
-                    .available_episodes_detail
-                    .for_mode(mode)
-                    .iter()
-                    .filter(|t| t.parse::<u32>().is_err())
-                    .cloned()
-                    .collect();
-            }
-            Err(_) => {
-                // Show fetch failed — fall back to the count from the
-                // search hit. Off by one for shows with halves, but
-                // good enough for the cap until next probe.
-                let n = c.available_episodes.for_mode(mode);
-                if n > 0 {
-                    episode_count = Some(n);
-                }
-            }
-        }
+        let outcome = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
+        let (count, extras) = enrich_from_show_fetch(outcome, c, mode)?;
+        episode_count = count;
+        extra_episodes = extras;
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
@@ -553,6 +536,40 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
             );
         }
         sleep(backoff).await;
+    }
+}
+
+/// Fold the show-metadata fetch outcome into `(episode_count,
+/// extras)`. `RateLimited` propagates: the throttle window must
+/// reach the caller — and through it the warm loop's backoff —
+/// instead of being silently downgraded, and the cache row is
+/// better left unwritten than written from degraded data
+/// mid-window (the next probe re-attempts). Every other failure
+/// keeps the count fallback from the search hit: off by one for
+/// shows with half-episodes, but better than blocking the write.
+fn enrich_from_show_fetch(
+    outcome: Result<crate::scraper::allanime::ShowMetadata>,
+    candidate: &crate::scraper::Candidate,
+    mode: &str,
+) -> Result<(Option<u32>, Vec<String>)> {
+    match outcome {
+        Ok(detail) => {
+            let extras = detail
+                .available_episodes_detail
+                .for_mode(mode)
+                .iter()
+                .filter(|t| t.parse::<u32>().is_err())
+                .cloned()
+                .collect();
+            Ok((detail.max_integer_episode(mode), extras))
+        }
+        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
+            Err(crate::error::AniError::RateLimited { retry_after_secs })
+        }
+        Err(_) => {
+            let n = candidate.available_episodes.for_mode(mode);
+            Ok((if n > 0 { Some(n) } else { None }, Vec::new()))
+        }
     }
 }
 
