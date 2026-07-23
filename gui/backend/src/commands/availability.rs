@@ -510,7 +510,7 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// same list reads the now-populated cache and filters known-
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
-    use tokio::time::{sleep, Duration};
+    use tokio::time::sleep;
     // Batch-seed airing rows for the pre-premiere entries that will
     // actually probe (no fresh availability row): one AniList request
     // for the whole rail, so each probe's per-show seed below becomes
@@ -543,8 +543,34 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &key) {
             continue;
         }
-        let _ = check_availability(&state, &args).await;
-        sleep(Duration::from_millis(500)).await;
+        let outcome = check_availability(&state, &args).await;
+        let backoff = warm_backoff(&outcome);
+        if let Err(crate::error::AniError::RateLimited { retry_after_secs }) = &outcome {
+            tracing::info!(
+                retry_after_secs = ?retry_after_secs,
+                wait = ?backoff,
+                "availability warm: allanime rate limited; backing off",
+            );
+        }
+        sleep(backoff).await;
+    }
+}
+
+/// How long the warm loop sleeps after one probe, given its outcome.
+/// A rate-limited probe waits out the upstream's advertised window
+/// (floored at 1 s so a "0 seconds" answer can't become a hot loop;
+/// 10 s when the message carried no number) instead of the 500 ms
+/// pacing gap — continuing at full pace would issue doomed requests
+/// that deepen the limit while the user's click path competes for
+/// the same budget. Every other outcome keeps the half-second
+/// cadence. The rate-limited row stays unwritten; a later warm pass
+/// re-probes it.
+fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
+    match outcome {
+        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
+            std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1))
+        }
+        _ => std::time::Duration::from_millis(500),
     }
 }
 
