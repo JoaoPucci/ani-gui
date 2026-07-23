@@ -52,6 +52,20 @@ describe('describePlayFailure', () => {
 		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toMatch(/Network trouble/);
 	});
 
+	it('surfaces the rate-limit wait when the backend carries one', () => {
+		// allanime answers its throttle with an explicit "try again in
+		// N seconds" — the backend forwards it as retry_after_secs and
+		// the copy must pass the number on instead of the generic
+		// "couldn't start" shrug.
+		const msg = describePlayFailure({ kind: 'rate_limited', retry_after_secs: 9 });
+		expect(msg).toMatch(/busy/i);
+		expect(msg).toMatch(/9/);
+	});
+
+	it('still names the busy source when the rate limit has no hint', () => {
+		expect(describePlayFailure({ kind: 'rate_limited', retry_after_secs: null })).toMatch(/busy/i);
+	});
+
 	it('falls back to a generic retry message for unrecognized errors', () => {
 		// A plain Error or an unexpected shape lands here. The copy
 		// stays optimistic — "try again" — because the most common
