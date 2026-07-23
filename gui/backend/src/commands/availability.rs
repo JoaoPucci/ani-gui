@@ -562,6 +562,52 @@ pub struct AvailabilityWarmArgs {
 mod tests {
     use super::*;
 
+    #[test]
+    fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
+        // A rate-limited probe must not be followed by another request
+        // 500 ms later — the upstream said "try again in N seconds",
+        // and continuing at full pace issues doomed requests that
+        // deepen the limit while the user's click path competes for
+        // the same budget.
+        let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
+            retry_after_secs: Some(9),
+        });
+        assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(9));
+    }
+
+    #[test]
+    fn warm_backoff_defaults_conservatively_when_the_hint_is_missing() {
+        let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
+            retry_after_secs: None,
+        });
+        assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
+        let ok: Result<AvailabilityResponse> = Ok(AvailabilityResponse {
+            available: true,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+        });
+        assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
+        let other: Result<AvailabilityResponse> = Err(crate::error::AniError::Network);
+        assert_eq!(warm_backoff(&other), std::time::Duration::from_millis(500));
+    }
+
+    proptest::proptest! {
+        // Pure-function contract: every advertised wait maps to
+        // exactly that many seconds (floored at 1 so a "0 seconds"
+        // answer can't turn the backoff into a hot loop).
+        #[test]
+        fn warm_backoff_honours_every_advertised_wait(n in 0u64..=100_000u64) {
+            let outcome: Result<AvailabilityResponse> =
+                Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n) });
+            let want = std::time::Duration::from_secs(n.max(1));
+            proptest::prop_assert_eq!(warm_backoff(&outcome), want);
+        }
+    }
+
     /// The cache body is the AvailabilityResponse JSON. Adding the new
     /// episode_count field must round-trip — the detail page reads it
     /// to size the episode list and gate the Download All / range cap.
