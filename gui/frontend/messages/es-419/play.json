@@ -97,5 +97,7 @@
 	"play_failure_scraper": "No se pudo resolver una transmisión válida ahora mismo. La fuente de streaming parece tener problemas — vuelve a intentarlo en unos minutos.",
 	"play_failure_timeout": "La fuente de streaming tardó demasiado en responder. Vuelve a intentarlo en unos minutos.",
 	"play_failure_network": "Problemas de red al conectar con la fuente de streaming. Revisa tu conexión y vuelve a intentarlo.",
+	"play_failure_rate_limited": "La fuente de streaming está ocupada en este momento. Espera unos segundos y vuelve a intentarlo.",
+	"play_failure_rate_limited_wait": "La fuente de streaming está ocupada en este momento. Vuelve a intentarlo en unos {seconds} segundos.",
 	"play_failure_generic": "No se pudo iniciar este episodio ahora mismo. Vuelve a intentarlo en unos minutos."
 }

@@ -31,10 +31,21 @@ export function describeError(e: unknown): string {
 }
 
 /** User-facing copy for a play-call failure. The message branches
- *  match (in order): no_results → catalogue miss; scraper → upstream
- *  unhappy; timeout → slow upstream; network / upstream → connection
- *  trouble; default → generic retry. */
+ *  match (in order): rate_limited → busy source (with the upstream's
+ *  own retry hint when it sent one); no_results → catalogue miss;
+ *  scraper → upstream unhappy; timeout → slow upstream; network /
+ *  upstream → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown): string {
+	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	if (obj?.kind === 'rate_limited') {
+		// allanime's throttle answers with "try again in N seconds";
+		// the backend forwards N as retry_after_secs. Pass it on —
+		// a concrete wait beats a generic shrug.
+		const secs = obj.retry_after_secs;
+		return typeof secs === 'number'
+			? m.play_play_failure_rate_limited_wait({ seconds: secs })
+			: m.play_play_failure_rate_limited();
+	}
 	const raw = describeError(e).toLowerCase();
 	if (raw.includes('no_results')) {
 		return m.play_play_failure_no_results();
