@@ -7,6 +7,7 @@
  */
 
 import { downloadStream, type DownloadArgs } from '$lib/api';
+import { describeRateLimit } from '$lib/play/error-copy';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -46,6 +47,14 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			if (isFfmpegMissingPayload(e)) {
 				downloadFailureStore.show({ kind: 'ffmpeg_missing' });
 				downloadStore.dismiss(id);
+				return;
+			}
+			// A throttled resolve carries the upstream's own wait —
+			// show the shared busy-source copy in the dock row instead
+			// of discarding retry_after_secs into "Download failed".
+			const rateLimited = describeRateLimit(e);
+			if (rateLimited !== null) {
+				downloadStore.markError(id, rateLimited);
 				return;
 			}
 			const msg =

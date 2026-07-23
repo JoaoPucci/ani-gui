@@ -128,6 +128,31 @@ describe('startDownload', () => {
 		);
 	});
 
+	it('surfaces the rate-limit wait in the dock instead of a generic failure', async () => {
+		// A throttled resolve rejects with the typed AniError envelope
+		// { kind: 'rate_limited', retry_after_secs } — no `message`
+		// property, so the generic branch would render "Download
+		// failed" and discard the advertised wait. The dock row must
+		// show the shared busy-source copy with the seconds instead.
+		apiMock.downloadStream.mockRejectedValueOnce({
+			kind: 'rate_limited',
+			key: 'error.network.rate_limited',
+			retry_after_secs: 9
+		});
+		startDownload(baseArgs);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			expect.stringMatching(/busy/i)
+		);
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			expect.stringMatching(/9/)
+		);
+		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
+	});
+
 	it('translates a thrown Error into markError with its message', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce(new Error('upstream 500'));
 		startDownload(baseArgs);

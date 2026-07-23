@@ -32,6 +32,18 @@ pub enum AniError {
     #[error("no results")]
     NoResults,
 
+    /// allanime answered HTTP 200 with an in-band GraphQL "Too many
+    /// requests" error — its application-level rate limit. Distinct
+    /// from [`AniError::Upstream`] with 429: allanime never sends the
+    /// HTTP status, only this payload.
+    #[error("rate limited by upstream")]
+    RateLimited {
+        /// Seconds the upstream asked us to wait ("please try again
+        /// in N seconds"); `None` when the message carried no
+        /// parseable number.
+        retry_after_secs: Option<u64>,
+    },
+
     /// Stdout from `ani-cli` did not match the expected debug-mode shape.
     #[error("parse failed: {detail}")]
     ParseFailed {
@@ -143,6 +155,7 @@ impl AniError {
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
             Self::SyncplaySpawnFailed { .. } => "error.syncplay.spawn_failed",
             Self::Upstream { .. } => "error.network.upstream",
+            Self::RateLimited { .. } => "error.network.rate_limited",
             Self::Network => "error.network.unreachable",
             Self::Cache => "error.cache.generic",
             Self::Io => "error.io.generic",
@@ -167,6 +180,7 @@ impl AniError {
             // A rate-limit passes through verbatim so the frontend can tell it
             // apart from a generic bad gateway and tell the user to retry.
             Self::Upstream { status: 429 } => 429,
+            Self::RateLimited { .. } => 429,
             Self::Upstream { .. } => 502,
             Self::Network => 503,
             Self::Timeout => 504,
@@ -221,6 +235,19 @@ impl From<toml::de::Error> for AniError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rate_limited_maps_to_429_and_a_dedicated_key() {
+        // The typed rate-limit answer (allanime's in-band "Too many
+        // requests" GraphQL payload) must surface as HTTP 429 so the
+        // frontend can distinguish "wait a few seconds" from a
+        // generic upstream failure, and carry its own i18n key.
+        let e = AniError::RateLimited {
+            retry_after_secs: Some(9),
+        };
+        assert_eq!(e.http_status_code(), 429);
+        assert_eq!(e.key(), "error.network.rate_limited");
+    }
 
     #[test]
     fn every_variant_has_a_stable_key() {
