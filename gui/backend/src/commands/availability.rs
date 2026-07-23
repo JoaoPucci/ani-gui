@@ -588,6 +588,52 @@ pub struct AvailabilityWarmArgs {
 mod tests {
     use super::*;
 
+    fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
+        serde_json::from_value(serde_json::json!({
+            "_id": "abc",
+            "name": "X",
+            "availableEpisodes": {"sub": sub, "dub": 0, "raw": 0},
+            "__typename": "Show"
+        }))
+        .expect("candidate")
+    }
+
+    #[test]
+    fn enrich_from_show_fetch_propagates_rate_limits() {
+        // A throttled show-metadata fetch must NOT be downgraded to
+        // the count fallback: the caller (and the warm loop's
+        // backoff) needs the typed 429 + hint, and the cache row is
+        // better left unwritten than written mid-window.
+        let out = enrich_from_show_fetch(
+            Err(crate::error::AniError::RateLimited {
+                retry_after_secs: Some(9),
+            }),
+            &enrich_candidate(12),
+            "sub",
+        );
+        assert!(
+            matches!(
+                out,
+                Err(crate::error::AniError::RateLimited {
+                    retry_after_secs: Some(9)
+                })
+            ),
+            "got {out:?}"
+        );
+    }
+
+    #[test]
+    fn enrich_from_show_fetch_keeps_the_count_fallback_for_other_failures() {
+        let out = enrich_from_show_fetch(
+            Err(crate::error::AniError::Network),
+            &enrich_candidate(12),
+            "sub",
+        )
+        .expect("fallback is Ok");
+        assert_eq!(out.0, Some(12));
+        assert!(out.1.is_empty());
+    }
+
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
         // A rate-limited probe must not be followed by another request
