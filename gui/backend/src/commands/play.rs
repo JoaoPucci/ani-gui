@@ -1882,6 +1882,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rate_limited_searches_open_the_breaker() {
+        use crate::scraper::gate::ScrapePriority;
+        // allanime's in-band throttle (HTTP 200 + GraphQL errors
+        // payload) is the CLEAREST rate-limit signal there is — a
+        // background walk that hits it must feed the gate, or
+        // concurrent warm handlers keep firing into the advertised
+        // window at full pace.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "errors": [{
+                        "message": "Too many requests, please try again in 9 seconds.",
+                    }],
+                    "data": null,
+                })),
+            )
+            .mount(&server)
+            .await;
+
+        let state = state_with_proxy_origin();
+        let mut args = external_args("Some Show", "1");
+        args.prefetch = true;
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            let _ = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "typed rate-limit responses must open the breaker"
+        );
+    }
+
+    #[tokio::test]
     async fn parse_failures_count_toward_the_breaker() {
         use crate::scraper::gate::ScrapePriority;
         // ani-cli can exit 0 while printing a malformed debug block
