@@ -303,3 +303,30 @@ async fn success_closes_the_breaker_and_resets_the_run() {
     gate.record_outcome(false, Instant::now());
     assert!(gate.admit(ScrapePriority::Background).await.is_ok());
 }
+
+#[tokio::test(start_paused = true)]
+async fn stale_failures_cannot_reopen_past_a_newer_recovery() {
+    // Overlapping paced requests: three fast failures open the
+    // breaker, a fresh interactive success closes it — and then three
+    // stragglers that STARTED before that recovery finish with slow
+    // failures. Counting them would reopen the breaker for a full
+    // cooldown despite the newer evidence; they must be ignored, the
+    // mirror of the stale-success filter against `opened_at`.
+    let gate = ScraperGate::new();
+    let straggler_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, Instant::now());
+    }
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record_outcome(true, Instant::now());
+
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, straggler_started);
+    }
+    assert!(
+        gate.admit(ScrapePriority::Background).await.is_ok(),
+        "failures older than the accepted recovery must not reopen the breaker"
+    );
+}
