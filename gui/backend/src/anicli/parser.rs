@@ -123,20 +123,43 @@ pub fn strip_ansi(bytes: &[u8]) -> String {
 }
 
 /// Parse search-results lines into `SearchResult`s. The expected line
-/// format is `id<TAB>title (N episodes)`. Lines that don't match the
+/// format is `id<TAB>title (N episodes)`, with a ` (YYYY)` release-year
+/// tail appended since ani-cli 4.14.5. Lines that don't match the
 /// pattern are silently skipped — `ani-cli` mixes log lines with results.
 #[must_use]
 pub fn parse_search_results(stdout: &str) -> Vec<SearchResult> {
     stdout.lines().filter_map(parse_search_line).collect()
 }
 
+/// Strip a trailing all-digit parenthetical — the release year ani-cli
+/// ≥ 4.14.5 appends after the episode count. Returns the input slice
+/// unchanged when the last group isn't purely digits (e.g. it's the
+/// `(N episodes)` group on a pre-4.14.5 line).
+fn strip_trailing_year(rest: &str) -> &str {
+    let Some(inner) = rest.strip_suffix(')') else {
+        return rest;
+    };
+    let Some(open) = inner.rfind('(') else {
+        return rest;
+    };
+    let digits = &inner[open + 1..];
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return rest;
+    }
+    inner[..open].trim_end()
+}
+
 fn parse_search_line(line: &str) -> Option<SearchResult> {
-    // Format: `id\ttitle (N episodes)`
+    // Format: `id\ttitle (N episodes)` or `id\ttitle (N episodes) (YYYY)`
     let (id, rest) = line.split_once('\t')?;
     let id = id.trim();
     if id.is_empty() {
         return None;
     }
+
+    // Peel off the year tail first so the rsplit below lands on the
+    // episode-count group either way.
+    let rest = strip_trailing_year(rest.trim_end());
 
     // The title may itself contain parentheses, so we rsplit on `(` to find
     // the last "(N episodes)" group.

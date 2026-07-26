@@ -73,6 +73,34 @@ describe('resolveHistoryEntry — display vs search title', () => {
 	});
 });
 
+describe('resolveHistoryEntry — year-suffixed titles (ani-cli ≥ 4.14.5)', () => {
+	it('strips both the episode count and the trailing year', () => {
+		// ani-cli 4.14.5 started appending the release year to search
+		// results, so newly written history rows read
+		// "Title (N episodes) (YYYY)". Both parentheticals are
+		// bookkeeping, not part of the show's name.
+		const r = resolveHistoryEntry(entry('Demon Slayer (26 episodes) (2019)', '5'), null);
+		expect(r.displayTitle).toBe('Demon Slayer');
+		expect(r.searchTitle).toBe('Demon Slayer');
+		expect(r.courSize).toBe(26);
+	});
+
+	it('keeps parentheses that belong to the title itself', () => {
+		const r = resolveHistoryEntry(
+			entry('Fullmetal Alchemist (Brotherhood) (64 episodes) (2009)', '3'),
+			null
+		);
+		expect(r.searchTitle).toBe('Fullmetal Alchemist (Brotherhood)');
+		expect(r.courSize).toBe(64);
+	});
+
+	it('still handles pre-4.14.5 rows without a year', () => {
+		const r = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), null);
+		expect(r.searchTitle).toBe('Demon Slayer');
+		expect(r.courSize).toBe(26);
+	});
+});
+
 describe('resolveHistoryEntry — direct episode mapping', () => {
 	it('maps episode number directly through to Kitsu', () => {
 		const r = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), stubKitsu());
