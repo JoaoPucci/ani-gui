@@ -200,7 +200,15 @@ impl ScraperGate {
             s.open_until = None;
             s.opened_at = None;
             s.half_open_trial_at = None;
-            s.last_recovery_at = Some(Instant::now());
+            // The boundary is when the successful request STARTED,
+            // advanced monotonically — a slow success that lands late
+            // proves recovery only as of its own start; requests that
+            // began after it may be watching a newer rate-limit
+            // episode and their failures stay fresh evidence.
+            s.last_recovery_at = Some(match s.last_recovery_at {
+                Some(prev) => prev.max(started_at),
+                None => started_at,
+            });
         } else {
             if let Some(recovered) = s.last_recovery_at {
                 if started_at < recovered {
