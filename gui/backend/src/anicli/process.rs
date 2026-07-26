@@ -468,11 +468,16 @@ impl Drop for GroupKillGuard {
 /// Platform command that takes down a spawned downloader's whole
 /// process tree. Unix: `kill -9 -- -PID` — the negative pid addresses
 /// the process group created at spawn (`process_group(0)`, pgid ==
-/// child pid). Returns `None` when the platform has no tree-kill
-/// wired yet.
+/// child pid). Windows: `taskkill /PID <pid> /T /F` — no process
+/// group there; /T walks the child tree by parent pid (which is why
+/// the guard must fire while the shell is still alive), /F because
+/// the transfer tools ignore the graceful signal mid-write.
 fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)> {
     if windows {
-        return None;
+        return Some((
+            "taskkill",
+            vec!["/PID".into(), pid.to_string(), "/T".into(), "/F".into()],
+        ));
     }
     Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
@@ -843,6 +848,23 @@ mod tests {
         let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");
         assert_eq!(prog, "taskkill");
         assert_eq!(args, vec!["/PID", "1234", "/T", "/F"]);
+    }
+
+    proptest::proptest! {
+        // Contract for any pid on both platforms: the command always
+        // names the pid (negated group on unix, bare tree root on
+        // windows) and never comes back empty — every supported
+        // platform has a tree kill.
+        #[test]
+        fn tree_kill_args_always_names_the_pid(
+            pid in proptest::num::u32::ANY,
+            windows in proptest::bool::ANY,
+        ) {
+            let (prog, args) = tree_kill_args(pid, windows).expect("tree kill exists");
+            let want = if windows { pid.to_string() } else { format!("-{pid}") };
+            let named = args.iter().any(|a| a == &want);
+            proptest::prop_assert!(named, "{} args {:?} missing {}", prog, args, want);
+        }
     }
 
     /// Stub ani-cli that mirrors the download path's process shape:
