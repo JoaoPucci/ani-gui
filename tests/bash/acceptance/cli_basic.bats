@@ -80,6 +80,21 @@ setup() {
     [[ "$output" == *"No unwatched series in history"* ]]
 }
 
+@test "default flatpak directory selection is accepted at startup" {
+    # dep_ch_failover's Linux player chain returns the literal flatpak
+    # app directory when no native mpv precedes it (the Steamdeck
+    # default). `command -v` reports failure for a directory, so
+    # without a dependency-check exception that selection dies at
+    # startup just like the flatpak_mpv alias did.
+    histfile="$ANI_CLI_HIST_DIR/ani-hsts"
+    : >"$histfile"
+    export ANI_CLI_PLAYER="$HOME/.local/share/flatpak/app/io.mpv/Mpv/"
+    run "$ANI_CLI_PATH" -c
+    [ "$status" -eq 1 ]
+    [[ "$output" != *"not found"* ]]
+    [[ "$output" == *"No unwatched series in history"* ]]
+}
+
 @test "ani-cli -c with empty history dies 'No unwatched series in history!'" {
     histfile="$ANI_CLI_HIST_DIR/ani-hsts"
     : >"$histfile"
