@@ -477,11 +477,33 @@ impl Drop for GroupKillGuard {
             // still alive, before kill_on_drop reaps it. `.status()`
             // (not `.spawn()`) so the helper can't linger as a
             // zombie; it exits in microseconds.
+            #[cfg(test)]
+            if let Some(probe) = tree_kill_probe() {
+                let _ = std::process::Command::new(probe)
+                    .arg(pid.to_string())
+                    .status();
+                return;
+            }
             if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
                 let _ = std::process::Command::new(prog).args(&args).status();
             }
         }
     }
+}
+
+/// Test seam: when a probe is registered, the teardown runs it (child
+/// pid as its argument) INSTEAD of the real tree-kill command. The
+/// Windows contract — `taskkill /T` can only discover descendants
+/// while the parent is still alive — is unobservable on the platforms
+/// the suite runs on, so a probe standing in for the kill command is
+/// the only way a test can record WHEN the teardown fires relative to
+/// the parent's reap. The probe takes over the cleanup duty too.
+#[cfg(test)]
+static TREE_KILL_PROBE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn tree_kill_probe() -> Option<PathBuf> {
+    TREE_KILL_PROBE.lock().expect("probe lock").clone()
 }
 
 /// Platform command that takes down a spawned downloader's whole
@@ -909,6 +931,75 @@ mod tests {
         std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755))
             .expect("chmod ffmpeg");
         (td, path)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tree_kill_fires_while_the_parent_is_still_alive() {
+        let _guard = ENV_LOCK.lock().await;
+        // The Windows contract: taskkill /T discovers descendants by
+        // a LIVE parent pid, so the teardown must run before
+        // kill_on_drop reaps the shell. Only observable through the
+        // probe seam — it stands in for the tree-kill command and
+        // records the parent's state (running vs zombie/reaped) at
+        // the exact moment the teardown fires.
+        let probe_td = tempfile::tempdir().expect("probe tempdir");
+        let out = probe_td.path().join("probe.out");
+        let probe = probe_td.path().join("probe.sh");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(
+                &probe,
+                format!(
+                    "#!/bin/sh\nsleep 0.1\nif [ -r \"/proc/$1/status\" ] && ! grep -q '^State:.*Z' \"/proc/$1/status\"; then\n  echo alive > '{out}'\nelse\n  echo dead > '{out}'\nfi\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
+                    out = out.display()
+                ),
+            )
+            .expect("write probe");
+            std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod probe");
+        }
+        *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let opts = debug_opts(stub);
+        let task = tokio::spawn(async move {
+            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
+        });
+
+        // Wait for the run to be mid-flight, then abort it.
+        {
+            let mut waited_ms = 0u32;
+            while !pidfile.exists() {
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        }
+        task.abort();
+        let _ = task.await;
+
+        let verdict = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out) {
+                    if !s.trim().is_empty() {
+                        break s.trim().to_string();
+                    }
+                }
+                assert!(waited_ms < 5_000, "probe never ran");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+        *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+        assert_eq!(
+            verdict, "alive",
+            "the tree kill must fire while the parent is still alive — a reaped parent \
+             hides its descendants from taskkill /T on Windows"
+        );
     }
 
     #[cfg(unix)]
