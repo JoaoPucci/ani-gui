@@ -199,15 +199,17 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 		apiMock.checkAvailability.mockReset();
 	});
 
-	it('marks inline probes as background so the scraper gate paces them', async () => {
-		// Rail fills are opportunistic; the backend gate paces
-		// background probes and skips them while its breaker is open,
-		// so a cold cache can't rate-limit the IP before the user's
-		// first click.
+	it('keeps inline probes interactive — the search user is waiting on them', async () => {
+		// Unlike the rail fills, the strict variant BLOCKS the search
+		// results on every uncached probe. Routing those through the
+		// gate's paced background slots turns a cold ~20-hit search
+		// into a ~20-second wait (two admits per hit at 500 ms each).
+		// The user is actively waiting, so these probes ride the
+		// interactive lane like a click would.
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockResolvedValue({ available: true });
 		await filterAvailableStrict([ref('a')], 'sub');
-		expect(apiMock.checkAvailability).toHaveBeenCalledWith(
+		expect(apiMock.checkAvailability).not.toHaveBeenCalledWith(
 			expect.objectContaining({ background: true })
 		);
 	});
