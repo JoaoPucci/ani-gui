@@ -49,6 +49,7 @@ mod tests {
             ani_cli_path: PathBuf::from("/usr/local/bin/ani-cli"),
             bash_path: None,
             bundled_bin: None,
+            botan_shim_bin: None,
             history_path: PathBuf::from("/home/u/.local/state/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),

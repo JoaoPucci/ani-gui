@@ -71,8 +71,12 @@ pub fn compose_anicli_path(
 /// composed PATH untouched. Pure, like [`compose_anicli_path`].
 #[must_use]
 pub fn append_shim_bin(composed: OsString, shim_bin: Option<&Path>) -> OsString {
-    let _ = (&composed, shim_bin);
-    todo!("green commit implements shim PATH appending")
+    let Some(shim) = shim_bin else {
+        return composed;
+    };
+    let mut parts: Vec<PathBuf> = std::env::split_paths(&composed).collect();
+    parts.push(shim.to_path_buf());
+    std::env::join_paths(&parts).unwrap_or(composed)
 }
 
 /// Names of OS env vars the ani-cli spawn must forward on Windows

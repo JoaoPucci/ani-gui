@@ -216,8 +216,24 @@ pub fn provision_botan_wrapper(
     dir: &std::path::Path,
     backend_exe: &std::path::Path,
 ) -> std::io::Result<std::path::PathBuf> {
-    let _ = (dir, backend_exe);
-    todo!("green commit implements wrapper provisioning")
+    std::fs::create_dir_all(dir)?;
+    let wrapper = dir.join("botan");
+    let body = format!(
+        "#!/bin/sh\n\
+         # Provisioned by ani-gui-backend on boot; execs the backend's\n\
+         # in-process botan shim for ani-cli's encrypted allanime\n\
+         # transport. Appended to the spawn PATH, so a real Botan\n\
+         # installation always wins over this wrapper.\n\
+         exec \"{}\" --botan-shim \"$@\"\n",
+        backend_exe.display()
+    );
+    std::fs::write(&wrapper, body)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(dir.to_path_buf())
 }
 
 #[cfg(test)]
