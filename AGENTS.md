@@ -62,7 +62,7 @@ Known test debt (extract + unit-test next time you touch them):
   - `shfmt -i 4 -ci -d`
 - Never reformat the script. Never add lint rules to it.
 
-Only one carried patch is permitted: the `__ANI_CLI_LIB__` source-guard line near the bottom of the file (so tests can `source` the script as a library). This guard is also being proposed upstream; if accepted, our carried patch becomes zero.
+Carried fork patches are the exception, not the rule. Every patch beyond the `__ANI_CLI_LIB__` source-guard line (which lets tests `source` the script as a library) must be marked in-file with an `# ani-gui patch:` comment explaining why it exists, and must be a candidate for upstreaming — a patch accepted upstream drops out of the carried set at the next sync. Current set beyond the guard: the greedy `(.+)` name capture in `search_anime` (index stability for titles with escaped quotes), the `process_hist_entry` watched-episode fallback guard, the portable no-wrap base64 in `get_aa_req` (macOS has no `base64 -w`), and the flatpak player alias/directory acceptance at the dependency check and play branch.
 
 ## 4. Layer boundaries
 
