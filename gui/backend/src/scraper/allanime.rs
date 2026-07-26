@@ -593,13 +593,36 @@ pub async fn fetch_show(
         show: Option<ShowMetadata>,
     }
     let text = resp.text().await.map_err(|_| AniError::Network)?;
-    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
-        detail: format!(
-            "allanime show response: {e}; status {status}; body: {}",
-            body_evidence(&text)
-        ),
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| {
+        classify_undecodable(&text).unwrap_or_else(|| AniError::ParseFailed {
+            detail: format!(
+                "allanime show response: {e}; status {status}; body: {}",
+                body_evidence(&text)
+            ),
+        })
     })?;
     Ok(parsed.data.show.unwrap_or_default())
+}
+
+/// Classify a 200-status body that failed to decode into the expected
+/// GraphQL shape. allanime expresses its application-level rate limit
+/// in-band — HTTP 200 with `{"errors":[{"message":"Too many requests,
+/// please try again in N seconds."}],"data":null}` (captured live) —
+/// which the typed [`AniError::RateLimited`] carries upward, wait hint
+/// included, so retry and backoff layers can act on the server's own
+/// number instead of guessing. Anything else returns `None` and falls
+/// through to the evidence-carrying `ParseFailed`.
+fn classify_undecodable(text: &str) -> Option<AniError> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let msg = v.get("errors")?.get(0)?.get("message")?.as_str()?;
+    if !msg.to_ascii_lowercase().contains("too many requests") {
+        return None;
+    }
+    let retry_after_secs = msg
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|s| !s.is_empty())
+        .and_then(|s| s.parse().ok());
+    Some(AniError::RateLimited { retry_after_secs })
 }
 
 /// First ~200 characters of an undecodable upstream body, whitespace-
@@ -710,11 +733,13 @@ pub async fn search(
         edges: Vec<Candidate>,
     }
     let text = resp.text().await.map_err(|_| AniError::Network)?;
-    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| AniError::ParseFailed {
-        detail: format!(
-            "allanime search response: {e}; status {status}; body: {}",
-            body_evidence(&text)
-        ),
+    let parsed: Wrap = serde_json::from_str(&text).map_err(|e| {
+        classify_undecodable(&text).unwrap_or_else(|| AniError::ParseFailed {
+            detail: format!(
+                "allanime search response: {e}; status {status}; body: {}",
+                body_evidence(&text)
+            ),
+        })
     })?;
     Ok(parsed.data.shows.edges)
 }
@@ -1260,6 +1285,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_detects_allanime_rate_limit_and_carries_retry_after() {
+        // Exact in-band answer captured live on 2026-07-22: HTTP 200
+        // with a GraphQL errors payload. This must become the typed
+        // RateLimited error with the advertised wait, not a generic
+        // ParseFailed — every retry/backoff layer keys off it.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "errors": [{
+                        "message": "Too many requests, please try again in 9 seconds.",
+                        "locations": [{"line": 1, "column": 146}],
+                        "path": ["shows"],
+                        "extensions": {"code": "INTERNAL_SERVER_ERROR"}
+                    }],
+                    "data": null
+                })),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = search(&client, "One Piece", "sub", Some(&server.uri()))
+            .await
+            .expect_err("rate limit must fail");
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: Some(9)
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_show_detects_rate_limit_without_a_parseable_wait() {
+        // Same classification on the show lookup; a message with no
+        // number still types as RateLimited, just without the hint.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "errors": [{"message": "Too many requests."}],
+                    "data": null
+                })),
+            )
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let err = fetch_show(&client, "abc123", Some(&server.uri()))
+            .await
+            .expect_err("rate limit must fail");
+        assert!(
+            matches!(
+                err,
+                AniError::RateLimited {
+                    retry_after_secs: None
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn search_decode_failure_reports_status_and_body_evidence() {
         // A 200 whose body isn't the expected GraphQL shape — an
         // errors payload, a bot-filter interstitial, a truncated
@@ -1585,6 +1675,39 @@ mod tests {
             let want_dub = if dub_max == 0 { None } else { Some(dub_max) };
             proptest::prop_assert_eq!(m.max_integer_episode("sub"), want_sub);
             proptest::prop_assert_eq!(m.max_integer_episode("dub"), want_dub);
+        }
+
+        // classify_undecodable must never panic on arbitrary input —
+        // it runs on whatever bytes the upstream chose to send.
+        #[test]
+        fn classify_undecodable_never_panics(s in ".*") {
+            let _ = classify_undecodable(&s);
+        }
+
+        // Any canonical "Too many requests, please try again in N
+        // seconds." payload must type as RateLimited carrying exactly
+        // N, for every N — not just the captured value.
+        #[test]
+        fn classify_undecodable_extracts_every_advertised_wait(n in 0u64..=1_000_000u64) {
+            let body = format!(
+                r#"{{"errors":[{{"message":"Too many requests, please try again in {n} seconds."}}],"data":null}}"#
+            );
+            let got = classify_undecodable(&body);
+            let typed_with_wait = matches!(
+                &got,
+                Some(AniError::RateLimited { retry_after_secs: Some(m) }) if *m == n
+            );
+            proptest::prop_assert!(typed_with_wait, "got {:?}", got);
+        }
+
+        // GraphQL error payloads that are NOT the rate limit must fall
+        // through to None (→ evidence-carrying ParseFailed), whatever
+        // the message text — as long as it doesn't claim rate limiting.
+        #[test]
+        fn classify_undecodable_ignores_other_graphql_errors(msg in "[a-zA-Z0-9 .,!]{0,80}") {
+            proptest::prop_assume!(!msg.to_ascii_lowercase().contains("too many requests"));
+            let body = format!(r#"{{"errors":[{{"message":"{msg}"}}],"data":null}}"#);
+            proptest::prop_assert!(classify_undecodable(&body).is_none());
         }
 
         // Picker invariants for `pick_by_ep_count`:

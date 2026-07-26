@@ -60,6 +60,11 @@ interface StubOptions {
 	/** Hook fired whenever the renderer posts to /api/play — lets
 	 *  the test assert the click handler ran with the right episode. */
 	onPlay?: (body: unknown) => void;
+	/** Make the play stream answer with the backend's typed
+	 *  rate-limit envelope (allanime's in-band "Too many requests,
+	 *  please try again in N seconds" → kind: 'rate_limited' +
+	 *  retry_after_secs) instead of a done event. */
+	playRateLimited?: boolean;
 }
 
 async function launchAppWithContinueStubs(opts: StubOptions) {
@@ -142,6 +147,20 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 				quality: u.searchParams.get('quality')
 			};
 			opts.onPlay?.(body);
+			if (opts.playRateLimited) {
+				// Same envelope ani_error_to_sse_payload serializes for
+				// AniError::RateLimited — the renderer's SSE error
+				// listener rejects with this parsed object.
+				return r.fulfill({
+					status: 200,
+					contentType: 'text/event-stream',
+					body: `event: error\ndata: ${JSON.stringify({
+						kind: 'rate_limited',
+						key: 'error.network.rate_limited',
+						retry_after_secs: 9
+					})}\n\n`
+				});
+			}
 			return r.fulfill({
 				status: 200,
 				contentType: 'text/event-stream',
@@ -221,6 +240,35 @@ test('Continue card shows last+1 and clicking it plays that episode', async () =
 		// reverse cache during resolution), so assert what is.
 		expect(playArgs?.title).toBe(continueKitsuMatch.canonical_title);
 		expect(playArgs?.mode).toBe('sub');
+	} finally {
+		await app.close();
+	}
+});
+
+test('Rate-limited play surfaces the busy-source copy with the advertised wait', async () => {
+	// The backend types allanime's in-band throttle answer ("Too many
+	// requests, please try again in N seconds") and forwards
+	// retry_after_secs; the user-visible contract is that a click
+	// during the window names the wait instead of the generic
+	// "couldn't start" shrug.
+	const { app, page } = await launchAppWithContinueStubs({
+		history: continueHistory,
+		playRateLimited: true
+	});
+	try {
+		await waitForStripVisible(page);
+
+		const strip = page.getByRole('region', { name: /continue watching/i });
+		const card = strip.getByRole('button').first();
+		await expect(card).toBeVisible({ timeout: 10_000 });
+		// Wait for the resumable form (episode badge) — before
+		// onRowReady lands the tile renders as a non-interactive
+		// loading card and a click would wait on actionability forever.
+		await expect(card).toContainText('6', { timeout: 10_000 });
+		await card.click();
+
+		await expect(page.getByText(/busy right now/i)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(/about 9 seconds/i)).toBeVisible();
 	} finally {
 		await app.close();
 	}

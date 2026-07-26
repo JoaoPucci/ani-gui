@@ -14,6 +14,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
+	import { describeRateLimit } from '$lib/play/error-copy';
 
 	// Per-id, split-per-transition gate for the Continue Watching
 	// row's out:scale + animate:flip. The two factories check
@@ -505,6 +506,11 @@
 	/** Surface ani-cli failure kinds as user-readable copy. Mirrors the
 	 *  same mapper on /anime/[id] and /play/[id]. */
 	function describePlayFailure(e: unknown): string {
+		// Shared first-chance branch: the typed rate limit renders the
+		// same localized busy-source copy (with the upstream's own
+		// retry hint) on every play surface. See $lib/play/error-copy.
+		const rateLimited = describeRateLimit(e);
+		if (rateLimited !== null) return rateLimited;
 		const raw = describeError(e).toLowerCase();
 		if (raw.includes('no_results')) {
 			return "Couldn't find this title on the streaming source. The episode may not be available — try again later.";

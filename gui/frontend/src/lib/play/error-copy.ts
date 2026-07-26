@@ -30,11 +30,30 @@ export function describeError(e: unknown): string {
 	return String(e);
 }
 
+/** First-chance mapper for the backend's typed rate limit. Returns
+ *  the busy-source copy — with the upstream's advertised wait when
+ *  it sent one ("try again in N seconds" → retry_after_secs) — or
+ *  `null` for every other error. The detail and home pages keep
+ *  their own surface-specific mappers for the older kinds; they call
+ *  this first so all play surfaces share one localized rate-limit
+ *  branch instead of each growing a divergent copy. */
+export function describeRateLimit(e: unknown): string | null {
+	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	if (obj?.kind !== 'rate_limited') return null;
+	const secs = obj.retry_after_secs;
+	return typeof secs === 'number'
+		? m.play_play_failure_rate_limited_wait({ seconds: secs })
+		: m.play_play_failure_rate_limited();
+}
+
 /** User-facing copy for a play-call failure. The message branches
- *  match (in order): no_results → catalogue miss; scraper → upstream
- *  unhappy; timeout → slow upstream; network / upstream → connection
- *  trouble; default → generic retry. */
+ *  match (in order): rate_limited → busy source (with the upstream's
+ *  own retry hint when it sent one); no_results → catalogue miss;
+ *  scraper → upstream unhappy; timeout → slow upstream; network /
+ *  upstream → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown): string {
+	const rateLimited = describeRateLimit(e);
+	if (rateLimited !== null) return rateLimited;
 	const raw = describeError(e).toLowerCase();
 	if (raw.includes('no_results')) {
 		return m.play_play_failure_no_results();

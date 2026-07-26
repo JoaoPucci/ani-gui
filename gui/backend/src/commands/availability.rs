@@ -231,6 +231,14 @@ pub async fn check_availability(
         kitsu_id: args.kitsu_id.clone(),
     };
     let picked = pick_title_and_index(state, &play_view).await;
+    // Rate-limited window: surface the typed 429 with the server's
+    // retry hint instead of the generic Network below — retry layers
+    // key off it, and the row stays unwritten either way.
+    if picked.candidate.is_none() {
+        if let Some(e) = picked.rate_limit_error() {
+            return Err(e);
+        }
+    }
     let chosen_candidate = picked.candidate;
     // Transient: every allanime preflight search errored. Don't
     // poison the availability row with `available=false` — the show
@@ -261,27 +269,10 @@ pub async fn check_availability(
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
     if let Some(c) = chosen_candidate.as_ref() {
-        match crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await {
-            Ok(detail) => {
-                episode_count = detail.max_integer_episode(mode);
-                extra_episodes = detail
-                    .available_episodes_detail
-                    .for_mode(mode)
-                    .iter()
-                    .filter(|t| t.parse::<u32>().is_err())
-                    .cloned()
-                    .collect();
-            }
-            Err(_) => {
-                // Show fetch failed — fall back to the count from the
-                // search hit. Off by one for shows with halves, but
-                // good enough for the cap until next probe.
-                let n = c.available_episodes.for_mode(mode);
-                if n > 0 {
-                    episode_count = Some(n);
-                }
-            }
-        }
+        let outcome = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
+        let (count, extras) = enrich_from_show_fetch(outcome, c, mode)?;
+        episode_count = count;
+        extra_episodes = extras;
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
@@ -502,7 +493,7 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// same list reads the now-populated cache and filters known-
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
-    use tokio::time::{sleep, Duration};
+    use tokio::time::sleep;
     // Batch-seed airing rows for the pre-premiere entries that will
     // actually probe (no fresh availability row): one AniList request
     // for the whole rail, so each probe's per-show seed below becomes
@@ -535,8 +526,68 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &key) {
             continue;
         }
-        let _ = check_availability(&state, &args).await;
-        sleep(Duration::from_millis(500)).await;
+        let outcome = check_availability(&state, &args).await;
+        let backoff = warm_backoff(&outcome);
+        if let Err(crate::error::AniError::RateLimited { retry_after_secs }) = &outcome {
+            tracing::info!(
+                retry_after_secs = ?retry_after_secs,
+                wait = ?backoff,
+                "availability warm: allanime rate limited; backing off",
+            );
+        }
+        sleep(backoff).await;
+    }
+}
+
+/// Fold the show-metadata fetch outcome into `(episode_count,
+/// extras)`. `RateLimited` propagates: the throttle window must
+/// reach the caller — and through it the warm loop's backoff —
+/// instead of being silently downgraded, and the cache row is
+/// better left unwritten than written from degraded data
+/// mid-window (the next probe re-attempts). Every other failure
+/// keeps the count fallback from the search hit: off by one for
+/// shows with half-episodes, but better than blocking the write.
+fn enrich_from_show_fetch(
+    outcome: Result<crate::scraper::allanime::ShowMetadata>,
+    candidate: &crate::scraper::Candidate,
+    mode: &str,
+) -> Result<(Option<u32>, Vec<String>)> {
+    match outcome {
+        Ok(detail) => {
+            let extras = detail
+                .available_episodes_detail
+                .for_mode(mode)
+                .iter()
+                .filter(|t| t.parse::<u32>().is_err())
+                .cloned()
+                .collect();
+            Ok((detail.max_integer_episode(mode), extras))
+        }
+        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
+            Err(crate::error::AniError::RateLimited { retry_after_secs })
+        }
+        Err(_) => {
+            let n = candidate.available_episodes.for_mode(mode);
+            Ok((if n > 0 { Some(n) } else { None }, Vec::new()))
+        }
+    }
+}
+
+/// How long the warm loop sleeps after one probe, given its outcome.
+/// A rate-limited probe waits out the upstream's advertised window
+/// (floored at 1 s so a "0 seconds" answer can't become a hot loop;
+/// 10 s when the message carried no number) instead of the 500 ms
+/// pacing gap — continuing at full pace would issue doomed requests
+/// that deepen the limit while the user's click path competes for
+/// the same budget. Every other outcome keeps the half-second
+/// cadence. The rate-limited row stays unwritten; a later warm pass
+/// re-probes it.
+fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
+    match outcome {
+        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
+            std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1))
+        }
+        _ => std::time::Duration::from_millis(500),
     }
 }
 
@@ -553,6 +604,98 @@ pub struct AvailabilityWarmArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
+        serde_json::from_value(serde_json::json!({
+            "_id": "abc",
+            "name": "X",
+            "availableEpisodes": {"sub": sub, "dub": 0, "raw": 0},
+            "__typename": "Show"
+        }))
+        .expect("candidate")
+    }
+
+    #[test]
+    fn enrich_from_show_fetch_propagates_rate_limits() {
+        // A throttled show-metadata fetch must NOT be downgraded to
+        // the count fallback: the caller (and the warm loop's
+        // backoff) needs the typed 429 + hint, and the cache row is
+        // better left unwritten than written mid-window.
+        let out = enrich_from_show_fetch(
+            Err(crate::error::AniError::RateLimited {
+                retry_after_secs: Some(9),
+            }),
+            &enrich_candidate(12),
+            "sub",
+        );
+        assert!(
+            matches!(
+                out,
+                Err(crate::error::AniError::RateLimited {
+                    retry_after_secs: Some(9)
+                })
+            ),
+            "got {out:?}"
+        );
+    }
+
+    #[test]
+    fn enrich_from_show_fetch_keeps_the_count_fallback_for_other_failures() {
+        let out = enrich_from_show_fetch(
+            Err(crate::error::AniError::Network),
+            &enrich_candidate(12),
+            "sub",
+        )
+        .expect("fallback is Ok");
+        assert_eq!(out.0, Some(12));
+        assert!(out.1.is_empty());
+    }
+
+    #[test]
+    fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
+        // A rate-limited probe must not be followed by another request
+        // 500 ms later — the upstream said "try again in N seconds",
+        // and continuing at full pace issues doomed requests that
+        // deepen the limit while the user's click path competes for
+        // the same budget.
+        let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
+            retry_after_secs: Some(9),
+        });
+        assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(9));
+    }
+
+    #[test]
+    fn warm_backoff_defaults_conservatively_when_the_hint_is_missing() {
+        let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
+            retry_after_secs: None,
+        });
+        assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
+        let ok: Result<AvailabilityResponse> = Ok(AvailabilityResponse {
+            available: true,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+        });
+        assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
+        let other: Result<AvailabilityResponse> = Err(crate::error::AniError::Network);
+        assert_eq!(warm_backoff(&other), std::time::Duration::from_millis(500));
+    }
+
+    proptest::proptest! {
+        // Pure-function contract: every advertised wait maps to
+        // exactly that many seconds (floored at 1 so a "0 seconds"
+        // answer can't turn the backoff into a hot loop).
+        #[test]
+        fn warm_backoff_honours_every_advertised_wait(n in 0u64..=100_000u64) {
+            let outcome: Result<AvailabilityResponse> =
+                Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n) });
+            let want = std::time::Duration::from_secs(n.max(1));
+            proptest::prop_assert_eq!(warm_backoff(&outcome), want);
+        }
+    }
 
     /// The cache body is the AvailabilityResponse JSON. Adding the new
     /// episode_count field must round-trip — the detail page reads it
