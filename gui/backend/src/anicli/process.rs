@@ -433,6 +433,38 @@ pub struct DownloadRequest<'a> {
     pub select_index: usize,
 }
 
+/// Kills the child's whole process group if still armed on drop.
+/// [`spawn_download`] puts ani-cli in its own group (`process_group(0)`,
+/// so pgid == child pid); when the SSE task is aborted or times out,
+/// the dropped future takes yt-dlp / ffmpeg / aria2c down with the
+/// shell instead of orphaning them mid-transfer. Disarmed once the
+/// child has been waited: past the reap the pid may be recycled and
+/// the group must not be signalled. The signal goes through `kill(1)`
+/// rather than `kill(2)` — the crate forbids unsafe code, and the
+/// binary is guaranteed on any POSIX host that can run ani-cli.
+struct GroupKillGuard(Option<u32>);
+
+impl GroupKillGuard {
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for GroupKillGuard {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0.take() {
+            if cfg!(unix) {
+                // `-- -PID` addresses the whole group. `.status()`
+                // (not `.spawn()`) so the reaped helper can't linger
+                // as a zombie; it exits in microseconds.
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", "--", &format!("-{pid}")])
+                    .status();
+            }
+        }
+    }
+}
+
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
 /// script's player-function to `download`, which delegates to yt-dlp /
 /// ffmpeg / aria2c depending on the source kind. We point `ani-cli` at
@@ -516,8 +548,16 @@ where
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group (pgid == child pid): ani-cli fronts yt-dlp /
+    // ffmpeg / aria2c as foreground children, and kill_on_drop only
+    // signals the shell itself — an aborted download would orphan the
+    // transfer tool mid-write. The group guard below reaps the whole
+    // tree instead.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
     let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
+    let mut group = GroupKillGuard(child.id());
     let stderr_reader = child.stderr.take().expect("stderr piped");
 
     // Stream stderr line-by-line. aria2c / yt-dlp / ffmpeg all write
@@ -574,6 +614,9 @@ where
     })
     .await
     .map_err(|_| AniError::Timeout)??;
+    // The child has been reaped — its pid (and so the pgid) may be
+    // recycled; the group must not be signalled past this point.
+    group.disarm();
 
     if !collected.success() {
         let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
