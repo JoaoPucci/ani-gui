@@ -77,6 +77,12 @@ struct GateState {
     /// When the current half-open trial probe was admitted; `None`
     /// when no trial is outstanding.
     half_open_trial_at: Option<Instant>,
+    /// When the last accepted success was recorded. Failures whose
+    /// `started_at` predates this ran against the pre-recovery
+    /// upstream — stale evidence that must not count toward the
+    /// breaker, the mirror of the stale-success filter against
+    /// `opened_at`.
+    last_recovery_at: Option<Instant>,
 }
 
 /// See the module docs. One instance lives in `AppState`; every
@@ -98,6 +104,7 @@ impl ScraperGate {
                 open_until: None,
                 opened_at: None,
                 half_open_trial_at: None,
+                last_recovery_at: None,
             }),
         }
     }
@@ -193,7 +200,16 @@ impl ScraperGate {
             s.open_until = None;
             s.opened_at = None;
             s.half_open_trial_at = None;
+            s.last_recovery_at = Some(Instant::now());
         } else {
+            if let Some(recovered) = s.last_recovery_at {
+                if started_at < recovered {
+                    // The request ran against the pre-recovery
+                    // upstream; a newer accepted success already
+                    // proved the state it observed is gone.
+                    return;
+                }
+            }
             s.consecutive_failures += 1;
             if s.consecutive_failures >= FAILURE_THRESHOLD {
                 let now = Instant::now();
