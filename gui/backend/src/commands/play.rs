@@ -761,6 +761,43 @@ mod tests {
     use super::*;
     use crate::anicli::parser::DebugOutput;
 
+    proptest::proptest! {
+        // The gate's lane assignment is exactly the prefetch bit:
+        // warms ride Background pacing, everything a user waits on
+        // rides Interactive — no other PlayArgs field may influence
+        // it.
+        #[test]
+        fn scrape_priority_maps_exactly_from_the_prefetch_bit(
+            prefetch in proptest::bool::ANY,
+            title in ".*",
+            episode in "[0-9]{1,4}",
+            mode in "(sub|dub|weird)",
+            quality in proptest::option::of("[a-z0-9]{1,6}"),
+            episode_count in proptest::option::of(proptest::num::u32::ANY),
+            year in proptest::option::of(proptest::num::u32::ANY),
+            kitsu_id in proptest::option::of("[a-z0-9-]{1,12}"),
+        ) {
+            let args = PlayArgs {
+                title,
+                episode,
+                mode,
+                quality,
+                episode_count,
+                year,
+                alt_titles: vec![],
+                prefetch,
+                kitsu_id,
+            };
+            let got = scrape_priority(&args);
+            let want = if prefetch {
+                crate::scraper::gate::ScrapePriority::Background
+            } else {
+                crate::scraper::gate::ScrapePriority::Interactive
+            };
+            proptest::prop_assert_eq!(got, want);
+        }
+    }
+
     // `play()` and `play_external()` are thin wrappers around
     // `run_debug` + the relevant terminal action; the integration
     // test in `tests/api_play.rs` exercises the full flow against a
