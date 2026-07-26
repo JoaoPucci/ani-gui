@@ -453,16 +453,28 @@ impl GroupKillGuard {
 impl Drop for GroupKillGuard {
     fn drop(&mut self) {
         if let Some(pid) = self.0.take() {
-            if cfg!(unix) {
-                // `-- -PID` addresses the whole group. `.status()`
-                // (not `.spawn()`) so the reaped helper can't linger
-                // as a zombie; it exits in microseconds.
-                let _ = std::process::Command::new("kill")
-                    .args(["-9", "--", &format!("-{pid}")])
-                    .status();
+            // The guard is declared after `child`, so it drops first:
+            // the tree walk / group signal runs while the shell is
+            // still alive, before kill_on_drop reaps it. `.status()`
+            // (not `.spawn()`) so the helper can't linger as a
+            // zombie; it exits in microseconds.
+            if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+                let _ = std::process::Command::new(prog).args(&args).status();
             }
         }
     }
+}
+
+/// Platform command that takes down a spawned downloader's whole
+/// process tree. Unix: `kill -9 -- -PID` — the negative pid addresses
+/// the process group created at spawn (`process_group(0)`, pgid ==
+/// child pid). Returns `None` when the platform has no tree-kill
+/// wired yet.
+fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)> {
+    if windows {
+        return None;
+    }
+    Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
@@ -812,6 +824,25 @@ mod tests {
         let mut opts = DebugOptions::new(stub_ani_cli);
         opts.path_override = Some(format!("{}:/usr/bin:/bin", stub_dir.display()));
         opts
+    }
+
+    #[test]
+    fn tree_kill_args_unix_addresses_the_process_group() {
+        let (prog, args) = tree_kill_args(1234, false).expect("unix tree kill");
+        assert_eq!(prog, "kill");
+        assert_eq!(args, vec!["-9", "--", "-1234"]);
+    }
+
+    #[test]
+    fn tree_kill_args_windows_kills_the_tree_by_parent_pid() {
+        // Windows is a shipped target (package:win) and kill_on_drop
+        // only terminates the Git Bash parent there — cancelling a
+        // download must take aria2c / ffmpeg / yt-dlp down with it.
+        // taskkill /T walks the child tree by parent pid; /F because
+        // the transfer tools ignore the graceful signal mid-write.
+        let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");
+        assert_eq!(prog, "taskkill");
+        assert_eq!(args, vec!["/PID", "1234", "/T", "/F"]);
     }
 
     /// Stub ani-cli that mirrors the download path's process shape:
