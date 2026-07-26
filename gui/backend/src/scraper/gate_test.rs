@@ -330,3 +330,28 @@ async fn stale_failures_cannot_reopen_past_a_newer_recovery() {
         "failures older than the accepted recovery must not reopen the breaker"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn failures_newer_than_the_successful_start_still_count() {
+    // A slow request starts first and succeeds much later; paced
+    // requests that started AFTER it may be watching a NEWER
+    // rate-limit episode. Anchoring the recovery boundary to the
+    // success's completion time would discard their failures as
+    // stale and hold the breaker open to background traffic — the
+    // boundary must be the successful request's START.
+    let gate = ScraperGate::new();
+    let slow_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let newer_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+
+    // The slow request lands now, long after the newer cohort began.
+    gate.record_outcome(true, slow_started);
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record_outcome(false, newer_started);
+    }
+    assert!(
+        gate.admit(ScrapePriority::Background).await.is_err(),
+        "failures that started after the successful start are fresh evidence and must open the breaker"
+    );
+}
