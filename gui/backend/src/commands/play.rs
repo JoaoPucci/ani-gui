@@ -1775,6 +1775,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn parse_failures_count_toward_the_breaker() {
+        use crate::scraper::gate::ScrapePriority;
+        // ani-cli can exit 0 while printing a malformed debug block
+        // (allanime fed it garbage — the exact throttling signature
+        // this gate exists for); the runners surface that as
+        // ParseFailed. The subprocess demonstrably reached allanime,
+        // so repeated parse failures are upstream evidence and must
+        // open the breaker like NoResults does.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::ParseFailed {
+                    detail: "no 'Selected link:' marker".into(),
+                }),
+            );
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_err(),
+            "repeated parse failures must open the breaker"
+        );
+    }
+
+    #[tokio::test]
     async fn missing_dependency_exits_leave_the_breaker_alone() {
         use crate::scraper::gate::ScrapePriority;
         // ani-cli dies in dep_ch before touching the network when a
