@@ -348,3 +348,7 @@ mod tests {
         assert_eq!(p, PathBuf::from("/tmp/explicit"));
     }
 }
+
+#[cfg(test)]
+#[path = "download_test.rs"]
+mod proptests;
