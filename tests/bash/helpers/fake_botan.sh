@@ -27,7 +27,14 @@ if [ "${1:-}" = "--version" ]; then
     exit 0
 fi
 
-exec python3 -c '
+# Pin the distro interpreter: apt's python3-cryptography installs into
+# /usr/bin/python3's dist-packages, and CI jobs that set up a toolcache
+# Python for their own tooling (the crap job's lizard) put it first on
+# PATH, where the module does not exist.
+py='/usr/bin/python3'
+[ -x "$py" ] || py='python3'
+
+exec "$py" -c '
 import sys
 import hashlib
 
