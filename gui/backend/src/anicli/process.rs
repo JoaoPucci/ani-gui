@@ -771,6 +771,102 @@ mod tests {
         opts
     }
 
+    /// Stub ani-cli that mirrors the download path's process shape:
+    /// it launches a long-sleeping descendant (the "yt-dlp"), reports
+    /// that descendant's pid via a file, and waits on it — like
+    /// ani-cli fronting a transfer tool.
+    #[cfg(unix)]
+    fn stub_ani_cli_with_descendant(pidfile: &std::path::Path) -> (tempfile::TempDir, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let td = tempfile::tempdir().expect("tempdir");
+        let path = td.path().join("ani-cli");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nsleep 30 &\necho $! > '{}'\nwait\n",
+                pidfile.display()
+            ),
+        )
+        .expect("write stub");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let ffmpeg = td.path().join("ffmpeg");
+        std::fs::write(&ffmpeg, b"#!/bin/sh\nexit 0\n").expect("write ffmpeg stub");
+        std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod ffmpeg");
+        (td, path)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn aborting_a_download_kills_the_whole_process_tree() {
+        let _guard = ENV_LOCK.lock().await;
+        // Cancelling a download aborts the SSE task, which drops the
+        // spawn_download future. kill_on_drop reaps the ani-cli shell
+        // — but the transfer tool it fronted must die WITH it, or the
+        // dock reports "cancelled" while an orphaned downloader keeps
+        // writing the file and burning bandwidth.
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let dl_dir = tempfile::tempdir().expect("dl tempdir");
+        let opts = debug_opts_dl(stub);
+
+        let task = tokio::spawn(async move {
+            let _ = spawn_download(
+                &opts,
+                &DownloadRequest {
+                    query: "any",
+                    episode: "1",
+                    quality: "best",
+                    mode: "sub",
+                    select_index: 1,
+                },
+                dl_dir.path(),
+                |_| {},
+            )
+            .await;
+        });
+
+        // Wait for the stub to report its descendant's pid.
+        let pid: i32 = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&pidfile) {
+                    if let Ok(p) = s.trim().parse() {
+                        break p;
+                    }
+                }
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+
+        task.abort();
+        let _ = task.await;
+
+        // The descendant must be gone shortly after the abort. Poll
+        // /proc — a surviving entry means the downloader was orphaned.
+        let mut dead = false;
+        for _ in 0..40 {
+            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                dead = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !dead {
+            // Don't leak the 30s sleeper into the test host on failure.
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        assert!(
+            dead,
+            "descendant (pid {pid}) survived the abort — orphaned downloader"
+        );
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn spawn_download_passes_d_flag_and_episode_query_quality() {
