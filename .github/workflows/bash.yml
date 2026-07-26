@@ -115,13 +115,16 @@ jobs:
         run: |
           sudo apt-get update
           # Acceptance tests run the real ./ani-cli, which dep_ch's curl,
-          # sed, grep, openssl, fzf at the top of every run, plus ffmpeg
-          # and aria2c when ANI_CLI_PLAYER=download. xxd is needed by
-          # blob_builder.sh. kcov is not in Ubuntu 24.04 apt; coverage.sh
-          # skips gracefully when it's missing.
+          # sed, grep, a botan binary, and fzf at the top of every run,
+          # plus ffmpeg and aria2c when ANI_CLI_PLAYER=download. The
+          # botan requirement is satisfied by the harness's
+          # fake_botan.sh, whose AES-256-GCM comes from
+          # python3-cryptography. xxd is needed by blob_builder.sh. kcov
+          # is not in Ubuntu 24.04 apt; coverage.sh skips gracefully
+          # when it's missing.
           sudo apt-get install -y \
             curl \
-            openssl \
+            python3-cryptography \
             bsdmainutils \
             xxd \
             fzf \

@@ -18,19 +18,29 @@ setup() {
     mkdir -p "$ANI_CLI_HIST_DIR"
     export ANI_CLI_PLAYER='debug'
 
-    # Build a fixture directory the curl shim can read from.
+    # Build a fixture directory the curl shim can read from. The keys_*
+    # fixtures feed fetch_keys (page epoch/partB, app bundle, chunk with
+    # the key mask); the mask XOR partB key is what blob_builder.sh
+    # encrypts the episode blob with.
     export CURL_FIXTURE_DIR="$BATS_TEST_TMPDIR/fixtures"
     mkdir -p "$CURL_FIXTURE_DIR"
     cp "$FIXTURES_DIR/allanime/search_one_piece.json" "$CURL_FIXTURE_DIR/"
     cp "$FIXTURES_DIR/allanime/episodes_short.json" "$CURL_FIXTURE_DIR/"
     cp "$FIXTURES_DIR/allanime/embed_simple.json" "$CURL_FIXTURE_DIR/"
+    cp "$FIXTURES_DIR/allanime/keys_page.html" "$CURL_FIXTURE_DIR/"
+    cp "$FIXTURES_DIR/allanime/keys_app.js" "$CURL_FIXTURE_DIR/"
+    cp "$FIXTURES_DIR/allanime/keys_chunk.js" "$CURL_FIXTURE_DIR/"
     bash "$REPO_ROOT/tests/bash/helpers/blob_builder.sh" "$CURL_FIXTURE_DIR/episode_blob.json"
 
-    # Place curl shim on PATH.
+    # Place curl + botan shims on PATH. fake_botan satisfies 4.15's hard
+    # botan dependency with real AES-256-GCM, so the encrypted blob the
+    # shim serves decrypts exactly as it would against a system Botan.
     export PATH_SHIM="$BATS_TEST_TMPDIR/bin"
     mkdir -p "$PATH_SHIM"
     cp "$REPO_ROOT/tests/bash/helpers/curl_shim.sh" "$PATH_SHIM/curl"
     chmod +x "$PATH_SHIM/curl"
+    cp "$REPO_ROOT/tests/bash/helpers/fake_botan.sh" "$PATH_SHIM/botan"
+    chmod +x "$PATH_SHIM/botan"
     export PATH="$PATH_SHIM:$PATH"
 }
 

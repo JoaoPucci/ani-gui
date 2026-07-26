@@ -58,7 +58,7 @@ fi
 # never appear in gui/. If a Rust file references them by name, it's
 # almost certainly a re-implementation of scraping logic that should
 # instead be a subprocess call.
-banned_symbols='search_anime\|episodes_list\|get_episode_url\|decode_tobeparsed\|allanime_key\|allanime_base\|generate_link\|provider_init'
+banned_symbols='search_anime\|episodes_list\|get_episode_url\|process_tobeparsed\|get_aa_req\|fetch_keys\|allanime_key\|allanime_base\|generate_link\|provider_init'
 # shellcheck disable=SC2086
 matches=$(grep -rnE $GREP_EXCLUDE "($banned_symbols)" gui/ 2>/dev/null |
     grep -v 'tests/.*proxy_router.rs' |

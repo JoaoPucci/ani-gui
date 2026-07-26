@@ -15,6 +15,16 @@ setup() {
     export ANI_CLI_HIST_DIR="$BATS_TEST_TMPDIR/hist"
     mkdir -p "$ANI_CLI_HIST_DIR"
     export ANI_CLI_PLAYER='debug'
+
+    # ani-cli 4.15 hard-requires a botan binary at startup (dep_ch_failover
+    # before the search dispatch), so even no-network flows like -c need
+    # one on PATH. The -V/-h/-D flows exit during arg parsing and never
+    # reach the check; the shim is harmless there.
+    export PATH_SHIM="$BATS_TEST_TMPDIR/bin"
+    mkdir -p "$PATH_SHIM"
+    cp "$REPO_ROOT/tests/bash/helpers/fake_botan.sh" "$PATH_SHIM/botan"
+    chmod +x "$PATH_SHIM/botan"
+    export PATH="$PATH_SHIM:$PATH"
 }
 
 @test "ani-cli --version prints just the version number and exits 0" {
