@@ -957,7 +957,7 @@ mod tests {
             std::fs::write(
                 &probe,
                 format!(
-                    "#!/bin/sh\nsleep 0.1\nif [ -r \"/proc/$1/status\" ] && ! grep -q '^State:.*Z' \"/proc/$1/status\"; then\n  echo alive > '{out}'\nelse\n  echo dead > '{out}'\nfi\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
+                    "#!/bin/sh\nsleep 0.1\nSTATE=$(ps -o state= -p \"$1\" 2>/dev/null | tr -d ' ')\ncase \"$STATE\" in\n  ''|Z*) echo dead > '{out}' ;;\n  *) echo alive > '{out}' ;;\nesac\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
                     out = out.display()
                 ),
             )
