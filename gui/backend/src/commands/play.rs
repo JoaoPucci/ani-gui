@@ -398,7 +398,15 @@ pub(super) fn record_spawn_outcome<T>(
         Err(AniError::Scraper {
             key: crate::i18n::keys::SCRAPER_MISSING_DEP,
         }) => return,
-        Err(AniError::NoResults | AniError::Scraper { .. } | AniError::Timeout) => false,
+        // ParseFailed from a zero-exit run means ani-cli reached
+        // allanime and got garbage back — the throttling signature
+        // this gate exists for. Upstream evidence, same as NoResults.
+        Err(
+            AniError::NoResults
+            | AniError::Scraper { .. }
+            | AniError::Timeout
+            | AniError::ParseFailed { .. },
+        ) => false,
         Err(_) => return,
     };
     state.scraper_gate.record_outcome(ok, started_at);
