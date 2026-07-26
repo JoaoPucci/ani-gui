@@ -23,14 +23,25 @@
 //! is generic over its streams for testability. Exit codes mirror a
 //! real CLI: 0 success, 1 operation failure (e.g. GCM auth), 2 usage.
 
+use aes_gcm::aead::{Aead, KeyInit, Payload};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
+
+/// Version string the wrapper reports for `--version`. ani-cli reads
+/// only the first character (`3`) to select the Botan-3 syntax.
+const SHIM_VERSION: &str = "3.0.0 (ani-gui shim)";
 
 /// SHA-256 of `data` as uppercase hex — botan's `hash` output format
 /// (the trailing newline is added by the dispatcher).
 #[must_use]
 pub fn sha256_hex_upper(data: &[u8]) -> String {
-    let _ = data;
-    todo!("green commit implements the shim")
+    let digest = Sha256::digest(data);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        out.push_str(&format!("{byte:02X}"));
+    }
+    out
 }
 
 /// Decode hex text into raw bytes, ignoring ASCII whitespace (botan's
@@ -39,8 +50,40 @@ pub fn sha256_hex_upper(data: &[u8]) -> String {
 /// # Errors
 /// A description when a non-hex digit remains or the digit count is odd.
 pub fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
-    let _ = text;
-    todo!("green commit implements the shim")
+    let digits: Vec<u8> = text
+        .bytes()
+        .filter(|b| !b.is_ascii_whitespace())
+        .map(|b| match b {
+            b'0'..=b'9' => Ok(b - b'0'),
+            b'a'..=b'f' => Ok(b - b'a' + 10),
+            b'A'..=b'F' => Ok(b - b'A' + 10),
+            other => Err(format!("not a hex digit: {:?}", char::from(other))),
+        })
+        .collect::<Result<_, _>>()?;
+    if digits.len() % 2 != 0 {
+        return Err("odd number of hex digits".into());
+    }
+    Ok(digits
+        .chunks(2)
+        .map(|pair| (pair[0] << 4) | pair[1])
+        .collect())
+}
+
+/// Build the cipher, validating key and nonce lengths.
+fn gcm(key: &[u8], nonce: &[u8]) -> Result<Aes256Gcm, String> {
+    if key.len() != 32 {
+        return Err(format!(
+            "AES-256/GCM needs a 32-byte key, got {}",
+            key.len()
+        ));
+    }
+    if nonce.len() != 12 {
+        return Err(format!(
+            "AES-256/GCM needs a 12-byte nonce, got {}",
+            nonce.len()
+        ));
+    }
+    Ok(Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key)))
 }
 
 /// AES-256-GCM encrypt: returns ciphertext with the 16-byte tag
@@ -49,8 +92,10 @@ pub fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
 /// # Errors
 /// A description when the key is not 32 bytes or the nonce not 12.
 pub fn gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    let _ = (key, nonce, plaintext);
-    todo!("green commit implements the shim")
+    let cipher = gcm(key, nonce)?;
+    cipher
+        .encrypt(Nonce::from_slice(nonce), Payload::from(plaintext))
+        .map_err(|_| "encryption failed".into())
 }
 
 /// AES-256-GCM decrypt of a `ciphertext||tag(16)` blob.
@@ -59,15 +104,23 @@ pub fn gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>
 /// A description on bad key/nonce lengths, a too-short blob, or GCM
 /// authentication failure (tampered ciphertext or wrong key).
 pub fn gcm_decrypt(key: &[u8], nonce: &[u8], ct_and_tag: &[u8]) -> Result<Vec<u8>, String> {
-    let _ = (key, nonce, ct_and_tag);
-    todo!("green commit implements the shim")
+    let cipher = gcm(key, nonce)?;
+    if ct_and_tag.len() < 16 {
+        return Err("input shorter than the GCM tag".into());
+    }
+    cipher
+        .decrypt(Nonce::from_slice(nonce), Payload::from(ct_and_tag))
+        .map_err(|_| "GCM authentication failed".into())
 }
 
 /// Parsed `cipher` arguments.
 #[derive(Debug, PartialEq, Eq)]
 pub struct CipherArgs {
+    /// `--decrypt` present — decrypt instead of encrypt.
     pub decrypt: bool,
+    /// Decoded `--key=<hex>` bytes.
     pub key: Vec<u8>,
+    /// Decoded `--nonce=<hex>` bytes.
     pub nonce: Vec<u8>,
 }
 
@@ -76,8 +129,42 @@ pub struct CipherArgs {
 /// # Errors
 /// A description when `--key=`/`--nonce=` are missing or not valid hex.
 pub fn parse_cipher_args(args: &[String]) -> Result<CipherArgs, String> {
-    let _ = args;
-    todo!("green commit implements the shim")
+    let mut decrypt = false;
+    let mut key = None;
+    let mut nonce = None;
+    for arg in args {
+        if arg == "--decrypt" {
+            decrypt = true;
+        } else if let Some(v) = arg.strip_prefix("--key=") {
+            key = Some(hex_decode(v)?);
+        } else if let Some(v) = arg.strip_prefix("--nonce=") {
+            nonce = Some(hex_decode(v)?);
+        }
+        // --cipher=… and the trailing "-" are accepted and ignored:
+        // the shim only implements AES-256/GCM over stdin/stdout.
+    }
+    Ok(CipherArgs {
+        decrypt,
+        key: key.ok_or("cipher needs --key=<hex>")?,
+        nonce: nonce.ok_or("cipher needs --nonce=<hex>")?,
+    })
+}
+
+/// Run the `cipher` operation over the streams.
+fn run_cipher(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), String> {
+    let parsed = parse_cipher_args(args)?;
+    let mut data = Vec::new();
+    stdin
+        .read_to_end(&mut data)
+        .map_err(|e| format!("reading stdin: {e}"))?;
+    let out = if parsed.decrypt {
+        gcm_decrypt(&parsed.key, &parsed.nonce, &data)?
+    } else {
+        gcm_encrypt(&parsed.key, &parsed.nonce, &data)?
+    };
+    stdout
+        .write_all(&out)
+        .map_err(|e| format!("writing stdout: {e}"))
 }
 
 /// Dispatch one shim invocation: `args` is everything after
@@ -85,8 +172,36 @@ pub fn parse_cipher_args(args: &[String]) -> Result<CipherArgs, String> {
 /// stderr via `eprintln!` (ani-cli discards it where a real botan's
 /// noise would also be discarded).
 pub fn run_shim(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -> u8 {
-    let _ = (args, stdin, stdout);
-    todo!("green commit implements the shim")
+    let result: Result<(), String> = match args.first().map(String::as_str) {
+        Some("--version") => writeln!(stdout, "{SHIM_VERSION}").map_err(|e| e.to_string()),
+        Some("hash") => {
+            let mut data = Vec::new();
+            match stdin.read_to_end(&mut data) {
+                Ok(_) => writeln!(stdout, "{}", sha256_hex_upper(&data)).map_err(|e| e.to_string()),
+                Err(e) => Err(format!("reading stdin: {e}")),
+            }
+        }
+        Some("hex_dec") => {
+            let mut text = String::new();
+            match stdin.read_to_string(&mut text) {
+                Ok(_) => hex_decode(&text)
+                    .and_then(|raw| stdout.write_all(&raw).map_err(|e| e.to_string())),
+                Err(e) => Err(format!("reading stdin: {e}")),
+            }
+        }
+        Some("cipher") => run_cipher(&args[1..], stdin, stdout),
+        _ => {
+            eprintln!("botan-shim: unsupported invocation: {args:?}");
+            return 2;
+        }
+    };
+    match result {
+        Ok(()) => 0,
+        Err(msg) => {
+            eprintln!("botan-shim: {msg}");
+            1
+        }
+    }
 }
 
 #[cfg(test)]
