@@ -498,7 +498,12 @@ pub(super) async fn pick_title_and_index_with_base(
                 // The window is refusing everything — walking the
                 // remaining alt titles would burn budget on doomed
                 // requests and extend the limit. Stop and carry the
-                // advertised wait upward.
+                // advertised wait upward. This is also the clearest
+                // failure evidence the gate can get: record it so the
+                // breaker opens (and a half-open trial resolves)
+                // instead of letting warm handlers pace on into the
+                // advertised window.
+                state.scraper_gate.record_outcome(false, started_at);
                 tracing::warn!(
                     title,
                     retry_after_secs = ?retry_after_secs,
