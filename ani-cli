@@ -646,8 +646,11 @@ case "$player_function" in
     # path-based selection and dropped this alias, but ani-cli.1 still
     # documents ANI_CLI_PLAYER=flatpak_mpv; without the exception the
     # documented configuration dies here ("flatpak_mpv" is not an
-    # executable). The player branch handles it out of band.
-    flatpak_mpv) ;;
+    # executable). The directory form needs the same exception — it is
+    # what the failover itself selects when only the flatpak exists,
+    # and `command -v` fails for directories. The player branch
+    # handles both out of band.
+    flatpak_mpv | "$HOME"/.local/share/flatpak/app/io.mpv/Mpv/) ;;
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
         dep_ch "aria2c"
