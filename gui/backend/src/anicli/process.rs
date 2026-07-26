@@ -219,23 +219,22 @@ pub async fn run_debug(
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
-    let mut group = GroupKillGuard(child.id());
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
-    let stdout_reader = child.stdout.take().expect("stdout piped");
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     let collected = tokio::time::timeout(opts.timeout, async move {
         let stdout_fut = read_to_end(stdout_reader);
         let stderr_fut = read_to_end(stderr_reader);
         let (out, err) = tokio::join!(stdout_fut, stderr_fut);
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
+        // Child reaped — pid/pgid may be recycled past this point.
+        child.disarm();
         Result::<(Vec<u8>, Vec<u8>, std::process::ExitStatus)>::Ok((out?, err?, status))
     })
     .await
     .map_err(|_| AniError::Timeout)??;
-    // Child reaped — pid/pgid may be recycled past this point.
-    group.disarm();
 
     let (stdout_bytes, stderr_bytes, exit) = collected;
 
@@ -349,11 +348,10 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
-    let mut group = GroupKillGuard(child.id());
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
-    let stdout_reader = child.stdout.take().expect("stdout piped");
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     // Read stderr line-by-line and forward each (ANSI-stripped) line
     // to the caller. Buffer stderr bytes too so the existing
@@ -389,14 +387,13 @@ where
         let stdout_fut = read_to_end(stdout_reader);
         let (out, err_io) = tokio::join!(stdout_fut, stream_fut);
         err_io?;
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
+        // Child reaped — pid/pgid may be recycled past this point.
+        child.disarm();
         Result::<(Vec<u8>, std::process::ExitStatus)>::Ok((out?, status))
     })
     .await
     .map_err(|_| AniError::Timeout)??;
-
-    // Child reaped — pid/pgid may be recycled past this point.
-    group.disarm();
 
     let (stdout_bytes, exit) = collected;
     let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
@@ -452,34 +449,44 @@ pub struct DownloadRequest<'a> {
     pub select_index: usize,
 }
 
-/// Kills the child's whole process group if still armed on drop.
-/// [`spawn_download`] puts ani-cli in its own group (`process_group(0)`,
-/// so pgid == child pid); when the SSE task is aborted or times out,
-/// the dropped future takes yt-dlp / ffmpeg / aria2c down with the
-/// shell instead of orphaning them mid-transfer. Disarmed once the
-/// child has been waited: past the reap the pid may be recycled and
-/// the group must not be signalled. The signal goes through `kill(1)`
-/// rather than `kill(2)` — the crate forbids unsafe code, and the
-/// binary is guaranteed on any POSIX host that can run ani-cli.
-struct GroupKillGuard(Option<u32>);
+/// Owns the spawned ani-cli child and kills its whole process tree
+/// when dropped mid-run. Ownership is the point: a struct's `Drop`
+/// body runs BEFORE its fields drop, so the tree walk / group signal
+/// fires while the shell is still alive — on Windows `taskkill /T`
+/// can only discover curl / yt-dlp / ffmpeg descendants by a live
+/// parent pid, and `kill_on_drop`'s SIGKILL (the `Child` field's own
+/// drop) must come second under every cancellation mode: task abort,
+/// timeout, panic. Disarmed once the child has been waited: past the
+/// reap the pid may be recycled and must not be signalled. The signal
+/// goes through `kill(1)` / `taskkill(1)` rather than a syscall —
+/// the crate forbids unsafe code, and both binaries ship with any
+/// host that can run ani-cli. `.status()` (not `.spawn()`) so the
+/// helper can't linger as a zombie; it exits in microseconds.
+struct TreeKillChild {
+    child: tokio::process::Child,
+    armed: bool,
+}
 
-impl GroupKillGuard {
+impl TreeKillChild {
+    fn new(child: tokio::process::Child) -> Self {
+        Self { child, armed: true }
+    }
+
     fn disarm(&mut self) {
-        self.0 = None;
+        self.armed = false;
     }
 }
 
-impl Drop for GroupKillGuard {
+impl Drop for TreeKillChild {
     fn drop(&mut self) {
-        if let Some(pid) = self.0.take() {
-            // The guard is declared after `child`, so it drops first:
-            // the tree walk / group signal runs while the shell is
-            // still alive, before kill_on_drop reaps it. `.status()`
-            // (not `.spawn()`) so the helper can't linger as a
-            // zombie; it exits in microseconds.
-            if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
-                let _ = std::process::Command::new(prog).args(&args).status();
-            }
+        if !self.armed {
+            return;
+        }
+        // `id()` is None once the child has been reaped — nothing to
+        // walk in that case even if disarm was missed.
+        let Some(pid) = self.child.id() else { return };
+        if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+            let _ = std::process::Command::new(prog).args(&args).status();
         }
     }
 }
@@ -592,9 +599,8 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
-    let mut group = GroupKillGuard(child.id());
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     // Stream stderr line-by-line. aria2c / yt-dlp / ffmpeg all write
     // their progress to stderr. Buffer the raw bytes too so the
@@ -628,7 +634,7 @@ where
     // Stdout is ignored (ani-cli's download path doesn't print
     // anything we'd parse), but we still drain it so the pipe doesn't
     // back up.
-    let stdout_reader = child.stdout.take().expect("stdout piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
     let drain_stdout = async move {
         let mut reader = BufReader::new(stdout_reader);
         let mut sink = String::new();
@@ -645,14 +651,14 @@ where
         let (a, b) = tokio::join!(stream_fut, drain_stdout);
         a?;
         b?;
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
         Result::<std::process::ExitStatus>::Ok(status)
     })
     .await
     .map_err(|_| AniError::Timeout)??;
     // The child has been reaped — its pid (and so the pgid) may be
-    // recycled; the group must not be signalled past this point.
-    group.disarm();
+    // recycled; the tree must not be signalled past this point.
+    child.disarm();
 
     if !collected.success() {
         let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
