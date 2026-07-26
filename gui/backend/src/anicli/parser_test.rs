@@ -134,6 +134,20 @@ fn classify_failure_stderr_flags_the_termux_openssl_hint() {
     }
 }
 
+#[test]
+fn classify_failure_stderr_flags_unquoted_dep_ch_lines() {
+    // ani-cli 4.15 rewrote dep_ch without the quotes around the tool
+    // name ('Program curl not found. Please install it.'); only the
+    // dep_ch_failover botan die still quotes. Both spellings are local
+    // setup problems and must carry the gate-exempt missing-dep key —
+    // classified as parse-failed they'd count toward the breaker.
+    let err = classify_failure_stderr("Program curl not found. Please install it.");
+    match err {
+        AniError::Scraper { key } => assert_eq!(key, crate::i18n::keys::SCRAPER_MISSING_DEP),
+        other => panic!("expected missing-dep Scraper, got {other:?}"),
+    }
+}
+
 proptest::proptest! {
     // Total on arbitrary bytes — stderr is attacker-ish input (a
     // subprocess we don't control); the classifier must never panic.
@@ -147,6 +161,18 @@ proptest::proptest! {
     #[test]
     fn dep_ch_die_lines_classify_as_missing_dep_for_any_tool(tool in "[A-Za-z0-9_-]{1,20}") {
         let line = format!("Program \"{tool}\" not found. Please install it.");
+        let got = classify_failure_stderr(&line);
+        let is_dep = matches!(
+            got,
+            AniError::Scraper { key } if key == crate::i18n::keys::SCRAPER_MISSING_DEP
+        );
+        proptest::prop_assert!(is_dep, "expected missing-dep for tool {tool}");
+    }
+
+    // Same property for 4.15's unquoted dep_ch spelling.
+    #[test]
+    fn unquoted_dep_ch_die_lines_classify_as_missing_dep_for_any_tool(tool in "[A-Za-z0-9_-]{1,20}") {
+        let line = format!("Program {tool} not found. Please install it.");
         let got = classify_failure_stderr(&line);
         let is_dep = matches!(
             got,
