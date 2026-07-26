@@ -239,17 +239,7 @@ pub async fn run_debug(
             stdout = %stdout_text,
             "anicli: non-zero exit",
         );
-        if stderr_text.contains("No results found") {
-            return Err(AniError::NoResults);
-        }
-        if stderr_text.contains("Episode not released") {
-            return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-            });
-        }
-        return Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-        });
+        return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
     let stdout_text = super::parser::strip_ansi(&stdout_bytes);
@@ -401,17 +391,7 @@ where
             stdout = %stdout_text,
             "anicli (streaming): non-zero exit",
         );
-        if stderr_text.contains("No results found") {
-            return Err(AniError::NoResults);
-        }
-        if stderr_text.contains("Episode not released") {
-            return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-            });
-        }
-        return Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-        });
+        return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
     let stdout_text = super::parser::strip_ansi(&stdout_bytes);

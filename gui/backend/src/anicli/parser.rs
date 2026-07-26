@@ -180,6 +180,25 @@ fn parse_search_line(line: &str) -> Option<SearchResult> {
     })
 }
 
+/// Classify a non-zero `ani-cli` exit from its (ANSI-stripped) stderr.
+/// The script's `die()` messages are the only structured signal a
+/// failed run leaves behind; both debug runners route their exit
+/// handling through here so the mapping can't drift between the
+/// buffered and streaming paths.
+pub fn classify_failure_stderr(stderr: &str) -> AniError {
+    if stderr.contains("No results found") {
+        return AniError::NoResults;
+    }
+    if stderr.contains("Episode not released") {
+        return AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
+        };
+    }
+    AniError::Scraper {
+        key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+    }
+}
+
 /// Parse `ANI_CLI_PLAYER=debug` output.
 ///
 /// # Errors
