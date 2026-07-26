@@ -391,6 +391,13 @@ pub(super) fn record_spawn_outcome<T>(
         Err(AniError::Scraper {
             key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
         }) => true,
+        // dep_ch died before ani-cli touched the network — a local
+        // setup problem (missing curl/sed/grep/openssl/fzf), not
+        // upstream evidence. Recording it would let three clicks on
+        // an incomplete installation cut off background traffic.
+        Err(AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_MISSING_DEP,
+        }) => return,
         Err(AniError::NoResults | AniError::Scraper { .. } | AniError::Timeout) => false,
         Err(_) => return,
     };

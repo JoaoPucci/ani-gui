@@ -194,6 +194,14 @@ pub fn classify_failure_stderr(stderr: &str) -> AniError {
             key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
         };
     }
+    // dep_ch's die() prefix — shared by the plain "Please install
+    // it." line and the Termux openssl hint. A local setup problem,
+    // keyed separately so the scraper gate's recorders can ignore it.
+    if stderr.contains("Program \"") && stderr.contains("not found") {
+        return AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_MISSING_DEP,
+        };
+    }
     AniError::Scraper {
         key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
     }

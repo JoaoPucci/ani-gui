@@ -134,6 +134,41 @@ fn classify_failure_stderr_flags_the_termux_openssl_hint() {
     }
 }
 
+proptest::proptest! {
+    // Total on arbitrary bytes — stderr is attacker-ish input (a
+    // subprocess we don't control); the classifier must never panic.
+    #[test]
+    fn classify_failure_stderr_never_panics(s in ".*") {
+        let _ = classify_failure_stderr(&s);
+    }
+
+    // dep_ch's die() line must classify as missing-dep for ANY tool
+    // name, not just the five we know today.
+    #[test]
+    fn dep_ch_die_lines_classify_as_missing_dep_for_any_tool(tool in "[A-Za-z0-9_-]{1,20}") {
+        let line = format!("Program \"{tool}\" not found. Please install it.");
+        let got = classify_failure_stderr(&line);
+        let is_dep = matches!(
+            got,
+            AniError::Scraper { key } if key == crate::i18n::keys::SCRAPER_MISSING_DEP
+        );
+        proptest::prop_assert!(is_dep, "expected missing-dep for tool {tool}");
+    }
+
+    // Lowercase noise can't spell the 'Program "' signature — it must
+    // fall through to the parse-failed catch-all (which still counts
+    // toward the breaker), never to the gate-exempt missing-dep key.
+    #[test]
+    fn plain_noise_never_classifies_as_missing_dep(s in "[a-z ]{0,80}") {
+        let got = classify_failure_stderr(&s);
+        let is_dep = matches!(
+            got,
+            AniError::Scraper { key } if key == crate::i18n::keys::SCRAPER_MISSING_DEP
+        );
+        proptest::prop_assert!(!is_dep);
+    }
+}
+
 #[test]
 fn parse_debug_missing_marker_errors() {
     let stdout = "Some output but no Selected marker\n";
