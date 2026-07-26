@@ -64,6 +64,22 @@ setup() {
     [ ! -s "$histfile" ]
 }
 
+@test "ANI_CLI_PLAYER=flatpak_mpv is accepted at startup (documented alias)" {
+    # ani-cli.1 documents flatpak_mpv as a valid ANI_CLI_PLAYER value;
+    # upstream 4.15 folded where_mpv into dep_ch_failover's path-based
+    # selection and dropped the alias's dependency-check exception, so
+    # without the fork patch startup dies at dep_ch ("flatpak_mpv" is
+    # not an executable). Reaching the empty-history die proves the
+    # dependency check accepted the alias.
+    histfile="$ANI_CLI_HIST_DIR/ani-hsts"
+    : >"$histfile"
+    export ANI_CLI_PLAYER='flatpak_mpv'
+    run "$ANI_CLI_PATH" -c
+    [ "$status" -eq 1 ]
+    [[ "$output" != *"not found"* ]]
+    [[ "$output" == *"No unwatched series in history"* ]]
+}
+
 @test "ani-cli -c with empty history dies 'No unwatched series in history!'" {
     histfile="$ANI_CLI_HIST_DIR/ani-hsts"
     : >"$histfile"
