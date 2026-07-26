@@ -49,6 +49,12 @@ fn build_fixtures(dir: &std::path::Path) {
         "search_one_piece.json",
         "episodes_short.json",
         "embed_simple.json",
+        // fetch_keys' key-derivation fixtures (page epoch/partB, CDN app
+        // bundle, key-mask chunk) — required since ani-cli 4.15's
+        // encrypted transport.
+        "keys_page.html",
+        "keys_app.js",
+        "keys_chunk.js",
     ] {
         std::fs::copy(src.join(f), dir.join(f)).expect("copy fixture");
     }
@@ -84,7 +90,26 @@ fn stage_curl_shim_wrapper(tmp: &std::path::Path, fixtures_dir: &std::path::Path
         perms.set_mode(0o755);
     }
     std::fs::set_permissions(&wrapped, perms).expect("chmod +x");
+    stage_fake_botan(&bin);
     bin
+}
+
+/// Stage the harness's botan stand-in as `botan` next to the curl shim.
+/// ani-cli 4.15 hard-requires one at startup and drives the encrypted
+/// allanime transport through it; the stand-in does real AES-256-GCM via
+/// python3-cryptography (see tests/bash/helpers/fake_botan.sh).
+fn stage_fake_botan(bin: &std::path::Path) {
+    let dst = bin.join("botan");
+    std::fs::copy(repo_root().join("tests/bash/helpers/fake_botan.sh"), &dst)
+        .expect("copy fake botan");
+    #[allow(unused_mut)]
+    let mut perms = std::fs::metadata(&dst).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+    }
+    std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
 }
 
 /// Build an `AppState` pointed at the real `ani-cli` script and

@@ -93,11 +93,13 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Install ani-cli runtime deps
         # `cargo llvm-cov --workspace` exercises `anicli_run_debug`, which
-        # spawns ./ani-cli — the script `dep_ch`s fzf, curl, openssl, etc.
-        # at startup. Same deps the bash workflow installs.
+        # spawns ./ani-cli — the script `dep_ch`s curl, a botan binary
+        # (the harness stages fake_botan.sh, whose GCM needs
+        # python3-cryptography), and fzf at startup. Same deps the bash
+        # workflow installs.
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl openssl bsdmainutils xxd fzf mpv ffmpeg aria2
+          sudo apt-get install -y curl python3-cryptography bsdmainutils xxd fzf mpv ffmpeg aria2
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate Rust lcov

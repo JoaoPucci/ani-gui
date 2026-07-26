@@ -28,6 +28,27 @@
       "captured_at": "2026-05-06",
       "captured_via": "Synthetic.",
       "notes": "Used by tests/bash/network/episodes_list.bats."
+    },
+    {
+      "file": "keys_page.html",
+      "purpose": "Mock referrer page for fetch_keys (ani-cli 4.15 encrypted transport). Carries the epoch, the base64 partB (bytes 0x00..0x1f), and the CDN app bundle URL.",
+      "captured_at": "2026-07-27",
+      "captured_via": "Synthetic — shape matches the fields ani-cli's fetch_keys extracts (\"epoch\":N, \"partB\":\"...\", entry/app.*.js URL).",
+      "notes": "partB must not be all-identical bytes: ani-cli reads it back through od, which collapses repeated 16-byte lines into a literal '*'. Used by tests/bash/acceptance/cli_search_and_play.bats via the curl shim."
+    },
+    {
+      "file": "keys_app.js",
+      "purpose": "Mock CDN app bundle for fetch_keys; names the chunk file the key mask lives in.",
+      "captured_at": "2026-07-27",
+      "captured_via": "Synthetic — matches the \"../chunks/*.js\" import shape fetch_keys greps for.",
+      "notes": "Used by tests/bash/acceptance/cli_search_and_play.bats via the curl shim."
+    },
+    {
+      "file": "keys_chunk.js",
+      "purpose": "Mock CDN chunk for fetch_keys; carries the 64-hex key mask (bytes 0x00..0x1f). mask XOR partB derives the all-zero fixture key blob_builder.sh encrypts with.",
+      "captured_at": "2026-07-27",
+      "captured_via": "Synthetic — the mask is the only 64-hex run in the file, as fetch_keys' grep requires.",
+      "notes": "Used by tests/bash/acceptance/cli_search_and_play.bats via the curl shim."
     }
   ]
 }

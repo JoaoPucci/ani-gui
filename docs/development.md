@@ -21,7 +21,10 @@ Group these by what subsystem you intend to work on. You only need a group's too
 
 ```sh
 # Bash subsystem (the vendored CLI script + its test suite)
-sudo apt install -y shellcheck kcov
+# python3-cryptography backs the test harness's botan stand-in
+# (fake_botan.sh) — the bats crypto suites and the Rust integration
+# tests both spawn it.
+sudo apt install -y shellcheck kcov python3-cryptography
 # shfmt is not in 24.04 apt; install the static binary:
 sudo curl -sSL -o /usr/local/bin/shfmt \
   https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64 \

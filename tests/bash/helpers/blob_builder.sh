@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 #
 # Build a synthetic episode_blob.json fixture for the acceptance tests. The
-# response shape mirrors what allanime's API returns when its GraphQL
-# endpoint serves a "tobeparsed" blob: a base64-encoded AES-256-CTR
-# ciphertext that decodes to one or more {"sourceUrl","sourceName"} JSON
-# objects.
+# response shape mirrors what allanime's API returns since the encrypted
+# transport arrived in ani-cli 4.15: the GraphQL endpoint serves a
+# "tobeparsed" blob — base64 over
+#
+#   [1-byte prefix][12-byte IV][AES-256-GCM ciphertext || 16-byte tag]
+#
+# which process_tobeparsed decrypts (via botan; the tests use
+# fake_botan.sh) with the key fetch_keys derived.
 #
 # Usage:
 #   blob_builder.sh <output_path>
@@ -16,30 +20,35 @@
 # the path "/test", which the embed-page fetch step reaches at
 # https://allanime.day/test. The curl shim returns embed_simple.json for
 # any allanime.day/* GET, so the wixmp-default branch produces a usable
-# link and the other 4 providers fail silently.
+# link and the other providers fail silently.
+#
+# The key mirrors the fetch_keys fixtures the acceptance shim serves:
+# keys_chunk.js's 64-hex mask and keys_page.html's partB are the same 32
+# bytes (0x00..0x1f), so mask XOR partB derives the all-zero key below.
+# partB deliberately isn't all-identical bytes: ani-cli reads it back
+# through `od`, which collapses repeated 16-byte lines into a literal
+# `*` and would corrupt the derivation.
 
 set -eu
 
 out="${1:?usage: blob_builder.sh <output_path>}"
 
-# Same key derivation as ani-cli line 466.
-allanime_key="$(printf '%s' 'Xot36i3lK3:v1' | openssl dgst -sha256 -binary | od -A n -t x1 | tr -d ' \n')"
+helpers_dir="$(cd "$(dirname "$0")" && pwd)"
+fake_botan="$helpers_dir/fake_botan.sh"
 
+allanime_key='0000000000000000000000000000000000000000000000000000000000000000'
 iv_hex='000102030405060708090a0b'
-ctr_hex="${iv_hex}00000002"
 plaintext='{"sourceUrl":"--174c5d4b4c","sourceName":"Default","priority":1}'
 
 tmp=$(mktemp)
 {
-    # 1-byte prefix
-    printf '\x00'
+    # 1-byte prefix (process_tobeparsed skips it unconditionally)
+    printf '\001'
     # 12 bytes of IV
     printf '%s' "$iv_hex" | xxd -r -p
-    # ciphertext
+    # ciphertext || 16-byte GCM tag
     printf '%s' "$plaintext" |
-        openssl enc -aes-256-ctr -K "$allanime_key" -iv "$ctr_hex" -nosalt -nopad
-    # 16 bytes of trailing padding
-    dd if=/dev/zero bs=1 count=16 2>/dev/null
+        sh "$fake_botan" cipher --cipher=AES-256/GCM --key="$allanime_key" --nonce="$iv_hex" -
 } >"$tmp"
 
 blob_b64=$(base64 -w0 <"$tmp")
