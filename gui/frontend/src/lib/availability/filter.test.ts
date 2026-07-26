@@ -199,6 +199,21 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 		apiMock.checkAvailability.mockReset();
 	});
 
+	it('keeps inline probes interactive — the search user is waiting on them', async () => {
+		// Unlike the rail fills, the strict variant BLOCKS the search
+		// results on every uncached probe. Routing those through the
+		// gate's paced background slots turns a cold ~20-hit search
+		// into a ~20-second wait (two admits per hit at 500 ms each).
+		// The user is actively waiting, so these probes ride the
+		// interactive lane like a click would.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		await filterAvailableStrict([ref('a')], 'sub');
+		expect(apiMock.checkAvailability).not.toHaveBeenCalledWith(
+			expect.objectContaining({ background: true })
+		);
+	});
+
 	it('inline-probes uncached items and applies their results', async () => {
 		// b is cached false → drops. a is cached true → kept. c is
 		// uncached → probed inline → kept (probe says available).

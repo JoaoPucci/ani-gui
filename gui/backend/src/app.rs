@@ -15,8 +15,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::Semaphore;
-
 use crate::account::InternalSecret;
 use crate::anicli::process::{locate_ani_cli, DebugOptions};
 use crate::anicli::update::{self, UpdateOutcome};
@@ -27,9 +25,6 @@ use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuClient;
 use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
-
-/// Maximum concurrent `ani-cli` subprocess invocations.
-pub const SCRAPER_CONCURRENCY: usize = 2;
 
 /// Single state container Tauri hands to every command.
 #[derive(Clone)]
@@ -67,8 +62,10 @@ pub struct AppState {
     pub bundled_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
-    /// Concurrency limiter for ani-cli subprocess spawns.
-    pub scraper_slots: Arc<Semaphore>,
+    /// Admission gate for allanime scraper traffic: paces background
+    /// probes and breaks the circuit on consecutive failures so cold
+    /// caches can't rate-limit the IP out from under a user's click.
+    pub scraper_gate: Arc<crate::scraper::gate::ScraperGate>,
     /// On-disk image-cache directory served by the `image://` protocol.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
@@ -169,7 +166,7 @@ impl AppState {
             bash_path,
             bundled_bin,
             history_path,
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
             kitsu,
@@ -297,7 +294,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -365,12 +362,6 @@ mod tests {
         // optional-field invariant.
         let got = resolve_bash_path().expect("resolve_bash_path should not error on Unix");
         assert!(got.is_none(), "Unix expects None, got {got:?}");
-    }
-
-    #[test]
-    fn scraper_slots_starts_at_capacity() {
-        let app = fake_state();
-        assert_eq!(app.scraper_slots.available_permits(), SCRAPER_CONCURRENCY);
     }
 
     #[test]

@@ -23,7 +23,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ani_gui::api::build_api_router;
-use ani_gui::app::{AppState, SCRAPER_CONCURRENCY};
+use ani_gui::app::AppState;
 use ani_gui::cache;
 use ani_gui::meta::kitsu::KitsuClient;
 use ani_gui::proxy::{AppSecret, ProxyOrigin, SessionTable};
@@ -31,7 +31,6 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tempfile::TempDir;
-use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
 fn repo_root() -> PathBuf {
@@ -104,7 +103,7 @@ fn build_state(tmp: &std::path::Path) -> AppState {
         bash_path: None,
         bundled_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

@@ -43,6 +43,24 @@ interface CacheEntry {
 	 *  members. Subscribers add themselves on getOrFire and stay
 	 *  attached until the entry is evicted. */
 	subscribers: Set<(p: PlayProgress) => void>;
+	/** Swap the stored producer for a foreground one, if the fire
+	 *  hasn't started yet. A detail-page warm registers entries with
+	 *  a prefetch:true closure; a click attaching before it starts
+	 *  must run its own foreground closure instead, or the request
+	 *  keeps Background priority and the backend's scraper gate can
+	 *  refuse the user's play. No-op once the fire is running. */
+	promote?: (fire: FireFn) => void;
+	/** True while the entry's request still runs the closure it was
+	 *  created with by a background caller (prefetch). Cleared when a
+	 *  promotion swaps in a foreground closure pre-start, or when the
+	 *  promise fulfills — a resolved prefetch is a plain cache hit.
+	 *  Drives the click-side bypass: a foreground caller attaching to
+	 *  a started background entry aborts it and refires with its own
+	 *  Interactive closure instead of waiting behind the backend
+	 *  gate's Background pacing. */
+	createdInBackground?: boolean;
+	/** Whether the underlying fire has begun (withSlot released it). */
+	hasStarted?: () => boolean;
 	/** When the entry is still waiting for a slot in `withSlot`'s queue,
 	 *  this is the resolver that, when called, lets it run. A click
 	 *  (priority subscriber) calls this to cut the queue rather than
@@ -86,6 +104,7 @@ const fireQueue: Array<() => void> = [];
 function withSlot<T>(fn: () => Promise<T>): {
 	promise: Promise<T>;
 	startNow: () => void;
+	hasStarted: () => boolean;
 } {
 	let slotResolver: (() => void) | null = null;
 	let started = false;
@@ -117,7 +136,7 @@ function withSlot<T>(fn: () => Promise<T>): {
 		slotResolver = null;
 		r();
 	};
-	return { promise, startNow };
+	return { promise, startNow, hasStarted: () => started };
 }
 
 /**
@@ -142,9 +161,14 @@ function withSlot<T>(fn: () => Promise<T>): {
  *               replay of the most recent event when this call
  *               attaches mid-flight.
  */
+type FireFn = (
+	emit: (p: PlayProgress) => void,
+	signal: AbortSignal
+) => Promise<CreateSessionResponse>;
+
 export function getOrFire(
 	key: CacheKey,
-	fire: (emit: (p: PlayProgress) => void, signal: AbortSignal) => Promise<CreateSessionResponse>,
+	fire: FireFn,
 	onProgress?: (p: PlayProgress) => void
 ): Promise<CreateSessionResponse> {
 	let entry = cached.get(key);
@@ -161,24 +185,56 @@ export function getOrFire(
 			newEntry.latestProgress = p;
 			for (const s of subscribers) s(p);
 		};
-		const slot = withSlot(() => fire(emit, abortController.signal));
+		const fireRef = { current: fire };
+		const slot = withSlot(() => fireRef.current(emit, abortController.signal));
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
+		newEntry.hasStarted = slot.hasStarted;
+		newEntry.createdInBackground = !onProgress;
+		newEntry.promote = (f) => {
+			if (!slot.hasStarted()) {
+				fireRef.current = f;
+				newEntry.createdInBackground = false;
+			}
+		};
 		cached.set(key, newEntry);
-		newEntry.promise.catch(() => {
-			// Only drop if this is still the current entry — a race where
-			// the same key was re-fired after rejection should leave the
-			// newer attempt in place.
-			if (cached.get(key) === newEntry) cached.delete(key);
-		});
+		newEntry.promise.then(
+			() => {
+				// A fulfilled prefetch is a plain cache hit from here on
+				// — later clicks reuse the session, never refire past it.
+				newEntry.createdInBackground = false;
+			},
+			() => {
+				// Only drop if this is still the current entry — a race
+				// where the same key was re-fired after rejection should
+				// leave the newer attempt in place.
+				if (cached.get(key) === newEntry) cached.delete(key);
+			}
+		);
 		entry = newEntry;
 	}
 	if (onProgress) {
+		// The fire already started with the background closure — its
+		// request may be sleeping behind the backend gate's Background
+		// pacing, or heading into a refusal a click must never see.
+		// Either way the click doesn't wait on it: abort the shared
+		// request (keeping it running would double allanime traffic
+		// for the same episode) and fire fresh with the click's own
+		// Interactive closure. Fulfilled entries never get here —
+		// reuse is the point of warming.
+		if (entry.createdInBackground && entry.hasStarted?.()) {
+			entry.abortController.abort();
+			cached.delete(key);
+			return getOrFire(key, fire, onProgress);
+		}
 		entry.subscribers.add(onProgress);
 		// Replay the most recent event so a late subscriber sees the
 		// state the rest of the band is already in.
 		if (entry.latestProgress) onProgress(entry.latestProgress);
-		// Foreground click — cut the queue. No-op if already running.
+		// Foreground click: swap in the click's own closure (so the
+		// request runs with Interactive priority at the gate) before
+		// cutting the queue. Both are no-ops once already running.
+		entry.promote?.(fire);
 		entry.startNow?.();
 	}
 	return entry.promise;

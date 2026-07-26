@@ -129,6 +129,10 @@ export async function filterAvailableStrict<T extends KitsuAnimeRef>(
 						year: yearFromKitsuRef(item) ?? undefined,
 						kitsu_id: item.id,
 						status: item.status ?? undefined
+						// Interactive, unlike the rail fills: this variant
+						// BLOCKS the search results on every uncached probe,
+						// and the gate's paced background slots would turn a
+						// cold ~20-hit search into a ~20-second wait.
 					});
 					cached[item.id] = r.available;
 				} catch {

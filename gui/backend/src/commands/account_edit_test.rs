@@ -19,7 +19,6 @@ use crate::meta::mal_user::{MalProvider, MalRefreshState};
 /// server) so id resolution can be exercised.
 fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
     use std::path::PathBuf;
-    use tokio::sync::Semaphore;
     Arc::new(AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -30,7 +29,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         bash_path: None,
         bundled_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(crate::app::SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

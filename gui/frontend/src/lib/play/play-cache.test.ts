@@ -61,6 +61,115 @@ describe('getOrFire', () => {
 		expect(fire).toHaveBeenCalledTimes(1);
 	});
 
+	it('promotes a queued prefetch to the foreground fire on click', async () => {
+		// A detail-page warm registers the entry with a prefetch:true
+		// closure. When the user clicks before it starts, the click's
+		// own foreground closure must replace it — otherwise the request
+		// still runs as Background and the backend's scraper gate can
+		// refuse it (AniError::Network) instead of taking the
+		// interactive bypass a click is promised.
+		const never = () => new Promise<CreateSessionResponse>(() => {});
+		// Saturate the concurrency cap so the prefetch entry queues
+		// without starting.
+		void getOrFire(makeKey('sat1', 1, 'sub', 'best'), never);
+		void getOrFire(makeKey('sat2', 1, 'sub', 'best'), never);
+		const key = makeKey('show', 3, 'sub', 'best');
+		const prefetchFire = vi.fn(never);
+		void getOrFire(key, prefetchFire);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const resolved = await getOrFire(key, foregroundFire, () => {});
+		expect(resolved.session_id).toBe('fg');
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+		expect(prefetchFire).not.toHaveBeenCalled();
+	});
+
+	it('refires a started prefetch as foreground when it fails under a click', async () => {
+		// Promotion only helps before the fire starts. When a click
+		// attaches to an in-flight prefetch whose backend request runs
+		// as Background, a breaker refusal fails that promise — the
+		// click must transparently refire once with its own foreground
+		// closure instead of surfacing Network for a user action.
+		const key = makeKey('show', 4, 'sub', 'best');
+		let rejectPrefetch: (e: Error) => void = () => {};
+		const prefetchFire = vi.fn(
+			() =>
+				new Promise<CreateSessionResponse>((_, reject) => {
+					rejectPrefetch = reject;
+				})
+		);
+		void getOrFire(key, prefetchFire).catch(() => {});
+		expect(prefetchFire).toHaveBeenCalledTimes(1);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const clicked = getOrFire(key, foregroundFire, () => {});
+		rejectPrefetch(new Error('gate refused'));
+		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+	});
+
+	it('refires immediately as foreground when attaching to a started prefetch', async () => {
+		// A started background prefetch may be sleeping behind the
+		// backend gate's Background pacing with its SSE already open. A
+		// click attaching to it must not wait for that promise to settle
+		// — it aborts the shared background request (keeping it running
+		// would double allanime traffic for the same episode) and fires
+		// fresh with its own Interactive closure right away.
+		const key = makeKey('show', 5, 'sub', 'best');
+		let bgAborted = false;
+		const prefetchFire = vi.fn(
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
+				new Promise<CreateSessionResponse>(() => {
+					signal.addEventListener('abort', () => {
+						bgAborted = true;
+					});
+				})
+		);
+		void getOrFire(key, prefetchFire).catch(() => {});
+		expect(prefetchFire).toHaveBeenCalledTimes(1);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const clicked = getOrFire(key, foregroundFire, () => {});
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+		expect(bgAborted).toBe(true);
+		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
+	});
+
+	it('reuses a resolved background prefetch instead of refiring', async () => {
+		// Once the prefetch has fulfilled there is nothing to wait
+		// behind — the cached session IS the payoff of warming. A click
+		// must get it instantly, not burn a fresh ani-cli spawn.
+		const key = makeKey('show', 6, 'sub', 'best');
+		const prefetchFire = vi.fn(plainFire(fakeResp('warmed')));
+		await getOrFire(key, prefetchFire);
+		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const clicked = await getOrFire(key, foregroundFire, () => {});
+		expect(clicked.session_id).toBe('warmed');
+		expect(foregroundFire).not.toHaveBeenCalled();
+	});
+
+	it('a click refired from a prefetch still dies on page unmount', async () => {
+		// clearForShow on unmount aborts in-flight fires; the foreground
+		// refire is a normal cache entry, so unmount aborts it like any
+		// other — the request must not outlive the page, and nothing
+		// resurrects it afterwards.
+		const key = makeKey('gone', 1, 'sub', 'best');
+		const prefetchFire = vi.fn(
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
+				new Promise<CreateSessionResponse>((_, reject) => {
+					signal.addEventListener('abort', () => reject(new Error('aborted')));
+				})
+		);
+		void getOrFire(key, prefetchFire).catch(() => {});
+		const foregroundFire = vi.fn(
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
+				new Promise<CreateSessionResponse>((_, reject) => {
+					signal.addEventListener('abort', () => reject(new Error('aborted')));
+				})
+		);
+		const clicked = getOrFire(key, foregroundFire, () => {});
+		clearForShow('gone');
+		await expect(clicked).rejects.toThrow();
+		expect(foregroundFire).toHaveBeenCalledTimes(1);
+	});
+
 	it('drops failed entries so a retry can fire fresh', async () => {
 		const fire = vi
 			.fn<(emit: (p: PlayProgress) => void) => Promise<CreateSessionResponse>>()
@@ -132,8 +241,10 @@ describe('getOrFire', () => {
 				})
 		);
 
-		// Prefetch fires with a no-op subscriber.
-		getOrFire(k, fire);
+		// A foreground caller opens the entry. (A *background* entry
+		// wouldn't replay: a click attaching to a started prefetch
+		// refires fresh with its own stream — see the bypass tests.)
+		getOrFire(k, fire, () => {});
 		emitFn!({ kind: 'links_fetched', provider: 'youtube' });
 		emitFn!({ kind: 'links_fetched', provider: 'sharepoint' });
 

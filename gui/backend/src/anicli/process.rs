@@ -212,17 +212,25 @@ pub async fn run_debug(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group + tree guard, same as spawn_download: an
+    // aborted resolve must take ani-cli's in-flight curl / pipeline
+    // children down too, or the click-takeover refire doubles
+    // allanime traffic.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
-    let stdout_reader = child.stdout.take().expect("stdout piped");
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     let collected = tokio::time::timeout(opts.timeout, async move {
         let stdout_fut = read_to_end(stdout_reader);
         let stderr_fut = read_to_end(stderr_reader);
         let (out, err) = tokio::join!(stdout_fut, stderr_fut);
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
+        // Child reaped — pid/pgid may be recycled past this point.
+        child.disarm();
         Result::<(Vec<u8>, Vec<u8>, std::process::ExitStatus)>::Ok((out?, err?, status))
     })
     .await
@@ -239,17 +247,7 @@ pub async fn run_debug(
             stdout = %stdout_text,
             "anicli: non-zero exit",
         );
-        if stderr_text.contains("No results found") {
-            return Err(AniError::NoResults);
-        }
-        if stderr_text.contains("Episode not released") {
-            return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-            });
-        }
-        return Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-        });
+        return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
     let stdout_text = super::parser::strip_ansi(&stdout_bytes);
@@ -343,11 +341,17 @@ where
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group + tree guard, same as spawn_download: the
+    // click-takeover bypass aborts this future and refires — ani-cli's
+    // in-flight curl / pipeline children must die with the shell or
+    // the refire doubles allanime traffic.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
-    let stdout_reader = child.stdout.take().expect("stdout piped");
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     // Read stderr line-by-line and forward each (ANSI-stripped) line
     // to the caller. Buffer stderr bytes too so the existing
@@ -383,7 +387,9 @@ where
         let stdout_fut = read_to_end(stdout_reader);
         let (out, err_io) = tokio::join!(stdout_fut, stream_fut);
         err_io?;
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
+        // Child reaped — pid/pgid may be recycled past this point.
+        child.disarm();
         Result::<(Vec<u8>, std::process::ExitStatus)>::Ok((out?, status))
     })
     .await
@@ -401,17 +407,7 @@ where
             stdout = %stdout_text,
             "anicli (streaming): non-zero exit",
         );
-        if stderr_text.contains("No results found") {
-            return Err(AniError::NoResults);
-        }
-        if stderr_text.contains("Episode not released") {
-            return Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-            });
-        }
-        return Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-        });
+        return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
     let stdout_text = super::parser::strip_ansi(&stdout_bytes);
@@ -451,6 +447,87 @@ pub struct DownloadRequest<'a> {
     /// the title is ambiguous. The disambiguator upstream of the
     /// download path ensures this lands on the right show.
     pub select_index: usize,
+}
+
+/// Owns the spawned ani-cli child and kills its whole process tree
+/// when dropped mid-run. Ownership is the point: a struct's `Drop`
+/// body runs BEFORE its fields drop, so the tree walk / group signal
+/// fires while the shell is still alive — on Windows `taskkill /T`
+/// can only discover curl / yt-dlp / ffmpeg descendants by a live
+/// parent pid, and `kill_on_drop`'s SIGKILL (the `Child` field's own
+/// drop) must come second under every cancellation mode: task abort,
+/// timeout, panic. Disarmed once the child has been waited: past the
+/// reap the pid may be recycled and must not be signalled. The signal
+/// goes through `kill(1)` / `taskkill(1)` rather than a syscall —
+/// the crate forbids unsafe code, and both binaries ship with any
+/// host that can run ani-cli. `.status()` (not `.spawn()`) so the
+/// helper can't linger as a zombie; it exits in microseconds.
+struct TreeKillChild {
+    child: tokio::process::Child,
+    armed: bool,
+}
+
+impl TreeKillChild {
+    fn new(child: tokio::process::Child) -> Self {
+        Self { child, armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TreeKillChild {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // `id()` is None once the child has been reaped — nothing to
+        // walk in that case even if disarm was missed.
+        let Some(pid) = self.child.id() else { return };
+        #[cfg(test)]
+        if let Some(probe) = tree_kill_probe() {
+            let _ = std::process::Command::new(probe)
+                .arg(pid.to_string())
+                .status();
+            return;
+        }
+        if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+            let _ = std::process::Command::new(prog).args(&args).status();
+        }
+    }
+}
+
+/// Test seam: when a probe is registered, the teardown runs it (child
+/// pid as its argument) INSTEAD of the real tree-kill command. The
+/// Windows contract — `taskkill /T` can only discover descendants
+/// while the parent is still alive — is unobservable on the platforms
+/// the suite runs on, so a probe standing in for the kill command is
+/// the only way a test can record WHEN the teardown fires relative to
+/// the parent's reap. The probe takes over the cleanup duty too.
+#[cfg(test)]
+static TREE_KILL_PROBE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn tree_kill_probe() -> Option<PathBuf> {
+    TREE_KILL_PROBE.lock().expect("probe lock").clone()
+}
+
+/// Platform command that takes down a spawned downloader's whole
+/// process tree. Unix: `kill -9 -- -PID` — the negative pid addresses
+/// the process group created at spawn (`process_group(0)`, pgid ==
+/// child pid). Windows: `taskkill /PID <pid> /T /F` — no process
+/// group there; /T walks the child tree by parent pid (which is why
+/// the guard must fire while the shell is still alive), /F because
+/// the transfer tools ignore the graceful signal mid-write.
+fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)> {
+    if windows {
+        return Some((
+            "taskkill",
+            vec!["/PID".into(), pid.to_string(), "/T".into(), "/F".into()],
+        ));
+    }
+    Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
@@ -536,9 +613,16 @@ where
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group (pgid == child pid): ani-cli fronts yt-dlp /
+    // ffmpeg / aria2c as foreground children, and kill_on_drop only
+    // signals the shell itself — an aborted download would orphan the
+    // transfer tool mid-write. The group guard below reaps the whole
+    // tree instead.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
-    let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
-    let stderr_reader = child.stderr.take().expect("stderr piped");
+    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
+    let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     // Stream stderr line-by-line. aria2c / yt-dlp / ffmpeg all write
     // their progress to stderr. Buffer the raw bytes too so the
@@ -572,7 +656,7 @@ where
     // Stdout is ignored (ani-cli's download path doesn't print
     // anything we'd parse), but we still drain it so the pipe doesn't
     // back up.
-    let stdout_reader = child.stdout.take().expect("stdout piped");
+    let stdout_reader = child.child.stdout.take().expect("stdout piped");
     let drain_stdout = async move {
         let mut reader = BufReader::new(stdout_reader);
         let mut sink = String::new();
@@ -589,11 +673,14 @@ where
         let (a, b) = tokio::join!(stream_fut, drain_stdout);
         a?;
         b?;
-        let status = child.wait().await?;
+        let status = child.child.wait().await?;
         Result::<std::process::ExitStatus>::Ok(status)
     })
     .await
     .map_err(|_| AniError::Timeout)??;
+    // The child has been reaped — its pid (and so the pgid) may be
+    // recycled; the tree must not be signalled past this point.
+    child.disarm();
 
     if !collected.success() {
         let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
@@ -789,6 +876,261 @@ mod tests {
         let mut opts = DebugOptions::new(stub_ani_cli);
         opts.path_override = Some(format!("{}:/usr/bin:/bin", stub_dir.display()));
         opts
+    }
+
+    #[test]
+    fn tree_kill_args_unix_addresses_the_process_group() {
+        let (prog, args) = tree_kill_args(1234, false).expect("unix tree kill");
+        assert_eq!(prog, "kill");
+        assert_eq!(args, vec!["-9", "--", "-1234"]);
+    }
+
+    #[test]
+    fn tree_kill_args_windows_kills_the_tree_by_parent_pid() {
+        // Windows is a shipped target (package:win) and kill_on_drop
+        // only terminates the Git Bash parent there — cancelling a
+        // download must take aria2c / ffmpeg / yt-dlp down with it.
+        // taskkill /T walks the child tree by parent pid; /F because
+        // the transfer tools ignore the graceful signal mid-write.
+        let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");
+        assert_eq!(prog, "taskkill");
+        assert_eq!(args, vec!["/PID", "1234", "/T", "/F"]);
+    }
+
+    proptest::proptest! {
+        // Contract for any pid on both platforms: the command always
+        // names the pid (negated group on unix, bare tree root on
+        // windows) and never comes back empty — every supported
+        // platform has a tree kill.
+        #[test]
+        fn tree_kill_args_always_names_the_pid(
+            pid in proptest::num::u32::ANY,
+            windows in proptest::bool::ANY,
+        ) {
+            let (prog, args) = tree_kill_args(pid, windows).expect("tree kill exists");
+            let want = if windows { pid.to_string() } else { format!("-{pid}") };
+            let named = args.iter().any(|a| a == &want);
+            proptest::prop_assert!(named, "{} args {:?} missing {}", prog, args, want);
+        }
+    }
+
+    /// Stub ani-cli that mirrors the download path's process shape:
+    /// it launches a long-sleeping descendant (the "yt-dlp"), reports
+    /// that descendant's pid via a file, and waits on it — like
+    /// ani-cli fronting a transfer tool.
+    #[cfg(unix)]
+    fn stub_ani_cli_with_descendant(pidfile: &std::path::Path) -> (tempfile::TempDir, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let td = tempfile::tempdir().expect("tempdir");
+        let path = td.path().join("ani-cli");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nsleep 30 &\necho $! > '{}'\nwait\n",
+                pidfile.display()
+            ),
+        )
+        .expect("write stub");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let ffmpeg = td.path().join("ffmpeg");
+        std::fs::write(&ffmpeg, b"#!/bin/sh\nexit 0\n").expect("write ffmpeg stub");
+        std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod ffmpeg");
+        (td, path)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tree_kill_fires_while_the_parent_is_still_alive() {
+        let _guard = ENV_LOCK.lock().await;
+        // The Windows contract: taskkill /T discovers descendants by
+        // a LIVE parent pid, so the teardown must run before
+        // kill_on_drop reaps the shell. Only observable through the
+        // probe seam — it stands in for the tree-kill command and
+        // records the parent's state (running vs zombie/reaped) at
+        // the exact moment the teardown fires.
+        let probe_td = tempfile::tempdir().expect("probe tempdir");
+        let out = probe_td.path().join("probe.out");
+        let probe = probe_td.path().join("probe.sh");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(
+                &probe,
+                format!(
+                    "#!/bin/sh\nsleep 0.1\nSTATE=$(ps -o state= -p \"$1\" 2>/dev/null | tr -d ' ')\ncase \"$STATE\" in\n  ''|Z*) echo dead > '{out}' ;;\n  *) echo alive > '{out}' ;;\nesac\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
+                    out = out.display()
+                ),
+            )
+            .expect("write probe");
+            std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod probe");
+        }
+        *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let opts = debug_opts(stub);
+        let task = tokio::spawn(async move {
+            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
+        });
+
+        // Wait for the run to be mid-flight, then abort it.
+        {
+            let mut waited_ms = 0u32;
+            while !pidfile.exists() {
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        }
+        task.abort();
+        let _ = task.await;
+
+        let verdict = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&out) {
+                    if !s.trim().is_empty() {
+                        break s.trim().to_string();
+                    }
+                }
+                assert!(waited_ms < 5_000, "probe never ran");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+        *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+        assert_eq!(
+            verdict, "alive",
+            "the tree kill must fire while the parent is still alive — a reaped parent \
+             hides its descendants from taskkill /T on Windows"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn aborting_a_play_resolution_kills_the_whole_process_tree() {
+        let _guard = ENV_LOCK.lock().await;
+        // The click-takeover bypass aborts a started background
+        // resolve and immediately refires interactively. kill_on_drop
+        // reaps the ani-cli shell alone — its in-flight curl /
+        // pipeline children must die with it, or the takeover doubles
+        // allanime traffic at exactly the moment it exists to avoid.
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let opts = debug_opts(stub);
+
+        let task = tokio::spawn(async move {
+            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
+        });
+
+        let pid: i32 = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&pidfile) {
+                    if let Ok(p) = s.trim().parse() {
+                        break p;
+                    }
+                }
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+
+        task.abort();
+        let _ = task.await;
+
+        let mut dead = false;
+        for _ in 0..40 {
+            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                dead = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !dead {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        assert!(
+            dead,
+            "descendant (pid {pid}) survived the play abort — duplicate allanime traffic"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn aborting_a_download_kills_the_whole_process_tree() {
+        let _guard = ENV_LOCK.lock().await;
+        // Cancelling a download aborts the SSE task, which drops the
+        // spawn_download future. kill_on_drop reaps the ani-cli shell
+        // — but the transfer tool it fronted must die WITH it, or the
+        // dock reports "cancelled" while an orphaned downloader keeps
+        // writing the file and burning bandwidth.
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let dl_dir = tempfile::tempdir().expect("dl tempdir");
+        let opts = debug_opts_dl(stub);
+
+        let task = tokio::spawn(async move {
+            let _ = spawn_download(
+                &opts,
+                &DownloadRequest {
+                    query: "any",
+                    episode: "1",
+                    quality: "best",
+                    mode: "sub",
+                    select_index: 1,
+                },
+                dl_dir.path(),
+                |_| {},
+            )
+            .await;
+        });
+
+        // Wait for the stub to report its descendant's pid.
+        let pid: i32 = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&pidfile) {
+                    if let Ok(p) = s.trim().parse() {
+                        break p;
+                    }
+                }
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+
+        task.abort();
+        let _ = task.await;
+
+        // The descendant must be gone shortly after the abort. Poll
+        // /proc — a surviving entry means the downloader was orphaned.
+        let mut dead = false;
+        for _ in 0..40 {
+            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                dead = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !dead {
+            // Don't leak the 30s sleeper into the test host on failure.
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        assert!(
+            dead,
+            "descendant (pid {pid}) survived the abort — orphaned downloader"
+        );
     }
 
     #[cfg(unix)]

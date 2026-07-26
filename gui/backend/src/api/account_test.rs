@@ -85,11 +85,10 @@ use http_body_util::BodyExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
 use crate::account::InternalSecret;
-use crate::app::{AppState, SCRAPER_CONCURRENCY};
+use crate::app::AppState;
 use crate::meta::kitsu::KitsuClient;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 
@@ -104,7 +103,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         bash_path: None,
         bundled_bin: None,
         history_path: td.path().join("ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -129,7 +128,7 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         bash_path: None,
         bundled_bin: None,
         history_path: td.path().join("ani-hsts"),
-        scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

@@ -60,6 +60,18 @@ interface StubOptions {
 	/** Hook fired whenever the renderer posts to /api/play — lets
 	 *  the test assert the click handler ran with the right episode. */
 	onPlay?: (body: unknown) => void;
+	/** Per-request hook for /api/play/stream. Return 'hang' to leave
+	 *  that request pending forever (only the renderer's own abort
+	 *  releases it) — the takeover test uses this to pin a background
+	 *  prefetch in its in-flight state. Anything else falls through
+	 *  to the normal instant `done` fulfillment.
+	 *
+	 *  Must be wired through here rather than a per-test
+	 *  `page.route()`: registering ANY additional route after this
+	 *  harness's handler stops EventSource (SSE) requests from being
+	 *  intercepted at all in this Electron/Playwright combination —
+	 *  fetches keep routing, the SSEs silently hit the real backend. */
+	onPlayStream?: (url: URL) => 'hang' | undefined;
 	/** Make the play stream answer with the backend's typed
 	 *  rate-limit envelope (allanime's in-band "Too many requests,
 	 *  please try again in N seconds" → kind: 'rate_limited' +
@@ -147,6 +159,7 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 				quality: u.searchParams.get('quality')
 			};
 			opts.onPlay?.(body);
+			if (opts.onPlayStream?.(u) === 'hang') return;
 			if (opts.playRateLimited) {
 				// Same envelope ani_error_to_sse_payload serializes for
 				// AniError::RateLimited — the renderer's SSE error
@@ -304,6 +317,73 @@ test('Continue row whose match is unresolvable renders as a /search fallback lin
 		const fallback = strip.getByRole('link').first();
 		await expect(fallback).toBeVisible({ timeout: 10_000 });
 		await expect(fallback).toHaveAttribute('href', /\/search/);
+	} finally {
+		await app.close();
+	}
+});
+
+test('Episode click takes over a started background prefetch instead of waiting behind it', async () => {
+	// The play-cache's click bypass: a detail-page mount warms visible
+	// episodes in the background (prefetch=1 on the wire); a click on
+	// one of those episodes must NOT wait behind that request — it
+	// aborts the shared background fire and issues its own interactive
+	// replacement. Acceptance shape: the episode-6 background stream
+	// hangs open, the click still resolves promptly via a fresh
+	// request without the prefetch flag, and episode 6 sees exactly
+	// two stream requests — the takeover pair, no duplicate traffic.
+	const streamUrls: string[] = [];
+	const ep6 = (prefetch: boolean) =>
+		streamUrls
+			.map((s) => new URL(s))
+			.filter(
+				(u) =>
+					u.searchParams.get('episode') === '6' &&
+					(u.searchParams.get('prefetch') === '1') === prefetch
+			).length;
+	const { app, page } = await launchAppWithContinueStubs({
+		history: continueHistory,
+		onPlayStream: (u) => {
+			streamUrls.push(u.toString());
+			// Pin the episode-6 warm in flight — the takeover target.
+			// Only the renderer's own abort releases it; if the click
+			// waited behind it, the test would time out instead of
+			// navigating. Other episodes' warms resolve instantly.
+			if (u.searchParams.get('episode') === '6' && u.searchParams.get('prefetch') === '1') {
+				return 'hang';
+			}
+			return undefined;
+		}
+	});
+	try {
+		await waitForStripVisible(page);
+
+		// Into the detail page via the first poster card (top-rated
+		// strip — the trending fixtures all feed the hero rotation, so
+		// they never render as strip cards).
+		const card = page.locator('a.poster-card').first();
+		await expect(card).toBeVisible({ timeout: 10_000 });
+		await card.click();
+
+		// The mount-time warm fans out over the visible tiles once
+		// airing + availability settle. Waiting for the episode-6
+		// prefetch on the wire ALSO guarantees its fire has started —
+		// the precondition for the click bypass (a queued-not-started
+		// entry takes the promote path instead).
+		await expect.poll(() => ep6(true), { timeout: 15_000 }).toBe(1);
+
+		// Click the episode the hung warm is holding.
+		const tile = page.locator('li[data-ep-num="6"] button.ep-tile');
+		await expect(tile).toBeVisible({ timeout: 10_000 });
+		await tile.click();
+
+		// Takeover: one fresh interactive request replaces the hung
+		// background one — same episode, no prefetch flag, exactly one.
+		await expect.poll(() => ep6(false), { timeout: 10_000 }).toBe(1);
+		expect(ep6(true)).toBe(1);
+
+		// ...and it, not the hung warm, delivers the session — the app
+		// reaches the player page instead of spinning on the overlay.
+		await page.waitForURL(/\/play\//, { timeout: 10_000 });
 	} finally {
 		await app.close();
 	}

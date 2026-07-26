@@ -588,7 +588,25 @@ pub async fn resolve_allmanga_show_id(
     //    (englishName / nativeName / altNames). Network failure is
     //    soft — Continue Watching can still render the bare
     //    allmanga title, so we return Ok(None).
-    let show = match crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await {
+    // Alias enrichment is opportunistic cache filling — the card can
+    // render the bare allmanga title, so the fetch goes through the
+    // scraper gate as background traffic and is skipped while the
+    // breaker is open.
+    if state
+        .scraper_gate
+        .admit(crate::scraper::gate::ScrapePriority::Background)
+        .await
+        .is_err()
+    {
+        tracing::warn!(show_id, "scraper gate open; skipping reverse-resolve fetch");
+        return Ok(None);
+    }
+    let started_at = tokio::time::Instant::now();
+    let fetched = crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await;
+    state
+        .scraper_gate
+        .record_outcome(fetched.is_ok(), started_at);
+    let show = match fetched {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!(
@@ -748,12 +766,11 @@ fn normalize_query(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{AppState, SCRAPER_CONCURRENCY};
+    use crate::app::AppState;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::Semaphore;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -773,7 +790,7 @@ mod tests {
             bash_path: None,
             bundled_bin: None,
             history_path: PathBuf::from("/y/ani-hsts"),
-            scraper_slots: Arc::new(Semaphore::new(SCRAPER_CONCURRENCY)),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),

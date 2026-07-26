@@ -31,6 +31,9 @@ export function makeFetchAvailability(
 			episode_count: match.episode_count ?? undefined,
 			year: yearFromKitsuRef(match) ?? undefined,
 			kitsu_id: match.id,
-			status: match.status ?? undefined
+			status: match.status ?? undefined,
+			// Cache fills are opportunistic — the scraper gate paces
+			// them and skips them while its breaker is open.
+			background: true
 		});
 }
