@@ -197,7 +197,10 @@ pub fn classify_failure_stderr(stderr: &str) -> AniError {
     // dep_ch's die() prefix — shared by the plain "Please install
     // it." line and the Termux openssl hint. A local setup problem,
     // keyed separately so the scraper gate's recorders can ignore it.
-    if stderr.contains("Program \"") && stderr.contains("not found") {
+    // 4.15's dep_ch dropped the quotes around the tool name while the
+    // dep_ch_failover botan die kept them, so match the bare prefix;
+    // both substrings must still co-occur.
+    if stderr.contains("Program ") && stderr.contains("not found") {
         return AniError::Scraper {
             key: crate::i18n::keys::SCRAPER_MISSING_DEP,
         };
