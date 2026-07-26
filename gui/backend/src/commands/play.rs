@@ -1730,6 +1730,35 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn missing_dependency_exits_leave_the_breaker_alone() {
+        use crate::scraper::gate::ScrapePriority;
+        // ani-cli dies in dep_ch before touching the network when a
+        // base tool (curl, sed, grep, openssl, fzf) is missing
+        // locally. Those exits say nothing about allanime's health —
+        // three play attempts on an incomplete installation must not
+        // open the breaker and suppress unrelated background traffic
+        // for a full cooldown.
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
+            record_spawn_outcome::<()>(
+                &state,
+                tokio::time::Instant::now(),
+                &Err(AniError::Scraper {
+                    key: crate::i18n::keys::SCRAPER_MISSING_DEP,
+                }),
+            );
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "local dependency-check exits must not move the breaker"
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn unreleased_spawn_verdict_counts_as_recovery_evidence() {
         use crate::scraper::gate::ScrapePriority;

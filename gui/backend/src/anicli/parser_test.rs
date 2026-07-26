@@ -106,6 +106,35 @@ fn parse_debug_with_m3u8_subs_and_refr() {
 }
 
 #[test]
+fn classify_failure_stderr_flags_missing_dependencies() {
+    // dep_ch's die() line — ani-cli exits before touching the network
+    // when a base tool (curl, sed, grep, openssl, fzf) is absent.
+    // Mapping this to the parse-failed catch-all lets an incomplete
+    // installation open the scraper breaker; it must carry its own
+    // key so the gate recorders can tell local setup from upstream
+    // trouble.
+    let err = classify_failure_stderr("Program \"fzf\" not found. Please install it.");
+    match err {
+        AniError::Scraper { key } => assert_eq!(key, crate::i18n::keys::SCRAPER_MISSING_DEP),
+        other => panic!("expected missing-dep Scraper, got {other:?}"),
+    }
+}
+
+#[test]
+fn classify_failure_stderr_flags_the_termux_openssl_hint() {
+    // The Android/Termux openssl check dies with a different suffix
+    // ("On Termux, install with: …") — the classifier must key on the
+    // shared 'Program "X" not found' prefix, not the install hint.
+    let err = classify_failure_stderr(
+        "Program \"openssl\" not found. On Termux, install with: pkg install openssl-tool",
+    );
+    match err {
+        AniError::Scraper { key } => assert_eq!(key, crate::i18n::keys::SCRAPER_MISSING_DEP),
+        other => panic!("expected missing-dep Scraper, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_debug_missing_marker_errors() {
     let stdout = "Some output but no Selected marker\n";
     let err = parse_debug_output(stdout).unwrap_err();
