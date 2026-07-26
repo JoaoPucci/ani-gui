@@ -37,6 +37,7 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
+	import { describeRateLimit } from '$lib/play/error-copy';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import {
 		airedCap,
@@ -867,6 +868,11 @@
 	 *  "timeout"` means ani-cli took >60s; everything else collapses
 	 *  to a generic message. The user shouldn't have to read JSON. */
 	function describePlayFailure(e: unknown): string {
+		// Shared first-chance branch: the typed rate limit renders the
+		// same localized busy-source copy (with the upstream's own
+		// retry hint) on every play surface. See $lib/play/error-copy.
+		const rateLimited = describeRateLimit(e);
+		if (rateLimited !== null) return rateLimited;
 		const raw = describeErrorString(e).toLowerCase();
 		if (raw.includes('no_results')) {
 			// "Not in the catalog" reads cleaner than the prior
