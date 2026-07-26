@@ -212,8 +212,15 @@ pub async fn run_debug(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group + tree guard, same as spawn_download: an
+    // aborted resolve must take ani-cli's in-flight curl / pipeline
+    // children down too, or the click-takeover refire doubles
+    // allanime traffic.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
     let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
+    let mut group = GroupKillGuard(child.id());
 
     let stdout_reader = child.stdout.take().expect("stdout piped");
     let stderr_reader = child.stderr.take().expect("stderr piped");
@@ -227,6 +234,8 @@ pub async fn run_debug(
     })
     .await
     .map_err(|_| AniError::Timeout)??;
+    // Child reaped — pid/pgid may be recycled past this point.
+    group.disarm();
 
     let (stdout_bytes, stderr_bytes, exit) = collected;
 
@@ -333,8 +342,15 @@ where
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Own process group + tree guard, same as spawn_download: the
+    // click-takeover bypass aborts this future and refires — ani-cli's
+    // in-flight curl / pipeline children must die with the shell or
+    // the refire doubles allanime traffic.
+    #[cfg(unix)]
+    cmd.process_group(0);
 
     let mut child = cmd.spawn().map_err(|_| AniError::MissingBinary)?;
+    let mut group = GroupKillGuard(child.id());
 
     let stdout_reader = child.stdout.take().expect("stdout piped");
     let stderr_reader = child.stderr.take().expect("stderr piped");
@@ -378,6 +394,9 @@ where
     })
     .await
     .map_err(|_| AniError::Timeout)??;
+
+    // Child reaped — pid/pgid may be recycled past this point.
+    group.disarm();
 
     let (stdout_bytes, exit) = collected;
     let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
