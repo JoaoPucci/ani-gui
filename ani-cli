@@ -445,7 +445,9 @@ play_episode() {
             ;;
         android_mpv) "$player_function" "$episode" "${allanime_title}Episode ${ep_no}" "--tls-verify=no $refr_flag" 2>&1 & ;;
         android_vlc) nohup am start --user 0 -a android.intent.action.VIEW -d "$episode" -n org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity -e "title" "${allanime_title}Episode ${ep_no}" >/dev/null 2>&1 & ;;
-        "$HOME"/.local/share/flatpak/app/io.mpv/Mpv/) flatpak run io.mpv.Mpv --tls-verify=no --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" $refr_flag >/dev/null 2>&1 & ;;
+        # ani-gui patch: flatpak_mpv is the documented ANI_CLI_PLAYER
+        # alias for this branch (see the dependency-check exception).
+        flatpak_mpv | "$HOME"/.local/share/flatpak/app/io.mpv/Mpv/) flatpak run io.mpv.Mpv --tls-verify=no --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" $refr_flag >/dev/null 2>&1 & ;;
         *mpv*)
             if [ "$no_detach" = 0 ]; then
                 nohup $player_function $skip_flag --tls-verify=no --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" $refr_flag >/dev/null 2>&1 &
@@ -640,6 +642,12 @@ case "$external_helper" in
 esac
 case "$player_function" in
     debug) ;;
+    # ani-gui patch: 4.15 folded where_mpv into dep_ch_failover's
+    # path-based selection and dropped this alias, but ani-cli.1 still
+    # documents ANI_CLI_PLAYER=flatpak_mpv; without the exception the
+    # documented configuration dies here ("flatpak_mpv" is not an
+    # executable). The player branch handles it out of band.
+    flatpak_mpv) ;;
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
         dep_ch "aria2c"
