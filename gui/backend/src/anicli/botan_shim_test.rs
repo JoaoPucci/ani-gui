@@ -231,3 +231,46 @@ fn run_shim_unknown_invocation_exits_two() {
     let (code, _) = run(&[], b"");
     assert_eq!(code, 2);
 }
+
+// --- wrapper provisioning ---
+
+#[test]
+fn provision_writes_an_executable_wrapper_that_execs_the_shim() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let dir = tmp.path().join("botan-shim");
+    let exe = std::path::Path::new("/opt/ani-gui/ani-gui-backend");
+
+    let got = provision_botan_wrapper(&dir, exe).expect("provision");
+    assert_eq!(got, dir, "returns the dir for PATH appending");
+
+    let wrapper = dir.join("botan");
+    let body = std::fs::read_to_string(&wrapper).expect("wrapper exists");
+    assert!(body.starts_with("#!/bin/sh"), "sh shebang: {body}");
+    assert!(
+        body.contains("\"/opt/ani-gui/ani-gui-backend\" --botan-shim \"$@\""),
+        "execs the backend shim with args forwarded: {body}"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&wrapper)
+            .expect("stat")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0o111, "wrapper must be executable");
+    }
+}
+
+#[test]
+fn provision_is_idempotent_across_boots() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let dir = tmp.path().join("botan-shim");
+    let exe = std::path::Path::new("/first/backend");
+    provision_botan_wrapper(&dir, exe).expect("first provision");
+    // A later boot from a different install path rewrites the wrapper.
+    let exe2 = std::path::Path::new("/second/backend");
+    provision_botan_wrapper(&dir, exe2).expect("second provision");
+    let body = std::fs::read_to_string(dir.join("botan")).expect("wrapper");
+    assert!(body.contains("/second/backend"), "self-heals: {body}");
+}

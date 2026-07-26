@@ -63,6 +63,18 @@ pub fn compose_anicli_path(
     std::env::join_paths(&parts).unwrap_or(base)
 }
 
+/// Append the botan-shim directory to an already composed PATH.
+///
+/// Appended — never prepended — so a real Botan installation anywhere
+/// on the user's PATH keeps winning `dep_ch_failover`'s lookup; the
+/// shim only catches machines that have none. `None` returns the
+/// composed PATH untouched. Pure, like [`compose_anicli_path`].
+#[must_use]
+pub fn append_shim_bin(composed: OsString, shim_bin: Option<&Path>) -> OsString {
+    let _ = (&composed, shim_bin);
+    todo!("green commit implements shim PATH appending")
+}
+
 /// Names of OS env vars the ani-cli spawn must forward on Windows
 /// after `cmd.env_clear()`. Without these, Git Bash can't bootstrap
 /// its MSYS mount table (so `/tmp` resolves to a path the user often

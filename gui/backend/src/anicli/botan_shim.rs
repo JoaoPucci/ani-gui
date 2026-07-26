@@ -204,6 +204,22 @@ pub fn run_shim(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -
     }
 }
 
+/// Write the `botan` wrapper script into `dir` and return `dir` for
+/// PATH appending. The wrapper execs `backend_exe --botan-shim "$@"`,
+/// so ani-cli's `dep_ch_failover "botan3,botan,botan-cli"` resolves it
+/// like a real botan. Regenerated on every boot — a moved or upgraded
+/// backend binary self-heals.
+///
+/// # Errors
+/// Propagates filesystem errors (create dir, write, chmod).
+pub fn provision_botan_wrapper(
+    dir: &std::path::Path,
+    backend_exe: &std::path::Path,
+) -> std::io::Result<std::path::PathBuf> {
+    let _ = (dir, backend_exe);
+    todo!("green commit implements wrapper provisioning")
+}
+
 #[cfg(test)]
 #[path = "botan_shim_test.rs"]
 mod tests;
