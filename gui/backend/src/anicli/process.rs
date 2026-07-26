@@ -894,6 +894,60 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn aborting_a_play_resolution_kills_the_whole_process_tree() {
+        let _guard = ENV_LOCK.lock().await;
+        // The click-takeover bypass aborts a started background
+        // resolve and immediately refires interactively. kill_on_drop
+        // reaps the ani-cli shell alone — its in-flight curl /
+        // pipeline children must die with it, or the takeover doubles
+        // allanime traffic at exactly the moment it exists to avoid.
+        let pid_td = tempfile::tempdir().expect("pid tempdir");
+        let pidfile = pid_td.path().join("descendant.pid");
+        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+        let opts = debug_opts(stub);
+
+        let task = tokio::spawn(async move {
+            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
+        });
+
+        let pid: i32 = {
+            let mut waited_ms = 0u32;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(&pidfile) {
+                    if let Ok(p) = s.trim().parse() {
+                        break p;
+                    }
+                }
+                assert!(waited_ms < 5_000, "descendant never reported its pid");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                waited_ms += 50;
+            }
+        };
+
+        task.abort();
+        let _ = task.await;
+
+        let mut dead = false;
+        for _ in 0..40 {
+            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                dead = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !dead {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        assert!(
+            dead,
+            "descendant (pid {pid}) survived the play abort — duplicate allanime traffic"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn aborting_a_download_kills_the_whole_process_tree() {
         let _guard = ENV_LOCK.lock().await;
         // Cancelling a download aborts the SSE task, which drops the
