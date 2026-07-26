@@ -300,10 +300,14 @@ get_aa_req() {
     dd if="$tmpdir/gcm_out.bin" of="$tmpdir/ct.bin" bs=1 skip=0 count="$ct_len" 2>/dev/null
     dd if="$tmpdir/gcm_out.bin" of="$tmpdir/tag.bin" bs=1 skip="$ct_len" count=16 2>/dev/null
 
+    # ani-gui patch: upstream pipes through `base64 -w 0`, a GNU
+    # coreutils flag; macOS base64 has no -w, fails, and leaves aaReq
+    # empty. Plain base64 with the wrap newlines stripped is
+    # byte-identical output everywhere.
     (
         printf '\001'
         cat "$tmpdir/iv.bin" "$tmpdir/ct.bin" "$tmpdir/tag.bin"
-    ) | base64 -w 0
+    ) | base64 | tr -d '\n'
 }
 
 # gets embed urls, collects direct links into provider files, selects one with desired quality into $episode
