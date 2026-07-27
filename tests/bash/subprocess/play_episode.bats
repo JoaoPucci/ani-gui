@@ -58,8 +58,9 @@ setup() {
     stub_assert_not_called nohup
 }
 
-@test "play_episode: vlc branch passes --http-referrer using allanime_refr" {
+@test "play_episode: vlc branch passes --http-referrer from refr_flag" {
     player_function='vlc'
+    refr_flag='--referrer=https://allmanga.to'
     play_episode || true
     wait 2>/dev/null || true
     stub_assert_called nohup '.*vlc.*--http-referrer=https://allmanga.to.*'
@@ -74,18 +75,21 @@ setup() {
 }
 
 @test "play_episode: catt branch invokes catt cast" {
+    # 4.15 dropped the -s subtitle argument along with the separate
+    # subtitle track.
     player_function='catt'
-    subtitle='https://example.com/sub.vtt'
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called nohup '.*catt cast https://example.com/video.mp4 -s https://example.com/sub.vtt'
+    stub_assert_called nohup '.*catt cast https://example.com/video.mp4'
 }
 
 @test "play_episode: android_mpv branch invokes am start with MPVActivity" {
     player_function='android_mpv'
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called nohup '.*am start.*is.xyz.mpv/.MPVActivity.*'
+    # The branch calls the script's android_mpv function, which execs
+    # am directly (no nohup wrapper).
+    stub_assert_called am '.*is.xyz.mpv/.MPVActivity.*'
 }
 
 @test "play_episode: android_vlc branch invokes am start with VideoPlayerActivity" {

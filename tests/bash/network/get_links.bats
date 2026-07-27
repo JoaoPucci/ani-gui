@@ -81,11 +81,12 @@ setup() {
 EOF
 
     output=$(get_links "/some/path" 2>/dev/null || true)
-    # Subtitle file should have been written.
-    [ -f "$cache_dir/suburl" ]
-    grep -q 'subtitle >https://hianime.example/sub.vtt' "$cache_dir/suburl"
-    # The output contains a line with the cc> marker.
-    [[ "$output" == *"cc>"* ]]
+    # 4.15: the m3u8 branch records the referer for later requests
+    # (the old suburl/cc> subtitle metadata is gone — hardsubs ride
+    # the HLS variant) and emits quality >resolved-url lines.
+    [ -f "$cache_dir/m3u8_refr" ]
+    grep -q 'm3u8_refr >' "$cache_dir/m3u8_refr"
+    [[ "$output" == *"1080 >"* ]]
 
     rm -f "$FIXTURES_DIR/allanime/master_min.m3u8"
 }

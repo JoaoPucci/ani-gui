@@ -51,5 +51,6 @@ setup() {
     log=$(cat "$CURL_MOCK_LOG")
     [[ "$log" == *"MWMqGjvE2yBb2zoiv"* ]]
     [[ "$log" == *"-X POST"* ]]
-    [[ "$log" == *"https://api.allanime.day/api"* ]]
+    # Pin via the script's own variable — upstream rotates domains.
+    [[ "$log" == *"${allanime_api}/api"* ]]
 }

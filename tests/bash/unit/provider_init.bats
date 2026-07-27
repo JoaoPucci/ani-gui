@@ -38,19 +38,19 @@ setup() {
     [ -z "$provider_id" ]
 }
 
-@test "provider_init: decodes a single mapped pair (79 -> A)" {
-    # Per the in-function table: 79 -> A. Input pattern has the colon:
-    # cut -d':' -f2 of "Default:79" yields "79", which sed splits into "79"
-    # and is mapped to "A". The trailing /clock /clock.json substitution
-    # only fires on /clock — irrelevant here.
-    resp="Default:79"
+@test "provider_init: decodes a single mapped pair (--79 -> A)" {
+    # Per the in-function table: 79 -> A. Since upstream b8032b7 the
+    # decode only fires when the matched value starts with "--" (raw
+    # values pass through, pinned separately); the prefix is stripped
+    # before the pair table applies.
+    resp="Default:--79"
     provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "A" ]
 }
 
 @test "provider_init: decodes a mapped sequence (705d54 -> Hel)" {
-    # 70->H, 5d->e, 54->l per the table.
-    resp="Default:705d54"
+    # 70->H, 5d->e, 54->l per the table, behind the -- prefix.
+    resp="Default:--705d54"
     provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "Hel" ]
 }
@@ -60,7 +60,7 @@ setup() {
     #   '/' -> 17, 'c' -> 5b, 'l' -> 54, 'o' -> 57, 'c' -> 5b, 'k' -> 53
     # (4d maps to 'u', not 'c' — easy to mistake.)
     # The trailing sed `s|/clock|/clock.json|` then appends .json.
-    resp="Default:175b54575b53"
+    resp="Default:--175b54575b53"
     provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "/clock.json" ]
 }
