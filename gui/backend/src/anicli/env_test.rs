@@ -279,6 +279,65 @@ fn ensure_download_tool_still_accepts_ffmpeg_alone() {
     assert!(r.is_ok(), "got: {r:?}");
 }
 
+#[test]
+fn download_tool_names_include_ytdlp_for_the_4_15_failover_line() {
+    // 4.15's download mode accepts either tool.
+    let script = r#"case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
+        dep_ch "aria2c"
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let (ytdlp, ffmpeg) = if cfg!(windows) {
+        ("yt-dlp.exe", "ffmpeg.exe")
+    } else {
+        ("yt-dlp", "ffmpeg")
+    };
+    assert!(names.contains(&ytdlp), "got: {names:?}");
+    assert!(names.contains(&ffmpeg), "got: {names:?}");
+}
+
+#[test]
+fn download_tool_names_are_ffmpeg_only_for_the_pre_4_15_script() {
+    // A stale cache running pre-4.15 hard-requires ffmpeg
+    // (`dep_ch "ffmpeg" "aria2c"`); accepting yt-dlp alone there
+    // would pass the preflight and then die inside the spawn.
+    let script = r#"case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let (ytdlp, ffmpeg) = if cfg!(windows) {
+        ("yt-dlp.exe", "ffmpeg.exe")
+    } else {
+        ("yt-dlp", "ffmpeg")
+    };
+    assert!(!names.contains(&ytdlp), "got: {names:?}");
+    assert!(names.contains(&ffmpeg), "got: {names:?}");
+}
+
+#[test]
+fn download_tool_names_accept_ytdlp_for_the_real_repo_script() {
+    // Reality pin: the bundled script must be recognized as
+    // yt-dlp-capable, or the relaxed preflight silently degrades back
+    // to ffmpeg-only for every fresh install.
+    let repo_script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("repo root")
+        .join("ani-cli");
+    let contents = std::fs::read_to_string(repo_script).expect("read repo ani-cli");
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        download_tool_names(&contents).contains(&ytdlp),
+        "bundled script not recognized as yt-dlp-capable"
+    );
+}
+
 proptest::proptest! {
     // Total on arbitrary path lists — the predicate must never panic.
     #[test]

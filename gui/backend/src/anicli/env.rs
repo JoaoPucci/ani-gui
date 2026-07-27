@@ -124,6 +124,28 @@ pub fn windows_env_passthrough(
         .collect()
 }
 
+/// Decide which tools satisfy the download preflight for the *active*
+/// script. The cache copy is not always the bundled 4.15: an existing
+/// installation whose auto-update is disabled, failing, or simply not
+/// finished yet can still be running a pre-4.15 script whose download
+/// mode hard-requires ffmpeg (`dep_ch "ffmpeg" "aria2c"`). Accepting
+/// yt-dlp alone against that script would pass the preflight and then
+/// die inside the spawn with a generic scraper error — exactly the
+/// modal-says-fine-but-download-fails gap the preflight exists to
+/// close.
+///
+/// Returns the platform-correct binary names: yt-dlp and ffmpeg when
+/// the script's download dep line is 4.15's
+/// `dep_ch_failover "yt-dlp,ffmpeg"`, ffmpeg alone otherwise. Any
+/// unrecognized shape (older script, future upstream change, unreadable
+/// contents passed as empty) falls back to ffmpeg-only — the
+/// conservative direction, since ffmpeg satisfies every script version.
+#[must_use]
+pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
+    let _ = script_contents;
+    todo!("green commit gates yt-dlp acceptance on the script's failover line")
+}
+
 /// Locate a download-capable tool inside a composed PATH string.
 /// ani-cli 4.15 accepts yt-dlp OR ffmpeg for `-d` (plus aria2c, which
 /// the script checks itself), so the preflight passes when either
