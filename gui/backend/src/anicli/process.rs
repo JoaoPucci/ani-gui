@@ -1273,6 +1273,55 @@ mod tests {
         );
     }
 
+    /// Temp filesystems may be mounted noexec: the snapshot must be
+    /// READ by the shell, never exec(2)'d, or every download on such
+    /// systems dies with EACCES. The observable proxy is that the
+    /// executed snapshot carries no exec permission at all.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn spawn_download_snapshot_needs_no_exec_permission() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let _guard = ENV_LOCK.lock().await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let mode_out = td.path().join("mode");
+        let path = td.path().join("ani-cli");
+        let mut f = std::fs::File::create(&path).expect("create stub");
+        let body = format!(
+            "#!/bin/sh\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nif [ -x \"$0\" ]; then printf executable >{out}; else printf plain >{out}; fi\nexit 0\n",
+            out = mode_out.display()
+        );
+        f.write_all(body.as_bytes()).expect("write stub");
+        let mut perm = f.metadata().expect("perm").permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&path, perm).expect("chmod");
+        let tool = td.path().join("yt-dlp");
+        std::fs::write(&tool, b"#!/bin/sh\nexit 0\n").expect("tool stub");
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let mut opts = DebugOptions::new(path);
+        opts.path_override = Some(td.path().display().to_string());
+        let dl_dir = tempfile::tempdir().expect("dl tempdir");
+        spawn_download(
+            &opts,
+            &DownloadRequest {
+                query: "Some Show",
+                episode: "1",
+                quality: "1080",
+                mode: "sub",
+                select_index: 1,
+            },
+            dl_dir.path(),
+            |_line| {},
+        )
+        .await
+        .expect("download stub runs");
+        let mode = std::fs::read_to_string(&mode_out).expect("mode recorded");
+        assert_eq!(
+            mode, "plain",
+            "the snapshot must run without exec permission (noexec-immune)"
+        );
+    }
+
     /// The complete yt-dlp-only path Codex asked to pin: active
     /// script read from disk, capability classified, composed PATH
     /// scanned — end to end through spawn_download.
