@@ -554,3 +554,50 @@ async fn default_is_a_fresh_gate() {
     let gate = ScraperGate::default();
     gate.admit(ScrapePriority::Background).await.expect("admit");
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeper_queued_before_the_rate_limit_waits_out_the_window() {
+    // The exact burst the gate exists for: a cold-start fan-out has
+    // reserved slots, one request reports RateLimited while the rest
+    // sleep. Their old 500 ms slots predate the window — firing at
+    // them would pace straight through the advertised pause.
+    let gate = ScraperGate::new();
+    gate.admit(ScrapePriority::Background).await.expect("first");
+    let t0 = Instant::now();
+    let (second, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        gate.record(
+            ScrapeOutcome::RateLimited {
+                retry_after: Some(Duration::from_secs(9)),
+            },
+            Instant::now(),
+        );
+    });
+    second.expect("resumes after the window");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(9),
+        "pre-pause sleeper must not fire inside the advertised window"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_success_started_before_the_pause_cannot_clear_it() {
+    // Overlap ordering: A starts, B reports RateLimited (pause
+    // opens), A lands Ok. A ran against the pre-limit upstream — its
+    // success says nothing about the state B observed.
+    let gate = ScraperGate::new();
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(30)),
+        },
+        Instant::now(),
+    );
+    gate.record(ScrapeOutcome::Success, a_started);
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(30),
+        "stale success must not clear the newer advertised window"
+    );
+}
