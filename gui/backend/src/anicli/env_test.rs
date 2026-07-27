@@ -495,6 +495,36 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_treat_multiline_strings_as_opaque() {
+    // A help string may quote the real capability block verbatim
+    // across several lines. Text inside a still-open string is not
+    // executable shell: it can neither stand up a case owner nor
+    // invoke the failover, or a quoted usage example would enable
+    // yt-dlp-only downloads the real dependency arm refuses.
+    let script = r#"#!/bin/sh
+usage='
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
+        ;;
+esac
+'
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a quoted capability block must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
