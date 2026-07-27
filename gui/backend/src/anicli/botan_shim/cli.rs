@@ -63,6 +63,14 @@ pub fn run_shim(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -
     }
 }
 
+/// Serialize a string as a single shell-safe word: single-quoted, with
+/// embedded single quotes rendered as `'\''`. Double-quoted
+/// interpolation would let /bin/sh expand `$…` or backticks inside the
+/// install path.
+fn sh_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 /// Write the `botan` wrapper script into `dir` and return `dir` for
 /// PATH appending. The wrapper execs `backend_exe --botan-shim "$@"`,
 /// so ani-cli's `dep_ch_failover "botan3,botan,botan-cli"` resolves it
@@ -83,8 +91,8 @@ pub fn provision_botan_wrapper(
          # in-process botan shim for ani-cli's encrypted allanime\n\
          # transport. Appended to the spawn PATH, so a real Botan\n\
          # installation always wins over this wrapper.\n\
-         exec \"{}\" --botan-shim \"$@\"\n",
-        backend_exe.display()
+         exec {} --botan-shim \"$@\"\n",
+        sh_single_quote(&backend_exe.display().to_string())
     );
     std::fs::write(&wrapper, body)?;
     #[cfg(unix)]

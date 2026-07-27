@@ -247,8 +247,8 @@ fn provision_writes_an_executable_wrapper_that_execs_the_shim() {
     let body = std::fs::read_to_string(&wrapper).expect("wrapper exists");
     assert!(body.starts_with("#!/bin/sh"), "sh shebang: {body}");
     assert!(
-        body.contains("\"/opt/ani-gui/ani-gui-backend\" --botan-shim \"$@\""),
-        "execs the backend shim with args forwarded: {body}"
+        body.contains("'/opt/ani-gui/ani-gui-backend' --botan-shim \"$@\""),
+        "execs the backend shim (shell-safe single quotes) with args forwarded: {body}"
     );
 
     #[cfg(unix)]
