@@ -183,24 +183,70 @@ pub fn revert_name_capture(script_path: &Path) -> std::io::Result<bool> {
     replace_capture_line(script_path, NAME_CAPTURE_FORK, NAME_CAPTURE_UPSTREAM)
 }
 
-/// Run `-U` with the cache temporarily upstream-shaped: revert the
-/// fork's name capture, run the update, then repair the carried
-/// patches — whatever the outcome, since both an `Updated` rewrite
-/// and an untouched reverted script need the capture restored. This
-/// is the only sanctioned way to invoke [`run_update`] on the live
-/// cache; calling it directly against a fork-patched script makes
-/// every run false-report `Updated`.
+/// Run `-U` against an isolated upstream-shaped staging copy of the
+/// cache. Two constraints meet here: the script's `update_script`
+/// compares the downloaded upstream file directly against `$0` (so a
+/// fork-patched `$0` makes every run false-report `Updated`), and the
+/// backend is already serving while the network-bound update runs (so
+/// the live cache must keep the fork capture for concurrent
+/// play/download spawns). Staging satisfies both: the copy is
+/// reverted to upstream's shape, `-U` runs against it, and only an
+/// `Updated` outcome — after reapplying the carried patches — is
+/// persisted back over the live path (atomically on Unix). `NoChange`
+/// and `Failed` leave the live cache untouched; the staging file is
+/// removed in every case. A staging failure skips the update run
+/// entirely (`Failed` outcome) rather than risking the live cache.
+///
+/// This is the only sanctioned way to invoke [`run_update`] on the
+/// live cache.
 pub async fn run_update_with_repair(
     script_path: &Path,
     bash_path: Option<&Path>,
     bundled_bin: Option<&Path>,
 ) -> UpdateOutcome {
-    if let Err(e) = revert_name_capture(script_path) {
-        tracing::warn!(target: "anicli::update", error = %e, "revert_name_capture failed");
+    let staging = script_path.with_extension("update-staging");
+    if let Err(e) = stage_upstream_copy(script_path, &staging) {
+        tracing::warn!(target: "anicli::update", error = %e, "staging the update copy failed");
+        return UpdateOutcome {
+            status: UpdateStatus::Failed,
+            stdout: String::new(),
+            stderr: format!("staging error: {e}"),
+            finished_at: SystemTime::now(),
+            duration_ms: 0,
+        };
     }
-    let outcome = run_update(script_path, bash_path, bundled_bin).await;
-    repair_carried_patches(script_path);
+    let outcome = run_update(&staging, bash_path, bundled_bin).await;
+    if outcome.status == UpdateStatus::Updated {
+        repair_carried_patches(&staging);
+        if let Err(e) = persist_staging(&staging, script_path) {
+            tracing::warn!(target: "anicli::update", error = %e, "persisting the updated script failed");
+        }
+    }
+    let _ = std::fs::remove_file(&staging);
     outcome
+}
+
+/// Copy the live script to `staging` and revert the fork's name
+/// capture there, so `-U`'s whole-file comparison sees exactly what
+/// upstream published while the live cache stays patched.
+fn stage_upstream_copy(live: &Path, staging: &Path) -> std::io::Result<()> {
+    std::fs::copy(live, staging)?;
+    revert_name_capture(staging)?;
+    Ok(())
+}
+
+/// Move the repaired staging script over the live path. Atomic on
+/// Unix via `rename`; Windows `rename` refuses to replace an existing
+/// file, so it falls back to copy (the caller removes the staging
+/// file afterwards either way).
+#[cfg(unix)]
+fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
+    std::fs::rename(staging, live)
+}
+
+#[cfg(not(unix))]
+fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
+    std::fs::copy(staging, live).map(|_| ())
 }
 
 /// Best-effort repair of the cached script's fork-carried content:
