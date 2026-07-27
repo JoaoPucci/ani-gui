@@ -194,6 +194,17 @@ pub fn provision_own_botan_shim(cache_root: &std::path::Path) -> Option<std::pat
         }
     };
     let dir = per_process_shim_dir(cache_root, std::process::id());
+    // A dir the PATH env var cannot represent would make join_paths
+    // fail downstream and silently drop the shim; decline here so the
+    // degradation is explicit and logged.
+    if std::env::join_paths([&dir]).is_err() {
+        tracing::warn!(
+            target: "anicli::boot",
+            dir = %dir.display(),
+            "cache path contains the PATH separator; botan shim not provisioned"
+        );
+        return None;
+    }
     match provision_botan_wrapper(&dir, &exe) {
         Ok(dir) => {
             if let Some(root) = dir.parent() {
