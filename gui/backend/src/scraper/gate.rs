@@ -88,6 +88,13 @@ pub enum ScrapeOutcome {
 
 struct GateState {
     next_background_at: Instant,
+    /// Advertised-window pause: background admits WAIT until this
+    /// instant (then resume paced) instead of being refused. Opened
+    /// by a single typed rate-limit outcome; cleared by a fresh
+    /// success. Distinct from the breaker: the upstream told us when
+    /// to come back, so refusing work and losing rows would be pure
+    /// waste.
+    paused_until: Option<Instant>,
     consecutive_failures: u32,
     open_until: Option<Instant>,
     /// When the breaker last opened; `None` when it has never opened
@@ -120,6 +127,7 @@ impl ScraperGate {
         Self {
             inner: Mutex::new(GateState {
                 next_background_at: Instant::now(),
+                paused_until: None,
                 consecutive_failures: 0,
                 open_until: None,
                 opened_at: None,
@@ -145,25 +153,19 @@ impl ScraperGate {
             let mut s = self.inner.lock().expect("gate lock");
             let now = Instant::now();
             let mut is_trial = false;
-            if let Some(until) = s.open_until {
-                if now < until {
-                    return Err(GateClosed);
+            // Advertised-window pause: schedule this caller a paced
+            // slot at/after the window's end and sleep until then —
+            // pause-and-resume, not refusal. `next_background_at`
+            // was pushed past the window when the pause opened, so
+            // the ordinary slot math below does the queuing; a fresh
+            // success clears `paused_until` but queued sleepers keep
+            // their conservative slots.
+            if let Some(paused) = s.paused_until {
+                if now >= paused {
+                    s.paused_until = None;
                 }
-                // Cooldown elapsed — half-open. Exactly one trial
-                // probe goes out; everyone else stays refused until
-                // it reports (`open_until` stays set — only a
-                // recorded outcome moves the breaker). A trial whose
-                // future was dropped stops blocking after the stale
-                // window. `consecutive_failures` stays where it is,
-                // so a single failed trial snaps the breaker shut.
-                if let Some(t) = s.half_open_trial_at {
-                    if now - t < HALF_OPEN_TRIAL_STALE {
-                        return Err(GateClosed);
-                    }
-                }
-                s.half_open_trial_at = Some(now);
-                is_trial = true;
             }
+            is_trial = breaker_gate(&mut s, now)?;
             let slot = s.next_background_at.max(now);
             s.next_background_at = slot + BACKGROUND_INTERVAL;
             (slot - now, is_trial)
@@ -179,20 +181,7 @@ impl ScraperGate {
             // under the same open state it would now observe.
             if !is_trial {
                 let mut s = self.inner.lock().expect("gate lock");
-                if let Some(until) = s.open_until {
-                    let now = Instant::now();
-                    if now < until {
-                        return Err(GateClosed);
-                    }
-                    // The cooldown elapsed while this caller slept —
-                    // it may take the trial role if it's free.
-                    if let Some(t) = s.half_open_trial_at {
-                        if now - t < HALF_OPEN_TRIAL_STALE {
-                            return Err(GateClosed);
-                        }
-                    }
-                    s.half_open_trial_at = Some(now);
-                }
+                breaker_gate(&mut s, Instant::now())?;
             }
         }
         Ok(())
@@ -206,8 +195,24 @@ impl ScraperGate {
     /// [`BREAKER_COOLDOWN`]. Interactive admits ignore the window as
     /// they ignore the breaker.
     pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) {
-        let _ = (outcome, started_at);
-        todo!("green commit implements the advertised-window pause")
+        match outcome {
+            ScrapeOutcome::Success => self.record_outcome(true, started_at),
+            ScrapeOutcome::Failure => self.record_outcome(false, started_at),
+            ScrapeOutcome::RateLimited { retry_after } => {
+                let mut s = self.inner.lock().expect("gate lock");
+                let now = Instant::now();
+                let window = retry_after.unwrap_or(BREAKER_COOLDOWN);
+                let until = now + window;
+                // Keep the later deadline if two rate limits overlap.
+                s.paused_until = Some(match s.paused_until {
+                    Some(prev) => prev.max(until),
+                    None => until,
+                });
+                // Resume paced from the window's end, not from a
+                // schedule queued before the pause.
+                s.next_background_at = s.next_background_at.max(until);
+            }
+        }
     }
 
     /// Report how the admitted request went. `started_at` is when
@@ -232,6 +237,14 @@ impl ScraperGate {
             s.open_until = None;
             s.opened_at = None;
             s.half_open_trial_at = None;
+            if s.paused_until.take().is_some() {
+                // The pause pushed the resume schedule out to the
+                // window's end; a proven recovery pulls it back so
+                // new admits aren't still waiting on a window that
+                // no longer applies. Sleepers already queued keep
+                // their conservative slots.
+                s.next_background_at = Instant::now();
+            }
             // The boundary is when the successful request STARTED,
             // advanced monotonically — a slow success that lands late
             // proves recovery only as of its own start; requests that
@@ -270,6 +283,29 @@ impl ScraperGate {
             }
         }
     }
+}
+
+/// Breaker check under the gate lock: refuses while the breaker is
+/// open, and once the cooldown elapses hands the half-open trial role
+/// to exactly one caller (returning `true` for it) — everyone else
+/// stays refused until the trial reports or goes stale. A trial whose
+/// future was dropped stops blocking after [`HALF_OPEN_TRIAL_STALE`].
+/// `consecutive_failures` is left as-is, so a single failed trial
+/// snaps the breaker shut.
+fn breaker_gate(s: &mut GateState, now: Instant) -> Result<bool, GateClosed> {
+    let Some(until) = s.open_until else {
+        return Ok(false);
+    };
+    if now < until {
+        return Err(GateClosed);
+    }
+    if let Some(t) = s.half_open_trial_at {
+        if now - t < HALF_OPEN_TRIAL_STALE {
+            return Err(GateClosed);
+        }
+    }
+    s.half_open_trial_at = Some(now);
+    Ok(true)
 }
 
 impl Default for ScraperGate {
