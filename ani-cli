@@ -344,11 +344,12 @@ search_anime() {
     # before 4.14.5, not [^\"]*, so titles containing escaped quotes
     # still match (the trailing sed strips them as always) — a dropped
     # row shifts every later 1-based -S index onto the wrong anime.
-    # Upstream 4.15 handles the missing-airedStart-year case natively
-    # (empty object normalized to year 0, suffix (0) stripped), which
-    # supersedes the second expression this patch carried before.
+    # It also normalizes "airedStart":null the same way upstream's
+    # normalizer handles the empty object — allanime returns null for
+    # older/uncatalogued entries, and without the mapping those rows
+    # fail the year capture and vanish from the list.
     curl -e "$allanime_refr" -s -H "Content-Type: application/json" -X POST "${allanime_api}/api" --data "{\"variables\":{\"search\":{\"allowAdult\":false,\"allowUnknown\":false,\"query\":\"$1\"},\"limit\":40,\"page\":1,\"translationType\":\"$mode\",\"countryOrigin\":\"ALL\"},\"query\":\"$search_gql\"}" -A "$agent" | sed 's|Show|\
-| g' | sed -e 's#\"airedStart\":{}#\"airedStart\":{"year":0,}#' | sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*(year\":([0-9][^,]*)).*|\1	\2 (\3 episodes) (\5)|p" | sed -e 's#(0)##' | sed 's/\\"//g'
+| g' | sed -e 's#\"airedStart\":{}#\"airedStart\":{"year":0,}#' -e 's#\"airedStart\":null#\"airedStart\":{"year":0,}#' | sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*(year\":([0-9][^,]*)).*|\1	\2 (\3 episodes) (\5)|p" | sed -e 's#(0)##' | sed 's/\\"//g'
 }
 
 time_until_next_ep() {
