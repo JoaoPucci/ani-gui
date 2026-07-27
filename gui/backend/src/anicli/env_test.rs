@@ -390,6 +390,31 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_close_the_arm_at_inline_terminators() {
+    // Valid shell may place the next case pattern right after the
+    // terminator on the same line. The download arm ends at the
+    // `;;` itself, not at end-of-line: an invocation living in the
+    // unrelated next arm must not read as download capability while
+    // the download arm still hard-requires ffmpeg.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;; other)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "next-arm invocation after an inline ;; must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
