@@ -139,12 +139,10 @@ impl AppState {
             tracing::warn!(target: "anicli::boot", error = %e, "resolve_anicli_path failed; falling back to seed");
             AniError::Io
         })?;
-        // Strip the bats test-loader guard from the cache copy so it
-        // matches upstream's content shape; otherwise every -U would
-        // report Updated as the patch keeps removing our line.
-        if let Err(e) = update::strip_lib_guard(&ani_cli_path) {
-            tracing::warn!(target: "anicli::boot", error = %e, "strip_lib_guard failed");
-        }
+        // A prior session's `-U` may have replaced the cache with
+        // upstream's script: strip the bats loader guard (else every
+        // -U reports Updated) and restore the fork's search capture.
+        update::repair_carried_patches(&ani_cli_path);
         // Windows: locate Git Bash so every ani-cli spawn (regular,
         // search, `-U`) can wrap the POSIX script with bash. Surface
         // BashMissing so the frontend can render an install-Git-for-
@@ -205,6 +203,10 @@ impl AppState {
             tracing::info!(target: "anicli::update", script = %script.display(), "running -U in background");
             let outcome =
                 update::run_update(&script, bash.as_deref(), bundled_bin.as_deref()).await;
+            // An Updated outcome replaced the cache with upstream's
+            // script mid-session; repair it so this session's later
+            // spawns keep index-stable results.
+            update::repair_carried_patches(&script);
             tracing::info!(
                 target: "anicli::update",
                 status = ?outcome.status,

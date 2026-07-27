@@ -135,6 +135,53 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Reapply the fork's greedy name-capture patch to `script_path`
+/// after an upstream `-U` replaced the cached script. Upstream's
+/// `search_anime` captures the title as `[^\"]*`, which drops rows for
+/// titles containing escaped quotes and shifts every later 1-based
+/// `-S` index onto the wrong anime — the one carried patch that
+/// affects GUI spawns (the portable-base64 and flatpak patches only
+/// matter off the GUI's platforms/paths). Returns whether the patch
+/// was applied; both "already applied" and "pattern not found"
+/// (upstream changed shape — logged by the caller) are `Ok(false)`
+/// no-ops, so a mismatch can never corrupt the script.
+///
+/// # Errors
+/// Propagates I/O errors from reading or rewriting the script.
+pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
+    const UPSTREAM: &str = r#"\"name\":\"([^\"]*)\","#;
+    const FORK: &str = r#"\"name\":\"(.+)\","#;
+    let contents = std::fs::read_to_string(script_path)?;
+    if !contents.contains(UPSTREAM) {
+        return Ok(false);
+    }
+    std::fs::write(script_path, contents.replacen(UPSTREAM, FORK, 1))?;
+    Ok(true)
+}
+
+/// Best-effort repair of the cached script's fork-carried content:
+/// strip the bats loader guard (so `-U`'s patch comparison sees
+/// upstream's shape) and reapply the greedy name-capture. Called at
+/// boot and again after every `-U`, since an update writes upstream's
+/// script verbatim. Failures are logged, never propagated — a repair
+/// miss must not block startup or mark an update failed, because the
+/// unrepaired script still works for every title without escaped
+/// quotes.
+pub fn repair_carried_patches(script_path: &Path) {
+    if let Err(e) = strip_lib_guard(script_path) {
+        tracing::warn!(target: "anicli::update", error = %e, "strip_lib_guard failed");
+    }
+    match reapply_name_capture(script_path) {
+        Ok(true) => {
+            tracing::info!(target: "anicli::update", "reapplied the greedy name-capture patch");
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!(target: "anicli::update", error = %e, "reapply_name_capture failed");
+        }
+    }
+}
+
 /// Run `bash <script_path> -U` and classify the outcome by parsing the
 /// upstream `update_script` function's output strings. The implementation
 /// hands its caller the captured stdout + stderr verbatim so the
@@ -153,21 +200,6 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
 /// # Errors
 /// Never returns `Err`; spawn failures and non-zero exits are surfaced
 /// as `UpdateStatus::Failed` with the error in `stderr`.
-/// Reapply the fork's greedy name-capture patch to `script_path`
-/// after an upstream `-U` replaced the cached script. Upstream's
-/// `search_anime` captures the title as `[^\"]*`, which drops rows for
-/// titles containing escaped quotes and shifts every later 1-based
-/// `-S` index onto the wrong anime — the one carried patch that
-/// affects GUI spawns (the portable-base64 and flatpak patches only
-/// matter off the GUI's platforms/paths). Returns whether the patch
-/// was applied; both "already applied" and "pattern not found"
-/// (upstream changed shape — logged by the caller) are `Ok(false)`
-/// no-ops, so a mismatch can never corrupt the script.
-pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
-    let _ = script_path;
-    todo!("green commit implements the reapply transform")
-}
-
 pub async fn run_update(
     script_path: &Path,
     bash_path: Option<&Path>,
@@ -490,6 +522,57 @@ mod tests {
         std::fs::write(&path, body).unwrap();
         assert!(!reapply_name_capture(&path).unwrap(), "no-op");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+    }
+
+    #[test]
+    fn repair_carried_patches_fixes_guard_and_capture_in_one_pass() {
+        // The logged wrapper swallows every outcome; pin that it
+        // strips the loader guard, reapplies the capture, and never
+        // panics on no-op or I/O error.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\n. \"$ANI_CLI_TEST_LIB\" # {LIB_GUARD_MARKER}\n{UPSTREAM_CAPTURE}\n"
+            ),
+        )
+        .unwrap();
+        repair_carried_patches(&path);
+        let got = std::fs::read_to_string(&path).unwrap();
+        assert!(!got.contains(LIB_GUARD_MARKER), "guard stripped: {got}");
+        assert!(
+            got.contains(r#"\"name\":\"(.+)\","#),
+            "capture reapplied: {got}"
+        );
+        repair_carried_patches(&path); // already repaired: no-op
+        repair_carried_patches(dir.path()); // read fails: logged, no panic
+    }
+
+    #[test]
+    fn reapply_name_capture_round_trips_the_real_repo_script() {
+        // Byte-fidelity guard against the transform's constants
+        // drifting from the script's actual escaping: un-patch a copy
+        // of the repo's real ani-cli, reapply, and require exact
+        // equality with the original — a mutual constants bug the
+        // synthetic fixtures above could never see.
+        let repo_script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("repo root")
+            .join("ani-cli");
+        let original = std::fs::read_to_string(&repo_script).expect("read repo ani-cli");
+        let upstreamized =
+            original.replacen(r#"\"name\":\"(.+)\","#, r#"\"name\":\"([^\"]*)\","#, 1);
+        assert_ne!(
+            original, upstreamized,
+            "fork capture present in the repo script"
+        );
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        std::fs::write(&path, &upstreamized).unwrap();
+        assert!(reapply_name_capture(&path).unwrap(), "patch applied");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }
 
     // ── strip_lib_guard ─────────────────────────────────────────────────
