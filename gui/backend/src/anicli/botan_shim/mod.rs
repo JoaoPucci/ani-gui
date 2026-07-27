@@ -27,9 +27,11 @@ use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use sha2::{Digest, Sha256};
 mod cli;
+mod provision;
+pub use cli::run_shim;
 #[cfg(test)]
-pub(crate) use cli::{per_process_shim_dir, prune_stale_shim_dirs};
-pub use cli::{provision_botan_wrapper, provision_own_botan_shim, run_shim};
+pub(crate) use provision::{per_process_shim_dir, prune_stale_shim_dirs};
+pub use provision::{provision_botan_wrapper, provision_own_botan_shim};
 
 /// Typed failures for the shim's operations, per the library-boundary
 /// error convention. [`run_shim`] renders them to stderr; the process
