@@ -106,7 +106,7 @@ impl ShellScan {
                             j += 1;
                         }
                         let (delimiter, end) = heredoc_delimiter(line, j);
-                        if !delimiter.is_empty() {
+                        if let Some(delimiter) = delimiter {
                             self.pending_heredocs.push((delimiter, strip_tabs));
                         }
                         i = end;

@@ -5,8 +5,10 @@
 /// may be assembled from quoted and unquoted fragments (`<<'E'OF`
 /// names `EOF`), so parsing stops only at whitespace or an operator,
 /// not at the first fragment's end. Returns the bare delimiter and
-/// the index just past the word.
-pub(super) fn heredoc_delimiter(line: &str, from: usize) -> (String, usize) {
+/// the index just past the word — `None` when no word was present at
+/// all, which is distinct from an EMPTY delimiter: sh accepts `<<''`,
+/// whose heredoc runs to the first empty line.
+pub(super) fn heredoc_delimiter(line: &str, from: usize) -> (Option<String>, usize) {
     let bytes = line.as_bytes();
     let mut word = String::new();
     let mut k = from;
@@ -45,5 +47,9 @@ pub(super) fn heredoc_delimiter(line: &str, from: usize) -> (String, usize) {
             }
         }
     }
-    (word, k)
+    if k == from {
+        (None, k)
+    } else {
+        (Some(word), k)
+    }
 }
