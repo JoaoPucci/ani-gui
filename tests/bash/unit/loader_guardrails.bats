@@ -17,7 +17,7 @@ load '../helpers/loader'
 
 write_gap_fixture() {
     # $1: the failing line to embed after source_ani_cli_lib.
-    cat > "$BATS_TEST_TMPDIR/gap.bats" <<EOF
+    cat >"$BATS_TEST_TMPDIR/gap.bats" <<EOF
 load '$REPO_ROOT/tests/bash/helpers/loader'
 
 @test "must not be swallowed" {
@@ -44,7 +44,7 @@ EOF
     # Guard the other direction: restoring failure detection must not
     # start failing tests on the innocuous non-zero lines inside
     # ani-cli's setup block or on lib functions used normally.
-    cat > "$BATS_TEST_TMPDIR/ok.bats" <<EOF
+    cat >"$BATS_TEST_TMPDIR/ok.bats" <<EOF
 load '$REPO_ROOT/tests/bash/helpers/loader'
 
 @test "sources and calls a lib function" {
