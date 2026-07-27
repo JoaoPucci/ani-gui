@@ -26,7 +26,7 @@ export default defineConfig({
 	// Component tests would add a separate workspace later.
 	test: {
 		environment: 'node',
-		include: ['src/**/*.{test,spec}.ts'],
+		include: ['src/**/*.{test,spec}.ts', 'tests/**/*.{test,spec}.ts'],
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'lcov'],

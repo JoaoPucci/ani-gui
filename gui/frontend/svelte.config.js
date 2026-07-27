@@ -21,13 +21,7 @@ const config = {
 			relative: true
 		},
 		alias: {
-			$lib: 'src/lib',
-			// i18n SOURCE files (messages/<locale>/<ns>.json) for tests
-			// that pin locale copy. kit.alias feeds both Vite and the
-			// generated tsconfig, keeping those imports inside the
-			// declared dependency surface — tests/arch/dep_direction.sh
-			// rejects relative chains climbing out of src/.
-			$messages: 'messages'
+			$lib: 'src/lib'
 		}
 	}
 };
