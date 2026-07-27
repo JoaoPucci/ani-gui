@@ -175,8 +175,10 @@ fn apply_carried_patches(script_path: &Path) -> std::io::Result<usize> {
 /// the live cache must keep the fork capture for concurrent
 /// play/download spawns). Staging satisfies both: the copy is
 /// reverted to upstream's shape, `-U` runs against it, and only an
-/// `Updated` outcome — after reapplying the carried patches — is
-/// persisted back over the live path (atomically on Unix). `NoChange`
+/// exit-0 run that actually rewrote the staging bytes — after
+/// reapplying the carried patches — is persisted back over the live
+/// path via an atomic rename (upstream's wording never gates the
+/// install). `NoChange`
 /// and `Failed` leave the live cache untouched; an `Updated` staging
 /// script missing any carried patch after repair is discarded as
 /// `Failed`; the staging file is removed in every case. A staging failure skips the update run
@@ -203,8 +205,20 @@ pub async fn run_update_with_repair(
             duration_ms: 0,
         };
     }
-    let outcome = run_update(&staging, bash_path, bundled_bin).await;
-    if outcome.status == UpdateStatus::Updated {
+    let before = std::fs::read(&staging).unwrap_or_default();
+    let mut outcome = run_update(&staging, bash_path, bundled_bin).await;
+    // The install signal is the staging content actually changing —
+    // upstream's success wording is theirs to change, and keying the
+    // install on stdout phrasing would silently drop real updates the
+    // day it moves. The message-based classification still feeds the
+    // diagnostics log, upgraded when the bytes say otherwise.
+    let after = std::fs::read(&staging).unwrap_or_default();
+    let content_changed =
+        outcome.status != UpdateStatus::Failed && !after.is_empty() && after != before;
+    if content_changed && outcome.status == UpdateStatus::NoChange {
+        outcome.status = UpdateStatus::Updated;
+    }
+    if content_changed {
         repair_carried_patches(&staging);
         // Every carried patch must be present on the repaired staging
         // copy before it may replace the live script. If upstream
@@ -288,34 +302,14 @@ pub fn revert_carried_patches(script_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Move the repaired staging script over the live path. Atomic on
-/// Unix via `rename`; Windows `rename` refuses to replace an existing
-/// file, so it falls back to copy (the caller removes the staging
-/// file afterwards either way).
-#[cfg(unix)]
+/// Move the repaired staging script over the live path in one
+/// rename. `std::fs::rename` replaces an existing destination on
+/// every supported platform — on Windows it maps to `MoveFileExW`
+/// with `MOVEFILE_REPLACE_EXISTING` — so concurrent spawns observe
+/// either the old script or the new one, never a torn or absent
+/// file.
 fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
     std::fs::rename(staging, live)
-}
-
-#[cfg(not(unix))]
-fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
-    // Rename-swap: Windows rename won't replace an existing file, and
-    // a plain copy would expose concurrent spawns to a torn script
-    // mid-write. Two renames (each atomic) leave only a brief
-    // not-found window; on failure the backup is restored.
-    let backup = live.with_extension("update-replaced");
-    let _ = std::fs::remove_file(&backup);
-    std::fs::rename(live, &backup)?;
-    match std::fs::rename(staging, live) {
-        Ok(()) => {
-            let _ = std::fs::remove_file(&backup);
-            Ok(())
-        }
-        Err(e) => {
-            let _ = std::fs::rename(&backup, live);
-            Err(e)
-        }
-    }
 }
 
 /// Best-effort repair of the cached script's fork-carried content:
