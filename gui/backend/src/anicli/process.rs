@@ -1177,7 +1177,7 @@ mod tests {
             "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true"
         };
         let script = format!(
-            "#!/bin/sh\ncase download in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
+            "#!/bin/sh\ncase \"$player_function\" in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
         );
         f.write_all(script.as_bytes()).expect("write stub");
         let mut perm = f.metadata().expect("perm").permissions();

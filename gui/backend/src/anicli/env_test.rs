@@ -7,7 +7,9 @@ use super::*;
 /// The 4.15 name set, produced through the production probe so every
 /// preflight test also exercises the capability gate's positive path.
 fn both() -> &'static [&'static str] {
-    download_tool_names("case x in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac")
+    download_tool_names(
+        "case \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac",
+    )
 }
 
 fn split(s: &OsStr) -> Vec<PathBuf> {
@@ -553,7 +555,9 @@ proptest::proptest! {
                 let hash = if commented { "# " } else { "" };
                 let line = format!("{indent}{hash}{marker} >/dev/null");
                 if in_branch {
-                    format!("{prefix}\ncase x in\ndownload)\n{line}\n;;\nesac\n{suffix}")
+                    format!(
+                        "{prefix}\ncase \"$player_function\" in\ndownload)\n{line}\n;;\nesac\n{suffix}"
+                    )
                 } else {
                     format!("{prefix}\n{line}\n{suffix}")
                 }
