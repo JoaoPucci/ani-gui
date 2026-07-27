@@ -214,8 +214,23 @@ impl ScraperGate {
             ScrapeOutcome::Failure => self.record_outcome(false, started_at),
             ScrapeOutcome::RateLimited { retry_after } => {
                 let mut s = self.inner.lock().expect("gate lock");
+                if s.last_recovery_at
+                    .is_some_and(|recovered| started_at < recovered)
+                {
+                    // The request observed the pre-recovery upstream;
+                    // a newer accepted success already proved that
+                    // state is gone — same filter as the untyped
+                    // failure path.
+                    return;
+                }
                 let now = Instant::now();
-                let window = retry_after.unwrap_or(BREAKER_COOLDOWN);
+                // The hint is untrusted input: clamp before the
+                // Instant addition so a hostile value can neither
+                // overflow (poisoning the mutex via panic) nor stall
+                // background work for hours.
+                let window = retry_after
+                    .unwrap_or(BREAKER_COOLDOWN)
+                    .min(MAX_ADVERTISED_PAUSE);
                 let until = now + window;
                 // Keep the later deadline if two rate limits overlap,
                 // and the earliest opening as the staleness boundary.
