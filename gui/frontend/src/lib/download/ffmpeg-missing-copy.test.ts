@@ -93,6 +93,23 @@ describe('missing-tool modal bodies', () => {
 		}
 	});
 
+	it('every locale body conditions the auto-update claim on the setting', () => {
+		// "updates automatically on launch" is false while the
+		// auto-update toggle is off; the claim must point at the
+		// House rules setting that controls it.
+		const settingsRef: Record<string, string> = {
+			en: 'House rules',
+			'es-419': 'Reglas de la casa',
+			'pt-BR': 'Regras da casa',
+			ru: 'Правила дома'
+		};
+		for (const [locale, messages] of Object.entries(locales)) {
+			for (const key of bodyKeys) {
+				expect(messages[key], `${locale}.${key}`).toContain(settingsRef[locale]);
+			}
+		}
+	});
+
 	it('every locale body ties the yt-dlp alternative to an up-to-date script', () => {
 		// The preflight only accepts yt-dlp when the active script's
 		// download mode does (4.15+). A stale pre-4.15 cache requires
