@@ -25,8 +25,8 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     let mut case_owners: Vec<bool> = Vec::new();
     let mut in_branch = false;
     for line in script_contents.lines() {
-        for (i, segment) in scan.segments(line).into_iter().enumerate() {
-            if i > 0 {
+        for (closes_arm, segment) in scan.segments(line) {
+            if closes_arm {
                 in_branch = false;
             }
             let mut rest = segment.trim_start();

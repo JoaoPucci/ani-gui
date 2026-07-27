@@ -5,13 +5,13 @@
 
 use super::heredoc::heredoc_delimiter;
 
-/// Line splitter for the arm-scope walk that knows just enough shell:
-/// `;;` delimits case-arm segments only when unquoted, an unquoted
-/// `#` at the start of a word drops the rest of the line as a
-/// comment, quote state carries across lines so multi-line strings
-/// stay opaque, and heredoc bodies are data. Quoted or heredoc text
-/// can neither close an arm (a `;;` as command data) nor open one
-/// (a `download)` inside a string, comment, or heredoc).
+/// Line splitter for the arm-scope walk that knows just enough
+/// shell: unquoted `;;`, `;`, `&`, and `|` delimit statement pieces
+/// (only `;;` closes a case arm — the piece after it is tagged), an
+/// unquoted `#` at the start of a word drops the rest of the line
+/// as a comment, quote state carries across lines so multi-line
+/// strings stay opaque, and heredoc bodies are data. Quoted or
+/// heredoc text can neither close an arm nor open one.
 #[derive(Default)]
 pub(super) struct ShellScan {
     in_single: bool,
@@ -24,7 +24,10 @@ pub(super) struct ShellScan {
 }
 
 impl ShellScan {
-    pub(super) fn segments<'a>(&mut self, line: &'a str) -> Vec<&'a str> {
+    /// Each piece is `(closes_arm_before, text)`: statements split
+    /// at unquoted control operators, with the flag set on the piece
+    /// following a `;;` arm terminator.
+    pub(super) fn segments<'a>(&mut self, line: &'a str) -> Vec<(bool, &'a str)> {
         if let Some((delimiter, strip_tabs)) = self.pending_heredocs.first() {
             let candidate = if *strip_tabs {
                 line.trim_start_matches('\t')
@@ -39,6 +42,7 @@ impl ShellScan {
         let bytes = line.as_bytes();
         let mut segments = Vec::new();
         let mut start = 0;
+        let mut closes_arm = false;
         let mut i = 0;
         let mut at_word_start = true;
         // A line beginning inside a multi-line string is opaque up
@@ -102,12 +106,18 @@ impl ShellScan {
                         continue;
                     }
                     b'#' if at_word_start => {
-                        segments.push(&line[start..i]);
+                        segments.push((closes_arm, &line[start..i]));
                         return segments;
                     }
                     b';' if bytes.get(i + 1) == Some(&b';') => {
-                        segments.push(&line[start..i]);
+                        segments.push((closes_arm, &line[start..i]));
+                        closes_arm = true;
                         i += 1;
+                        start = i + 1;
+                    }
+                    b';' | b'&' | b'|' => {
+                        segments.push((closes_arm, &line[start..i]));
+                        closes_arm = false;
                         start = i + 1;
                     }
                     _ => {}
@@ -120,9 +130,9 @@ impl ShellScan {
             i += 1;
         }
         if opaque {
-            segments.push("");
+            segments.push((closes_arm, ""));
         } else {
-            segments.push(&line[start..]);
+            segments.push((closes_arm, &line[start..]));
         }
         segments
     }
