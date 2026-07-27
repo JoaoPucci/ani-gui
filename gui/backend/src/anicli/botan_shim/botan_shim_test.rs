@@ -279,7 +279,12 @@ fn provision_is_idempotent_across_boots() {
 fn provision_own_botan_shim_returns_the_wrapper_dir() {
     let td = tempfile::tempdir().expect("tempdir");
     let got = provision_own_botan_shim(td.path()).expect("provisioned");
-    assert_eq!(got, td.path().join("botan-shim"));
+    assert_eq!(
+        got,
+        td.path()
+            .join("botan-shim")
+            .join(std::process::id().to_string())
+    );
     assert!(got.join("botan").is_file(), "wrapper script written");
 }
 

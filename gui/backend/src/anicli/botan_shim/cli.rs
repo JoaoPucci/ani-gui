@@ -69,8 +69,7 @@ pub fn run_shim(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -
 /// instances (each AppImage mounts at its own transient path) never
 /// overwrite each other's wrapper.
 pub(crate) fn per_process_shim_dir(cache_root: &std::path::Path, pid: u32) -> std::path::PathBuf {
-    let _ = (cache_root, pid);
-    todo!("green commit implements pid scoping")
+    cache_root.join("botan-shim").join(pid.to_string())
 }
 
 /// Best-effort removal of sibling wrapper dirs whose owning process is
@@ -81,8 +80,36 @@ pub(crate) fn prune_stale_shim_dirs(
     keep: &std::path::Path,
     is_alive: impl Fn(u32) -> bool,
 ) {
-    let _ = (root, keep, &is_alive);
-    todo!("green commit implements pruning")
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == keep {
+            continue;
+        }
+        let Some(pid) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if !is_alive(pid) {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// Whether a process id belongs to a live process. Linux-only signal
+/// (procfs); elsewhere assume alive so pruning never removes a
+/// wrapper another instance still needs.
+fn pid_is_alive(pid: u32) -> bool {
+    if cfg!(target_os = "linux") {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    } else {
+        true
+    }
 }
 
 /// Serialize a string as a single shell-safe word: single-quoted, with
@@ -140,8 +167,14 @@ pub fn provision_own_botan_shim(cache_root: &std::path::Path) -> Option<std::pat
             return None;
         }
     };
-    match provision_botan_wrapper(&cache_root.join("botan-shim"), &exe) {
-        Ok(dir) => Some(dir),
+    let dir = per_process_shim_dir(cache_root, std::process::id());
+    match provision_botan_wrapper(&dir, &exe) {
+        Ok(dir) => {
+            if let Some(root) = dir.parent() {
+                prune_stale_shim_dirs(root, &dir, pid_is_alive);
+            }
+            Some(dir)
+        }
         Err(e) => {
             tracing::warn!(target: "anicli::boot", error = %e, "botan shim provisioning failed; relying on a system botan");
             None
