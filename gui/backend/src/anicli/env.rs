@@ -124,22 +124,11 @@ pub fn windows_env_passthrough(
         .collect()
 }
 
-/// Locate `ffmpeg` inside a composed PATH string. Pure: caller
-/// supplies the path-list and the executable check, so the test
-/// suite can drive every branch without touching real disk.
-///
-/// Returns `Ok(())` when an executable matching the platform's
-/// ffmpeg name (`ffmpeg.exe` on Windows, `ffmpeg` elsewhere) sits
-/// in any of the path components. Otherwise returns
-/// [`AniError::FfmpegMissing`] so the SSE download stream can
-/// short-circuit before spawning ani-cli — surfacing the typed
-/// error early lets the frontend render a clear modal instead of
-/// the generic "Download failed" the post-spawn dep_ch failure
-/// otherwise produces.
 /// Locate a download-capable tool inside a composed PATH string.
 /// ani-cli 4.15 accepts yt-dlp OR ffmpeg for `-d` (plus aria2c, which
 /// the script checks itself), so the preflight passes when either
-/// resolves. Pure, like [`ensure_ffmpeg_in_path`], which it replaces.
+/// resolves. Pure: caller supplies the path-list and the check, so
+/// tests drive every branch without touching real disk.
 ///
 /// # Errors
 /// [`AniError::FfmpegMissing`] when neither tool is found — the
@@ -149,33 +138,18 @@ pub fn ensure_download_tool_in_path(
     composed_path: &OsStr,
     is_executable: impl Fn(&Path) -> bool,
 ) -> Result<()> {
-    let _ = (composed_path, &is_executable);
-    todo!("green commit implements the either-tool preflight")
-}
-
-pub fn ensure_ffmpeg_in_path(
-    composed_path: &OsStr,
-    is_executable: impl Fn(&Path) -> bool,
-) -> Result<()> {
-    // Platform-correct binary name: Windows resolves bare names by
-    // appending PATHEXT, but our caller (the bash subprocess on
-    // Windows) walks PATH literally and only matches `ffmpeg.exe`.
-    // Match that behaviour exactly so the pre-check agrees with
-    // what the spawn would see.
-    let exe_name: &str = if cfg!(windows) {
-        "ffmpeg.exe"
+    // Platform-correct binary names: the bash subprocess on Windows
+    // walks PATH literally and only matches the .exe forms.
+    let names: [&str; 2] = if cfg!(windows) {
+        ["yt-dlp.exe", "ffmpeg.exe"]
     } else {
-        "ffmpeg"
+        ["yt-dlp", "ffmpeg"]
     };
     for dir in std::env::split_paths(composed_path) {
-        // split_paths on Unix yields a single empty PathBuf for an
-        // empty input — that path joins to bare "ffmpeg" which would
-        // false-positive in any callback that accepts every path.
-        // bash's command -v likewise ignores empty PATH components.
         if dir.as_os_str().is_empty() {
             continue;
         }
-        if is_executable(&dir.join(exe_name)) {
+        if names.iter().any(|n| is_executable(&dir.join(n))) {
             return Ok(());
         }
     }

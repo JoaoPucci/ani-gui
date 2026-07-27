@@ -63,36 +63,36 @@ fn no_bundled_no_inherited_falls_back_to_default() {
 }
 
 #[test]
-fn ensure_ffmpeg_returns_ok_when_executable_in_first_dir() {
+fn ensure_download_tool_returns_ok_when_executable_in_first_dir() {
     let path = std::env::join_paths(["/bundle/bin", "/usr/bin"].map(PathBuf::from)).unwrap();
-    let r = ensure_ffmpeg_in_path(&path, |p| {
+    let r = ensure_download_tool_in_path(&path, |p| {
         p == Path::new("/bundle/bin/ffmpeg") || p == Path::new("/bundle/bin/ffmpeg.exe")
     });
     assert!(r.is_ok(), "got: {r:?}");
 }
 
 #[test]
-fn ensure_ffmpeg_returns_ok_when_executable_in_later_dir() {
+fn ensure_download_tool_returns_ok_when_executable_in_later_dir() {
     let path = std::env::join_paths(["/no/ffmpeg/here", "/usr/bin"].map(PathBuf::from)).unwrap();
-    let r = ensure_ffmpeg_in_path(&path, |p| {
+    let r = ensure_download_tool_in_path(&path, |p| {
         p == Path::new("/usr/bin/ffmpeg") || p == Path::new("/usr/bin/ffmpeg.exe")
     });
     assert!(r.is_ok(), "got: {r:?}");
 }
 
 #[test]
-fn ensure_ffmpeg_returns_ffmpeg_missing_when_absent_everywhere() {
+fn ensure_download_tool_returns_the_typed_error_when_absent_everywhere() {
     let path = std::env::join_paths(["/a", "/b", "/c"].map(PathBuf::from)).unwrap();
-    let r = ensure_ffmpeg_in_path(&path, |_| false);
+    let r = ensure_download_tool_in_path(&path, |_| false);
     assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 
 #[test]
-fn ensure_ffmpeg_returns_ffmpeg_missing_for_empty_path() {
+fn ensure_download_tool_returns_the_typed_error_for_empty_path() {
     // join_paths can't produce an empty value on every platform
     // (Windows allows it, Unix doesn't), so build directly.
     let path = OsString::new();
-    let r = ensure_ffmpeg_in_path(&path, |_| true);
+    let r = ensure_download_tool_in_path(&path, |_| true);
     assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 

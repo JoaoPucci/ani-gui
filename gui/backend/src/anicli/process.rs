@@ -608,7 +608,7 @@ where
     // first frame is the typed FfmpegMissing the layout can render
     // a clear modal for. aria2c is bundled (commit d6c9992), so a
     // missing aria2c falls through and is mapped post-exit below.
-    crate::anicli::env::ensure_ffmpeg_in_path(&composed_path, is_executable)?;
+    crate::anicli::env::ensure_download_tool_in_path(&composed_path, is_executable)?;
     cmd.env("PATH", composed_path);
     if let Some(home) = std::env::var_os("HOME") {
         cmd.env("HOME", home);
