@@ -4,6 +4,12 @@
 
 use super::*;
 
+/// The 4.15 name set, produced through the production probe so every
+/// preflight test also exercises the capability gate's positive path.
+fn both() -> &'static [&'static str] {
+    download_tool_names(r#"dep_ch_failover "yt-dlp,ffmpeg""#)
+}
+
 fn split(s: &OsStr) -> Vec<PathBuf> {
     std::env::split_paths(s).collect()
 }
@@ -65,7 +71,7 @@ fn no_bundled_no_inherited_falls_back_to_default() {
 #[test]
 fn ensure_download_tool_returns_ok_when_executable_in_first_dir() {
     let path = std::env::join_paths(["/bundle/bin", "/usr/bin"].map(PathBuf::from)).unwrap();
-    let r = ensure_download_tool_in_path(&path, |p| {
+    let r = ensure_download_tool_in_path(both(), &path, |p| {
         p == Path::new("/bundle/bin/ffmpeg") || p == Path::new("/bundle/bin/ffmpeg.exe")
     });
     assert!(r.is_ok(), "got: {r:?}");
@@ -74,7 +80,7 @@ fn ensure_download_tool_returns_ok_when_executable_in_first_dir() {
 #[test]
 fn ensure_download_tool_returns_ok_when_executable_in_later_dir() {
     let path = std::env::join_paths(["/no/ffmpeg/here", "/usr/bin"].map(PathBuf::from)).unwrap();
-    let r = ensure_download_tool_in_path(&path, |p| {
+    let r = ensure_download_tool_in_path(both(), &path, |p| {
         p == Path::new("/usr/bin/ffmpeg") || p == Path::new("/usr/bin/ffmpeg.exe")
     });
     assert!(r.is_ok(), "got: {r:?}");
@@ -83,7 +89,7 @@ fn ensure_download_tool_returns_ok_when_executable_in_later_dir() {
 #[test]
 fn ensure_download_tool_returns_the_typed_error_when_absent_everywhere() {
     let path = std::env::join_paths(["/a", "/b", "/c"].map(PathBuf::from)).unwrap();
-    let r = ensure_download_tool_in_path(&path, |_| false);
+    let r = ensure_download_tool_in_path(both(), &path, |_| false);
     assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 
@@ -92,7 +98,7 @@ fn ensure_download_tool_returns_the_typed_error_for_empty_path() {
     // join_paths can't produce an empty value on every platform
     // (Windows allows it, Unix doesn't), so build directly.
     let path = OsString::new();
-    let r = ensure_download_tool_in_path(&path, |_| true);
+    let r = ensure_download_tool_in_path(both(), &path, |_| true);
     assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 
@@ -256,14 +262,14 @@ fn ensure_download_tool_accepts_ytdlp_when_ffmpeg_is_absent() {
     } else {
         "yt-dlp"
     };
-    let r = ensure_download_tool_in_path(&path, |p| p == PathBuf::from("/b").join(tool));
+    let r = ensure_download_tool_in_path(both(), &path, |p| p == PathBuf::from("/b").join(tool));
     assert!(r.is_ok(), "got: {r:?}");
 }
 
 #[test]
 fn ensure_download_tool_errors_when_both_tools_are_absent() {
     let path = join(&["/a", "/b"]);
-    let r = ensure_download_tool_in_path(&path, |_| false);
+    let r = ensure_download_tool_in_path(both(), &path, |_| false);
     assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 
@@ -275,8 +281,24 @@ fn ensure_download_tool_still_accepts_ffmpeg_alone() {
     } else {
         "ffmpeg"
     };
-    let r = ensure_download_tool_in_path(&path, |p| p == PathBuf::from("/a").join(tool));
+    let r = ensure_download_tool_in_path(both(), &path, |p| p == PathBuf::from("/a").join(tool));
     assert!(r.is_ok(), "got: {r:?}");
+}
+
+#[test]
+fn ensure_download_tool_rejects_ytdlp_when_the_script_is_ffmpeg_only() {
+    // The full gate: a stale pre-4.15 script's name set must fail the
+    // preflight on a machine that has yt-dlp but no ffmpeg, so the
+    // typed modal shows instead of a mid-download scraper death.
+    let names = download_tool_names(r#"download) dep_ch "ffmpeg" "aria2c" ;;"#);
+    let path = join(&["/a", "/b"]);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    let r = ensure_download_tool_in_path(names, &path, |p| p == PathBuf::from("/b").join(ytdlp));
+    assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
 }
 
 #[test]
@@ -345,7 +367,7 @@ proptest::proptest! {
         dirs in proptest::collection::vec("[a-zA-Z0-9/_.-]{0,24}", 0..8),
     ) {
         let joined = std::env::join_paths(dirs.iter().map(PathBuf::from)).expect("join");
-        let _ = ensure_download_tool_in_path(&joined, |_| false);
+        let _ = ensure_download_tool_in_path(both(), &joined, |_| false);
     }
 
     // Either tool dropped into any generated component satisfies the
@@ -366,9 +388,9 @@ proptest::proptest! {
             (false, false) => "ffmpeg",
         };
         let target = PathBuf::from(format!("/{}", dirs[idx])).join(tool);
-        let found = ensure_download_tool_in_path(&joined, |p| p == target);
+        let found = ensure_download_tool_in_path(both(), &joined, |p| p == target);
         proptest::prop_assert!(found.is_ok(), "expected Ok, got {found:?}");
-        let none = ensure_download_tool_in_path(&joined, |_| false);
+        let none = ensure_download_tool_in_path(both(), &joined, |_| false);
         proptest::prop_assert!(matches!(none, Err(AniError::FfmpegMissing)));
     }
 }

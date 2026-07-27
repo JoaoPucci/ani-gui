@@ -142,31 +142,39 @@ pub fn windows_env_passthrough(
 /// conservative direction, since ffmpeg satisfies every script version.
 #[must_use]
 pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
-    let _ = script_contents;
-    todo!("green commit gates yt-dlp acceptance on the script's failover line")
+    const BOTH: &[&str] = if cfg!(windows) {
+        &["yt-dlp.exe", "ffmpeg.exe"]
+    } else {
+        &["yt-dlp", "ffmpeg"]
+    };
+    const FFMPEG_ONLY: &[&str] = if cfg!(windows) {
+        &["ffmpeg.exe"]
+    } else {
+        &["ffmpeg"]
+    };
+    if script_contents.contains(r#"dep_ch_failover "yt-dlp,ffmpeg""#) {
+        BOTH
+    } else {
+        FFMPEG_ONLY
+    }
 }
 
 /// Locate a download-capable tool inside a composed PATH string.
-/// ani-cli 4.15 accepts yt-dlp OR ffmpeg for `-d` (plus aria2c, which
-/// the script checks itself), so the preflight passes when either
-/// resolves. Pure: caller supplies the path-list and the check, so
-/// tests drive every branch without touching real disk.
+/// `names` comes from [`download_tool_names`]: yt-dlp OR ffmpeg when
+/// the active script's `-d` mode accepts either (4.15+), ffmpeg alone
+/// for older shapes (aria2c the script checks itself either way).
+/// Pure: caller supplies the names, path-list, and the check, so tests
+/// drive every branch without touching real disk.
 ///
 /// # Errors
-/// [`AniError::FfmpegMissing`] when neither tool is found — the
+/// [`AniError::FfmpegMissing`] when no accepted tool is found — the
 /// frontend modal recommends installing ffmpeg, which remains the
 /// primary suggestion either way.
 pub fn ensure_download_tool_in_path(
+    names: &[&str],
     composed_path: &OsStr,
     is_executable: impl Fn(&Path) -> bool,
 ) -> Result<()> {
-    // Platform-correct binary names: the bash subprocess on Windows
-    // walks PATH literally and only matches the .exe forms.
-    let names: [&str; 2] = if cfg!(windows) {
-        ["yt-dlp.exe", "ffmpeg.exe"]
-    } else {
-        ["yt-dlp", "ffmpeg"]
-    };
     for dir in std::env::split_paths(composed_path) {
         if dir.as_os_str().is_empty() {
             continue;

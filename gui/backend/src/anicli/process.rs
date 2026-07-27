@@ -601,14 +601,21 @@ where
         ),
         opts.shim_bin.as_deref(),
     );
-    // Pre-spawn check: ani-cli's `dep_ch "ffmpeg" "aria2c"` exits
-    // the shell instantly when either is missing, and the post-exit
+    // Pre-spawn check: the script's download dep check exits the
+    // shell instantly when its tools are missing, and the post-exit
     // error mapping below would collapse that into a generic
-    // Scraper error. Catch ffmpeg up front so the SSE stream's
-    // first frame is the typed FfmpegMissing the layout can render
-    // a clear modal for. aria2c is bundled (commit d6c9992), so a
-    // missing aria2c falls through and is mapped post-exit below.
-    crate::anicli::env::ensure_download_tool_in_path(&composed_path, is_executable)?;
+    // Scraper error. Catch it up front so the SSE stream's first
+    // frame is the typed FfmpegMissing the layout can render a
+    // clear modal for. Which tools count is decided by the *active*
+    // script's own dep line — a stale pre-4.15 cache (auto-update
+    // disabled, failing, or not finished) still hard-requires
+    // ffmpeg, so yt-dlp alone must not pass against it. An
+    // unreadable script degrades to ffmpeg-only, the conservative
+    // direction. aria2c is bundled (commit d6c9992), so a missing
+    // aria2c falls through and is mapped post-exit below.
+    let script_contents = std::fs::read_to_string(&opts.ani_cli_path).unwrap_or_default();
+    let tool_names = crate::anicli::env::download_tool_names(&script_contents);
+    crate::anicli::env::ensure_download_tool_in_path(tool_names, &composed_path, is_executable)?;
     cmd.env("PATH", composed_path);
     if let Some(home) = std::env::var_os("HOME") {
         cmd.env("HOME", home);
