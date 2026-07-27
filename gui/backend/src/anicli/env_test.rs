@@ -986,6 +986,32 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_keep_heredoc_data_out_of_function_detection() {
+    // A help heredoc may document a function at column 0 without a
+    // matching closer. That line is data: it must not open a body
+    // skip that swallows the real capability check after the
+    // terminator.
+    let script = r#"#!/bin/sh
+cat <<'EOF'
+example() {
+    documented body with no closer
+EOF
+case "$player_function" in
+    download) dep_ch_failover "yt-dlp,ffmpeg" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        names.contains(&ytdlp),
+        "a documented definition inside a heredoc must not wedge the skip: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
