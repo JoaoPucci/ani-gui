@@ -21,10 +21,10 @@ setup() {
 
 @test "nth: empty stdin returns 1 with no output" {
     # nth is defined in our shell via setup. We capture its exit through $?
-    # immediately (the loader has disabled the bats ERR trap so the
-    # intentional return 1 doesn't fail the test).
-    output=$(printf "" | nth "select" 2>&1)
-    status=$?
+    # immediately (the || capture keeps the intentional return 1 from
+    # tripping the restored errexit/ERR trap).
+    status=0
+    output=$(printf "" | nth "select" 2>&1) || status=$?
     [ "$status" -eq 1 ]
     [ -z "$output" ]
 }

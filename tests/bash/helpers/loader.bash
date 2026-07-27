@@ -57,21 +57,28 @@ source_ani_cli_lib() {
         printf 'ANI_CLI_PATH not readable: %s\n' "$ANI_CLI_PATH" >&2
         return 1
     fi
-    # Disable the bats ERR trap and errexit/errtrace for the rest of the test.
+    # Relax errexit/errtrace and the bats ERR trap only AROUND the
+    # source. ani-cli's setup block has innocuous non-zero lines (the
+    # dmenu/rofi `command -v` checks) that would otherwise abort the
+    # source mid-file, but both mechanisms are restored immediately
+    # after — they are what makes a failing command or assertion later
+    # in the test actually fail the test. Leaving them disabled for
+    # the rest of the test (as this helper once did) turns every
+    # post-source assertion into a silent no-op unless it happens to
+    # be the last command.
     #
-    # bats v1.11 installs an ERR trap that fails the test on ANY non-zero
-    # exit — including intentional ones that are part of ani-cli's contract:
-    #   - `grep -m 1` finding nothing inside select_quality's case branch
-    #   - `nth` returning 1 on empty stdin
-    #   - the dmenu/rofi `command -v` checks in ani-cli's setup block
-    #
-    # ani-cli is a POSIX-sh script and never enables set -e itself; tests
-    # should mirror that environment. Tests that need to assert on a
-    # non-zero exit use `run` or explicit `$?` capture; the trap-driven
-    # auto-fail does not match how the script is actually written.
+    # Tests that call ani-cli functions with intentional non-zero
+    # exits (`grep -m 1` finding nothing, `nth` on empty stdin) use
+    # `run`, which is immune to errexit, or explicit `|| capture`.
+    local __err_trap
+    __err_trap="$(trap -p ERR)"
     trap - ERR
     set +eE
     # shellcheck source=/dev/null
     __ANI_CLI_LIB__=1 . "$ANI_CLI_PATH" 2>/dev/null || true
+    set -eE
+    if [ -n "$__err_trap" ]; then
+        eval "$__err_trap"
+    fi
     return 0
 }

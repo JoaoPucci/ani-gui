@@ -24,7 +24,7 @@ setup() {
 
 @test "select_quality: 'best' picks the first link" {
     links=$'1080 >https://a.example/1080.mp4\n720 >https://a.example/720.mp4\n480 >https://a.example/480.mp4'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.mp4" ]
 }
 
@@ -48,26 +48,35 @@ setup() {
 
 @test "select_quality: not-found falls back to best with stderr warning" {
     links=$'1080 >https://a.example/1080.mp4\n480 >https://a.example/480.mp4'
-    output=$(select_quality "9999" 2>&1 >/dev/null)
-    # episode set to best
+    # A command substitution would run select_quality in a subshell and
+    # lose the $episode global; capture stderr via file instead.
+    select_quality "9999" 2>"$BATS_TEST_TMPDIR/warn" || true
     [ "$episode" = "https://a.example/1080.mp4" ]
-    [[ "$output" =~ "Specified quality not found" ]]
+    grep -q "Specified quality not found" "$BATS_TEST_TMPDIR/warn"
 }
 
-@test "select_quality: vlc strips m3u8-cc/subtitle/refr metadata lines before picking" {
+@test "select_quality: vlc gets the same unfiltered list as every player (4.15)" {
+    # Pre-4.15 stripped cc>/subtitle/refr metadata lines for vlc;
+    # 4.15 removed that metadata mechanism entirely, so the first
+    # (highest) link wins exactly as for mpv.
     player_function='vlc'
-    links=$'1080cc>https://a.example/1080.m3u8\n720 >https://a.example/720.mp4\nsubtitle >https://a.example/sub.vtt\nm3u8_refr >https://allmanga.to'
-    select_quality "best"
-    # vlc filter removes /cc>/d, /subtitle >/d, /m3u8_refr >/d → first remaining is 720.
-    [ "$episode" = "https://a.example/720.mp4" ]
+    allanime_refr='https://allmanga.to'
+    links=$'1080 >https://a.example/1080.m3u8\n720 >https://a.example/720.mp4'
+    select_quality "best" || true
+    [ "$episode" = "https://a.example/1080.m3u8" ]
 }
 
-@test "select_quality: m3u8 (cc>) sets refr_flag and subs_flag" {
+@test "select_quality: m3u8 link picks with the allanime_refr fallback (4.15)" {
+    # 4.15 dropped the cc>/subtitle metadata: subs_flag is never set
+    # here (hardsubs ride the HLS variant), and refr_flag comes from
+    # the provider dispatch — default falls back to allanime_refr.
     player_function='mpv'
-    links=$'1080cc>https://a.example/1080.m3u8\nsubtitle >https://a.example/sub.vtt\nm3u8_refr >https://allmanga.to'
-    select_quality "best"
+    allanime_refr='https://allmanga.to'
+    unset subs_flag
+    links=$'1080 >https://a.example/1080.m3u8'
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.m3u8" ]
-    [ "$subs_flag" = "--sub-file=https://a.example/sub.vtt" ]
+    [ -z "${subs_flag-}" ]
     [ "$refr_flag" = "--referrer=https://allmanga.to" ]
 }
 
@@ -75,16 +84,20 @@ setup() {
     player_function='mpv'
     allanime_refr='https://allmanga.to'
     links=$'1080 >https://tools.fast4speed.rsvp/path'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://tools.fast4speed.rsvp/path" ]
     [ "$refr_flag" = "--referrer=https://allmanga.to" ]
 }
 
 @test "select_quality: mp4 (no cc>) leaves subs_flag/refr_flag unset" {
     player_function='mpv'
+    allanime_refr='https://allmanga.to'
+    unset subs_flag
     links=$'1080 >https://a.example/1080.mp4\n720 >https://a.example/720.mp4'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.mp4" ]
     [ -z "${subs_flag-}" ]
-    [ -z "${refr_flag-}" ]
+    # 4.15: refr_flag is always populated (allanime_refr fallback),
+    # mp4 or not — the old "unset for mp4" contract is gone.
+    [ "$refr_flag" = "--referrer=https://allmanga.to" ]
 }

@@ -27,7 +27,7 @@ setup() {
 
 @test "get_links: plain mp4 response emits a single quality > URL line" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/embed_plain.json"
-    output=$(get_links "/some/path" 2>/dev/null)
+    output=$(get_links "/some/path" 2>/dev/null || true)
     [ "$output" = "720 >https://sharepoint.example/video.mp4" ]
 }
 
@@ -42,7 +42,7 @@ setup() {
 
 @test "get_links: wixmp response expands quality variants" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/embed_wixmp.json"
-    output=$(get_links "/some/path" 2>/dev/null)
+    output=$(get_links "/some/path" 2>/dev/null || true)
     # The wixmp branch parses the URL ".../,1080,720,480,/mp4/..." and emits
     # one line per quality. We assert the quality numbers appear, not the
     # exact URL form (the rewrite is regex-driven and brittle to test
@@ -80,12 +80,13 @@ setup() {
 1080/index.m3u8
 EOF
 
-    output=$(get_links "/some/path" 2>/dev/null)
-    # Subtitle file should have been written.
-    [ -f "$cache_dir/suburl" ]
-    grep -q 'subtitle >https://hianime.example/sub.vtt' "$cache_dir/suburl"
-    # The output contains a line with the cc> marker.
-    [[ "$output" == *"cc>"* ]]
+    output=$(get_links "/some/path" 2>/dev/null || true)
+    # 4.15: the m3u8 branch records the referer for later requests
+    # (the old suburl/cc> subtitle metadata is gone — hardsubs ride
+    # the HLS variant) and emits quality >resolved-url lines.
+    [ -f "$cache_dir/m3u8_refr" ]
+    grep -q 'm3u8_refr >' "$cache_dir/m3u8_refr"
+    [[ "$output" == *"1080 >"* ]]
 
     rm -f "$FIXTURES_DIR/allanime/master_min.m3u8"
 }

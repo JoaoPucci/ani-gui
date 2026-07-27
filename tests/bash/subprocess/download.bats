@@ -3,9 +3,9 @@
 # Tests for ani-cli's `download` (lines 364-382).
 #
 # Contract:
-#   - $1 = stream URL (mp4 or m3u8), $2 = base name (no extension), and the
-#     env var $subtitle if a subtitle URL was found.
-#   - If subtitle is set, fetch it via curl into $download_dir/$2.vtt.
+#   - $1 = stream URL (mp4 or m3u8), $2 = base name (no extension).
+#   - 4.15 does not fetch subtitles here (hardsubs ride the HLS
+#     variant); the aria2c referer comes from $refr_flag.
 #   - Branches on $1:
 #       *m3u8*: yt-dlp if available, else ffmpeg fallback.
 #       *     : aria2c.
@@ -32,7 +32,9 @@ setup() {
 }
 
 @test "download: mp4 url with aria2c records expected args" {
-    download "https://example.com/video.mp4" "Test Anime Episode 1"
+    # 4.15: the aria2c referer comes from refr_flag (not allanime_refr).
+    refr_flag='--referrer=https://allmanga.to'
+    download "https://example.com/video.mp4" "Test Anime Episode 1" || true
     stub_assert_called aria2c '.*--referer=https://allmanga.to.*--continue.*-x 16.*-s 16.*https://example.com/video.mp4'
     stub_assert_called aria2c ".*--dir=$download_dir.*-o Test Anime Episode 1.mp4.*"
 }
@@ -61,14 +63,17 @@ setup() {
     stub_assert_not_called aria2c
 }
 
-@test "download: subtitle URL is fetched into download_dir/<basename>.vtt" {
-    # Track the curl call by re-defining curl as a stub.
+@test "download: no subtitle fetch happens even when \$subtitle is set (4.15)" {
+    # Pre-4.15 curled \$subtitle into download_dir; 4.15 removed the
+    # separate subtitle track entirely (hardsubs ride the HLS
+    # variant). Pin the removal so a future sync that reintroduces a
+    # fetch is a conscious decision.
     curl_called=''
     curl() { curl_called="$*"; }
     export -f curl
     subtitle='https://example.com/sub.vtt'
-    download "https://example.com/video.mp4" "Test Anime Episode 1"
-    [[ "$curl_called" == *"-s https://example.com/sub.vtt -o $download_dir/Test Anime Episode 1.vtt"* ]]
+    download "https://example.com/video.mp4" "Test Anime Episode 1" || true
+    [ -z "$curl_called" ]
 }
 
 @test "download: no subtitle env var skips the curl fetch" {
