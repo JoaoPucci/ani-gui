@@ -182,14 +182,14 @@ impl ScraperGate {
                         let mut s = self.inner.lock().expect("gate lock");
                         let now = Instant::now();
                         breaker_gate(&mut s, now)?;
-                        match s.paused_until {
-                            Some(paused) if now < paused => {
+                        s.paused_until.filter(|paused| now < *paused).map_or(
+                            Duration::ZERO,
+                            |paused| {
                                 let slot = s.next_background_at.max(paused).max(now);
                                 s.next_background_at = slot + BACKGROUND_INTERVAL;
                                 slot - now
-                            }
-                            _ => Duration::ZERO,
-                        }
+                            },
+                        )
                     };
                     if more.is_zero() {
                         break;
