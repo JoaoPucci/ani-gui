@@ -145,7 +145,7 @@ impl ScraperGate {
         if prio == ScrapePriority::Interactive {
             return Ok(());
         }
-        let (wait, is_trial) = {
+        let (wait, mut trial_stamp) = {
             let mut s = self.inner.lock().expect("gate lock");
             let now = Instant::now();
             // Advertised-window pause: schedule this caller a paced
@@ -159,7 +159,7 @@ impl ScraperGate {
                 s.paused_until = None;
                 s.pause_opened_at = None;
             }
-            let is_trial = breaker_gate(&mut s, now)?;
+            let trial_stamp = breaker_gate(&mut s, now)?;
             // The slot floors at any active pause deadline: the
             // window is enforced here, in slot selection itself, so
             // no schedule bookkeeping elsewhere (the breaker's
@@ -167,26 +167,32 @@ impl ScraperGate {
             let floor = s.paused_until.unwrap_or(now);
             let slot = s.next_background_at.max(floor).max(now);
             s.next_background_at = slot + BACKGROUND_INTERVAL;
-            (slot - now, is_trial)
+            (slot - now, trial_stamp)
         };
         if !wait.is_zero() {
             tokio::time::sleep(wait).await;
             // Re-check on wake: a cold-start burst reserves slots
             // before its first requests report anything, so the
             // breaker can open — or an advertised pause can start or
-            // extend — while this caller slept. Breaker: refuse
-            // (except the half-open trial, whose admission that very
-            // state sanctioned). Pause: EVERY caller, the trial
-            // included, reserves a fresh paced slot past the newest
-            // deadline and sleeps again — bounded, since each
-            // iteration only re-sleeps for a window recorded after
-            // the previous wake.
+            // extend — while this caller slept. Breaker: refuse —
+            // the half-open trial is exempt only while the gate still
+            // holds the exact sanction stamp that admitted it. Any
+            // clearing (a fresh success, a rate limit, a new breaker
+            // cycle) retires the sanction, and the sleeper submits to
+            // the current breaker like everyone else instead of
+            // piercing a cooldown that never authorized it. Pause:
+            // EVERY caller, the trial included, reserves a fresh
+            // paced slot past the newest deadline and sleeps again —
+            // bounded, since each iteration only re-sleeps for a
+            // window recorded after the previous wake.
             loop {
                 let more = {
                     let mut s = self.inner.lock().expect("gate lock");
                     let now = Instant::now();
-                    if !is_trial {
-                        breaker_gate(&mut s, now)?;
+                    let sanctioned =
+                        trial_stamp.is_some_and(|stamp| s.half_open_trial_at == Some(stamp));
+                    if !sanctioned {
+                        trial_stamp = breaker_gate(&mut s, now)?;
                     }
                     s.paused_until
                         .filter(|paused| now < *paused)
@@ -332,14 +338,17 @@ impl ScraperGate {
 
 /// Breaker check under the gate lock: refuses while the breaker is
 /// open, and once the cooldown elapses hands the half-open trial role
-/// to exactly one caller (returning `true` for it) — everyone else
-/// stays refused until the trial reports or goes stale. A trial whose
-/// future was dropped stops blocking after [`HALF_OPEN_TRIAL_STALE`].
-/// `consecutive_failures` is left as-is, so a single failed trial
-/// snaps the breaker shut.
-fn breaker_gate(s: &mut GateState, now: Instant) -> Result<bool, GateClosed> {
+/// to exactly one caller — everyone else stays refused until the
+/// trial reports or goes stale. The returned stamp is the sanction
+/// itself: the caller holds it as proof, and the exemption lasts only
+/// while `half_open_trial_at` still equals it — any state clearing
+/// retires the sanction along with the cycle that granted it. A trial
+/// whose future was dropped stops blocking after
+/// [`HALF_OPEN_TRIAL_STALE`]. `consecutive_failures` is left as-is,
+/// so a single failed trial snaps the breaker shut.
+fn breaker_gate(s: &mut GateState, now: Instant) -> Result<Option<Instant>, GateClosed> {
     let Some(until) = s.open_until else {
-        return Ok(false);
+        return Ok(None);
     };
     if now < until {
         return Err(GateClosed);
@@ -350,7 +359,7 @@ fn breaker_gate(s: &mut GateState, now: Instant) -> Result<bool, GateClosed> {
         }
     }
     s.half_open_trial_at = Some(now);
-    Ok(true)
+    Ok(Some(now))
 }
 
 impl Default for ScraperGate {
