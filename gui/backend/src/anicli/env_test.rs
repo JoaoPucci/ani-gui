@@ -806,6 +806,53 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_weigh_the_whole_arm() {
+    // A failover call followed by an unconditional hard ffmpeg
+    // requirement later in the same arm means ffmpeg is still
+    // required: the verdict belongs to the complete arm, not the
+    // first invocation seen.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        dep_ch "ffmpeg" "aria2c"
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a later hard ffmpeg requirement in the arm must veto yt-dlp: {names:?}"
+    );
+}
+
+#[test]
+fn download_tool_names_close_redirected_one_line_definitions() {
+    // A one-line helper with redirects after its closing brace is a
+    // complete definition; the scan must resume after it or the
+    // real capability check below is never seen.
+    let script = r#"#!/bin/sh
+helper() { :; } >/dev/null 2>&1
+case "$player_function" in
+    download) dep_ch_failover "yt-dlp,ffmpeg" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        names.contains(&ytdlp),
+        "a redirected one-line definition must not wedge the skip: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
