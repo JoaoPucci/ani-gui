@@ -38,3 +38,17 @@ pub(crate) const CARRIED_PATCHES: &[(&str, &str)] = &[
         "    debug) ;;\n    # ani-gui patch: 4.15 folded where_mpv into dep_ch_failover's\n    # path-based selection and dropped this alias, but ani-cli.1 still\n    # documents ANI_CLI_PLAYER=flatpak_mpv; without the exception the\n    # documented configuration dies here (\"flatpak_mpv\" is not an\n    # executable). The directory form needs the same exception — it is\n    # what the failover itself selects when only the flatpak exists,\n    # and `command -v` fails for directories. The player branch\n    # handles both out of band.\n    flatpak_mpv | \"$HOME\"/.local/share/flatpak/app/io.mpv/Mpv/) ;;\n",
     ),
 ];
+
+/// Fork hunks as EARLIER builds wrote them into the cache, paired
+/// with today's form. A cache patched by a previous build matches
+/// neither side of [`CARRIED_PATCHES`] when a carried patch itself
+/// evolves — with auto-update disabled nothing would ever migrate it.
+/// The repair pass applies these first, so newly carried changes
+/// reach existing caches without requiring `-U`. Entries are dropped
+/// once no supported upgrade path can still hold the legacy form.
+pub(crate) const LEGACY_FORK_MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "    # row shifts every later 1-based -S index onto the wrong anime.\n    # Upstream 4.15 handles the missing-airedStart-year case natively\n    # (empty object normalized to year 0, suffix (0) stripped), which\n    # supersedes the second expression this patch carried before.\n    curl -e \"$allanime_refr\" -s -H \"Content-Type: application/json\" -X POST \"${allanime_api}/api\" --data \"{\\\"variables\\\":{\\\"search\\\":{\\\"allowAdult\\\":false,\\\"allowUnknown\\\":false,\\\"query\\\":\\\"$1\\\"},\\\"limit\\\":40,\\\"page\\\":1,\\\"translationType\\\":\\\"$mode\\\",\\\"countryOrigin\\\":\\\"ALL\\\"},\\\"query\\\":\\\"$search_gql\\\"}\" -A \"$agent\" | sed 's|Show|\\\n| g' | sed -e 's#\\\"airedStart\\\":{}#\\\"airedStart\\\":{\"year\":0,}#' | sed -nrE \"s|.*_id\\\":\\\"([^\\\"]*)\\\",\\\"name\\\":\\\"(.+)\\\",.*${mode}\\\":([1-9][^,]*).*(year\\\":([0-9][^,]*)).*|\\1	\\2 (\\3 episodes) (\\5)|p\" | sed -e 's#(0)##' | sed 's/\\\\\"//g'\n",
+        "    # row shifts every later 1-based -S index onto the wrong anime.\n    # It also normalizes \"airedStart\":null the same way upstream's\n    # normalizer handles the empty object — allanime returns null for\n    # older/uncatalogued entries, and without the mapping those rows\n    # fail the year capture and vanish from the list.\n    curl -e \"$allanime_refr\" -s -H \"Content-Type: application/json\" -X POST \"${allanime_api}/api\" --data \"{\\\"variables\\\":{\\\"search\\\":{\\\"allowAdult\\\":false,\\\"allowUnknown\\\":false,\\\"query\\\":\\\"$1\\\"},\\\"limit\\\":40,\\\"page\\\":1,\\\"translationType\\\":\\\"$mode\\\",\\\"countryOrigin\\\":\\\"ALL\\\"},\\\"query\\\":\\\"$search_gql\\\"}\" -A \"$agent\" | sed 's|Show|\\\n| g' | sed -e 's#\\\"airedStart\\\":{}#\\\"airedStart\\\":{\"year\":0,}#' -e 's#\\\"airedStart\\\":null#\\\"airedStart\\\":{\"year\":0,}#' | sed -nrE \"s|.*_id\\\":\\\"([^\\\"]*)\\\",\\\"name\\\":\\\"(.+)\\\",.*${mode}\\\":([1-9][^,]*).*(year\\\":([0-9][^,]*)).*|\\1	\\2 (\\3 episodes) (\\5)|p\" | sed -e 's#(0)##' | sed 's/\\\\\"//g'\n",
+    ),
+];

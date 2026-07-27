@@ -836,6 +836,29 @@ mod tests {
     }
 
     #[test]
+    fn repair_migrates_a_cache_patched_by_an_earlier_build() {
+        // A cache written before a carried patch evolved holds the
+        // patch's LEGACY fork form — matching neither side of the
+        // current table. With auto-update disabled nothing else ever
+        // touches that cache, so the repair pass itself must
+        // recognize the old form and migrate it forward.
+        let dir = tmpdir();
+        let (path, current) = guard_stripped_repo_copy(dir.path());
+        let (legacy, today) = crate::anicli::carried_patches::LEGACY_FORK_MIGRATIONS[0];
+        let old_cache = current.replacen(today, legacy, 1);
+        assert_ne!(old_cache, current, "legacy form differs");
+        std::fs::write(&path, &old_cache).unwrap();
+
+        repair_carried_patches(&path);
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            current,
+            "legacy fork form migrated to the current script"
+        );
+    }
+
+    #[test]
     fn predicate_flips_false_when_any_single_hunk_is_missing() {
         // The install gate must notice the loss of EACH patch
         // individually, not just wholesale corruption.
