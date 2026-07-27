@@ -24,7 +24,29 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     let mut scan = ShellScan::default();
     let mut case_owners: Vec<bool> = Vec::new();
     let mut in_branch = false;
+    // Function bodies are definitions, not the script's active flow:
+    // a defined-but-never-called helper must not speak for the
+    // download branch, and the real 4.15 dep check is top-level (the
+    // repo-script pin enforces that from the accepting side). The
+    // boundaries are line-oriented, matching the shfmt style the
+    // repo enforces on the script: a definition opens at column 0
+    // and its closing brace stands alone at column 0. Skipped lines
+    // still feed the scanner so quote and heredoc state stay in
+    // sync.
+    let mut in_fn_body = false;
     for line in script_contents.lines() {
+        if in_fn_body {
+            scan.segments(line);
+            if line.trim_end() == "}" {
+                in_fn_body = false;
+            }
+            continue;
+        }
+        if function_def_line(line) {
+            scan.segments(line);
+            in_fn_body = !line.trim_end().ends_with('}');
+            continue;
+        }
         for (closes_arm, segment) in scan.segments(line) {
             if closes_arm {
                 in_branch = false;
@@ -57,12 +79,26 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     false
 }
 
-/// Whether a case subject actually EXPANDS the player-function
-/// variable. `'$player_function'` in single quotes and
-/// `\$player_function` behind a backslash are literal text — a dead
-/// or documentary case switching on them can never take the
-/// download branch at runtime, so it cannot own it here either.
-/// Double quotes expand as usual, and the braced form counts too.
+/// Whether a raw line opens a function definition at column 0 —
+/// `name()` optionally followed by its body opener. The shfmt style
+/// the repo enforces on the script pins definitions (and their
+/// closing braces) to column 0, which is what makes line-oriented
+/// body skipping sound without parsing brace depth through string
+/// noise.
+fn function_def_line(line: &str) -> bool {
+    let Some(first) = line.as_bytes().first() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() && *first != b'_' {
+        return false;
+    }
+    let ident_len = line
+        .bytes()
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        .count();
+    line[ident_len..].trim_start().starts_with("()")
+}
+
 /// Whether `text` (starting at a `$`) is an expansion of exactly the
 /// player-function variable: the braced form matches whole, and the
 /// unbraced form must end at a shell identifier boundary —
@@ -80,6 +116,12 @@ fn expansion_at(text: &str) -> bool {
     }
 }
 
+/// Whether a case subject actually EXPANDS the player-function
+/// variable. `'$player_function'` in single quotes and
+/// `\$player_function` behind a backslash are literal text — a dead
+/// or documentary case switching on them can never take the
+/// download branch at runtime, so it cannot own it here either.
+/// Double quotes expand as usual, and the braced form counts too.
 fn expands_player_function(subject: &str) -> bool {
     let bytes = subject.as_bytes();
     let mut in_single = false;
