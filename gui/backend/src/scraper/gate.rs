@@ -27,6 +27,8 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
+pub use super::outcome::{outcome_of, ScrapeOutcome};
+
 /// Minimum spacing between background scraper requests. Matches the
 /// cadence the warm loop always intended (one probe per 500 ms) but
 /// enforced per *request*, so a probe's alt-title fan-out can no
@@ -65,26 +67,6 @@ pub enum ScrapePriority {
 /// the cache row unwritten.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateClosed;
-
-/// Typed result of an admitted request, replacing the bool for
-/// callers that can distinguish allanime's in-band rate limit (and
-/// its advertised retry hint) from an untyped failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScrapeOutcome {
-    /// The request succeeded.
-    Success,
-    /// The request failed for an untyped reason (transport error,
-    /// garbage body). Feeds the consecutive-failure breaker.
-    Failure,
-    /// allanime answered with its in-band rate limit. One such
-    /// response opens the pause window immediately — no threshold
-    /// counting; the upstream said plainly to go away, and told us
-    /// for how long when `retry_after` is `Some`.
-    RateLimited {
-        /// The advertised wait, when the response carried one.
-        retry_after: Option<Duration>,
-    },
-}
 
 struct GateState {
     next_background_at: Instant,
@@ -166,11 +148,9 @@ impl ScraperGate {
             // the ordinary slot math below does the queuing; a fresh
             // success clears `paused_until` but queued sleepers keep
             // their conservative slots.
-            if let Some(paused) = s.paused_until {
-                if now >= paused {
-                    s.paused_until = None;
-                    s.pause_opened_at = None;
-                }
+            if s.paused_until.is_some_and(|paused| now >= paused) {
+                s.paused_until = None;
+                s.pause_opened_at = None;
             }
             let is_trial = breaker_gate(&mut s, now)?;
             let slot = s.next_background_at.max(now);
@@ -232,13 +212,8 @@ impl ScraperGate {
                 let until = now + window;
                 // Keep the later deadline if two rate limits overlap,
                 // and the earliest opening as the staleness boundary.
-                s.paused_until = Some(match s.paused_until {
-                    Some(prev) => prev.max(until),
-                    None => until,
-                });
-                if s.pause_opened_at.is_none() {
-                    s.pause_opened_at = Some(now);
-                }
+                s.paused_until = Some(s.paused_until.map_or(until, |prev| prev.max(until)));
+                s.pause_opened_at.get_or_insert(now);
                 // Resume paced from the window's end, not from a
                 // schedule queued before the pause.
                 s.next_background_at = s.next_background_at.max(until);
@@ -318,21 +293,6 @@ impl ScraperGate {
                 s.half_open_trial_at = None;
             }
         }
-    }
-}
-
-/// Classify a request result for [`ScraperGate::record`]: the typed
-/// in-band rate limit carries its advertised hint to the gate, every
-/// other error folds to an untyped failure.
-pub fn outcome_of<T>(r: &Result<T, crate::error::AniError>) -> ScrapeOutcome {
-    match r {
-        Ok(_) => ScrapeOutcome::Success,
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            ScrapeOutcome::RateLimited {
-                retry_after: retry_after_secs.map(Duration::from_secs),
-            }
-        }
-        Err(_) => ScrapeOutcome::Failure,
     }
 }
 
