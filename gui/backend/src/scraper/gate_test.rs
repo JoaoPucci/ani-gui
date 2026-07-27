@@ -734,3 +734,62 @@ async fn an_absurd_advertised_hint_is_clamped() {
         "clamped to the ceiling, waited {waited:?}"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_breaker_cycle_cannot_punch_through_an_active_pause() {
+    // A long advertised window is active when three untyped failures
+    // open the breaker (whose closed-to-open transition resets the
+    // slot schedule). After the cooldown, the half-open caller must
+    // still wait out the remainder of the window — the pause is
+    // enforced by the slot floor itself, not by schedule bookkeeping
+    // the breaker path can clobber.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(60),
+        "the remaining window is honored despite the breaker reset"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovery_preserves_the_outstanding_reservation_queue() {
+    // Two sleepers reserve post-window slots, then a fresh success
+    // clears the pause early. New callers must queue AFTER those
+    // outstanding reservations — restarting the schedule from now
+    // would let them collide with the sleepers' slots and break the
+    // global pacing this gate exists to guarantee.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(10)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    let sleeper_a = gate.admit(ScrapePriority::Background);
+    let sleeper_b = gate.admit(ScrapePriority::Background);
+    let late = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        gate.record(ScrapeOutcome::Success, Instant::now());
+        gate.admit(ScrapePriority::Background).await
+    };
+    let (a, b, c) = tokio::join!(sleeper_a, sleeper_b, late);
+    a.expect("sleeper a");
+    b.expect("sleeper b");
+    c.expect("late caller");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(10) + 2 * BACKGROUND_INTERVAL,
+        "the late caller queues after both outstanding reservations"
+    );
+}
