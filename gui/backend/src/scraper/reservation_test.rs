@@ -50,14 +50,16 @@ fn releasing_an_unknown_slot_is_a_no_op() {
 }
 
 #[test]
-fn a_mid_queue_release_keeps_live_sleepers_paced() {
+fn a_mid_queue_release_refills_the_hole_while_keeping_pacing() {
     let now = base();
     let mut s = SlotSchedule::new(now);
     let first = s.reserve(INTERVAL, now, now);
     let second = s.reserve(INTERVAL, now, now);
     s.release(first);
-    // The survivor keeps its absolute slot; the next caller queues
-    // one interval behind it, never on top of it.
+    // The survivor keeps its absolute slot, and the vacated interval
+    // goes to the next caller — a full interval before the survivor,
+    // never on top of it.
+    assert_eq!(s.reserve(INTERVAL, now, now), first);
     assert_eq!(s.reserve(INTERVAL, now, now), second + INTERVAL);
 }
 

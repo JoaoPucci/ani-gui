@@ -895,3 +895,41 @@ async fn a_cancelled_paused_reservation_frees_the_schedule() {
         "the freed schedule must admit promptly after recovery"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn new_work_fills_intervals_freed_by_cancelled_sleepers() {
+    // Cancelling early or middle sleepers must return their
+    // intervals to the schedule even while a later sleeper survives:
+    // new work fills the vacated space instead of queuing behind the
+    // survivor's conservative slot, which would keep cache warming
+    // stalled past recovery exactly as if nothing had been released.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    let mut s1 = Box::pin(gate.admit(ScrapePriority::Background));
+    let mut s2 = Box::pin(gate.admit(ScrapePriority::Background));
+    let mut s3 = Box::pin(gate.admit(ScrapePriority::Background));
+    tokio::select! {
+        biased;
+        _ = &mut s1 => panic!("s1 cannot be admitted yet"),
+        _ = &mut s2 => panic!("s2 cannot be admitted yet"),
+        _ = &mut s3 => panic!("s3 cannot be admitted yet"),
+        () = tokio::task::yield_now() => {}
+    }
+    drop(s1);
+    drop(s2);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    let admitted =
+        tokio::time::timeout(BACKGROUND_INTERVAL, gate.admit(ScrapePriority::Background)).await;
+    assert_eq!(
+        admitted.ok(),
+        Some(Ok(())),
+        "new work must fill freed intervals, not queue behind the survivor"
+    );
+    drop(s3);
+}
