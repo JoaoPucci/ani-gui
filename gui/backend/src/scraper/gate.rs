@@ -160,7 +160,12 @@ impl ScraperGate {
                 s.pause_opened_at = None;
             }
             let is_trial = breaker_gate(&mut s, now)?;
-            let slot = s.next_background_at.max(now);
+            // The slot floors at any active pause deadline: the
+            // window is enforced here, in slot selection itself, so
+            // no schedule bookkeeping elsewhere (the breaker's
+            // closed-to-open reset included) can punch through it.
+            let floor = s.paused_until.unwrap_or(now);
+            let slot = s.next_background_at.max(floor).max(now);
             s.next_background_at = slot + BACKGROUND_INTERVAL;
             (slot - now, is_trial)
         };
@@ -247,9 +252,6 @@ impl ScraperGate {
                 s.half_open_trial_at = None;
                 s.open_until = None;
                 s.opened_at = None;
-                // Resume paced from the window's end, not from a
-                // schedule queued before the pause.
-                s.next_background_at = s.next_background_at.max(until);
             }
         }
     }
@@ -281,13 +283,13 @@ impl ScraperGate {
             // clears the window.
             let fresh_for_pause = s.pause_opened_at.is_none_or(|opened| started_at >= opened);
             if fresh_for_pause && s.paused_until.take().is_some() {
+                // The schedule holds exactly the reservations real
+                // sleepers took (slots floor at the deadline instead
+                // of the deadline being pushed into the schedule), so
+                // clearing the pause preserves it: new callers queue
+                // after the outstanding sleepers and the global
+                // pacing survives the early recovery.
                 s.pause_opened_at = None;
-                // The pause pushed the resume schedule out to the
-                // window's end; a proven recovery pulls it back so
-                // new admits aren't still waiting on a window that
-                // no longer applies. Sleepers already queued keep
-                // their conservative slots.
-                s.next_background_at = Instant::now();
             }
             // The boundary is when the successful request STARTED,
             // advanced monotonically — a slow success that lands late
