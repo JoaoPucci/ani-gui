@@ -678,6 +678,32 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_pop_ownership_at_inline_esac() {
+    // esac can share a line with the next statement: the completed
+    // player-function case must be popped at that boundary and the
+    // unrelated case after the semicolon seen, or a later download)
+    // arm is evaluated under a stale owner.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac; case "$other" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a stale owner past an inline esac must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
