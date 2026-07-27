@@ -891,6 +891,60 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_decide_open_arms_at_every_close_form() {
+    // The arm's verdict lands however the arm ends: at the owner
+    // esac when the last arm has no terminator, and at end of input
+    // when a truncated script leaves the arm open.
+    let last_arm_no_terminator = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
+esac"#;
+    let truncated = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        download_tool_names(last_arm_no_terminator).contains(&ytdlp),
+        "the owner esac closes and decides the arm"
+    );
+    assert!(
+        download_tool_names(truncated).contains(&ytdlp),
+        "end of input closes and decides the arm"
+    );
+}
+
+#[test]
+fn download_tool_names_skip_split_line_definitions() {
+    // A definition whose opening brace sits on the next line is
+    // still a definition: the body is awaited, skipped, and closed
+    // at its column-0 brace.
+    let script = r#"#!/bin/sh
+helper()
+{
+    dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
+}
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a split-line definition's body must not grant: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
