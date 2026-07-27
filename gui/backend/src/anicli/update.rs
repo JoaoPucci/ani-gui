@@ -686,6 +686,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_update_with_repair_keeps_the_live_script_patched_while_updating() {
+        // The backend is serving while the network-bound -U runs; a
+        // play/download spawned mid-update must still hit a
+        // fork-patched script or an escaped-quote title shifts the
+        // later -S indices onto the wrong anime. The -U stand-in
+        // snapshots the LIVE cache path's content mid-run: it must
+        // still carry the fork capture.
+        let dir = tmpdir();
+        let live = dir.path().join("ani-cli");
+        let seen_live = dir.path().join("live-during-update");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\ncp '{}' '{}'\necho 'Script is up to date'\nexit 0\n}}\n# {FORK_CAPTURE}\n",
+                live.display(),
+                seen_live.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::NoChange, "{outcome:?}");
+        let mid_update = std::fs::read_to_string(&seen_live).expect("update ran");
+        assert!(
+            mid_update.contains(r#"\"name\":\"(.+)\","#),
+            "live cache lost the fork capture during -U: {mid_update}"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("ani-cli"))
+                .count(),
+            1,
+            "staging copy cleaned up"
+        );
+    }
+
+    #[tokio::test]
     async fn run_update_with_repair_restores_the_capture_when_update_fails() {
         // Spawn failure path: the revert ran but -U never rewrote the
         // script; the repair must still put the fork capture back.
