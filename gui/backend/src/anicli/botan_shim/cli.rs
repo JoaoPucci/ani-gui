@@ -116,8 +116,34 @@ fn pid_is_alive(pid: u32) -> bool {
 /// embedded single quotes rendered as `'\''`. Double-quoted
 /// interpolation would let /bin/sh expand `$…` or backticks inside the
 /// install path.
-fn sh_single_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
+fn sh_single_quote(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len() + 2);
+    out.push(b'\'');
+    for &b in bytes {
+        if b == b'\'' {
+            out.extend_from_slice(b"'\\''");
+        } else {
+            out.push(b);
+        }
+    }
+    out.push(b'\'');
+    out
+}
+
+/// The executable path as the bytes the wrapper must exec. Unix paths
+/// are arbitrary bytes and go through verbatim; elsewhere fall back to
+/// the display form (Windows never runs this wrapper via /bin/sh
+/// semantics anyway).
+fn exe_path_bytes(path: &std::path::Path) -> Vec<u8> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        path.as_os_str().as_bytes().to_vec()
+    }
+    #[cfg(not(unix))]
+    {
+        path.display().to_string().into_bytes()
+    }
 }
 
 /// Write the `botan` wrapper script into `dir` and return `dir` for
@@ -134,15 +160,15 @@ pub fn provision_botan_wrapper(
 ) -> std::io::Result<std::path::PathBuf> {
     std::fs::create_dir_all(dir)?;
     let wrapper = dir.join("botan");
-    let body = format!(
-        "#!/bin/sh\n\
-         # Provisioned by ani-gui-backend on boot; execs the backend's\n\
-         # in-process botan shim for ani-cli's encrypted allanime\n\
-         # transport. Appended to the spawn PATH, so a real Botan\n\
-         # installation always wins over this wrapper.\n\
-         exec {} --botan-shim \"$@\"\n",
-        sh_single_quote(&backend_exe.display().to_string())
-    );
+    let mut body: Vec<u8> = b"#!/bin/sh\n\
+# Provisioned by ani-gui-backend on boot; execs the backend's\n\
+# in-process botan shim for ani-cli's encrypted allanime\n\
+# transport. Appended to the spawn PATH, so a real Botan\n\
+# installation always wins over this wrapper.\n\
+exec "
+        .to_vec();
+    body.extend_from_slice(&sh_single_quote(&exe_path_bytes(backend_exe)));
+    body.extend_from_slice(b" --botan-shim \"$@\"\n");
     std::fs::write(&wrapper, body)?;
     #[cfg(unix)]
     {
