@@ -147,6 +147,16 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
 fn apply_carried_patches(script_path: &Path) -> std::io::Result<usize> {
     let mut contents = std::fs::read_to_string(script_path)?;
     let mut applied = 0;
+    // Legacy migration first: a cache patched by an earlier build
+    // holds a patch's old fork form, matching neither side of the
+    // current table — with auto-update disabled nothing else would
+    // ever move it forward.
+    for (legacy, current) in crate::anicli::carried_patches::LEGACY_FORK_MIGRATIONS {
+        if contents.contains(legacy) {
+            contents = contents.replacen(legacy, current, 1);
+            applied += 1;
+        }
+    }
     for (idx, (upstream, fork)) in crate::anicli::carried_patches::CARRIED_PATCHES
         .iter()
         .enumerate()
