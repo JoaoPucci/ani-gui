@@ -21,6 +21,13 @@ use super::shell_scan::ShellScan;
 /// player-function owner. Comment lines cannot move the scope.
 pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     const INVOCATION: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
+    // The verdict belongs to the COMPLETE arm: a failover call
+    // followed by an unconditional hard ffmpeg requirement later in
+    // the same arm still requires ffmpeg, so the grant is decided at
+    // arm close, not at the first invocation seen.
+    const HARD_FFMPEG: [&str; 2] = [r#"dep_ch "ffmpeg""#, "dep_ch ffmpeg"];
+    let mut saw_failover = false;
+    let mut saw_hard_ffmpeg = false;
     let mut scan = ShellScan::default();
     let mut case_owners: Vec<bool> = Vec::new();
     // The open download arm, as the owner-stack depth it opened at.
@@ -52,12 +59,24 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
         }
         if function_def_line(line) {
             scan.segments(line);
-            in_fn_body = !line.trim_end().ends_with('}');
+            // A one-liner body closes on its own line — redirects
+            // may follow the closing brace, so the close is a brace
+            // AFTER the opener, not a brace at line end. Without an
+            // opener the body is still awaited on the next line.
+            in_fn_body = match (line.find('{'), line.rfind('}')) {
+                (Some(open), Some(close)) => close < open,
+                _ => true,
+            };
             continue;
         }
         for (closes_arm, segment) in scan.segments(line) {
             if closes_arm && in_branch == Some(case_owners.len()) {
                 in_branch = None;
+                if saw_failover && !saw_hard_ffmpeg {
+                    return true;
+                }
+                saw_failover = false;
+                saw_hard_ffmpeg = false;
             }
             let mut rest = segment.trim_start();
             if let Some(after_case) = rest.strip_prefix("case ") {
@@ -69,6 +88,11 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 case_owners.pop();
                 if in_branch.is_some_and(|level| level > case_owners.len()) {
                     in_branch = None;
+                    if saw_failover && !saw_hard_ffmpeg {
+                        return true;
+                    }
+                    saw_failover = false;
+                    saw_hard_ffmpeg = false;
                 }
                 continue;
             }
@@ -81,12 +105,17 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                     _ => continue,
                 }
             }
-            if in_branch == Some(case_owners.len()) && rest.starts_with(INVOCATION) {
-                return true;
+            if in_branch == Some(case_owners.len()) {
+                if rest.starts_with(INVOCATION) {
+                    saw_failover = true;
+                } else if HARD_FFMPEG.iter().any(|hard| rest.starts_with(hard)) {
+                    saw_hard_ffmpeg = true;
+                }
             }
         }
     }
-    false
+    // A script ending with the arm still open decides the same way.
+    saw_failover && !saw_hard_ffmpeg
 }
 
 /// Whether a raw line opens a function definition at column 0 —
