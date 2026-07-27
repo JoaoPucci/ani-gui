@@ -424,3 +424,38 @@ fn prune_keeps_the_current_and_live_dirs_and_removes_dead_ones() {
         "unrecognized entries left alone"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn provisioned_wrapper_preserves_non_utf8_exe_paths() {
+    // Unix paths are arbitrary bytes; a lossy string conversion would
+    // replace invalid sequences and exec a nonexistent path.
+    use std::os::unix::ffi::OsStrExt;
+    let td = tempfile::tempdir().expect("tempdir");
+    let weird = td
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"inv\xFF\xFEalid"));
+    std::fs::create_dir(&weird).expect("mkdir weird");
+    let stub = weird.join("backend");
+    std::fs::write(&stub, "#!/bin/sh\necho STUB-OK \"$@\"\n").expect("write stub");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+
+    let dir = provision_botan_wrapper(&td.path().join("shim"), &stub).expect("provision");
+    let out = std::process::Command::new("sh")
+        .arg(dir.join("botan"))
+        .arg("--version")
+        .output()
+        .expect("run wrapper");
+    assert!(
+        out.status.success(),
+        "wrapper failed on a non-UTF-8 path: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "STUB-OK --botan-shim --version"
+    );
+}
