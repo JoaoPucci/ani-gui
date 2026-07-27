@@ -151,24 +151,7 @@ impl AppState {
         // Windows pointer instead of a generic missing-binary error.
         // Unix: the field stays None — the script runs via shebang.
         let bash_path = resolve_bash_path()?;
-        // Provision the botan wrapper next to the ani-cli cache. Best
-        // effort: a failure only means the spawn PATH carries no shim
-        // and a machine without a system Botan fails like today.
-        let botan_shim_bin = std::env::current_exe()
-            .map_err(|e| {
-                tracing::warn!(target: "anicli::boot", error = %e, "current_exe failed; botan shim not provisioned");
-            })
-            .ok()
-            .and_then(|exe| {
-                crate::anicli::botan_shim::provision_botan_wrapper(
-                    &cache_root.join("botan-shim"),
-                    &exe,
-                )
-                .map_err(|e| {
-                    tracing::warn!(target: "anicli::boot", error = %e, "botan shim provisioning failed; relying on a system botan");
-                })
-                .ok()
-            });
+        let botan_shim_bin = crate::anicli::botan_shim::provision_own_botan_shim(&cache_root);
         let history_path = paths::ani_cli_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;

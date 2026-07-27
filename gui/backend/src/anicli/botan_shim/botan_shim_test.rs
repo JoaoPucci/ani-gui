@@ -274,3 +274,22 @@ fn provision_is_idempotent_across_boots() {
     let body = std::fs::read_to_string(dir.join("botan")).expect("wrapper");
     assert!(body.contains("/second/backend"), "self-heals: {body}");
 }
+
+#[test]
+fn provision_own_botan_shim_returns_the_wrapper_dir() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let got = provision_own_botan_shim(td.path()).expect("provisioned");
+    assert_eq!(got, td.path().join("botan-shim"));
+    assert!(got.join("botan").is_file(), "wrapper script written");
+}
+
+#[test]
+fn provision_own_botan_shim_is_none_when_the_dir_cannot_be_created() {
+    // A regular file where the cache root should be makes
+    // create_dir_all fail; the helper must degrade to None, not error
+    // out of AppState::build.
+    let td = tempfile::tempdir().expect("tempdir");
+    let file = td.path().join("not-a-dir");
+    std::fs::write(&file, b"x").expect("write file");
+    assert!(provision_own_botan_shim(&file).is_none());
+}
