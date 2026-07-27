@@ -415,6 +415,55 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_treat_quoted_terminators_as_data() {
+    // `;;` appearing as quoted command data inside the download arm
+    // is not a case terminator: closing the arm on it makes the probe
+    // miss the real failover call below and blocks a yt-dlp-only
+    // machine that the active script fully supports.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        printf '%s' ';;'
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        names.contains(&ytdlp),
+        "a quoted ;; must not close the download arm: {names:?}"
+    );
+}
+
+#[test]
+fn download_tool_names_ignore_comment_tails() {
+    // The mirror image: an arm "opened" inside a trailing comment is
+    // not an arm, so an invocation after it grants nothing while the
+    // real download branch still hard-requires ffmpeg.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac
+true # ;; download)
+dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a comment-tail download) must not open the arm: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
