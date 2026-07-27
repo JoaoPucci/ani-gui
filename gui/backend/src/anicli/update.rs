@@ -153,6 +153,21 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
 /// # Errors
 /// Never returns `Err`; spawn failures and non-zero exits are surfaced
 /// as `UpdateStatus::Failed` with the error in `stderr`.
+/// Reapply the fork's greedy name-capture patch to `script_path`
+/// after an upstream `-U` replaced the cached script. Upstream's
+/// `search_anime` captures the title as `[^\"]*`, which drops rows for
+/// titles containing escaped quotes and shifts every later 1-based
+/// `-S` index onto the wrong anime — the one carried patch that
+/// affects GUI spawns (the portable-base64 and flatpak patches only
+/// matter off the GUI's platforms/paths). Returns whether the patch
+/// was applied; both "already applied" and "pattern not found"
+/// (upstream changed shape — logged by the caller) are `Ok(false)`
+/// no-ops, so a mismatch can never corrupt the script.
+pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
+    let _ = script_path;
+    todo!("green commit implements the reapply transform")
+}
+
 pub async fn run_update(
     script_path: &Path,
     bash_path: Option<&Path>,
@@ -433,6 +448,48 @@ mod tests {
         let resolved = resolve_anicli_path(&seed, &cache).unwrap();
         let mode = std::fs::metadata(&resolved).unwrap().permissions().mode();
         assert_eq!(mode & 0o111, 0o111, "copy must be executable: {mode:o}");
+    }
+
+    // ── reapply_name_capture ────────────────────────────────────────────
+
+    const UPSTREAM_CAPTURE: &str = r#"sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"([^\"]*)\",.*${mode}\":([1-9][^,]*).*|\1\t\2|p""#;
+    const FORK_CAPTURE: &str = r#"sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*|\1\t\2|p""#;
+
+    #[test]
+    fn reapply_name_capture_patches_the_upstream_form() {
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        std::fs::write(&path, format!("#!/bin/sh\n{UPSTREAM_CAPTURE}\n")).unwrap();
+        assert!(reapply_name_capture(&path).unwrap(), "patch applied");
+        let got = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            got.contains(r#"\"name\":\"(.+)\","#),
+            "greedy capture in place: {got}"
+        );
+        assert!(
+            !got.contains(r#"\"name\":\"([^\"]*)\","#),
+            "upstream capture gone: {got}"
+        );
+    }
+
+    #[test]
+    fn reapply_name_capture_is_a_noop_when_already_patched() {
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let body = format!("#!/bin/sh\n{FORK_CAPTURE}\n");
+        std::fs::write(&path, &body).unwrap();
+        assert!(!reapply_name_capture(&path).unwrap(), "no-op");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+    }
+
+    #[test]
+    fn reapply_name_capture_leaves_unrecognized_content_alone() {
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let body = "#!/bin/sh\necho unrelated\n";
+        std::fs::write(&path, body).unwrap();
+        assert!(!reapply_name_capture(&path).unwrap(), "no-op");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
     }
 
     // ── strip_lib_guard ─────────────────────────────────────────────────
