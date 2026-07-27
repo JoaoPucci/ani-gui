@@ -556,6 +556,35 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_resume_after_heredoc_terminators() {
+    // The scan resumes as executable shell after each terminator
+    // form — bare, tab-stripped (<<-), quoted, and escaped
+    // delimiters — and never opens a heredoc for a herestring or a
+    // bare << with no word.
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    for (open, close) in [
+        ("<<EOF", "EOF"),
+        ("<<-EOF", "\tEOF"),
+        ("<< \"EOF\"", "EOF"),
+        ("<<\\EOF", "EOF"),
+        ("<<< herestring", ""),
+        ("<<", ""),
+    ] {
+        let script = format!(
+            "#!/bin/sh\ncat {open}\nplain text\n{close}\ncase \"$player_function\" in\n    download) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac\n"
+        );
+        assert!(
+            download_tool_names(&script).contains(&ytdlp),
+            "scan must resume after {open}"
+        );
+    }
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
@@ -602,14 +631,15 @@ proptest::proptest! {
     // nothing panics, and an in-branch executable marker grants
     // yt-dlp while the same marker outside any download arm — or
     // commented inside one — is consistent with the scoped probe.
-    // The surroundings exclude quote and escape characters: an odd
-    // quote in the prefix would legitimately swallow the constructed
-    // block as string data (multi-line strings are opaque), which is
-    // pinned by its own example test rather than fuzzed here.
+    // The surroundings exclude quote, escape, and heredoc-opening
+    // characters: an odd quote or a stray << in the prefix would
+    // legitimately swallow the constructed block as string or
+    // heredoc data (both are opaque), which the example tests pin
+    // rather than fuzzing here.
     #[test]
     fn download_tool_names_never_panics_and_obeys_the_branch(
-        prefix in "[ !#-&(-\\[\\]-~\n]{0,100}",
-        suffix in "[ !#-&(-\\[\\]-~\n]{0,100}",
+        prefix in "[ !#-&(-;=-\\[\\]-~\n]{0,100}",
+        suffix in "[ !#-&(-;=-\\[\\]-~\n]{0,100}",
         marker_line in proptest::option::of(proptest::prelude::any::<bool>()),
         in_branch in proptest::prelude::any::<bool>(),
         indent in "[ \t]{0,4}",

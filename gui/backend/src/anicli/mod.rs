@@ -16,9 +16,11 @@ pub mod bash;
 pub mod botan_shim;
 mod carried_patches;
 pub mod env;
+mod heredoc;
 pub mod parser;
 pub mod process;
 mod script_scan;
+mod shell_scan;
 pub mod update;
 
 pub use parser::{DebugOutput, SearchResult};
