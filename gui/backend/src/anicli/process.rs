@@ -542,6 +542,22 @@ fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)
     Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
+/// Write the classified script bytes to a private temp file the
+/// spawn can execute, immune to the installer renaming a new script
+/// over the live path mid-flight. The returned `TempDir` owns the
+/// snapshot for the download's lifetime.
+fn stage_script_snapshot(contents: &str) -> std::io::Result<(tempfile::TempDir, PathBuf)> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("ani-cli");
+    std::fs::write(&path, contents)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok((dir, path))
+}
+
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
 /// script's player-function to `download`, which delegates to yt-dlp /
 /// ffmpeg / aria2c depending on the source kind. We point `ani-cli` at
@@ -569,8 +585,21 @@ where
 
     let select_str = req.select_index.max(1).to_string();
 
-    let mut cmd =
-        crate::anicli::bash::build_anicli_command(&opts.ani_cli_path, opts.bash_path.as_deref());
+    // Read the active script ONCE and execute a snapshot of those
+    // exact bytes: the auto-updater may atomically rename a new
+    // script over the install path between classification and
+    // spawn, and the preflight verdict must describe the script
+    // that actually runs. An unreadable script degrades to the
+    // live path with the conservative ffmpeg-only classification.
+    let script_contents = std::fs::read_to_string(&opts.ani_cli_path).ok();
+    let snapshot = script_contents
+        .as_deref()
+        .and_then(|contents| stage_script_snapshot(contents).ok());
+    let spawn_path = snapshot
+        .as_ref()
+        .map_or(opts.ani_cli_path.clone(), |(_, path)| path.clone());
+
+    let mut cmd = crate::anicli::bash::build_anicli_command(&spawn_path, opts.bash_path.as_deref());
     cmd.arg("-S")
         .arg(&select_str)
         .arg("-d")
@@ -613,8 +642,8 @@ where
     // unreadable script degrades to ffmpeg-only, the conservative
     // direction. aria2c is bundled (commit d6c9992), so a missing
     // aria2c falls through and is mapped post-exit below.
-    let script_contents = std::fs::read_to_string(&opts.ani_cli_path).unwrap_or_default();
-    let tool_names = crate::anicli::env::download_tool_names(&script_contents);
+    let tool_names =
+        crate::anicli::env::download_tool_names(script_contents.as_deref().unwrap_or(""));
     crate::anicli::env::ensure_download_tool_in_path(tool_names, &composed_path, is_executable)?;
     cmd.env("PATH", composed_path);
     if let Some(home) = std::env::var_os("HOME") {
