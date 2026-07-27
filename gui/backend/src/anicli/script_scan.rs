@@ -23,7 +23,12 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     const INVOCATION: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
     let mut scan = ShellScan::default();
     let mut case_owners: Vec<bool> = Vec::new();
-    let mut in_branch = false;
+    // The open download arm, as the owner-stack depth it opened at.
+    // Nesting is level-sensitive: a nested case's arm terminator
+    // ends the inner arm, not the download arm, and an invocation
+    // inside a nested case is conditional — only statements at the
+    // arm's own level speak for the download flow.
+    let mut in_branch: Option<usize> = None;
     // Function bodies are definitions, not the script's active flow:
     // a defined-but-never-called helper must not speak for the
     // download branch, and the real 4.15 dep check is top-level (the
@@ -48,8 +53,8 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
             continue;
         }
         for (closes_arm, segment) in scan.segments(line) {
-            if closes_arm {
-                in_branch = false;
+            if closes_arm && in_branch == Some(case_owners.len()) {
+                in_branch = None;
             }
             let mut rest = segment.trim_start();
             if let Some(after_case) = rest.strip_prefix("case ") {
@@ -58,20 +63,22 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 rest = tail.trim_start();
             }
             if rest.trim_end() == "esac" {
-                in_branch = false;
                 case_owners.pop();
+                if in_branch.is_some_and(|level| level > case_owners.len()) {
+                    in_branch = None;
+                }
                 continue;
             }
-            if !in_branch {
+            if in_branch.is_none() {
                 match rest.strip_prefix("download)") {
                     Some(after) if case_owners.last() == Some(&true) => {
-                        in_branch = true;
+                        in_branch = Some(case_owners.len());
                         rest = after.trim_start();
                     }
                     _ => continue,
                 }
             }
-            if rest.starts_with(INVOCATION) {
+            if in_branch == Some(case_owners.len()) && rest.starts_with(INVOCATION) {
                 return true;
             }
         }
