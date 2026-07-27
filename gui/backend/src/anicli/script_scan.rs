@@ -63,6 +63,23 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
 /// or documentary case switching on them can never take the
 /// download branch at runtime, so it cannot own it here either.
 /// Double quotes expand as usual, and the braced form counts too.
+/// Whether `text` (starting at a `$`) is an expansion of exactly the
+/// player-function variable: the braced form matches whole, and the
+/// unbraced form must end at a shell identifier boundary —
+/// `$player_function_backup` is a different variable.
+fn expansion_at(text: &str) -> bool {
+    if text.starts_with("${player_function}") {
+        return true;
+    }
+    match text.strip_prefix("$player_function") {
+        Some(after) => !after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_'),
+        None => false,
+    }
+}
+
 fn expands_player_function(subject: &str) -> bool {
     let bytes = subject.as_bytes();
     let mut in_single = false;
@@ -77,11 +94,7 @@ fn expands_player_function(subject: &str) -> bool {
             match b {
                 b'\'' => in_single = true,
                 b'\\' => i += 1,
-                b'$' if subject[i..].starts_with("$player_function")
-                    || subject[i..].starts_with("${player_function}") =>
-                {
-                    return true;
-                }
+                b'$' if expansion_at(&subject[i..]) => return true,
                 _ => {}
             }
         }

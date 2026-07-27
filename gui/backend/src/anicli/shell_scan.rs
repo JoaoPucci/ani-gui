@@ -113,7 +113,10 @@ impl ShellScan {
                     _ => {}
                 }
             }
-            at_word_start = b.is_ascii_whitespace();
+            // Control operators begin a new word without needing
+            // whitespace, so `;#` starts a comment just as ` #` does.
+            at_word_start =
+                b.is_ascii_whitespace() || matches!(b, b';' | b'&' | b'|' | b'(' | b')');
             i += 1;
         }
         if opaque {
