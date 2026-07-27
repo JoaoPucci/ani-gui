@@ -1155,6 +1155,87 @@ mod tests {
         );
     }
 
+    /// Stub script + tool set for the capability-gate acceptance
+    /// tests: the script optionally carries the 4.15 failover marker,
+    /// and only the named tools exist beside it. PATH is confined to
+    /// the stub dir so the host's real ffmpeg can't leak in.
+    #[cfg(unix)]
+    fn stub_ani_cli_with_tools(marker: bool, tools: &[&str]) -> (tempfile::TempDir, DebugOptions) {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let td = tempfile::tempdir().expect("tempdir");
+        let path = td.path().join("ani-cli");
+        let mut f = std::fs::File::create(&path).expect("create stub");
+        let marker_line = if marker {
+            "# dep_ch_failover \"yt-dlp,ffmpeg\" — 4.15 download deps\n"
+        } else {
+            "# dep_ch \"ffmpeg\" \"aria2c\" — pre-4.15 download deps\n"
+        };
+        f.write_all(format!("#!/bin/sh\n{marker_line}exit 0\n").as_bytes())
+            .expect("write stub");
+        let mut perm = f.metadata().expect("perm").permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&path, perm).expect("chmod");
+        for tool in tools {
+            let t = td.path().join(tool);
+            std::fs::write(&t, b"#!/bin/sh\nexit 0\n").expect("write tool stub");
+            std::fs::set_permissions(&t, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+        let mut opts = DebugOptions::new(path);
+        opts.path_override = Some(td.path().display().to_string());
+        (td, opts)
+    }
+
+    /// The complete yt-dlp-only path Codex asked to pin: active
+    /// script read from disk, capability classified, composed PATH
+    /// scanned — end to end through spawn_download.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn spawn_download_accepts_ytdlp_only_with_a_capable_script() {
+        let _guard = ENV_LOCK.lock().await;
+        let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+        let dl_dir = tempfile::tempdir().expect("dl tempdir");
+        let r = spawn_download(
+            &opts,
+            &DownloadRequest {
+                query: "Some Show",
+                episode: "1",
+                quality: "1080",
+                mode: "sub",
+                select_index: 1,
+            },
+            dl_dir.path(),
+            |_line| {},
+        )
+        .await;
+        assert!(r.is_ok(), "yt-dlp alone must satisfy a 4.15 script: {r:?}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn spawn_download_rejects_ytdlp_only_against_a_pre_4_15_script() {
+        let _guard = ENV_LOCK.lock().await;
+        let (_td, opts) = stub_ani_cli_with_tools(false, &["yt-dlp"]);
+        let dl_dir = tempfile::tempdir().expect("dl tempdir");
+        let r = spawn_download(
+            &opts,
+            &DownloadRequest {
+                query: "Some Show",
+                episode: "1",
+                quality: "1080",
+                mode: "sub",
+                select_index: 1,
+            },
+            dl_dir.path(),
+            |_line| {},
+        )
+        .await;
+        assert!(
+            matches!(r, Err(crate::error::AniError::FfmpegMissing)),
+            "a script without the failover must still demand ffmpeg: {r:?}"
+        );
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn spawn_download_passes_d_flag_and_episode_query_quality() {
