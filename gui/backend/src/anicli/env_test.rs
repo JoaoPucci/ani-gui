@@ -734,6 +734,50 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_track_nested_cases_inside_the_arm() {
+    // An invocation inside a nested case is conditional — a
+    // legacy-only inner arm must not grant while the download arm's
+    // own flow still hard-requires ffmpeg…
+    let conditional = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        case "$legacy_mode" in
+            yes)
+                dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+                ;;
+        esac
+        dep_ch "ffmpeg" "aria2c"
+        ;;
+esac"#;
+    // …while an invocation at the arm's own level after a nested
+    // case has closed is unconditional and must still grant: the
+    // inner arm's terminator ends the inner arm, not the download
+    // arm.
+    let unconditional = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        case "$subs" in
+            hard) : ;;
+        esac
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
+        ;;
+esac"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !download_tool_names(conditional).contains(&ytdlp),
+        "a nested-arm invocation must not grant yt-dlp"
+    );
+    assert!(
+        download_tool_names(unconditional).contains(&ytdlp),
+        "an at-level invocation after a nested case must still grant"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
