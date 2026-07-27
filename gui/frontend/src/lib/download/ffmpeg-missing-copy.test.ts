@@ -67,10 +67,10 @@ describe('selectFfmpegMissingCopy', () => {
 // The bodies themselves live in the per-locale namespace sources; pin
 // the recovery guidance so a locale edit can't silently drop the
 // yt-dlp alternative the preflight now honors.
-import en from '../../../messages/en/download.json';
-import es419 from '../../../messages/es-419/download.json';
-import ptBR from '../../../messages/pt-BR/download.json';
-import ru from '../../../messages/ru/download.json';
+import en from '$messages/en/download.json';
+import es419 from '$messages/es-419/download.json';
+import ptBR from '$messages/pt-BR/download.json';
+import ru from '$messages/ru/download.json';
 
 describe('missing-tool modal bodies', () => {
 	const locales: Record<string, Record<string, string>> = {
