@@ -223,7 +223,9 @@ async fn enrich_availability_after_success(
     {
         let started_at = tokio::time::Instant::now();
         let got = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
-        state.scraper_gate.record_outcome(got.is_ok(), started_at);
+        state
+            .scraper_gate
+            .record(crate::scraper::gate::outcome_of(&got), started_at);
         got.ok()
     } else {
         // Breaker open — skip the enrichment round-trip; the plain

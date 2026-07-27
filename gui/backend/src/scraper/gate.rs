@@ -152,7 +152,6 @@ impl ScraperGate {
         let (wait, is_trial) = {
             let mut s = self.inner.lock().expect("gate lock");
             let now = Instant::now();
-            let mut is_trial = false;
             // Advertised-window pause: schedule this caller a paced
             // slot at/after the window's end and sleep until then —
             // pause-and-resume, not refusal. `next_background_at`
@@ -165,7 +164,7 @@ impl ScraperGate {
                     s.paused_until = None;
                 }
             }
-            is_trial = breaker_gate(&mut s, now)?;
+            let is_trial = breaker_gate(&mut s, now)?;
             let slot = s.next_background_at.max(now);
             s.next_background_at = slot + BACKGROUND_INTERVAL;
             (slot - now, is_trial)
@@ -289,8 +288,15 @@ impl ScraperGate {
 /// in-band rate limit carries its advertised hint to the gate, every
 /// other error folds to an untyped failure.
 pub fn outcome_of<T>(r: &Result<T, crate::error::AniError>) -> ScrapeOutcome {
-    let _ = r;
-    todo!("green commit maps AniError::RateLimited to the typed outcome")
+    match r {
+        Ok(_) => ScrapeOutcome::Success,
+        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
+            ScrapeOutcome::RateLimited {
+                retry_after: retry_after_secs.map(Duration::from_secs),
+            }
+        }
+        Err(_) => ScrapeOutcome::Failure,
+    }
 }
 
 /// Breaker check under the gate lock: refuses while the breaker is
