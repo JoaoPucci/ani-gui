@@ -177,8 +177,9 @@ fn apply_carried_patches(script_path: &Path) -> std::io::Result<usize> {
 /// reverted to upstream's shape, `-U` runs against it, and only an
 /// `Updated` outcome — after reapplying the carried patches — is
 /// persisted back over the live path (atomically on Unix). `NoChange`
-/// and `Failed` leave the live cache untouched; the staging file is
-/// removed in every case. A staging failure skips the update run
+/// and `Failed` leave the live cache untouched; an `Updated` staging
+/// script missing any carried patch after repair is discarded as
+/// `Failed`; the staging file is removed in every case. A staging failure skips the update run
 /// entirely (`Failed` outcome) rather than risking the live cache.
 ///
 /// This is the only sanctioned way to invoke [`run_update`] on the
@@ -188,7 +189,10 @@ pub async fn run_update_with_repair(
     bash_path: Option<&Path>,
     bundled_bin: Option<&Path>,
 ) -> UpdateOutcome {
-    let staging = script_path.with_extension("update-staging");
+    // Pid-suffixed: two app instances under one user profile both run
+    // the boot update against the same cache; a shared staging name
+    // would let one updater clobber or delete the other's $0 mid-run.
+    let staging = script_path.with_extension(format!("update-staging.{}", std::process::id()));
     if let Err(e) = stage_upstream_copy(script_path, &staging) {
         tracing::warn!(target: "anicli::update", error = %e, "staging the update copy failed");
         return UpdateOutcome {
@@ -202,6 +206,25 @@ pub async fn run_update_with_repair(
     let outcome = run_update(&staging, bash_path, bundled_bin).await;
     if outcome.status == UpdateStatus::Updated {
         repair_carried_patches(&staging);
+        // Every carried patch must be present on the repaired staging
+        // copy before it may replace the live script. If upstream
+        // reshaped an anchor, installing anyway would silently strip
+        // the patch (quoted-title search, macOS downloads) while
+        // logging Updated — discard the run and keep the current
+        // script instead; the next fork sync re-baselines the table.
+        let repaired = std::fs::read_to_string(&staging).unwrap_or_default();
+        if !all_carried_patches_present(&repaired) {
+            let _ = std::fs::remove_file(&staging);
+            return UpdateOutcome {
+                status: UpdateStatus::Failed,
+                stdout: outcome.stdout,
+                stderr: "update discarded: not every carried patch could be reapplied to the \
+                         new script (upstream shape changed); keeping the current script"
+                    .to_string(),
+                finished_at: SystemTime::now(),
+                duration_ms: outcome.duration_ms,
+            };
+        }
         if let Err(e) = persist_staging(&staging, script_path) {
             tracing::warn!(target: "anicli::update", error = %e, "persisting the updated script failed");
             let _ = std::fs::remove_file(&staging);
@@ -216,6 +239,14 @@ pub async fn run_update_with_repair(
     }
     let _ = std::fs::remove_file(&staging);
     outcome
+}
+
+/// Whether every carried patch's fork form is present — the
+/// install-gate for a repaired staging script.
+fn all_carried_patches_present(contents: &str) -> bool {
+    crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .all(|(_, fork)| contents.contains(fork))
 }
 
 /// Copy the live script to `staging` and revert every fork-carried
@@ -268,7 +299,23 @@ fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
 
 #[cfg(not(unix))]
 fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
-    std::fs::copy(staging, live).map(|_| ())
+    // Rename-swap: Windows rename won't replace an existing file, and
+    // a plain copy would expose concurrent spawns to a torn script
+    // mid-write. Two renames (each atomic) leave only a brief
+    // not-found window; on failure the backup is restored.
+    let backup = live.with_extension("update-replaced");
+    let _ = std::fs::remove_file(&backup);
+    std::fs::rename(live, &backup)?;
+    match std::fs::rename(staging, live) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&backup);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::rename(&backup, live);
+            Err(e)
+        }
+    }
 }
 
 /// Best-effort repair of the cached script's fork-carried content:
@@ -701,8 +748,12 @@ mod tests {
         let path = dir.path().join("ani-cli");
         let seen = dir.path().join("seen-by-update");
         let upstream = dir.path().join("upstream-master");
-        let (up_cap, fk_cap) = capture_pair();
-        std::fs::write(&upstream, format!("#!/bin/sh\n{up_cap}")).unwrap();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, _) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+        std::fs::rename(&pristine, &upstream).unwrap();
+        let (_, fk_cap) = capture_pair();
         // The cache copy as it sits on disk after a prior repair:
         // fork-shaped. The -U stand-in snapshots $0 exactly as the
         // comparison would read it, then performs upstream's rewrite.
@@ -900,10 +951,19 @@ mod tests {
         // Updated would log a successful update while playback keeps
         // using the stale script.
         let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        // Fully patched content: repair no-ops and the install gate
+        // passes, isolating the persistence step as the only failure.
+        let (patched, _) = guard_stripped_repo_copy(&sub);
         let live = dir.path().join("ani-cli");
         std::fs::write(
             &live,
-            "#!/bin/sh\n{\nrm \"$0\"\nmkdir \"$0\"\necho 'Script updated'\nexit 0\n}\n",
+            format!(
+                "#!/bin/sh\n{{\nrm '{live}'\nmkdir '{live}'\ncp '{patched}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
+                live = live.display(),
+                patched = patched.display()
+            ),
         )
         .unwrap();
 
