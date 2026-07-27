@@ -425,11 +425,13 @@ fn prune_keeps_the_current_and_live_dirs_and_removes_dead_ones() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn provisioned_wrapper_preserves_non_utf8_exe_paths() {
     // Unix paths are arbitrary bytes; a lossy string conversion would
-    // replace invalid sequences and exec a nonexistent path.
+    // replace invalid sequences and exec a nonexistent path. Linux
+    // only: APFS rejects invalid-UTF-8 names outright ("Illegal byte
+    // sequence"), so the scenario cannot be staged on macOS.
     use std::os::unix::ffi::OsStrExt;
     let td = tempfile::tempdir().expect("tempdir");
     let weird = td
