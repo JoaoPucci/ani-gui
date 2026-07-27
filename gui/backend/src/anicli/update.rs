@@ -135,6 +135,217 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Reapply every fork-carried patch missing from `script_path`.
+/// Hunks whose fork form is already present are skipped, making the
+/// pass idempotent at boot on an already-patched cache; hunks whose
+/// upstream anchor is missing — upstream drifted — are logged and
+/// skipped, leaving the script untouched rather than guessing.
+/// Returns how many hunks were applied.
+///
+/// # Errors
+/// Propagates I/O errors from reading or rewriting the script.
+fn apply_carried_patches(script_path: &Path) -> std::io::Result<usize> {
+    let mut contents = std::fs::read_to_string(script_path)?;
+    let mut applied = 0;
+    // Legacy migration first: a cache patched by an earlier build
+    // holds a patch's old fork form, matching neither side of the
+    // current table — with auto-update disabled nothing else would
+    // ever move it forward.
+    for (legacy, current) in crate::anicli::carried_patches::LEGACY_FORK_MIGRATIONS {
+        if contents.contains(legacy) {
+            contents = contents.replacen(legacy, current, 1);
+            applied += 1;
+        }
+    }
+    for (idx, (upstream, fork)) in crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .enumerate()
+    {
+        if contents.contains(fork) {
+            continue;
+        }
+        if !contents.contains(upstream) {
+            tracing::warn!(target: "anicli::update", hunk = idx, "carried patch anchor missing; upstream drift?");
+            continue;
+        }
+        contents = contents.replacen(upstream, fork, 1);
+        applied += 1;
+    }
+    if applied > 0 {
+        std::fs::write(script_path, contents)?;
+    }
+    Ok(applied)
+}
+
+/// Run `-U` against an isolated upstream-shaped staging copy of the
+/// cache. Two constraints meet here: the script's `update_script`
+/// compares the downloaded upstream file directly against `$0` (so a
+/// fork-patched `$0` makes every run false-report `Updated`), and the
+/// backend is already serving while the network-bound update runs (so
+/// the live cache must keep the fork capture for concurrent
+/// play/download spawns). Staging satisfies both: the copy is
+/// reverted to upstream's shape, `-U` runs against it, and only an
+/// exit-0 run that actually rewrote the staging bytes — after
+/// reapplying the carried patches — is persisted back over the live
+/// path via an atomic rename (upstream's wording never gates the
+/// install). `NoChange`
+/// and `Failed` leave the live cache untouched; an `Updated` staging
+/// script missing any carried patch after repair is discarded as
+/// `Failed`; the staging file is removed in every case. A staging failure skips the update run
+/// entirely (`Failed` outcome) rather than risking the live cache.
+///
+/// This is the only sanctioned way to invoke [`run_update`] on the
+/// live cache.
+pub async fn run_update_with_repair(
+    script_path: &Path,
+    bash_path: Option<&Path>,
+    bundled_bin: Option<&Path>,
+) -> UpdateOutcome {
+    // Pid-suffixed: two app instances under one user profile both run
+    // the boot update against the same cache; a shared staging name
+    // would let one updater clobber or delete the other's $0 mid-run.
+    let staging = script_path.with_extension(format!("update-staging.{}", std::process::id()));
+    if let Err(e) = stage_upstream_copy(script_path, &staging) {
+        tracing::warn!(target: "anicli::update", error = %e, "staging the update copy failed");
+        return UpdateOutcome {
+            status: UpdateStatus::Failed,
+            stdout: String::new(),
+            stderr: format!("staging error: {e}"),
+            finished_at: SystemTime::now(),
+            duration_ms: 0,
+        };
+    }
+    let before = std::fs::read(&staging).unwrap_or_default();
+    let mut outcome = run_update(&staging, bash_path, bundled_bin).await;
+    // The install signal is the staging content actually changing —
+    // upstream's success wording is theirs to change, and keying the
+    // install on stdout phrasing would silently drop real updates the
+    // day it moves. The message-based classification still feeds the
+    // diagnostics log, upgraded when the bytes say otherwise.
+    let after = std::fs::read(&staging).unwrap_or_default();
+    let content_changed =
+        outcome.status != UpdateStatus::Failed && !after.is_empty() && after != before;
+    if content_changed && outcome.status == UpdateStatus::NoChange {
+        outcome.status = UpdateStatus::Updated;
+    }
+    if content_changed {
+        repair_carried_patches(&staging);
+        // Every carried patch must be present on the repaired staging
+        // copy before it may replace the live script. If upstream
+        // reshaped an anchor, installing anyway would silently strip
+        // the patch (quoted-title search, macOS downloads) while
+        // logging Updated — discard the run and keep the current
+        // script instead; the next fork sync re-baselines the table.
+        let repaired = std::fs::read_to_string(&staging).unwrap_or_default();
+        if !all_carried_patches_present(&repaired) {
+            let _ = std::fs::remove_file(&staging);
+            return UpdateOutcome {
+                status: UpdateStatus::Failed,
+                stdout: outcome.stdout,
+                stderr: "update discarded: not every carried patch could be reapplied to the \
+                         new script (upstream shape changed); keeping the current script"
+                    .to_string(),
+                finished_at: SystemTime::now(),
+                duration_ms: outcome.duration_ms,
+            };
+        }
+        if let Err(e) = persist_staging(&staging, script_path) {
+            tracing::warn!(target: "anicli::update", error = %e, "persisting the updated script failed");
+            let _ = std::fs::remove_file(&staging);
+            return UpdateOutcome {
+                status: UpdateStatus::Failed,
+                stdout: outcome.stdout,
+                stderr: format!("update succeeded but persisting the script failed: {e}"),
+                finished_at: SystemTime::now(),
+                duration_ms: outcome.duration_ms,
+            };
+        }
+    }
+    let _ = std::fs::remove_file(&staging);
+    outcome
+}
+
+/// Whether every carried patch's fork form is present — the
+/// install-gate for a repaired staging script.
+fn all_carried_patches_present(contents: &str) -> bool {
+    crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .all(|(_, fork)| contents.contains(fork))
+}
+
+/// Copy the live script to `staging` and revert every fork-carried
+/// patch there, so `-U`'s whole-file comparison sees exactly what
+/// upstream published while the live cache stays patched.
+fn stage_upstream_copy(live: &Path, staging: &Path) -> std::io::Result<()> {
+    std::fs::copy(live, staging)?;
+    revert_carried_patches(staging)?;
+    Ok(())
+}
+
+/// Revert every fork-carried patch in `script_path` — comment blocks,
+/// inserted lines, and swapped lines alike — so the file is
+/// byte-identical to what upstream published. Anything less leaves a
+/// permanent diff that makes `-U`'s whole-file comparison classify
+/// every run as `Updated`, and the subsequent upstream rewrite then
+/// strips whichever patches the repair pass doesn't restore (losing
+/// the portable-base64 patch this way breaks stream resolution on
+/// macOS outright). Hunks that no longer match — upstream drifted —
+/// are skipped and logged; the resulting residual diff degrades to
+/// today's always-`Updated` behavior rather than corrupting the
+/// script.
+///
+/// # Errors
+/// Propagates I/O errors from reading or rewriting the script.
+pub fn revert_carried_patches(script_path: &Path) -> std::io::Result<()> {
+    let mut contents = std::fs::read_to_string(script_path)?;
+    for (idx, (upstream, fork)) in crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .enumerate()
+    {
+        if contents.contains(fork) {
+            contents = contents.replacen(fork, upstream, 1);
+        } else if !contents.contains(upstream) {
+            tracing::warn!(target: "anicli::update", hunk = idx, "carried patch not found to revert; upstream drift?");
+        }
+    }
+    std::fs::write(script_path, contents)?;
+    Ok(())
+}
+
+/// Move the repaired staging script over the live path in one
+/// rename. `std::fs::rename` replaces an existing destination on
+/// every supported platform — on Windows it maps to `MoveFileExW`
+/// with `MOVEFILE_REPLACE_EXISTING` — so concurrent spawns observe
+/// either the old script or the new one, never a torn or absent
+/// file.
+fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
+    std::fs::rename(staging, live)
+}
+
+/// Best-effort repair of the cached script's fork-carried content:
+/// strip the bats loader guard (so `-U`'s patch comparison sees
+/// upstream's shape) and reapply every fork-carried patch. Called at
+/// boot and again after every `-U`, since an update writes upstream's
+/// script verbatim. Failures are logged, never propagated — a repair
+/// miss must not block startup or mark an update failed, because the
+/// unrepaired script still mostly works; the affected surfaces
+/// degrade per patch (quoted-title search rows, macOS downloads,
+/// flatpak playback).
+pub fn repair_carried_patches(script_path: &Path) {
+    if let Err(e) = strip_lib_guard(script_path) {
+        tracing::warn!(target: "anicli::update", error = %e, "strip_lib_guard failed");
+    }
+    match apply_carried_patches(script_path) {
+        Ok(0) => {}
+        Ok(n) => {
+            tracing::info!(target: "anicli::update", applied = n, "reapplied carried patches");
+        }
+        Err(e) => {
+            tracing::warn!(target: "anicli::update", error = %e, "reapplying carried patches failed");
+        }
+    }
+}
+
 /// Run `bash <script_path> -U` and classify the outcome by parsing the
 /// upstream `update_script` function's output strings. The implementation
 /// hands its caller the captured stdout + stderr verbatim so the
@@ -433,6 +644,475 @@ mod tests {
         let resolved = resolve_anicli_path(&seed, &cache).unwrap();
         let mode = std::fs::metadata(&resolved).unwrap().permissions().mode();
         assert_eq!(mode & 0o111, 0o111, "copy must be executable: {mode:o}");
+    }
+
+    // ── carried patches ─────────────────────────────────────────────────
+
+    /// The name-capture pair from the table — the hunk the sandwich
+    /// fixtures embed as an inert (never-parsed) tail.
+    fn capture_pair() -> (&'static str, &'static str) {
+        *crate::anicli::carried_patches::CARRIED_PATCHES
+            .iter()
+            .find(|(_, fork)| fork.contains("name capture"))
+            .expect("capture hunk present")
+    }
+
+    #[test]
+    fn repair_applies_each_upstream_hunk() {
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            std::fs::write(&path, format!("#!/bin/sh\n{upstream}")).unwrap();
+            repair_carried_patches(&path);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                format!("#!/bin/sh\n{fork}"),
+                "hunk applied"
+            );
+        }
+    }
+
+    #[test]
+    fn repair_is_a_noop_when_already_patched() {
+        // Idempotency matters: repair runs at every boot against an
+        // already-patched cache, and an insertion hunk re-applied
+        // through its context anchor would duplicate lines.
+        for (_, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            let body = format!("#!/bin/sh\n{fork}");
+            std::fs::write(&path, &body).unwrap();
+            repair_carried_patches(&path);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+        }
+    }
+
+    #[test]
+    fn repair_leaves_unrecognized_content_alone() {
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let body = "#!/bin/sh\necho unrelated\n";
+        std::fs::write(&path, body).unwrap();
+        repair_carried_patches(&path);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+    }
+
+    #[test]
+    fn repair_carried_patches_fixes_guard_and_capture_in_one_pass() {
+        // The logged wrapper swallows every outcome; pin that it
+        // strips the loader guard, reapplies the capture, and never
+        // panics on no-op or I/O error.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let (up_cap, _) = capture_pair();
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\n. \"$ANI_CLI_TEST_LIB\" # {LIB_GUARD_MARKER}\n{up_cap}"),
+        )
+        .unwrap();
+        repair_carried_patches(&path);
+        let got = std::fs::read_to_string(&path).unwrap();
+        assert!(!got.contains(LIB_GUARD_MARKER), "guard stripped: {got}");
+        assert!(
+            got.contains(r#"\"name\":\"(.+)\","#),
+            "capture reapplied: {got}"
+        );
+        repair_carried_patches(&path); // already repaired: no-op
+        repair_carried_patches(dir.path()); // read fails: logged, no panic
+    }
+
+    #[test]
+    fn revert_restores_each_upstream_hunk() {
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            std::fs::write(&path, format!("#!/bin/sh\n{fork}")).unwrap();
+            revert_carried_patches(&path).unwrap();
+            let expected = format!("#!/bin/sh\n{upstream}");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+            revert_carried_patches(&path).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                expected,
+                "second revert no-ops"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn run_update_with_repair_gives_dash_u_an_upstream_shaped_script() {
+        // ani-cli's update_script compares the downloaded upstream
+        // file directly against $0. If the fork capture were still
+        // applied when -U runs, every launch would false-report
+        // Updated and rewrite the cache. Pin the full sandwich: the
+        // spawn sees an upstream-shaped $0, and after an Updated
+        // outcome rewrites the cache with upstream's content the
+        // fork capture is restored.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let seen = dir.path().join("seen-by-update");
+        let upstream = dir.path().join("upstream-master");
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, _) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+        std::fs::rename(&pristine, &upstream).unwrap();
+        let (_, fk_cap) = capture_pair();
+        // The cache copy as it sits on disk after a prior repair:
+        // fork-shaped. The -U stand-in snapshots $0 exactly as the
+        // comparison would read it, then performs upstream's rewrite.
+        // The brace block is parsed in full before any command runs
+        // and exits inside it, so overwriting $0 mid-execution can't
+        // corrupt the interpreter's read position (the same reason
+        // upstream's update_script exits from within its function).
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\n{{\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n{fk_cap}",
+                seen.display(),
+                upstream.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&path, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Updated, "{outcome:?}");
+        let seen_body = std::fs::read_to_string(&seen).expect("update ran and snapshotted $0");
+        assert!(
+            !seen_body.contains(r#"\"name\":\"(.+)\","#),
+            "-U compared against a fork-patched script: {seen_body}"
+        );
+        assert!(
+            seen_body.contains(r#"\"name\":\"([^\"]*)\","#),
+            "-U saw the upstream form: {seen_body}"
+        );
+        let final_body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            final_body.contains(r#"\"name\":\"(.+)\","#),
+            "fork capture restored after the update rewrite: {final_body}"
+        );
+    }
+
+    fn guard_stripped_repo_copy(dir: &Path) -> (std::path::PathBuf, String) {
+        // The runtime cache = the repo script with the loader guard
+        // stripped at boot; every carried-patch test mirrors that
+        // baseline.
+        let repo_script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("repo root")
+            .join("ani-cli");
+        let path = dir.join("ani-cli");
+        std::fs::copy(repo_script, &path).expect("copy repo ani-cli");
+        strip_lib_guard(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        (path, contents)
+    }
+
+    #[test]
+    fn revert_carried_patches_removes_every_fork_marker() {
+        let dir = tmpdir();
+        let (path, _) = guard_stripped_repo_copy(dir.path());
+        revert_carried_patches(&path).unwrap();
+        let got = std::fs::read_to_string(&path).unwrap();
+        for marker in [
+            "# ani-gui patch:",
+            "base64 | tr -d",
+            "flatpak_mpv",
+            "watched_ep_no",
+            r#"\"name\":\"(.+)\","#,
+        ] {
+            assert!(!got.contains(marker), "fork residue left behind: {marker}");
+        }
+    }
+
+    #[test]
+    fn carried_patches_round_trip_the_real_repo_script() {
+        // revert and repair must be exact inverses over the full
+        // patch table, or the -U staging cycle slowly corrupts the
+        // cache; byte equality against the real script pins every
+        // hunk's escaping and placement at once.
+        let dir = tmpdir();
+        let (path, baseline) = guard_stripped_repo_copy(dir.path());
+        revert_carried_patches(&path).unwrap();
+        assert_ne!(
+            std::fs::read_to_string(&path).unwrap(),
+            baseline,
+            "revert changed the script"
+        );
+        repair_carried_patches(&path);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), baseline);
+    }
+
+    #[test]
+    fn repair_migrates_a_cache_patched_by_an_earlier_build() {
+        // A cache written before a carried patch evolved holds the
+        // patch's LEGACY fork form — matching neither side of the
+        // current table. With auto-update disabled nothing else ever
+        // touches that cache, so the repair pass itself must
+        // recognize the old form and migrate it forward.
+        let dir = tmpdir();
+        let (path, current) = guard_stripped_repo_copy(dir.path());
+        let (legacy, today) = crate::anicli::carried_patches::LEGACY_FORK_MIGRATIONS[0];
+        let old_cache = current.replacen(today, legacy, 1);
+        assert_ne!(old_cache, current, "legacy form differs");
+        std::fs::write(&path, &old_cache).unwrap();
+
+        repair_carried_patches(&path);
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            current,
+            "legacy fork form migrated to the current script"
+        );
+    }
+
+    #[test]
+    fn predicate_flips_false_when_any_single_hunk_is_missing() {
+        // The install gate must notice the loss of EACH patch
+        // individually, not just wholesale corruption.
+        let dir = tmpdir();
+        let (_, full) = guard_stripped_repo_copy(dir.path());
+        assert!(all_carried_patches_present(&full));
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let missing_one = full.replacen(fork, upstream, 1);
+            assert!(
+                !all_carried_patches_present(&missing_one),
+                "gate blind to a missing hunk: {}",
+                &fork[..60.min(fork.len())]
+            );
+        }
+        assert!(!all_carried_patches_present(""));
+    }
+
+    #[tokio::test]
+    async fn changed_script_content_persists_even_with_unrecognized_output() {
+        // ani-cli's update messages are upstream's to change; keying
+        // the install on stdout phrasing would silently drop real
+        // updates the day the wording moves. A rewritten staging
+        // script with exit 0 must persist regardless of what the run
+        // printed.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, expected) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+
+        let live = dir.path().join("ani-cli");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script refreshed successfully!'\nexit 0\n}}\n",
+                pristine.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Updated, "{outcome:?}");
+        assert_eq!(
+            std::fs::read_to_string(&live).unwrap(),
+            expected,
+            "rewritten content installed despite unrecognized wording"
+        );
+    }
+
+    #[tokio::test]
+    async fn updated_outcome_is_failed_when_repair_cannot_restore_every_patch() {
+        // Upstream reshaped one hunk's anchor: the repair pass can't
+        // reapply that carried patch to the new script. Installing it
+        // anyway would silently strip the patch (quoted-title search,
+        // macOS downloads) while logging Updated — the run must be
+        // discarded, keeping the live script untouched.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, _) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+        let (up_cap, _) = capture_pair();
+        let drifted = std::fs::read_to_string(&pristine).unwrap().replacen(
+            up_cap,
+            "# upstream reshaped this whole region\n",
+            1,
+        );
+        std::fs::write(&pristine, drifted).unwrap();
+
+        let live = dir.path().join("ani-cli");
+        let body = format!(
+            "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
+            pristine.display()
+        );
+        std::fs::write(&live, &body).unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Failed, "{outcome:?}");
+        assert!(
+            outcome.stderr.contains("carried"),
+            "stderr names the unrepairable patch: {outcome:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&live).unwrap(),
+            body,
+            "live script untouched when the update is discarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn staging_path_is_unique_per_process() {
+        // Two app instances under one user profile both run the boot
+        // update against the same cache; a shared staging filename
+        // lets one updater clobber or delete the other's $0 mid-run.
+        let dir = tmpdir();
+        let live = dir.path().join("ani-cli");
+        let seen_path = dir.path().join("seen-zero-path");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\nprintf '%s' \"$0\" > '{}'\necho 'Script is up to date'\nexit 0\n}}\n",
+                seen_path.display()
+            ),
+        )
+        .unwrap();
+
+        run_update_with_repair(&live, None, None).await;
+
+        let seen = std::fs::read_to_string(&seen_path).expect("update ran");
+        let expected = format!("ani-cli.update-staging.{}", std::process::id());
+        assert!(
+            seen.ends_with(&expected),
+            "staging path embeds this process id: got {seen}, want suffix {expected}"
+        );
+    }
+
+    #[tokio::test]
+    async fn updated_outcome_restores_every_carried_patch() {
+        // An Updated rewrite hands the repair pass pristine upstream
+        // content; restoring only some patches silently drops the
+        // rest (the portable-base64 one breaks macOS playback). Pin
+        // repair(pristine upstream) == the guard-stripped repo script,
+        // byte for byte.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, expected) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+
+        let live = dir.path().join("ani-cli");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
+                pristine.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Updated, "{outcome:?}");
+        assert_eq!(
+            std::fs::read_to_string(&live).unwrap(),
+            expected,
+            "every carried patch restored onto upstream's rewrite"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_update_with_repair_reports_failed_when_persistence_fails() {
+        // -U succeeded on the staging copy but the final write-back
+        // can't land (the stand-in replaces the live path with a
+        // directory, so the rename fails). Reporting the original
+        // Updated would log a successful update while playback keeps
+        // using the stale script.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        // Fully patched content: repair no-ops and the install gate
+        // passes, isolating the persistence step as the only failure.
+        let (patched, _) = guard_stripped_repo_copy(&sub);
+        let live = dir.path().join("ani-cli");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\nrm '{live}'\nmkdir '{live}'\ncp '{patched}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
+                live = live.display(),
+                patched = patched.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Failed, "{outcome:?}");
+        assert!(
+            outcome.stderr.contains("persist"),
+            "stderr names the persistence failure: {outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_update_with_repair_keeps_the_live_script_patched_while_updating() {
+        // The backend is serving while the network-bound -U runs; a
+        // play/download spawned mid-update must still hit a
+        // fork-patched script or an escaped-quote title shifts the
+        // later -S indices onto the wrong anime. The -U stand-in
+        // snapshots the LIVE cache path's content mid-run: it must
+        // still carry the fork capture.
+        let dir = tmpdir();
+        let live = dir.path().join("ani-cli");
+        let seen_live = dir.path().join("live-during-update");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\ncp '{}' '{}'\necho 'Script is up to date'\nexit 0\n}}\n{}",
+                live.display(),
+                seen_live.display(),
+                capture_pair().1
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::NoChange, "{outcome:?}");
+        let mid_update = std::fs::read_to_string(&seen_live).expect("update ran");
+        assert!(
+            mid_update.contains(r#"\"name\":\"(.+)\","#),
+            "live cache lost the fork capture during -U: {mid_update}"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("ani-cli"))
+                .count(),
+            1,
+            "staging copy cleaned up"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_update_with_repair_restores_the_capture_when_update_fails() {
+        // Spawn failure path: the revert ran but -U never rewrote the
+        // script; the repair must still put the fork capture back.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        // Not executable by bash? bash <path> runs regardless; make
+        // the script itself exit non-zero to exercise Failed.
+        std::fs::write(&path, format!("#!/bin/sh\nexit 3\n{}", capture_pair().1)).unwrap();
+
+        let outcome = run_update_with_repair(&path, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Failed, "{outcome:?}");
+        let final_body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            final_body.contains(r#"\"name\":\"(.+)\","#),
+            "fork capture restored after a failed update: {final_body}"
+        );
     }
 
     // ── strip_lib_guard ─────────────────────────────────────────────────
