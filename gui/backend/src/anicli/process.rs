@@ -542,20 +542,35 @@ fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)
     Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
-/// Write the classified script bytes to a private temp file the
-/// spawn can execute, immune to the installer renaming a new script
-/// over the live path mid-flight. The returned `TempDir` owns the
-/// snapshot for the download's lifetime.
+/// Write the classified script bytes to a private temp file, immune
+/// to the installer renaming a new script over the live path
+/// mid-flight. The snapshot deliberately carries NO exec permission:
+/// it is READ by the shell interpreter, never exec(2)'d, so a
+/// `noexec` temp mount cannot break it. The returned `TempDir` owns
+/// the snapshot for the download's lifetime.
 fn stage_script_snapshot(contents: &str) -> std::io::Result<(tempfile::TempDir, PathBuf)> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("ani-cli");
     std::fs::write(&path, contents)?;
+    Ok((dir, path))
+}
+
+/// Build the download spawn: the snapshot runs THROUGH `/bin/sh` on
+/// Unix (matching the script's own shebang) so a `noexec` temp mount
+/// can't refuse it; the live-path fallback and Windows keep the
+/// ordinary command builder, which already routes through bash.
+fn download_command(spawn_path: &Path, bash_path: Option<&Path>) -> tokio::process::Command {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+        let _ = bash_path;
+        let mut cmd = tokio::process::Command::new("/bin/sh");
+        cmd.arg(spawn_path);
+        cmd
     }
-    Ok((dir, path))
+    #[cfg(windows)]
+    {
+        crate::anicli::bash::build_anicli_command(spawn_path, bash_path)
+    }
 }
 
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
@@ -599,7 +614,7 @@ where
         .as_ref()
         .map_or(opts.ani_cli_path.clone(), |(_, path)| path.clone());
 
-    let mut cmd = crate::anicli::bash::build_anicli_command(&spawn_path, opts.bash_path.as_deref());
+    let mut cmd = download_command(&spawn_path, opts.bash_path.as_deref());
     cmd.arg("-S")
         .arg(&select_str)
         .arg("-d")
