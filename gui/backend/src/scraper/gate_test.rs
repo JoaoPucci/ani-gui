@@ -829,3 +829,35 @@ async fn a_sleeping_trial_honors_a_newer_pause_recorded_mid_sleep() {
         "the trial honors the window extension recorded mid-sleep"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_stale_trial_submits_to_a_newer_breaker_cycle() {
+    // The trial sleeps behind a pause; a fresh success clears the
+    // pause AND the breaker cycle that sanctioned the trial; three
+    // later failures open a NEW breaker before the trial's slot.
+    // The old sanction died with its cycle — the sleeper must be
+    // refused by the new cooldown, not sail through on a stale flag.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let (trial, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        gate.record(ScrapeOutcome::Success, Instant::now());
+        for _ in 0..FAILURE_THRESHOLD {
+            gate.record(ScrapeOutcome::Failure, Instant::now());
+        }
+    });
+    assert_eq!(
+        trial,
+        Err(GateClosed),
+        "a sanction from a cleared cycle must not pierce the new cooldown"
+    );
+}
