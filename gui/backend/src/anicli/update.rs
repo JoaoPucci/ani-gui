@@ -791,6 +791,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn updated_outcome_is_failed_when_repair_cannot_restore_every_patch() {
+        // Upstream reshaped one hunk's anchor: the repair pass can't
+        // reapply that carried patch to the new script. Installing it
+        // anyway would silently strip the patch (quoted-title search,
+        // macOS downloads) while logging Updated — the run must be
+        // discarded, keeping the live script untouched.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, _) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+        let (up_cap, _) = capture_pair();
+        let drifted = std::fs::read_to_string(&pristine).unwrap().replacen(
+            up_cap,
+            "# upstream reshaped this whole region\n",
+            1,
+        );
+        std::fs::write(&pristine, drifted).unwrap();
+
+        let live = dir.path().join("ani-cli");
+        let body = format!(
+            "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
+            pristine.display()
+        );
+        std::fs::write(&live, &body).unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Failed, "{outcome:?}");
+        assert!(
+            outcome.stderr.contains("carried"),
+            "stderr names the unrepairable patch: {outcome:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&live).unwrap(),
+            body,
+            "live script untouched when the update is discarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn staging_path_is_unique_per_process() {
+        // Two app instances under one user profile both run the boot
+        // update against the same cache; a shared staging filename
+        // lets one updater clobber or delete the other's $0 mid-run.
+        let dir = tmpdir();
+        let live = dir.path().join("ani-cli");
+        let seen_path = dir.path().join("seen-zero-path");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\nprintf '%s' \"$0\" > '{}'\necho 'Script is up to date'\nexit 0\n}}\n",
+                seen_path.display()
+            ),
+        )
+        .unwrap();
+
+        run_update_with_repair(&live, None, None).await;
+
+        let seen = std::fs::read_to_string(&seen_path).expect("update ran");
+        let expected = format!("ani-cli.update-staging.{}", std::process::id());
+        assert!(
+            seen.ends_with(&expected),
+            "staging path embeds this process id: got {seen}, want suffix {expected}"
+        );
+    }
+
+    #[tokio::test]
     async fn updated_outcome_restores_every_carried_patch() {
         // An Updated rewrite hands the repair pass pristine upstream
         // content; restoring only some patches silently drops the
