@@ -159,6 +159,38 @@ pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
     Ok(true)
 }
 
+/// Inverse of [`reapply_name_capture`]: restore upstream's `([^\"]*)`
+/// capture so the script on disk is upstream-shaped. `-U`'s
+/// `update_script` compares the downloaded upstream file directly
+/// against `$0`, so a persistent fork diff would make every run
+/// false-report `Updated` and rewrite the cache in a perpetual
+/// revert-repair cycle — the same trap the loader-guard strip exists
+/// to avoid. Returns whether the line was reverted; "already
+/// upstream-shaped" and "pattern not found" are `Ok(false)` no-ops.
+///
+/// # Errors
+/// Propagates I/O errors from reading or rewriting the script.
+pub fn revert_name_capture(script_path: &Path) -> std::io::Result<bool> {
+    let _ = script_path;
+    todo!("green commit implements the inverse transform")
+}
+
+/// Run `-U` with the cache temporarily upstream-shaped: revert the
+/// fork's name capture, run the update, then repair the carried
+/// patches — whatever the outcome, since both an `Updated` rewrite
+/// and an untouched reverted script need the capture restored. This
+/// is the only sanctioned way to invoke [`run_update`] on the live
+/// cache; calling it directly against a fork-patched script makes
+/// every run false-report `Updated`.
+pub async fn run_update_with_repair(
+    script_path: &Path,
+    bash_path: Option<&Path>,
+    bundled_bin: Option<&Path>,
+) -> UpdateOutcome {
+    let _ = (script_path, bash_path, bundled_bin);
+    todo!("green commit sandwiches run_update between revert and repair")
+}
+
 /// Best-effort repair of the cached script's fork-carried content:
 /// strip the bats loader guard (so `-U`'s patch comparison sees
 /// upstream's shape) and reapply the greedy name-capture. Called at
@@ -547,6 +579,114 @@ mod tests {
         );
         repair_carried_patches(&path); // already repaired: no-op
         repair_carried_patches(dir.path()); // read fails: logged, no panic
+    }
+
+    #[test]
+    fn revert_name_capture_restores_the_upstream_form() {
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        std::fs::write(&path, format!("#!/bin/sh\n{FORK_CAPTURE}\n")).unwrap();
+        assert!(revert_name_capture(&path).unwrap(), "reverted");
+        let got = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            got.contains(r#"\"name\":\"([^\"]*)\","#),
+            "upstream capture restored: {got}"
+        );
+        assert!(
+            !got.contains(r#"\"name\":\"(.+)\","#),
+            "fork capture gone: {got}"
+        );
+        assert!(!revert_name_capture(&path).unwrap(), "second revert no-ops");
+    }
+
+    #[test]
+    fn revert_then_reapply_round_trips_the_real_repo_script() {
+        // The two transforms must be exact inverses on the real
+        // script, or the -U sandwich (revert → update → repair)
+        // would slowly corrupt the cache.
+        let repo_script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("repo root")
+            .join("ani-cli");
+        let original = std::fs::read_to_string(&repo_script).expect("read repo ani-cli");
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        std::fs::write(&path, &original).unwrap();
+        assert!(revert_name_capture(&path).unwrap(), "reverted");
+        assert_ne!(
+            std::fs::read_to_string(&path).unwrap(),
+            original,
+            "revert changed the script"
+        );
+        assert!(reapply_name_capture(&path).unwrap(), "reapplied");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[tokio::test]
+    async fn run_update_with_repair_gives_dash_u_an_upstream_shaped_script() {
+        // ani-cli's update_script compares the downloaded upstream
+        // file directly against $0. If the fork capture were still
+        // applied when -U runs, every launch would false-report
+        // Updated and rewrite the cache. Pin the full sandwich: the
+        // spawn sees an upstream-shaped $0, and after an Updated
+        // outcome rewrites the cache with upstream's content the
+        // fork capture is restored.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        let seen = dir.path().join("seen-by-update");
+        let upstream = dir.path().join("upstream-master");
+        std::fs::write(&upstream, format!("#!/bin/sh\n# {UPSTREAM_CAPTURE}\n")).unwrap();
+        // The cache copy as it sits on disk after a prior repair:
+        // fork-shaped. The -U stand-in snapshots $0 exactly as the
+        // comparison would read it, then performs upstream's rewrite.
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\n# {FORK_CAPTURE}\n",
+                seen.display(),
+                upstream.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&path, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Updated, "{outcome:?}");
+        let seen_body = std::fs::read_to_string(&seen).expect("update ran and snapshotted $0");
+        assert!(
+            !seen_body.contains(r#"\"name\":\"(.+)\","#),
+            "-U compared against a fork-patched script: {seen_body}"
+        );
+        assert!(
+            seen_body.contains(r#"\"name\":\"([^\"]*)\","#),
+            "-U saw the upstream form: {seen_body}"
+        );
+        let final_body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            final_body.contains(r#"\"name\":\"(.+)\","#),
+            "fork capture restored after the update rewrite: {final_body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_update_with_repair_restores_the_capture_when_update_fails() {
+        // Spawn failure path: the revert ran but -U never rewrote the
+        // script; the repair must still put the fork capture back.
+        let dir = tmpdir();
+        let path = dir.path().join("ani-cli");
+        // Not executable by bash? bash <path> runs regardless; make
+        // the script itself exit non-zero to exercise Failed.
+        std::fs::write(&path, format!("#!/bin/sh\nexit 3\n# {FORK_CAPTURE}\n")).unwrap();
+
+        let outcome = run_update_with_repair(&path, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Failed, "{outcome:?}");
+        let final_body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            final_body.contains(r#"\"name\":\"(.+)\","#),
+            "fork capture restored after a failed update: {final_body}"
+        );
     }
 
     #[test]
