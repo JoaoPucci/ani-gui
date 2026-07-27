@@ -584,6 +584,7 @@ pub(super) fn debug_options_for(
         ani_cli_path: state.ani_cli_path.clone(),
         bash_path: state.bash_path.clone(),
         bundled_bin: state.bundled_bin.clone(),
+        shim_bin: state.botan_shim_bin.clone(),
         hist_dir,
         timeout: RUN_DEBUG_TIMEOUT,
         // None → inherit the backend process's PATH. Tests inject a
@@ -923,6 +924,7 @@ mod tests {
             ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
+            botan_shim_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),

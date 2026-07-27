@@ -111,6 +111,11 @@ pub struct DebugOptions {
     /// `None` on Unix and on Windows dev runs without the bundled
     /// `bin/` dir in the cargo target tree.
     pub bundled_bin: Option<PathBuf>,
+    /// Directory holding the provisioned `botan` wrapper, appended to
+    /// the spawn's PATH so ani-cli's hard botan requirement resolves
+    /// even with no system Botan — while a real installation anywhere
+    /// earlier on PATH still wins. `None` when provisioning failed.
+    pub shim_bin: Option<PathBuf>,
 }
 
 impl DebugOptions {
@@ -124,6 +129,7 @@ impl DebugOptions {
             timeout: DEFAULT_TIMEOUT,
             path_override: None,
             bundled_bin: None,
+            shim_bin: None,
         }
     }
 }
@@ -190,10 +196,13 @@ pub async fn run_debug(
     let inherited = std::env::var_os("PATH");
     cmd.env(
         "PATH",
-        crate::anicli::env::compose_anicli_path(
-            opts.bundled_bin.as_deref(),
-            opts.path_override.as_deref(),
-            inherited.as_deref(),
+        crate::anicli::env::append_shim_bin(
+            crate::anicli::env::compose_anicli_path(
+                opts.bundled_bin.as_deref(),
+                opts.path_override.as_deref(),
+                inherited.as_deref(),
+            ),
+            opts.shim_bin.as_deref(),
         ),
     );
     if let Some(home) = std::env::var_os("HOME") {
@@ -319,10 +328,13 @@ where
     let inherited = std::env::var_os("PATH");
     cmd.env(
         "PATH",
-        crate::anicli::env::compose_anicli_path(
-            opts.bundled_bin.as_deref(),
-            opts.path_override.as_deref(),
-            inherited.as_deref(),
+        crate::anicli::env::append_shim_bin(
+            crate::anicli::env::compose_anicli_path(
+                opts.bundled_bin.as_deref(),
+                opts.path_override.as_deref(),
+                inherited.as_deref(),
+            ),
+            opts.shim_bin.as_deref(),
         ),
     );
     if let Some(home) = std::env::var_os("HOME") {
@@ -581,10 +593,13 @@ where
         cmd.env(k, v);
     }
     let inherited = std::env::var_os("PATH");
-    let composed_path = crate::anicli::env::compose_anicli_path(
-        opts.bundled_bin.as_deref(),
-        opts.path_override.as_deref(),
-        inherited.as_deref(),
+    let composed_path = crate::anicli::env::append_shim_bin(
+        crate::anicli::env::compose_anicli_path(
+            opts.bundled_bin.as_deref(),
+            opts.path_override.as_deref(),
+            inherited.as_deref(),
+        ),
+        opts.shim_bin.as_deref(),
     );
     // Pre-spawn check: ani-cli's `dep_ch "ffmpeg" "aria2c"` exits
     // the shell instantly when either is missing, and the post-exit

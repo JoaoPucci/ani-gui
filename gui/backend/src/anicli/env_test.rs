@@ -221,3 +221,26 @@ fn windows_passthrough_keys_are_the_documented_set() {
         ]
     );
 }
+
+#[test]
+fn shim_bin_is_appended_after_every_composed_entry() {
+    let inherited = join(&["/usr/bin", "/bin"]);
+    let composed = compose_anicli_path(Some(&PathBuf::from("/bundle/bin")), None, Some(&inherited));
+    let got = append_shim_bin(composed, Some(&PathBuf::from("/cache/botan-shim")));
+    let parts = split(&got);
+    assert_eq!(parts.len(), 4);
+    assert_eq!(
+        parts.last(),
+        Some(&PathBuf::from("/cache/botan-shim")),
+        "the shim dir must lose to any real botan earlier on PATH"
+    );
+    assert_eq!(parts[0], PathBuf::from("/bundle/bin"));
+}
+
+#[test]
+fn no_shim_bin_returns_the_composed_path_unchanged() {
+    let inherited = join(&["/usr/bin", "/bin"]);
+    let composed = compose_anicli_path(None, None, Some(&inherited));
+    let got = append_shim_bin(composed.clone(), None);
+    assert_eq!(got, composed);
+}

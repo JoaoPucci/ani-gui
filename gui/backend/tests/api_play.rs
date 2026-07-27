@@ -127,6 +127,7 @@ fn build_state(tmp: &std::path::Path) -> AppState {
         ani_cli_path: repo_root().join("ani-cli"),
         bash_path: None,
         bundled_bin: None,
+        botan_shim_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
         scraper_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),

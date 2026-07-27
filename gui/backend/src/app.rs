@@ -60,6 +60,13 @@ pub struct AppState {
     /// system install. `None` on Unix and on Windows dev runs where
     /// the directory hasn't been laid down.
     pub bundled_bin: Option<PathBuf>,
+    /// Directory holding the provisioned `botan` wrapper that execs
+    /// this binary's `--botan-shim` mode. Appended (never prepended)
+    /// to every ani-cli spawn PATH so 4.15's hard botan requirement
+    /// resolves with no system install, while a real Botan anywhere
+    /// earlier on PATH still wins. `None` when provisioning failed —
+    /// playback then behaves exactly as before the shim existed.
+    pub botan_shim_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
     /// Admission gate for allanime scraper traffic: paces background
@@ -144,6 +151,7 @@ impl AppState {
         // Windows pointer instead of a generic missing-binary error.
         // Unix: the field stays None — the script runs via shebang.
         let bash_path = resolve_bash_path()?;
+        let botan_shim_bin = crate::anicli::botan_shim::provision_own_botan_shim(&cache_root);
         let history_path = paths::ani_cli_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
@@ -165,6 +173,7 @@ impl AppState {
             ani_cli_path,
             bash_path,
             bundled_bin,
+            botan_shim_bin,
             history_path,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
@@ -221,6 +230,7 @@ impl AppState {
         let mut opts = DebugOptions::new(self.ani_cli_path.clone());
         opts.bash_path = self.bash_path.clone();
         opts.bundled_bin = self.bundled_bin.clone();
+        opts.shim_bin = self.botan_shim_bin.clone();
         // history_path is `…/ani-cli/ani-hsts`; ANI_CLI_HIST_DIR wants the
         // directory containing the file.
         opts.hist_dir = self.history_path.parent().map(std::path::Path::to_path_buf);
@@ -293,6 +303,7 @@ mod tests {
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
+            botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),

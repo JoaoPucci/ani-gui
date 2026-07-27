@@ -151,6 +151,7 @@ async fn run_debug_resolves_wixmp_url_via_curl_shim() {
         timeout: std::time::Duration::from_secs(60),
         path_override: Some(path),
         bundled_bin: None,
+        shim_bin: None,
     };
 
     let out = run_debug(&opts, "test", "1", "best", "sub", 1)
@@ -216,6 +217,7 @@ async fn run_debug_streaming_forwards_stderr_lines_in_order() {
         timeout: std::time::Duration::from_secs(60),
         path_override: Some(path),
         bundled_bin: None,
+        shim_bin: None,
     };
 
     // Collect every stderr line into a Mutex<Vec> via the callback.
