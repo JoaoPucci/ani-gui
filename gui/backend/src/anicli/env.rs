@@ -136,6 +136,23 @@ pub fn windows_env_passthrough(
 /// error early lets the frontend render a clear modal instead of
 /// the generic "Download failed" the post-spawn dep_ch failure
 /// otherwise produces.
+/// Locate a download-capable tool inside a composed PATH string.
+/// ani-cli 4.15 accepts yt-dlp OR ffmpeg for `-d` (plus aria2c, which
+/// the script checks itself), so the preflight passes when either
+/// resolves. Pure, like [`ensure_ffmpeg_in_path`], which it replaces.
+///
+/// # Errors
+/// [`AniError::FfmpegMissing`] when neither tool is found — the
+/// frontend modal recommends installing ffmpeg, which remains the
+/// primary suggestion either way.
+pub fn ensure_download_tool_in_path(
+    composed_path: &OsStr,
+    is_executable: impl Fn(&Path) -> bool,
+) -> Result<()> {
+    let _ = (composed_path, &is_executable);
+    todo!("green commit implements the either-tool preflight")
+}
+
 pub fn ensure_ffmpeg_in_path(
     composed_path: &OsStr,
     is_executable: impl Fn(&Path) -> bool,

@@ -244,3 +244,37 @@ fn no_shim_bin_returns_the_composed_path_unchanged() {
     let got = append_shim_bin(composed.clone(), None);
     assert_eq!(got, composed);
 }
+
+#[test]
+fn ensure_download_tool_accepts_ytdlp_when_ffmpeg_is_absent() {
+    // ani-cli 4.15's download path runs with either tool
+    // (dep_ch_failover "yt-dlp,ffmpeg"); the preflight must not block
+    // a yt-dlp-only setup the CLI itself would serve.
+    let path = join(&["/a", "/b"]);
+    let tool = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    let r = ensure_download_tool_in_path(&path, |p| p == PathBuf::from("/b").join(tool));
+    assert!(r.is_ok(), "got: {r:?}");
+}
+
+#[test]
+fn ensure_download_tool_errors_when_both_tools_are_absent() {
+    let path = join(&["/a", "/b"]);
+    let r = ensure_download_tool_in_path(&path, |_| false);
+    assert!(matches!(r, Err(AniError::FfmpegMissing)), "got: {r:?}");
+}
+
+#[test]
+fn ensure_download_tool_still_accepts_ffmpeg_alone() {
+    let path = join(&["/a"]);
+    let tool = if cfg!(windows) {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
+    let r = ensure_download_tool_in_path(&path, |p| p == PathBuf::from("/a").join(tool));
+    assert!(r.is_ok(), "got: {r:?}");
+}
