@@ -26,6 +26,11 @@ function unavailableMayHide(status: string | null | undefined): boolean {
 	return status === 'finished';
 }
 
+/** The shared drop-by-cache predicate all three variants filter with. */
+function keepCard(cached: Record<string, boolean>, item: KitsuAnimeRef): boolean {
+	return cached[item.id] !== false || !unavailableMayHide(item.status);
+}
+
 /** Filter `items` against the availability cache, then warm uncached
  *  entries in the background. Returns the filtered list immediately;
  *  the warm Promise is intentionally swallowed (fire-and-forget). */
@@ -44,7 +49,7 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 		// still surfaces real errors.
 		return items;
 	}
-	const filtered = items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
+	const filtered = items.filter((i) => keepCard(cached, i));
 
 	// Fire-and-forget warm for any item not in the cache. Skipping
 	// items whose availability is already known keeps the queue
@@ -89,7 +94,7 @@ export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 		// still surfaces real errors.
 		return items;
 	}
-	return items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
+	return items.filter((i) => keepCard(cached, i));
 }
 
 /** Strict variant: probes uncached items inline (parallel, capped
@@ -144,5 +149,5 @@ export async function filterAvailableStrict<T extends KitsuAnimeRef>(
 		await Promise.all(workers);
 	}
 
-	return items.filter((i) => cached[i.id] !== false || !unavailableMayHide(i.status));
+	return items.filter((i) => keepCard(cached, i));
 }
