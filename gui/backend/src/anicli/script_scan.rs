@@ -42,7 +42,10 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     for line in script_contents.lines() {
         if in_fn_body {
             scan.segments(line);
-            if line.trim_end() == "}" {
+            // The closing brace stands at column 0, optionally with
+            // function-level redirections after it (`} >/dev/null`) —
+            // POSIX allows them on the closing compound command.
+            if line.starts_with('}') {
                 in_fn_body = false;
             }
             continue;
