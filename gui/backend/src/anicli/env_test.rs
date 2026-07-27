@@ -945,6 +945,47 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_parse_composite_heredoc_delimiters() {
+    // A heredoc delimiter may be assembled from quoted and unquoted
+    // fragments — <<'E'OF names EOF after quote removal. Stopping at
+    // the first fragment fails both ways: the skip can overrun the
+    // real terminator and hide a genuine capability check…
+    let real_check_after = r#"#!/bin/sh
+cat <<'E'OF
+documentation text
+EOF
+case "$player_function" in
+    download) dep_ch_failover "yt-dlp,ffmpeg" ;;
+esac"#;
+    // …or resume early inside the body when a data line matches the
+    // truncated fragment, mistaking a documented example for the
+    // active flow.
+    let example_inside = r#"#!/bin/sh
+cat <<'E'OF
+E
+case "$player_function" in
+    download) dep_ch_failover "yt-dlp,ffmpeg" ;;
+esac
+EOF
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        download_tool_names(real_check_after).contains(&ytdlp),
+        "the skip must end at the full composite delimiter"
+    );
+    assert!(
+        !download_tool_names(example_inside).contains(&ytdlp),
+        "a data line matching a fragment must not resume the scan"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
