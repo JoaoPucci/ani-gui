@@ -326,3 +326,54 @@ fn provisioned_wrapper_survives_shell_metacharacters_in_the_exe_path() {
         "STUB-OK --botan-shim --version"
     );
 }
+
+proptest::proptest! {
+    // Round-trip for arbitrary key/nonce/plaintext — pins the ct||tag
+    // framing beyond the fixed spec vectors.
+    #[test]
+    fn gcm_roundtrip_for_arbitrary_inputs(
+        key in proptest::collection::vec(proptest::prelude::any::<u8>(), 32),
+        nonce in proptest::collection::vec(proptest::prelude::any::<u8>(), 12),
+        pt in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..512),
+    ) {
+        let blob = gcm_encrypt(&key, &nonce, &pt).expect("encrypt");
+        proptest::prop_assert_eq!(blob.len(), pt.len() + 16);
+        let back = gcm_decrypt(&key, &nonce, &blob).expect("decrypt");
+        proptest::prop_assert_eq!(back, pt);
+    }
+
+    // Encoding round-trip: any byte string survives hex encode/decode.
+    #[test]
+    fn hex_roundtrip_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..256),
+    ) {
+        let text = hex(&bytes);
+        proptest::prop_assert_eq!(hex_decode(&text).expect("decode"), bytes);
+    }
+
+    // Total on arbitrary text — stdin is subprocess input we don't
+    // control; the decoder must reject, never panic.
+    #[test]
+    fn hex_decode_never_panics(s in ".*") {
+        let _ = hex_decode(&s);
+    }
+
+    // Total on arbitrary argv shapes.
+    #[test]
+    fn parse_cipher_args_never_panics(
+        args in proptest::collection::vec(".{0,40}", 0..8),
+    ) {
+        let _ = parse_cipher_args(&args);
+    }
+
+    // The hash op's output shape is what ani-cli pipes onward: exactly
+    // 64 uppercase hex digits for any input.
+    #[test]
+    fn sha256_hex_upper_is_always_64_uppercase_hex(
+        data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..256),
+    ) {
+        let h = sha256_hex_upper(&data);
+        proptest::prop_assert_eq!(h.len(), 64);
+        proptest::prop_assert!(h.bytes().all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b)));
+    }
+}
