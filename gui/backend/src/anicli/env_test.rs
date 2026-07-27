@@ -571,10 +571,14 @@ proptest::proptest! {
     // nothing panics, and an in-branch executable marker grants
     // yt-dlp while the same marker outside any download arm — or
     // commented inside one — is consistent with the scoped probe.
+    // The surroundings exclude quote and escape characters: an odd
+    // quote in the prefix would legitimately swallow the constructed
+    // block as string data (multi-line strings are opaque), which is
+    // pinned by its own example test rather than fuzzed here.
     #[test]
     fn download_tool_names_never_panics_and_obeys_the_branch(
-        prefix in "[ -~\n]{0,100}",
-        suffix in "[ -~\n]{0,100}",
+        prefix in "[ !#-&(-\\[\\]-~\n]{0,100}",
+        suffix in "[ !#-&(-\\[\\]-~\n]{0,100}",
         marker_line in proptest::option::of(proptest::prelude::any::<bool>()),
         in_branch in proptest::prelude::any::<bool>(),
         indent in "[ \t]{0,4}",

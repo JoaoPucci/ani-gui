@@ -75,15 +75,31 @@ impl ShellScan {
         let mut start = 0;
         let mut i = 0;
         let mut at_word_start = true;
+        // A line beginning inside a multi-line string is opaque up
+        // to the quote's close: its leading text is string data, not
+        // executable shell, and every scope check anchors at segment
+        // start. If the quote never closes here, the whole line
+        // yields an empty segment.
+        let mut opaque = self.in_single || self.in_double;
         while i < bytes.len() {
             let b = bytes[i];
             if self.in_single {
                 if b == b'\'' {
                     self.in_single = false;
+                    if opaque {
+                        start = i + 1;
+                        opaque = false;
+                    }
                 }
             } else if self.in_double {
                 match b {
-                    b'"' => self.in_double = false,
+                    b'"' => {
+                        self.in_double = false;
+                        if opaque {
+                            start = i + 1;
+                            opaque = false;
+                        }
+                    }
                     b'\\' => i += 1,
                     _ => {}
                 }
@@ -107,7 +123,11 @@ impl ShellScan {
             at_word_start = b.is_ascii_whitespace();
             i += 1;
         }
-        segments.push(&line[start..]);
+        if opaque {
+            segments.push("");
+        } else {
+            segments.push(&line[start..]);
+        }
         segments
     }
 }
