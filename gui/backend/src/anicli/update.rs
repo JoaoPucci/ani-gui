@@ -135,52 +135,36 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Reapply the fork's greedy name-capture patch to `script_path`
-/// after an upstream `-U` replaced the cached script. Upstream's
-/// `search_anime` captures the title as `[^\"]*`, which drops rows for
-/// titles containing escaped quotes and shifts every later 1-based
-/// `-S` index onto the wrong anime — the one carried patch that
-/// affects GUI spawns (the portable-base64 and flatpak patches only
-/// matter off the GUI's platforms/paths). Returns whether the patch
-/// was applied; both "already applied" and "pattern not found"
-/// (upstream changed shape — logged by the caller) are `Ok(false)`
-/// no-ops, so a mismatch can never corrupt the script.
+/// Reapply every fork-carried patch missing from `script_path`.
+/// Hunks whose fork form is already present are skipped, making the
+/// pass idempotent at boot on an already-patched cache; hunks whose
+/// upstream anchor is missing — upstream drifted — are logged and
+/// skipped, leaving the script untouched rather than guessing.
+/// Returns how many hunks were applied.
 ///
 /// # Errors
 /// Propagates I/O errors from reading or rewriting the script.
-pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
-    replace_capture_line(script_path, NAME_CAPTURE_UPSTREAM, NAME_CAPTURE_FORK)
-}
-
-/// Upstream's `search_anime` title capture as it appears in the
-/// script's bytes; the non-greedy class stops at the first escaped
-/// quote inside a show name.
-const NAME_CAPTURE_UPSTREAM: &str = r#"\"name\":\"([^\"]*)\","#;
-/// The fork's greedy capture — same fragment, `(.+)` instead.
-const NAME_CAPTURE_FORK: &str = r#"\"name\":\"(.+)\","#;
-
-fn replace_capture_line(script_path: &Path, from: &str, to: &str) -> std::io::Result<bool> {
-    let contents = std::fs::read_to_string(script_path)?;
-    if !contents.contains(from) {
-        return Ok(false);
+fn apply_carried_patches(script_path: &Path) -> std::io::Result<usize> {
+    let mut contents = std::fs::read_to_string(script_path)?;
+    let mut applied = 0;
+    for (idx, (upstream, fork)) in crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .enumerate()
+    {
+        if contents.contains(fork) {
+            continue;
+        }
+        if !contents.contains(upstream) {
+            tracing::warn!(target: "anicli::update", hunk = idx, "carried patch anchor missing; upstream drift?");
+            continue;
+        }
+        contents = contents.replacen(upstream, fork, 1);
+        applied += 1;
     }
-    std::fs::write(script_path, contents.replacen(from, to, 1))?;
-    Ok(true)
-}
-
-/// Inverse of [`reapply_name_capture`]: restore upstream's `([^\"]*)`
-/// capture so the script on disk is upstream-shaped. `-U`'s
-/// `update_script` compares the downloaded upstream file directly
-/// against `$0`, so a persistent fork diff would make every run
-/// false-report `Updated` and rewrite the cache in a perpetual
-/// revert-repair cycle — the same trap the loader-guard strip exists
-/// to avoid. Returns whether the line was reverted; "already
-/// upstream-shaped" and "pattern not found" are `Ok(false)` no-ops.
-///
-/// # Errors
-/// Propagates I/O errors from reading or rewriting the script.
-pub fn revert_name_capture(script_path: &Path) -> std::io::Result<bool> {
-    replace_capture_line(script_path, NAME_CAPTURE_FORK, NAME_CAPTURE_UPSTREAM)
+    if applied > 0 {
+        std::fs::write(script_path, contents)?;
+    }
+    Ok(applied)
 }
 
 /// Run `-U` against an isolated upstream-shaped staging copy of the
@@ -220,18 +204,26 @@ pub async fn run_update_with_repair(
         repair_carried_patches(&staging);
         if let Err(e) = persist_staging(&staging, script_path) {
             tracing::warn!(target: "anicli::update", error = %e, "persisting the updated script failed");
+            let _ = std::fs::remove_file(&staging);
+            return UpdateOutcome {
+                status: UpdateStatus::Failed,
+                stdout: outcome.stdout,
+                stderr: format!("update succeeded but persisting the script failed: {e}"),
+                finished_at: SystemTime::now(),
+                duration_ms: outcome.duration_ms,
+            };
         }
     }
     let _ = std::fs::remove_file(&staging);
     outcome
 }
 
-/// Copy the live script to `staging` and revert the fork's name
-/// capture there, so `-U`'s whole-file comparison sees exactly what
+/// Copy the live script to `staging` and revert every fork-carried
+/// patch there, so `-U`'s whole-file comparison sees exactly what
 /// upstream published while the live cache stays patched.
 fn stage_upstream_copy(live: &Path, staging: &Path) -> std::io::Result<()> {
     std::fs::copy(live, staging)?;
-    revert_name_capture(staging)?;
+    revert_carried_patches(staging)?;
     Ok(())
 }
 
@@ -250,8 +242,19 @@ fn stage_upstream_copy(live: &Path, staging: &Path) -> std::io::Result<()> {
 /// # Errors
 /// Propagates I/O errors from reading or rewriting the script.
 pub fn revert_carried_patches(script_path: &Path) -> std::io::Result<()> {
-    let _ = script_path;
-    todo!("green commit reverts the full carried-patch table")
+    let mut contents = std::fs::read_to_string(script_path)?;
+    for (idx, (upstream, fork)) in crate::anicli::carried_patches::CARRIED_PATCHES
+        .iter()
+        .enumerate()
+    {
+        if contents.contains(fork) {
+            contents = contents.replacen(fork, upstream, 1);
+        } else if !contents.contains(upstream) {
+            tracing::warn!(target: "anicli::update", hunk = idx, "carried patch not found to revert; upstream drift?");
+        }
+    }
+    std::fs::write(script_path, contents)?;
+    Ok(())
 }
 
 /// Move the repaired staging script over the live path. Atomic on
@@ -270,23 +273,24 @@ fn persist_staging(staging: &Path, live: &Path) -> std::io::Result<()> {
 
 /// Best-effort repair of the cached script's fork-carried content:
 /// strip the bats loader guard (so `-U`'s patch comparison sees
-/// upstream's shape) and reapply the greedy name-capture. Called at
+/// upstream's shape) and reapply every fork-carried patch. Called at
 /// boot and again after every `-U`, since an update writes upstream's
 /// script verbatim. Failures are logged, never propagated — a repair
 /// miss must not block startup or mark an update failed, because the
-/// unrepaired script still works for every title without escaped
-/// quotes.
+/// unrepaired script still mostly works; the affected surfaces
+/// degrade per patch (quoted-title search rows, macOS downloads,
+/// flatpak playback).
 pub fn repair_carried_patches(script_path: &Path) {
     if let Err(e) = strip_lib_guard(script_path) {
         tracing::warn!(target: "anicli::update", error = %e, "strip_lib_guard failed");
     }
-    match reapply_name_capture(script_path) {
-        Ok(true) => {
-            tracing::info!(target: "anicli::update", "reapplied the greedy name-capture patch");
+    match apply_carried_patches(script_path) {
+        Ok(0) => {}
+        Ok(n) => {
+            tracing::info!(target: "anicli::update", applied = n, "reapplied carried patches");
         }
-        Ok(false) => {}
         Err(e) => {
-            tracing::warn!(target: "anicli::update", error = %e, "reapply_name_capture failed");
+            tracing::warn!(target: "anicli::update", error = %e, "reapplying carried patches failed");
         }
     }
 }
@@ -591,45 +595,54 @@ mod tests {
         assert_eq!(mode & 0o111, 0o111, "copy must be executable: {mode:o}");
     }
 
-    // ── reapply_name_capture ────────────────────────────────────────────
+    // ── carried patches ─────────────────────────────────────────────────
 
-    const UPSTREAM_CAPTURE: &str = r#"sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"([^\"]*)\",.*${mode}\":([1-9][^,]*).*|\1\t\2|p""#;
-    const FORK_CAPTURE: &str = r#"sed -nrE "s|.*_id\":\"([^\"]*)\",\"name\":\"(.+)\",.*${mode}\":([1-9][^,]*).*|\1\t\2|p""#;
-
-    #[test]
-    fn reapply_name_capture_patches_the_upstream_form() {
-        let dir = tmpdir();
-        let path = dir.path().join("ani-cli");
-        std::fs::write(&path, format!("#!/bin/sh\n{UPSTREAM_CAPTURE}\n")).unwrap();
-        assert!(reapply_name_capture(&path).unwrap(), "patch applied");
-        let got = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            got.contains(r#"\"name\":\"(.+)\","#),
-            "greedy capture in place: {got}"
-        );
-        assert!(
-            !got.contains(r#"\"name\":\"([^\"]*)\","#),
-            "upstream capture gone: {got}"
-        );
+    /// The name-capture pair from the table — the hunk the sandwich
+    /// fixtures embed as an inert (never-parsed) tail.
+    fn capture_pair() -> (&'static str, &'static str) {
+        *crate::anicli::carried_patches::CARRIED_PATCHES
+            .iter()
+            .find(|(_, fork)| fork.contains("name capture"))
+            .expect("capture hunk present")
     }
 
     #[test]
-    fn reapply_name_capture_is_a_noop_when_already_patched() {
-        let dir = tmpdir();
-        let path = dir.path().join("ani-cli");
-        let body = format!("#!/bin/sh\n{FORK_CAPTURE}\n");
-        std::fs::write(&path, &body).unwrap();
-        assert!(!reapply_name_capture(&path).unwrap(), "no-op");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+    fn repair_applies_each_upstream_hunk() {
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            std::fs::write(&path, format!("#!/bin/sh\n{upstream}")).unwrap();
+            repair_carried_patches(&path);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                format!("#!/bin/sh\n{fork}"),
+                "hunk applied"
+            );
+        }
     }
 
     #[test]
-    fn reapply_name_capture_leaves_unrecognized_content_alone() {
+    fn repair_is_a_noop_when_already_patched() {
+        // Idempotency matters: repair runs at every boot against an
+        // already-patched cache, and an insertion hunk re-applied
+        // through its context anchor would duplicate lines.
+        for (_, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            let body = format!("#!/bin/sh\n{fork}");
+            std::fs::write(&path, &body).unwrap();
+            repair_carried_patches(&path);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
+        }
+    }
+
+    #[test]
+    fn repair_leaves_unrecognized_content_alone() {
         let dir = tmpdir();
         let path = dir.path().join("ani-cli");
         let body = "#!/bin/sh\necho unrelated\n";
         std::fs::write(&path, body).unwrap();
-        assert!(!reapply_name_capture(&path).unwrap(), "no-op");
+        repair_carried_patches(&path);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "unchanged");
     }
 
@@ -640,11 +653,10 @@ mod tests {
         // panics on no-op or I/O error.
         let dir = tmpdir();
         let path = dir.path().join("ani-cli");
+        let (up_cap, _) = capture_pair();
         std::fs::write(
             &path,
-            format!(
-                "#!/bin/sh\n. \"$ANI_CLI_TEST_LIB\" # {LIB_GUARD_MARKER}\n{UPSTREAM_CAPTURE}\n"
-            ),
+            format!("#!/bin/sh\n. \"$ANI_CLI_TEST_LIB\" # {LIB_GUARD_MARKER}\n{up_cap}"),
         )
         .unwrap();
         repair_carried_patches(&path);
@@ -659,45 +671,21 @@ mod tests {
     }
 
     #[test]
-    fn revert_name_capture_restores_the_upstream_form() {
-        let dir = tmpdir();
-        let path = dir.path().join("ani-cli");
-        std::fs::write(&path, format!("#!/bin/sh\n{FORK_CAPTURE}\n")).unwrap();
-        assert!(revert_name_capture(&path).unwrap(), "reverted");
-        let got = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            got.contains(r#"\"name\":\"([^\"]*)\","#),
-            "upstream capture restored: {got}"
-        );
-        assert!(
-            !got.contains(r#"\"name\":\"(.+)\","#),
-            "fork capture gone: {got}"
-        );
-        assert!(!revert_name_capture(&path).unwrap(), "second revert no-ops");
-    }
-
-    #[test]
-    fn revert_then_reapply_round_trips_the_real_repo_script() {
-        // The two transforms must be exact inverses on the real
-        // script, or the -U sandwich (revert → update → repair)
-        // would slowly corrupt the cache.
-        let repo_script = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("repo root")
-            .join("ani-cli");
-        let original = std::fs::read_to_string(&repo_script).expect("read repo ani-cli");
-        let dir = tmpdir();
-        let path = dir.path().join("ani-cli");
-        std::fs::write(&path, &original).unwrap();
-        assert!(revert_name_capture(&path).unwrap(), "reverted");
-        assert_ne!(
-            std::fs::read_to_string(&path).unwrap(),
-            original,
-            "revert changed the script"
-        );
-        assert!(reapply_name_capture(&path).unwrap(), "reapplied");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    fn revert_restores_each_upstream_hunk() {
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let dir = tmpdir();
+            let path = dir.path().join("ani-cli");
+            std::fs::write(&path, format!("#!/bin/sh\n{fork}")).unwrap();
+            revert_carried_patches(&path).unwrap();
+            let expected = format!("#!/bin/sh\n{upstream}");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+            revert_carried_patches(&path).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                expected,
+                "second revert no-ops"
+            );
+        }
     }
 
     #[tokio::test]
@@ -713,7 +701,8 @@ mod tests {
         let path = dir.path().join("ani-cli");
         let seen = dir.path().join("seen-by-update");
         let upstream = dir.path().join("upstream-master");
-        std::fs::write(&upstream, format!("#!/bin/sh\n# {UPSTREAM_CAPTURE}\n")).unwrap();
+        let (up_cap, fk_cap) = capture_pair();
+        std::fs::write(&upstream, format!("#!/bin/sh\n{up_cap}")).unwrap();
         // The cache copy as it sits on disk after a prior repair:
         // fork-shaped. The -U stand-in snapshots $0 exactly as the
         // comparison would read it, then performs upstream's rewrite.
@@ -724,7 +713,7 @@ mod tests {
         std::fs::write(
             &path,
             format!(
-                "#!/bin/sh\n{{\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n# {FORK_CAPTURE}\n",
+                "#!/bin/sh\n{{\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n{fk_cap}",
                 seen.display(),
                 upstream.display()
             ),
@@ -818,7 +807,7 @@ mod tests {
         std::fs::write(
             &live,
             format!(
-                "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n# {FORK_CAPTURE}\n",
+                "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n",
                 pristine.display()
             ),
         )
@@ -846,9 +835,7 @@ mod tests {
         let live = dir.path().join("ani-cli");
         std::fs::write(
             &live,
-            format!(
-                "#!/bin/sh\n{{\nrm \"$0\"\nmkdir \"$0\"\necho 'Script updated'\nexit 0\n}}\n# {FORK_CAPTURE}\n"
-            ),
+            "#!/bin/sh\n{\nrm \"$0\"\nmkdir \"$0\"\necho 'Script updated'\nexit 0\n}\n",
         )
         .unwrap();
 
@@ -875,9 +862,10 @@ mod tests {
         std::fs::write(
             &live,
             format!(
-                "#!/bin/sh\n{{\ncp '{}' '{}'\necho 'Script is up to date'\nexit 0\n}}\n# {FORK_CAPTURE}\n",
+                "#!/bin/sh\n{{\ncp '{}' '{}'\necho 'Script is up to date'\nexit 0\n}}\n{}",
                 live.display(),
-                seen_live.display()
+                seen_live.display(),
+                capture_pair().1
             ),
         )
         .unwrap();
@@ -909,7 +897,7 @@ mod tests {
         let path = dir.path().join("ani-cli");
         // Not executable by bash? bash <path> runs regardless; make
         // the script itself exit non-zero to exercise Failed.
-        std::fs::write(&path, format!("#!/bin/sh\nexit 3\n# {FORK_CAPTURE}\n")).unwrap();
+        std::fs::write(&path, format!("#!/bin/sh\nexit 3\n{}", capture_pair().1)).unwrap();
 
         let outcome = run_update_with_repair(&path, None, None).await;
 
@@ -919,32 +907,6 @@ mod tests {
             final_body.contains(r#"\"name\":\"(.+)\","#),
             "fork capture restored after a failed update: {final_body}"
         );
-    }
-
-    #[test]
-    fn reapply_name_capture_round_trips_the_real_repo_script() {
-        // Byte-fidelity guard against the transform's constants
-        // drifting from the script's actual escaping: un-patch a copy
-        // of the repo's real ani-cli, reapply, and require exact
-        // equality with the original — a mutual constants bug the
-        // synthetic fixtures above could never see.
-        let repo_script = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("repo root")
-            .join("ani-cli");
-        let original = std::fs::read_to_string(&repo_script).expect("read repo ani-cli");
-        let upstreamized =
-            original.replacen(r#"\"name\":\"(.+)\","#, r#"\"name\":\"([^\"]*)\","#, 1);
-        assert_ne!(
-            original, upstreamized,
-            "fork capture present in the repo script"
-        );
-        let dir = tmpdir();
-        let path = dir.path().join("ani-cli");
-        std::fs::write(&path, &upstreamized).unwrap();
-        assert!(reapply_name_capture(&path).unwrap(), "patch applied");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }
 
     // ── strip_lib_guard ─────────────────────────────────────────────────
