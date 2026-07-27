@@ -841,6 +841,57 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), baseline);
     }
 
+    #[test]
+    fn predicate_flips_false_when_any_single_hunk_is_missing() {
+        // The install gate must notice the loss of EACH patch
+        // individually, not just wholesale corruption.
+        let dir = tmpdir();
+        let (_, full) = guard_stripped_repo_copy(dir.path());
+        assert!(all_carried_patches_present(&full));
+        for (upstream, fork) in crate::anicli::carried_patches::CARRIED_PATCHES {
+            let missing_one = full.replacen(fork, upstream, 1);
+            assert!(
+                !all_carried_patches_present(&missing_one),
+                "gate blind to a missing hunk: {}",
+                &fork[..60.min(fork.len())]
+            );
+        }
+        assert!(!all_carried_patches_present(""));
+    }
+
+    #[tokio::test]
+    async fn changed_script_content_persists_even_with_unrecognized_output() {
+        // ani-cli's update messages are upstream's to change; keying
+        // the install on stdout phrasing would silently drop real
+        // updates the day the wording moves. A rewritten staging
+        // script with exit 0 must persist regardless of what the run
+        // printed.
+        let dir = tmpdir();
+        let sub = dir.path().join("baseline");
+        std::fs::create_dir(&sub).unwrap();
+        let (pristine, expected) = guard_stripped_repo_copy(&sub);
+        revert_carried_patches(&pristine).unwrap();
+
+        let live = dir.path().join("ani-cli");
+        std::fs::write(
+            &live,
+            format!(
+                "#!/bin/sh\n{{\ncp '{}' \"$0\"\necho 'Script refreshed successfully!'\nexit 0\n}}\n",
+                pristine.display()
+            ),
+        )
+        .unwrap();
+
+        let outcome = run_update_with_repair(&live, None, None).await;
+
+        assert_eq!(outcome.status, UpdateStatus::Updated, "{outcome:?}");
+        assert_eq!(
+            std::fs::read_to_string(&live).unwrap(),
+            expected,
+            "rewritten content installed despite unrecognized wording"
+        );
+    }
+
     #[tokio::test]
     async fn updated_outcome_is_failed_when_repair_cannot_restore_every_patch() {
         // Upstream reshaped one hunk's anchor: the repair pass can't
