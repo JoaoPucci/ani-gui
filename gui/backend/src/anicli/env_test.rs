@@ -629,6 +629,55 @@ fn download_tool_names_skip_tab_separated_heredoc_delimiters() {
 }
 
 #[test]
+fn download_tool_names_require_an_identifier_boundary_on_the_owner() {
+    // $player_function_backup is a different variable: the unbraced
+    // owner match must stop at a shell identifier boundary, or a
+    // longer-named case steals ownership it can never exercise.
+    let script = r#"#!/bin/sh
+case "$player_function_backup" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a longer identifier must not own the download branch: {names:?}"
+    );
+}
+
+#[test]
+fn download_tool_names_start_comments_after_operators() {
+    // A # right after a control operator starts a comment even with
+    // no whitespace between them; a ;; and arm inside that comment
+    // are ignored text, not a real arm.
+    let script = r#"#!/bin/sh
+case "$player_function" in
+    play) dep_ch "ffmpeg";# ;; download) dep_ch_failover "yt-dlp,ffmpeg"
+        ;;
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a post-operator comment must not open an arm: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
