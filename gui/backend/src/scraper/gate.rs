@@ -66,6 +66,26 @@ pub enum ScrapePriority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateClosed;
 
+/// Typed result of an admitted request, replacing the bool for
+/// callers that can distinguish allanime's in-band rate limit (and
+/// its advertised retry hint) from an untyped failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrapeOutcome {
+    /// The request succeeded.
+    Success,
+    /// The request failed for an untyped reason (transport error,
+    /// garbage body). Feeds the consecutive-failure breaker.
+    Failure,
+    /// allanime answered with its in-band rate limit. One such
+    /// response opens the pause window immediately — no threshold
+    /// counting; the upstream said plainly to go away, and told us
+    /// for how long when `retry_after` is `Some`.
+    RateLimited {
+        /// The advertised wait, when the response carried one.
+        retry_after: Option<Duration>,
+    },
+}
+
 struct GateState {
     next_background_at: Instant,
     consecutive_failures: u32,
@@ -176,6 +196,18 @@ impl ScraperGate {
             }
         }
         Ok(())
+    }
+
+    /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
+    /// but a [`ScrapeOutcome::RateLimited`] opens an advertised-window
+    /// pause immediately — background admits then WAIT through the
+    /// window and resume paced, instead of being refused and losing
+    /// their rows. Without a hint the window falls back to
+    /// [`BREAKER_COOLDOWN`]. Interactive admits ignore the window as
+    /// they ignore the breaker.
+    pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) {
+        let _ = (outcome, started_at);
+        todo!("green commit implements the advertised-window pause")
     }
 
     /// Report how the admitted request went. `started_at` is when
