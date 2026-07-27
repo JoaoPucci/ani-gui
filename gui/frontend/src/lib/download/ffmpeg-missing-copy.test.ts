@@ -63,3 +63,33 @@ describe('selectFfmpegMissingCopy', () => {
 		});
 	});
 });
+
+// The bodies themselves live in the per-locale namespace sources; pin
+// the recovery guidance so a locale edit can't silently drop the
+// yt-dlp alternative the preflight now honors.
+import en from '../../../messages/en/download.json';
+import es419 from '../../../messages/es-419/download.json';
+import ptBR from '../../../messages/pt-BR/download.json';
+import ru from '../../../messages/ru/download.json';
+
+describe('missing-tool modal bodies', () => {
+	const locales: Record<string, Record<string, string>> = {
+		en,
+		'es-419': es419,
+		'pt-BR': ptBR,
+		ru
+	};
+	const bodyKeys = [
+		'error_ffmpeg_missing_body_win32',
+		'error_ffmpeg_missing_body_linux',
+		'error_ffmpeg_missing_body_darwin'
+	];
+
+	it('every locale body offers yt-dlp as an alternative', () => {
+		for (const [locale, messages] of Object.entries(locales)) {
+			for (const key of bodyKeys) {
+				expect(messages[key], `${locale}.${key}`).toContain('yt-dlp');
+			}
+		}
+	});
+});
