@@ -339,6 +339,25 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_ignore_commented_markers() {
+    // A stale or customized script that merely MENTIONS the failover
+    // in a comment still hard-requires ffmpeg on its executable
+    // path; granting yt-dlp on the mention would pass the preflight
+    // and die inside the subprocess.
+    let script = "#!/bin/sh\n# dep_ch_failover \"yt-dlp,ffmpeg\" — described, not executed\ndownload) dep_ch \"ffmpeg\" \"aria2c\" ;;\n";
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "commented marker must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_accept_ytdlp_for_the_real_repo_script() {
     // Reality pin: the bundled script must be recognized as
     // yt-dlp-capable, or the relaxed preflight silently degrades back
