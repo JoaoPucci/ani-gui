@@ -605,7 +605,7 @@ pub async fn resolve_allmanga_show_id(
     let fetched = crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await;
     state
         .scraper_gate
-        .record_outcome(fetched.is_ok(), started_at);
+        .record(crate::scraper::gate::outcome_of(&fetched), started_at);
     let show = match fetched {
         Ok(s) => s,
         Err(e) => {

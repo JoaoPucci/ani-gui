@@ -355,3 +355,587 @@ async fn failures_newer_than_the_successful_start_still_count() {
         "failures that started after the successful start are fresh evidence and must open the breaker"
     );
 }
+
+// ── advertised-window pause (typed rate limit) ──────────────────────
+
+#[tokio::test(start_paused = true)]
+async fn one_rate_limit_pauses_background_for_the_advertised_window() {
+    // A single typed rate limit opens the pause — no threshold
+    // counting — and background admits WAIT through it instead of
+    // being refused, so their rows resolve late instead of never.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(9)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    let waited = Instant::now() - t0;
+    assert!(
+        waited >= Duration::from_secs(9),
+        "waited only {waited:?} of the 9 s advertised window"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn rate_limit_without_hint_pauses_for_the_default_cooldown() {
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited { retry_after: None },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= BREAKER_COOLDOWN,
+        "hintless rate limit falls back to the breaker cooldown"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn interactive_admits_ignore_the_rate_limit_window() {
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(30)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Interactive)
+        .await
+        .expect("interactive");
+    assert_eq!(Instant::now(), t0, "interactive is never paused");
+}
+
+#[tokio::test(start_paused = true)]
+async fn resumed_admits_stay_paced_after_the_window() {
+    // Callers queued during the window must not burst out together at
+    // its end — the resume is paced at the background interval.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(5)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    let (a, b) = tokio::join!(
+        gate.admit(ScrapePriority::Background),
+        gate.admit(ScrapePriority::Background),
+    );
+    a.expect("first");
+    b.expect("second");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(5) + BACKGROUND_INTERVAL,
+        "second resumed admit is spaced one interval past the window"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn success_after_the_window_opened_ends_the_pause() {
+    // An interactive request that started after the window opened and
+    // succeeded is live proof the limit lifted early.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        Instant::now(),
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert_eq!(Instant::now(), t0, "pause cleared by fresh success");
+}
+
+#[tokio::test(start_paused = true)]
+async fn typed_failure_still_feeds_the_counting_breaker() {
+    // Untyped failures keep today's semantics through the typed API.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    assert_eq!(
+        gate.admit(ScrapePriority::Background).await,
+        Err(GateClosed)
+    );
+}
+
+// ── outcome classification ──────────────────────────────────────────
+
+#[test]
+fn outcome_of_maps_the_typed_rate_limit_with_its_hint() {
+    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
+        retry_after_secs: Some(7),
+    });
+    assert_eq!(
+        outcome_of(&r),
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(7)),
+        }
+    );
+    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
+        retry_after_secs: None,
+    });
+    assert_eq!(
+        outcome_of(&r),
+        ScrapeOutcome::RateLimited { retry_after: None }
+    );
+}
+
+#[test]
+fn outcome_of_folds_everything_else_to_success_or_failure() {
+    let ok: Result<u8, crate::error::AniError> = Ok(1);
+    assert_eq!(outcome_of(&ok), ScrapeOutcome::Success);
+    let err: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
+    assert_eq!(outcome_of(&err), ScrapeOutcome::Failure);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_expired_pause_admits_immediately() {
+    // Nobody recorded a success — the window simply passed. The next
+    // admit clears the stale pause lazily and goes straight through.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(1)),
+        },
+        Instant::now(),
+    );
+    tokio::time::advance(Duration::from_secs(2)).await;
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert_eq!(Instant::now(), t0, "expired window costs nothing");
+}
+
+#[tokio::test(start_paused = true)]
+async fn overlapping_rate_limits_keep_the_later_deadline() {
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(5)),
+        },
+        Instant::now(),
+    );
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(3)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(5),
+        "the earlier, longer deadline stands"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeper_wakes_refused_when_the_breaker_opened_meanwhile() {
+    // A queued background caller re-checks on wake: failures reported
+    // while it slept must refuse it, not let it fire into the storm.
+    let gate = ScraperGate::new();
+    gate.admit(ScrapePriority::Background).await.expect("first");
+    let (second, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        for _ in 0..FAILURE_THRESHOLD {
+            gate.record(ScrapeOutcome::Failure, Instant::now());
+        }
+    });
+    assert_eq!(second, Err(GateClosed), "woke into an open breaker");
+}
+
+#[tokio::test(start_paused = true)]
+async fn default_is_a_fresh_gate() {
+    let gate = ScraperGate::default();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeper_queued_before_the_rate_limit_waits_out_the_window() {
+    // The exact burst the gate exists for: a cold-start fan-out has
+    // reserved slots, one request reports RateLimited while the rest
+    // sleep. Their old 500 ms slots predate the window — firing at
+    // them would pace straight through the advertised pause.
+    let gate = ScraperGate::new();
+    gate.admit(ScrapePriority::Background).await.expect("first");
+    let t0 = Instant::now();
+    let (second, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        gate.record(
+            ScrapeOutcome::RateLimited {
+                retry_after: Some(Duration::from_secs(9)),
+            },
+            Instant::now(),
+        );
+    });
+    second.expect("resumes after the window");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(9),
+        "pre-pause sleeper must not fire inside the advertised window"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_success_started_before_the_pause_cannot_clear_it() {
+    // Overlap ordering: A starts, B reports RateLimited (pause
+    // opens), A lands Ok. A ran against the pre-limit upstream — its
+    // success says nothing about the state B observed.
+    let gate = ScraperGate::new();
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(30)),
+        },
+        Instant::now(),
+    );
+    gate.record(ScrapeOutcome::Success, a_started);
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(30),
+        "stale success must not clear the newer advertised window"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rate_limited_trial_hands_recovery_to_the_pause() {
+    // The half-open trial reports the typed limit: that IS the
+    // trial's outcome. The pause now owns recovery timing — after
+    // the advertised window, background work resumes paced instead
+    // of being refused until the 90 s trial-stale timeout.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    gate.admit(ScrapePriority::Background).await.expect("trial");
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(2)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    let admitted = gate.admit(ScrapePriority::Background).await;
+    assert!(admitted.is_ok(), "paused, not refused: {admitted:?}");
+    let waited = Instant::now() - t0;
+    assert!(
+        waited >= Duration::from_secs(2),
+        "the advertised window is honored ({waited:?})"
+    );
+    assert!(
+        waited < HALF_OPEN_TRIAL_STALE,
+        "recovery is not held hostage by the trial-stale timeout ({waited:?})"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_success_between_overlapping_limits_cannot_clear_the_newer_one() {
+    // A starts after limit one opened but before limit two: its
+    // success proves recovery from the first episode only. The
+    // staleness boundary tracks the NEWEST opening while the
+    // deadline keeps the maximum.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        Instant::now(),
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        Instant::now(),
+    );
+    gate.record(ScrapeOutcome::Success, a_started);
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(58),
+        "the newer window survives a success that predates it"
+    );
+}
+
+proptest::proptest! {
+    // The classifier is total and hint-preserving: arbitrary Some(n)
+    // survives to the typed outcome, None stays None, Ok folds to
+    // Success, and non-rate-limit errors fold to Failure.
+    #[test]
+    fn outcome_of_preserves_arbitrary_hints(
+        hint in proptest::option::of(proptest::prelude::any::<u64>()),
+        ok in proptest::prelude::any::<bool>(),
+    ) {
+        if ok {
+            let r: Result<u8, crate::error::AniError> = Ok(0);
+            proptest::prop_assert_eq!(outcome_of(&r), ScrapeOutcome::Success);
+        } else {
+            let r: Result<u8, crate::error::AniError> =
+                Err(crate::error::AniError::RateLimited { retry_after_secs: hint });
+            proptest::prop_assert_eq!(
+                outcome_of(&r),
+                ScrapeOutcome::RateLimited {
+                    retry_after: hint.map(Duration::from_secs),
+                }
+            );
+            let other: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
+            proptest::prop_assert_eq!(outcome_of(&other), ScrapeOutcome::Failure);
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rate_limit_started_before_the_latest_recovery_is_stale() {
+    // A starts, B starts later and succeeds (recovery proven), then
+    // A's rate limit lands. A observed the pre-recovery upstream —
+    // opening a fresh pause on its evidence would stall background
+    // work after recovery was already proven. Mirror of the untyped
+    // failure path's last_recovery_at filter.
+    let gate = ScraperGate::new();
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        a_started,
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert_eq!(Instant::now(), t0, "stale rate limit opens no pause");
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_absurd_advertised_hint_is_clamped() {
+    // The hint is untrusted upstream input: an enormous value must
+    // neither overflow Instant math (a panic here poisons the gate
+    // mutex) nor pause background work beyond the sanity ceiling.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(u64::MAX / 2)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    let waited = Instant::now() - t0;
+    assert!(
+        waited <= MAX_ADVERTISED_PAUSE + BACKGROUND_INTERVAL,
+        "clamped to the ceiling, waited {waited:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_breaker_cycle_cannot_punch_through_an_active_pause() {
+    // A long advertised window is active when three untyped failures
+    // open the breaker (whose closed-to-open transition resets the
+    // slot schedule). After the cooldown, the half-open caller must
+    // still wait out the remainder of the window — the pause is
+    // enforced by the slot floor itself, not by schedule bookkeeping
+    // the breaker path can clobber.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(60),
+        "the remaining window is honored despite the breaker reset"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovery_frees_the_front_while_sleepers_keep_their_slots() {
+    // Two sleepers reserve post-window slots, then a fresh success
+    // clears the pause early. The recovered space before the window
+    // belongs to new work — it must not queue behind the sleepers'
+    // conservative slots — while the sleepers themselves keep those
+    // slots, and every admit stays a full interval from the others.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(10)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    let sleeper_a = gate.admit(ScrapePriority::Background);
+    let sleeper_b = gate.admit(ScrapePriority::Background);
+    let late = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        gate.record(ScrapeOutcome::Success, Instant::now());
+        gate.admit(ScrapePriority::Background)
+            .await
+            .expect("late caller");
+        Instant::now() - t0
+    };
+    let (a, b, late_elapsed) = tokio::join!(sleeper_a, sleeper_b, late);
+    a.expect("sleeper a");
+    b.expect("sleeper b");
+    assert!(
+        late_elapsed < Duration::from_secs(10),
+        "recovered space before the window belongs to new work: {late_elapsed:?}"
+    );
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(10) + BACKGROUND_INTERVAL,
+        "sleepers keep their conservative post-window slots"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeping_trial_honors_a_newer_pause_recorded_mid_sleep() {
+    // The breaker cooldown expires during a long advertised window:
+    // the half-open caller is sanctioned as the trial but sleeps to
+    // the pause deadline. A NEWER rate limit recorded while it sleeps
+    // extends the window — the trial must wake into the extension,
+    // not fire at the old deadline inside the newer window. Only the
+    // breaker refusal that sanctioned the trial is exempt on wake.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let t0 = Instant::now();
+    let (trial, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        gate.record(
+            ScrapeOutcome::RateLimited {
+                retry_after: Some(Duration::from_secs(120)),
+            },
+            Instant::now(),
+        );
+    });
+    trial.expect("trial resumes after the newest window");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(130),
+        "the trial honors the window extension recorded mid-sleep"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stale_trial_submits_to_a_newer_breaker_cycle() {
+    // The trial sleeps behind a pause; a fresh success clears the
+    // pause AND the breaker cycle that sanctioned the trial; three
+    // later failures open a NEW breaker before the trial's slot.
+    // The old sanction died with its cycle — the sleeper must be
+    // refused by the new cooldown, not sail through on a stale flag.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let (trial, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        gate.record(ScrapeOutcome::Success, Instant::now());
+        for _ in 0..FAILURE_THRESHOLD {
+            gate.record(ScrapeOutcome::Failure, Instant::now());
+        }
+    });
+    assert_eq!(
+        trial,
+        Err(GateClosed),
+        "a sanction from a cleared cycle must not pierce the new cooldown"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_cancelled_paused_reservation_frees_the_schedule() {
+    // A prefetch sleeping toward a paused slot is deliberately
+    // aborted (a click superseded it, the page unmounted). Its
+    // reservation must go with it: after a fresh success clears the
+    // pause, the next background admit runs promptly instead of
+    // queuing behind the dead sleeper's slot at the old deadline.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    {
+        let sleeper = gate.admit(ScrapePriority::Background);
+        tokio::pin!(sleeper);
+        tokio::select! {
+            biased;
+            _ = &mut sleeper => panic!("the paused sleeper cannot be admitted yet"),
+            () = tokio::task::yield_now() => {}
+        }
+    }
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    let admitted =
+        tokio::time::timeout(BACKGROUND_INTERVAL, gate.admit(ScrapePriority::Background)).await;
+    assert_eq!(
+        admitted.ok(),
+        Some(Ok(())),
+        "the freed schedule must admit promptly after recovery"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn new_work_fills_intervals_freed_by_cancelled_sleepers() {
+    // Cancelling early or middle sleepers must return their
+    // intervals to the schedule even while a later sleeper survives:
+    // new work fills the vacated space instead of queuing behind the
+    // survivor's conservative slot, which would keep cache warming
+    // stalled past recovery exactly as if nothing had been released.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    let mut s1 = Box::pin(gate.admit(ScrapePriority::Background));
+    let mut s2 = Box::pin(gate.admit(ScrapePriority::Background));
+    let mut s3 = Box::pin(gate.admit(ScrapePriority::Background));
+    tokio::select! {
+        biased;
+        _ = &mut s1 => panic!("s1 cannot be admitted yet"),
+        _ = &mut s2 => panic!("s2 cannot be admitted yet"),
+        _ = &mut s3 => panic!("s3 cannot be admitted yet"),
+        () = tokio::task::yield_now() => {}
+    }
+    drop(s1);
+    drop(s2);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    let admitted =
+        tokio::time::timeout(BACKGROUND_INTERVAL, gate.admit(ScrapePriority::Background)).await;
+    assert_eq!(
+        admitted.ok(),
+        Some(Ok(())),
+        "new work must fill freed intervals, not queue behind the survivor"
+    );
+    drop(s3);
+}
