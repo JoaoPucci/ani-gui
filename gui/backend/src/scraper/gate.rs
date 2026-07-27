@@ -44,6 +44,13 @@ pub const FAILURE_THRESHOLD: u32 = 3;
 /// probe through again.
 pub const BREAKER_COOLDOWN: Duration = Duration::from_secs(60);
 
+/// Sanity ceiling on the advertised retry hint. The hint is
+/// untrusted upstream input: an enormous value must neither overflow
+/// `Instant` arithmetic (a panic under the gate lock poisons the
+/// mutex for the process lifetime) nor stall background work for
+/// hours on the upstream's say-so.
+pub const MAX_ADVERTISED_PAUSE: Duration = Duration::from_secs(600);
+
 /// How long an unreported half-open trial blocks the next one. A
 /// trial whose future was dropped (cancelled prefetch) never records
 /// an outcome; after this window a new trial may start instead of

@@ -691,3 +691,46 @@ proptest::proptest! {
         }
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_rate_limit_started_before_the_latest_recovery_is_stale() {
+    // A starts, B starts later and succeeds (recovery proven), then
+    // A's rate limit lands. A observed the pre-recovery upstream —
+    // opening a fresh pause on its evidence would stall background
+    // work after recovery was already proven. Mirror of the untyped
+    // failure path's last_recovery_at filter.
+    let gate = ScraperGate::new();
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        a_started,
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert_eq!(Instant::now(), t0, "stale rate limit opens no pause");
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_absurd_advertised_hint_is_clamped() {
+    // The hint is untrusted upstream input: an enormous value must
+    // neither overflow Instant math (a panic here poisons the gate
+    // mutex) nor pause background work beyond the sanity ceiling.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(u64::MAX / 2)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    let waited = Instant::now() - t0;
+    assert!(
+        waited <= MAX_ADVERTISED_PAUSE + BACKGROUND_INTERVAL,
+        "clamped to the ceiling, waited {waited:?}"
+    );
+}
