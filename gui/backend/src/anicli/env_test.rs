@@ -585,6 +585,50 @@ fn download_tool_names_resume_after_heredoc_terminators() {
 }
 
 #[test]
+fn download_tool_names_require_an_expanding_owner() {
+    // A single-quoted subject switches on the literal text
+    // '$player_function', never the variable: such a dead or
+    // documentary case cannot own the download branch even when it
+    // carries the failover call.
+    let script = r#"#!/bin/sh
+case '$player_function' in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a literal-subject case must not own the download branch: {names:?}"
+    );
+}
+
+#[test]
+fn download_tool_names_skip_tab_separated_heredoc_delimiters() {
+    // sh accepts a tab between << and the delimiter word; the body
+    // is still data, not executable shell.
+    let script = "#!/bin/sh\ncat <<\tEOF\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac\nEOF\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n";
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a tab-separated heredoc body must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
