@@ -163,32 +163,42 @@ pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
 /// either-tool failover. Only the `download)` case arm that governs
 /// `-d` mode speaks for download capability: a customized script may
 /// invoke the same failover in an unrelated helper while its download
-/// branch still hard-requires ffmpeg. Within the arm the line must
-/// BEGIN with the call, as the real script's dep check does —
-/// comments, quoted diagnostics, assignments, and a no-op builtin's
-/// arguments all grant nothing. The arm opens at a line starting with
-/// `download)` (the rest of that line included, for one-liner arms)
-/// and closes at the arm terminator `;;` or at `esac`.
+/// branch still hard-requires ffmpeg. Within the arm the call must
+/// BEGIN a statement, as the real script's dep check does — comments,
+/// quoted diagnostics, assignments, and a no-op builtin's arguments
+/// all grant nothing. The terminator `;;` ends an arm wherever it
+/// appears, so each line is walked as a sequence of `;;`-delimited
+/// segments: the download arm opens at a segment starting with
+/// `download)` (its remainder included, for one-liner arms) and
+/// closes at the next segment boundary or at `esac`. Comment lines
+/// cannot move the scope at all.
 fn download_branch_invokes_failover(script_contents: &str) -> bool {
     const INVOCATION: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
     let mut in_branch = false;
     for line in script_contents.lines() {
-        let mut rest = line.trim_start();
-        if !in_branch {
-            match rest.strip_prefix("download)") {
-                Some(after) => {
-                    in_branch = true;
-                    rest = after.trim_start();
-                }
-                None => continue,
+        if line.trim_start().starts_with('#') {
+            continue;
+        }
+        for (i, segment) in line.split(";;").enumerate() {
+            if i > 0 {
+                in_branch = false;
             }
-        }
-        if rest.starts_with(INVOCATION) {
-            return true;
-        }
-        let rest = rest.trim_end();
-        if rest.ends_with(";;") || rest == "esac" {
-            in_branch = false;
+            let mut rest = segment.trim_start();
+            if !in_branch {
+                match rest.strip_prefix("download)") {
+                    Some(after) => {
+                        in_branch = true;
+                        rest = after.trim_start();
+                    }
+                    None => continue,
+                }
+            }
+            if rest.starts_with(INVOCATION) {
+                return true;
+            }
+            if rest.trim_end() == "esac" {
+                in_branch = false;
+            }
         }
     }
     false
