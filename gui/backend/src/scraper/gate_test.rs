@@ -494,3 +494,63 @@ fn outcome_of_folds_everything_else_to_success_or_failure() {
     let err: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
     assert_eq!(outcome_of(&err), ScrapeOutcome::Failure);
 }
+
+#[tokio::test(start_paused = true)]
+async fn an_expired_pause_admits_immediately() {
+    // Nobody recorded a success — the window simply passed. The next
+    // admit clears the stale pause lazily and goes straight through.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(1)),
+        },
+        Instant::now(),
+    );
+    tokio::time::advance(Duration::from_secs(2)).await;
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert_eq!(Instant::now(), t0, "expired window costs nothing");
+}
+
+#[tokio::test(start_paused = true)]
+async fn overlapping_rate_limits_keep_the_later_deadline() {
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(5)),
+        },
+        Instant::now(),
+    );
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(3)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(5),
+        "the earlier, longer deadline stands"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeper_wakes_refused_when_the_breaker_opened_meanwhile() {
+    // A queued background caller re-checks on wake: failures reported
+    // while it slept must refuse it, not let it fire into the storm.
+    let gate = ScraperGate::new();
+    gate.admit(ScrapePriority::Background).await.expect("first");
+    let (second, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        for _ in 0..FAILURE_THRESHOLD {
+            gate.record(ScrapeOutcome::Failure, Instant::now());
+        }
+    });
+    assert_eq!(second, Err(GateClosed), "woke into an open breaker");
+}
+
+#[tokio::test(start_paused = true)]
+async fn default_is_a_fresh_gate() {
+    let gate = ScraperGate::default();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+}
