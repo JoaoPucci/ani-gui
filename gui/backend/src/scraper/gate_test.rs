@@ -601,3 +601,93 @@ async fn a_success_started_before_the_pause_cannot_clear_it() {
         "stale success must not clear the newer advertised window"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_rate_limited_trial_hands_recovery_to_the_pause() {
+    // The half-open trial reports the typed limit: that IS the
+    // trial's outcome. The pause now owns recovery timing — after
+    // the advertised window, background work resumes paced instead
+    // of being refused until the 90 s trial-stale timeout.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    gate.admit(ScrapePriority::Background).await.expect("trial");
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(2)),
+        },
+        Instant::now(),
+    );
+    let t0 = Instant::now();
+    let admitted = gate.admit(ScrapePriority::Background).await;
+    assert!(admitted.is_ok(), "paused, not refused: {admitted:?}");
+    let waited = Instant::now() - t0;
+    assert!(
+        waited >= Duration::from_secs(2),
+        "the advertised window is honored ({waited:?})"
+    );
+    assert!(
+        waited < HALF_OPEN_TRIAL_STALE,
+        "recovery is not held hostage by the trial-stale timeout ({waited:?})"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_success_between_overlapping_limits_cannot_clear_the_newer_one() {
+    // A starts after limit one opened but before limit two: its
+    // success proves recovery from the first episode only. The
+    // staleness boundary tracks the NEWEST opening while the
+    // deadline keeps the maximum.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        Instant::now(),
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let a_started = Instant::now();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(60)),
+        },
+        Instant::now(),
+    );
+    gate.record(ScrapeOutcome::Success, a_started);
+    let t0 = Instant::now();
+    gate.admit(ScrapePriority::Background).await.expect("admit");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(58),
+        "the newer window survives a success that predates it"
+    );
+}
+
+proptest::proptest! {
+    // The classifier is total and hint-preserving: arbitrary Some(n)
+    // survives to the typed outcome, None stays None, Ok folds to
+    // Success, and non-rate-limit errors fold to Failure.
+    #[test]
+    fn outcome_of_preserves_arbitrary_hints(
+        hint in proptest::option::of(proptest::prelude::any::<u64>()),
+        ok in proptest::prelude::any::<bool>(),
+    ) {
+        if ok {
+            let r: Result<u8, crate::error::AniError> = Ok(0);
+            proptest::prop_assert_eq!(outcome_of(&r), ScrapeOutcome::Success);
+        } else {
+            let r: Result<u8, crate::error::AniError> =
+                Err(crate::error::AniError::RateLimited { retry_after_secs: hint });
+            proptest::prop_assert_eq!(
+                outcome_of(&r),
+                ScrapeOutcome::RateLimited {
+                    retry_after: hint.map(Duration::from_secs),
+                }
+            );
+            let other: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
+            proptest::prop_assert_eq!(outcome_of(&other), ScrapeOutcome::Failure);
+        }
+    }
+}
