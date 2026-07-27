@@ -64,6 +64,27 @@ pub fn run_shim(args: &[String], stdin: &mut dyn Read, stdout: &mut dyn Write) -
     }
 }
 
+/// The wrapper directory for one backend process:
+/// `<cache_root>/botan-shim/<pid>`. Scoped per process so concurrent
+/// instances (each AppImage mounts at its own transient path) never
+/// overwrite each other's wrapper.
+pub(crate) fn per_process_shim_dir(cache_root: &std::path::Path, pid: u32) -> std::path::PathBuf {
+    let _ = (cache_root, pid);
+    todo!("green commit implements pid scoping")
+}
+
+/// Best-effort removal of sibling wrapper dirs whose owning process is
+/// gone. `keep` is this process's dir; entries that don't parse as a
+/// pid are left alone.
+pub(crate) fn prune_stale_shim_dirs(
+    root: &std::path::Path,
+    keep: &std::path::Path,
+    is_alive: impl Fn(u32) -> bool,
+) {
+    let _ = (root, keep, &is_alive);
+    todo!("green commit implements pruning")
+}
+
 /// Serialize a string as a single shell-safe word: single-quoted, with
 /// embedded single quotes rendered as `'\''`. Double-quoted
 /// interpolation would let /bin/sh expand `$…` or backticks inside the

@@ -377,3 +377,45 @@ proptest::proptest! {
         proptest::prop_assert!(h.bytes().all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b)));
     }
 }
+
+// --- per-process wrapper isolation ---
+
+#[test]
+fn per_process_shim_dir_scopes_by_pid() {
+    let got = per_process_shim_dir(std::path::Path::new("/cache"), 4242);
+    assert_eq!(got, std::path::Path::new("/cache/botan-shim/4242"));
+}
+
+#[test]
+fn provision_own_botan_shim_uses_a_pid_scoped_dir() {
+    // Two concurrent instances must not overwrite each other's
+    // wrapper: an exiting AppImage unmounts its binary path and a
+    // shared wrapper would leave the surviving instance execing a
+    // path that no longer exists.
+    let td = tempfile::tempdir().expect("tempdir");
+    let got = provision_own_botan_shim(td.path()).expect("provisioned");
+    assert!(
+        got.ends_with(format!("botan-shim/{}", std::process::id())),
+        "dir is scoped to this process: {}",
+        got.display()
+    );
+    assert!(got.join("botan").is_file());
+}
+
+#[test]
+fn prune_keeps_the_current_and_live_dirs_and_removes_dead_ones() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let root = td.path().join("botan-shim");
+    for pid in ["100", "200", "300", "not-a-pid"] {
+        std::fs::create_dir_all(root.join(pid)).expect("mkdir");
+    }
+    let keep = root.join("200");
+    prune_stale_shim_dirs(&root, &keep, |pid| pid == 300);
+    assert!(!root.join("100").exists(), "dead sibling removed");
+    assert!(root.join("200").exists(), "own dir kept");
+    assert!(root.join("300").exists(), "live sibling kept");
+    assert!(
+        root.join("not-a-pid").exists(),
+        "unrecognized entries left alone"
+    );
+}
