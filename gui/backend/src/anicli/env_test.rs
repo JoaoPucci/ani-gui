@@ -778,6 +778,34 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_end_function_skipping_at_redirected_braces() {
+    // POSIX permits redirects on a function's closing compound
+    // command; the body ends there all the same, and the real
+    // top-level capability check after it must still be seen — or a
+    // capable script is misread as ffmpeg-only and yt-dlp-only
+    // hosts get blocked by the modal.
+    let script = r#"#!/bin/sh
+quiet_helper() {
+    :
+} >/dev/null 2>&1
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'
+        ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        names.contains(&ytdlp),
+        "a redirected closing brace must end the function skip: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
