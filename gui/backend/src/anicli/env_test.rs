@@ -1012,6 +1012,78 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_ignore_definitions_inside_carried_strings() {
+    // The mirror of the heredoc case: a multi-line string may quote
+    // a column-0 definition (and its closer). Both are data — the
+    // skip must neither open there nor close a real body early.
+    let quoted_def = r#"#!/bin/sh
+usage='
+example() {
+'
+case "$player_function" in
+    download) dep_ch_failover "yt-dlp,ffmpeg" ;;
+esac"#;
+    let quoted_closer = r#"#!/bin/sh
+real_helper() {
+    msg='
+}
+'
+    dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
+}
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        download_tool_names(quoted_def).contains(&ytdlp),
+        "a quoted column-0 definition must not open a skip"
+    );
+    assert!(
+        !download_tool_names(quoted_closer).contains(&ytdlp),
+        "a quoted column-0 closer must not end a real body"
+    );
+}
+
+#[test]
+fn download_tool_names_close_without_granting_and_skip_escaped_owners() {
+    // An arm closed by the owner esac without a terminator and
+    // without a failover grants nothing…
+    let hard_only_esac_close = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch "ffmpeg" "aria2c"
+esac"#;
+    // …and a backslash-escaped dollar in a subject is literal text,
+    // not an expansion, so it cannot own the download branch.
+    let escaped_owner = r#"#!/bin/sh
+case "\$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !download_tool_names(hard_only_esac_close).contains(&ytdlp),
+        "an esac-closed arm without a failover grants nothing"
+    );
+    assert!(
+        !download_tool_names(escaped_owner).contains(&ytdlp),
+        "an escaped-dollar subject must not own the download branch"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable

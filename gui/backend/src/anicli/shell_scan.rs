@@ -24,6 +24,14 @@ pub(super) struct ShellScan {
 }
 
 impl ShellScan {
+    /// Whether multi-line state is carried into the next line: an
+    /// open string or a pending heredoc body. Lines beginning in
+    /// either are data, not statements — raw-line checks (function
+    /// definitions, closing braces) must not fire on them.
+    pub(super) fn carrying(&self) -> bool {
+        self.in_single || self.in_double || !self.pending_heredocs.is_empty()
+    }
+
     /// Each piece is `(closes_arm_before, text)`: statements split
     /// at unquoted control operators, with the flag set on the piece
     /// following a `;;` arm terminator.

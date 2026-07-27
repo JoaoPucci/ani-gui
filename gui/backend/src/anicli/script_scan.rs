@@ -47,17 +47,22 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     // sync.
     let mut in_fn_body = false;
     for line in script_contents.lines() {
+        // A line beginning inside carried state — an open string or
+        // a pending heredoc body — is data: the raw-line function
+        // checks below must not fire on it, only the scanner's own
+        // state machine may consume it.
+        let starts_clean = !scan.carrying();
         if in_fn_body {
             scan.segments(line);
             // The closing brace stands at column 0, optionally with
             // function-level redirections after it (`} >/dev/null`) —
             // POSIX allows them on the closing compound command.
-            if line.starts_with('}') {
+            if starts_clean && line.starts_with('}') {
                 in_fn_body = false;
             }
             continue;
         }
-        if function_def_line(line) {
+        if starts_clean && function_def_line(line) {
             scan.segments(line);
             // A one-liner body closes on its own line — redirects
             // may follow the closing brace, so the close is a brace
