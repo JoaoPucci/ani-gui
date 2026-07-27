@@ -461,3 +461,16 @@ fn provisioned_wrapper_preserves_non_utf8_exe_paths() {
         "STUB-OK --botan-shim --version"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn provision_own_botan_shim_refuses_a_path_separator_in_the_cache_root() {
+    // A cache root containing the PATH-list separator (e.g.
+    // XDG_CACHE_HOME=/home/user/cache:archive) cannot be represented
+    // in the PATH env var — join_paths would fail downstream and the
+    // shim would be dropped silently. Refusing at provisioning time
+    // makes the degradation explicit and logged.
+    let td = tempfile::tempdir().expect("tempdir");
+    let colon_root = td.path().join("cache:archive");
+    assert!(provision_own_botan_shim(&colon_root).is_none());
+}
