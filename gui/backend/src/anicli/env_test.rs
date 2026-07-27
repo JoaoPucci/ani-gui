@@ -363,6 +363,33 @@ fn download_tool_names_require_an_actual_invocation() {
 }
 
 #[test]
+fn download_tool_names_scope_the_probe_to_the_download_branch() {
+    // A customized or self-updated script may invoke this exact
+    // failover in an unrelated helper while its download branch
+    // still hard-requires ffmpeg. Only the `download)` arm that
+    // governs -d mode speaks for download capability; a yt-dlp-only
+    // machine passing preflight against this script would die inside
+    // ani-cli with the generic scraper error.
+    let script = r#"#!/bin/sh
+pick_muxer() {
+    dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+}
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "out-of-branch invocation must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
