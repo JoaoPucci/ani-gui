@@ -302,7 +302,7 @@ pub(crate) async fn check_availability_with_base(
                 crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
             state
                 .scraper_gate
-                .record_outcome(outcome.is_ok(), started_at);
+                .record(crate::scraper::gate::outcome_of(&outcome), started_at);
             // RateLimited propagates typed (no cache write); other
             // fetch failures fall back to the search hit's count
             // inside the enricher.
