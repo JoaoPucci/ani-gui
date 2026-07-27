@@ -1166,17 +1166,20 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
-        // The capable form is a genuine INVOCATION line, as the real
-        // script's dep check is — the classifier accepts nothing
-        // less. The stub defines no such function; the not-found
-        // error is silenced so the stub still exits 0.
-        let marker_line = if marker {
-            "dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n"
+        // The capable form is a genuine INVOCATION inside a
+        // `download)` case arm, as the real script's dep check is —
+        // the classifier accepts nothing less than the branch that
+        // governs -d mode. The stub defines no such function; the
+        // not-found error is silenced so the stub still exits 0.
+        let dep_line = if marker {
+            "dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true"
         } else {
-            "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true\n"
+            "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true"
         };
-        f.write_all(format!("#!/bin/sh\n{marker_line}exit 0\n").as_bytes())
-            .expect("write stub");
+        let script = format!(
+            "#!/bin/sh\ncase download in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
+        );
+        f.write_all(script.as_bytes()).expect("write stub");
         let mut perm = f.metadata().expect("perm").permissions();
         perm.set_mode(0o755);
         std::fs::set_permissions(&path, perm).expect("chmod");

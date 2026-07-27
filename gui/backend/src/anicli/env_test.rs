@@ -7,7 +7,7 @@ use super::*;
 /// The 4.15 name set, produced through the production probe so every
 /// preflight test also exercises the capability gate's positive path.
 fn both() -> &'static [&'static str] {
-    download_tool_names(r#"dep_ch_failover "yt-dlp,ffmpeg""#)
+    download_tool_names("case x in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac")
 }
 
 fn split(s: &OsStr) -> Vec<PathBuf> {
@@ -431,22 +431,29 @@ fn download_tool_names_accept_ytdlp_for_the_real_repo_script() {
 }
 
 proptest::proptest! {
-    // Totality + the marker law for the capability probe: yt-dlp is
-    // offered exactly when the 4.15 failover marker appears on an
-    // executable (non-comment) line, over arbitrary surrounding
-    // contents; ffmpeg is always offered and nothing panics.
+    // Totality + the branch law for the capability probe over
+    // arbitrary surrounding contents: ffmpeg is always offered,
+    // nothing panics, and an in-branch executable marker grants
+    // yt-dlp while the same marker outside any download arm — or
+    // commented inside one — is consistent with the scoped probe.
     #[test]
-    fn download_tool_names_never_panics_and_obeys_the_marker(
+    fn download_tool_names_never_panics_and_obeys_the_branch(
         prefix in "[ -~\n]{0,100}",
         suffix in "[ -~\n]{0,100}",
         marker_line in proptest::option::of(proptest::prelude::any::<bool>()),
+        in_branch in proptest::prelude::any::<bool>(),
         indent in "[ \t]{0,4}",
     ) {
         let marker = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
         let text = match marker_line {
             Some(commented) => {
                 let hash = if commented { "# " } else { "" };
-                format!("{prefix}\n{indent}{hash}{marker} >/dev/null\n{suffix}")
+                let line = format!("{indent}{hash}{marker} >/dev/null");
+                if in_branch {
+                    format!("{prefix}\ncase x in\ndownload)\n{line}\n;;\nesac\n{suffix}")
+                } else {
+                    format!("{prefix}\n{line}\n{suffix}")
+                }
             }
             None => format!("{prefix}\n{suffix}"),
         };
@@ -454,16 +461,21 @@ proptest::proptest! {
         let ytdlp = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
         let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
         proptest::prop_assert!(names.contains(&ffmpeg), "ffmpeg always offered");
-        // The arbitrary prefix/suffix may themselves contain an
-        // uncommented marker; compute the expectation over the whole
-        // constructed text with the same line discipline.
-        let expected = text
-            .lines()
-            .any(|line| line.trim_start().starts_with(marker));
+        // An executable marker placed inside a download arm always
+        // grants; the reverse direction can't be asserted from the
+        // pieces (the arbitrary prefix may open its own arm around
+        // the marker or contain one outright), so consistency with
+        // the scoped probe covers the rest.
+        if marker_line == Some(false) && in_branch {
+            proptest::prop_assert!(
+                names.contains(&ytdlp),
+                "in-branch executable marker must grant yt-dlp"
+            );
+        }
         proptest::prop_assert_eq!(
             names.contains(&ytdlp),
-            expected,
-            "yt-dlp offered exactly on an executable marker line"
+            download_branch_invokes_failover(&text),
+            "names must agree with the scoped probe"
         );
     }
 

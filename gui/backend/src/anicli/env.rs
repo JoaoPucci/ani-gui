@@ -152,20 +152,46 @@ pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
     } else {
         &["ffmpeg"]
     };
-    // Only an actual invocation grants the capability: the line must
-    // BEGIN with the failover call, as the real script's download
-    // dep check does. Comments, quoted diagnostics, assignments, or
-    // a no-op builtin's arguments mentioning the text leave ffmpeg
-    // hard-required on the script's real download path.
-    let capable = script_contents.lines().any(|line| {
-        line.trim_start()
-            .starts_with(r#"dep_ch_failover "yt-dlp,ffmpeg""#)
-    });
-    if capable {
+    if download_branch_invokes_failover(script_contents) {
         BOTH
     } else {
         FFMPEG_ONLY
     }
+}
+
+/// Whether the script's download dependency branch invokes 4.15's
+/// either-tool failover. Only the `download)` case arm that governs
+/// `-d` mode speaks for download capability: a customized script may
+/// invoke the same failover in an unrelated helper while its download
+/// branch still hard-requires ffmpeg. Within the arm the line must
+/// BEGIN with the call, as the real script's dep check does —
+/// comments, quoted diagnostics, assignments, and a no-op builtin's
+/// arguments all grant nothing. The arm opens at a line starting with
+/// `download)` (the rest of that line included, for one-liner arms)
+/// and closes at the arm terminator `;;` or at `esac`.
+fn download_branch_invokes_failover(script_contents: &str) -> bool {
+    const INVOCATION: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
+    let mut in_branch = false;
+    for line in script_contents.lines() {
+        let mut rest = line.trim_start();
+        if !in_branch {
+            match rest.strip_prefix("download)") {
+                Some(after) => {
+                    in_branch = true;
+                    rest = after.trim_start();
+                }
+                None => continue,
+            }
+        }
+        if rest.starts_with(INVOCATION) {
+            return true;
+        }
+        let rest = rest.trim_end();
+        if rest.ends_with(";;") || rest == "esac" {
+            in_branch = false;
+        }
+    }
+    false
 }
 
 /// Locate a download-capable tool inside a composed PATH string.
