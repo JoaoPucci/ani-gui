@@ -27,7 +27,7 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
-use super::reservation::SlotSchedule;
+use super::reservation::{SlotGuard, SlotSchedule};
 
 pub use super::outcome::{outcome_of, ScrapeOutcome};
 
@@ -77,11 +77,11 @@ pub enum ScrapePriority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateClosed;
 
-struct GateState {
+pub(super) struct GateState {
     /// Background slot ledger: live reservations plus the pacing
     /// floor of actually-fired requests. A cancelled sleeper's slot
     /// returns to the schedule instead of orphaning dead air.
-    schedule: SlotSchedule,
+    pub(super) schedule: SlotSchedule,
     /// Advertised-window pause: background admits WAIT until this
     /// instant (then resume paced) instead of being refused. Opened
     /// by a single typed rate-limit outcome; cleared by a fresh
@@ -179,7 +179,7 @@ impl ScraperGate {
         // cancellation — which, during a pause, compounded into
         // background warming stalled past recovery.
         let mut guard = SlotGuard {
-            gate: self,
+            gate: &self.inner,
             slot: Some(slot),
         };
         if Instant::now() < slot {
@@ -223,9 +223,8 @@ impl ScraperGate {
             }
         }
         let mut s = self.inner.lock().expect("gate lock");
-        if let Some(fired) = guard.slot.take() {
-            s.schedule.consume(BACKGROUND_INTERVAL, fired);
-        }
+        let fired = guard.slot.take().expect("fire path holds the reservation");
+        s.schedule.consume(BACKGROUND_INTERVAL, fired);
         Ok(())
     }
 
@@ -349,28 +348,6 @@ impl ScraperGate {
                     s.schedule.clear(now);
                 }
                 s.half_open_trial_at = None;
-            }
-        }
-    }
-}
-
-/// Holds a background caller's slot reservation across its sleeps.
-/// The slot is taken out (`slot.take()`) when consumed on the fire
-/// path or traded for a fresh one during a pause re-sleep; if the
-/// admit future is dropped mid-sleep or refused at wake with the
-/// reservation still held, `Drop` returns the slot to the schedule.
-/// The drop-path lock is deadlock-free: an early return unwinds the
-/// wake loop's `MutexGuard` before the guard itself drops.
-struct SlotGuard<'a> {
-    gate: &'a ScraperGate,
-    slot: Option<Instant>,
-}
-
-impl Drop for SlotGuard<'_> {
-    fn drop(&mut self) {
-        if let Some(slot) = self.slot.take() {
-            if let Ok(mut s) = self.gate.inner.lock() {
-                s.schedule.release(slot);
             }
         }
     }

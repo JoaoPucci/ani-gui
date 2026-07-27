@@ -5,7 +5,10 @@
 //! orphaning 500 ms of dead air — compounding, during an advertised
 //! pause, into background warming stalled past recovery.
 
+use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
+
+use super::gate::GateState;
 
 /// The gate's background slot ledger. Consumed slots advance a pacing
 /// floor (their request actually fired); cancelled reservations just
@@ -70,6 +73,28 @@ impl SlotSchedule {
     pub(super) fn clear(&mut self, now: Instant) {
         self.reserved.clear();
         self.pace_floor = now;
+    }
+}
+
+/// Holds a background caller's slot reservation across its sleeps.
+/// The slot is taken out (`slot.take()`) when consumed on the fire
+/// path or traded for a fresh one during a pause re-sleep; if the
+/// admit future is dropped mid-sleep or refused at wake with the
+/// reservation still held, `Drop` returns the slot to the schedule.
+/// The drop-path lock is deadlock-free: an early return unwinds the
+/// wake loop's `MutexGuard` before the guard itself drops.
+pub(super) struct SlotGuard<'a> {
+    pub(super) gate: &'a Mutex<GateState>,
+    pub(super) slot: Option<Instant>,
+}
+
+impl Drop for SlotGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.take() {
+            if let Ok(mut s) = self.gate.lock() {
+                s.schedule.release(slot);
+            }
+        }
     }
 }
 
