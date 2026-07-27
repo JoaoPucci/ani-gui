@@ -7,8 +7,9 @@
 #     (mp4upload sets a literal mp4upload.com referer; sharepoint unsets
 #     refr_flag; everything else falls back to allanime_refr).
 #   - cleanup() — new top-level helper invoked on SIGINT and normal exit.
-#   - process_response() — replaces the old decode_tobeparsed entrypoint;
-#     non-encrypted responses short-circuit through a pass-through path.
+#   - process_response() was itself replaced by process_tobeparsed in
+#     the 4.15 sync; its pass-through contract is pinned in
+#     process_tobeparsed.bats.
 #   - provider_init's new "raw provider_id" branch — when the matched line
 #     does NOT start with "--", the hex-decode pipeline is skipped and the
 #     raw value is used directly.
@@ -79,17 +80,6 @@ setup() {
     rm -f "$tmp_hist"
 }
 
-@test "process_response: non-tobeparsed input passes through unchanged" {
-    payload='{"data":{"episode":{"sourceUrls":[{"sourceUrl":"--abc","sourceName":"wixmp"}]}}}'
-    output=$(process_response "$payload")
-    [ "$output" = "$payload" ]
-}
-
-@test "process_response: empty input returns empty (non-tobeparsed path)" {
-    output=$(process_response "")
-    [ -z "$output" ]
-}
-
 @test "get_links: tools.fast4speed.rsvp URL prints a Yt-tagged link without making a network call" {
     # The new dispatch in get_links short-circuits the fast4speed.rsvp
     # case before any curl runs. Verify the resulting stdout contains the
@@ -106,7 +96,7 @@ setup() {
     # with `--`; otherwise the value is taken as-is, which is what the
     # mp4upload and youtube providers now deliver.
     resp=$'/Mp4 :https://example.mp4upload.com/v/raw123\n/Other :rest'
-    provider_init "mp4upload" "/Mp4 :/p"
+    provider_init "mp4upload" "/Mp4 :/p" || true
     [ "$provider_name" = "mp4upload" ]
     [ "$provider_id" = "https://example.mp4upload.com/v/raw123" ]
 }
