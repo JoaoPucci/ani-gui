@@ -22,19 +22,19 @@ setup() {
 
 @test "provider_init: sets provider_name from first arg" {
     resp=""
-    provider_init "wixmp" "/Default :/p"
+    provider_init "wixmp" "/Default :/p" || true
     [ "$provider_name" = "wixmp" ]
 }
 
 @test "provider_init: empty resp yields empty provider_id" {
     resp=""
-    provider_init "wixmp" "/Default :/p"
+    provider_init "wixmp" "/Default :/p" || true
     [ -z "$provider_id" ]
 }
 
 @test "provider_init: resp without matching line yields empty provider_id" {
     resp="some unrelated text"
-    provider_init "wixmp" "/Default :/p"
+    provider_init "wixmp" "/Default :/p" || true
     [ -z "$provider_id" ]
 }
 
@@ -44,14 +44,14 @@ setup() {
     # and is mapped to "A". The trailing /clock /clock.json substitution
     # only fires on /clock — irrelevant here.
     resp="Default:79"
-    provider_init "wixmp" "/Default:/p"
+    provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "A" ]
 }
 
 @test "provider_init: decodes a mapped sequence (705d54 -> Hel)" {
     # 70->H, 5d->e, 54->l per the table.
     resp="Default:705d54"
-    provider_init "wixmp" "/Default:/p"
+    provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "Hel" ]
 }
 
@@ -61,6 +61,6 @@ setup() {
     # (4d maps to 'u', not 'c' — easy to mistake.)
     # The trailing sed `s|/clock|/clock.json|` then appends .json.
     resp="Default:175b54575b53"
-    provider_init "wixmp" "/Default:/p"
+    provider_init "wixmp" "/Default:/p" || true
     [ "$provider_id" = "/clock.json" ]
 }

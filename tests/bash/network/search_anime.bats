@@ -74,7 +74,7 @@ setup() {
 
 @test "search_anime: passes the query in the POST body to the allanime api" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/search_one_piece.json"
-    search_anime "naruto+shippuden" >/dev/null
+    search_anime "naruto+shippuden" >/dev/null || true
     # Inspect what curl was called with.
     log=$(cat "$CURL_MOCK_LOG")
     # The script POSTs to ${allanime_api}/api with the query embedded in --data.

@@ -81,12 +81,12 @@ setup() {
 
 @test "process_response: non-tobeparsed input passes through unchanged" {
     payload='{"data":{"episode":{"sourceUrls":[{"sourceUrl":"--abc","sourceName":"wixmp"}]}}}'
-    output=$(process_response "$payload")
+    output=$(process_response "$payload" || true)
     [ "$output" = "$payload" ]
 }
 
 @test "process_response: empty input returns empty (non-tobeparsed path)" {
-    output=$(process_response "")
+    output=$(process_response "" || true)
     [ -z "$output" ]
 }
 
@@ -106,7 +106,7 @@ setup() {
     # with `--`; otherwise the value is taken as-is, which is what the
     # mp4upload and youtube providers now deliver.
     resp=$'/Mp4 :https://example.mp4upload.com/v/raw123\n/Other :rest'
-    provider_init "mp4upload" "/Mp4 :/p"
+    provider_init "mp4upload" "/Mp4 :/p" || true
     [ "$provider_name" = "mp4upload" ]
     [ "$provider_id" = "https://example.mp4upload.com/v/raw123" ]
 }

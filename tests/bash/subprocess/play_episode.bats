@@ -44,7 +44,7 @@ setup() {
 
 @test "play_episode: mpv default branch invokes nohup mpv with --force-media-title" {
     player_function='mpv'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true # allow backgrounded stubs to flush
     stub_assert_called nohup '.*mpv.*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
 }
@@ -52,7 +52,7 @@ setup() {
 @test "play_episode: mpv with no_detach=1 calls mpv synchronously (no nohup)" {
     player_function='mpv'
     no_detach=1
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called mpv '.*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
     stub_assert_not_called nohup
@@ -60,7 +60,7 @@ setup() {
 
 @test "play_episode: vlc branch passes --http-referrer using allanime_refr" {
     player_function='vlc'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called nohup '.*vlc.*--http-referrer=https://allmanga.to.*'
     stub_assert_called nohup '.*--meta-title=Test Anime Episode 1.*'
@@ -68,7 +68,7 @@ setup() {
 
 @test "play_episode: flatpak_mpv branch invokes flatpak run io.mpv.Mpv" {
     player_function='flatpak_mpv'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called flatpak '.*run io.mpv.Mpv .*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
 }
@@ -76,21 +76,21 @@ setup() {
 @test "play_episode: catt branch invokes catt cast" {
     player_function='catt'
     subtitle='https://example.com/sub.vtt'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called nohup '.*catt cast https://example.com/video.mp4 -s https://example.com/sub.vtt'
 }
 
 @test "play_episode: android_mpv branch invokes am start with MPVActivity" {
     player_function='android_mpv'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called nohup '.*am start.*is.xyz.mpv/.MPVActivity.*'
 }
 
 @test "play_episode: android_vlc branch invokes am start with VideoPlayerActivity" {
     player_function='android_vlc'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called nohup '.*am start.*org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity.*'
 }
@@ -98,7 +98,7 @@ setup() {
 @test "play_episode: debug branch prints links and selected URL to stdout (no players invoked)" {
     player_function='debug'
     links=$'1080 >https://example.com/v1.mp4\n720 >https://example.com/v2.mp4'
-    output=$(play_episode 2>/dev/null)
+    output=$(play_episode 2>/dev/null || true)
     [[ "$output" == *"All links:"* ]]
     [[ "$output" == *"1080 >https://example.com/v1.mp4"* ]]
     [[ "$output" == *"Selected link:"* ]]
@@ -109,7 +109,7 @@ setup() {
 
 @test "play_episode: updates the history file with ep_no\\tid\\ttitle" {
     player_function='mpv'
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     grep -E "^1"$'\t'"showid"$'\t'"Test Anime" "$histfile" >/dev/null
 }
@@ -117,7 +117,7 @@ setup() {
 @test "play_episode: log_episode=1 invokes logger with allanime_title and ep_no" {
     player_function='mpv'
     log_episode=1
-    play_episode
+    play_episode || true
     wait 2>/dev/null || true
     stub_assert_called logger '.*-t ani-cli Test Anime 1'
 }

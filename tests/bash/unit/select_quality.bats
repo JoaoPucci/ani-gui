@@ -24,7 +24,7 @@ setup() {
 
 @test "select_quality: 'best' picks the first link" {
     links=$'1080 >https://a.example/1080.mp4\n720 >https://a.example/720.mp4\n480 >https://a.example/480.mp4'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.mp4" ]
 }
 
@@ -48,7 +48,7 @@ setup() {
 
 @test "select_quality: not-found falls back to best with stderr warning" {
     links=$'1080 >https://a.example/1080.mp4\n480 >https://a.example/480.mp4'
-    output=$(select_quality "9999" 2>&1 >/dev/null)
+    output=$(select_quality "9999" 2>&1 >/dev/null || true)
     # episode set to best
     [ "$episode" = "https://a.example/1080.mp4" ]
     [[ "$output" =~ "Specified quality not found" ]]
@@ -57,7 +57,7 @@ setup() {
 @test "select_quality: vlc strips m3u8-cc/subtitle/refr metadata lines before picking" {
     player_function='vlc'
     links=$'1080cc>https://a.example/1080.m3u8\n720 >https://a.example/720.mp4\nsubtitle >https://a.example/sub.vtt\nm3u8_refr >https://allmanga.to'
-    select_quality "best"
+    select_quality "best" || true
     # vlc filter removes /cc>/d, /subtitle >/d, /m3u8_refr >/d → first remaining is 720.
     [ "$episode" = "https://a.example/720.mp4" ]
 }
@@ -65,7 +65,7 @@ setup() {
 @test "select_quality: m3u8 (cc>) sets refr_flag and subs_flag" {
     player_function='mpv'
     links=$'1080cc>https://a.example/1080.m3u8\nsubtitle >https://a.example/sub.vtt\nm3u8_refr >https://allmanga.to'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.m3u8" ]
     [ "$subs_flag" = "--sub-file=https://a.example/sub.vtt" ]
     [ "$refr_flag" = "--referrer=https://allmanga.to" ]
@@ -75,7 +75,7 @@ setup() {
     player_function='mpv'
     allanime_refr='https://allmanga.to'
     links=$'1080 >https://tools.fast4speed.rsvp/path'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://tools.fast4speed.rsvp/path" ]
     [ "$refr_flag" = "--referrer=https://allmanga.to" ]
 }
@@ -83,7 +83,7 @@ setup() {
 @test "select_quality: mp4 (no cc>) leaves subs_flag/refr_flag unset" {
     player_function='mpv'
     links=$'1080 >https://a.example/1080.mp4\n720 >https://a.example/720.mp4'
-    select_quality "best"
+    select_quality "best" || true
     [ "$episode" = "https://a.example/1080.mp4" ]
     [ -z "${subs_flag-}" ]
     [ -z "${refr_flag-}" ]

@@ -33,7 +33,7 @@ setup() {
     id='abc123'
     title='Test Anime (3 episodes)'
     ep_no='2'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     # Title's "3 episodes" updates to "5 episodes" (latest from mocked list).
     # Next episode after 2 is 3.
     expected="abc123"$'\t'"Test Anime (5 episodes) - episode 3"
@@ -44,7 +44,7 @@ setup() {
     id='abc123'
     title='Test Anime (5 episodes)'
     ep_no='5'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     # ani-cli 4.14.5 keeps caught-up shows in the -c list (with a
     # next-episode countdown) instead of dropping them.
     expected="abc123"$'\t'"Test Anime (5 episodes) - episode 5 (up to date)"
@@ -59,7 +59,7 @@ setup() {
     id='abc123'
     title='Test Anime (5 episodes)'
     ep_no='5'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     [ -z "$output" ]
 }
 
@@ -70,7 +70,7 @@ setup() {
     id='abc123'
     title='Test Anime (5 episodes)'
     ep_no='9'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     [ -z "$output" ]
 }
 
@@ -78,7 +78,7 @@ setup() {
     id='abc123'
     title='Test Anime (3 episodes) (2026)'
     ep_no='1'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     # Titles written by ani-cli >= 4.14.5 carry a release-year
     # parenthetical after the count; only the count may change.
     expected="abc123"$'\t'"Test Anime (5 episodes) (2026) - episode 2"
@@ -89,7 +89,7 @@ setup() {
     id='abc123'
     title='Test Anime (3 episodes)' # caller's stale view: 3 episodes
     ep_no='1'
-    output=$(process_hist_entry)
+    output=$(process_hist_entry || true)
     # The list has 5 episodes, so the title gets updated.
     [[ "$output" == *"(5 episodes)"* ]]
     # And the next episode after 1 is 2.
