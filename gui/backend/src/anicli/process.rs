@@ -1166,13 +1166,14 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
-        // The capable form is an EXECUTABLE line (the `:` builtin
-        // ignores its arguments) — the classifier deliberately skips
-        // commented mentions.
+        // The capable form is a genuine INVOCATION line, as the real
+        // script's dep check is — the classifier accepts nothing
+        // less. The stub defines no such function; the not-found
+        // error is silenced so the stub still exits 0.
         let marker_line = if marker {
-            ": dep_ch_failover \"yt-dlp,ffmpeg\"\n"
+            "dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n"
         } else {
-            ": dep_ch \"ffmpeg\" \"aria2c\"\n"
+            "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true\n"
         };
         f.write_all(format!("#!/bin/sh\n{marker_line}exit 0\n").as_bytes())
             .expect("write stub");

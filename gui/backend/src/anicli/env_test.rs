@@ -430,10 +430,9 @@ proptest::proptest! {
         // The arbitrary prefix/suffix may themselves contain an
         // uncommented marker; compute the expectation over the whole
         // constructed text with the same line discipline.
-        let expected = text.lines().any(|line| {
-            let t = line.trim_start();
-            !t.starts_with('#') && t.contains(marker)
-        });
+        let expected = text
+            .lines()
+            .any(|line| line.trim_start().starts_with(marker));
         proptest::prop_assert_eq!(
             names.contains(&ytdlp),
             expected,
