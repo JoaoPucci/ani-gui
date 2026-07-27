@@ -213,7 +213,18 @@ impl ScraperGate {
                 // Keep the later deadline if two rate limits overlap,
                 // and the earliest opening as the staleness boundary.
                 s.paused_until = Some(s.paused_until.map_or(until, |prev| prev.max(until)));
-                s.pause_opened_at.get_or_insert(now);
+                // Newest opening owns staleness (a success must
+                // postdate every observed limit); the deadline keeps
+                // the maximum above.
+                s.pause_opened_at = Some(now);
+                // If this was the half-open trial reporting, that IS
+                // its outcome: the pause owns recovery timing now, so
+                // the breaker's cooldown/trial state stands down
+                // rather than refusing everyone for the trial-stale
+                // window after the pause ends.
+                s.half_open_trial_at = None;
+                s.open_until = None;
+                s.opened_at = None;
                 // Resume paced from the window's end, not from a
                 // schedule queued before the pause.
                 s.next_background_at = s.next_background_at.max(until);
