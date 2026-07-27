@@ -853,6 +853,44 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_veto_on_any_hard_ffmpeg_form_or_depth() {
+    // The hard-requirement veto is conservative in both dimensions:
+    // the single-quoted dep_ch 'ffmpeg' form counts, and so does a
+    // requirement inside a nested platform case — a path that may
+    // apply still requires ffmpeg, even though a nested invocation
+    // never grants.
+    let single_quoted = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        dep_ch 'ffmpeg'
+        ;;
+esac"#;
+    let nested = r#"#!/bin/sh
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        case "$(uname)" in
+            Darwin) dep_ch "ffmpeg" ;;
+        esac
+        ;;
+esac"#;
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !download_tool_names(single_quoted).contains(&ytdlp),
+        "a single-quoted hard ffmpeg check must veto"
+    );
+    assert!(
+        !download_tool_names(nested).contains(&ytdlp),
+        "a nested hard ffmpeg check must veto"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
