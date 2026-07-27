@@ -243,25 +243,9 @@ pub async fn media_id_for_mal(
         "query": MEDIA_ID_BY_MAL_GQL,
         "variables": { "idMal": mal_id },
     });
-    let resp = client
-        .post(url)
-        .header(
-            "user-agent",
-            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
-        )
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    // Shared transport: same headers as every other AniList call, plus
+    // the bounded 429 retry this hand-rolled copy previously lacked.
+    let bytes = post_graphql_public(client, url, &body).await?;
     parse_media_id_response(&bytes)
 }
 
