@@ -173,34 +173,33 @@ impl ScraperGate {
             tokio::time::sleep(wait).await;
             // Re-check on wake: a cold-start burst reserves slots
             // before its first requests report anything, so the
-            // breaker can open — or an advertised pause can start —
-            // while this caller slept. Breaker: refuse. Pause: the
-            // old slot predates the window, so reserve a fresh paced
-            // slot past its end and sleep again (bounded: each
-            // iteration only re-sleeps for a pause opened after the
-            // previous wake). The half-open trial skips this: it was
-            // sanctioned under the same open state it would now
-            // observe.
-            if !is_trial {
-                loop {
-                    let more = {
-                        let mut s = self.inner.lock().expect("gate lock");
-                        let now = Instant::now();
+            // breaker can open — or an advertised pause can start or
+            // extend — while this caller slept. Breaker: refuse
+            // (except the half-open trial, whose admission that very
+            // state sanctioned). Pause: EVERY caller, the trial
+            // included, reserves a fresh paced slot past the newest
+            // deadline and sleeps again — bounded, since each
+            // iteration only re-sleeps for a window recorded after
+            // the previous wake.
+            loop {
+                let more = {
+                    let mut s = self.inner.lock().expect("gate lock");
+                    let now = Instant::now();
+                    if !is_trial {
                         breaker_gate(&mut s, now)?;
-                        s.paused_until.filter(|paused| now < *paused).map_or(
-                            Duration::ZERO,
-                            |paused| {
-                                let slot = s.next_background_at.max(paused).max(now);
-                                s.next_background_at = slot + BACKGROUND_INTERVAL;
-                                slot - now
-                            },
-                        )
-                    };
-                    if more.is_zero() {
-                        break;
                     }
-                    tokio::time::sleep(more).await;
+                    s.paused_until
+                        .filter(|paused| now < *paused)
+                        .map_or(Duration::ZERO, |paused| {
+                            let slot = s.next_background_at.max(paused).max(now);
+                            s.next_background_at = slot + BACKGROUND_INTERVAL;
+                            slot - now
+                        })
+                };
+                if more.is_zero() {
+                    break;
                 }
+                tokio::time::sleep(more).await;
             }
         }
         Ok(())
