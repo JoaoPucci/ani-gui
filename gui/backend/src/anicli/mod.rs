@@ -18,6 +18,7 @@ mod carried_patches;
 pub mod env;
 pub mod parser;
 pub mod process;
+mod script_scan;
 pub mod update;
 
 pub use parser::{DebugOutput, SearchResult};
