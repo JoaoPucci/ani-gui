@@ -704,6 +704,36 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_ignore_function_bodies() {
+    // A defined-but-never-called helper is not the script's active
+    // download flow: its capability block must not grant while the
+    // top-level dependency branch still hard-requires ffmpeg. The
+    // real 4.15 dep check is top-level, which the repo-script pin
+    // keeps enforced from the accepting side.
+    let script = r#"#!/bin/sh
+unused_helper() {
+    case "$player_function" in
+        download)
+            dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+            ;;
+    esac
+}
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a function body must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
