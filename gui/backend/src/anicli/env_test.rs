@@ -361,6 +361,36 @@ fn download_tool_names_accept_ytdlp_for_the_real_repo_script() {
 }
 
 proptest::proptest! {
+    // Totality + the marker law for the capability probe: yt-dlp is
+    // offered exactly when the 4.15 failover marker appears in the
+    // script, over arbitrary contents and arbitrary injection points.
+    #[test]
+    fn download_tool_names_never_panics_and_obeys_the_marker(
+        contents in "[ -~\n]{0,200}",
+        inject in proptest::option::of(proptest::prelude::any::<proptest::sample::Index>()),
+    ) {
+        let marker = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
+        let text = match inject {
+            Some(idx) => {
+                let mut byte = idx.index(contents.len() + 1);
+                while !contents.is_char_boundary(byte) {
+                    byte -= 1;
+                }
+                format!("{}{marker}{}", &contents[..byte], &contents[byte..])
+            }
+            None => contents.clone(),
+        };
+        let names = download_tool_names(&text);
+        let ytdlp = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+        let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        proptest::prop_assert!(names.contains(&ffmpeg), "ffmpeg always offered");
+        proptest::prop_assert_eq!(
+            names.contains(&ytdlp),
+            text.contains(marker),
+            "yt-dlp offered exactly when the failover marker is present"
+        );
+    }
+
     // Total on arbitrary path lists — the predicate must never panic.
     #[test]
     fn ensure_download_tool_never_panics(
