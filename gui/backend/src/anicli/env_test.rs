@@ -381,32 +381,39 @@ fn download_tool_names_accept_ytdlp_for_the_real_repo_script() {
 
 proptest::proptest! {
     // Totality + the marker law for the capability probe: yt-dlp is
-    // offered exactly when the 4.15 failover marker appears in the
-    // script, over arbitrary contents and arbitrary injection points.
+    // offered exactly when the 4.15 failover marker appears on an
+    // executable (non-comment) line, over arbitrary surrounding
+    // contents; ffmpeg is always offered and nothing panics.
     #[test]
     fn download_tool_names_never_panics_and_obeys_the_marker(
-        contents in "[ -~\n]{0,200}",
-        inject in proptest::option::of(proptest::prelude::any::<proptest::sample::Index>()),
+        prefix in "[ -~\n]{0,100}",
+        suffix in "[ -~\n]{0,100}",
+        marker_line in proptest::option::of(proptest::prelude::any::<bool>()),
+        indent in "[ \t]{0,4}",
     ) {
         let marker = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
-        let text = match inject {
-            Some(idx) => {
-                let mut byte = idx.index(contents.len() + 1);
-                while !contents.is_char_boundary(byte) {
-                    byte -= 1;
-                }
-                format!("{}{marker}{}", &contents[..byte], &contents[byte..])
+        let text = match marker_line {
+            Some(commented) => {
+                let hash = if commented { "# " } else { "" };
+                format!("{prefix}\n{indent}{hash}{marker} >/dev/null\n{suffix}")
             }
-            None => contents.clone(),
+            None => format!("{prefix}\n{suffix}"),
         };
         let names = download_tool_names(&text);
         let ytdlp = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
         let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
         proptest::prop_assert!(names.contains(&ffmpeg), "ffmpeg always offered");
+        // The arbitrary prefix/suffix may themselves contain an
+        // uncommented marker; compute the expectation over the whole
+        // constructed text with the same line discipline.
+        let expected = text.lines().any(|line| {
+            let t = line.trim_start();
+            !t.starts_with('#') && t.contains(marker)
+        });
         proptest::prop_assert_eq!(
             names.contains(&ytdlp),
-            text.contains(marker),
-            "yt-dlp offered exactly when the failover marker is present"
+            expected,
+            "yt-dlp offered exactly on an executable marker line"
         );
     }
 

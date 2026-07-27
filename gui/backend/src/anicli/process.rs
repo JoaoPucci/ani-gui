@@ -1166,10 +1166,13 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
+        // The capable form is an EXECUTABLE line (the `:` builtin
+        // ignores its arguments) — the classifier deliberately skips
+        // commented mentions.
         let marker_line = if marker {
-            "# dep_ch_failover \"yt-dlp,ffmpeg\" — 4.15 download deps\n"
+            ": dep_ch_failover \"yt-dlp,ffmpeg\"\n"
         } else {
-            "# dep_ch \"ffmpeg\" \"aria2c\" — pre-4.15 download deps\n"
+            ": dep_ch \"ffmpeg\" \"aria2c\"\n"
         };
         f.write_all(format!("#!/bin/sh\n{marker_line}exit 0\n").as_bytes())
             .expect("write stub");

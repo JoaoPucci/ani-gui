@@ -152,7 +152,14 @@ pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
     } else {
         &["ffmpeg"]
     };
-    if script_contents.contains(r#"dep_ch_failover "yt-dlp,ffmpeg""#) {
+    // Only an executable (non-comment) line grants the capability: a
+    // commented mention still leaves ffmpeg hard-required on the
+    // script's real download path.
+    let capable = script_contents.lines().any(|line| {
+        let t = line.trim_start();
+        !t.starts_with('#') && t.contains(r#"dep_ch_failover "yt-dlp,ffmpeg""#)
+    });
+    if capable {
         BOTH
     } else {
         FFMPEG_ONLY
