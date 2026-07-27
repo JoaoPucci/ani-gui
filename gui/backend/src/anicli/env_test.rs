@@ -278,3 +278,38 @@ fn ensure_download_tool_still_accepts_ffmpeg_alone() {
     let r = ensure_download_tool_in_path(&path, |p| p == PathBuf::from("/a").join(tool));
     assert!(r.is_ok(), "got: {r:?}");
 }
+
+proptest::proptest! {
+    // Total on arbitrary path lists — the predicate must never panic.
+    #[test]
+    fn ensure_download_tool_never_panics(
+        dirs in proptest::collection::vec("[a-zA-Z0-9/_.-]{0,24}", 0..8),
+    ) {
+        let joined = std::env::join_paths(dirs.iter().map(PathBuf::from)).expect("join");
+        let _ = ensure_download_tool_in_path(&joined, |_| false);
+    }
+
+    // Either tool dropped into any generated component satisfies the
+    // preflight; with no tool anywhere the typed error comes back.
+    #[test]
+    fn ensure_download_tool_finds_either_tool_in_any_component(
+        dirs in proptest::collection::vec("[a-z0-9]{1,10}", 1..6),
+        pick in proptest::prelude::any::<proptest::sample::Index>(),
+        use_ytdlp in proptest::prelude::any::<bool>(),
+    ) {
+        let joined = std::env::join_paths(dirs.iter().map(|d| PathBuf::from(format!("/{d}"))))
+            .expect("join");
+        let idx = pick.index(dirs.len());
+        let tool = match (cfg!(windows), use_ytdlp) {
+            (true, true) => "yt-dlp.exe",
+            (true, false) => "ffmpeg.exe",
+            (false, true) => "yt-dlp",
+            (false, false) => "ffmpeg",
+        };
+        let target = PathBuf::from(format!("/{}", dirs[idx])).join(tool);
+        let found = ensure_download_tool_in_path(&joined, |p| p == target);
+        proptest::prop_assert!(found.is_ok(), "expected Ok, got {found:?}");
+        let none = ensure_download_tool_in_path(&joined, |_| false);
+        proptest::prop_assert!(matches!(none, Err(AniError::FfmpegMissing)));
+    }
+}
