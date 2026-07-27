@@ -25,7 +25,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     // followed by an unconditional hard ffmpeg requirement later in
     // the same arm still requires ffmpeg, so the grant is decided at
     // arm close, not at the first invocation seen.
-    const HARD_FFMPEG: [&str; 2] = [r#"dep_ch "ffmpeg""#, "dep_ch ffmpeg"];
+    const HARD_FFMPEG: [&str; 3] = [r#"dep_ch "ffmpeg""#, "dep_ch 'ffmpeg'", "dep_ch ffmpeg"];
     let mut saw_failover = false;
     let mut saw_hard_ffmpeg = false;
     let mut scan = ShellScan::default();
@@ -105,10 +105,18 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                     _ => continue,
                 }
             }
-            if in_branch == Some(case_owners.len()) {
-                if rest.starts_with(INVOCATION) {
+            if let Some(level) = in_branch {
+                // The grant is level-sensitive — a nested invocation
+                // is conditional — but the VETO is not: a hard
+                // requirement anywhere in the arm, inside a nested
+                // platform case's own arms included, is a path that
+                // may still demand ffmpeg. The veto is a contains
+                // check so nested arm patterns (`Darwin) dep_ch …`)
+                // can't hide it; over-matching only errs toward
+                // requiring ffmpeg, which every script satisfies.
+                if case_owners.len() == level && rest.starts_with(INVOCATION) {
                     saw_failover = true;
-                } else if HARD_FFMPEG.iter().any(|hard| rest.starts_with(hard)) {
+                } else if HARD_FFMPEG.iter().any(|hard| rest.contains(hard)) {
                     saw_hard_ffmpeg = true;
                 }
             }
