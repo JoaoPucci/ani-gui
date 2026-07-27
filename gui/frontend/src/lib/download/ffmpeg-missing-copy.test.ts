@@ -92,4 +92,22 @@ describe('missing-tool modal bodies', () => {
 			}
 		}
 	});
+
+	it('every locale body ties the yt-dlp alternative to an up-to-date script', () => {
+		// The preflight only accepts yt-dlp when the active script's
+		// download mode does (4.15+). A stale pre-4.15 cache requires
+		// ffmpeg, so unqualified "yt-dlp also works" copy would tell
+		// those users to retry an instruction they already satisfy.
+		const qualifier: Record<string, string> = {
+			en: 'up to date',
+			'es-419': 'está actualizado',
+			'pt-BR': 'estiver atualizado',
+			ru: 'обновлён'
+		};
+		for (const [locale, messages] of Object.entries(locales)) {
+			for (const key of bodyKeys) {
+				expect(messages[key], `${locale}.${key}`).toContain(qualifier[locale]);
+			}
+		}
+	});
 });
