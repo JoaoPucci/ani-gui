@@ -793,3 +793,39 @@ async fn recovery_preserves_the_outstanding_reservation_queue() {
         "the late caller queues after both outstanding reservations"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_sleeping_trial_honors_a_newer_pause_recorded_mid_sleep() {
+    // The breaker cooldown expires during a long advertised window:
+    // the half-open caller is sanctioned as the trial but sleeps to
+    // the pause deadline. A NEWER rate limit recorded while it sleeps
+    // extends the window — the trial must wake into the extension,
+    // not fire at the old deadline inside the newer window. Only the
+    // breaker refusal that sanctioned the trial is exempt on wake.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::advance(BREAKER_COOLDOWN).await;
+    let t0 = Instant::now();
+    let (trial, ()) = tokio::join!(gate.admit(ScrapePriority::Background), async {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        gate.record(
+            ScrapeOutcome::RateLimited {
+                retry_after: Some(Duration::from_secs(120)),
+            },
+            Instant::now(),
+        );
+    });
+    trial.expect("trial resumes after the newest window");
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(130),
+        "the trial honors the window extension recorded mid-sleep"
+    );
+}
