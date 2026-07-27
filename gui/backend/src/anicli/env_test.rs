@@ -339,6 +339,30 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_require_an_actual_invocation() {
+    // Mentions that aren't the failover CALL — a no-op builtin's
+    // argument, a quoted diagnostic, an assignment — grant nothing:
+    // the script's real download path still requires ffmpeg.
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    for decoy in [
+        ": dep_ch_failover \"yt-dlp,ffmpeg\"",
+        "echo 'dep_ch_failover \"yt-dlp,ffmpeg\"'",
+        "msg=dep_ch_failover_\"yt-dlp,ffmpeg\"",
+    ] {
+        let script = format!("#!/bin/sh\n{decoy}\ndownload) dep_ch \"ffmpeg\" ;;\n");
+        let names = download_tool_names(&script);
+        assert!(
+            !names.contains(&ytdlp),
+            "decoy must not grant yt-dlp: {decoy}"
+        );
+    }
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
