@@ -32,7 +32,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
             let mut rest = segment.trim_start();
             if let Some(after_case) = rest.strip_prefix("case ") {
                 let (subject, tail) = after_case.split_once(" in").unwrap_or((after_case, ""));
-                case_owners.push(subject.contains("$player_function"));
+                case_owners.push(expands_player_function(subject));
                 rest = tail.trim_start();
             }
             if rest.trim_end() == "esac" {
@@ -53,6 +53,39 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 return true;
             }
         }
+    }
+    false
+}
+
+/// Whether a case subject actually EXPANDS the player-function
+/// variable. `'$player_function'` in single quotes and
+/// `\$player_function` behind a backslash are literal text — a dead
+/// or documentary case switching on them can never take the
+/// download branch at runtime, so it cannot own it here either.
+/// Double quotes expand as usual, and the braced form counts too.
+fn expands_player_function(subject: &str) -> bool {
+    let bytes = subject.as_bytes();
+    let mut in_single = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_single {
+            if b == b'\'' {
+                in_single = false;
+            }
+        } else {
+            match b {
+                b'\'' => in_single = true,
+                b'\\' => i += 1,
+                b'$' if subject[i..].starts_with("$player_function")
+                    || subject[i..].starts_with("${player_function}") =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        i += 1;
     }
     false
 }

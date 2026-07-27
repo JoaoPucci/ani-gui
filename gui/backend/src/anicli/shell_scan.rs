@@ -90,7 +90,7 @@ impl ShellScan {
                         if strip_tabs {
                             j += 1;
                         }
-                        while bytes.get(j) == Some(&b' ') {
+                        while matches!(bytes.get(j), Some(&b' ') | Some(&b'\t')) {
                             j += 1;
                         }
                         let (delimiter, end) = heredoc_delimiter(line, j);
