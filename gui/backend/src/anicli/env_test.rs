@@ -464,6 +464,35 @@ dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
 }
 
 #[test]
+fn download_tool_names_require_the_player_function_case() {
+    // An unrelated case statement may legitimately carry a download)
+    // arm — a CLI-flag dispatcher, a mode helper — and even call the
+    // failover there. Only the case switching on "$player_function"
+    // governs -d mode's dependencies; granting on any arm named
+    // download) passes a yt-dlp-only preflight the real download
+    // branch will fail.
+    let script = r#"#!/bin/sh
+case "$1" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
+        ;;
+esac
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "an unrelated case's download arm must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
