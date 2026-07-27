@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc fe30db258b38431500f5d6058b4336b6df6dba1b8daba79c016815fd6d09723a # shrinks to dirs = ["a"], pick = Index(0), use_ytdlp = true
+cc 5a73f388b802a83164eeade42bc62b94d9dc6a7fa77e6650b1be7ffb43037064 # shrinks to prefix = "\"", suffix = "", marker_line = Some(false), in_branch = true, indent = ""
