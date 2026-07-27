@@ -27,6 +27,8 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
+use super::reservation::SlotSchedule;
+
 pub use super::outcome::{outcome_of, ScrapeOutcome};
 
 /// Minimum spacing between background scraper requests. Matches the
@@ -76,7 +78,10 @@ pub enum ScrapePriority {
 pub struct GateClosed;
 
 struct GateState {
-    next_background_at: Instant,
+    /// Background slot ledger: live reservations plus the pacing
+    /// floor of actually-fired requests. A cancelled sleeper's slot
+    /// returns to the schedule instead of orphaning dead air.
+    schedule: SlotSchedule,
     /// Advertised-window pause: background admits WAIT until this
     /// instant (then resume paced) instead of being refused. Opened
     /// by a single typed rate-limit outcome; cleared by a fresh
@@ -121,7 +126,7 @@ impl ScraperGate {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(GateState {
-                next_background_at: Instant::now(),
+                schedule: SlotSchedule::new(Instant::now()),
                 paused_until: None,
                 pause_opened_at: None,
                 consecutive_failures: 0,
@@ -145,32 +150,40 @@ impl ScraperGate {
         if prio == ScrapePriority::Interactive {
             return Ok(());
         }
-        let (wait, mut trial_stamp) = {
+        let (slot, mut trial_stamp) = {
             let mut s = self.inner.lock().expect("gate lock");
             let now = Instant::now();
             // Advertised-window pause: schedule this caller a paced
             // slot at/after the window's end and sleep until then —
-            // pause-and-resume, not refusal. `next_background_at`
-            // was pushed past the window when the pause opened, so
-            // the ordinary slot math below does the queuing; a fresh
-            // success clears `paused_until` but queued sleepers keep
-            // their conservative slots.
+            // pause-and-resume, not refusal. The slot floors at any
+            // active pause deadline: the window is enforced in slot
+            // selection itself, so no schedule bookkeeping elsewhere
+            // (the breaker's closed-to-open reset included) can punch
+            // through it. A fresh success clears `paused_until` but
+            // queued sleepers keep their conservative slots.
             if s.paused_until.is_some_and(|paused| now >= paused) {
                 s.paused_until = None;
                 s.pause_opened_at = None;
             }
             let trial_stamp = breaker_gate(&mut s, now)?;
-            // The slot floors at any active pause deadline: the
-            // window is enforced here, in slot selection itself, so
-            // no schedule bookkeeping elsewhere (the breaker's
-            // closed-to-open reset included) can punch through it.
             let floor = s.paused_until.unwrap_or(now);
-            let slot = s.next_background_at.max(floor).max(now);
-            s.next_background_at = slot + BACKGROUND_INTERVAL;
-            (slot - now, trial_stamp)
+            (
+                s.schedule.reserve(BACKGROUND_INTERVAL, floor, now),
+                trial_stamp,
+            )
         };
-        if !wait.is_zero() {
-            tokio::time::sleep(wait).await;
+        // The reservation lives in a guard from here on: dropping the
+        // admit future mid-sleep (a superseded prefetch, an unmounted
+        // page) or being refused at wake releases the slot back to
+        // the schedule instead of orphaning 500 ms of dead air per
+        // cancellation — which, during a pause, compounded into
+        // background warming stalled past recovery.
+        let mut guard = SlotGuard {
+            gate: self,
+            slot: Some(slot),
+        };
+        if Instant::now() < slot {
+            tokio::time::sleep_until(slot).await;
             // Re-check on wake: a cold-start burst reserves slots
             // before its first requests report anything, so the
             // breaker can open — or an advertised pause can start or
@@ -181,12 +194,12 @@ impl ScraperGate {
             // cycle) retires the sanction, and the sleeper submits to
             // the current breaker like everyone else instead of
             // piercing a cooldown that never authorized it. Pause:
-            // EVERY caller, the trial included, reserves a fresh
-            // paced slot past the newest deadline and sleeps again —
+            // EVERY caller, the trial included, trades its slot for a
+            // fresh one past the newest deadline and sleeps again —
             // bounded, since each iteration only re-sleeps for a
             // window recorded after the previous wake.
             loop {
-                let more = {
+                let resleep = {
                     let mut s = self.inner.lock().expect("gate lock");
                     let now = Instant::now();
                     let sanctioned =
@@ -194,19 +207,24 @@ impl ScraperGate {
                     if !sanctioned {
                         trial_stamp = breaker_gate(&mut s, now)?;
                     }
-                    s.paused_until
-                        .filter(|paused| now < *paused)
-                        .map_or(Duration::ZERO, |paused| {
-                            let slot = s.next_background_at.max(paused).max(now);
-                            s.next_background_at = slot + BACKGROUND_INTERVAL;
-                            slot - now
-                        })
+                    s.paused_until.filter(|paused| now < *paused).map(|paused| {
+                        if let Some(old) = guard.slot.take() {
+                            s.schedule.release(old);
+                        }
+                        let next = s.schedule.reserve(BACKGROUND_INTERVAL, paused, now);
+                        guard.slot = Some(next);
+                        next
+                    })
                 };
-                if more.is_zero() {
-                    break;
+                match resleep {
+                    None => break,
+                    Some(next) => tokio::time::sleep_until(next).await,
                 }
-                tokio::time::sleep(more).await;
             }
+        }
+        let mut s = self.inner.lock().expect("gate lock");
+        if let Some(fired) = guard.slot.take() {
+            s.schedule.consume(BACKGROUND_INTERVAL, fired);
         }
         Ok(())
     }
@@ -328,9 +346,31 @@ impl ScraperGate {
                     // behind reservations from callers that will all
                     // be refused at wake.
                     s.opened_at = Some(now);
-                    s.next_background_at = now;
+                    s.schedule.clear(now);
                 }
                 s.half_open_trial_at = None;
+            }
+        }
+    }
+}
+
+/// Holds a background caller's slot reservation across its sleeps.
+/// The slot is taken out (`slot.take()`) when consumed on the fire
+/// path or traded for a fresh one during a pause re-sleep; if the
+/// admit future is dropped mid-sleep or refused at wake with the
+/// reservation still held, `Drop` returns the slot to the schedule.
+/// The drop-path lock is deadlock-free: an early return unwinds the
+/// wake loop's `MutexGuard` before the guard itself drops.
+struct SlotGuard<'a> {
+    gate: &'a ScraperGate,
+    slot: Option<Instant>,
+}
+
+impl Drop for SlotGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.take() {
+            if let Ok(mut s) = self.gate.inner.lock() {
+                s.schedule.release(slot);
             }
         }
     }
