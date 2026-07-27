@@ -201,12 +201,14 @@ impl AppState {
         let state_dir = self.state_dir.clone();
         tokio::spawn(async move {
             tracing::info!(target: "anicli::update", script = %script.display(), "running -U in background");
+            // The sandwich variant: -U's comparison must see an
+            // upstream-shaped script (a persistent fork diff would
+            // false-report Updated on every launch), and the repair
+            // afterwards keeps this session's later spawns
+            // index-stable.
             let outcome =
-                update::run_update(&script, bash.as_deref(), bundled_bin.as_deref()).await;
-            // An Updated outcome replaced the cache with upstream's
-            // script mid-session; repair it so this session's later
-            // spawns keep index-stable results.
-            update::repair_carried_patches(&script);
+                update::run_update_with_repair(&script, bash.as_deref(), bundled_bin.as_deref())
+                    .await;
             tracing::info!(
                 target: "anicli::update",
                 status = ?outcome.status,

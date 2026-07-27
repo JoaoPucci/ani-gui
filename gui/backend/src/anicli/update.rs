@@ -149,13 +149,22 @@ pub fn strip_lib_guard(script_path: &Path) -> std::io::Result<()> {
 /// # Errors
 /// Propagates I/O errors from reading or rewriting the script.
 pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
-    const UPSTREAM: &str = r#"\"name\":\"([^\"]*)\","#;
-    const FORK: &str = r#"\"name\":\"(.+)\","#;
+    replace_capture_line(script_path, NAME_CAPTURE_UPSTREAM, NAME_CAPTURE_FORK)
+}
+
+/// Upstream's `search_anime` title capture as it appears in the
+/// script's bytes; the non-greedy class stops at the first escaped
+/// quote inside a show name.
+const NAME_CAPTURE_UPSTREAM: &str = r#"\"name\":\"([^\"]*)\","#;
+/// The fork's greedy capture — same fragment, `(.+)` instead.
+const NAME_CAPTURE_FORK: &str = r#"\"name\":\"(.+)\","#;
+
+fn replace_capture_line(script_path: &Path, from: &str, to: &str) -> std::io::Result<bool> {
     let contents = std::fs::read_to_string(script_path)?;
-    if !contents.contains(UPSTREAM) {
+    if !contents.contains(from) {
         return Ok(false);
     }
-    std::fs::write(script_path, contents.replacen(UPSTREAM, FORK, 1))?;
+    std::fs::write(script_path, contents.replacen(from, to, 1))?;
     Ok(true)
 }
 
@@ -171,8 +180,7 @@ pub fn reapply_name_capture(script_path: &Path) -> std::io::Result<bool> {
 /// # Errors
 /// Propagates I/O errors from reading or rewriting the script.
 pub fn revert_name_capture(script_path: &Path) -> std::io::Result<bool> {
-    let _ = script_path;
-    todo!("green commit implements the inverse transform")
+    replace_capture_line(script_path, NAME_CAPTURE_FORK, NAME_CAPTURE_UPSTREAM)
 }
 
 /// Run `-U` with the cache temporarily upstream-shaped: revert the
@@ -187,8 +195,12 @@ pub async fn run_update_with_repair(
     bash_path: Option<&Path>,
     bundled_bin: Option<&Path>,
 ) -> UpdateOutcome {
-    let _ = (script_path, bash_path, bundled_bin);
-    todo!("green commit sandwiches run_update between revert and repair")
+    if let Err(e) = revert_name_capture(script_path) {
+        tracing::warn!(target: "anicli::update", error = %e, "revert_name_capture failed");
+    }
+    let outcome = run_update(script_path, bash_path, bundled_bin).await;
+    repair_carried_patches(script_path);
+    outcome
 }
 
 /// Best-effort repair of the cached script's fork-carried content:
@@ -640,10 +652,14 @@ mod tests {
         // The cache copy as it sits on disk after a prior repair:
         // fork-shaped. The -U stand-in snapshots $0 exactly as the
         // comparison would read it, then performs upstream's rewrite.
+        // The brace block is parsed in full before any command runs
+        // and exits inside it, so overwriting $0 mid-execution can't
+        // corrupt the interpreter's read position (the same reason
+        // upstream's update_script exits from within its function).
         std::fs::write(
             &path,
             format!(
-                "#!/bin/sh\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\n# {FORK_CAPTURE}\n",
+                "#!/bin/sh\n{{\ncp \"$0\" '{}'\ncp '{}' \"$0\"\necho 'Script updated'\nexit 0\n}}\n# {FORK_CAPTURE}\n",
                 seen.display(),
                 upstream.display()
             ),
