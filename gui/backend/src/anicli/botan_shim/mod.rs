@@ -29,6 +29,41 @@ use sha2::{Digest, Sha256};
 mod cli;
 pub use cli::{provision_botan_wrapper, provision_own_botan_shim, run_shim};
 
+/// Typed failures for the shim's operations, per the library-boundary
+/// error convention. [`run_shim`] renders them to stderr; the process
+/// exit codes are the CLI contract (1 operation failure, 2 usage).
+#[derive(Debug, thiserror::Error)]
+pub enum ShimError {
+    /// A non-hex character reached the decoder.
+    #[error("not a hex digit: {0:?}")]
+    NotHex(char),
+    /// Hex text with an odd digit count.
+    #[error("odd number of hex digits")]
+    OddHexLength,
+    /// Key of the wrong size for AES-256.
+    #[error("AES-256/GCM needs a 32-byte key, got {0}")]
+    KeyLength(usize),
+    /// Nonce of the wrong size for GCM.
+    #[error("AES-256/GCM needs a 12-byte nonce, got {0}")]
+    NonceLength(usize),
+    /// Decrypt input shorter than the 16-byte tag.
+    #[error("input shorter than the GCM tag")]
+    InputTooShort,
+    /// Tag verification failed — tampered input or wrong key.
+    #[error("GCM authentication failed")]
+    AuthFailed,
+    /// Encryption failed inside the cipher (practically unreachable
+    /// once key and nonce lengths are validated).
+    #[error("encryption failed")]
+    EncryptFailed,
+    /// `cipher` invoked without a required argument.
+    #[error("cipher needs {0}")]
+    MissingCipherArg(&'static str),
+    /// Reading stdin or writing stdout failed.
+    #[error("stdio: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 /// SHA-256 of `data` as uppercase hex — botan's `hash` output format
 /// (the trailing newline is added by the dispatcher).
 #[must_use]
@@ -45,8 +80,8 @@ pub fn sha256_hex_upper(data: &[u8]) -> String {
 /// `hex_dec` reads the `hash` output including its newline).
 ///
 /// # Errors
-/// A description when a non-hex digit remains or the digit count is odd.
-pub fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
+/// [`ShimError`] when a non-hex digit remains or the digit count is odd.
+pub fn hex_decode(text: &str) -> Result<Vec<u8>, ShimError> {
     let digits: Vec<u8> = text
         .bytes()
         .filter(|b| !b.is_ascii_whitespace())
@@ -54,11 +89,11 @@ pub fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
             b'0'..=b'9' => Ok(b - b'0'),
             b'a'..=b'f' => Ok(b - b'a' + 10),
             b'A'..=b'F' => Ok(b - b'A' + 10),
-            other => Err(format!("not a hex digit: {:?}", char::from(other))),
+            other => Err(ShimError::NotHex(char::from(other))),
         })
         .collect::<Result<_, _>>()?;
     if digits.len() % 2 != 0 {
-        return Err("odd number of hex digits".into());
+        return Err(ShimError::OddHexLength);
     }
     Ok(digits
         .chunks(2)
@@ -67,18 +102,12 @@ pub fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Build the cipher, validating key and nonce lengths.
-fn gcm(key: &[u8], nonce: &[u8]) -> Result<Aes256Gcm, String> {
+fn gcm(key: &[u8], nonce: &[u8]) -> Result<Aes256Gcm, ShimError> {
     if key.len() != 32 {
-        return Err(format!(
-            "AES-256/GCM needs a 32-byte key, got {}",
-            key.len()
-        ));
+        return Err(ShimError::KeyLength(key.len()));
     }
     if nonce.len() != 12 {
-        return Err(format!(
-            "AES-256/GCM needs a 12-byte nonce, got {}",
-            nonce.len()
-        ));
+        return Err(ShimError::NonceLength(nonce.len()));
     }
     Ok(Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key)))
 }
@@ -87,27 +116,27 @@ fn gcm(key: &[u8], nonce: &[u8]) -> Result<Aes256Gcm, String> {
 /// appended, exactly how botan's `cipher` writes it.
 ///
 /// # Errors
-/// A description when the key is not 32 bytes or the nonce not 12.
-pub fn gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+/// [`ShimError`] when the key is not 32 bytes or the nonce not 12.
+pub fn gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, ShimError> {
     let cipher = gcm(key, nonce)?;
     cipher
         .encrypt(Nonce::from_slice(nonce), Payload::from(plaintext))
-        .map_err(|_| "encryption failed".into())
+        .map_err(|_| ShimError::EncryptFailed)
 }
 
 /// AES-256-GCM decrypt of a `ciphertext||tag(16)` blob.
 ///
 /// # Errors
-/// A description on bad key/nonce lengths, a too-short blob, or GCM
+/// [`ShimError`] on bad key/nonce lengths, a too-short blob, or GCM
 /// authentication failure (tampered ciphertext or wrong key).
-pub fn gcm_decrypt(key: &[u8], nonce: &[u8], ct_and_tag: &[u8]) -> Result<Vec<u8>, String> {
+pub fn gcm_decrypt(key: &[u8], nonce: &[u8], ct_and_tag: &[u8]) -> Result<Vec<u8>, ShimError> {
     let cipher = gcm(key, nonce)?;
     if ct_and_tag.len() < 16 {
-        return Err("input shorter than the GCM tag".into());
+        return Err(ShimError::InputTooShort);
     }
     cipher
         .decrypt(Nonce::from_slice(nonce), Payload::from(ct_and_tag))
-        .map_err(|_| "GCM authentication failed".into())
+        .map_err(|_| ShimError::AuthFailed)
 }
 
 /// Parsed `cipher` arguments.
@@ -124,8 +153,8 @@ pub struct CipherArgs {
 /// Parse the argument list following `cipher`.
 ///
 /// # Errors
-/// A description when `--key=`/`--nonce=` are missing or not valid hex.
-pub fn parse_cipher_args(args: &[String]) -> Result<CipherArgs, String> {
+/// [`ShimError`] when `--key=`/`--nonce=` are missing or not valid hex.
+pub fn parse_cipher_args(args: &[String]) -> Result<CipherArgs, ShimError> {
     let mut decrypt = false;
     let mut key = None;
     let mut nonce = None;
@@ -142,8 +171,8 @@ pub fn parse_cipher_args(args: &[String]) -> Result<CipherArgs, String> {
     }
     Ok(CipherArgs {
         decrypt,
-        key: key.ok_or("cipher needs --key=<hex>")?,
-        nonce: nonce.ok_or("cipher needs --nonce=<hex>")?,
+        key: key.ok_or(ShimError::MissingCipherArg("--key=<hex>"))?,
+        nonce: nonce.ok_or(ShimError::MissingCipherArg("--nonce=<hex>"))?,
     })
 }
 
