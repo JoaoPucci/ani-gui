@@ -34,17 +34,26 @@ impl SlotSchedule {
         }
     }
 
-    /// Reserve the next paced slot at or after `floor` (an active
-    /// pause deadline, or `now` when none). Slots are strictly
-    /// increasing across live reservations, so every sleeper holds a
-    /// unique instant.
+    /// Reserve the earliest paced slot at or after `floor` (an active
+    /// pause deadline, or `now` when none) that keeps a full interval
+    /// clear of every live reservation. Intervals vacated by released
+    /// sleepers are refilled — cancelling early or middle sleepers
+    /// must not strand new work behind a survivor's conservative slot
+    /// as if nothing had been released. Every sleeper holds a unique
+    /// instant: a candidate colliding with a live slot jumps past it.
     pub(super) fn reserve(&mut self, interval: Duration, floor: Instant, now: Instant) -> Instant {
-        let tail = self
-            .reserved
-            .last()
-            .map_or(self.pace_floor, |newest| *newest + interval);
-        let slot = tail.max(self.pace_floor).max(floor).max(now);
-        self.reserved.push(slot);
+        let mut slot = self.pace_floor.max(floor).max(now);
+        for taken in &self.reserved {
+            if *taken + interval <= slot {
+                continue;
+            }
+            if slot + interval <= *taken {
+                break;
+            }
+            slot = *taken + interval;
+        }
+        let at = self.reserved.partition_point(|taken| *taken < slot);
+        self.reserved.insert(at, slot);
         slot
     }
 

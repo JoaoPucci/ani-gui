@@ -763,12 +763,12 @@ async fn the_breaker_cycle_cannot_punch_through_an_active_pause() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn recovery_preserves_the_outstanding_reservation_queue() {
+async fn recovery_frees_the_front_while_sleepers_keep_their_slots() {
     // Two sleepers reserve post-window slots, then a fresh success
-    // clears the pause early. New callers must queue AFTER those
-    // outstanding reservations — restarting the schedule from now
-    // would let them collide with the sleepers' slots and break the
-    // global pacing this gate exists to guarantee.
+    // clears the pause early. The recovered space before the window
+    // belongs to new work — it must not queue behind the sleepers'
+    // conservative slots — while the sleepers themselves keep those
+    // slots, and every admit stays a full interval from the others.
     let gate = ScraperGate::new();
     gate.record(
         ScrapeOutcome::RateLimited {
@@ -782,15 +782,21 @@ async fn recovery_preserves_the_outstanding_reservation_queue() {
     let late = async {
         tokio::time::sleep(Duration::from_secs(1)).await;
         gate.record(ScrapeOutcome::Success, Instant::now());
-        gate.admit(ScrapePriority::Background).await
+        gate.admit(ScrapePriority::Background)
+            .await
+            .expect("late caller");
+        Instant::now() - t0
     };
-    let (a, b, c) = tokio::join!(sleeper_a, sleeper_b, late);
+    let (a, b, late_elapsed) = tokio::join!(sleeper_a, sleeper_b, late);
     a.expect("sleeper a");
     b.expect("sleeper b");
-    c.expect("late caller");
     assert!(
-        Instant::now() - t0 >= Duration::from_secs(10) + 2 * BACKGROUND_INTERVAL,
-        "the late caller queues after both outstanding reservations"
+        late_elapsed < Duration::from_secs(10),
+        "recovered space before the window belongs to new work: {late_elapsed:?}"
+    );
+    assert!(
+        Instant::now() - t0 >= Duration::from_secs(10) + BACKGROUND_INTERVAL,
+        "sleepers keep their conservative post-window slots"
     );
 }
 
