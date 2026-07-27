@@ -861,3 +861,37 @@ async fn a_stale_trial_submits_to_a_newer_breaker_cycle() {
         "a sanction from a cleared cycle must not pierce the new cooldown"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_cancelled_paused_reservation_frees_the_schedule() {
+    // A prefetch sleeping toward a paused slot is deliberately
+    // aborted (a click superseded it, the page unmounted). Its
+    // reservation must go with it: after a fresh success clears the
+    // pause, the next background admit runs promptly instead of
+    // queuing behind the dead sleeper's slot at the old deadline.
+    let gate = ScraperGate::new();
+    gate.record(
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(120)),
+        },
+        Instant::now(),
+    );
+    {
+        let sleeper = gate.admit(ScrapePriority::Background);
+        tokio::pin!(sleeper);
+        tokio::select! {
+            biased;
+            _ = &mut sleeper => panic!("the paused sleeper cannot be admitted yet"),
+            () = tokio::task::yield_now() => {}
+        }
+    }
+    tokio::time::advance(Duration::from_secs(1)).await;
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    let admitted =
+        tokio::time::timeout(BACKGROUND_INTERVAL, gate.admit(ScrapePriority::Background)).await;
+    assert_eq!(
+        admitted.ok(),
+        Some(Ok(())),
+        "the freed schedule must admit promptly after recovery"
+    );
+}
