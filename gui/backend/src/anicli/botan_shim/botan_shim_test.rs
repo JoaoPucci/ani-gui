@@ -293,3 +293,36 @@ fn provision_own_botan_shim_is_none_when_the_dir_cannot_be_created() {
     std::fs::write(&file, b"x").expect("write file");
     assert!(provision_own_botan_shim(&file).is_none());
 }
+
+#[cfg(unix)]
+#[test]
+fn provisioned_wrapper_survives_shell_metacharacters_in_the_exe_path() {
+    // An install under a directory like `/opt/$channel v2/` must not
+    // let /bin/sh expand or split the interpolated path — the wrapper
+    // has to exec the literal executable.
+    let td = tempfile::tempdir().expect("tempdir");
+    let weird = td.path().join("$channel v2");
+    std::fs::create_dir(&weird).expect("mkdir weird");
+    let stub = weird.join("backend");
+    std::fs::write(&stub, "#!/bin/sh\necho STUB-OK \"$@\"\n").expect("write stub");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+
+    let dir = provision_botan_wrapper(&td.path().join("shim"), &stub).expect("provision");
+    let out = std::process::Command::new("sh")
+        .arg(dir.join("botan"))
+        .arg("--version")
+        .output()
+        .expect("run wrapper");
+    assert!(
+        out.status.success(),
+        "wrapper failed to exec the stub: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "STUB-OK --botan-shim --version"
+    );
+}
