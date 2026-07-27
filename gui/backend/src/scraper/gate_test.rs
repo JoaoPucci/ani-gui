@@ -464,3 +464,33 @@ async fn typed_failure_still_feeds_the_counting_breaker() {
         Err(GateClosed)
     );
 }
+
+// ── outcome classification ──────────────────────────────────────────
+
+#[test]
+fn outcome_of_maps_the_typed_rate_limit_with_its_hint() {
+    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
+        retry_after_secs: Some(7),
+    });
+    assert_eq!(
+        outcome_of(&r),
+        ScrapeOutcome::RateLimited {
+            retry_after: Some(Duration::from_secs(7)),
+        }
+    );
+    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
+        retry_after_secs: None,
+    });
+    assert_eq!(
+        outcome_of(&r),
+        ScrapeOutcome::RateLimited { retry_after: None }
+    );
+}
+
+#[test]
+fn outcome_of_folds_everything_else_to_success_or_failure() {
+    let ok: Result<u8, crate::error::AniError> = Ok(1);
+    assert_eq!(outcome_of(&ok), ScrapeOutcome::Success);
+    let err: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
+    assert_eq!(outcome_of(&err), ScrapeOutcome::Failure);
+}

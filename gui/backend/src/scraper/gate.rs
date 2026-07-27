@@ -285,6 +285,14 @@ impl ScraperGate {
     }
 }
 
+/// Classify a request result for [`ScraperGate::record`]: the typed
+/// in-band rate limit carries its advertised hint to the gate, every
+/// other error folds to an untyped failure.
+pub fn outcome_of<T>(r: &Result<T, crate::error::AniError>) -> ScrapeOutcome {
+    let _ = r;
+    todo!("green commit maps AniError::RateLimited to the typed outcome")
+}
+
 /// Breaker check under the gate lock: refuses while the breaker is
 /// open, and once the cooldown elapses hands the half-open trial role
 /// to exactly one caller (returning `true` for it) — everyone else
