@@ -525,6 +525,37 @@ esac"#;
 }
 
 #[test]
+fn download_tool_names_treat_heredoc_bodies_as_text() {
+    // A usage() heredoc may carry an example capability block. Its
+    // body is data fed to cat, not executable shell: it can neither
+    // stand up a case owner nor invoke the failover while the real
+    // download branch still hard-requires ffmpeg.
+    let script = r#"#!/bin/sh
+usage() {
+    cat <<'EOF'
+case "$player_function" in
+    download)
+        dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
+        ;;
+esac
+EOF
+}
+case "$player_function" in
+    download) dep_ch "ffmpeg" "aria2c" ;;
+esac"#;
+    let names = download_tool_names(script);
+    let ytdlp = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    assert!(
+        !names.contains(&ytdlp),
+        "a heredoc capability block must not grant yt-dlp: {names:?}"
+    );
+}
+
+#[test]
 fn download_tool_names_ignore_commented_markers() {
     // A stale or customized script that merely MENTIONS the failover
     // in a comment still hard-requires ffmpeg on its executable
