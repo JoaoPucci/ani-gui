@@ -95,6 +95,12 @@ struct GateState {
     /// to come back, so refusing work and losing rows would be pure
     /// waste.
     paused_until: Option<Instant>,
+    /// When the current pause first opened. Successes that STARTED
+    /// before this instant ran against the pre-limit upstream — stale
+    /// evidence that must not clear the newer window, the mirror of
+    /// the breaker's `opened_at` filter. Kept at the earliest opening
+    /// across overlapping rate limits.
+    pause_opened_at: Option<Instant>,
     consecutive_failures: u32,
     open_until: Option<Instant>,
     /// When the breaker last opened; `None` when it has never opened
@@ -128,6 +134,7 @@ impl ScraperGate {
             inner: Mutex::new(GateState {
                 next_background_at: Instant::now(),
                 paused_until: None,
+                pause_opened_at: None,
                 consecutive_failures: 0,
                 open_until: None,
                 opened_at: None,
@@ -162,6 +169,7 @@ impl ScraperGate {
             if let Some(paused) = s.paused_until {
                 if now >= paused {
                     s.paused_until = None;
+                    s.pause_opened_at = None;
                 }
             }
             let is_trial = breaker_gate(&mut s, now)?;
@@ -172,15 +180,35 @@ impl ScraperGate {
         if !wait.is_zero() {
             tokio::time::sleep(wait).await;
             // Re-check on wake: a cold-start burst reserves slots
-            // before its first requests report failures, so the
-            // breaker can open while this caller slept. The slot
-            // reservation above stands either way — later probes
-            // would be refused anyway while the breaker is open. The
-            // half-open trial itself skips this: it was sanctioned
-            // under the same open state it would now observe.
+            // before its first requests report anything, so the
+            // breaker can open — or an advertised pause can start —
+            // while this caller slept. Breaker: refuse. Pause: the
+            // old slot predates the window, so reserve a fresh paced
+            // slot past its end and sleep again (bounded: each
+            // iteration only re-sleeps for a pause opened after the
+            // previous wake). The half-open trial skips this: it was
+            // sanctioned under the same open state it would now
+            // observe.
             if !is_trial {
-                let mut s = self.inner.lock().expect("gate lock");
-                breaker_gate(&mut s, Instant::now())?;
+                loop {
+                    let more = {
+                        let mut s = self.inner.lock().expect("gate lock");
+                        let now = Instant::now();
+                        breaker_gate(&mut s, now)?;
+                        match s.paused_until {
+                            Some(paused) if now < paused => {
+                                let slot = s.next_background_at.max(paused).max(now);
+                                s.next_background_at = slot + BACKGROUND_INTERVAL;
+                                slot - now
+                            }
+                            _ => Duration::ZERO,
+                        }
+                    };
+                    if more.is_zero() {
+                        break;
+                    }
+                    tokio::time::sleep(more).await;
+                }
             }
         }
         Ok(())
@@ -202,11 +230,15 @@ impl ScraperGate {
                 let now = Instant::now();
                 let window = retry_after.unwrap_or(BREAKER_COOLDOWN);
                 let until = now + window;
-                // Keep the later deadline if two rate limits overlap.
+                // Keep the later deadline if two rate limits overlap,
+                // and the earliest opening as the staleness boundary.
                 s.paused_until = Some(match s.paused_until {
                     Some(prev) => prev.max(until),
                     None => until,
                 });
+                if s.pause_opened_at.is_none() {
+                    s.pause_opened_at = Some(now);
+                }
                 // Resume paced from the window's end, not from a
                 // schedule queued before the pause.
                 s.next_background_at = s.next_background_at.max(until);
@@ -236,7 +268,12 @@ impl ScraperGate {
             s.open_until = None;
             s.opened_at = None;
             s.half_open_trial_at = None;
-            if s.paused_until.take().is_some() {
+            // A success that STARTED before the pause opened ran
+            // against the pre-limit upstream; only fresh evidence
+            // clears the window.
+            let fresh_for_pause = s.pause_opened_at.is_none_or(|opened| started_at >= opened);
+            if fresh_for_pause && s.paused_until.take().is_some() {
+                s.pause_opened_at = None;
                 // The pause pushed the resume schedule out to the
                 // window's end; a proven recovery pulls it back so
                 // new admits aren't still waiting on a window that

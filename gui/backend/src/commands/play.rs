@@ -500,12 +500,15 @@ pub(super) async fn pick_title_and_index_with_base(
                 // The window is refusing everything — walking the
                 // remaining alt titles would burn budget on doomed
                 // requests and extend the limit. Stop and carry the
-                // advertised wait upward. This is also the clearest
-                // failure evidence the gate can get: record it so the
-                // breaker opens (and a half-open trial resolves)
-                // instead of letting warm handlers pace on into the
-                // advertised window.
-                state.scraper_gate.record_outcome(false, started_at);
+                // advertised wait upward, and hand the gate the typed
+                // signal so the advertised-window pause opens instead
+                // of merely bumping the three-failure breaker.
+                state.scraper_gate.record(
+                    crate::scraper::gate::ScrapeOutcome::RateLimited {
+                        retry_after: retry_after_secs.map(std::time::Duration::from_secs),
+                    },
+                    started_at,
+                );
                 tracing::warn!(
                     title,
                     retry_after_secs = ?retry_after_secs,
@@ -1891,12 +1894,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rate_limited_searches_open_the_breaker() {
+    async fn rate_limited_searches_pause_the_gate() {
         use crate::scraper::gate::ScrapePriority;
         // allanime's in-band throttle (HTTP 200 + GraphQL errors
-        // payload) is the CLEAREST rate-limit signal there is — a
-        // background walk that hits it must feed the gate, or
-        // concurrent warm handlers keep firing into the advertised
+        // payload) is the CLEAREST rate-limit signal there is — one
+        // background walk that hits it must open the advertised-window
+        // pause, or concurrent warm handlers keep firing into the
         // window at full pace.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
@@ -1914,16 +1917,18 @@ mod tests {
         let state = state_with_proxy_origin();
         let mut args = external_args("Some Show", "1");
         args.prefetch = true;
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            let _ = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
-        }
+        let _ = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
+        // The 9 s advertised window is pausing background admits —
+        // pause-and-resume, so the admit neither errors nor completes
+        // within a short real-time budget.
+        let paused = tokio::time::timeout(
+            std::time::Duration::from_millis(150),
+            state.scraper_gate.admit(ScrapePriority::Background),
+        )
+        .await;
         assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_err(),
-            "typed rate-limit responses must open the breaker"
+            paused.is_err(),
+            "one typed rate-limit response must pause background admits"
         );
     }
 
