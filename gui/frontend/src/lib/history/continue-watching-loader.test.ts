@@ -74,17 +74,18 @@ describe('loadContinueWatchingState', () => {
 			onRowReady
 		});
 
-		// Let microtasks settle. Fast row's match has resolved + its
-		// per-row probe should also have run; slow row is still
-		// pending. The fast row MUST have been released.
+		// Let microtasks settle. Fast row's match has resolved — it
+		// releases immediately with the fallback cap (count null) and
+		// its probe refines to 12 right after; slow row is still
+		// pending and MUST NOT have gated the fast one.
 		for (let i = 0; i < 20; i++) await Promise.resolve();
-		expect(ready.find((r) => r.id === 'hist-fast')?.count).toBe(12);
+		expect(ready.filter((r) => r.id === 'hist-fast').map((r) => r.count)).toEqual([null, 12]);
 		expect(ready.find((r) => r.id === 'hist-slow')).toBeUndefined();
 
 		// Now let the slow row through; it releases independently.
 		slowMatch.resolve(mSlow);
 		const result = await loaderPromise;
-		expect(ready.find((r) => r.id === 'hist-slow')?.count).toBe(25);
+		expect(ready.filter((r) => r.id === 'hist-slow').at(-1)?.count).toBe(25);
 		expect(result.matches).toEqual({ 'hist-fast': mFast, 'hist-slow': mSlow });
 		expect(result.playableCounts).toEqual({ 'hist-fast': 12, 'hist-slow': 25 });
 	});
@@ -317,4 +318,112 @@ describe('loadContinueWatchingState', () => {
 		expect(result.matches).toEqual({ 'hist-rejects': m1, 'hist-unavailable': m2 });
 		expect(result.playableCounts).toEqual({});
 	});
+});
+
+describe('first paint releases before availability (render-then-refine)', () => {
+	it('releases a row with its match before the availability probe resolves', async () => {
+		// The whole point: a card needs only its Kitsu match to render
+		// and be clickable. The probe against the video site refines
+		// the cap later — it must never hold the card. Here the probe
+		// NEVER resolves and the row still releases.
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const neverProbe = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockReturnValue(neverProbe.promise);
+
+		const ready: { id: string; match: KitsuAnimeRef | null; count: number | null }[] = [];
+		void loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady: (id, m, count) => ready.push({ id, match: m, count })
+		});
+
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(ready).toEqual([{ id: 'hist-a', match, count: null }]);
+	});
+
+	it('fires a second onRowReady when the probe refines the playable cap', async () => {
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 24);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const probe = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockReturnValue(probe.promise);
+
+		const ready: { id: string; count: number | null }[] = [];
+		const loaderPromise = loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady: (id, _m, count) => ready.push({ id, count })
+		});
+
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(ready).toEqual([{ id: 'hist-a', count: null }]);
+
+		probe.resolve({ episode_count: 12 });
+		const result = await loaderPromise;
+		expect(ready).toEqual([
+			{ id: 'hist-a', count: null },
+			{ id: 'hist-a', count: 12 }
+		]);
+		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
+	});
+
+	it('does not fire a redundant second callback when the probe has no count', async () => {
+		// A probe that fails or returns no count adds nothing the card
+		// doesn't already have (it fell back to match.episode_count at
+		// release). Re-firing would only re-trigger the episode fetch.
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const fetchAvailability = vi.fn().mockRejectedValue(new Error('breaker open'));
+
+		const onRowReady = vi.fn();
+		const result = await loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady
+		});
+
+		expect(onRowReady).toHaveBeenCalledTimes(1);
+		// The trailing `false` is the provenance argument: a probe that
+		// produced no count produced no approximate count either.
+		expect(onRowReady).toHaveBeenCalledWith('hist-a', match, null, false);
+		expect(result.playableCounts).toEqual({});
+	});
+});
+
+it('forwards approximate provenance from the background probe', async () => {
+	// The backend marks a count that came from the search hit rather
+	// than the detail fetch. Dropping that flag here makes the page
+	// record the cap as exact, so the click skips revalidation and can
+	// still advance to a phantom episode.
+	const entry = makeEntry('hist-a', '5', 'Show A');
+	const match = makeMatch('k-a', 24);
+	const onRowReady = vi.fn();
+	await loadContinueWatchingState([entry], {
+		resolveMatch: vi.fn().mockResolvedValue(match),
+		fetchAvailability: vi
+			.fn()
+			.mockResolvedValue({ episode_count: 13, episode_count_approximate: true }),
+		getMode: subMode,
+		onRowReady
+	});
+	expect(onRowReady).toHaveBeenCalledWith('hist-a', match, 13, true);
+});
+
+it('reports an exact background count as exact', async () => {
+	const entry = makeEntry('hist-b', '5', 'Show B');
+	const match = makeMatch('k-b', 24);
+	const onRowReady = vi.fn();
+	await loadContinueWatchingState([entry], {
+		resolveMatch: vi.fn().mockResolvedValue(match),
+		fetchAvailability: vi.fn().mockResolvedValue({ episode_count: 12 }),
+		getMode: subMode,
+		onRowReady
+	});
+	expect(onRowReady).toHaveBeenCalledWith('hist-b', match, 12, false);
 });
