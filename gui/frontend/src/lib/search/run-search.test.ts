@@ -47,6 +47,12 @@ function defer<T>(): {
 	return { promise, resolve: resolveFn, reject: rejectFn };
 }
 
+/** Settle pending microtasks deeply enough to be independent of how
+ *  many hops the runner's internal promise chains take. */
+async function drain(): Promise<void> {
+	for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
 interface Harness {
 	deps: SearchRunnerDeps;
 	results: KitsuAnimeRef[][];
@@ -88,14 +94,11 @@ describe('createSearchRunner (generation guard)', () => {
 		const runner = createSearchRunner(h.deps);
 
 		void runner.run('a');
-		await Promise.resolve();
-		await Promise.resolve();
+		await drain();
 		void runner.run('b');
-		await Promise.resolve();
-		await Promise.resolve();
+		await drain();
 		void runner.run('a');
-		await Promise.resolve();
-		await Promise.resolve();
+		await drain();
 		expect(emits).toHaveLength(3);
 
 		const stale = ref('stale');
@@ -117,11 +120,9 @@ describe('createSearchRunner (generation guard)', () => {
 		const runner = createSearchRunner(h.deps);
 
 		void runner.run('a');
-		await Promise.resolve();
-		await Promise.resolve();
+		await drain();
 		void runner.run('a');
-		await Promise.resolve();
-		await Promise.resolve();
+		await drain();
 
 		// Two runs started: busy went true twice, never false yet.
 		expect(h.busyLog).toEqual([true, true]);
@@ -260,5 +261,50 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 		probes.get('gone')!({ available: false });
 		await vi.advanceTimersByTimeAsync(0);
 		expect(results).toEqual([[keep, gone], [keep]]);
+	});
+});
+
+describe('concurrent config loads (shared load promise)', () => {
+	it('a stale failed load cannot pin the fallback after a success exists', async () => {
+		// Codex P2 #3664635236 — two searches entering the load block
+		// concurrently could interleave so the newer load succeeded
+		// with DUB and the older then rejected: the stale catch reset
+		// the shared config to null while configLoaded stayed true,
+		// pinning SUB for every later run with no retry. With a
+		// SHARED load there is one in-flight getConfig for the pair;
+		// its failure leaves configLoaded false, so the next run
+		// reloads and picks up the DUB config.
+		const first = defer<Config | null>();
+		const second = defer<Config | null>();
+		const getConfig = vi
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const modes: string[] = [];
+		const h = makeHarness({
+			getConfig,
+			kitsuSearch: vi.fn().mockResolvedValue([ref('hit')]),
+			pickMode: (c) => ((c as unknown as { mode: 'dub' } | null)?.mode === 'dub' ? 'dub' : 'sub'),
+			filter: vi.fn().mockImplementation(async (items, mode, emit) => {
+				modes.push(mode);
+				emit(items);
+			})
+		});
+		const runner = createSearchRunner(h.deps);
+
+		const run1 = runner.run('a');
+		const run2 = runner.run('b');
+		// The would-be second load resolves DUB before the first
+		// rejects — the exact interleaving that used to clobber.
+		second.resolve({ mode: 'dub' } as unknown as Config);
+		await Promise.resolve();
+		first.reject(new Error('stale load failed'));
+		await run1;
+		await run2;
+
+		// A later run must not be pinned to the fallback: it reloads
+		// and filters with the DUB config.
+		await runner.run('c');
+		expect(modes.at(-1)).toBe('dub');
 	});
 });
