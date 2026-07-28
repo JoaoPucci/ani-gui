@@ -1650,6 +1650,76 @@ mod tests {
         }
     }
 
+    proptest::proptest! {
+        /// An absolute shebang round-trips: the interpreter and every
+        /// trailing word come back in order, whatever spacing the
+        /// script used. `#!/usr/bin/env bash` only works because the
+        /// trailing words survive, and the examples above can only
+        /// afford to spell a handful of them.
+        #[test]
+        fn an_absolute_shebang_round_trips(
+            dirs in proptest::collection::vec("[a-z][a-z0-9_.-]{0,7}", 1..4),
+            args in proptest::collection::vec("[a-z][a-z0-9_-]{0,7}", 0..3),
+            lead in "[ \t]{0,3}",
+            gaps in proptest::collection::vec("[ \t]{1,3}", 3),
+            rest in "[a-z \n]{0,30}",
+        ) {
+            let interp = format!("/{}", dirs.join("/"));
+            let mut line = format!("#!{lead}{interp}");
+            for (i, a) in args.iter().enumerate() {
+                line.push_str(&gaps[i % gaps.len()]);
+                line.push_str(a);
+            }
+            let mut want = vec![interp];
+            want.extend(args.iter().cloned());
+            proptest::prop_assert_eq!(snapshot_interpreter(&format!("{line}\n{rest}")), want);
+        }
+
+        /// The invariant the spawn depends on, over ANY input: the
+        /// argv is never empty and its program is always absolute.
+        /// `download_command` hands element 0 to `Command::new`, so a
+        /// relative program would be resolved through PATH or the
+        /// working directory — driven by a string in a file the
+        /// auto-updater rewrites.
+        #[test]
+        fn the_interpreter_is_always_an_absolute_program(contents in "(?s).{0,80}") {
+            let argv = snapshot_interpreter(&contents);
+            proptest::prop_assert!(!argv.is_empty());
+            proptest::prop_assert!(
+                argv[0].starts_with('/'),
+                "program {:?} would be resolved through PATH",
+                argv[0]
+            );
+        }
+
+        /// No `#!` marker at all: whatever the first line says, it is
+        /// script text rather than a declaration, and the fallback is
+        /// the whole answer.
+        #[test]
+        fn a_file_without_a_shebang_falls_back(first in "[^#\n][^\n]{0,30}", rest in "[a-z \n]{0,30}") {
+            proptest::prop_assert_eq!(
+                snapshot_interpreter(&format!("{first}\n{rest}")),
+                vec!["/bin/sh".to_string()]
+            );
+        }
+
+        /// A shebang naming something that is not an absolute path —
+        /// a bare `bash`, a `./local` — is refused rather than
+        /// resolved. This is the direction that matters: resolving it
+        /// is what turns a rewritten script into a chosen program.
+        #[test]
+        fn a_non_absolute_shebang_is_refused(
+            name in "[a-z.][a-z0-9_./-]{0,12}",
+            rest in "[a-z \n]{0,30}",
+        ) {
+            proptest::prop_assume!(!name.starts_with('/'));
+            proptest::prop_assert_eq!(
+                snapshot_interpreter(&format!("#!{name}\n{rest}")),
+                vec!["/bin/sh".to_string()]
+            );
+        }
+    }
+
     /// A script that loads a sibling relative to itself — the shape
     /// `. "$(dirname "$0")/helpers.sh"` — breaks if the snapshot is
     /// staged in an unrelated directory, and breaks on downloads
