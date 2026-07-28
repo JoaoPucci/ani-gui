@@ -25,7 +25,6 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     // followed by an unconditional hard ffmpeg requirement later in
     // the same arm still requires ffmpeg, so the grant is decided at
     // arm close, not at the first invocation seen.
-    const HARD_FFMPEG: [&str; 3] = [r#"dep_ch "ffmpeg""#, "dep_ch 'ffmpeg'", "dep_ch ffmpeg"];
     let mut saw_failover = false;
     let mut saw_hard_ffmpeg = false;
     let mut scan = ShellScan::default();
@@ -121,7 +120,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 // requiring ffmpeg, which every script satisfies.
                 if case_owners.len() == level && rest.starts_with(INVOCATION) {
                     saw_failover = true;
-                } else if HARD_FFMPEG.iter().any(|hard| rest.contains(hard)) {
+                } else if mentions_hard_ffmpeg(rest) {
                     saw_hard_ffmpeg = true;
                 }
             }
@@ -129,6 +128,55 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     }
     // A script ending with the arm still open decides the same way.
     saw_failover && !saw_hard_ffmpeg
+}
+
+/// Whether a statement piece hard-requires ffmpeg — `dep_ch` called
+/// with `ffmpeg` as its first argument.
+///
+/// Matched by shape rather than by literal string: the script is
+/// cached, auto-updated and user-editable, so any shell-valid
+/// spacing (`dep_ch  "ffmpeg"`, `dep_ch\t'ffmpeg'`, `dep_ch ffmpeg`)
+/// has to read as the same requirement. Missing one would grant
+/// yt-dlp capability on a script that still exits at its own hard
+/// check.
+///
+/// The `dep_ch` occurrence must start on a word boundary, so
+/// `dep_ch_failover` (whose next byte is `_`, not whitespace) and a
+/// distinct command like `my_dep_ch` are both excluded; the argument
+/// may be single-quoted, double-quoted or bare, and must end at its
+/// quote or a word boundary so `ffmpeg-bin` doesn't count.
+fn mentions_hard_ffmpeg(rest: &str) -> bool {
+    const NAME: &str = "dep_ch";
+    let bytes = rest.as_bytes();
+    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    rest.match_indices(NAME).any(|(at, _)| {
+        if at > 0 && is_word(bytes[at - 1]) {
+            return false;
+        }
+        let mut i = at + NAME.len();
+        // At least one space or tab must separate name from argument.
+        let ws_start = i;
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i == ws_start {
+            return false;
+        }
+        let quote = bytes.get(i).copied().filter(|b| *b == b'"' || *b == b'\'');
+        if quote.is_some() {
+            i += 1;
+        }
+        if !rest[i..].starts_with("ffmpeg") {
+            return false;
+        }
+        let after = bytes.get(i + "ffmpeg".len()).copied();
+        match (quote, after) {
+            (Some(q), Some(b)) => b == q,
+            (Some(_), None) => false,
+            (None, Some(b)) => !is_word(b),
+            (None, None) => true,
+        }
+    })
 }
 
 /// Whether a raw line opens a function definition at column 0 —
