@@ -14,7 +14,8 @@
 		"check:watch": "svelte-kit sync && pnpm i18n:compile && svelte-check --tsconfig ./tsconfig.json --watch",
 		"i18n:compile": "node tools/build-messages.mjs && paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
 		"test": "pnpm i18n:compile && vitest run",
-		"test:watch": "vitest",
+		"test:coverage": "pnpm i18n:compile && vitest run --coverage",
+		"test:watch": "pnpm i18n:compile && vitest",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"prepare": "lefthook install -f"

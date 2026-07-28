@@ -109,7 +109,10 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate frontend lcov
         working-directory: gui/frontend
-        run: pnpm exec vitest run --coverage
+        # Through the script, not `pnpm exec vitest` — the merged locale
+        # bundles are generated and uncommitted, so the runner has to
+        # compile i18n before the suite can call any message function.
+        run: pnpm run test:coverage
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Compute CRAP
