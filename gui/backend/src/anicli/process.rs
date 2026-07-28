@@ -617,21 +617,32 @@ impl StagedScript {
 /// through PATH or the working directory — that lookup would be
 /// driven by a string in a file the auto-updater rewrites, which is a
 /// worse outcome than running a `sh`-compatible script under `sh`.
-/// Trailing words are kept so the `#!/usr/bin/env bash` form works.
+/// The tail is kept so the `#!/usr/bin/env bash` form works, and kept
+/// WHOLE: Linux's `fs/binfmt_script.c` takes the first blank-delimited
+/// word as the interpreter and passes everything after it as a single
+/// argument, doing no tokenizing of its own. Splitting it here would
+/// break `#!/usr/bin/env -S bash -O 'extglob'`, where `env` is the one
+/// that splits the string and strips the quotes.
 fn snapshot_interpreter(contents: &str) -> Vec<String> {
     const DEFAULT: &str = "/bin/sh";
+    const BLANK: [char; 2] = [' ', '\t'];
     let fallback = || vec![DEFAULT.to_string()];
     let Some(shebang) = contents.lines().next().and_then(|l| l.strip_prefix("#!")) else {
         return fallback();
     };
-    let mut words = shebang.split_whitespace();
-    match words.next() {
-        Some(path) if path.starts_with('/') => std::iter::once(path)
-            .chain(words)
-            .map(str::to_string)
-            .collect(),
-        _ => fallback(),
+    let line = shebang.trim_matches(BLANK);
+    let (path, tail) = match line.find(BLANK) {
+        Some(i) => (&line[..i], line[i..].trim_start_matches(BLANK)),
+        None => (line, ""),
+    };
+    if !path.starts_with('/') {
+        return fallback();
     }
+    let mut argv = vec![path.to_string()];
+    if !tail.is_empty() {
+        argv.push(tail.to_string());
+    }
+    argv
 }
 
 /// Build the download spawn. A staged snapshot runs THROUGH its
