@@ -395,3 +395,35 @@ describe('first paint releases before availability (render-then-refine)', () => 
 		expect(result.playableCounts).toEqual({});
 	});
 });
+
+it('forwards approximate provenance from the background probe', async () => {
+	// The backend marks a count that came from the search hit rather
+	// than the detail fetch. Dropping that flag here makes the page
+	// record the cap as exact, so the click skips revalidation and can
+	// still advance to a phantom episode.
+	const entry = makeEntry('hist-a', '5', 'Show A');
+	const match = makeMatch('k-a', 24);
+	const onRowReady = vi.fn();
+	await loadContinueWatchingState([entry], {
+		resolveMatch: vi.fn().mockResolvedValue(match),
+		fetchAvailability: vi
+			.fn()
+			.mockResolvedValue({ episode_count: 13, episode_count_approximate: true }),
+		getMode: subMode,
+		onRowReady
+	});
+	expect(onRowReady).toHaveBeenCalledWith('hist-a', match, 13, true);
+});
+
+it('reports an exact background count as exact', async () => {
+	const entry = makeEntry('hist-b', '5', 'Show B');
+	const match = makeMatch('k-b', 24);
+	const onRowReady = vi.fn();
+	await loadContinueWatchingState([entry], {
+		resolveMatch: vi.fn().mockResolvedValue(match),
+		fetchAvailability: vi.fn().mockResolvedValue({ episode_count: 12 }),
+		getMode: subMode,
+		onRowReady
+	});
+	expect(onRowReady).toHaveBeenCalledWith('hist-b', match, 12, false);
+});

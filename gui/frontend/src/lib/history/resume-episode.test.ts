@@ -241,3 +241,30 @@ describe('an approximate cap is never trusted', () => {
 		expect(r.count).toBe(13);
 	});
 });
+
+describe('an interactive lookup that is itself approximate', () => {
+	// The interactive lane bypasses the gate, but its detail fetch can
+	// still fail — the backend then returns the search-hit count
+	// marked approximate. Collapsing that to a bare number lets the
+	// page record it as exact, so this click can advance to a phantom
+	// AND every later click trusts the same cap.
+	it('reports an approximate lookup result as approximate', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount);
+		expect(r.count).toBe(13);
+		expect(r.approximate).toBe(true);
+	});
+
+	it('reports a confirmed lookup result as exact', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount);
+		expect(r.episode).toBe(12);
+		expect(r.approximate).toBe(false);
+	});
+
+	it('a revalidation that comes back approximate stays approximate', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r.approximate).toBe(true);
+	});
+});
