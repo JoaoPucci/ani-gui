@@ -82,8 +82,8 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 saw_hard_ffmpeg = false;
             }
             let mut rest = segment.trim_start();
-            if let Some(after_case) = rest.strip_prefix("case ") {
-                let (subject, tail) = after_case.split_once(" in").unwrap_or((after_case, ""));
+            if let Some(after_case) = strip_keyword(rest, "case") {
+                let (subject, tail) = split_at_in(after_case);
                 case_owners.push(expands_player_function(subject));
                 rest = tail.trim_start();
             }
@@ -237,6 +237,38 @@ fn mentions_hard_ffmpeg(rest: &str) -> bool {
             (None, None) => true,
         }
     })
+}
+
+/// The text after a leading shell keyword, or `None` if the piece
+/// doesn't open with that keyword as a whole word. Shell keywords are
+/// separated from what follows by BLANKS — one or more spaces or tabs
+/// — so a literal `"case "` prefix would miss `case\t"$x" in`, valid
+/// shell and the shape this repo's own tab indentation produces.
+fn strip_keyword<'a>(piece: &'a str, keyword: &str) -> Option<&'a str> {
+    let after = piece.strip_prefix(keyword)?;
+    let trimmed = after.trim_start_matches([' ', '\t']);
+    (trimmed.len() < after.len()).then_some(trimmed)
+}
+
+/// Splits a `case` statement's subject from whatever follows its `in`
+/// keyword. `in` must stand as its own blank-delimited word, so a
+/// subject that merely contains the letters (`case "$x_in_y" in`)
+/// doesn't split early. No `in` on this piece means the keyword is
+/// still to come on a later line — the subject is the whole piece and
+/// the tail is empty.
+fn split_at_in(after_case: &str) -> (&str, &str) {
+    let bytes = after_case.as_bytes();
+    let is_blank = |b: u8| b == b' ' || b == b'\t';
+    for (at, _) in after_case.match_indices("in") {
+        let before_is_blank = at > 0 && is_blank(bytes[at - 1]);
+        let after_ends_word = bytes
+            .get(at + 2)
+            .is_none_or(|b| is_blank(*b) || *b == b';' || *b == b'\n');
+        if before_is_blank && after_ends_word {
+            return (&after_case[..at], &after_case[at + 2..]);
+        }
+    }
+    (after_case, "")
 }
 
 /// Byte offsets in a statement piece where a command word may begin:
