@@ -1137,3 +1137,68 @@ proptest::proptest! {
         proptest::prop_assert!(yt_dlp_could_not_repackage(&line));
     }
 }
+
+/// When the guard fires, the mislabeled file yt-dlp already wrote is
+/// still on disk under an `.mp4` name. Reporting failure and leaving
+/// it there is the worst of both: the user is told the download
+/// failed and still finds something that looks like the episode.
+///
+/// Deleting is bounded two ways so it can never eat a good file. Only
+/// entries that appeared DURING this download are considered, and of
+/// those only the ones whose own first byte says MPEG-TS. A concurrent
+/// download's finished MP4 fails the second test; a pre-existing file
+/// fails the first.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_repackage_removes_only_the_files_it_produced() {
+    let _guard = ENV_LOCK.lock().await;
+    let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+
+    // Pre-existing: a real MP4 the user already had, and a stray TS
+    // from some earlier run. Neither appeared during THIS download.
+    let untouched_mp4 = dl_dir.path().join("Old Episode 1.mp4");
+    std::fs::write(&untouched_mp4, b"\x00\x00\x00\x20ftypisom").expect("write");
+    let untouched_ts = dl_dir.path().join("Old Episode 2.mp4");
+    std::fs::write(&untouched_ts, b"\x47\x40\x11\x10").expect("write");
+
+    // The stub writes one good file and one mislabeled one, then
+    // emits yt-dlp's warning and exits 0.
+    std::fs::write(
+        &opts.ani_cli_path,
+        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '\\0\\0\\0 ftypisom' >\"$ANI_CLI_DOWNLOAD_DIR/New Good.mp4\"\nprintf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/New Bad.mp4\"\nprintf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\nexit 0\n",
+    )
+    .expect("rewrite stub");
+
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+    assert!(matches!(r, Err(AniError::FfmpegMissing)), "got {r:?}");
+
+    assert!(
+        !dl_dir.path().join("New Bad.mp4").exists(),
+        "the mislabeled file this download produced must be removed"
+    );
+    assert!(
+        dl_dir.path().join("New Good.mp4").exists(),
+        "a real MP4 from the same run is not mislabeled and stays"
+    );
+    assert!(
+        untouched_mp4.exists(),
+        "a pre-existing MP4 is never touched"
+    );
+    assert!(
+        untouched_ts.exists(),
+        "a pre-existing stray is not ours to delete"
+    );
+}
