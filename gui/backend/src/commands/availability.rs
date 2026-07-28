@@ -883,6 +883,47 @@ mod tests {
     /// that touches Kitsu / allmanga / fs would error out (the
     /// `kitsu_base` is unreachable on purpose), but those paths
     /// aren't exercised here.
+    /// The state-level allanime override has to reach the public
+    /// entry point, not just the `_with_base` one tests call directly.
+    /// `check_availability` hard-coded `None` the same way
+    /// `pick_title_and_index` did, so an `AppState` pointed at a stub
+    /// still sent this endpoint's search to the real API — the exact
+    /// hole the override exists to close, left open on the caller that
+    /// fires on every detail-page mount and every rail warm.
+    #[tokio::test]
+    async fn check_availability_honours_the_state_level_override() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": {"shows": {"edges": []}}
+                })),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("tempdir");
+        let mut state = cache_only_state(&td);
+        state.allanime_base = Some(server.uri());
+
+        let args = AvailabilityArgs {
+            title: "Anything".into(),
+            mode: "sub".into(),
+            alt_titles: Vec::new(),
+            episode_count: None,
+            year: None,
+            kitsu_id: None,
+            status: None,
+            background: false,
+        };
+        let _ = check_availability(&state, &args).await;
+
+        let hits = server.received_requests().await.expect("recorded").len();
+        assert!(
+            hits >= 1,
+            "the search must reach the state's stub, saw {hits} requests"
+        );
+    }
+
     fn cache_only_state(td: &tempfile::TempDir) -> AppState {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
