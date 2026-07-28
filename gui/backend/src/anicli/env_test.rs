@@ -921,3 +921,59 @@ proptest::proptest! {
         proptest::prop_assert!(matches!(none, Err(AniError::FfmpegMissing)));
     }
 }
+
+proptest::proptest! {
+    /// The mapping IS the recognizer, and nothing else. Over generated
+    /// version shapes and arm presence, `download_tool_names` grants
+    /// yt-dlp exactly when `supports_ytdlp_download` says the active
+    /// script accepts it — never on its own reading of the text.
+    ///
+    /// Stated as an equivalence rather than a re-implementation: the
+    /// two could drift apart silently, since both return something
+    /// plausible for every input and the examples only spell a handful
+    /// of shapes.
+    #[test]
+    fn tool_names_grant_ytdlp_exactly_when_the_script_is_recognized(
+        major in 0u32..12,
+        minor in 0u32..40,
+        with_arm in proptest::bool::ANY,
+        noise in proptest::collection::vec("[a-z ]{0,20}", 0..4),
+    ) {
+        let arm = if with_arm {
+            "case \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\n"
+        } else {
+            "case \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n"
+        };
+        let script = format!(
+            "#!/bin/sh\nversion_number=\"{major}.{minor}.0\"\n{arm}{}\n",
+            noise.join("\n")
+        );
+        let names = download_tool_names(&script);
+        let ytdlp = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+        proptest::prop_assert_eq!(
+            names.contains(&ytdlp),
+            supports_ytdlp_download(&script)
+        );
+    }
+
+    /// ffmpeg is in the set for EVERY script, recognized or not — it
+    /// is the tool every version of the download arm accepts, and the
+    /// preflight would otherwise reject a machine that can in fact
+    /// download. The names also stay platform-correct: a `.exe` suffix
+    /// on Windows and none elsewhere, never a mix.
+    #[test]
+    fn tool_names_always_offer_ffmpeg_with_platform_correct_spelling(
+        script in "(?s).{0,120}",
+    ) {
+        let names = download_tool_names(&script);
+        let ffmpeg = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        proptest::prop_assert!(names.contains(&ffmpeg), "got {:?}", names);
+        proptest::prop_assert!(!names.is_empty());
+        let exe_expected = cfg!(windows);
+        proptest::prop_assert!(
+            names.iter().all(|n| n.ends_with(".exe") == exe_expected),
+            "mixed platform spelling: {:?}",
+            names
+        );
+    }
+}
