@@ -69,6 +69,12 @@ pub struct AppState {
     pub botan_shim_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
+    /// Base URL for allanime scraper calls. `None` in production,
+    /// which means the real API. Tests set it to a local stub so the
+    /// disambiguation search never leaves the machine — a live search
+    /// inside an integration test turns a throttled IP into a red
+    /// `cargo test` on an unrelated diff.
+    pub allanime_base: Option<String>,
     /// Admission gate for allanime scraper traffic: paces background
     /// probes and breaks the circuit on consecutive failures so cold
     /// caches can't rate-limit the IP out from under a user's click.
@@ -173,6 +179,7 @@ impl AppState {
             bundled_bin,
             botan_shim_bin,
             history_path,
+            allanime_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
@@ -309,6 +316,7 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
+            allanime_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

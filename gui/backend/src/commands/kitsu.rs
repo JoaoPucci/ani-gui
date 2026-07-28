@@ -602,7 +602,12 @@ pub async fn resolve_allmanga_show_id(
         return Ok(None);
     }
     let started_at = tokio::time::Instant::now();
-    let fetched = crate::scraper::allanime::fetch_show(&state.meta_http, show_id, None).await;
+    let fetched = crate::scraper::allanime::fetch_show(
+        &state.meta_http,
+        show_id,
+        state.allanime_base.as_deref(),
+    )
+    .await;
     state
         .scraper_gate
         .record(crate::scraper::gate::outcome_of(&fetched), started_at);
@@ -781,6 +786,7 @@ mod tests {
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
+            allanime_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
