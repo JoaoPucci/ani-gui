@@ -100,7 +100,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 continue;
             }
             if in_branch.is_none() {
-                match rest.strip_prefix("download)") {
+                match strip_case_pattern(rest, "download") {
                     Some(after) if case_owners.last() == Some(&true) => {
                         in_branch = Some(case_owners.len());
                         rest = after.trim_start();
@@ -237,6 +237,25 @@ fn mentions_hard_ffmpeg(rest: &str) -> bool {
             (None, None) => true,
         }
     })
+}
+
+/// The text after a case item's `<pattern>)`, or `None` if the piece
+/// does not open that arm.
+///
+/// POSIX allows the item to be written `(pattern)` as well as
+/// `pattern)`, and both `sh` and bash accept it, so the opening paren
+/// is case-item syntax rather than part of the pattern. Blanks may
+/// sit inside the parens. The closing `)` is still required, which
+/// keeps the match on a whole word: `downloadfoo)` does not open the
+/// download arm.
+fn strip_case_pattern<'a>(piece: &'a str, pattern: &str) -> Option<&'a str> {
+    let head = piece
+        .strip_prefix('(')
+        .unwrap_or(piece)
+        .trim_start_matches([' ', '\t']);
+    head.strip_prefix(pattern)?
+        .trim_start_matches([' ', '\t'])
+        .strip_prefix(')')
 }
 
 /// The text after a leading shell keyword, or `None` if the piece
