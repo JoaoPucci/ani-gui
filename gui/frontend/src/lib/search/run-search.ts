@@ -36,27 +36,37 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	run: (q: string) => Promise<void>;
 } {
 	let generation = 0;
-	// Config is cached only after a SUCCESSFUL load. A rejected load
-	// falls back to null for that run and retries on the next one —
-	// a deeplink's first run can race the mount's settings request
-	// and lose, and pinning that failure would keep a DUB user on
-	// the 'sub' fallback for the whole mount.
+	// Config is cached only after a SUCCESSFUL load, and the load is
+	// SHARED: concurrent runs await one in-flight getConfig instead
+	// of racing their own. Both properties close the same trap — a
+	// failure (a deeplink run losing the race to the mount's settings
+	// request, or a stale concurrent load rejecting after a newer one
+	// succeeded) must never pin the 'sub' fallback for the mount; the
+	// next run simply loads again.
 	let config: Config | null = null;
 	let configLoaded = false;
+	let configInFlight: Promise<void> | null = null;
+
+	const loadConfigOnce = () => {
+		configInFlight ??= deps
+			.getConfig()
+			.then((c) => {
+				config = c;
+				configLoaded = true;
+			})
+			.catch(() => {})
+			.finally(() => {
+				configInFlight = null;
+			});
+		return configInFlight;
+	};
 
 	const run = async (q: string) => {
 		const gen = ++generation;
 		const current = () => gen === generation;
 		deps.onBusy(true);
 		try {
-			if (!configLoaded) {
-				try {
-					config = await deps.getConfig();
-					configLoaded = true;
-				} catch {
-					config = null;
-				}
-			}
+			if (!configLoaded) await loadConfigOnce();
 			const raw = await deps.kitsuSearch(q);
 			await deps.filter(raw, deps.pickMode(config), (visible) => {
 				if (!current()) return;
