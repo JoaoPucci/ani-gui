@@ -75,6 +75,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
+	import { resolveResumeEpisode } from '$lib/history/resume-episode';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
@@ -542,8 +543,8 @@
 	 *  returns home (where the user came from) instead of dropping
 	 *  them on the detail view with a stale highlight ring. */
 	async function startResume(
+		entry: HistoryEntry,
 		match: KitsuAnimeRef,
-		ep: number,
 		seriesTotal: number | null,
 		seriesFinished: boolean
 	) {
@@ -552,6 +553,28 @@
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		// The click, not the template, owns the episode choice: a card
+		// released before its background probe landed only knows
+		// Kitsu's announced count, which can overshoot the real cap
+		// (lagging dub). resolveResumeEpisode uses the probed cap when
+		// it's in, and otherwise pays one interactive cache-first
+		// lookup under the resume spinner — so the episode forwarded
+		// to playStream is picked against the true playable cap, not
+		// the optimistic one the badge rendered with.
+		resumeBusy = match.id;
+		resumeProgress = null;
+		const lastWatchedRaw = parseInt(entry.ep_no, 10);
+		const { episode: ep, count: liveCount } = await resolveResumeEpisode(
+			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
+			historyPlayableCounts[entry.id] ?? null,
+			match.episode_count ?? null,
+			() =>
+				makeFetchAvailability(checkAvailability)(match, mode).then((r) => r?.episode_count ?? null)
+		);
+		if (typeof liveCount === 'number') {
+			// Keep the badge/cap in sync with what the click learned.
+			historyPlayableCounts = { ...historyPlayableCounts, [entry.id]: liveCount };
+		}
 		// Persistent-PiP short-circuit: if the singleton is still
 		// loaded for this exact (show, ep) AT THE SAME quality + mode,
 		// skip the ani-cli respawn and navigate using the cached session
@@ -585,8 +608,6 @@
 			/* eslint-enable svelte/no-navigation-without-resolve */
 			return;
 		}
-		resumeBusy = match.id;
-		resumeProgress = null;
 		try {
 			const session = await getOrFire(
 				makeKey(match.id, ep, mode, quality),
@@ -891,12 +912,7 @@
 						style="--accent: {accent};"
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(
-								match,
-								nextEpisode,
-								match?.episode_count ?? null,
-								match?.status === 'finished'
-							)}
+							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
 					>
 						<span class="resume-poster">
 							{#if image}
