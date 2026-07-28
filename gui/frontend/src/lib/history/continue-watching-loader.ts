@@ -41,9 +41,9 @@ export interface ContinueWatchingLoaderDeps {
 	/**
 	 * Max concurrent live probes. allmanga is rate-limited, and the
 	 * backend's `warm` path spaces equivalent probes by 500ms while
-	 * `filterAvailableStrict` caps inline probes at 4. Default 4 here
-	 * matches both. Bumping it speeds up reveal for users with many
-	 * cards at the cost of higher allmanga load.
+	 * `filterAvailableProgressive` caps inline probes at 4. Default 4
+	 * here matches both. Bumping it speeds up reveal for users with
+	 * many cards at the cost of higher allmanga load.
 	 */
 	probeConcurrency?: number;
 }
