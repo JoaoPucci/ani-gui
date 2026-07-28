@@ -1599,4 +1599,52 @@ mod tests {
             );
         }
     }
+
+    /// A script that loads a sibling relative to itself — the shape
+    /// `. "$(dirname "$0")/helpers.sh"` — breaks if the snapshot is
+    /// staged in an unrelated directory, and breaks on downloads
+    /// ONLY, since search and playback still execute the live path.
+    /// Staging beside the live script keeps `$0`'s directory correct.
+    #[test]
+    fn a_snapshot_is_staged_beside_the_live_script() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let live = td.path().join("ani-cli");
+        std::fs::write(&live, b"#!/bin/sh\nexit 0\n").expect("live script");
+        let staged = stage_script_snapshot("#!/bin/sh\nexit 0\n", &live).expect("stage");
+        assert_eq!(
+            staged.path().parent(),
+            Some(td.path()),
+            "the snapshot must sit in the live script's directory"
+        );
+        assert_ne!(staged.path(), live, "and must not overwrite the live script");
+        let path = staged.path().to_path_buf();
+        drop(staged);
+        assert!(!path.exists(), "the staged copy is removed when it is dropped");
+    }
+
+    /// A packaged install can have its script in a read-only
+    /// directory, so staging beside it has to degrade rather than
+    /// fail the download. The temp-dir copy loses `$0`-relative
+    /// resource loading, which is the pre-existing behaviour.
+    #[test]
+    fn a_read_only_script_directory_falls_back_to_a_temp_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let td = tempfile::tempdir().expect("tempdir");
+        let dir = td.path().join("ro");
+        std::fs::create_dir(&dir).expect("mkdir");
+        let live = dir.join("ani-cli");
+        std::fs::write(&live, b"#!/bin/sh\nexit 0\n").expect("live script");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+
+        let staged = stage_script_snapshot("#!/bin/sh\nexit 0\n", &live).expect("stage");
+        assert_ne!(
+            staged.path().parent(),
+            Some(dir.as_path()),
+            "a read-only directory must not block the download"
+        );
+        assert!(staged.path().exists(), "the fallback copy is still readable");
+
+        // Restore write permission so the tempdir can clean up.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
 }
