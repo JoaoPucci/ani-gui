@@ -31,12 +31,18 @@ A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be
 **Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
 
 ```sh
-git cat-file -t <cited-sha>                  # unresolvable → you are describing the preview, not a commit
-git log --format='%h %p %s' <branch-head>    # the real pairing: each green's parent is its red
-git merge-base --is-ancestor <fix> <test>    # succeeds → the fix really did precede its test
+git cat-file -t <cited-sha>                        # unresolvable → you are describing the preview, not a commit
+git log --format='%h %p %s' master..<branch-head>  # the real pairing: each green's parent is its red
+git log --grep '^test(red)' master..<branch-head>  # the branch's red commits, if any
+git merge-base --is-ancestor <fix> <test>          # succeeds → the fix really did precede its test
 ```
 
-A finding survives only if the cited object resolves **and** the ancestry check confirms the fix precedes its test. Both outcomes happen: real green-before-red defects have been found this way, and so have repeated preview artifacts citing ids absent from the repository.
+A finding is actionable on either path:
+
+- **Mis-ordered pair** — the cited objects resolve and `--is-ancestor <fix> <test>` succeeds, so a green landed before the red that specifies it.
+- **No red at all** — the `--grep` listing over `master..<branch-head>` shows the branch has no `test(red)` commit covering the behavior the `feat`/`fix` introduced. There is no `<test>` sha to compare in this case, and none is required.
+
+Both outcomes are real. A green-before-red defect has been confirmed this way; so have repeated preview artifacts citing ids absent from the repository. What is never sufficient on its own is a claim about an object that does not resolve.
 
 Per layer:
 
