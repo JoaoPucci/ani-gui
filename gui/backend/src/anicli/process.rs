@@ -548,11 +548,57 @@ fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)
 /// it is READ by the shell interpreter, never exec(2)'d, so a
 /// `noexec` temp mount cannot break it. The returned `TempDir` owns
 /// the snapshot for the download's lifetime.
-fn stage_script_snapshot(contents: &str) -> std::io::Result<(tempfile::TempDir, PathBuf)> {
+fn stage_script_snapshot(contents: &str, live_path: &Path) -> std::io::Result<StagedScript> {
+    // Beside the live script first: a script that loads a sibling
+    // relative to itself resolves `$(dirname "$0")` to the same
+    // directory it would have under a direct execution. The name is
+    // dotted and pid-tagged so it cannot collide with the script
+    // itself or with a concurrent download.
+    if let Some(dir) = live_path.parent() {
+        let name = format!(".ani-cli-snapshot-{}", std::process::id());
+        let path = dir.join(name);
+        if std::fs::write(&path, contents).is_ok() {
+            return Ok(StagedScript::BesideLive(path));
+        }
+    }
+    // A packaged install can ship its script in a read-only
+    // directory. Degrade rather than fail the download: the temp copy
+    // loses `$0`-relative resource loading, which is what shipped
+    // before staging was directory-aware.
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("ani-cli");
     std::fs::write(&path, contents)?;
-    Ok((dir, path))
+    Ok(StagedScript::Temp { _dir: dir, path })
+}
+
+/// Owns the staged snapshot for the download's lifetime. A temp-dir
+/// copy is cleaned up by the `TempDir`; a copy written beside the
+/// live script has to be removed explicitly, since that directory
+/// outlives the download.
+enum StagedScript {
+    BesideLive(PathBuf),
+    Temp {
+        /// Held only for its `Drop`, which removes the directory.
+        _dir: tempfile::TempDir,
+        path: PathBuf,
+    },
+}
+
+impl StagedScript {
+    fn path(&self) -> &Path {
+        match self {
+            Self::BesideLive(p) => p,
+            Self::Temp { path, .. } => path,
+        }
+    }
+}
+
+impl Drop for StagedScript {
+    fn drop(&mut self) {
+        if let Self::BesideLive(p) = self {
+            let _ = std::fs::remove_file(p);
+        }
+    }
 }
 
 /// The interpreter argv a snapshot must run under, taken from its own
@@ -640,10 +686,10 @@ where
     let script_contents = std::fs::read_to_string(&opts.ani_cli_path).ok();
     let snapshot = script_contents
         .as_deref()
-        .and_then(|contents| stage_script_snapshot(contents).ok());
+        .and_then(|contents| stage_script_snapshot(contents, &opts.ani_cli_path).ok());
     let spawn_path = snapshot
         .as_ref()
-        .map_or(opts.ani_cli_path.clone(), |(_, path)| path.clone());
+        .map_or(opts.ani_cli_path.clone(), |s| s.path().to_path_buf());
 
     // Only a snapshot needs the explicit interpreter — the live path
     // still exec(2)'s normally, where the kernel reads the shebang
@@ -1616,10 +1662,17 @@ mod tests {
             Some(td.path()),
             "the snapshot must sit in the live script's directory"
         );
-        assert_ne!(staged.path(), live, "and must not overwrite the live script");
+        assert_ne!(
+            staged.path(),
+            live,
+            "and must not overwrite the live script"
+        );
         let path = staged.path().to_path_buf();
         drop(staged);
-        assert!(!path.exists(), "the staged copy is removed when it is dropped");
+        assert!(
+            !path.exists(),
+            "the staged copy is removed when it is dropped"
+        );
     }
 
     /// A packaged install can have its script in a read-only
@@ -1642,7 +1695,10 @@ mod tests {
             Some(dir.as_path()),
             "a read-only directory must not block the download"
         );
-        assert!(staged.path().exists(), "the fallback copy is still readable");
+        assert!(
+            staged.path().exists(),
+            "the fallback copy is still readable"
+        );
 
         // Restore write permission so the tempdir can clean up.
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
