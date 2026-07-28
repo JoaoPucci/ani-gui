@@ -37,7 +37,15 @@ export interface ContinueWatchingLoaderDeps {
 	 * the cap. No-match rows release with `(null, null)`. Optional —
 	 * callers that just want the final maps can skip it.
 	 */
-	onRowReady?: (entryId: string, match: KitsuAnimeRef | null, playableCount: number | null) => void;
+	onRowReady?: (
+		entryId: string,
+		match: KitsuAnimeRef | null,
+		playableCount: number | null,
+		/** True when the count came from the search hit rather than the
+		 *  detail fetch — it can run high, so the click must revalidate
+		 *  rather than treat it as a confirmed cap. */
+		approximate?: boolean
+	) => void;
 	/**
 	 * Max concurrent live probes. allmanga is rate-limited, and the
 	 * backend's `warm` path spaces equivalent probes by 500ms while
@@ -105,10 +113,15 @@ export async function loadContinueWatchingState(
 	let pendingProbes = 0;
 	let matchesPending = history.length;
 
-	const finalizeRow = (entryId: string, match: KitsuAnimeRef | null, count: number | null) => {
+	const finalizeRow = (
+		entryId: string,
+		match: KitsuAnimeRef | null,
+		count: number | null,
+		approximate = false
+	) => {
 		matches[entryId] = match;
 		if (typeof count === 'number') playableCounts[entryId] = count;
-		deps.onRowReady?.(entryId, match, count);
+		deps.onRowReady?.(entryId, match, count, approximate);
 	};
 
 	const maybeFinishLoad = () => {

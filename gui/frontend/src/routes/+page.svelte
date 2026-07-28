@@ -154,6 +154,12 @@
 	// total). Falls back to match?.episode_count when absent.
 	let historyPlayableCounts = $state<Record<string, number>>({});
 
+	// Entry ids whose stored cap came from the search hit rather than
+	// the detail fetch. Such a count can run high, so the resume click
+	// revalidates it instead of treating it as confirmed — provenance
+	// decides, not the episode's position.
+	let historyApproximateCaps = $state<Record<string, boolean>>({});
+
 	// One stable Map instance — refilled on each history load — so the
 	// component-scope rowReady handler (shared by the loader AND the
 	// resume click's cap refinement) always reads the live entries.
@@ -349,7 +355,13 @@
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
-					onRowReady: (id, m, count) => rowReady(id, m, capAuthority.resolveLoaderCount(id, count))
+					onRowReady: (id, m, count, approximate) => {
+						historyApproximateCaps = {
+							...historyApproximateCaps,
+							[id]: approximate === true
+						};
+						rowReady(id, m, capAuthority.resolveLoaderCount(id, count));
+					}
 				});
 			})
 			.catch(() => {
@@ -595,8 +607,13 @@
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		settingsLoaded: () => config !== null,
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
+		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c) => {
 			capAuthority.recordClickCap(id, c);
+			// A click-time cap comes from the interactive lane, which
+			// misses the approximate cache row and reaches the detail
+			// fetch, so it supersedes any earlier approximate marking.
+			historyApproximateCaps = { ...historyApproximateCaps, [id]: false };
 			const m = historyMatches[id];
 			if (m) rowReady(id, m, c);
 			else historyPlayableCounts = { ...historyPlayableCounts, [id]: c };

@@ -16,19 +16,23 @@
  * countless lookup falls back to Kitsu's count, which is exactly the
  * pre-probe behavior and no worse than the background probe failing.
  *
- * A cap the background probe already delivered is used as-is, with
- * one exception. That cap is not always exact: when the scraper gate
- * refuses the detail fetch the backend falls back to the search hit's
- * count and caches it, which runs one high for shows containing half
- * episodes. Standing on the boundary — where the next episode would
- * BE the cap — is the only position where that off-by-one changes the
- * answer, and it changes it into a phantom: a true finale of 12 under
- * an approximate cap of 13 would forward episode 13, which does not
- * exist. So the boundary is revalidated interactively (the lane that
- * is neither paced nor breaker-refused) and every other position
- * trusts the cap, because below it the next episode is strictly
- * inside the range either way. A failed revalidation keeps the
- * background cap rather than regressing to no cap at all.
+ * A cap the background probe delivered is used as-is only when the
+ * backend reports it as EXACT. When the scraper gate refuses the
+ * detail fetch, or that fetch fails, the count comes from the search
+ * hit instead — it counts half episodes as whole ones, so it runs
+ * high, and by an unbounded amount when a show carries several tags.
+ *
+ * Provenance rather than position decides. An earlier version
+ * revalidated only when the next episode was exactly the cap, which
+ * silently assumed the overcount was one; with two tags the phantom
+ * sits below the cap where that check never looks. So any approximate
+ * cap is revalidated interactively — the lane that is neither paced
+ * nor breaker-refused, and which now misses the cache, since the
+ * backend refuses to serve an approximate row.
+ *
+ * A failed revalidation keeps the approximate number rather than
+ * regressing to no cap at all. That is the residual case: it is the
+ * best figure available, and it is the behaviour that shipped.
  *
  * `readCap` exists because the caller's cap is a SNAPSHOT taken when
  * the click fired, and the background probe can land while the
@@ -45,16 +49,13 @@ export async function resolveResumeEpisode(
 	playableCount: number | null,
 	kitsuCount: number | null,
 	fetchCount: () => Promise<number | null>,
-	readCap?: () => number | null
+	readCap?: () => number | null,
+	playableCountApproximate = false
 ): Promise<{ episode: number; count: number | null }> {
+	if (typeof playableCount === 'number' && !playableCountApproximate) {
+		return { episode: pickNextEpisode(lastWatched, playableCount), count: playableCount };
+	}
 	if (typeof playableCount === 'number') {
-		const next = pickNextEpisode(lastWatched, playableCount);
-		// Only an ADVANCE onto the cap can be phantom. A replay of the
-		// cap — the user already sat at the last episode — is proof
-		// that episode exists, so it needs no confirmation.
-		if (next !== playableCount || next === lastWatched) {
-			return { episode: next, count: playableCount };
-		}
 		let confirmed: number | null;
 		try {
 			confirmed = await fetchCount();

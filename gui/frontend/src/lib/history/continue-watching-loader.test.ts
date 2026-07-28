@@ -389,7 +389,9 @@ describe('first paint releases before availability (render-then-refine)', () => 
 		});
 
 		expect(onRowReady).toHaveBeenCalledTimes(1);
-		expect(onRowReady).toHaveBeenCalledWith('hist-a', match, null);
+		// The trailing `false` is the provenance argument: a probe that
+		// produced no count produced no approximate count either.
+		expect(onRowReady).toHaveBeenCalledWith('hist-a', match, null, false);
 		expect(result.playableCounts).toEqual({});
 	});
 });
