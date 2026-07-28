@@ -10,13 +10,25 @@
  * episode-not-released error where the probed cap would have
  * replayed the last one.
  *
- * So the click resolves the cap itself: a cap the background probe
- * already delivered is used as-is (no extra fetch); an unknown cap
- * costs one interactive availability lookup — cache-first on the
- * backend, and the card's resume spinner is already up while it
- * runs; a failed or countless lookup falls back to Kitsu's count,
- * which is exactly the pre-probe behavior and no worse than the
- * background probe failing.
+ * So the click resolves the cap itself: an unknown cap costs one
+ * interactive availability lookup — cache-first on the backend, and
+ * the card's resume spinner is already up while it runs; a failed or
+ * countless lookup falls back to Kitsu's count, which is exactly the
+ * pre-probe behavior and no worse than the background probe failing.
+ *
+ * A cap the background probe already delivered is used as-is, with
+ * one exception. That cap is not always exact: when the scraper gate
+ * refuses the detail fetch the backend falls back to the search hit's
+ * count and caches it, which runs one high for shows containing half
+ * episodes. Standing on the boundary — where the next episode would
+ * BE the cap — is the only position where that off-by-one changes the
+ * answer, and it changes it into a phantom: a true finale of 12 under
+ * an approximate cap of 13 would forward episode 13, which does not
+ * exist. So the boundary is revalidated interactively (the lane that
+ * is neither paced nor breaker-refused) and every other position
+ * trusts the cap, because below it the next episode is strictly
+ * inside the range either way. A failed revalidation keeps the
+ * background cap rather than regressing to no cap at all.
  */
 
 import { pickNextEpisode } from '$lib/play/next-episode';
@@ -28,7 +40,21 @@ export async function resolveResumeEpisode(
 	fetchCount: () => Promise<number | null>
 ): Promise<{ episode: number; count: number | null }> {
 	if (typeof playableCount === 'number') {
-		return { episode: pickNextEpisode(lastWatched, playableCount), count: playableCount };
+		const next = pickNextEpisode(lastWatched, playableCount);
+		// Only an ADVANCE onto the cap can be phantom. A replay of the
+		// cap — the user already sat at the last episode — is proof
+		// that episode exists, so it needs no confirmation.
+		if (next !== playableCount || next === lastWatched) {
+			return { episode: next, count: playableCount };
+		}
+		let confirmed: number | null;
+		try {
+			confirmed = await fetchCount();
+		} catch {
+			confirmed = null;
+		}
+		const cap = confirmed ?? playableCount;
+		return { episode: pickNextEpisode(lastWatched, cap), count: cap };
 	}
 	let live: number | null;
 	try {
