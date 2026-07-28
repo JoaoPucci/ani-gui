@@ -1136,6 +1136,40 @@ proptest::proptest! {
         let line = format!("WARNING: Show: Possible MPEG-TS in MP4 container {tail}");
         proptest::prop_assert!(yt_dlp_could_not_repackage(&line));
     }
+
+    /// The marker only means anything on the line yt-dlp reports it
+    /// on. Everywhere else it is just text, and the text on those
+    /// lines is not ours: destinations and progress carry the show
+    /// title, which is whatever the provider named the entry. A show
+    /// called after the warning would otherwise fail every one of its
+    /// own downloads and have the finished file deleted underneath it.
+    #[test]
+    fn the_marker_in_ordinary_output_never_classifies(
+        prefix in r"\[(download|info|hlsnative|generic)\] [A-Za-z: ]{0,20}",
+        suffix in "[a-zA-Z0-9 .,'-]{0,40}",
+    ) {
+        let line = format!("{prefix}Possible MPEG-TS in MP4 container{suffix}");
+        proptest::prop_assert!(
+            !yt_dlp_could_not_repackage(&line),
+            "classified a non-warning line: {line}"
+        );
+    }
+}
+
+/// A show whose title happens to contain yt-dlp's warning sentence.
+/// Absurd as a title, ordinary as an input — the name comes from the
+/// provider, and the download path echoes it into progress output
+/// verbatim. Nothing about that run went wrong.
+#[test]
+fn a_title_echoed_into_progress_output_is_not_a_fixup_warning() {
+    let stderr = concat!(
+        "[download] Destination: /home/u/Possible MPEG-TS in MP4 container - 01.mp4\n",
+        "[download] 100% of 58.20KiB in 00:00:01 at 41.02KiB/s\n"
+    );
+    assert!(
+        !yt_dlp_could_not_repackage(stderr),
+        "a successful download must not be re-read as a failed repackage"
+    );
 }
 
 /// When the guard fires, the mislabeled file yt-dlp already wrote is
@@ -1144,10 +1178,10 @@ proptest::proptest! {
 /// failed and still finds something that looks like the episode.
 ///
 /// Deleting is bounded two ways so it can never eat a good file. Only
-/// entries that appeared DURING this download are considered, and of
-/// those only the ones whose own first byte says MPEG-TS. A concurrent
-/// download's finished MP4 fails the second test; a pre-existing file
-/// fails the first.
+/// the paths yt-dlp announced as this run's output are considered, and
+/// of those only the ones whose own first byte says MPEG-TS. A file
+/// this download wrote correctly fails the second test; anything it
+/// never claimed fails the first.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_failed_repackage_removes_only_the_files_it_produced() {
@@ -1162,11 +1196,12 @@ async fn a_failed_repackage_removes_only_the_files_it_produced() {
     let untouched_ts = dl_dir.path().join("Old Episode 2.mp4");
     std::fs::write(&untouched_ts, b"\x47\x40\x11\x10").expect("write");
 
-    // The stub writes one good file and one mislabeled one, then
-    // emits yt-dlp's warning and exits 0.
+    // The stub announces and writes one good file and one mislabeled
+    // one — both claimed by this run, so only the content check
+    // separates them — then emits yt-dlp's warning and exits 0.
     std::fs::write(
         &opts.ani_cli_path,
-        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '\\0\\0\\0 ftypisom' >\"$ANI_CLI_DOWNLOAD_DIR/New Good.mp4\"\nprintf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/New Bad.mp4\"\nprintf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\nexit 0\n",
+        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '%s\\n' \"[download] Destination: $ANI_CLI_DOWNLOAD_DIR/New Good.mp4\"\nprintf '\\0\\0\\0 ftypisom' >\"$ANI_CLI_DOWNLOAD_DIR/New Good.mp4\"\nprintf '%s\\n' \"[download] Destination: $ANI_CLI_DOWNLOAD_DIR/New Bad.mp4\"\nprintf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/New Bad.mp4\"\nprintf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\nexit 0\n",
     )
     .expect("rewrite stub");
 
@@ -1200,5 +1235,57 @@ async fn a_failed_repackage_removes_only_the_files_it_produced() {
     assert!(
         untouched_ts.exists(),
         "a pre-existing stray is not ours to delete"
+    );
+}
+
+/// "Appeared while this download ran" is not the same as "belongs to
+/// this download". The dock lets several downloads run at once and
+/// they all land in one directory, so a sibling's half-written file
+/// is new, is an `.mp4`, and — mid-transfer, before its own repackage
+/// — opens on the MPEG-TS sync byte. Every test this cleanup applies
+/// says delete, and the sibling is still writing to it.
+///
+/// What bounds the deletion is yt-dlp naming its own output. It
+/// prints `[download] Destination: <path>` for the file it is about
+/// to write; nothing else this process wrote is ours to touch.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_repackage_leaves_a_concurrent_downloads_file_alone() {
+    let _guard = ENV_LOCK.lock().await;
+    let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+
+    // The stub plays both parts: it announces and writes its own
+    // output the way yt-dlp does, and it drops an unannounced
+    // TS-headed file to stand in for the sibling transfer that is
+    // still running in the same directory.
+    std::fs::write(
+        &opts.ani_cli_path,
+        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '%s\\n' \"[download] Destination: $ANI_CLI_DOWNLOAD_DIR/Mine.mp4\"\nprintf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/Mine.mp4\"\nprintf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/Someone Elses.mp4\"\nprintf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\nexit 0\n",
+    )
+    .expect("rewrite stub");
+
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+    assert!(matches!(r, Err(AniError::FfmpegMissing)), "got {r:?}");
+
+    assert!(
+        !dl_dir.path().join("Mine.mp4").exists(),
+        "the file this download announced and mislabeled must be removed"
+    );
+    assert!(
+        dl_dir.path().join("Someone Elses.mp4").exists(),
+        "another download's in-flight file is not ours to delete"
     );
 }
