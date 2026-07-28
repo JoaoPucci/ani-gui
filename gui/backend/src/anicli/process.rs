@@ -1703,4 +1703,39 @@ mod tests {
         // Restore write permission so the tempdir can clean up.
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     }
+
+    /// Two concurrent downloads share a process id, so a pid-tagged
+    /// name is not unique. They would write the same file: the second
+    /// can overwrite the first between its classification and its
+    /// interpreter opening it, so one download classifies one script
+    /// and executes another — and whichever finishes first unlinks
+    /// the path the other is still using.
+    #[test]
+    fn concurrent_snapshots_do_not_share_a_path() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let live = td.path().join("ani-cli");
+        std::fs::write(&live, b"#!/bin/sh\nexit 0\n").expect("live script");
+
+        let first = stage_script_snapshot("#!/bin/sh\necho first\n", &live).expect("first");
+        let second = stage_script_snapshot("#!/bin/sh\necho second\n", &live).expect("second");
+        assert_ne!(
+            first.path(),
+            second.path(),
+            "each download needs its own snapshot path"
+        );
+
+        // Neither may have clobbered the other's contents.
+        let a = std::fs::read_to_string(first.path()).expect("read first");
+        let b = std::fs::read_to_string(second.path()).expect("read second");
+        assert!(a.contains("first"), "first snapshot kept its own bytes");
+        assert!(b.contains("second"), "second snapshot kept its own bytes");
+
+        // Dropping one must not remove the other.
+        let surviving = second.path().to_path_buf();
+        drop(first);
+        assert!(
+            surviving.exists(),
+            "one download finishing must not unlink another's snapshot"
+        );
+    }
 }
