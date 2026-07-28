@@ -1626,6 +1626,36 @@ mod tests {
         );
     }
 
+    /// The tail is ONE argument, exactly as the kernel passes it.
+    /// `fs/binfmt_script.c` takes the first blank-delimited word as
+    /// the interpreter and hands everything after it over as a single
+    /// argument — it does no tokenizing, and neither may we.
+    ///
+    /// `#!/usr/bin/env -S bash -O 'extglob'` is the case that makes
+    /// the difference visible. Under the kernel, `env` receives the
+    /// one string `-S bash -O 'extglob'` and its own `--split-string`
+    /// handling strips the quotes, enabling extglob. Splitting here
+    /// instead would hand `env` four arguments with the quotes still
+    /// attached, and bash would reject `'extglob'` as an option name
+    /// — a script that runs fine for search and playback failing on
+    /// downloads alone.
+    #[test]
+    fn the_shebang_tail_is_a_single_argument() {
+        assert_eq!(
+            snapshot_interpreter("#!/usr/bin/env -S bash -O 'extglob'\nmain\n"),
+            vec![
+                "/usr/bin/env".to_string(),
+                "-S bash -O 'extglob'".to_string()
+            ],
+            "the tail keeps its own spacing and quoting"
+        );
+        assert_eq!(
+            snapshot_interpreter("#!/bin/bash   -eu   -o pipefail  \nmain\n"),
+            vec!["/bin/bash".to_string(), "-eu   -o pipefail".to_string()],
+            "interior spacing is the argument's; the outer blanks are not"
+        );
+    }
+
     /// Anything that isn't a well-formed absolute-path shebang falls
     /// back to `/bin/sh` — the previous behaviour. A relative or bare
     /// interpreter name is refused rather than resolved: that would
@@ -1651,28 +1681,41 @@ mod tests {
     }
 
     proptest::proptest! {
-        /// An absolute shebang round-trips: the interpreter and every
-        /// trailing word come back in order, whatever spacing the
-        /// script used. `#!/usr/bin/env bash` only works because the
-        /// trailing words survive, and the examples above can only
-        /// afford to spell a handful of them.
+        /// An absolute shebang round-trips: the interpreter, then the
+        /// tail verbatim as ONE argument. The tail is generated with
+        /// its own interior spacing and quotes so the property fails
+        /// on any tokenizing — which is the whole difference between
+        /// this and the kernel.
         #[test]
         fn an_absolute_shebang_round_trips(
             dirs in proptest::collection::vec("[a-z][a-z0-9_.-]{0,7}", 1..4),
-            args in proptest::collection::vec("[a-z][a-z0-9_-]{0,7}", 0..3),
+            tail in "[a-z0-9_'\"-]([a-z0-9_'\" \t-]{0,20}[a-z0-9_'\"-])?",
+            has_tail in proptest::bool::ANY,
             lead in "[ \t]{0,3}",
-            gaps in proptest::collection::vec("[ \t]{1,3}", 3),
+            gap in "[ \t]{1,3}",
+            trail in "[ \t]{0,3}",
             rest in "[a-z \n]{0,30}",
         ) {
             let interp = format!("/{}", dirs.join("/"));
-            let mut line = format!("#!{lead}{interp}");
-            for (i, a) in args.iter().enumerate() {
-                line.push_str(&gaps[i % gaps.len()]);
-                line.push_str(a);
-            }
-            let mut want = vec![interp];
-            want.extend(args.iter().cloned());
+            let (line, want) = if has_tail {
+                (
+                    format!("#!{lead}{interp}{gap}{tail}{trail}"),
+                    vec![interp, tail],
+                )
+            } else {
+                (format!("#!{lead}{interp}{trail}"), vec![interp])
+            };
             proptest::prop_assert_eq!(snapshot_interpreter(&format!("{line}\n{rest}")), want);
+        }
+
+        /// The kernel passes at most one optional argument, so the
+        /// argv is never longer than two however many words the tail
+        /// contains. Stated separately because it is the invariant a
+        /// future edit is most likely to break by "improving" the
+        /// parsing.
+        #[test]
+        fn the_argv_is_never_longer_than_two(contents in "(?s).{0,80}") {
+            proptest::prop_assert!(snapshot_interpreter(&contents).len() <= 2);
         }
 
         /// The invariant the spawn depends on, over ANY input: the
