@@ -44,7 +44,29 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     // still feed the scanner so quote and heredoc state stay in
     // sync.
     let mut in_fn_body = false;
-    for line in script_contents.lines() {
+    let mut lines = script_contents.lines().peekable();
+    while let Some(first) = lines.next() {
+        // Backslash-newline is removed by the shell before parsing, so
+        // a continued command is ONE logical line and its pieces must
+        // be matched together. Only joined while the scanner carries
+        // nothing: inside an open string or a heredoc body the trailing
+        // backslash is data, and joining there would merge lines the
+        // shell keeps apart.
+        let mut joined;
+        let mut line = first;
+        if !scan.carrying() && ends_with_continuation(first) {
+            joined = String::from(&first[..first.len() - 1]);
+            while lines.peek().is_some() {
+                let next = lines.next().unwrap_or_default();
+                if ends_with_continuation(next) {
+                    joined.push_str(&next[..next.len() - 1]);
+                } else {
+                    joined.push_str(next);
+                    break;
+                }
+            }
+            line = &joined;
+        }
         // A line beginning inside carried state — an open string or
         // a pending heredoc body — is data: the raw-line function
         // checks below must not fire on it, only the scanner's own
@@ -87,7 +109,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 case_owners.push(expands_player_function(subject));
                 rest = tail.trim_start();
             }
-            if rest.trim_end() == "esac" {
+            if closes_case(rest) {
                 case_owners.pop();
                 if in_branch.is_some_and(|level| level > case_owners.len()) {
                     in_branch = None;
@@ -237,6 +259,29 @@ fn mentions_hard_ffmpeg(rest: &str) -> bool {
             (None, None) => true,
         }
     })
+}
+
+/// Whether a statement piece is a case terminator. POSIX allows
+/// redirections on a compound command, so `esac >/dev/null` closes
+/// the case exactly as a bare `esac` does — the same rule the closing
+/// function brace already follows. The word must stand alone, so
+/// `esacular` is not a terminator.
+fn closes_case(rest: &str) -> bool {
+    let after = match rest.strip_prefix("esac") {
+        Some(after) => after,
+        None => return false,
+    };
+    match after.trim_start().as_bytes().first() {
+        None => true,
+        Some(b) => matches!(b, b'>' | b'<' | b';' | b'&' | b'|'),
+    }
+}
+
+/// Whether a physical line ends in a backslash that continues it. An
+/// even run of trailing backslashes is an escaped backslash, not a
+/// continuation.
+fn ends_with_continuation(line: &str) -> bool {
+    line.bytes().rev().take_while(|b| *b == b'\\').count() % 2 == 1
 }
 
 /// The text after a case item's `<pattern>)`, or `None` if the piece
