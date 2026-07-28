@@ -116,12 +116,17 @@ for (const [file, ccn] of ccnByFile) {
 }
 rows.sort((a, b) => b.crap - a.crap);
 
-/** How many rows of the ranking `--json` carries for diagnostics. */
+/** Fewest rows of the ranking `--json` carries for diagnostics. */
 const TOP_N = 10;
 
 const max = rows[0]?.crap ?? 0;
 const sorted = rows.map((r) => r.crap).sort((a, b) => a - b);
 const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
+// Same percentile counted from the worst end, which is the order the
+// report is in. It slides further down as the file count grows — past
+// 181 files it is already below a ten-row report — so the report has
+// to be sized to reach it rather than to a fixed length.
+const p95Index = rows.length ? rows.length - 1 - Math.floor(0.95 * (rows.length - 1)) : 0;
 const high_risk = rows.filter((r) => r.crap > 30).length;
 
 if (jsonFlag) {
@@ -136,7 +141,13 @@ if (jsonFlag) {
 	// ordering, so a regression in either is only diagnosable against
 	// the ranking. It cannot come from `high_risk_files`: max can move
 	// while nothing is over the bar at all, and that list is then
-	// empty. Capped because the report is for reading, not archiving.
+	// empty.
+	//
+	// Length is `TOP_N` or as far as the percentile, whichever reaches
+	// further. A fixed cap would drop the p95 row on any repo past 181
+	// files and leave a p95 failure printing ten rows that are not the
+	// one to fix. `p95_file` names it so the reader can tell the
+	// percentile from the merely-worse.
 	const report = (r) => ({ file: r.file, ccn: r.ccn, cov: r2(r.coverage * 100), crap: r2(r.crap) });
 	process.stdout.write(
 		JSON.stringify({
@@ -145,7 +156,8 @@ if (jsonFlag) {
 			high_risk,
 			count: rows.length,
 			high_risk_files: rows.filter((r) => r.crap > 30).map(report),
-			top: rows.slice(0, TOP_N).map(report)
+			top: rows.slice(0, Math.max(TOP_N, p95Index + 1)).map(report),
+			p95_file: rows[p95Index]?.file ?? null
 		}) + '\n'
 	);
 } else {

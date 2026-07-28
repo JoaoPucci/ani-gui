@@ -50,6 +50,8 @@ const measured = {};
 let crapHighRiskFiles = null;
 /** The worst-first CRAP ranking, when the summary carries it. Explains max / p95. */
 let crapTopFiles = null;
+/** Which row of that ranking sits at the p95 boundary, when named. */
+let crapP95File = null;
 
 function readJson(p) {
 	return JSON.parse(fs.readFileSync(p, 'utf-8'));
@@ -214,6 +216,7 @@ function checkCrap(baseline) {
 	// into the baseline; it exists only to make a failure diagnosable.
 	if (Array.isArray(cur.high_risk_files)) crapHighRiskFiles = cur.high_risk_files;
 	if (Array.isArray(cur.top)) crapTopFiles = cur.top;
+	if (typeof cur.p95_file === 'string') crapP95File = cur.p95_file;
 	// CRAP is "lower is better": we ratchet against ceilings, not floors.
 	// A 1.0 fudge stops floating-point round-trips from flagging a no-op
 	// re-measurement as a regression.
@@ -331,11 +334,14 @@ for (const r of results) {
 // environments. `crap-score.mjs --json` records the offenders, so
 // print them alongside the failure. Older summaries have no such
 // key; the list is advisory and its absence changes nothing.
-function printCrapRows(heading, rows) {
+function printCrapRows(heading, rows, markFile = null) {
 	console.error(`\n${heading}`);
 	for (const f of rows) {
 		const cov = typeof f.cov === 'number' ? `${f.cov}%` : '?';
-		console.error(`  ${String(f.crap).padStart(8)}  ccn=${f.ccn ?? '?'}  cov=${cov}  ${f.file}`);
+		const mark = markFile && f.file === markFile ? '   <- p95' : '';
+		console.error(
+			`  ${String(f.crap).padStart(8)}  ccn=${f.ccn ?? '?'}  cov=${cov}  ${f.file}${mark}`
+		);
 	}
 }
 
@@ -349,8 +355,16 @@ if (fails.some((f) => f.layer === 'crap' && f.metric === 'high_risk_le') && crap
 // list is empty. Printed for either failure, since a shift at the top
 // moves both. Same advisory contract as above: a summary from before
 // `top` existed just prints nothing extra.
+//
+// The p95 row is marked because its rank is not something a reader can
+// infer from the list: it slides down as the file count grows, and it
+// is the row that has to come under the ceiling, not the worst one.
 if (fails.some((f) => f.layer === 'crap' && (f.metric === 'max_le' || f.metric === 'p95_le')) && crapTopFiles) {
-	printCrapRows('worst CRAP scores in this run (max is the first row):', crapTopFiles);
+	printCrapRows(
+		'worst CRAP scores in this run (max is the first row):',
+		crapTopFiles,
+		crapP95File
+	);
 }
 
 if (fails.length > 0) {
