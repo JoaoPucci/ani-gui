@@ -26,14 +26,14 @@ Every change starts red:
 2. Make it pass with the minimum code. Commit with prefix `feat(green): …` or `fix(green): …`.
 3. Refactor only after green. Commit with prefix `refactor: …` and prove tests still pass.
 
-A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red)'` reconstructs the spec.
+A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red): '` reconstructs the spec.
 
 **Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
 
 ```sh
 git cat-file -t <cited-sha>                        # unresolvable → you are describing the preview, not a commit
 git log --format='%h %p %s' master..<branch-head>  # the real pairing: each green's parent is its red
-git log --format='%s' master..<branch-head> | grep '^test(red)'   # the branch's red SUBJECTS, if any
+git log --format='%s' master..<branch-head> | grep '^test(red): '   # the branch's red SUBJECTS, if any
 git merge-base --is-ancestor <fix> <test>          # succeeds → the fix really did precede its test
 ```
 
