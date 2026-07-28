@@ -10,7 +10,6 @@ import {
 	altTitlesFromKitsu,
 	availabilityBatch,
 	availabilityWarm,
-	checkAvailability,
 	yearFromKitsuRef
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
@@ -26,8 +25,9 @@ function unavailableMayHide(status: string | null | undefined): boolean {
 	return status === 'finished';
 }
 
-/** The shared drop-by-cache predicate all three variants filter with. */
-function keepCard(cached: Record<string, boolean>, item: KitsuAnimeRef): boolean {
+/** The shared drop-by-cache predicate all the variants filter with
+ *  (including the render-then-prune one in progressive.ts). */
+export function keepCard(cached: Record<string, boolean>, item: KitsuAnimeRef): boolean {
 	return cached[item.id] !== false || !unavailableMayHide(item.status);
 }
 
@@ -94,60 +94,5 @@ export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 		// still surfaces real errors.
 		return items;
 	}
-	return items.filter((i) => keepCard(cached, i));
-}
-
-/** Strict variant: probes uncached items inline (parallel, capped
- *  concurrency) before returning. Use on surfaces where the user
- *  is actively waiting for results — e.g. search — and would
- *  rather wait a beat than see unavailable cards rendered. Home
- *  uses the fire-and-forget {@link filterAvailable} so cards
- *  don't disappear mid-session. */
-export async function filterAvailableStrict<T extends KitsuAnimeRef>(
-	items: T[],
-	mode: 'sub' | 'dub',
-	concurrency = 4
-): Promise<T[]> {
-	if (items.length === 0) return items;
-	const ids = items.map((i) => i.id);
-	let cached: Record<string, boolean> = {};
-	try {
-		const r = await availabilityBatch(ids, mode);
-		cached = r.cached;
-	} catch {
-		return items;
-	}
-
-	const uncached = items.filter((i) => !(i.id in cached));
-	if (uncached.length > 0) {
-		const queue = uncached.slice();
-		const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-			while (queue.length > 0) {
-				const item = queue.shift();
-				if (!item) break;
-				try {
-					const r = await checkAvailability({
-						title: item.canonical_title,
-						mode,
-						alt_titles: altTitlesFromKitsu(item),
-						episode_count: item.episode_count ?? undefined,
-						year: yearFromKitsuRef(item) ?? undefined,
-						kitsu_id: item.id,
-						status: item.status ?? undefined
-						// Interactive, unlike the rail fills: this variant
-						// BLOCKS the search results on every uncached probe,
-						// and the gate's paced background slots would turn a
-						// cold ~20-hit search into a ~20-second wait.
-					});
-					cached[item.id] = r.available;
-				} catch {
-					// Probe failed — leave unset so we render the card
-					// (lazy click path will surface the real error).
-				}
-			}
-		});
-		await Promise.all(workers);
-	}
-
 	return items.filter((i) => keepCard(cached, i));
 }
