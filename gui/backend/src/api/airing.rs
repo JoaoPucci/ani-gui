@@ -42,6 +42,7 @@ mod tests {
         use std::path::PathBuf;
         use std::sync::Arc;
         Arc::new(crate::app::AppState {
+            allanime_base: None,
             secret: crate::proxy::AppSecret::random(),
             sessions: crate::proxy::SessionTable::new(),
             proxy_http: reqwest::Client::new(),

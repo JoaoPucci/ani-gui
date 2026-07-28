@@ -15,6 +15,14 @@
 //!
 //! Linux-only for the same reason as `anicli_run_debug.rs` — `ani-cli`
 //! depends on a POSIX shell + GNU userland.
+//!
+//! Hermetic in both directions. The shell half has always been: the
+//! curl shim answers ani-cli's requests from canned fixtures. The Rust
+//! half was not — the play handler runs its own allanime search to
+//! disambiguate the title, and that call went to the live API, so a
+//! throttled IP failed this test with a network 503 that read exactly
+//! like a regression in the diff under review. The search now goes to
+//! a local stub too, via `AppState::allanime_base`.
 
 #![cfg(target_os = "linux")]
 
@@ -112,13 +120,48 @@ fn stage_fake_botan(bin: &std::path::Path) {
     std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
 }
 
+/// Stand up a local allanime stub answering the search the play
+/// handler runs before it ever spawns ani-cli.
+///
+/// The candidate is shaped to be picked: one hit, an episode count
+/// that comfortably covers the requested episode, and the `Show`
+/// typename the parser keys on. What matters for hermeticity is only
+/// that the request never leaves the machine.
+async fn stub_allanime() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    let body = serde_json::json!({
+        "data": {
+            "shows": {
+                "edges": [
+                    {
+                        "_id": "test-show",
+                        "name": "test",
+                        "availableEpisodes": {"sub": 12, "dub": 12, "raw": 0},
+                        "__typename": "Show"
+                    }
+                ]
+            }
+        }
+    });
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/api"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+        .mount(&server)
+        .await;
+    server
+}
+
 /// Build an `AppState` pointed at the real `ani-cli` script and
 /// otherwise pinned to the test's tmp dir. The test process's
 /// `$PATH` should include the staged shim before this runs — the
 /// play handler invokes `run_debug` with `path_override: None`, so
 /// it inherits whatever PATH the test sets.
-fn build_state(tmp: &std::path::Path) -> AppState {
+///
+/// `allanime_base` points the Rust-side disambiguation search at the
+/// local stub. Production leaves it `None`, which means the real API.
+fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
     AppState {
+        allanime_base: Some(allanime_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -150,6 +193,7 @@ async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
     std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
 
     let bin = stage_curl_shim_wrapper(tmp.path(), &fixtures);
+    let allanime = stub_allanime().await;
 
     // Prepend the shim dir to the test process's PATH. The play
     // handler's `run_debug` call inherits this PATH, so ani-cli's
@@ -161,7 +205,7 @@ async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
     let new_path = format!("{}:{}", bin.display(), saved_path.as_deref().unwrap_or(""));
     std::env::set_var("PATH", &new_path);
 
-    let result = run_play_assertion(tmp.path()).await;
+    let result = run_play_assertion(tmp.path(), &allanime.uri()).await;
 
     if let Some(p) = saved_path {
         std::env::set_var("PATH", p);
@@ -169,10 +213,24 @@ async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
         std::env::remove_var("PATH");
     }
     result.expect("play assertion succeeded");
+
+    // The point of the stub: prove the disambiguation search was
+    // served locally. A zero here means the handler reached past the
+    // override to the real API, and this test would be one throttled
+    // IP away from a false red on someone else's diff.
+    let searches = allanime
+        .received_requests()
+        .await
+        .expect("stub recorded its requests")
+        .len();
+    assert!(
+        searches >= 1,
+        "the allanime search must be served by the local stub, saw {searches} requests"
+    );
 }
 
-async fn run_play_assertion(tmp: &std::path::Path) -> Result<(), String> {
-    let router = build_api_router(Arc::new(build_state(tmp)));
+async fn run_play_assertion(tmp: &std::path::Path, allanime_base: &str) -> Result<(), String> {
+    let router = build_api_router(Arc::new(build_state(tmp, allanime_base)));
     let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best"}"#;
     let response = router
         .oneshot(
