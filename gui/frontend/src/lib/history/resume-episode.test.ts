@@ -290,16 +290,21 @@ describe('a cap published while an approximate one is being revalidated', () => 
 		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
 	});
 
-	it('keeps the snapshot when the published cap is approximate too', async () => {
-		// Only an exact answer displaces the snapshot. Swapping one
-		// unconfirmed number for another buys nothing and loses the
-		// value the click was already resolving against.
+	it('takes the newer reading even when it is approximate too', async () => {
+		// The snapshot and the reader are the SAME store, read at two
+		// times. A published value is not a competing source to weigh
+		// against the snapshot — it is the snapshot, updated. So the
+		// live read always supersedes it, and provenance only decides
+		// between the reader and the interactive lookup.
 		const published = { count: 14, approximate: true };
 		const fetchCount = vi.fn(async () => {
 			throw new Error('revalidation failed');
 		});
 		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
-		expect(r).toEqual({ episode: 13, count: 13, approximate: true });
+		// Episode 13 either way — watched 12, so the next one. What
+		// changes is the cap it is measured against, and a raised cap
+		// is what stops a later click stalling at a stale ceiling.
+		expect(r).toEqual({ episode: 13, count: 14, approximate: true });
 	});
 
 	it('a revalidation that answers without a count leaves the cap unconfirmed', async () => {
@@ -309,6 +314,50 @@ describe('a cap published while an approximate one is being revalidated', () => 
 		const fetchCount = vi.fn(async () => ({ count: null, approximate: false }));
 		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
 		expect(r).toEqual({ episode: 13, count: 13, approximate: true });
+	});
+
+	it('lets an exact published cap beat an approximate lookup answer', async () => {
+		// The rule the cap authority already states — an exact answer
+		// beats an approximate one whichever side it came from — was
+		// not applied here. A numeric-but-approximate lookup won on
+		// position alone, so an exact background 12 lost to a
+		// search-hit 13 and the click requested a phantom episode.
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('applies the same precedence when revalidating an approximate snapshot', async () => {
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => ({ count: 14, approximate: true }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('keeps the lookup when both answers are equally confident', async () => {
+		// Provenance is the tie-break, not the whole ordering. Between
+		// two answers of equal confidence the interactive lookup wins:
+		// it is the one this click asked for.
+		const exact = { count: 11, approximate: false };
+		const r = await resolveResumeEpisode(
+			5,
+			null,
+			24,
+			vi.fn(async () => ({ count: 12, approximate: false })),
+			() => exact
+		);
+		expect(r.count).toBe(12);
+
+		const approx = { count: 12, approximate: true };
+		const r2 = await resolveResumeEpisode(
+			5,
+			null,
+			24,
+			vi.fn(async () => ({ count: 13, approximate: true })),
+			() => approx
+		);
+		expect(r2.count).toBe(13);
 	});
 
 	it('carries the provenance of a cap published during a first lookup', async () => {
