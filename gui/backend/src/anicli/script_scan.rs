@@ -190,12 +190,27 @@ fn invokes_yt_dlp_failover(rest: &str) -> bool {
 /// distinct command like `my_dep_ch` are both excluded; the argument
 /// may be single-quoted, double-quoted or bare, and must end at its
 /// quote or a word boundary so `ffmpeg-bin` doesn't count.
+///
+/// It must also be EXECUTED — quoted text and non-command positions
+/// are data. An earlier revision matched anywhere in the piece on
+/// the theory that over-matching "only errs toward requiring
+/// ffmpeg, which every script satisfies"; that reads the cost
+/// backwards. The veto's consequence lands on the USER, as the
+/// missing-ffmpeg modal this branch exists to stop raising, so a
+/// `printf 'dep_ch ffmpeg'` diagnostic or a `hint=dep_ch` value
+/// would block a yt-dlp-only install on a script that never checks.
+/// The nested-arm shapes the loose match was protecting are still
+/// covered: an arm pattern's `)`, a `;` or `&&` separator, and the
+/// `if`/`then`-style introducers all open a command position.
 fn mentions_hard_ffmpeg(rest: &str) -> bool {
     const NAME: &str = "dep_ch";
     let bytes = rest.as_bytes();
     let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-    rest.match_indices(NAME).any(|(at, _)| {
+    unquoted_command_starts(rest).any(|at| {
         if at > 0 && is_word(bytes[at - 1]) {
+            return false;
+        }
+        if !rest[at..].starts_with(NAME) {
             return false;
         }
         let mut i = at + NAME.len();
@@ -222,6 +237,94 @@ fn mentions_hard_ffmpeg(rest: &str) -> bool {
             (None, None) => true,
         }
     })
+}
+
+/// Byte offsets in a statement piece where a command word may begin:
+/// outside quotes, and either at the very start or after something
+/// that ends the previous command.
+///
+/// Deliberately shallow — this is a scanner over one `;;`-delimited
+/// piece, not a shell parser. Quote state is tracked from the start
+/// of the piece, so a string carried in from an earlier line reads
+/// as unquoted here; that is the pre-existing conservative direction
+/// (it can only add a veto) and the `ShellScan` carry flag already
+/// keeps the raw-line checks off those lines.
+///
+/// Command position is opened by an operator (`;`, `&`, `|`, and so
+/// the `&&`/`||` pairs), a grouping opener (`(`, `{`, backquote), a
+/// case-arm pattern's `)`, or a reserved word that introduces a
+/// command. `=` deliberately does not: the right side of an
+/// assignment is a value.
+fn unquoted_command_starts(piece: &str) -> impl Iterator<Item = usize> + '_ {
+    const INTRODUCERS: [&str; 11] = [
+        "if", "then", "else", "elif", "do", "while", "until", "command", "eval", "exec", "time",
+    ];
+    let bytes = piece.as_bytes();
+    let mut starts = Vec::new();
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            // Single quotes have no escapes at all in the shell;
+            // inside double quotes a backslash consumes the next byte
+            // so an escaped quote doesn't close the string.
+            if q == b'"' && b == b'\\' {
+                i += 2;
+                continue;
+            }
+            if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'\'' || b == b'"' {
+            quote = Some(b);
+            i += 1;
+            continue;
+        }
+        if b == b'\\' {
+            i += 2;
+            continue;
+        }
+        if b != b' ' && b != b'\t' && opens_command(piece, i, &INTRODUCERS) {
+            starts.push(i);
+        }
+        i += 1;
+    }
+    starts.into_iter()
+}
+
+/// Whether byte `at` in `piece` begins a statement — see
+/// [`unquoted_command_starts`] for the position rules.
+fn opens_command(piece: &str, at: usize, introducers: &[&str]) -> bool {
+    let bytes = piece.as_bytes();
+    let mut back = at;
+    while back > 0 && (bytes[back - 1] == b' ' || bytes[back - 1] == b'\t') {
+        back -= 1;
+    }
+    let Some(prev) = back.checked_sub(1).map(|j| bytes[j]) else {
+        return true;
+    };
+    if matches!(
+        prev,
+        b';' | b'&' | b'|' | b'(' | b')' | b'{' | b'}' | b'`' | b'\n' | b'!'
+    ) {
+        return true;
+    }
+    // A bare word before it: only a reserved word introduces a
+    // command, and only when it is itself a whole word.
+    if !(prev.is_ascii_alphanumeric() || prev == b'_') {
+        return false;
+    }
+    let word_start = piece[..back]
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| c.is_ascii_alphanumeric() || *c == '_')
+        .last()
+        .map_or(back, |(j, _)| j);
+    introducers.contains(&&piece[word_start..back])
 }
 
 /// Whether a raw line opens a function definition at column 0 —

@@ -555,21 +555,52 @@ fn stage_script_snapshot(contents: &str) -> std::io::Result<(tempfile::TempDir, 
     Ok((dir, path))
 }
 
-/// Build the download spawn: the snapshot runs THROUGH `/bin/sh` on
-/// Unix (matching the script's own shebang) so a `noexec` temp mount
-/// can't refuse it; the live-path fallback and Windows keep the
-/// ordinary command builder, which already routes through bash.
-fn download_command(spawn_path: &Path, bash_path: Option<&Path>) -> tokio::process::Command {
-    #[cfg(unix)]
-    {
-        let _ = bash_path;
-        let mut cmd = tokio::process::Command::new("/bin/sh");
-        cmd.arg(spawn_path);
-        cmd
+/// The interpreter argv a snapshot must run under, taken from its own
+/// shebang. Because the snapshot is READ rather than exec(2)'d, the
+/// kernel never applies the shebang — so a script declaring `bash`
+/// and using bash-only syntax would break under a hard-coded
+/// `/bin/sh`, and break on downloads only: search and playback route
+/// through the ordinary command builder and keep working.
+///
+/// Only an absolute interpreter path is honored. A relative or bare
+/// name (`#!bash`) falls back to `/bin/sh` rather than being resolved
+/// through PATH or the working directory — that lookup would be
+/// driven by a string in a file the auto-updater rewrites, which is a
+/// worse outcome than running a `sh`-compatible script under `sh`.
+/// Trailing words are kept so the `#!/usr/bin/env bash` form works.
+fn snapshot_interpreter(contents: &str) -> Vec<String> {
+    const DEFAULT: &str = "/bin/sh";
+    let fallback = || vec![DEFAULT.to_string()];
+    let Some(shebang) = contents.lines().next().and_then(|l| l.strip_prefix("#!")) else {
+        return fallback();
+    };
+    let mut words = shebang.split_whitespace();
+    match words.next() {
+        Some(path) if path.starts_with('/') => std::iter::once(path)
+            .chain(words)
+            .map(str::to_string)
+            .collect(),
+        _ => fallback(),
     }
-    #[cfg(windows)]
-    {
-        crate::anicli::bash::build_anicli_command(spawn_path, bash_path)
+}
+
+/// Build the download spawn. A staged snapshot runs THROUGH its
+/// declared interpreter so a `noexec` temp mount can't refuse it
+/// (the file carries no exec bit and is never exec(2)'d); the
+/// live-path fallback and Windows keep the ordinary command builder,
+/// which already routes through bash.
+fn download_command(
+    spawn_path: &Path,
+    bash_path: Option<&Path>,
+    interpreter: Option<&[String]>,
+) -> tokio::process::Command {
+    match interpreter {
+        Some([program, args @ ..]) => {
+            let mut cmd = tokio::process::Command::new(program);
+            cmd.args(args).arg(spawn_path);
+            cmd
+        }
+        _ => crate::anicli::bash::build_anicli_command(spawn_path, bash_path),
     }
 }
 
@@ -614,7 +645,20 @@ where
         .as_ref()
         .map_or(opts.ani_cli_path.clone(), |(_, path)| path.clone());
 
-    let mut cmd = download_command(&spawn_path, opts.bash_path.as_deref());
+    // Only a snapshot needs the explicit interpreter — the live path
+    // still exec(2)'s normally, where the kernel reads the shebang
+    // itself. Windows has no shebang semantics, so it keeps the bash
+    // builder either way.
+    let interpreter: Option<Vec<String>> = if cfg!(unix) && snapshot.is_some() {
+        script_contents.as_deref().map(snapshot_interpreter)
+    } else {
+        None
+    };
+    let mut cmd = download_command(
+        &spawn_path,
+        opts.bash_path.as_deref(),
+        interpreter.as_deref(),
+    );
     cmd.arg("-S")
         .arg(&select_str)
         .arg("-d")
