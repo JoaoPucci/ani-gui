@@ -1439,3 +1439,111 @@ async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
         "running out of clock must not strand the mislabeled file"
     );
 }
+
+proptest::proptest! {
+    /// The manifest parser decides which files cleanup may delete, so
+    /// what it accepts is a safety boundary, not a convenience. The
+    /// round trip is the whole contract: whatever path yt-dlp names,
+    /// that exact path comes back.
+    ///
+    /// Titles are the interesting input here — they come from the
+    /// provider and carry spaces, colons, quotes and brackets, and
+    /// `[download] Destination: ` is stripped by prefix rather than by
+    /// splitting on `:`, so a colon inside the name must survive.
+    ///
+    /// Generated names deliberately do not END in whitespace: the
+    /// parser trims the tail to shed the `\r` of a CRLF line, which
+    /// also costs a trailing space. Real output has neither.
+    #[test]
+    fn an_announced_path_round_trips(
+        dir in "/[a-z]{1,8}(/[a-z]{1,8}){0,3}",
+        name in r#"[a-zA-Z0-9 :!'\[\]().-]{0,40}[a-zA-Z0-9)\]]"#,
+    ) {
+        let want = format!("{dir}/{name}.mp4");
+        let got = yt_dlp_destination(&format!("[download] Destination: {want}"));
+        proptest::prop_assert_eq!(got, Some(std::path::PathBuf::from(want)));
+    }
+
+    /// Whichever way the line arrives — indented by the shell, or
+    /// carrying the `\r` a CRLF pipe leaves behind — it names the same
+    /// file. Cleanup keys on the path, so a padded line that parsed to
+    /// a DIFFERENT path would silently protect the mislabeled file.
+    #[test]
+    fn surrounding_whitespace_does_not_change_the_path(
+        lead in "[ \t]{0,4}",
+        trail in "[ \t\r]{0,4}",
+    ) {
+        let bare = yt_dlp_destination("[download] Destination: /d/Show - 01.mp4");
+        let padded = yt_dlp_destination(
+            &format!("{lead}[download] Destination: /d/Show - 01.mp4{trail}")
+        );
+        proptest::prop_assert_eq!(padded, bare);
+    }
+
+    /// Removal is the half that matters for safety. Everything yt-dlp
+    /// prints that is NOT a destination has to come back `None`, or
+    /// cleanup would be handed paths this download never claimed —
+    /// which is exactly the bound that keeps it off a concurrent
+    /// download's files.
+    ///
+    /// The generator covers yt-dlp's other line shapes and free text.
+    /// The filter excludes only the announcement form itself — not
+    /// every line mentioning a destination — so a parser that searched
+    /// the line instead of matching its prefix would still be caught
+    /// here rather than assumed away.
+    #[test]
+    fn output_that_is_not_a_destination_never_parses(
+        line in r"(\[(download|info|hlsnative|generic)\] )?[a-zA-Z0-9 %/:.,~-]{0,60}",
+    ) {
+        proptest::prop_assume!(!line.trim().starts_with("[download] Destination: "));
+        proptest::prop_assert_eq!(yt_dlp_destination(&line), None);
+    }
+
+    /// The tag is part of the marker. yt-dlp prints progress under
+    /// several of them and only `[download]` announces output, so a
+    /// parser loose about the tag would hand cleanup paths from lines
+    /// that promise nothing about what was written.
+    #[test]
+    fn a_destination_under_another_tag_never_parses(
+        tag in r"\[(info|hlsnative|generic|Merger|ExtractAudio)\]",
+        path in "/[a-z]{1,10}/[a-z]{1,10}\\.mp4",
+    ) {
+        let line = format!("{tag} Destination: {path}");
+        proptest::prop_assert_eq!(yt_dlp_destination(&line), None, "parsed {}", line);
+    }
+}
+
+/// The prefix is matched whole, space included. yt-dlp has printed it
+/// this way for as long as the download path has existed, and an
+/// approximate match is the wrong trade here: parsing a line that is
+/// not a destination hands cleanup a path to delete.
+#[test]
+fn a_near_miss_prefix_is_not_a_destination() {
+    // No space after the colon.
+    assert_eq!(
+        yt_dlp_destination("[download] Destination:/d/Show.mp4"),
+        None
+    );
+    // Different tag.
+    assert_eq!(yt_dlp_destination("[info] Destination: /d/Show.mp4"), None);
+    // The word alone, mid-sentence.
+    assert_eq!(
+        yt_dlp_destination("[download] Writing to Destination: /d/Show.mp4"),
+        None
+    );
+}
+
+/// A destination whose own name contains the marker still resolves to
+/// itself — the same class of input as the show titled after yt-dlp's
+/// fixup warning, and the reason the prefix is stripped once rather
+/// than searched for.
+#[test]
+fn a_path_containing_the_marker_resolves_to_itself() {
+    let line = "[download] Destination: /d/[download] Destination: weird.mp4";
+    assert_eq!(
+        yt_dlp_destination(line),
+        Some(std::path::PathBuf::from(
+            "/d/[download] Destination: weird.mp4"
+        ))
+    );
+}
