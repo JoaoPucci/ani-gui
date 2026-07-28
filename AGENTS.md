@@ -26,7 +26,25 @@ Every change starts red:
 2. Make it pass with the minimum code. Commit with prefix `feat(green): …` or `fix(green): …`.
 3. Refactor only after green. Commit with prefix `refactor: …` and prove tests still pass.
 
-A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --grep '^test(red)'` reconstructs the spec.
+A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red): '` reconstructs the spec.
+
+**Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
+
+```sh
+git merge-base --is-ancestor <cited-sha> <branch-head>  # fails → not branch history; you are describing the preview
+git log --format='%h %p %s' master..<branch-head>       # the real pairing: each green's parent is its red
+git log --format='%s' master..<branch-head> | grep '^test(red): '   # the branch's red SUBJECTS, if any
+git merge-base --is-ancestor <test> <fix>               # FAILS → the red does not precede its green
+```
+
+Test reachability, not existence. `git cat-file -t` reports only an object's type, so once tooling has fetched the preview it answers `commit` for the preview exactly as it does for a real commit — the two are indistinguishable by that check, and a reviewer who accepts the preview sha reproduces the very false result this procedure exists to prevent. `--is-ancestor` is the check that separates them: it fails for an object that isn't in the branch's history and errors for one that isn't present at all, and both answers mean the same thing here.
+
+A finding is actionable on either path:
+
+- **Red does not precede its green** — the cited objects are reachable from `<branch-head>` and `--is-ancestor <test> <fix>` fails. Assert the invariant directly rather than testing for its negation: `--is-ancestor <fix> <test>` catches only a red committed *after* its green, and says nothing when the two landed on separate branches later merged together. Both are then reachable from the head, neither is an ancestor of the other, and a red-subject search still finds a test — so an unpaired green passes every check. Asking whether the red is an ancestor of the green covers the later-red case and the incomparable case with one question.
+- **No red at all** — the subject listing over `master..<branch-head>` shows the branch has no `test(red)` commit covering the behavior the `feat`/`fix` introduced. Filter formatted subjects, not `--grep`: `--grep` matches the whole log message, so `^test(red)` also hits a *body* line and a branch with no red subject can look as though it has one whenever another commit quotes such a line. There is no `<test>` sha to compare in this case, and none is required.
+
+Both outcomes are real. A green-before-red defect has been confirmed this way; so have repeated preview artifacts citing ids absent from the branch. What is never sufficient on its own is a claim about an object that is not reachable from the branch head.
 
 Per layer:
 

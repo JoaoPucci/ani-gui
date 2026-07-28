@@ -209,3 +209,60 @@ test('--update still raises coverage floors when the codebase improved', () => {
 		'bash pure_covered_min should rise to measured'
 	);
 });
+
+// A high_risk regression reports a COUNT and nothing else, which
+// leaves the failure undiagnosable from CI alone: the operator sees
+// "26 vs 25" with no way to learn which file crossed. That gap is not
+// hypothetical — a CRAP failure on master could not be pinned down
+// locally at all, because the local measurement produced 25 and the
+// boundary file only crossed under CI's coverage. The offending files
+// are known at measurement time, so the summary should carry them and
+// the ratchet should print them.
+test('a high_risk regression names the offending files', () => {
+	const { tmpDir, run } = stageFixtureRepo();
+	fs.writeFileSync(
+		path.join(tmpDir, 'coverage/crap-summary.json'),
+		JSON.stringify({
+			max: 80,
+			p95: 40,
+			high_risk: 7, // baseline is 5 — a regression
+			high_risk_files: [
+				{ file: 'gui/backend/src/scraper/gate.rs', crap: 30.4 },
+				{ file: 'gui/frontend/src/lib/play/global-video.ts', crap: 30.1 }
+			]
+		})
+	);
+
+	let output = '';
+	try {
+		run([]);
+		assert.fail('the ratchet must exit non-zero on a high_risk regression');
+	} catch (err) {
+		output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+	}
+
+	assert.match(
+		output,
+		/gui\/backend\/src\/scraper\/gate\.rs/,
+		'the report must name the high-risk files, not just their count'
+	);
+	assert.match(output, /gui\/frontend\/src\/lib\/play\/global-video\.ts/);
+	assert.match(output, /30\.4/, 'each file should carry its CRAP value');
+});
+
+// The list is advisory: an older or hand-written summary has no
+// high_risk_files key, and the ratchet must still work.
+test('a summary without high_risk_files still ratchets', () => {
+	const { tmpDir, run } = stageFixtureRepo();
+	fs.writeFileSync(
+		path.join(tmpDir, 'coverage/crap-summary.json'),
+		JSON.stringify({ max: 80, p95: 40, high_risk: 7 })
+	);
+	try {
+		run([]);
+		assert.fail('the ratchet must exit non-zero on a high_risk regression');
+	} catch (err) {
+		const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+		assert.match(output, /high_risk_le/, 'the metric row must still be reported');
+	}
+});
