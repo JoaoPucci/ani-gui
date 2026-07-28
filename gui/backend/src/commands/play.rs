@@ -259,10 +259,15 @@ async fn enrich_availability_after_success(
         state,
         id,
         mode_str,
-        true,
-        episode_count,
-        extras,
         None,
+        &crate::commands::availability::AvailabilityResponse {
+            available: true,
+            episode_count,
+            extra_episodes: extras,
+            // Exact: this count comes from the play resolution's own
+            // show fetch, not the gate-refused search-hit fallback.
+            episode_count_approximate: false,
+        },
     );
 }
 

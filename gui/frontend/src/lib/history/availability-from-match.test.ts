@@ -83,3 +83,25 @@ describe('makeFetchAvailability', () => {
 		expect(call.background).toBe(true);
 	});
 });
+
+describe('interactive click-time lookups (render-then-refine)', () => {
+	it('omits the background flag when the caller is user-awaited', async () => {
+		// Codex P1 #3664626750 — the click-time cap lookup reused the
+		// background-flagged wrapper, so the scraper gate paced it and
+		// REFUSED it outright while the breaker was open: the fallback
+		// then reproduced the exact lagging-dub phantom episode the
+		// click-time resolution exists to prevent. A user actively
+		// waiting rides the interactive lane.
+		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const fetch = makeFetchAvailability(spy, { background: false });
+		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'dub');
+		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: false, mode: 'dub' }));
+	});
+
+	it('defaults to background for the rail-fill callers', async () => {
+		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const fetch = makeFetchAvailability(spy);
+		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'sub');
+		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: true }));
+	});
+});

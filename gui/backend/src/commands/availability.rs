@@ -102,6 +102,34 @@ pub struct AvailabilityResponse {
     /// numeric position. Empty when there are no extras.
     #[serde(default)]
     pub extra_episodes: Vec<String>,
+    /// True when `episode_count` came from the search hit rather than
+    /// the per-show detail fetch — the gate-refused fallback. That
+    /// number counts half episodes as whole ones, so it runs one high
+    /// for shows carrying them, and advancing to it forwards an
+    /// episode that does not exist. Rows carrying this are treated as
+    /// cache misses so they re-probe; see [`cache_hit_is_usable`].
+    /// Absent from rows written before the flag existed, which
+    /// `default` reads as exact.
+    #[serde(default)]
+    pub episode_count_approximate: bool,
+}
+
+/// Whether a cached response may be served as-is, or has to re-probe.
+///
+/// Two kinds of row self-heal rather than being served. A legacy
+/// available row with no count predates count caching and re-probes
+/// to populate it. An approximate row carries the gate-refused
+/// fallback's count, which the detail fetch would have corrected —
+/// serving it would make every later read, including a click trying
+/// to confirm the cap, replay the same wrong number.
+///
+/// A negative row is always usable: `episode_count` is meaningless
+/// when there is no candidate.
+fn cache_hit_is_usable(parsed: &AvailabilityResponse) -> bool {
+    if !parsed.available {
+        return true;
+    }
+    parsed.episode_count.is_some() && !parsed.episode_count_approximate
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
@@ -143,6 +171,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v9: gate-refused probes now mark their count approximate so it
+    //     re-probes instead of being served as exact. v8 rows written
+    //     by that path carry the degraded count with no flag, and
+    //     `serde(default)` reads them as exact — they would keep
+    //     resolving a phantom final episode for up to 30 days.
+    //     Bumping forces them to re-probe.
     // v8: negative TTLs became premiere-aware (negative_ttl_for +
     //     the airing-cache seed), but check_availability
     //     short-circuits on cached false rows before either runs. A
@@ -186,7 +220,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v8:{kitsu_id}:{m}")
+    format!("availability:v9:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -217,16 +251,14 @@ pub(crate) async fn check_availability_with_base(
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
-    // Legacy rows (available=true, episode_count=None) are treated
-    // as misses so they self-heal: the next visit re-probes and
-    // populates the count. False rows are kept as-is — episode_count
-    // is meaningless when there's no candidate.
+    // Which rows may be served is [`cache_hit_is_usable`]'s call —
+    // legacy count-less rows and gate-refused approximate counts both
+    // re-probe so they self-heal.
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
-                let needs_refresh = parsed.available && parsed.episode_count.is_none();
-                if !needs_refresh {
+                if cache_hit_is_usable(&parsed) {
                     return Ok(parsed);
                 }
             }
@@ -290,6 +322,9 @@ pub(crate) async fn check_availability_with_base(
     // than blocking the cache write.
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
+    // Set only on the gate-refused path, where the count comes from
+    // the search hit instead of the detail fetch.
+    let mut episode_count_approximate = false;
     if let Some(c) = chosen_candidate.as_ref() {
         let prio = if args.background {
             crate::scraper::gate::ScrapePriority::Background
@@ -306,16 +341,22 @@ pub(crate) async fn check_availability_with_base(
             // RateLimited propagates typed (no cache write); other
             // fetch failures fall back to the search hit's count
             // inside the enricher.
-            let (count, extras) = enrich_from_show_fetch(outcome, c, mode)?;
+            let (count, extras, approximate) = enrich_from_show_fetch(outcome, c, mode)?;
             episode_count = count;
             extra_episodes = extras;
+            episode_count_approximate = approximate;
         } else {
             // Gate refused the background fetch — fall back to the
-            // count from the search hit. Off by one for shows with
-            // halves, but good enough for the cap until next probe.
+            // count from the search hit. That number counts halves as
+            // whole episodes, so it runs one high for shows carrying
+            // them. Marked approximate so it is never served back from
+            // cache as if the detail fetch had confirmed it: the next
+            // read re-probes, and an interactive caller (which the
+            // gate does not refuse) gets the exact count.
             let n = c.available_episodes.for_mode(mode);
             if n > 0 {
                 episode_count = Some(n);
+                episode_count_approximate = true;
             }
         }
     }
@@ -326,10 +367,13 @@ pub(crate) async fn check_availability_with_base(
             state,
             id,
             mode,
-            available,
-            episode_count,
-            extra_episodes.clone(),
             args.status.as_deref(),
+            &AvailabilityResponse {
+                available,
+                episode_count,
+                extra_episodes: extra_episodes.clone(),
+                episode_count_approximate,
+            },
         );
     }
 
@@ -337,6 +381,7 @@ pub(crate) async fn check_availability_with_base(
         available,
         episode_count,
         extra_episodes,
+        episode_count_approximate,
     })
 }
 
@@ -352,7 +397,18 @@ pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool
     // failure paths). Use ongoing TTL — the next detail-page probe
     // will overwrite this row anyway, since check_availability's
     // self-heal kicks in for rows with episode_count=None.
-    write_cache_full(state, kitsu_id, mode, available, None, Vec::new(), None);
+    write_cache_full(
+        state,
+        kitsu_id,
+        mode,
+        None,
+        &AvailabilityResponse {
+            available,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        },
+    );
 }
 
 /// Pick the positive cache TTL based on Kitsu's airing status.
@@ -466,16 +522,14 @@ pub fn write_cache_full(
     state: &AppState,
     kitsu_id: &str,
     mode: &str,
-    available: bool,
-    episode_count: Option<u32>,
-    extra_episodes: Vec<String>,
     status: Option<&str>,
+    body: &AvailabilityResponse,
 ) {
     if kitsu_id.is_empty() {
         return;
     }
     let key = cache_key(kitsu_id, mode);
-    let ttl = if available {
+    let ttl = if body.available {
         positive_ttl_for(status)
     } else {
         let now = std::time::SystemTime::now()
@@ -484,13 +538,8 @@ pub fn write_cache_full(
             .unwrap_or(0);
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
-    let body = AvailabilityResponse {
-        available,
-        episode_count,
-        extra_episodes,
-    };
-    if let Ok(body) = serde_json::to_string(&body) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ttl);
+    if let Ok(serialized) = serde_json::to_string(body) {
+        let _ = meta_cache_put(&state.cache_pool, &key, &serialized, ttl);
     }
 }
 
@@ -602,7 +651,7 @@ fn enrich_from_show_fetch(
     outcome: Result<crate::scraper::allanime::ShowMetadata>,
     candidate: &crate::scraper::Candidate,
     mode: &str,
-) -> Result<(Option<u32>, Vec<String>)> {
+) -> Result<(Option<u32>, Vec<String>, bool)> {
     match outcome {
         Ok(detail) => {
             let extras = detail
@@ -612,14 +661,18 @@ fn enrich_from_show_fetch(
                 .filter(|t| t.parse::<u32>().is_err())
                 .cloned()
                 .collect();
-            Ok((detail.max_integer_episode(mode), extras))
+            // The detail fetch is authoritative: exact.
+            Ok((detail.max_integer_episode(mode), extras, false))
         }
         Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
             Err(crate::error::AniError::RateLimited { retry_after_secs })
         }
         Err(_) => {
+            // Same search-hit count the gate-refused path falls back
+            // to, and approximate for the same reason: it counts half
+            // episodes as whole ones.
             let n = candidate.available_episodes.for_mode(mode);
-            Ok((if n > 0 { Some(n) } else { None }, Vec::new()))
+            Ok((if n > 0 { Some(n) } else { None }, Vec::new(), true))
         }
     }
 }
@@ -702,6 +755,100 @@ mod tests {
         assert!(out.1.is_empty());
     }
 
+    fn enrich_detail(tags: &[String]) -> crate::scraper::allanime::ShowMetadata {
+        serde_json::from_value(serde_json::json!({
+            "_id": "abc",
+            "name": "X",
+            "availableEpisodesDetail": {"sub": tags, "dub": [], "raw": []},
+        }))
+        .expect("detail")
+    }
+
+    proptest::proptest! {
+        /// Provenance follows the OUTCOME KIND and nothing else. A
+        /// detail fetch that answered is exact whatever it answered;
+        /// a failure falls back to the search-hit count and is
+        /// approximate whatever that count is. Position, size and
+        /// mode do not enter into it — which is the invariant a
+        /// later edit is most likely to blur, since the two branches
+        /// return the same shape.
+        #[test]
+        fn provenance_follows_the_outcome_kind(
+            ok in proptest::bool::ANY,
+            sub in 0u32..2000,
+            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..6),
+        ) {
+            let out = enrich_from_show_fetch(
+                if ok { Ok(enrich_detail(&tags)) } else { Err(crate::error::AniError::Network) },
+                &enrich_candidate(sub),
+                "sub",
+            ).expect("not rate limited");
+            proptest::prop_assert_eq!(out.2, !ok);
+        }
+
+        /// A rate limit is never downgraded into the count fallback,
+        /// whatever hint it carries. The caller needs the typed 429 —
+        /// the warm loop backs off on it, and the cache row is better
+        /// left unwritten than written mid-window.
+        #[test]
+        fn a_rate_limit_always_propagates(
+            hint in proptest::option::of(0u64..600),
+            sub in 0u32..2000,
+        ) {
+            let out = enrich_from_show_fetch(
+                Err(crate::error::AniError::RateLimited { retry_after_secs: hint }),
+                &enrich_candidate(sub),
+                "sub",
+            );
+            // Bound outside the macro: `prop_assert!` stringifies its
+            // argument as a format string, and the pattern's braces
+            // would be read as placeholders.
+            let propagated = matches!(
+                out,
+                Err(crate::error::AniError::RateLimited { retry_after_secs }) if retry_after_secs == hint
+            );
+            proptest::prop_assert!(propagated);
+        }
+
+        /// The fallback reports the candidate's own count for the
+        /// mode, and reports "no count" rather than a zero — a cached
+        /// `Some(0)` would read as a real cap of nothing and pin the
+        /// card at episode zero. It never carries extras, because a
+        /// failed fetch learned no tags.
+        #[test]
+        fn the_fallback_reports_the_candidate_count_or_nothing(sub in 0u32..2000) {
+            let out = enrich_from_show_fetch(
+                Err(crate::error::AniError::Network),
+                &enrich_candidate(sub),
+                "sub",
+            ).expect("fallback is Ok");
+            proptest::prop_assert_eq!(out.0, if sub > 0 { Some(sub) } else { None });
+            proptest::prop_assert!(out.1.is_empty());
+        }
+
+        /// A successful fetch splits the mode's tags: whole numbers
+        /// set the cap, everything else becomes an extra. No tag is
+        /// dropped and none appears on both sides.
+        #[test]
+        fn a_successful_fetch_splits_tags_into_cap_and_extras(
+            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..8),
+        ) {
+            let out = enrich_from_show_fetch(
+                Ok(enrich_detail(&tags)),
+                &enrich_candidate(1),
+                "sub",
+            ).expect("ok");
+            let (whole, fractional): (Vec<&String>, Vec<&String>) =
+                tags.iter().partition(|t| t.parse::<u32>().is_ok());
+            proptest::prop_assert_eq!(out.1.len(), fractional.len());
+            proptest::prop_assert!(out.1.iter().all(|e| e.parse::<u32>().is_err()));
+            proptest::prop_assert_eq!(
+                out.0,
+                whole.iter().filter_map(|t| t.parse::<u32>().ok()).max()
+            );
+        }
+    }
+
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
         // A rate-limited probe must not be followed by another request
@@ -728,6 +875,7 @@ mod tests {
         let ok: Result<AvailabilityResponse> = Ok(AvailabilityResponse {
             available: true,
             episode_count: None,
+            episode_count_approximate: false,
             extra_episodes: Vec::new(),
         });
         assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
@@ -756,6 +904,7 @@ mod tests {
         let r = AvailabilityResponse {
             available: true,
             episode_count: Some(1160),
+            episode_count_approximate: false,
             extra_episodes: vec!["1061.5".into()],
         };
         let json = serde_json::to_string(&r).expect("serialize");
@@ -1079,10 +1228,13 @@ mod tests {
             &state,
             "kid-1",
             "sub",
-            true,
-            Some(1160),
-            vec!["1061.5".into()],
             Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(1160),
+                extra_episodes: vec!["1061.5".into()],
+                episode_count_approximate: false,
+            },
         );
         let resp = batch_cached(
             &state,
@@ -1101,7 +1253,18 @@ mod tests {
     fn write_cache_full_skips_empty_kitsu_id() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
-        write_cache_full(&state, "", "sub", true, Some(12), Vec::new(), None);
+        write_cache_full(
+            &state,
+            "",
+            "sub",
+            None,
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
         // No row in the cache → batch_cached returns an empty map
         // for any id we ask about.
         let resp = batch_cached(
@@ -1187,8 +1350,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v8:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v8:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v9:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v9:kid-1:dub");
     }
 
     #[test]
@@ -1228,22 +1391,39 @@ mod tests {
             &state,
             "ongoing-show",
             "sub",
-            true,
-            Some(1107),
-            Vec::new(),
             Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(1107),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
         );
         write_cache_full(
             &state,
             "finished-show",
             "sub",
-            true,
-            Some(12),
-            Vec::new(),
             Some("finished"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
         );
         // Cached as unavailable — no playable count to surface.
-        write_cache_full(&state, "blocked-show", "sub", false, None, Vec::new(), None);
+        write_cache_full(
+            &state,
+            "blocked-show",
+            "sub",
+            None,
+            &AvailabilityResponse {
+                available: false,
+                episode_count: None,
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
         let resp = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1301,5 +1481,179 @@ mod tests {
                 .is_empty(),
             "an open breaker must produce zero allanime requests"
         );
+    }
+
+    /// The gate-refused fallback caches the search hit's count, which
+    /// runs one high for shows carrying half episodes. The cache
+    /// short-circuit returns any numeric row before the interactive
+    /// lane is even considered, so that degraded value is served back
+    /// to every later caller — including a click trying to confirm
+    /// the cap before advancing onto it. Confirmation against a cache
+    /// that replays the same approximation confirms nothing.
+    ///
+    /// So an approximate row is not a usable hit. It self-heals the
+    /// same way legacy count-less rows do: the next read re-probes,
+    /// and once the gate allows the detail fetch the exact count
+    /// replaces it.
+    #[test]
+    fn an_approximate_cached_count_is_not_a_usable_hit() {
+        let exact = AvailabilityResponse {
+            available: true,
+            episode_count: Some(12),
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(cache_hit_is_usable(&exact), "an exact count is usable");
+
+        let approximate = AvailabilityResponse {
+            episode_count_approximate: true,
+            ..exact.clone()
+        };
+        assert!(
+            !cache_hit_is_usable(&approximate),
+            "an approximate count must re-probe rather than be served"
+        );
+    }
+
+    /// The pre-existing self-healing rules are unchanged: an
+    /// available row with no count re-probes, and a negative row is
+    /// kept as-is because episode_count is meaningless with no
+    /// candidate.
+    #[test]
+    fn usable_hit_rules_for_legacy_and_negative_rows() {
+        let legacy = AvailabilityResponse {
+            available: true,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(!cache_hit_is_usable(&legacy), "a count-less row re-probes");
+
+        let negative = AvailabilityResponse {
+            available: false,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(cache_hit_is_usable(&negative), "a negative row is kept");
+    }
+
+    proptest::proptest! {
+        /// The rule over the whole input space rather than the four
+        /// corners the examples spell: a row is servable exactly when
+        /// it is negative, or carries a count that the backend
+        /// confirmed. Anything else re-probes.
+        ///
+        /// Stated as an equivalence, not a re-implementation — the
+        /// point is that no combination of the three inputs, and no
+        /// count value, reaches a fifth outcome.
+        #[test]
+        fn usability_is_negative_or_a_confirmed_count(
+            available in proptest::bool::ANY,
+            count in proptest::option::of(0u32..2000),
+            approximate in proptest::bool::ANY,
+            extras in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..4),
+        ) {
+            let row = AvailabilityResponse {
+                available,
+                episode_count: count,
+                extra_episodes: extras,
+                episode_count_approximate: approximate,
+            };
+            proptest::prop_assert_eq!(
+                cache_hit_is_usable(&row),
+                !available || (count.is_some() && !approximate)
+            );
+        }
+
+        /// The safety direction on its own, because it is the one
+        /// that costs a user a phantom episode: an AVAILABLE row that
+        /// is approximate, or has no count, is never served. A click
+        /// asking the cache to confirm a cap must not be answered
+        /// with the same unconfirmed number it is questioning.
+        #[test]
+        fn an_unconfirmed_available_row_is_never_served(
+            count in proptest::option::of(0u32..2000),
+            approximate in proptest::bool::ANY,
+        ) {
+            proptest::prop_assume!(approximate || count.is_none());
+            let row = AvailabilityResponse {
+                available: true,
+                episode_count: count,
+                extra_episodes: Vec::new(),
+                episode_count_approximate: approximate,
+            };
+            proptest::prop_assert!(!cache_hit_is_usable(&row));
+        }
+    }
+
+    /// The flag has to survive the cache round-trip, or the re-probe
+    /// rule never fires in production.
+    #[test]
+    fn write_cache_full_round_trips_the_approximate_flag() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = cache_only_state(&td);
+        write_cache_full(
+            &state,
+            "kid-approx",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(13),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: true,
+            },
+        );
+        let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
+            .expect("cache read")
+            .expect("row present");
+        let parsed: AvailabilityResponse = serde_json::from_str(&raw).expect("parse");
+        assert!(parsed.episode_count_approximate, "the flag must persist");
+        assert!(!cache_hit_is_usable(&parsed), "and drive the re-probe");
+    }
+
+    /// A row written before the flag existed has no such key, and
+    /// serde must read it as exact rather than refusing to parse.
+    #[test]
+    fn a_legacy_row_without_the_flag_parses_as_exact() {
+        let parsed: AvailabilityResponse =
+            serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
+        assert!(!parsed.episode_count_approximate);
+        assert!(cache_hit_is_usable(&parsed));
+    }
+
+    /// The search-count fallback happens on TWO paths: the gate
+    /// refusing the detail fetch, and the detail fetch itself
+    /// failing. Both yield the same number with the same half-episode
+    /// overcount, so both have to be marked approximate — otherwise
+    /// the failed-fetch row is cached as exact and the click's
+    /// confirmation reads it straight back.
+    #[test]
+    fn a_failed_detail_fetch_reports_its_count_as_approximate() {
+        let candidate = enrich_candidate(13);
+        let (count, extras, approximate) = enrich_from_show_fetch(
+            Err(crate::error::AniError::Scraper { key: "boom" }),
+            &candidate,
+            "sub",
+        )
+        .expect("non-rate-limit errors fall back rather than propagate");
+        assert_eq!(count, Some(13));
+        assert!(extras.is_empty());
+        assert!(
+            approximate,
+            "a search-count fallback is approximate however it was reached"
+        );
+    }
+
+    /// A completed detail fetch is the authoritative count and must
+    /// NOT be marked approximate, or every row would re-probe forever.
+    #[test]
+    fn a_successful_detail_fetch_reports_its_count_as_exact() {
+        let candidate = enrich_candidate(13);
+        let detail = crate::scraper::allanime::ShowMetadata::default();
+        let (_, _, approximate) =
+            enrich_from_show_fetch(Ok(detail), &candidate, "sub").expect("ok");
+        assert!(!approximate, "the detail fetch is authoritative");
     }
 }

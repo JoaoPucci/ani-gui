@@ -59,6 +59,25 @@ export interface ContinueRowReadyDeps {
 export function makeContinueRowReadyHandler(
 	deps: ContinueRowReadyDeps
 ): (entryId: string, match: KitsuAnimeRef | null, playableCount: number | null) => void {
+	// The loader fires twice per probed row — once at match release,
+	// once when the probe refines the cap. Each fire that names a NEW
+	// target starts a fetch, and latest-call-wins: a stale earlier
+	// fetch resolving after a newer one must not overwrite its
+	// episode.
+	//
+	// A fire that names the SAME target as the request already in
+	// flight shares it instead. That case is the common one — the
+	// probe usually reports the count Kitsu already gave, or the user
+	// sits below both caps — so restarting there would double the
+	// cold-cache episode traffic for most Continue rows, and would
+	// hand the row's outcome to the newer request: if it failed while
+	// the original succeeded, the catch would write null and discard
+	// the good response as stale.
+	//
+	// The entry is dropped once its request settles, so this shares
+	// in-flight work without becoming a cache — a later re-fire for
+	// the same target issues a fresh request.
+	const inFlight = new Map<string, { target: string; token: object }>();
 	return (entryId, match, playableCount) => {
 		deps.setMatch(entryId, match);
 		if (typeof playableCount === 'number') {
@@ -79,9 +98,21 @@ export function makeContinueRowReadyHandler(
 		const cap = playableCount ?? match.episode_count ?? null;
 		const nextEpisode = pickNextEpisode(Number.isFinite(lastWatched) ? lastWatched : null, cap);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
+		const target = `${match.id}|${kitsuPage}|${nextEpisode}`;
+		if (inFlight.get(entryId)?.target === target) return;
+		const token = {};
+		inFlight.set(entryId, { target, token });
+		// A settled request clears its own entry, but only while it is
+		// still the current one — a superseded request must leave the
+		// newer entry alone.
+		const settle = () => {
+			if (inFlight.get(entryId)?.token === token) inFlight.delete(entryId);
+		};
 		void deps
 			.fetchKitsuEpisodes(match.id, kitsuPage)
 			.then((eps) => {
+				if (inFlight.get(entryId)?.token !== token) return;
+				settle();
 				const ep =
 					eps.find((e) => e.number === nextEpisode) ??
 					eps.find((e) => e.relative_number === nextEpisode) ??
@@ -89,6 +120,8 @@ export function makeContinueRowReadyHandler(
 				deps.setEpisode(entryId, ep);
 			})
 			.catch(() => {
+				if (inFlight.get(entryId)?.token !== token) return;
+				settle();
 				deps.setEpisode(entryId, null);
 			});
 	};

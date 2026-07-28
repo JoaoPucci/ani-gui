@@ -1,0 +1,375 @@
+import { describe, expect, it, vi } from 'vitest';
+import { resolveResumeEpisode } from './resume-episode';
+import { loadContinueWatchingState } from './continue-watching-loader';
+import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+
+function makeEntry(id: string, ep: string, title: string): HistoryEntry {
+	return { id, ep_no: ep, title };
+}
+
+function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
+	return {
+		id,
+		slug: `slug-${id}`,
+		canonical_title: `Title ${id}`,
+		titles: {},
+		episode_count: episodeCount,
+		subtype: 'TV',
+		status: 'current',
+		poster_image: null,
+		start_date: null
+	} as unknown as KitsuAnimeRef;
+}
+
+describe('resolveResumeEpisode', () => {
+	it('uses a probed cap without any live fetch', async () => {
+		const fetchCount = vi.fn();
+		const r = await resolveResumeEpisode(12, 12, 24, fetchCount);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+		expect(fetchCount).not.toHaveBeenCalled();
+	});
+
+	it('live-probes when the cap is unknown and honors the answer', async () => {
+		// The lagging-dub case: Kitsu announces 24, only 12 are
+		// actually playable. The pre-probe click must not forward
+		// episode 13 into an episode-not-released error — the live
+		// answer keeps the user on a replay of 12.
+		const fetchCount = vi.fn().mockResolvedValue({ count: 12, approximate: false });
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('falls back to the Kitsu count when the live probe fails', async () => {
+		const fetchCount = vi.fn().mockRejectedValue(new Error('breaker open'));
+		const r = await resolveResumeEpisode(5, null, 24, fetchCount);
+		expect(r).toEqual({ episode: 6, count: null, approximate: false });
+	});
+
+	it('falls back to the Kitsu count when the live probe has no count', async () => {
+		const fetchCount = vi.fn().mockResolvedValue({ count: null, approximate: true });
+		const r = await resolveResumeEpisode(5, null, 24, fetchCount);
+		expect(r).toEqual({ episode: 6, count: null, approximate: false });
+	});
+
+	it('treats malformed lastWatched as no-history (episode 1)', async () => {
+		const fetchCount = vi.fn().mockResolvedValue({ count: 12, approximate: false });
+		const r = await resolveResumeEpisode(null, null, 24, fetchCount);
+		expect(r.episode).toBe(1);
+	});
+});
+
+describe('acceptance: early click on a just-released card (loader + resolver)', () => {
+	it('a click before the background probe lands still replays the last dubbed episode', async () => {
+		// End-to-end over the real loader and the real resolver: the
+		// card releases at Kitsu-match time (background probe hanging),
+		// the user clicks immediately, and the click-time resolution
+		// answers with the true playable cap — replay of 12, never a
+		// phantom episode 13.
+		const entry = makeEntry('hist-a', '12', 'Show A');
+		const match = makeMatch('k-a', 24);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const backgroundProbe = new Promise<{ episode_count: number }>(() => {});
+		const fetchAvailability = vi.fn().mockReturnValue(backgroundProbe);
+
+		let releasedMatch: KitsuAnimeRef | null = null;
+		let releasedCount: number | null = null;
+		void loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: () => Promise.resolve('sub' as const),
+			onRowReady: (_id, m, count) => {
+				releasedMatch = m;
+				releasedCount = count;
+			}
+		});
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+
+		// Card is rendered and clickable; the cap is still unknown.
+		expect(releasedMatch).toEqual(match);
+		expect(releasedCount).toBeNull();
+
+		// The click resolves the episode live (interactive lane).
+		const clickProbe = vi.fn().mockResolvedValue({ count: 12, approximate: false });
+		const r = await resolveResumeEpisode(
+			12,
+			releasedCount,
+			(releasedMatch as KitsuAnimeRef | null)?.episode_count ?? null,
+			clickProbe
+		);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+		expect(clickProbe).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('acceptance: click-time lookup rides the interactive lane with awaited settings', () => {
+	it('the real wrapper sends background:false and the awaited dub mode', async () => {
+		// Composes the real pieces of the click path: settings resolve
+		// mid-click with DUB, the cap lookup goes out through the real
+		// makeFetchAvailability with the interactive flag, and the
+		// episode is picked against the answered cap.
+		const { makeFetchAvailability } = await import('./availability-from-match');
+		const { resolveResumeSettings } = await import('./resume-settings');
+		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+
+		const settings = await resolveResumeSettings(
+			null,
+			Promise.resolve({ mode: 'dub', quality: 'best' } as never)
+		);
+		const fetch = makeFetchAvailability(checkAvailability, { background: false });
+		const r = await resolveResumeEpisode(12, null, 24, () =>
+			fetch(makeMatch('k-a', 24), settings.mode).then((res) => ({
+				count: res?.episode_count ?? null,
+				approximate: res?.episode_count_approximate === true
+			}))
+		);
+
+		expect(checkAvailability).toHaveBeenCalledWith(
+			expect.objectContaining({ background: false, mode: 'dub', kitsu_id: 'k-a' })
+		);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+});
+
+describe('an approximate cap at the boundary is revalidated', () => {
+	// The background cap is not always exact. When the scraper gate
+	// refuses the detail fetch, the backend deliberately falls back to
+	// the search hit's count and caches it — its own comment says "off
+	// by one for shows with halves, but good enough for the cap until
+	// next probe". Treating every numeric cap as authoritative then
+	// forwards a phantom episode: true final 12 under an approximate
+	// cap of 13 resolves to 13, and playback fails on an episode that
+	// does not exist.
+	//
+	// The click cannot see whether a cap is approximate, but it does
+	// know when it is standing on the boundary — the only place the
+	// off-by-one can bite. Revalidating just that case costs one
+	// interactive lookup, on the lane that is neither paced nor
+	// refused, while the resume spinner is already up.
+	it('revalidates when the next episode would be the cap itself', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(12); // replay the true finale, not phantom 13
+		expect(r.count).toBe(12);
+	});
+
+	it('keeps the boundary cap when revalidation confirms it', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: false }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+
+	it('trusts the cap when the click is not standing on the boundary', async () => {
+		// An EXACT cap needs no lookup at any position.
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(5, 13, 24, fetchCount);
+		expect(fetchCount).not.toHaveBeenCalled();
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(13);
+	});
+
+	it('falls back to the background cap when revalidation fails', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('offline');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+});
+
+describe('a cap that lands while the interactive lookup runs', () => {
+	// The click can start before the background probe settles: the
+	// snapshot cap is null, so the interactive lookup runs. If that
+	// lookup fails while the background probe publishes an exact cap
+	// in the meantime, falling back to Kitsu's optimistic count throws
+	// away a better answer that is already in hand — and Kitsu's count
+	// is exactly the number the probe exists to correct.
+	it('prefers a cap published during the lookup over Kitsu on failure', async () => {
+		let published: { count: number | null; approximate: boolean } | null = null;
+		const fetchCount = vi.fn(async () => {
+			published = { count: 12, approximate: true }; // the probe lands mid-flight
+			throw new Error('interactive lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r.episode).toBe(12); // replay the real finale, not Kitsu's 13
+		expect(r.count).toBe(12);
+	});
+
+	it('still falls back to Kitsu when no cap arrived', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('interactive lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => null);
+		expect(r.episode).toBe(13);
+	});
+
+	it('treats the reader as optional for callers that have no live cap', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(5, null, 24, fetchCount);
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(12);
+	});
+});
+
+describe('an approximate cap is never trusted', () => {
+	// The backend reports when a count came from the search hit rather
+	// than the detail fetch. That number counts half episodes as whole
+	// ones, so it can run high by MORE than one when a show carries
+	// several — which is why position ("is the next episode exactly
+	// the cap?") is not a safe proxy for the risk.
+	it('revalidates an approximate cap even below the boundary', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(5, 14, 24, fetchCount, undefined, true);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(12);
+	});
+
+	it('still trusts an exact cap without any lookup', async () => {
+		const fetchCount = vi.fn();
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, false);
+		expect(fetchCount).not.toHaveBeenCalled();
+		expect(r.episode).toBe(13);
+	});
+
+	it('keeps the approximate cap when revalidation fails', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('offline');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+});
+
+describe('an interactive lookup that is itself approximate', () => {
+	// The interactive lane bypasses the gate, but its detail fetch can
+	// still fail — the backend then returns the search-hit count
+	// marked approximate. Collapsing that to a bare number lets the
+	// page record it as exact, so this click can advance to a phantom
+	// AND every later click trusts the same cap.
+	it('reports an approximate lookup result as approximate', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount);
+		expect(r.count).toBe(13);
+		expect(r.approximate).toBe(true);
+	});
+
+	it('reports a confirmed lookup result as exact', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 12, approximate: false }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount);
+		expect(r.episode).toBe(12);
+		expect(r.approximate).toBe(false);
+	});
+
+	it('a revalidation that comes back approximate stays approximate', async () => {
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r.approximate).toBe(true);
+	});
+});
+
+describe('a cap published while an approximate one is being revalidated', () => {
+	// Codex P2 #3666727714 covered the null-snapshot branch; this is
+	// the approximate-snapshot branch, which never consulted the live
+	// reader at all. The background probe can publish an EXACT cap
+	// while the revalidation is in flight, and falling back to the
+	// snapshot then keeps the worse of two answers already in hand:
+	// approximate 13 survives an exact 12, plays a phantom episode,
+	// and startResume re-pins 13 over the safer number.
+	it('prefers an exact cap published mid-revalidation over the snapshot', async () => {
+		let published: { count: number | null; approximate: boolean } | null = null;
+		const fetchCount = vi.fn(async () => {
+			published = { count: 12, approximate: false };
+			throw new Error('revalidation failed');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('takes the newer reading even when it is approximate too', async () => {
+		// The snapshot and the reader are the SAME store, read at two
+		// times. A published value is not a competing source to weigh
+		// against the snapshot — it is the snapshot, updated. So the
+		// live read always supersedes it, and provenance only decides
+		// between the reader and the interactive lookup.
+		const published = { count: 14, approximate: true };
+		const fetchCount = vi.fn(async () => {
+			throw new Error('revalidation failed');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		// Episode 13 either way — watched 12, so the next one. What
+		// changes is the cap it is measured against, and a raised cap
+		// is what stops a later click stalling at a stale ceiling.
+		expect(r).toEqual({ episode: 13, count: 14, approximate: true });
+	});
+
+	it('a revalidation that answers without a count leaves the cap unconfirmed', async () => {
+		// `{count: null, approximate: false}` is "no cap", not "the cap
+		// you have is exact" — reporting it as exact would let the next
+		// click trust a number nothing ever confirmed.
+		const fetchCount = vi.fn(async () => ({ count: null, approximate: false }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r).toEqual({ episode: 13, count: 13, approximate: true });
+	});
+
+	it('lets an exact published cap beat an approximate lookup answer', async () => {
+		// The rule the cap authority already states — an exact answer
+		// beats an approximate one whichever side it came from — was
+		// not applied here. A numeric-but-approximate lookup won on
+		// position alone, so an exact background 12 lost to a
+		// search-hit 13 and the click requested a phantom episode.
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('applies the same precedence when revalidating an approximate snapshot', async () => {
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => ({ count: 14, approximate: true }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('keeps the lookup when both answers are equally confident', async () => {
+		// Provenance is the tie-break, not the whole ordering. Between
+		// two answers of equal confidence the interactive lookup wins:
+		// it is the one this click asked for.
+		const exact = { count: 11, approximate: false };
+		const r = await resolveResumeEpisode(
+			5,
+			null,
+			24,
+			vi.fn(async () => ({ count: 12, approximate: false })),
+			() => exact
+		);
+		expect(r.count).toBe(12);
+
+		const approx = { count: 12, approximate: true };
+		const r2 = await resolveResumeEpisode(
+			5,
+			null,
+			24,
+			vi.fn(async () => ({ count: 13, approximate: true })),
+			() => approx
+		);
+		expect(r2.count).toBe(13);
+	});
+
+	it('carries the provenance of a cap published during a first lookup', async () => {
+		// The null-snapshot branch had the same gap in the other
+		// direction: it took the published count but hard-coded the
+		// answer as approximate, so an exact background cap was
+		// re-probed on the next click for nothing.
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => {
+			throw new Error('lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+});

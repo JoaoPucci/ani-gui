@@ -18,7 +18,7 @@ export interface ContinueWatchingLoaderDeps {
 	fetchAvailability: (
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
-	) => Promise<{ episode_count: number | null } | null>;
+	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
 	/**
 	 * Resolves to the configured availability mode. Async because the
 	 * home page bootstraps settingsGet() in parallel with historyList()
@@ -28,14 +28,24 @@ export interface ContinueWatchingLoaderDeps {
 	 */
 	getMode: () => Promise<'sub' | 'dub'>;
 	/**
-	 * Fired per entry as that row's match AND playable count both
-	 * become known. The page uses this to write its historyMatches /
-	 * historyPlayableCounts maps incrementally so a fast row's card
-	 * isn't held behind a slow row's match. No-match rows release
-	 * immediately with `(null, null)`. Optional — callers that just
-	 * want the final maps (tests, headless consumers) can skip it.
+	 * Fired per entry the moment its match is known — WITHOUT waiting
+	 * on the availability probe — and a second time if a probe later
+	 * refines the playable cap. The page uses this to write its
+	 * historyMatches / historyPlayableCounts maps incrementally: the
+	 * first call is what renders the card and enables its click (cap
+	 * falls back to match.episode_count), the refinement call tightens
+	 * the cap. No-match rows release with `(null, null)`. Optional —
+	 * callers that just want the final maps can skip it.
 	 */
-	onRowReady?: (entryId: string, match: KitsuAnimeRef | null, playableCount: number | null) => void;
+	onRowReady?: (
+		entryId: string,
+		match: KitsuAnimeRef | null,
+		playableCount: number | null,
+		/** True when the count came from the search hit rather than the
+		 *  detail fetch — it can run high, so the click must revalidate
+		 *  rather than treat it as a confirmed cap. */
+		approximate?: boolean
+	) => void;
 	/**
 	 * Max concurrent live probes. allmanga is rate-limited, and the
 	 * backend's `warm` path spaces equivalent probes by 500ms while
@@ -47,39 +57,44 @@ export interface ContinueWatchingLoaderDeps {
 }
 
 /**
- * Loads the home page's Continue Watching state with per-row release
- * semantics. Each row's match + playable count land together (no
- * stale-cap race), but rows don't gate each other — a slow Kitsu
- * resolution doesn't hold up cards whose data is already in.
+ * Loads the home page's Continue Watching state with render-then-
+ * refine semantics: the video site is never on the rendering path.
+ * A card needs only its Kitsu match to draw and be clickable, so
+ * each row releases the moment resolveMatch lands; the allmanga
+ * probe runs behind it and only refines the playable cap. Click
+ * safety doesn't depend on the probe — pressing play runs its own
+ * live resolution with real error feedback, which is the only
+ * answer that's current at the moment it matters.
  *
  * Pipeline per row:
  *   1. resolveMatch — kitsuSearch + pickKitsuMatch (cache-first at
  *      30d TTL; usually instant on warm runs).
- *   2. If null match: fire onRowReady(null, null) immediately. The
- *      page renders the /search fallback link.
- *   3. Otherwise: await `getMode` (shared promise, awaited once for
- *      the whole load), then enqueue a checkAvailability probe.
+ *   2. Null match → onRowReady(null, null); the page renders the
+ *      /search fallback link. Otherwise → onRowReady(match, null)
+ *      IMMEDIATELY: the card renders now, cap falls back to
+ *      match.episode_count.
+ *   3. Await `getMode` (shared promise, awaited once for the whole
+ *      load), then enqueue a checkAvailability probe.
  *   4. Probes drain through a bounded worker pool (default 4
- *      concurrent). As each row's probe lands, fire onRowReady
- *      with the resolved count (or null on rejection / no count).
- *
- * The page's button-enable gate reads `historyMatches[entry.id]` —
- * which is only written from inside onRowReady — so a card never
- * flips to its resumable form before its cap is in.
+ *      concurrent). A probe that lands WITH a count fires a second
+ *      onRowReady(match, count) so the cap tightens; a countless or
+ *      failed probe adds nothing the card doesn't already have and
+ *      stays silent — the card keeps its fallback cap either way.
  *
  * The returned `{matches, playableCounts}` is the cumulative view,
  * useful for callers that don't want to track callbacks (tests, the
  * page's defensive "in case onRowReady fires after teardown" guard).
+ * The promise still resolves only after every probe settles.
  *
  * Failure modes:
  *   - resolveMatch rejects → entry gets `null` match; onRowReady
  *     fires with (null, null).
  *   - getMode rejects → defaults to `sub`, same fallback the page
  *     uses today.
- *   - probe rejects or returns null/null-count → onRowReady fires
- *     with `(match, null)`; per-card cap then falls back to
- *     match.episode_count via the page's `playableCount ??
- *     match?.episode_count` precedence.
+ *   - probe rejects or returns null/null-count → no second
+ *     callback; per-card cap keeps the match.episode_count fallback
+ *     via the page's `playableCount ?? match?.episode_count`
+ *     precedence.
  */
 export async function loadContinueWatchingState(
 	history: HistoryEntry[],
@@ -98,10 +113,18 @@ export async function loadContinueWatchingState(
 	let pendingProbes = 0;
 	let matchesPending = history.length;
 
-	const finalizeRow = (entryId: string, match: KitsuAnimeRef | null, count: number | null) => {
+	// `approximate` is REQUIRED, not defaulted. A defaulted flag makes a
+	// dropped argument mean "exact", which is the unsafe direction and
+	// is exactly how an earlier version of this silently regressed.
+	const finalizeRow = (
+		entryId: string,
+		match: KitsuAnimeRef | null,
+		count: number | null,
+		approximate: boolean
+	) => {
 		matches[entryId] = match;
 		if (typeof count === 'number') playableCounts[entryId] = count;
-		deps.onRowReady?.(entryId, match, count);
+		deps.onRowReady?.(entryId, match, count, approximate);
 	};
 
 	const maybeFinishLoad = () => {
@@ -116,13 +139,23 @@ export async function loadContinueWatchingState(
 			if (!job) break;
 			const mode = await modePromise;
 			let count: number | null;
+			// Whether that count came from the search hit rather than the
+			// detail fetch. Forwarded explicitly — see finalizeRow.
+			let approximate = false;
 			try {
 				const r = await deps.fetchAvailability(job.match, mode);
 				count = r?.episode_count ?? null;
+				approximate = r?.episode_count_approximate === true;
 			} catch {
 				count = null;
 			}
-			finalizeRow(job.entry.id, job.match, count);
+			// Refine only when the probe actually knows something: the
+			// card already released at match time with the episode_count
+			// fallback, so a countless probe would just re-trigger the
+			// row's episode fetch for an identical cap.
+			if (typeof count === 'number') {
+				finalizeRow(job.entry.id, job.match, count, approximate);
+			}
 			pendingProbes--;
 			maybeFinishLoad();
 		}
@@ -149,15 +182,20 @@ export async function loadContinueWatchingState(
 			.resolveMatch(entry)
 			.then((match) => {
 				if (!match) {
-					finalizeRow(entry.id, null, null);
+					finalizeRow(entry.id, null, null, false);
 				} else {
+					// Release the card now — the Kitsu match is everything
+					// a card needs to render and take a click.
+					// Release-time: no probe has run, so there is no
+					// count and therefore nothing approximate about it.
+					finalizeRow(entry.id, match, null, false);
 					pendingProbes++;
 					queue.push({ entry, match });
 					ensureWorkers();
 				}
 			})
 			.catch(() => {
-				finalizeRow(entry.id, null, null);
+				finalizeRow(entry.id, null, null, false);
 			})
 			.finally(() => {
 				matchesPending--;
