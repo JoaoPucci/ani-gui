@@ -122,7 +122,22 @@ const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
 const high_risk = rows.filter((r) => r.crap > 30).length;
 
 if (jsonFlag) {
-	process.stdout.write(JSON.stringify({ max: r2(max), p95: r2(p95), high_risk, count: rows.length }) + '\n');
+	// `high_risk_files` names what the count is counting. Without it a
+	// regression reports "26 vs 25" and the operator cannot tell which
+	// file crossed — and the answer is not always reproducible
+	// locally, since a file sitting a fraction under 30 crosses on a
+	// coverage difference between environments.
+	process.stdout.write(
+		JSON.stringify({
+			max: r2(max),
+			p95: r2(p95),
+			high_risk,
+			count: rows.length,
+			high_risk_files: rows
+				.filter((r) => r.crap > 30)
+				.map((r) => ({ file: r.file, ccn: r.ccn, cov: r2(r.coverage * 100), crap: r2(r.crap) }))
+		}) + '\n'
+	);
 } else {
 	const widths = { file: 50, ccn: 6, cov: 8, crap: 8 };
 	console.log(`${pad('file', widths.file)}${pad('ccn', widths.ccn)}${pad('cov', widths.cov)}${pad('crap', widths.crap)}`);
