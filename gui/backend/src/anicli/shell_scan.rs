@@ -53,6 +53,8 @@ impl ShellScan {
         let mut closes_arm = false;
         let mut i = 0;
         let mut at_word_start = true;
+        // Depth of open `$(( ))` arithmetic expansions on this line.
+        let mut arith_depth = 0usize;
         // A line beginning inside a multi-line string is opaque up
         // to the quote's close: its leading text is string data, not
         // executable shell, and every scope check anchors at segment
@@ -86,7 +88,26 @@ impl ShellScan {
                     b'\'' => self.in_single = true,
                     b'"' => self.in_double = true,
                     b'\\' => i += 1,
-                    b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                    // `$((` opens an arithmetic expansion, where `<<`
+                    // and `>>` are shift operators rather than
+                    // redirections. Tracked as a depth so a nested
+                    // `((` inside the expression closes correctly.
+                    // Deliberately local to this line: arithmetic
+                    // spanning lines is vanishingly rare, and a stray
+                    // opener must not poison the scanner's state.
+                    b'$' if bytes.get(i + 1) == Some(&b'(') && bytes.get(i + 2) == Some(&b'(') => {
+                        arith_depth += 1;
+                        i += 3;
+                        at_word_start = false;
+                        continue;
+                    }
+                    b')' if arith_depth > 0 && bytes.get(i + 1) == Some(&b')') => {
+                        arith_depth -= 1;
+                        i += 2;
+                        at_word_start = false;
+                        continue;
+                    }
+                    b'<' if arith_depth == 0 && bytes.get(i + 1) == Some(&b'<') => {
                         if bytes.get(i + 2) == Some(&b'<') {
                             // A herestring's operator, not a heredoc:
                             // consume the whole run so its tail can't
