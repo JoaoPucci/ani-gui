@@ -1496,3 +1496,43 @@ fn arithmetic_shifts_coexist_with_real_heredocs() {
         "a real heredoc after arithmetic is still tracked"
     );
 }
+
+/// Backslash-newline is removed by the shell before parsing, so
+/// `dep_ch \` + `"ffmpeg"` on the next physical line is ONE command.
+/// Scanning the two lines separately sees neither as a complete call
+/// and the veto is missed — and that errs toward GRANTING yt-dlp on a
+/// script that still exits at its own ffmpeg check, which is the
+/// direction that actually breaks a download.
+#[test]
+fn a_continued_hard_check_still_vetoes() {
+    let text = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tdep_ch \\\n\t\t\"ffmpeg\"\n\t;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "a line-continued dep_ch is the same hard requirement"
+    );
+}
+
+/// The same joining must not lose a continued failover invocation.
+#[test]
+fn a_continued_failover_still_grants() {
+    let text = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \\\n\t\t\"yt-dlp,ffmpeg\"\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a line-continued failover is the same grant"
+    );
+}
+
+/// POSIX lets redirections follow a compound command's terminator, so
+/// `esac >/dev/null` closes the nested case exactly as a bare `esac`
+/// does. Not popping the owner leaves a following at-level failover
+/// looking nested — and therefore conditional — so a capable script
+/// reads as ffmpeg-only. The closing function brace already handles
+/// its redirections; this is the same rule.
+#[test]
+fn esac_with_redirections_pops_case_ownership() {
+    let text = "case \"$player_function\" in\ndownload)\n\tcase $(uname) in\n\tDarwin) : ;;\n\tesac >/dev/null\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a redirected esac closes the nested case"
+    );
+}
