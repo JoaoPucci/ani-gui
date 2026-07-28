@@ -1304,18 +1304,18 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
-        // The capable form is a genuine INVOCATION inside a
-        // `download)` case arm, as the real script's dep check is —
-        // the classifier accepts nothing less than the branch that
-        // governs -d mode. The stub defines no such function; the
-        // not-found error is silenced so the stub still exits 0.
-        let dep_line = if marker {
-            "dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true"
+        // The capable form is the release's download arm verbatim —
+        // the classifier accepts nothing less, because an excerpt of
+        // the arm is also what a usage block quoting it looks like.
+        // `$player_function` is unset, so the arm never executes and
+        // the stub's undefined functions are never called.
+        let arm_body = if marker {
+            "        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n"
         } else {
-            "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true"
+            "        dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true\n"
         };
         let script = format!(
-            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n{arm_body}        ;;\nesac\nexit 0\n"
         );
         f.write_all(script.as_bytes()).expect("write stub");
         let mut perm = f.metadata().expect("perm").permissions();
@@ -1347,7 +1347,7 @@ mod tests {
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
         let body = format!(
-            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nprintf '%s' \"$0\" >{}\nexit 0\n",
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '%s' \"$0\" >{}\nexit 0\n",
             argv0_out.display()
         );
         f.write_all(body.as_bytes()).expect("write stub");
@@ -1397,7 +1397,7 @@ mod tests {
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
         let body = format!(
-            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nif [ -x \"$0\" ]; then printf executable >{out}; else printf plain >{out}; fi\nexit 0\n",
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nif [ -x \"$0\" ]; then printf executable >{out}; else printf plain >{out}; fi\nexit 0\n",
             out = mode_out.display()
         );
         f.write_all(body.as_bytes()).expect("write stub");

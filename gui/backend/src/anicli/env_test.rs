@@ -6,11 +6,11 @@ use super::*;
 
 /// The 4.15 name set, produced through the production probe so every
 /// preflight test also exercises the capability gate's positive path.
-/// Shaped like the real script: the dependency check opens its own
-/// indented line inside the download arm.
+/// Carries the release's download arm verbatim, which is what
+/// recognition requires — an excerpt of it is not the arm.
 fn both() -> &'static [&'static str] {
     download_tool_names(
-        "version_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac",
+        "version_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac",
     )
 }
 
@@ -294,7 +294,9 @@ fn ensure_download_tool_rejects_ytdlp_when_the_script_is_ffmpeg_only() {
     // The full gate: a stale pre-4.15 script's name set must fail the
     // preflight on a machine that has yt-dlp but no ffmpeg, so the
     // typed modal shows instead of a mid-download scraper death.
-    let names = download_tool_names(r#"download) dep_ch "ffmpeg" "aria2c" ;;"#);
+    let names = download_tool_names(
+        "version_number=\"4.14.0\"\ndownload) dep_ch \"ffmpeg\" \"aria2c\" ;;\n",
+    );
     let path = join(&["/a", "/b"]);
     let ytdlp = if cfg!(windows) {
         "yt-dlp.exe"
@@ -330,7 +332,8 @@ fn download_tool_names_are_ffmpeg_only_for_the_pre_4_15_script() {
     // A stale cache running pre-4.15 hard-requires ffmpeg
     // (`dep_ch "ffmpeg" "aria2c"`); accepting yt-dlp alone there
     // would pass the preflight and then die inside the spawn.
-    let script = r#"case "$player_function" in
+    let script = r#"version_number="4.14.0"
+case "$player_function" in
     download) dep_ch "ffmpeg" "aria2c" ;;
 esac"#;
     let names = download_tool_names(script);
@@ -358,7 +361,9 @@ fn download_tool_names_require_an_actual_invocation() {
         "echo 'dep_ch_failover \"yt-dlp,ffmpeg\"'",
         "msg=dep_ch_failover_\"yt-dlp,ffmpeg\"",
     ] {
-        let script = format!("#!/bin/sh\n{decoy}\ndownload) dep_ch \"ffmpeg\" ;;\n");
+        let script = format!(
+            "#!/bin/sh\nversion_number=\"4.15.0\"\n{decoy}\ndownload) dep_ch \"ffmpeg\" ;;\n"
+        );
         let names = download_tool_names(&script);
         assert!(
             !names.contains(&ytdlp),
@@ -376,6 +381,7 @@ fn download_tool_names_scope_the_probe_to_the_download_branch() {
     // machine passing preflight against this script would die inside
     // ani-cli with the generic scraper error.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 pick_muxer() {
     dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
 }
@@ -402,6 +408,7 @@ fn download_tool_names_close_the_arm_at_inline_terminators() {
     // unrelated next arm must not read as download capability while
     // the download arm still hard-requires ffmpeg.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download) dep_ch "ffmpeg" "aria2c" ;; other)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -425,6 +432,7 @@ fn download_tool_names_ignore_comment_tails() {
     // not an arm, so an invocation after it grants nothing while the
     // real download branch still hard-requires ffmpeg.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download) dep_ch "ffmpeg" "aria2c" ;;
 esac
@@ -452,6 +460,7 @@ fn download_tool_names_require_the_player_function_case() {
     // download) passes a yt-dlp-only preflight the real download
     // branch will fail.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$1" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -480,6 +489,7 @@ fn download_tool_names_treat_multiline_strings_as_opaque() {
     // invoke the failover, or a quoted usage example would enable
     // yt-dlp-only downloads the real dependency arm refuses.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 usage='
 case "$player_function" in
     download)
@@ -509,6 +519,7 @@ fn download_tool_names_treat_heredoc_bodies_as_text() {
     // stand up a case owner nor invoke the failover while the real
     // download branch still hard-requires ffmpeg.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 usage() {
     cat <<'EOF'
 case "$player_function" in
@@ -540,6 +551,7 @@ fn download_tool_names_require_an_expanding_owner() {
     // documentary case cannot own the download branch even when it
     // carries the failover call.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case '$player_function' in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -564,7 +576,7 @@ esac"#;
 fn download_tool_names_skip_tab_separated_heredoc_delimiters() {
     // sh accepts a tab between << and the delimiter word; the body
     // is still data, not executable shell.
-    let script = "#!/bin/sh\ncat <<\tEOF\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac\nEOF\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n";
+    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\ncat <<\tEOF\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac\nEOF\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n";
     let names = download_tool_names(script);
     let ytdlp = if cfg!(windows) {
         "yt-dlp.exe"
@@ -583,6 +595,7 @@ fn download_tool_names_require_an_identifier_boundary_on_the_owner() {
     // owner match must stop at a shell identifier boundary, or a
     // longer-named case steals ownership it can never exercise.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function_backup" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -609,6 +622,7 @@ fn download_tool_names_start_comments_after_operators() {
     // no whitespace between them; a ;; and arm inside that comment
     // are ignored text, not a real arm.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     play) dep_ch "ffmpeg";# ;; download) dep_ch_failover "yt-dlp,ffmpeg"
         ;;
@@ -633,6 +647,7 @@ fn download_tool_names_pop_ownership_at_inline_esac() {
     // unrelated case after the semicolon seen, or a later download)
     // arm is evaluated under a stale owner.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download) dep_ch "ffmpeg" "aria2c" ;;
 esac; case "$other" in
@@ -660,6 +675,7 @@ fn download_tool_names_ignore_function_bodies() {
     // real 4.15 dep check is top-level, which the repo-script pin
     // keeps enforced from the accepting side.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 unused_helper() {
     case "$player_function" in
         download)
@@ -689,6 +705,7 @@ fn download_tool_names_weigh_the_whole_arm() {
     // required: the verdict belongs to the complete arm, not the
     // first invocation seen.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -715,6 +732,7 @@ fn download_tool_names_veto_on_any_hard_ffmpeg_form_or_depth() {
     // apply still requires ffmpeg, even though a nested invocation
     // never grants.
     let single_quoted = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -722,6 +740,7 @@ case "$player_function" in
         ;;
 esac"#;
     let nested = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -751,6 +770,7 @@ fn download_tool_names_skip_split_line_definitions() {
     // still a definition: the body is awaited, skipped, and closed
     // at its column-0 brace.
     let script = r#"#!/bin/sh
+version_number="4.15.0"
 helper()
 {
     dep_ch_failover "yt-dlp,ffmpeg" >/dev/null
@@ -775,6 +795,7 @@ fn download_tool_names_close_without_granting_and_skip_escaped_owners() {
     // An arm closed by the owner esac without a terminator and
     // without a failover grants nothing…
     let hard_only_esac_close = r#"#!/bin/sh
+version_number="4.15.0"
 case "$player_function" in
     download)
         dep_ch "ffmpeg" "aria2c"
@@ -782,6 +803,7 @@ esac"#;
     // …and a backslash-escaped dollar in a subject is literal text,
     // not an expansion, so it cannot own the download branch.
     let escaped_owner = r#"#!/bin/sh
+version_number="4.15.0"
 case "\$player_function" in
     download)
         dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || true
@@ -811,7 +833,7 @@ fn download_tool_names_preserve_empty_heredoc_delimiters() {
     // first empty line. Its body is data — a documentary capability
     // block inside it must not grant while the real download arm
     // still hard-requires ffmpeg.
-    let script = "#!/bin/sh\ncat <<''\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac\n\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n";
+    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\ncat <<''\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac\n\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" \"aria2c\" ;;\nesac\n";
     let names = download_tool_names(script);
     let ytdlp = if cfg!(windows) {
         "yt-dlp.exe"
@@ -830,7 +852,7 @@ fn download_tool_names_ignore_commented_markers() {
     // in a comment still hard-requires ffmpeg on its executable
     // path; granting yt-dlp on the mention would pass the preflight
     // and die inside the subprocess.
-    let script = "#!/bin/sh\n# dep_ch_failover \"yt-dlp,ffmpeg\" — described, not executed\ndownload) dep_ch \"ffmpeg\" \"aria2c\" ;;\n";
+    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\n# dep_ch_failover \"yt-dlp,ffmpeg\" — described, not executed\ndownload) dep_ch \"ffmpeg\" \"aria2c\" ;;\n";
     let names = download_tool_names(script);
     let ytdlp = if cfg!(windows) {
         "yt-dlp.exe"

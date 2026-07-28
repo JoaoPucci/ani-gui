@@ -1,5 +1,22 @@
 use super::*;
 
+/// The download arm exactly as the 4.15 release spells it, indentation
+/// included. Fixtures build scripts around this constant so none of
+/// them can quietly drift from the shape the recognizer requires —
+/// [`the_bundled_script_is_recognized`] pins both against the real
+/// file.
+const BLESSED_ARM: &str = concat!(
+    "    download)\n",
+    "        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n",
+    "        dep_ch \"aria2c\"\n",
+    "        ;;\n",
+);
+
+/// A minimal script from `version` carrying the release's arm.
+fn script_at(version: &str) -> String {
+    format!("#!/bin/sh\nversion_number=\"{version}\"\ncase \"$player_function\" in\n{BLESSED_ARM}esac\n")
+}
+
 /// The bundled script must be recognized, or the relaxed preflight
 /// silently degrades to ffmpeg-only for every fresh install. This is
 /// the reality pin: it reads the actual file rather than a fixture.
@@ -18,23 +35,21 @@ fn the_bundled_script_is_recognized() {
 }
 
 /// Recognition is two independent facts, and BOTH are required: the
-/// script is from the 4.15-or-later lineage, and its download arm
-/// still carries that lineage's failover call. Either alone can be
-/// true of a script that does not accept yt-dlp.
+/// script is from the 4.15-or-later lineage, and it still carries that
+/// lineage's download arm. Either alone can be true of a script that
+/// does not accept yt-dlp.
 #[test]
-fn both_the_version_and_the_failover_line_are_required() {
-    let with_both = "#!/bin/sh\nversion_number=\"4.15.0\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n";
-    assert!(supports_ytdlp_download(with_both));
+fn both_the_version_and_the_arm_are_required() {
+    assert!(supports_ytdlp_download(&script_at("4.15.0")));
 
     // Right lineage, arm edited out — a customization we cannot vouch
     // for, so it is treated as unknown.
-    let no_line = "#!/bin/sh\nversion_number=\"4.15.0\"\ndep_ch \"ffmpeg\"\n";
-    assert!(!supports_ytdlp_download(no_line));
+    let no_arm = "#!/bin/sh\nversion_number=\"4.15.0\"\ndownload) dep_ch \"ffmpeg\" ;;\n";
+    assert!(!supports_ytdlp_download(no_arm));
 
-    // The call exists but the script predates the release that made
-    // it the download arm's dependency check.
-    let old_version = "#!/bin/sh\nversion_number=\"4.14.0\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n";
-    assert!(!supports_ytdlp_download(old_version));
+    // The arm exists but the script predates the release that made it
+    // the download branch's dependency check.
+    assert!(!supports_ytdlp_download(&script_at("4.14.0")));
 }
 
 /// A later release stays recognized: the failover is not going to be
@@ -43,10 +58,8 @@ fn both_the_version_and_the_failover_line_are_required() {
 #[test]
 fn a_later_release_is_still_recognized() {
     for v in ["4.15.1", "4.16.0", "5.0.0", "4.15"] {
-        let script =
-            format!("#!/bin/sh\nversion_number=\"{v}\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n");
         assert!(
-            supports_ytdlp_download(&script),
+            supports_ytdlp_download(&script_at(v)),
             "{v} is at or past the failover release"
         );
     }
@@ -58,71 +71,146 @@ fn a_later_release_is_still_recognized() {
 /// dying inside a spawn, which is not.
 #[test]
 fn an_unplaceable_script_is_conservative() {
+    let arm = BLESSED_ARM;
     for (label, script) in [
-        ("no version line", "#!/bin/sh\ndep_ch_failover \"yt-dlp,ffmpeg\"\n"),
+        ("no version line", format!("#!/bin/sh\n{arm}")),
         (
             "unparseable version",
-            "#!/bin/sh\nversion_number=\"nightly\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n",
+            format!("#!/bin/sh\nversion_number=\"nightly\"\n{arm}"),
         ),
-        ("empty", ""),
+        ("empty", String::new()),
         (
             "version mentioned only in prose",
-            "#!/bin/sh\n# version_number=\"4.15.0\" is what we target\ndep_ch_failover \"yt-dlp,ffmpeg\"\n",
+            format!("#!/bin/sh\n# version_number=\"4.15.0\" is what we target\n{arm}"),
         ),
     ] {
         assert!(
-            !supports_ytdlp_download(script),
+            !supports_ytdlp_download(&script),
             "{label} must fall back to ffmpeg-only"
         );
     }
 }
 
 /// The version must be the script's own declaration at the start of a
-/// line, not a substring of some other assignment.
+/// line, not a substring of some other assignment. The arm is present
+/// so the version is the only thing under test.
 #[test]
 fn the_version_is_read_from_its_own_assignment() {
-    let shadowed = "#!/bin/sh\nprev_version_number=\"4.15.0\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n";
+    let shadowed = format!("#!/bin/sh\nprev_version_number=\"4.15.0\"\n{BLESSED_ARM}");
     assert!(
-        !supports_ytdlp_download(shadowed),
+        !supports_ytdlp_download(&shadowed),
         "a different variable is not the script's version"
     );
 }
 
-/// The call has to be a call. A commented-out `dep_ch_failover` line
-/// beside a real arm that hard-requires ffmpeg would otherwise
-/// satisfy a plain substring search — and that is the over-grant
-/// direction: preflight passes on a yt-dlp-only host and the script
-/// then exits at its own check.
-///
-/// Requiring it to open its line is enough, and stays a recognizer
-/// rather than a parser: the release spells it that way.
+/// A commented-out copy of the arm is documentation, not a dependency
+/// check. Accepting one would grant yt-dlp to a script whose real arm
+/// still requires ffmpeg — the over-grant direction, where preflight
+/// passes on a yt-dlp-only host and the script then exits at its own
+/// check.
 #[test]
-fn a_commented_out_failover_call_is_not_recognized() {
-    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\n# dep_ch_failover \"yt-dlp,ffmpeg\"\ncase $x in\ndownload) dep_ch \"ffmpeg\" ;;\nesac\n";
+fn a_commented_out_arm_is_not_recognized() {
+    let commented: String = BLESSED_ARM.lines().map(|l| format!("# {l}\n")).collect();
+    let script = format!(
+        "#!/bin/sh\nversion_number=\"4.15.0\"\n{commented}case \"$player_function\" in\n    download) dep_ch \"ffmpeg\" ;;\nesac\n"
+    );
     assert!(
-        !supports_ytdlp_download(script),
-        "a commented call is not the dependency check"
+        !supports_ytdlp_download(&script),
+        "a commented arm is not the dependency check"
     );
 }
 
-/// The real script indents it, so leading blanks are part of the
-/// shape rather than a deviation from it.
+/// Reindentation is cosmetic and stays recognized; rewording is not.
+/// The release's own tail — the redirect and the `die` message — is
+/// part of the shape, because "some line that starts with the failover
+/// call" is exactly what a documentary excerpt also looks like.
 #[test]
-fn an_indented_failover_call_is_recognized() {
-    for lead in ["", "    ", "\t", "        "] {
-        let script =
-            format!("#!/bin/sh\nversion_number=\"4.15.0\"\n{lead}dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n");
+fn reindentation_is_allowed_but_rewording_is_not() {
+    let reindented: String = BLESSED_ARM
+        .lines()
+        .map(|l| format!("\t\t{}\n", l.trim()))
+        .collect();
+    assert!(supports_ytdlp_download(&format!(
+        "#!/bin/sh\nversion_number=\"4.15.0\"\n{reindented}"
+    )));
+
+    let reworded = BLESSED_ARM.replace("Neither yt-dlp nor ffmpeg found", "no downloader");
+    assert!(
+        !supports_ytdlp_download(&format!("#!/bin/sh\nversion_number=\"4.15.0\"\n{reworded}")),
+        "a reworded arm is a customization we cannot vouch for"
+    );
+}
+
+/// An excerpt of the arm — a usage block quoting the first line or
+/// two, a half-finished edit — is not the arm. This is the shape that
+/// actually shows up in the wild, and the one a single-line marker
+/// search cannot tell from the real thing.
+#[test]
+fn a_partial_arm_is_not_recognized() {
+    let lines: Vec<&str> = BLESSED_ARM.lines().collect();
+    for take in 1..lines.len() {
+        let excerpt = lines[..take].join("\n");
+        let script = format!("#!/bin/sh\nversion_number=\"4.15.0\"\n{excerpt}\n");
         assert!(
-            supports_ytdlp_download(&script),
-            "indentation {lead:?} is still the call"
+            !supports_ytdlp_download(&script),
+            "{take} of {} arm lines is an excerpt, not the arm",
+            lines.len()
         );
     }
 }
 
-/// Trailing text on the line is the release's own spelling — it
-/// redirects and dies on failure — so only the opening matters.
-#[test]
-fn trailing_text_after_the_call_is_allowed() {
-    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\n    dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'neither found'\n";
-    assert!(supports_ytdlp_download(script));
+proptest::proptest! {
+    /// Recognition tracks the DECLARED version across the range, not
+    /// the handful of examples a table test can afford. Every script
+    /// here carries the arm verbatim, so the version is the only
+    /// variable and the answer must be exactly "at or past 4.15".
+    #[test]
+    fn recognition_follows_the_declared_version(major in 0u32..12, minor in 0u32..60) {
+        let script = script_at(&format!("{major}.{minor}.0"));
+        proptest::prop_assert_eq!(
+            supports_ytdlp_download(&script),
+            (major, minor) >= FAILOVER_RELEASE
+        );
+    }
+
+    /// Position is not part of the shape: the arm is the arm wherever
+    /// it sits, so filler above and below must not change the answer.
+    #[test]
+    fn the_arm_is_recognized_at_any_position(
+        before in proptest::collection::vec("[a-z ]{0,24}", 0..6),
+        after in proptest::collection::vec("[a-z ]{0,24}", 0..6),
+    ) {
+        let script = format!(
+            "#!/bin/sh\nversion_number=\"4.15.0\"\n{}\n{BLESSED_ARM}{}\n",
+            before.join("\n"),
+            after.join("\n")
+        );
+        proptest::prop_assert!(supports_ytdlp_download(&script));
+    }
+
+    /// Dropping ANY line of the arm makes it something other than the
+    /// release's dependency check — a documentary excerpt, a
+    /// half-edited customization — and the answer must fall back to
+    /// ffmpeg-only. This is the direction that matters: a wrongly
+    /// granted yt-dlp passes the preflight and then dies in the spawn.
+    /// The filler is lowercase words and spaces, so it can never
+    /// supply a dropped line back.
+    #[test]
+    fn a_gapped_arm_never_grants(
+        drop_at in 0usize..4,
+        filler in proptest::collection::vec("[a-z ]{0,24}", 0..6),
+    ) {
+        let kept: Vec<&str> = BLESSED_ARM
+            .lines()
+            .enumerate()
+            .filter(|(i, _)| *i != drop_at)
+            .map(|(_, l)| l)
+            .collect();
+        let script = format!(
+            "#!/bin/sh\nversion_number=\"4.15.0\"\n{}\n{}\n",
+            kept.join("\n"),
+            filler.join("\n")
+        );
+        proptest::prop_assert!(!supports_ytdlp_download(&script));
+    }
 }
