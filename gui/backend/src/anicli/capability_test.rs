@@ -87,3 +87,42 @@ fn the_version_is_read_from_its_own_assignment() {
         "a different variable is not the script's version"
     );
 }
+
+/// The call has to be a call. A commented-out `dep_ch_failover` line
+/// beside a real arm that hard-requires ffmpeg would otherwise
+/// satisfy a plain substring search — and that is the over-grant
+/// direction: preflight passes on a yt-dlp-only host and the script
+/// then exits at its own check.
+///
+/// Requiring it to open its line is enough, and stays a recognizer
+/// rather than a parser: the release spells it that way.
+#[test]
+fn a_commented_out_failover_call_is_not_recognized() {
+    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\n# dep_ch_failover \"yt-dlp,ffmpeg\"\ncase $x in\ndownload) dep_ch \"ffmpeg\" ;;\nesac\n";
+    assert!(
+        !supports_ytdlp_download(script),
+        "a commented call is not the dependency check"
+    );
+}
+
+/// The real script indents it, so leading blanks are part of the
+/// shape rather than a deviation from it.
+#[test]
+fn an_indented_failover_call_is_recognized() {
+    for lead in ["", "    ", "\t", "        "] {
+        let script =
+            format!("#!/bin/sh\nversion_number=\"4.15.0\"\n{lead}dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n");
+        assert!(
+            supports_ytdlp_download(&script),
+            "indentation {lead:?} is still the call"
+        );
+    }
+}
+
+/// Trailing text on the line is the release's own spelling — it
+/// redirects and dies on failure — so only the opening matters.
+#[test]
+fn trailing_text_after_the_call_is_allowed() {
+    let script = "#!/bin/sh\nversion_number=\"4.15.0\"\n    dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'neither found'\n";
+    assert!(supports_ytdlp_download(script));
+}
