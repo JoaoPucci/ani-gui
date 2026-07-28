@@ -873,7 +873,33 @@ where
             key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
         });
     }
+    // Exit 0 is not the same as a usable file. yt-dlp writes the
+    // fragments it downloaded even when it cannot repackage them into
+    // the .mp4 container the name promises, and reports that only
+    // here — the process still succeeds. The result is raw MPEG-TS
+    // wearing an .mp4 extension: it plays in mpv and VLC, which sniff
+    // content, and fails anywhere that trusts the extension.
+    //
+    // Checking the tool's own report rather than the provider's
+    // format is deliberate. What allanime serves can change under us,
+    // and a decision made once against today's answer would go
+    // silently wrong the day it does. This fires whenever the
+    // condition actually occurs.
+    let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
+    if yt_dlp_could_not_repackage(&super::parser::strip_ansi(&stderr_bytes)) {
+        return Err(AniError::FfmpegMissing);
+    }
     Ok(())
+}
+
+/// yt-dlp's own report that it left MPEG-TS inside an `.mp4`.
+///
+/// Matched on the stable middle of the sentence rather than the whole
+/// line: yt-dlp prefixes it with the video title, which is arbitrary
+/// user content, and the trailing advice has been reworded across
+/// releases.
+fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
+    stderr.contains("Possible MPEG-TS in MP4 container")
 }
 
 #[cfg(test)]
