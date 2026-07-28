@@ -36,9 +36,11 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	run: (q: string) => Promise<void>;
 } {
 	let generation = 0;
-	// Config is loaded once and shared across runs — same lifetime it
-	// had as page state. `loaded` (not null-ness) marks completion so
-	// a failed fetch isn't retried on every keystroke.
+	// Config is cached only after a SUCCESSFUL load. A rejected load
+	// falls back to null for that run and retries on the next one —
+	// a deeplink's first run can race the mount's settings request
+	// and lose, and pinning that failure would keep a DUB user on
+	// the 'sub' fallback for the whole mount.
 	let config: Config | null = null;
 	let configLoaded = false;
 
@@ -50,10 +52,10 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 			if (!configLoaded) {
 				try {
 					config = await deps.getConfig();
+					configLoaded = true;
 				} catch {
 					config = null;
 				}
-				configLoaded = true;
 			}
 			const raw = await deps.kitsuSearch(q);
 			await deps.filter(raw, deps.pickMode(config), (visible) => {
