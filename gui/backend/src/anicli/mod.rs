@@ -19,6 +19,7 @@ pub mod env;
 mod heredoc;
 pub mod parser;
 pub mod process;
+mod capability;
 mod script_scan;
 mod shell_scan;
 pub mod update;
