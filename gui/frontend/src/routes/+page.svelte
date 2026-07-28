@@ -54,6 +54,7 @@
 		settingsGet,
 		watchedAtAll,
 		type Config,
+		type CreateSessionResponse,
 		type HistoryEntry,
 		type KitsuAnimeRef,
 		type KitsuEpisode,
@@ -75,8 +76,9 @@
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
-	import { resolveResumeEpisode } from '$lib/history/resume-episode';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
+	import type { VideoSession } from '$lib/play/global-video';
+	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
@@ -150,6 +152,27 @@
 	// allmanga's truthful count, not Kitsu's sometimes-stale announced
 	// total). Falls back to match?.episode_count when absent.
 	let historyPlayableCounts = $state<Record<string, number>>({});
+
+	// One stable Map instance — refilled on each history load — so the
+	// component-scope rowReady handler (shared by the loader AND the
+	// resume click's cap refinement) always reads the live entries.
+	// Plumbing for the rowReady handler, never rendered from —
+	// reactivity would be waste, hence the plain Map.
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const historyById = new Map<string, HistoryEntry>();
+	const rowReady = makeContinueRowReadyHandler({
+		historyById,
+		fetchKitsuEpisodes: kitsuEpisodes,
+		setMatch: (id, m) => {
+			historyMatches = { ...historyMatches, [id]: m };
+		},
+		setPlayableCount: (id, c) => {
+			historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
+		},
+		setEpisode: (id, ep) => {
+			historyEpisodes = { ...historyEpisodes, [id]: ep };
+		}
+	});
 
 	// Continue Watching rows after first-occurrence-wins dedupe by
 	// resolved Kitsu id. Defensive: when no two rows share a Kitsu id
@@ -306,7 +329,8 @@
 				// cour-split shows (Stone Ocean Part 2 etc.) so we hit
 				// the right Kitsu episode instead of collapsing onto
 				// Part 1's episode 1.
-				const historyById = new Map(history.map((h) => [h.id, h]));
+				historyById.clear();
+				for (const h of history) historyById.set(h.id, h);
 				void loadContinueWatchingState(history, {
 					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
 					// makeFetchAvailability keeps the args-mapping closure
@@ -316,25 +340,11 @@
 					// rows and only pay the allmanga roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
-					// Per-row state mutations are routed through
-					// makeContinueRowReadyHandler so the bulk of the
-					// imperative logic lives in $lib/history/row-ready.ts
-					// and is unit-tested there. The closures below are
-					// the page-side adapter: each one is a single Svelte
-					// reassignment that keeps reactivity component-scoped.
-					onRowReady: makeContinueRowReadyHandler({
-						historyById,
-						fetchKitsuEpisodes: kitsuEpisodes,
-						setMatch: (id, m) => {
-							historyMatches = { ...historyMatches, [id]: m };
-						},
-						setPlayableCount: (id, c) => {
-							historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
-						},
-						setEpisode: (id, ep) => {
-							historyEpisodes = { ...historyEpisodes, [id]: ep };
-						}
-					})
+					// Per-row state mutations are routed through the
+					// component-scope rowReady handler (row-ready.ts) —
+					// shared with startResume so a click-time cap
+					// refinement refreshes the same badge metadata.
+					onRowReady: rowReady
 				});
 			})
 			.catch(() => {
@@ -549,126 +559,87 @@
 	 *  bypassing the detail page. Once running, back from /play/[id]
 	 *  returns home (where the user came from) instead of dropping
 	 *  them on the detail view with a stale highlight ring. */
-	async function startResume(
-		entry: HistoryEntry,
-		match: KitsuAnimeRef,
-		seriesTotal: number | null,
-		seriesFinished: boolean
-	) {
-		if (resumeBusy) return;
-		const title = match.canonical_title;
-		if (!title) return;
-		resumeBusy = match.id;
-		resumeProgress = null;
-		// A fast click can land before settingsGet resolves — await
-		// the shared load so a DUB user never plays the sub/best
-		// fallback, then let the click own the episode choice: a card
-		// released before its background probe landed only knows
-		// Kitsu's announced count, which can overshoot the real cap
-		// (lagging dub). resolveResumeEpisode uses the probed cap when
-		// it's in, and otherwise pays one INTERACTIVE cache-first
-		// lookup under the resume spinner (background probes are paced
-		// and breaker-refusable; a user-awaited one must not be) — so
-		// the episode forwarded to playStream is picked against the
-		// true playable cap, not the optimistic one the badge
-		// rendered with.
-		const { mode, quality } = await resolveResumeSettings(config, settingsPromise);
-		const lastWatchedRaw = parseInt(entry.ep_no, 10);
-		const { episode: ep, count: liveCount } = await resolveResumeEpisode(
-			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
-			historyPlayableCounts[entry.id] ?? null,
-			match.episode_count ?? null,
-			() =>
-				makeFetchAvailability(checkAvailability, { background: false })(match, mode).then(
-					(r) => r?.episode_count ?? null
-				)
-		);
-		if (typeof liveCount === 'number') {
-			// Keep the badge/cap in sync with what the click learned.
-			historyPlayableCounts = { ...historyPlayableCounts, [entry.id]: liveCount };
-		}
-		// Persistent-PiP short-circuit: if the singleton is still
-		// loaded for this exact (show, ep) AT THE SAME quality + mode,
-		// skip the ani-cli respawn and navigate using the cached session
-		// — keeps playback at its current timestamp instead of starting
-		// over when the user clicks back to a Continue Watching card
-		// they're already watching in PiP. A quality/mode change fails
-		// the match so the play re-resolves at the new setting.
-		// Pass the resolved quality/mode only when settings are loaded; when
-		// config is null we can't know the desired setting, so leave them
-		// undefined and let reuse match on (id, episode) — don't tear down a
-		// live PiP session resolved at a non-default setting. (Codex P2)
-		const cached = reuseSessionIfMatching(
-			match.id,
-			ep,
-			config ? quality : undefined,
-			config ? mode : undefined
-		);
-		if (cached) {
+	// The whole resume workflow lives in the makeStartResume
+	// controller ($lib/history/start-resume.ts) where its sequencing
+	// is unit-tested; the deps below are the page-side adapter — one
+	// Svelte reassignment or existing-helper call each. Cap
+	// refinement routes through rowReady so a click-time tightened
+	// cap also refreshes the badge's episode metadata (latest-wins
+	// token in row-ready.ts drops the stale fetch).
+	const playArgsFor = (a: ResumePlayArgs) => ({
+		title: a.title,
+		episode: String(a.episode),
+		mode: a.mode,
+		quality: a.quality,
+		episode_count: a.match.episode_count ?? null,
+		year: yearFromKitsuRef(a.match),
+		alt_titles: altTitlesFromKitsu(a.match),
+		kitsu_id: a.match.id
+	});
+	const startResume = makeStartResume({
+		isBusy: () => !!resumeBusy,
+		onBusy: (id) => {
+			resumeBusy = id;
+		},
+		onProgress: (label) => {
+			resumeProgress = label;
+		},
+		onFailure: (title, e) => {
+			resumeFailure = { title, message: describePlayFailure(e) };
+		},
+		getSettings: () => resolveResumeSettings(config, settingsPromise),
+		settingsLoaded: () => config !== null,
+		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
+		setPlayableCount: (id, c) => {
+			const m = historyMatches[id];
+			if (m) rowReady(id, m, c);
+			else historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
+		},
+		fetchInteractiveCount: (m, mode) =>
+			makeFetchAvailability(checkAvailability, { background: false })(m, mode).then(
+				(r) => r?.episode_count ?? null
+			),
+		// Persistent-PiP short-circuit: reuse the live session for the
+		// exact (show, ep, quality, mode); quality/mode stay undefined
+		// while settings are unloaded so a live PiP session at a
+		// non-default setting isn't torn down.
+		reuseSession: (id, ep, quality, mode) => reuseSessionIfMatching(id, ep, quality, mode),
+		resolvePlay: (a, onProgress) =>
+			getOrFire(
+				makeKey(a.match.id, a.episode, a.mode, a.quality),
+				(emit, signal) => playStream(playArgsFor(a), emit, signal),
+				(p) => onProgress(progressLabel(p))
+			),
+		markWatched: (a) => markWatched(playArgsFor(a)),
+		// Completion is decided against the FULL finite series total
+		// (mode-independent), NOT the dub/sub playable cap, and only
+		// for a finished series — see /play/[id] for the rationale.
+		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
+		navigateToCached: (id, cached) => {
+			const c = cached as VideoSession;
 			const parts = [
-				`session=${encodeURIComponent(cached.session_id)}`,
-				`episode=${cached.episode}`,
-				`kind=${cached.media_kind}`
+				`session=${encodeURIComponent(c.session_id)}`,
+				`episode=${c.episode}`,
+				`kind=${c.media_kind}`
 			];
-			if (cached.subtitle_url) parts.push('sub=1');
+			if (c.subtitle_url) parts.push('sub=1');
 			// Carry the session's resolved quality/mode so /play records
 			// the true setting (and a later switch re-resolves).
-			if (cached.quality) parts.push(`q=${encodeURIComponent(cached.quality)}`);
-			if (cached.mode) parts.push(`md=${encodeURIComponent(cached.mode)}`);
+			if (c.quality) parts.push(`q=${encodeURIComponent(c.quality)}`);
+			if (c.mode) parts.push(`md=${encodeURIComponent(c.mode)}`);
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id: match.id }) + `?${parts.join('&')}`);
+			void goto(resolve('/play/[id]', { id }) + `?${parts.join('&')}`);
 			/* eslint-enable svelte/no-navigation-without-resolve */
-			return;
-		}
-		try {
-			const session = await getOrFire(
-				makeKey(match.id, ep, mode, quality),
-				(emit, signal) =>
-					playStream(
-						{
-							title,
-							episode: String(ep),
-							mode,
-							quality,
-							episode_count: match.episode_count ?? null,
-							year: yearFromKitsuRef(match),
-							alt_titles: altTitlesFromKitsu(match),
-							kitsu_id: match.id
-						},
-						emit,
-						signal
-					),
-				(p) => {
-					resumeProgress = progressLabel(p);
-				}
-			);
-			void markWatched({
-				title,
-				episode: String(ep),
-				mode,
-				quality,
-				episode_count: match.episode_count ?? null,
-				year: yearFromKitsuRef(match),
-				alt_titles: altTitlesFromKitsu(match),
-				kitsu_id: match.id
-			}).catch(() => {});
-			// Mirror the progress to any connected tracker (best-effort,
-			// renderer-driven fan-out — see /play/[id] for the rationale).
-			// Completion is decided against the FULL finite series total
-			// (mode-independent), NOT the dub/sub playable cap (Codex P2
-			// #3387467149), and only for a finished series (#3387184082).
-			void syncWatchedToTrackers(match.id, ep, seriesTotal, seriesFinished).catch(() => {});
+		},
+		navigateToSession: (id, session, ep, quality, mode) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
-				resolve('/play/[id]', { id: match.id }) + buildPlayQuery(session, ep, quality, mode)
+				resolve('/play/[id]', { id }) +
+					buildPlayQuery(session as CreateSessionResponse, ep, quality, mode)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
-		} catch (e) {
-			resumeBusy = null;
-			resumeProgress = null;
-			resumeFailure = { title, message: describePlayFailure(e) };
 		}
-	}
+	});
 
 	function heroFor(d: KitsuAnimeRef): { url: string | null; isCover: boolean } {
 		const cover = d.cover_image?.large ?? d.cover_image?.original ?? d.cover_image?.small ?? null;
