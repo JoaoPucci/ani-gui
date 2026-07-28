@@ -266,3 +266,90 @@ test('a summary without high_risk_files still ratchets', () => {
 		assert.match(output, /high_risk_le/, 'the metric row must still be reported');
 	}
 });
+
+// `max` and `p95` had the same gap `high_risk` used to have. A max
+// failure printed "298.11 vs 280" and nothing else, so diagnosing it
+// meant re-deriving the ranking from a CI log — and a local re-run
+// need not even reproduce the number, since the measurement depends
+// on coverage that differs between environments. The ranking is known
+// at measurement time; carry it and print it.
+//
+// This is deliberately NOT keyed off high_risk_files: a max
+// regression can happen with nothing over the high-risk bar at all,
+// and that is exactly the case where the operator has the least to go
+// on.
+const RANKING = [
+	{ file: 'gui/backend/src/anicli/process.rs', ccn: 41, cov: 74.2, crap: 298.11 },
+	{ file: 'gui/backend/src/scraper/allanime.rs', ccn: 33, cov: 81.0, crap: 229.4 },
+	{ file: 'gui/frontend/src/lib/history/resolve.ts', ccn: 22, cov: 88.5, crap: 80.1 }
+];
+
+function runAgainstSummary(summary) {
+	const { tmpDir, run } = stageFixtureRepo();
+	fs.writeFileSync(path.join(tmpDir, 'coverage/crap-summary.json'), JSON.stringify(summary));
+	try {
+		run([]);
+		assert.fail('the ratchet must exit non-zero when a ceiling is exceeded');
+	} catch (err) {
+		return `${err.stdout ?? ''}${err.stderr ?? ''}`;
+	}
+	return '';
+}
+
+test('a max regression names the file that set it', () => {
+	// baseline max_le is 100; high_risk stays inside its baseline of 5,
+	// so nothing else in the run explains the failure.
+	const output = runAgainstSummary({
+		max: 298.11,
+		p95: 40,
+		high_risk: 3,
+		high_risk_files: [],
+		top: RANKING
+	});
+
+	assert.match(
+		output,
+		/gui\/backend\/src\/anicli\/process\.rs/,
+		'a max failure must name the file at the top of the ranking'
+	);
+	assert.match(output, /298\.11/, 'and carry its CRAP value');
+});
+
+test('a p95 regression names the ranking that moved', () => {
+	// baseline p95_le is 50.
+	const output = runAgainstSummary({
+		max: 80,
+		p95: 229.4,
+		high_risk: 3,
+		high_risk_files: [],
+		top: RANKING
+	});
+
+	assert.match(
+		output,
+		/gui\/backend\/src\/anicli\/process\.rs/,
+		'a p95 failure must show the ranking it is computed over'
+	);
+	assert.match(output, /gui\/backend\/src\/scraper\/allanime\.rs/);
+});
+
+test('a passing run stays quiet about the ranking', () => {
+	const { tmpDir, run } = stageFixtureRepo();
+	fs.writeFileSync(
+		path.join(tmpDir, 'coverage/crap-summary.json'),
+		JSON.stringify({ max: 80, p95: 40, high_risk: 3, top: RANKING })
+	);
+	const output = run([]);
+	assert.doesNotMatch(
+		output,
+		/anicli\/process\.rs/,
+		'the ranking is a failure diagnostic, not routine output'
+	);
+});
+
+// Same contract as high_risk_files: the list is advisory, and a
+// summary written before it existed must still ratchet.
+test('a summary without top still ratchets', () => {
+	const output = runAgainstSummary({ max: 298.11, p95: 40, high_risk: 3 });
+	assert.match(output, /max_le/, 'the metric row must still be reported');
+});
