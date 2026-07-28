@@ -1536,3 +1536,28 @@ fn esac_with_redirections_pops_case_ownership() {
         "a redirected esac closes the nested case"
     );
 }
+
+/// A `case` inside a command substitution is a separate statement
+/// with its own arms. Its `;;` must not close the enclosing download
+/// arm — doing so ends the arm early, before a later hard `dep_ch`
+/// can veto, so the grant escapes on a script that still requires
+/// ffmpeg. That is the over-grant direction, which breaks a download
+/// rather than merely blocking one.
+#[test]
+fn a_case_in_a_command_substitution_does_not_close_the_arm() {
+    let text = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tchoice=$(case \"$x\" in foo) echo foo ;; esac)\n\tdep_ch \"ffmpeg\"\n\t;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "the substitution's ;; must not end the arm before the veto"
+    );
+}
+
+/// The enclosing arm still closes at its own terminator afterwards.
+#[test]
+fn an_arm_still_closes_after_a_command_substitution() {
+    let text = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tchoice=$(case \"$x\" in foo) echo foo ;; esac)\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a clean arm containing a substitution still grants"
+    );
+}
