@@ -283,13 +283,15 @@
 				// degrades to "treat everything as unstamped," which
 				// just preserves file order for everyone.
 				history = sortByWatchedAt(h, watchedAt);
-				// Per-row load: each card transitions to its resumable
-				// state independently, as ITS match + playable count
-				// both land. A slow Kitsu resolution doesn't gate fast
-				// rows. The page's button-enable gate reads
-				// historyMatches[entry.id] — which is only written from
-				// inside onRowReady — so a card never flips to its
-				// resumable form before its cap is in.
+				// Per-row load, render-then-refine: each card flips to
+				// its resumable state the moment ITS Kitsu match lands —
+				// the allmanga availability probe never holds a card,
+				// it just tightens the playable cap afterward via a
+				// second onRowReady. A slow Kitsu resolution doesn't
+				// gate fast rows, and a slow (or breaker-refused) probe
+				// doesn't gate anything: the cap falls back to
+				// match.episode_count and the click's own live
+				// resolution stays the real availability check.
 				//
 				// resolveHistoryEntry is routed through the loader's
 				// resolveMatch path: that pipeline (resolve.ts) handles

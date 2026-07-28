@@ -59,6 +59,11 @@ export interface ContinueRowReadyDeps {
 export function makeContinueRowReadyHandler(
 	deps: ContinueRowReadyDeps
 ): (entryId: string, match: KitsuAnimeRef | null, playableCount: number | null) => void {
+	// The loader fires twice per probed row — once at match release,
+	// once when the probe refines the cap — and each call starts an
+	// episode fetch. Latest-call-wins: a stale earlier fetch that
+	// resolves after a newer one must not overwrite its episode.
+	const fetchTokens = new Map<string, object>();
 	return (entryId, match, playableCount) => {
 		deps.setMatch(entryId, match);
 		if (typeof playableCount === 'number') {
@@ -79,9 +84,12 @@ export function makeContinueRowReadyHandler(
 		const cap = playableCount ?? match.episode_count ?? null;
 		const nextEpisode = pickNextEpisode(Number.isFinite(lastWatched) ? lastWatched : null, cap);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
+		const token = {};
+		fetchTokens.set(entryId, token);
 		void deps
 			.fetchKitsuEpisodes(match.id, kitsuPage)
 			.then((eps) => {
+				if (fetchTokens.get(entryId) !== token) return;
 				const ep =
 					eps.find((e) => e.number === nextEpisode) ??
 					eps.find((e) => e.relative_number === nextEpisode) ??
@@ -89,6 +97,7 @@ export function makeContinueRowReadyHandler(
 				deps.setEpisode(entryId, ep);
 			})
 			.catch(() => {
+				if (fetchTokens.get(entryId) !== token) return;
 				deps.setEpisode(entryId, null);
 			});
 	};

@@ -74,17 +74,18 @@ describe('loadContinueWatchingState', () => {
 			onRowReady
 		});
 
-		// Let microtasks settle. Fast row's match has resolved + its
-		// per-row probe should also have run; slow row is still
-		// pending. The fast row MUST have been released.
+		// Let microtasks settle. Fast row's match has resolved — it
+		// releases immediately with the fallback cap (count null) and
+		// its probe refines to 12 right after; slow row is still
+		// pending and MUST NOT have gated the fast one.
 		for (let i = 0; i < 20; i++) await Promise.resolve();
-		expect(ready.find((r) => r.id === 'hist-fast')?.count).toBe(12);
+		expect(ready.filter((r) => r.id === 'hist-fast').map((r) => r.count)).toEqual([null, 12]);
 		expect(ready.find((r) => r.id === 'hist-slow')).toBeUndefined();
 
 		// Now let the slow row through; it releases independently.
 		slowMatch.resolve(mSlow);
 		const result = await loaderPromise;
-		expect(ready.find((r) => r.id === 'hist-slow')?.count).toBe(25);
+		expect(ready.filter((r) => r.id === 'hist-slow').at(-1)?.count).toBe(25);
 		expect(result.matches).toEqual({ 'hist-fast': mFast, 'hist-slow': mSlow });
 		expect(result.playableCounts).toEqual({ 'hist-fast': 12, 'hist-slow': 25 });
 	});
