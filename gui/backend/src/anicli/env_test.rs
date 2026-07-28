@@ -1320,3 +1320,81 @@ fn a_different_failover_argument_does_not_grant() {
         "a failover over other tools must not grant yt-dlp"
     );
 }
+
+/// The veto reads EXECUTED commands, not command-shaped text. A
+/// script that prints or assigns `dep_ch ffmpeg` — a diagnostic, a
+/// usage string, a variable holding a suggested command — runs no
+/// such check, so vetoing on it blocks a yt-dlp-only install behind
+/// the missing-ffmpeg modal the script itself would never raise.
+/// That is the exact regression this PR exists to remove, so the
+/// over-match is not the safe direction it was documented as.
+#[test]
+fn quoted_dep_ch_text_does_not_veto_the_grant() {
+    let single = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tprintf 'dep_ch ffmpeg'\n\t;;\nesac";
+    let double = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\techo \"install with: dep_ch ffmpeg\"\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(single),
+        "a single-quoted dep_ch example executes nothing"
+    );
+    assert!(
+        download_branch_invokes_failover(double),
+        "a double-quoted dep_ch example executes nothing"
+    );
+}
+
+/// Unquoted but not in command position is the same story: as an
+/// argument to another command (`echo dep_ch ffmpeg`) or as the
+/// value of an assignment, nothing invokes the dependency check.
+#[test]
+fn dep_ch_as_an_argument_or_value_does_not_veto_the_grant() {
+    let arg = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\techo dep_ch ffmpeg\n\t;;\nesac";
+    let assign = "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\thint=dep_ch ffmpeg\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(arg),
+        "dep_ch as another command's argument executes nothing"
+    );
+    assert!(
+        download_branch_invokes_failover(assign),
+        "dep_ch on the right of an assignment executes nothing"
+    );
+}
+
+/// Tightening the veto to command position must not lose the shapes
+/// that DO execute: a nested platform arm's own pattern, a
+/// separator-joined statement, and the keyword-introduced forms the
+/// real script uses.
+#[test]
+fn executed_dep_ch_still_vetoes_in_every_command_position() {
+    let cases = [
+        (
+            "nested arm pattern",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tcase $(uname) in\n\tDarwin) dep_ch \"ffmpeg\" ;;\n\tesac\n\t;;\nesac",
+        ),
+        (
+            "after a semicolon",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tcd /tmp; dep_ch ffmpeg\n\t;;\nesac",
+        ),
+        (
+            "after &&",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\t[ -n \"$x\" ] && dep_ch ffmpeg\n\t;;\nesac",
+        ),
+        (
+            "introduced by if",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tif dep_ch ffmpeg; then :; fi\n\t;;\nesac",
+        ),
+        (
+            "introduced by then",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\tif [ -n \"$x\" ]; then dep_ch ffmpeg; fi\n\t;;\nesac",
+        ),
+        (
+            "opening a subshell",
+            "case \"$player_function\" in\ndownload)\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\t(dep_ch ffmpeg)\n\t;;\nesac",
+        ),
+    ];
+    for (label, text) in cases {
+        assert!(
+            !download_branch_invokes_failover(text),
+            "an executed dep_ch ({label}) still requires ffmpeg"
+        );
+    }
+}

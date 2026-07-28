@@ -1499,4 +1499,60 @@ mod tests {
             "expected ANI_CLI_DOWNLOAD_DIR to point at the chosen dir"
         );
     }
+
+    /// The snapshot is READ by an interpreter rather than exec(2)'d,
+    /// so the kernel never consults its shebang — this code has to.
+    /// A cached or user-customized script declaring `bash` and using
+    /// bash-only syntax would break under a hard-coded `/bin/sh`,
+    /// and only for downloads: search and playback route through the
+    /// ordinary command builder and keep working, which makes the
+    /// failure look like a download bug rather than an interpreter
+    /// mismatch.
+    #[test]
+    fn snapshot_interpreter_honors_the_declared_shebang() {
+        assert_eq!(
+            snapshot_interpreter("#!/bin/bash\nmain\n"),
+            vec!["/bin/bash".to_string()],
+            "a bash shebang must run under bash"
+        );
+        assert_eq!(
+            snapshot_interpreter("#!/usr/bin/env bash\nmain\n"),
+            vec!["/usr/bin/env".to_string(), "bash".to_string()],
+            "the env form carries its interpreter argument"
+        );
+        assert_eq!(
+            snapshot_interpreter("#!/bin/sh\nmain\n"),
+            vec!["/bin/sh".to_string()],
+            "the ordinary case is unchanged"
+        );
+        assert_eq!(
+            snapshot_interpreter("#! /bin/dash \nmain\n"),
+            vec!["/bin/dash".to_string()],
+            "shebang spacing is not part of the path"
+        );
+    }
+
+    /// Anything that isn't a well-formed absolute-path shebang falls
+    /// back to `/bin/sh` — the previous behaviour. A relative or bare
+    /// interpreter name is refused rather than resolved: that would
+    /// spawn through PATH/CWD lookup on a string taken from a file
+    /// the auto-updater rewrites, which is a worse failure than
+    /// running a `sh`-compatible script under `sh`.
+    #[test]
+    fn snapshot_interpreter_falls_back_to_bin_sh() {
+        for (label, contents) in [
+            ("no shebang", "main\n"),
+            ("empty file", ""),
+            ("not a shebang", "# ani-cli\n#!/bin/bash\n"),
+            ("relative path", "#!bash\nmain\n"),
+            ("bare marker", "#!\nmain\n"),
+            ("only spaces", "#!   \nmain\n"),
+        ] {
+            assert_eq!(
+                snapshot_interpreter(contents),
+                vec!["/bin/sh".to_string()],
+                "{label} must fall back to /bin/sh"
+            );
+        }
+    }
 }
