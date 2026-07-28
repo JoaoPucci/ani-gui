@@ -17,17 +17,36 @@
  * own. A newer click supersedes an older pin (the user's latest
  * interactive answer is always the freshest), and rows nobody
  * clicked pass through untouched.
+ *
+ * The count and its provenance resolve as ONE value. Pinning the
+ * number while letting the flag come from whichever answer landed
+ * last produces a cap that is exact and marked approximate, or the
+ * reverse — and the next click then acts on the half that is wrong.
  */
 
+/** A playable cap and whether the answer it came from was exact. */
+export interface Cap {
+	count: number | null;
+	approximate: boolean;
+}
+
 export function createCapAuthority(): {
-	recordClickCap: (entryId: string, count: number) => void;
-	resolveLoaderCount: (entryId: string, count: number | null) => number | null;
+	recordClickCap: (entryId: string, count: number, approximate: boolean) => void;
+	resolveLoaderCap: (entryId: string, cap: Cap) => Cap;
 } {
-	const pinned = new Map<string, number>();
+	const pinned = new Map<string, Cap>();
 	return {
-		recordClickCap: (entryId, count) => {
-			pinned.set(entryId, count);
+		recordClickCap: (entryId, count, approximate) => {
+			pinned.set(entryId, { count, approximate });
 		},
-		resolveLoaderCount: (entryId, count) => pinned.get(entryId) ?? count
+		resolveLoaderCap: (entryId, cap) => {
+			const pin = pinned.get(entryId);
+			if (!pin) return cap;
+			// An exact answer beats an approximate one whichever side it
+			// arrived from; "exact" with no count is not an answer at
+			// all. Between two of equal confidence the click is fresher.
+			if (pin.approximate && !cap.approximate && cap.count != null) return cap;
+			return pin;
+		}
 	};
 }

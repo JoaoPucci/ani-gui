@@ -356,11 +356,19 @@
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
 					onRowReady: (id, m, count, approximate) => {
+						// One resolution for both halves — a pinned count
+						// with the loader's flag beside it is a cap that
+						// contradicts itself, and the next click acts on
+						// whichever half is wrong.
+						const cap = capAuthority.resolveLoaderCap(id, {
+							count,
+							approximate: approximate === true
+						});
 						historyApproximateCaps = {
 							...historyApproximateCaps,
-							[id]: approximate === true
+							[id]: cap.approximate
 						};
-						rowReady(id, m, capAuthority.resolveLoaderCount(id, count));
+						rowReady(id, m, cap.count);
 					}
 				});
 			})
@@ -609,7 +617,7 @@
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {
-			capAuthority.recordClickCap(id, c);
+			capAuthority.recordClickCap(id, c, approximate);
 			// Record what the lookup actually reported. An interactive
 			// lookup usually reaches the detail fetch and confirms the
 			// cap, but a failed one answers approximate — marking it
