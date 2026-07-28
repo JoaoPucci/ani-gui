@@ -1093,3 +1093,47 @@ fn concurrent_snapshots_do_not_share_a_path() {
         "one download finishing must not unlink another's snapshot"
     );
 }
+
+proptest::proptest! {
+    /// The classifier keys on a marker inside a stream, so the
+    /// property that matters is insertion: the sentence classifies
+    /// wherever it sits, under any amount of surrounding download
+    /// chatter, and with any video title in yt-dlp's prefix — that
+    /// prefix is arbitrary user content, which is why the matcher
+    /// does not anchor on the whole line.
+    #[test]
+    fn the_repackage_warning_classifies_wherever_it_sits(
+        before in proptest::collection::vec("[a-z0-9 ]{0,30}", 0..5),
+        after in proptest::collection::vec("[a-z0-9 ]{0,30}", 0..5),
+        title in "[a-zA-Z0-9 :!'-]{0,40}",
+    ) {
+        let line = format!(
+            "WARNING: {title}: Possible MPEG-TS in MP4 container or \
+             malformed AAC timestamps. Install ffmpeg to fix this automatically"
+        );
+        let stderr = format!("{}\n{line}\n{}", before.join("\n"), after.join("\n"));
+        proptest::prop_assert!(yt_dlp_could_not_repackage(&stderr));
+    }
+
+    /// Removal is the other half: ordinary download chatter never
+    /// classifies, or every download would fail. The filler is
+    /// lowercase, digits and punctuation only — it cannot spell the
+    /// marker, which carries capitals and a hyphen.
+    #[test]
+    fn ordinary_download_chatter_never_classifies(
+        lines in proptest::collection::vec(r"[a-z0-9 .%/:\[\]-]{0,40}", 0..8),
+    ) {
+        proptest::prop_assert!(!yt_dlp_could_not_repackage(&lines.join("\n")));
+    }
+
+    /// The trailing advice is NOT part of the match. yt-dlp has
+    /// reworded it across releases; pinning the whole sentence would
+    /// turn a future release into a silent regression — the download
+    /// would go back to reporting success on a file it could not
+    /// repackage.
+    #[test]
+    fn a_reworded_tail_still_classifies(tail in "[a-zA-Z0-9 .,'-]{0,60}") {
+        let line = format!("WARNING: Show: Possible MPEG-TS in MP4 container {tail}");
+        proptest::prop_assert!(yt_dlp_could_not_repackage(&line));
+    }
+}
