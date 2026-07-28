@@ -1232,3 +1232,46 @@ proptest::proptest! {
         proptest::prop_assert!(matches!(none, Err(AniError::FfmpegMissing)));
     }
 }
+
+/// Codex P2 #3665336648 — the hard-ffmpeg veto matched three exact
+/// strings, so any other valid shell whitespace between `dep_ch` and
+/// its argument slipped past it. On a yt-dlp-only host the preflight
+/// would then pass and ani-cli would exit later at its own hard
+/// check with a generic scraper failure.
+#[test]
+fn hard_ffmpeg_veto_survives_double_space() {
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\"\ndep_ch  \"ffmpeg\" ;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "two spaces before the argument still hard-requires ffmpeg"
+    );
+}
+
+#[test]
+fn hard_ffmpeg_veto_survives_tab() {
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\"\ndep_ch\t\"ffmpeg\" ;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "a tab before the argument still hard-requires ffmpeg"
+    );
+}
+
+#[test]
+fn hard_ffmpeg_veto_survives_mixed_whitespace_unquoted() {
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\"\ndep_ch \t ffmpeg ;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "mixed whitespace before an unquoted argument still vetoes"
+    );
+}
+
+#[test]
+fn a_longer_function_name_ending_in_dep_ch_does_not_veto() {
+    // `my_dep_ch ffmpeg` is a different command; the veto must key on
+    // the `dep_ch` word, not on a suffix match.
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\"\nmy_dep_ch ffmpeg ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a distinct command whose name merely ends in dep_ch must not veto"
+    );
+}
