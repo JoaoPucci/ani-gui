@@ -151,7 +151,7 @@ describe('createSearchRunner (generation guard)', () => {
 		expect(h.results).toEqual([[ref('ok')]]);
 	});
 
-	it('loads config once and reuses it across runs', async () => {
+	it('caches config only after a successful load, reused across runs', async () => {
 		const getConfig = vi.fn().mockResolvedValue({ mode: 'dub' } as unknown as Config);
 		const modes: string[] = [];
 		const h = makeHarness({
@@ -169,15 +169,32 @@ describe('createSearchRunner (generation guard)', () => {
 		expect(modes).toEqual(['dub', 'dub']);
 	});
 
-	it('a getConfig rejection falls back to null config, not an error state', async () => {
+	it('a getConfig rejection falls back to null for THIS run and retries on the next', async () => {
+		// Codex P2 #3664593085 — a deeplink's first run can race the
+		// mount's settings load and lose. Permanently caching that
+		// failure pins a DUB user to the 'sub' fallback for the whole
+		// mount; a later run must ask again and pick up the config
+		// that has since loaded.
+		const getConfig = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('settings down'))
+			.mockResolvedValueOnce({ mode: 'dub' } as unknown as Config);
+		const modes: string[] = [];
 		const h = makeHarness({
-			getConfig: vi.fn().mockRejectedValue(new Error('settings down')),
-			kitsuSearch: vi.fn().mockResolvedValue([ref('ok')])
+			getConfig,
+			pickMode: (c) => ((c as unknown as { mode: 'dub' })?.mode === 'dub' ? 'dub' : 'sub'),
+			kitsuSearch: vi.fn().mockResolvedValue([ref('ok')]),
+			filter: vi.fn().mockImplementation(async (items, mode, emit) => {
+				modes.push(mode);
+				emit(items);
+			})
 		});
 		const runner = createSearchRunner(h.deps);
 		await runner.run('a');
 		expect(h.errors).toEqual([]);
-		expect(h.results).toEqual([[ref('ok')]]);
+		await runner.run('b');
+		expect(getConfig).toHaveBeenCalledTimes(2);
+		expect(modes).toEqual(['sub', 'dub']);
 	});
 
 	it('surfaces the current run error and ends busy', async () => {
