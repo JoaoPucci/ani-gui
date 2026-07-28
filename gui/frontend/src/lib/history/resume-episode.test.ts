@@ -100,3 +100,31 @@ describe('acceptance: early click on a just-released card (loader + resolver)', 
 		expect(clickProbe).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('acceptance: click-time lookup rides the interactive lane with awaited settings', () => {
+	it('the real wrapper sends background:false and the awaited dub mode', async () => {
+		// Composes the real pieces of the click path: settings resolve
+		// mid-click with DUB, the cap lookup goes out through the real
+		// makeFetchAvailability with the interactive flag, and the
+		// episode is picked against the answered cap.
+		const { makeFetchAvailability } = await import('./availability-from-match');
+		const { resolveResumeSettings } = await import('./resume-settings');
+		const checkAvailability = vi
+			.fn()
+			.mockResolvedValue({ available: true, episode_count: 12 });
+
+		const settings = await resolveResumeSettings(
+			null,
+			Promise.resolve({ mode: 'dub', quality: 'best' } as never)
+		);
+		const fetch = makeFetchAvailability(checkAvailability, { background: false });
+		const r = await resolveResumeEpisode(12, null, 24, () =>
+			fetch(makeMatch('k-a', 24), settings.mode).then((res) => res?.episode_count ?? null)
+		);
+
+		expect(checkAvailability).toHaveBeenCalledWith(
+			expect.objectContaining({ background: false, mode: 'dub', kitsu_id: 'k-a' })
+		);
+		expect(r).toEqual({ episode: 12, count: 12 });
+	});
+});
