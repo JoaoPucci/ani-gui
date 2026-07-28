@@ -115,7 +115,10 @@ export function makeStartResume(
 			// background probe can publish an exact cap while the
 			// interactive lookup is in flight, and that beats falling
 			// back to Kitsu's optimistic count if the lookup fails.
-			() => deps.getPlayableCount(entry.id),
+			() => ({
+				count: deps.getPlayableCount(entry.id),
+				approximate: deps.isPlayableCountApproximate?.(entry.id) ?? false
+			}),
 			deps.isPlayableCountApproximate?.(entry.id) ?? false
 		);
 		if (typeof count === 'number') {

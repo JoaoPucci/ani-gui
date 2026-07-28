@@ -39,6 +39,10 @@
  * interactive lookup is still in flight. If that lookup then fails,
  * falling back to Kitsu would discard an exact cap already in hand —
  * and Kitsu's count is the very number the probe exists to correct.
+ * It reports provenance alongside the count, because "prefer the
+ * published cap" is only safe while that cap is exact: against an
+ * approximate snapshot, an equally approximate publication is not an
+ * improvement, and only a confirmed one displaces it.
  * Optional: callers with no live view of the cap simply omit it.
  */
 
@@ -49,7 +53,7 @@ export async function resolveResumeEpisode(
 	playableCount: number | null,
 	kitsuCount: number | null,
 	fetchCount: () => Promise<{ count: number | null; approximate: boolean }>,
-	readCap?: () => number | null,
+	readCap?: () => { count: number | null; approximate: boolean } | null,
 	playableCountApproximate = false
 ): Promise<{ episode: number; count: number | null; approximate: boolean }> {
 	if (typeof playableCount === 'number' && !playableCountApproximate) {
@@ -60,40 +64,56 @@ export async function resolveResumeEpisode(
 		};
 	}
 	if (typeof playableCount === 'number') {
-		let confirmed: { count: number | null; approximate: boolean } | null;
-		try {
-			confirmed = await fetchCount();
-		} catch {
-			confirmed = null;
-		}
-		// A revalidation that fails, or that comes back approximate
-		// itself, leaves the cap approximate — the next click has to
-		// revalidate again rather than inherit a false confirmation.
-		const cap = confirmed?.count ?? playableCount;
-		return {
-			episode: pickNextEpisode(lastWatched, cap),
-			count: cap,
-			approximate: confirmed?.approximate ?? true
-		};
+		const confirmed = await answered(fetchCount);
+		if (confirmed) return at(lastWatched, confirmed);
+		// The revalidation gave nothing. A cap the background probe
+		// published while it ran still beats the snapshot, but only
+		// when it is EXACT — swapping one unconfirmed number for
+		// another buys nothing.
+		const published = readCap?.() ?? null;
+		if (published?.count != null && !published.approximate) return at(lastWatched, published);
+		// Otherwise keep the snapshot, still unconfirmed: the next
+		// click revalidates again rather than inheriting a false
+		// confirmation.
+		return at(lastWatched, { count: playableCount, approximate: true });
 	}
-	let live: { count: number | null; approximate: boolean } | null;
-	try {
-		live = await fetchCount();
-	} catch {
-		live = null;
-	}
+	const live = await answered(fetchCount);
 	// Precedence on the way down: the lookup's own answer, then a cap
 	// the background probe published while it ran, then Kitsu. Only
-	// the last is optimistic, so it is the last resort.
-	const cap = live?.count ?? readCap?.() ?? kitsuCount ?? null;
-	const resolved = live?.count ?? readCap?.() ?? null;
+	// the last is optimistic, so it is the last resort — and unlike
+	// the other two it is not an answer, so it sets the episode
+	// without being reported as a cap.
+	const answer = live ?? readCap?.() ?? null;
+	if (answer?.count != null) return at(lastWatched, answer);
 	return {
-		episode: pickNextEpisode(lastWatched, cap),
-		count: resolved,
-		// `approximate` describes a CAP, so with no cap it is false.
-		// Otherwise: a lookup that answered carries its own provenance,
-		// while falling back to the loader's value leaves it as
-		// unconfirmed as it already was.
-		approximate: resolved === null ? false : live?.count != null ? live.approximate : true
+		episode: pickNextEpisode(lastWatched, kitsuCount ?? null),
+		count: null,
+		// `approximate` describes a CAP, and there is none.
+		approximate: false
+	};
+}
+
+/**
+ * A lookup result that actually carries a count. A throw and a
+ * `{count: null}` answer are the same thing to every caller here: no
+ * cap was established, so nothing about the existing one was
+ * confirmed either.
+ */
+async function answered(
+	fetchCount: () => Promise<{ count: number | null; approximate: boolean }>
+): Promise<{ count: number; approximate: boolean } | null> {
+	try {
+		const r = await fetchCount();
+		return r.count == null ? null : { count: r.count, approximate: r.approximate };
+	} catch {
+		return null;
+	}
+}
+
+function at(lastWatched: number | null, cap: { count: number | null; approximate: boolean }) {
+	return {
+		episode: pickNextEpisode(lastWatched, cap.count),
+		count: cap.count,
+		approximate: cap.approximate
 	};
 }
