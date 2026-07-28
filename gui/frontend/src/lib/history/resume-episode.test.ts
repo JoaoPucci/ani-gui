@@ -109,9 +109,7 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		// episode is picked against the answered cap.
 		const { makeFetchAvailability } = await import('./availability-from-match');
 		const { resolveResumeSettings } = await import('./resume-settings');
-		const checkAvailability = vi
-			.fn()
-			.mockResolvedValue({ available: true, episode_count: 12 });
+		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
 
 		const settings = await resolveResumeSettings(
 			null,

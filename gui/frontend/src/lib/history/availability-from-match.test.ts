@@ -94,14 +94,14 @@ describe('interactive click-time lookups (render-then-refine)', () => {
 		// waiting rides the interactive lane.
 		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
 		const fetch = makeFetchAvailability(spy, { background: false });
-		await fetch(makeMatch('k-a', 24), 'dub');
+		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'dub');
 		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: false, mode: 'dub' }));
 	});
 
 	it('defaults to background for the rail-fill callers', async () => {
 		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
 		const fetch = makeFetchAvailability(spy);
-		await fetch(makeMatch('k-a', 24), 'sub');
+		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'sub');
 		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: true }));
 	});
 });

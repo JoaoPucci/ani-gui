@@ -8,10 +8,12 @@ function cfg(mode: string, quality?: string): Config {
 
 describe('resolveResumeSettings', () => {
 	it('uses the already-loaded config without touching the promise', async () => {
-		const r = await resolveResumeSettings(
-			cfg('dub', '1080'),
-			Promise.reject(new Error('must not matter'))
-		);
+		// The rejection is pre-handled: the short-circuit means nothing
+		// ever awaits this promise, and an unhandled rejection would
+		// fail the run at the harness level.
+		const untouched = Promise.reject(new Error('must not matter'));
+		untouched.catch(() => {});
+		const r = await resolveResumeSettings(cfg('dub', '1080'), untouched);
 		expect(r).toEqual({ mode: 'dub', quality: '1080' });
 	});
 

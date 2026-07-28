@@ -21,7 +21,8 @@ import {
  * exercised by the unit tests below.
  */
 export function makeFetchAvailability(
-	checkAvailabilityFn: (args: AvailabilityArgs) => Promise<AvailabilityResponse>
+	checkAvailabilityFn: (args: AvailabilityArgs) => Promise<AvailabilityResponse>,
+	opts?: { background: boolean }
 ): (match: KitsuAnimeRef, mode: 'sub' | 'dub') => Promise<AvailabilityResponse> {
 	return (match, mode) =>
 		checkAvailabilityFn({
@@ -32,8 +33,11 @@ export function makeFetchAvailability(
 			year: yearFromKitsuRef(match) ?? undefined,
 			kitsu_id: match.id,
 			status: match.status ?? undefined,
-			// Cache fills are opportunistic — the scraper gate paces
-			// them and skips them while its breaker is open.
-			background: true
+			// Default true: cache fills are opportunistic — the scraper
+			// gate paces them and skips them while its breaker is open.
+			// A click-time caller passes {background: false} so its
+			// user-awaited lookup rides the interactive lane instead of
+			// being paced or refused.
+			background: opts?.background ?? true
 		});
 }
