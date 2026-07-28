@@ -946,6 +946,19 @@ fn a_read_only_script_directory_falls_back_to_a_temp_dir() {
     std::fs::write(&live, b"#!/bin/sh\nexit 0\n").expect("live script");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).expect("chmod");
 
+    // The mode bits are the whole premise, and root ignores them —
+    // `cargo test` as UID 0 is ordinary inside a dev container. Ask
+    // the filesystem whether the permission actually bites rather
+    // than asking who we are: a uid check would also have to reason
+    // about capabilities, and this answers the question directly.
+    let enforced = std::fs::File::create(dir.join(".probe")).is_err();
+    if !enforced {
+        let _ = std::fs::remove_file(dir.join(".probe"));
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        eprintln!("skipped: 0555 does not block writes for this user (root?)");
+        return;
+    }
+
     let staged = stage_script_snapshot("#!/bin/sh\nexit 0\n", &live).expect("stage");
     assert_ne!(
         staged.path().parent(),
