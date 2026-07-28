@@ -1683,6 +1683,11 @@ mod tests {
     /// directory, so staging beside it has to degrade rather than
     /// fail the download. The temp-dir copy loses `$0`-relative
     /// resource loading, which is the pre-existing behaviour.
+    // Unix-only: the scenario IS a POSIX permission bit. Windows
+    // expresses directory write-protection through ACLs, which
+    // `Permissions::from_mode` cannot express — the previous version
+    // of this test failed to compile there rather than being skipped.
+    #[cfg(unix)]
     #[test]
     fn a_read_only_script_directory_falls_back_to_a_temp_dir() {
         use std::os::unix::fs::PermissionsExt;
