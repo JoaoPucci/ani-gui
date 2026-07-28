@@ -167,3 +167,45 @@ describe('makeStartResume (click orchestration)', () => {
 		expect(h.log).toEqual([]);
 	});
 });
+
+describe('makeStartResume — progress and best-effort fan-out', () => {
+	it('forwards resolution progress labels to the page', async () => {
+		const labels: (string | null)[] = [];
+		const h = makeHarness({
+			onProgress: (l) => labels.push(l),
+			resolvePlay: vi.fn().mockImplementation(async (_args, onProgress) => {
+				onProgress('searching…');
+				onProgress('allanime ✓');
+				return { session_id: 's1' };
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		// null on entry (clearing the previous run), then each label.
+		expect(labels).toEqual([null, 'searching…', 'allanime ✓']);
+	});
+
+	it('still navigates when the watched-history write fails', async () => {
+		// markWatched is best-effort: the episode is already resolved
+		// and the user is owed the player regardless.
+		const h = makeHarness({
+			markWatched: vi.fn().mockRejectedValue(new Error('hsts locked'))
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		await Promise.resolve();
+		expect(h.deps.navigateToSession).toHaveBeenCalled();
+		expect(h.failures).toEqual([]);
+	});
+
+	it('still navigates when the tracker sync fails', async () => {
+		const h = makeHarness({
+			syncTrackers: vi.fn().mockRejectedValue(new Error('anilist 503'))
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		await Promise.resolve();
+		expect(h.deps.navigateToSession).toHaveBeenCalled();
+		expect(h.failures).toEqual([]);
+	});
+});
