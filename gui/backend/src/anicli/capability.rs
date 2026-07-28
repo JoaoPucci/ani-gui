@@ -10,10 +10,16 @@
 //!
 //! Recognition replaces it. We know which release made
 //! `dep_ch_failover "yt-dlp,ffmpeg"` the download arm's dependency
-//! check, and we know how that release spells it, so the question
-//! becomes: is this script from that lineage, and does it still carry
-//! that call? Anything else is unplaceable and treated as
-//! ffmpeg-only.
+//! check, and we know how that release spells the whole arm, so the
+//! question becomes: is this script from that lineage, and does it
+//! still carry that arm verbatim? Anything else is unplaceable and
+//! treated as ffmpeg-only.
+//!
+//! The arm, not the call, is the unit. A single blessed line is also
+//! what a `usage()` heredoc quoting the arm looks like, and what a
+//! half-finished customization leaves behind — and granting on either
+//! passes the preflight against a script whose real arm still calls
+//! `dep_ch "ffmpeg"`.
 //!
 //! The asymmetry is what makes conservatism the right default: a
 //! wrongly-withheld grant costs a yt-dlp-only user the missing-ffmpeg
@@ -27,13 +33,22 @@
 /// download arm. Scripts at or past this carry it.
 const FAILOVER_RELEASE: (u32, u32) = (4, 15);
 
-/// The 4.15 download arm's dependency check, spelled as that release
-/// spells it. Matched literally, and only where it OPENS a line
-/// (after indentation): a commented-out copy is not a dependency
-/// check, and accepting one would grant yt-dlp to a script whose real
-/// arm still requires ffmpeg. A script that words it differently is a
-/// customization we cannot vouch for.
-const FAILOVER_CALL: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
+/// The 4.15 download arm, line by line, spelled as that release spells
+/// it. The whole arm is the unit of recognition rather than the
+/// failover call alone: "a line that starts with `dep_ch_failover`" is
+/// also what a usage block quoting the arm looks like, and what a
+/// half-finished customization leaves behind. Granting on either would
+/// pass the preflight on a yt-dlp-only host against a script whose
+/// real arm still calls `dep_ch "ffmpeg"`.
+///
+/// Lines are compared trimmed and in order, so reindentation is
+/// cosmetic and rewording is not.
+const DOWNLOAD_ARM: &[&str] = &[
+    "download)",
+    r#"dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'"#,
+    r#"dep_ch "aria2c""#,
+    ";;",
+];
 
 /// Whether the script accepts yt-dlp alone for `-d` downloads.
 pub(crate) fn supports_ytdlp_download(script_contents: &str) -> bool {
@@ -43,9 +58,21 @@ pub(crate) fn supports_ytdlp_download(script_contents: &str) -> bool {
     if (major, minor) < FAILOVER_RELEASE {
         return false;
     }
-    script_contents
-        .lines()
-        .any(|l| l.trim_start().starts_with(FAILOVER_CALL))
+    carries_download_arm(script_contents)
+}
+
+/// Whether the release's download arm appears verbatim, as four
+/// consecutive lines.
+///
+/// What this deliberately does NOT do is decide whether those lines
+/// are reached at runtime — that is the shell grammar this module
+/// exists to avoid. A script that reproduces the arm byte-for-byte
+/// inside a heredoc *while* editing its real arm to require ffmpeg
+/// would still be granted. Customization does not produce that shape;
+/// quoting an excerpt does, and an excerpt no longer matches.
+fn carries_download_arm(script_contents: &str) -> bool {
+    let lines: Vec<&str> = script_contents.lines().map(str::trim).collect();
+    lines.windows(DOWNLOAD_ARM.len()).any(|w| w == DOWNLOAD_ARM)
 }
 
 /// The script's own `version_number="X.Y..."` declaration, as
