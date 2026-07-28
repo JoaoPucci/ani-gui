@@ -1436,8 +1436,10 @@ fn case_keyword_accepts_tabs_and_runs_of_blanks() {
 /// hard-requiring ffmpeg and blocks a yt-dlp-only install.
 #[test]
 fn a_parenthesized_download_pattern_opens_the_arm() {
-    let inline = "case \"$player_function\" in\n(download) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
-    let spaced = "case \"$player_function\" in\n( download ) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    let inline =
+        "case \"$player_function\" in\n(download) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    let spaced =
+        "case \"$player_function\" in\n( download ) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
     assert!(
         download_branch_invokes_failover(inline),
         "an opening paren is part of the case-item syntax, not the pattern"
