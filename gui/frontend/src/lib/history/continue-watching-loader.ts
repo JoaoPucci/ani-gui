@@ -113,11 +113,14 @@ export async function loadContinueWatchingState(
 	let pendingProbes = 0;
 	let matchesPending = history.length;
 
+	// `approximate` is REQUIRED, not defaulted. A defaulted flag makes a
+	// dropped argument mean "exact", which is the unsafe direction and
+	// is exactly how an earlier version of this silently regressed.
 	const finalizeRow = (
 		entryId: string,
 		match: KitsuAnimeRef | null,
 		count: number | null,
-		approximate = false
+		approximate: boolean
 	) => {
 		matches[entryId] = match;
 		if (typeof count === 'number') playableCounts[entryId] = count;
@@ -136,9 +139,13 @@ export async function loadContinueWatchingState(
 			if (!job) break;
 			const mode = await modePromise;
 			let count: number | null;
+			// Whether that count came from the search hit rather than the
+			// detail fetch. Forwarded explicitly — see finalizeRow.
+			let approximate = false;
 			try {
 				const r = await deps.fetchAvailability(job.match, mode);
 				count = r?.episode_count ?? null;
+				approximate = r?.episode_count_approximate === true;
 			} catch {
 				count = null;
 			}
@@ -147,7 +154,7 @@ export async function loadContinueWatchingState(
 			// fallback, so a countless probe would just re-trigger the
 			// row's episode fetch for an identical cap.
 			if (typeof count === 'number') {
-				finalizeRow(job.entry.id, job.match, count);
+				finalizeRow(job.entry.id, job.match, count, approximate);
 			}
 			pendingProbes--;
 			maybeFinishLoad();
@@ -175,18 +182,20 @@ export async function loadContinueWatchingState(
 			.resolveMatch(entry)
 			.then((match) => {
 				if (!match) {
-					finalizeRow(entry.id, null, null);
+					finalizeRow(entry.id, null, null, false);
 				} else {
 					// Release the card now — the Kitsu match is everything
 					// a card needs to render and take a click.
-					finalizeRow(entry.id, match, null);
+					// Release-time: no probe has run, so there is no
+					// count and therefore nothing approximate about it.
+					finalizeRow(entry.id, match, null, false);
 					pendingProbes++;
 					queue.push({ entry, match });
 					ensureWorkers();
 				}
 			})
 			.catch(() => {
-				finalizeRow(entry.id, null, null);
+				finalizeRow(entry.id, null, null, false);
 			})
 			.finally(() => {
 				matchesPending--;

@@ -50,7 +50,7 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 		setPlayableCount: (id, c) => counts.push([id, c]),
 		fetchInteractiveCount: vi.fn().mockImplementation(async () => {
 			log.push('interactive-count');
-			return 12;
+			return { count: 12, approximate: false };
 		}),
 		reuseSession: vi.fn().mockReturnValue(null),
 		resolvePlay: vi.fn().mockImplementation(async () => {

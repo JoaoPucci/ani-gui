@@ -608,20 +608,26 @@
 		settingsLoaded: () => config !== null,
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
-		setPlayableCount: (id, c) => {
+		setPlayableCount: (id, c, approximate) => {
 			capAuthority.recordClickCap(id, c);
-			// A click-time cap comes from the interactive lane, which
-			// misses the approximate cache row and reaches the detail
-			// fetch, so it supersedes any earlier approximate marking.
-			historyApproximateCaps = { ...historyApproximateCaps, [id]: false };
+			// Record what the lookup actually reported. An interactive
+			// lookup usually reaches the detail fetch and confirms the
+			// cap, but a failed one answers approximate — marking it
+			// exact here would let every later click trust it.
+			historyApproximateCaps = { ...historyApproximateCaps, [id]: approximate };
 			const m = historyMatches[id];
 			if (m) rowReady(id, m, c);
 			else historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
 		},
+		// Provenance is carried, not collapsed: the interactive lane
+		// bypasses the gate, but its detail fetch can still fail, and
+		// the backend then answers with the search-hit count marked
+		// approximate.
 		fetchInteractiveCount: (m, mode) =>
-			makeFetchAvailability(checkAvailability, { background: false })(m, mode).then(
-				(r) => r?.episode_count ?? null
-			),
+			makeFetchAvailability(checkAvailability, { background: false })(m, mode).then((r) => ({
+				count: r?.episode_count ?? null,
+				approximate: r?.episode_count_approximate === true
+			})),
 		// Persistent-PiP short-circuit: reuse the live session for the
 		// exact (show, ep, quality, mode); quality/mode stay undefined
 		// while settings are unloaded so a live PiP session at a

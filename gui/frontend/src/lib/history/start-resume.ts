@@ -45,10 +45,18 @@ export interface StartResumeDeps {
 	 *  overcount is not bounded to one. Optional so callers without
 	 *  provenance keep the previous behaviour. */
 	isPlayableCountApproximate?: (entryId: string) => boolean;
-	setPlayableCount: (entryId: string, count: number) => void;
+	setPlayableCount: (entryId: string, count: number, approximate: boolean) => void;
 	/** Interactive (non-background) availability lookup — the gate
 	 *  must neither pace nor breaker-refuse a user-awaited request. */
-	fetchInteractiveCount: (match: KitsuAnimeRef, mode: 'sub' | 'dub') => Promise<number | null>;
+	/** Interactive cap lookup. Returns the count AND whether it came
+	 *  from the search hit rather than the detail fetch — the
+	 *  interactive lane bypasses the gate, but its detail fetch can
+	 *  still fail, and collapsing that to a bare number would let an
+	 *  approximate answer be recorded as confirmed. */
+	fetchInteractiveCount: (
+		match: KitsuAnimeRef,
+		mode: 'sub' | 'dub'
+	) => Promise<{ count: number | null; approximate: boolean }>;
 	/** Persistent-PiP session reuse (reuseSessionIfMatching). */
 	reuseSession: (
 		kitsuId: string,
@@ -98,7 +106,7 @@ export function makeStartResume(
 
 		const { mode, quality } = await deps.getSettings();
 		const lastWatchedRaw = parseInt(entry.ep_no, 10);
-		const { episode, count } = await resolveResumeEpisode(
+		const { episode, count, approximate } = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
 			deps.getPlayableCount(entry.id),
 			match.episode_count ?? null,
@@ -111,7 +119,7 @@ export function makeStartResume(
 			deps.isPlayableCountApproximate?.(entry.id) ?? false
 		);
 		if (typeof count === 'number') {
-			deps.setPlayableCount(entry.id, count);
+			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
 		const loaded = deps.settingsLoaded();

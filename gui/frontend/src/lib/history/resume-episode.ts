@@ -48,24 +48,35 @@ export async function resolveResumeEpisode(
 	lastWatched: number | null,
 	playableCount: number | null,
 	kitsuCount: number | null,
-	fetchCount: () => Promise<number | null>,
+	fetchCount: () => Promise<{ count: number | null; approximate: boolean }>,
 	readCap?: () => number | null,
 	playableCountApproximate = false
-): Promise<{ episode: number; count: number | null }> {
+): Promise<{ episode: number; count: number | null; approximate: boolean }> {
 	if (typeof playableCount === 'number' && !playableCountApproximate) {
-		return { episode: pickNextEpisode(lastWatched, playableCount), count: playableCount };
+		return {
+			episode: pickNextEpisode(lastWatched, playableCount),
+			count: playableCount,
+			approximate: false
+		};
 	}
 	if (typeof playableCount === 'number') {
-		let confirmed: number | null;
+		let confirmed: { count: number | null; approximate: boolean } | null;
 		try {
 			confirmed = await fetchCount();
 		} catch {
 			confirmed = null;
 		}
-		const cap = confirmed ?? playableCount;
-		return { episode: pickNextEpisode(lastWatched, cap), count: cap };
+		// A revalidation that fails, or that comes back approximate
+		// itself, leaves the cap approximate — the next click has to
+		// revalidate again rather than inherit a false confirmation.
+		const cap = confirmed?.count ?? playableCount;
+		return {
+			episode: pickNextEpisode(lastWatched, cap),
+			count: cap,
+			approximate: confirmed?.approximate ?? true
+		};
 	}
-	let live: number | null;
+	let live: { count: number | null; approximate: boolean } | null;
 	try {
 		live = await fetchCount();
 	} catch {
@@ -74,6 +85,15 @@ export async function resolveResumeEpisode(
 	// Precedence on the way down: the lookup's own answer, then a cap
 	// the background probe published while it ran, then Kitsu. Only
 	// the last is optimistic, so it is the last resort.
-	const cap = live ?? readCap?.() ?? kitsuCount ?? null;
-	return { episode: pickNextEpisode(lastWatched, cap), count: live ?? readCap?.() ?? null };
+	const cap = live?.count ?? readCap?.() ?? kitsuCount ?? null;
+	const resolved = live?.count ?? readCap?.() ?? null;
+	return {
+		episode: pickNextEpisode(lastWatched, cap),
+		count: resolved,
+		// `approximate` describes a CAP, so with no cap it is false.
+		// Otherwise: a lookup that answered carries its own provenance,
+		// while falling back to the loader's value leaves it as
+		// unconfirmed as it already was.
+		approximate: resolved === null ? false : live?.count != null ? live.approximate : true
+	};
 }
