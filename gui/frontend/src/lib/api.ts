@@ -805,6 +805,13 @@ export interface AvailabilityResponse {
 	available: boolean;
 	episode_count: number | null;
 	extra_episodes: string[];
+	/** True when `episode_count` came from the search hit rather than
+	 *  the per-show detail fetch — the scraper gate refused the fetch,
+	 *  or it failed. That number counts half episodes as whole ones, so
+	 *  it can run high, and by an unbounded amount when a show carries
+	 *  several. Absent on responses from before the backend reported
+	 *  provenance, which read as exact. */
+	episode_count_approximate?: boolean;
 }
 
 /** "Is this title in allmanga's catalog?" probe. The detail page hits

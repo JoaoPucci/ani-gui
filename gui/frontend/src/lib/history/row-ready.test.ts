@@ -232,3 +232,153 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 1 })]]);
 	});
 });
+
+describe('refinement re-fire (render-then-refine)', () => {
+	function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+		let resolveFn!: (v: T) => void;
+		const promise = new Promise<T>((res) => {
+			resolveFn = res;
+		});
+		return { promise, resolve: resolveFn };
+	}
+
+	it('a stale first episode fetch loses to the refinement fetch', async () => {
+		// The loader now calls the handler twice per probed row: once
+		// at match-release (count null), once when the probe refines
+		// the cap. Each call starts an episode fetch; if the FIRST
+		// fetch resolves LAST, its stale episode must not overwrite
+		// the refinement's. Guarded by a per-entry token.
+		const entry = makeEntry('h1', '12', 'Show');
+		const match = makeMatch('k1', 24);
+		const first = defer<KitsuEpisode[]>();
+		const second = defer<KitsuEpisode[]>();
+		const fetchKitsuEpisodes = vi
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const episodes: [string, KitsuEpisode | null][] = [];
+		const handler = makeContinueRowReadyHandler({
+			historyById: new Map([[entry.id, entry]]),
+			fetchKitsuEpisodes,
+			setMatch: () => {},
+			setPlayableCount: () => {},
+			setEpisode: (id, ep) => episodes.push([id, ep])
+		});
+
+		// Release: cap falls back to match.episode_count (24) → next 13.
+		handler(entry.id, match, null);
+		// Refinement: cap 12 → watched 12 of 12 → replay 12.
+		handler(entry.id, match, 12);
+
+		// Refinement's fetch lands first…
+		second.resolve([makeKitsuEpisode(12)]);
+		await Promise.resolve();
+		await Promise.resolve();
+		// …then the stale release-time fetch straggles in.
+		first.resolve([makeKitsuEpisode(13)]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(episodes.at(-1)).toEqual(['h1', makeKitsuEpisode(12)]);
+	});
+	it('an unchanged target reuses the in-flight fetch instead of restarting it', async () => {
+		// The common refinement is a NO-OP for the target: the probe
+		// reports the same count Kitsu already gave, or the user is
+		// below both caps, so nextEpisode and its page are unchanged.
+		// Replacing the token there starts a second identical request
+		// — double the cold-cache episode traffic for most Continue
+		// rows — and hands the row's outcome to the newer request. If
+		// that one fails while the original succeeds, the catch writes
+		// null and the successful response is discarded as stale.
+		const entry = makeEntry('h1', '5', 'Show');
+		const match = makeMatch('k1', 24);
+		const first = defer<KitsuEpisode[]>();
+		// mockImplementationOnce, not mockReturnValueOnce: the rejected
+		// promise must only exist if the handler actually calls it.
+		const fetchKitsuEpisodes = vi
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockImplementationOnce(() => Promise.reject(new Error('refinement request failed')));
+		const episodes: [string, KitsuEpisode | null][] = [];
+		const handler = makeContinueRowReadyHandler({
+			historyById: new Map([[entry.id, entry]]),
+			fetchKitsuEpisodes,
+			setMatch: () => {},
+			setPlayableCount: () => {},
+			setEpisode: (id, ep) => episodes.push([id, ep])
+		});
+
+		// Release: cap 24 → next 6. Refinement: cap 24 again → next 6.
+		handler(entry.id, match, null);
+		handler(entry.id, match, 24);
+
+		expect(fetchKitsuEpisodes).toHaveBeenCalledTimes(1);
+
+		first.resolve([makeKitsuEpisode(6)]);
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(episodes.at(-1)).toEqual(['h1', makeKitsuEpisode(6)]);
+	});
+
+	it('a changed target still supersedes the in-flight fetch', async () => {
+		// Reuse is keyed on the target, not on "a request exists" —
+		// a refinement that genuinely moves the episode must still
+		// start its own fetch and win.
+		const entry = makeEntry('h1', '12', 'Show');
+		const match = makeMatch('k1', 24);
+		const first = defer<KitsuEpisode[]>();
+		const second = defer<KitsuEpisode[]>();
+		const fetchKitsuEpisodes = vi
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const episodes: [string, KitsuEpisode | null][] = [];
+		const handler = makeContinueRowReadyHandler({
+			historyById: new Map([[entry.id, entry]]),
+			fetchKitsuEpisodes,
+			setMatch: () => {},
+			setPlayableCount: () => {},
+			setEpisode: (id, ep) => episodes.push([id, ep])
+		});
+
+		handler(entry.id, match, null); // next 13
+		handler(entry.id, match, 12); // next 12 — a real change
+
+		expect(fetchKitsuEpisodes).toHaveBeenCalledTimes(2);
+
+		second.resolve([makeKitsuEpisode(12)]);
+		await Promise.resolve();
+		await Promise.resolve();
+		first.resolve([makeKitsuEpisode(13)]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(episodes.at(-1)).toEqual(['h1', makeKitsuEpisode(12)]);
+	});
+
+	it('a settled target is re-fetched when the row fires again', async () => {
+		// Reuse must not become a permanent cache: once the request
+		// has settled there is nothing in flight to share, so a later
+		// re-fire for the same target has to issue a fresh request.
+		const entry = makeEntry('h1', '5', 'Show');
+		const match = makeMatch('k1', 24);
+		const fetchKitsuEpisodes = vi.fn(() => Promise.resolve([makeKitsuEpisode(6)]));
+		const handler = makeContinueRowReadyHandler({
+			historyById: new Map([[entry.id, entry]]),
+			fetchKitsuEpisodes,
+			setMatch: () => {},
+			setPlayableCount: () => {},
+			setEpisode: () => {}
+		});
+
+		handler(entry.id, match, 24);
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+		handler(entry.id, match, 24);
+
+		expect(fetchKitsuEpisodes).toHaveBeenCalledTimes(2);
+	});
+});
