@@ -6,9 +6,11 @@ use super::*;
 
 /// The 4.15 name set, produced through the production probe so every
 /// preflight test also exercises the capability gate's positive path.
+/// Shaped like the real script: the dependency check opens its own
+/// indented line inside the download arm.
 fn both() -> &'static [&'static str] {
     download_tool_names(
-        "version_number=\"4.15.0\"\ncase \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac",
+        "version_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null\n        ;;\nesac",
     )
 }
 

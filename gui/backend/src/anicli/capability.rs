@@ -28,8 +28,11 @@
 const FAILOVER_RELEASE: (u32, u32) = (4, 15);
 
 /// The 4.15 download arm's dependency check, spelled as that release
-/// spells it. Matched literally: a script that words it differently
-/// is a customization we cannot vouch for.
+/// spells it. Matched literally, and only where it OPENS a line
+/// (after indentation): a commented-out copy is not a dependency
+/// check, and accepting one would grant yt-dlp to a script whose real
+/// arm still requires ffmpeg. A script that words it differently is a
+/// customization we cannot vouch for.
 const FAILOVER_CALL: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
 
 /// Whether the script accepts yt-dlp alone for `-d` downloads.
@@ -40,7 +43,9 @@ pub(crate) fn supports_ytdlp_download(script_contents: &str) -> bool {
     if (major, minor) < FAILOVER_RELEASE {
         return false;
     }
-    script_contents.contains(FAILOVER_CALL)
+    script_contents
+        .lines()
+        .any(|l| l.trim_start().starts_with(FAILOVER_CALL))
 }
 
 /// The script's own `version_number="X.Y..."` declaration, as
