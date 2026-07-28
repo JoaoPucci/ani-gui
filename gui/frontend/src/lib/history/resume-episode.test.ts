@@ -188,9 +188,9 @@ describe('a cap that lands while the interactive lookup runs', () => {
 	// away a better answer that is already in hand — and Kitsu's count
 	// is exactly the number the probe exists to correct.
 	it('prefers a cap published during the lookup over Kitsu on failure', async () => {
-		let published: number | null = null;
+		let published: { count: number | null; approximate: boolean } | null = null;
 		const fetchCount = vi.fn(async () => {
-			published = 12; // the background probe lands mid-flight
+			published = { count: 12, approximate: true }; // the probe lands mid-flight
 			throw new Error('interactive lookup failed');
 		});
 		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
@@ -269,5 +269,58 @@ describe('an interactive lookup that is itself approximate', () => {
 		const fetchCount = vi.fn(async () => ({ count: 13, approximate: true }));
 		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
 		expect(r.approximate).toBe(true);
+	});
+});
+
+describe('a cap published while an approximate one is being revalidated', () => {
+	// Codex P2 #3666727714 covered the null-snapshot branch; this is
+	// the approximate-snapshot branch, which never consulted the live
+	// reader at all. The background probe can publish an EXACT cap
+	// while the revalidation is in flight, and falling back to the
+	// snapshot then keeps the worse of two answers already in hand:
+	// approximate 13 survives an exact 12, plays a phantom episode,
+	// and startResume re-pins 13 over the safer number.
+	it('prefers an exact cap published mid-revalidation over the snapshot', async () => {
+		let published: { count: number | null; approximate: boolean } | null = null;
+		const fetchCount = vi.fn(async () => {
+			published = { count: 12, approximate: false };
+			throw new Error('revalidation failed');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
+	});
+
+	it('keeps the snapshot when the published cap is approximate too', async () => {
+		// Only an exact answer displaces the snapshot. Swapping one
+		// unconfirmed number for another buys nothing and loses the
+		// value the click was already resolving against.
+		const published = { count: 14, approximate: true };
+		const fetchCount = vi.fn(async () => {
+			throw new Error('revalidation failed');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, () => published, true);
+		expect(r).toEqual({ episode: 13, count: 13, approximate: true });
+	});
+
+	it('a revalidation that answers without a count leaves the cap unconfirmed', async () => {
+		// `{count: null, approximate: false}` is "no cap", not "the cap
+		// you have is exact" — reporting it as exact would let the next
+		// click trust a number nothing ever confirmed.
+		const fetchCount = vi.fn(async () => ({ count: null, approximate: false }));
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r).toEqual({ episode: 13, count: 13, approximate: true });
+	});
+
+	it('carries the provenance of a cap published during a first lookup', async () => {
+		// The null-snapshot branch had the same gap in the other
+		// direction: it took the published count but hard-coded the
+		// answer as approximate, so an exact background cap was
+		// re-probed on the next click for nothing.
+		const published = { count: 12, approximate: false };
+		const fetchCount = vi.fn(async () => {
+			throw new Error('lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r).toEqual({ episode: 12, count: 12, approximate: false });
 	});
 });
