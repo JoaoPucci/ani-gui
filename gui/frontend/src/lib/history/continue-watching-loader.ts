@@ -18,7 +18,7 @@ export interface ContinueWatchingLoaderDeps {
 	fetchAvailability: (
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
-	) => Promise<{ episode_count: number | null } | null>;
+	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
 	/**
 	 * Resolves to the configured availability mode. Async because the
 	 * home page bootstraps settingsGet() in parallel with historyList()

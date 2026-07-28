@@ -212,3 +212,34 @@ describe('a cap that lands while the interactive lookup runs', () => {
 		expect(r.count).toBe(12);
 	});
 });
+
+describe('an approximate cap is never trusted', () => {
+	// The backend reports when a count came from the search hit rather
+	// than the detail fetch. That number counts half episodes as whole
+	// ones, so it can run high by MORE than one when a show carries
+	// several — which is why position ("is the next episode exactly
+	// the cap?") is not a safe proxy for the risk.
+	it('revalidates an approximate cap even below the boundary', async () => {
+		const fetchCount = vi.fn(async () => 12);
+		const r = await resolveResumeEpisode(5, 14, 24, fetchCount, undefined, true);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(12);
+	});
+
+	it('still trusts an exact cap without any lookup', async () => {
+		const fetchCount = vi.fn();
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, false);
+		expect(fetchCount).not.toHaveBeenCalled();
+		expect(r.episode).toBe(13);
+	});
+
+	it('keeps the approximate cap when revalidation fails', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('offline');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount, undefined, true);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+});
