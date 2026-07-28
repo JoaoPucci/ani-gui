@@ -1428,3 +1428,34 @@ fn case_keyword_accepts_tabs_and_runs_of_blanks() {
         );
     }
 }
+
+/// POSIX allows a case item's pattern to carry an opening paren —
+/// `(download)` is the same arm as `download)` and both `sh` and bash
+/// accept it. A cached or user-edited script written that way still
+/// governs `-d` mode, so missing it reads a capable script as
+/// hard-requiring ffmpeg and blocks a yt-dlp-only install.
+#[test]
+fn a_parenthesized_download_pattern_opens_the_arm() {
+    let inline = "case \"$player_function\" in\n(download) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    let spaced = "case \"$player_function\" in\n( download ) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(inline),
+        "an opening paren is part of the case-item syntax, not the pattern"
+    );
+    assert!(
+        download_branch_invokes_failover(spaced),
+        "blanks inside the parens are allowed too"
+    );
+}
+
+/// The paren must not become a way to open the arm from a pattern
+/// that isn't `download` — the scope rules are what keep an
+/// unrelated case statement from speaking for the download flow.
+#[test]
+fn a_parenthesized_other_pattern_does_not_open_the_arm() {
+    let text = "case \"$player_function\" in\n(iina) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "only the download arm governs -d mode"
+    );
+}
