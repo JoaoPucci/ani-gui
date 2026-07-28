@@ -26,21 +26,21 @@ Every change starts red:
 2. Make it pass with the minimum code. Commit with prefix `feat(green): …` or `fix(green): …`.
 3. Refactor only after green. Commit with prefix `refactor: …` and prove tests still pass.
 
-A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --grep '^test(red)'` reconstructs the spec.
+A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red)'` reconstructs the spec.
 
 **Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
 
 ```sh
 git cat-file -t <cited-sha>                        # unresolvable → you are describing the preview, not a commit
 git log --format='%h %p %s' master..<branch-head>  # the real pairing: each green's parent is its red
-git log --grep '^test(red)' master..<branch-head>  # the branch's red commits, if any
+git log --format='%s' master..<branch-head> | grep '^test(red)'   # the branch's red SUBJECTS, if any
 git merge-base --is-ancestor <fix> <test>          # succeeds → the fix really did precede its test
 ```
 
 A finding is actionable on either path:
 
 - **Mis-ordered pair** — the cited objects resolve and `--is-ancestor <fix> <test>` succeeds, so a green landed before the red that specifies it.
-- **No red at all** — the `--grep` listing over `master..<branch-head>` shows the branch has no `test(red)` commit covering the behavior the `feat`/`fix` introduced. There is no `<test>` sha to compare in this case, and none is required.
+- **No red at all** — the subject listing over `master..<branch-head>` shows the branch has no `test(red)` commit covering the behavior the `feat`/`fix` introduced. Filter formatted subjects, not `--grep`: `--grep` matches the whole log message, so `^test(red)` also hits a *body* line and a branch with no red subject can look as though it has one whenever another commit quotes such a line. There is no `<test>` sha to compare in this case, and none is required.
 
 Both outcomes are real. A green-before-red defect has been confirmed this way; so have repeated preview artifacts citing ids absent from the repository. What is never sufficient on its own is a claim about an object that does not resolve.
 
