@@ -24,6 +24,7 @@
 	import { filterAvailable } from '$lib/availability/filter';
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
+	import { createSearchRunner } from '$lib/search/run-search';
 	import { m } from '$lib/paraglide/messages';
 
 	let submitted = $state(''); // the query whose results are on screen.
@@ -125,40 +126,41 @@
 		}
 	});
 
+	// All async search state transitions live in the runner
+	// ($lib/search/run-search.ts): render-then-prune emissions from
+	// the progressive filter, plus a generation token that silences
+	// superseded runs — including a re-run of the SAME query text
+	// (A → B → A), which a text comparison could not distinguish.
+	// The closures below are the page-side adapter, one Svelte
+	// reassignment each.
+	const searchRunner = createSearchRunner({
+		kitsuSearch,
+		getConfig: async () => {
+			// Same race as onMount: a fast ?q= deeplink can fire before
+			// settingsGet has resolved on first load. The runner caches
+			// the result so DUB users never search under the 'sub'
+			// fallback twice.
+			if (!config) config = await settingsGet();
+			return config;
+		},
+		pickMode: pickAvailabilityMode,
+		filter: (items, mode, emit) => filterAvailableProgressive(items, mode, emit),
+		onResults: (visible) => {
+			results = visible;
+		},
+		onError: (e) => {
+			error = describeError(e);
+			results = null;
+		},
+		onBusy: (b) => {
+			busy = b;
+		}
+	});
+
 	async function runSearch(q: string) {
 		error = null;
-		busy = true;
 		submitted = q;
-		try {
-			// Same race as onMount: a fast ?q= deeplink can fire this
-			// before settingsGet has resolved on first load. Pull it
-			// inline so the filter never runs with the 'sub' fallback
-			// while the user is on DUB.
-			if (!config) {
-				try {
-					config = await settingsGet();
-				} catch {
-					// Filter falls back to 'sub' via pickAvailabilityMode.
-				}
-			}
-			const raw = await kitsuSearch(q);
-			// Render-then-prune: results appear at the grace deadline
-			// even when upstream probes hang; late negative verdicts
-			// prune their cards silently. The submitted guard drops
-			// emissions from a query the user has already replaced.
-			await filterAvailableProgressive(raw, pickAvailabilityMode(config), (visible) => {
-				if (submitted !== q) return;
-				results = visible;
-				busy = false;
-			});
-		} catch (e) {
-			if (submitted === q) {
-				error = describeError(e);
-				results = null;
-			}
-		} finally {
-			if (submitted === q) busy = false;
-		}
+		await searchRunner.run(q);
 	}
 
 	function describeError(e: unknown): { headline: string; detail: string | null } {

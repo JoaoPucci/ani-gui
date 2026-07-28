@@ -33,7 +33,11 @@ function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef 
 	};
 }
 
-function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+function defer<T>(): {
+	promise: Promise<T>;
+	resolve: (v: T) => void;
+	reject: (e: unknown) => void;
+} {
 	let resolveFn!: (v: T) => void;
 	let rejectFn!: (e: unknown) => void;
 	const promise = new Promise<T>((res, rej) => {
@@ -238,9 +242,6 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 
 		probes.get('gone')!({ available: false });
 		await vi.advanceTimersByTimeAsync(0);
-		expect(results).toEqual([
-			[keep, gone],
-			[keep]
-		]);
+		expect(results).toEqual([[keep, gone], [keep]]);
 	});
 });
