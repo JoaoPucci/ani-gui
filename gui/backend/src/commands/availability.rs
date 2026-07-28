@@ -171,6 +171,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v9: gate-refused probes now mark their count approximate so it
+    //     re-probes instead of being served as exact. v8 rows written
+    //     by that path carry the degraded count with no flag, and
+    //     `serde(default)` reads them as exact — they would keep
+    //     resolving a phantom final episode for up to 30 days.
+    //     Bumping forces them to re-probe.
     // v8: negative TTLs became premiere-aware (negative_ttl_for +
     //     the airing-cache seed), but check_availability
     //     short-circuits on cached false rows before either runs. A
@@ -214,7 +220,7 @@ fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v8:{kitsu_id}:{m}")
+    format!("availability:v9:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache

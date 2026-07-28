@@ -29,6 +29,13 @@
  * trusts the cap, because below it the next episode is strictly
  * inside the range either way. A failed revalidation keeps the
  * background cap rather than regressing to no cap at all.
+ *
+ * `readCap` exists because the caller's cap is a SNAPSHOT taken when
+ * the click fired, and the background probe can land while the
+ * interactive lookup is still in flight. If that lookup then fails,
+ * falling back to Kitsu would discard an exact cap already in hand —
+ * and Kitsu's count is the very number the probe exists to correct.
+ * Optional: callers with no live view of the cap simply omit it.
  */
 
 import { pickNextEpisode } from '$lib/play/next-episode';
@@ -37,7 +44,8 @@ export async function resolveResumeEpisode(
 	lastWatched: number | null,
 	playableCount: number | null,
 	kitsuCount: number | null,
-	fetchCount: () => Promise<number | null>
+	fetchCount: () => Promise<number | null>,
+	readCap?: () => number | null
 ): Promise<{ episode: number; count: number | null }> {
 	if (typeof playableCount === 'number') {
 		const next = pickNextEpisode(lastWatched, playableCount);
@@ -62,5 +70,9 @@ export async function resolveResumeEpisode(
 	} catch {
 		live = null;
 	}
-	return { episode: pickNextEpisode(lastWatched, live ?? kitsuCount ?? null), count: live };
+	// Precedence on the way down: the lookup's own answer, then a cap
+	// the background probe published while it ran, then Kitsu. Only
+	// the last is optimistic, so it is the last resort.
+	const cap = live ?? readCap?.() ?? kitsuCount ?? null;
+	return { episode: pickNextEpisode(lastWatched, cap), count: live ?? readCap?.() ?? null };
 }

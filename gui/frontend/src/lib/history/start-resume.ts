@@ -96,7 +96,12 @@ export function makeStartResume(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
 			deps.getPlayableCount(entry.id),
 			match.episode_count ?? null,
-			() => deps.fetchInteractiveCount(match, mode)
+			() => deps.fetchInteractiveCount(match, mode),
+			// Re-read rather than reuse the snapshot above: the
+			// background probe can publish an exact cap while the
+			// interactive lookup is in flight, and that beats falling
+			// back to Kitsu's optimistic count if the lookup fails.
+			() => deps.getPlayableCount(entry.id)
 		);
 		if (typeof count === 'number') {
 			deps.setPlayableCount(entry.id, count);
