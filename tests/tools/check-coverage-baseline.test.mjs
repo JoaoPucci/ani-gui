@@ -333,6 +333,26 @@ test('a p95 regression names the ranking that moved', () => {
 	assert.match(output, /gui\/backend\/src\/scraper\/allanime\.rs/);
 });
 
+// Reading a ranking does not tell you which row IS the percentile —
+// p95 slides down the list as the file count grows, and the row that
+// has to come under the ceiling is that one, not the worst. Mark it.
+test('a p95 regression marks which row sits at the boundary', () => {
+	const output = runAgainstSummary({
+		max: 80,
+		p95: 229.4,
+		high_risk: 3,
+		high_risk_files: [],
+		top: RANKING,
+		p95_file: 'gui/backend/src/scraper/allanime.rs'
+	});
+
+	const marked = output.split('\n').find((l) => l.includes('gui/backend/src/scraper/allanime.rs'));
+	assert.ok(marked, 'the p95 row must appear in the report at all');
+	assert.match(marked, /p95/, 'and must be marked as the percentile boundary');
+	const unmarked = output.split('\n').find((l) => l.includes('anicli/process.rs'));
+	assert.doesNotMatch(unmarked, /p95/, 'other rows must not be marked');
+});
+
 test('a passing run stays quiet about the ranking', () => {
 	const { tmpDir, run } = stageFixtureRepo();
 	fs.writeFileSync(
