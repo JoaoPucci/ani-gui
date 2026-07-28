@@ -1448,7 +1448,7 @@ mod tests {
     fn a_failed_detail_fetch_reports_its_count_as_approximate() {
         let candidate = enrich_candidate(13);
         let (count, extras, approximate) = enrich_from_show_fetch(
-            Err(crate::error::AniError::Scraper { key: "boom".into() }),
+            Err(crate::error::AniError::Scraper { key: "boom" }),
             &candidate,
             "sub",
         )
