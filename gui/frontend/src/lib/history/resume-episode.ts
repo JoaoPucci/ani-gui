@@ -64,27 +64,18 @@ export async function resolveResumeEpisode(
 		};
 	}
 	if (typeof playableCount === 'number') {
-		const confirmed = await answered(fetchCount);
-		if (confirmed) return at(lastWatched, confirmed);
-		// The revalidation gave nothing. A cap the background probe
-		// published while it ran still beats the snapshot, but only
-		// when it is EXACT — swapping one unconfirmed number for
-		// another buys nothing.
-		const published = readCap?.() ?? null;
-		if (published?.count != null && !published.approximate) return at(lastWatched, published);
-		// Otherwise keep the snapshot, still unconfirmed: the next
-		// click revalidates again rather than inheriting a false
-		// confirmation.
+		const answer = best(await answered(fetchCount), published(readCap));
+		if (answer) return at(lastWatched, answer);
+		// Neither side answered. Keep the snapshot, still unconfirmed:
+		// the next click revalidates again rather than inheriting a
+		// false confirmation.
 		return at(lastWatched, { count: playableCount, approximate: true });
 	}
-	const live = await answered(fetchCount);
-	// Precedence on the way down: the lookup's own answer, then a cap
-	// the background probe published while it ran, then Kitsu. Only
-	// the last is optimistic, so it is the last resort — and unlike
-	// the other two it is not an answer, so it sets the episode
-	// without being reported as a cap.
-	const answer = live ?? readCap?.() ?? null;
-	if (answer?.count != null) return at(lastWatched, answer);
+	const answer = best(await answered(fetchCount), published(readCap));
+	if (answer) return at(lastWatched, answer);
+	// Nobody measured a cap. Kitsu's count still sets the episode —
+	// it is the pre-probe behaviour — but it is not an answer, so it
+	// is not reported as one.
 	return {
 		episode: pickNextEpisode(lastWatched, kitsuCount ?? null),
 		count: null,
@@ -92,6 +83,36 @@ export async function resolveResumeEpisode(
 		approximate: false
 	};
 }
+
+/**
+ * Which of two answers about the same cap to trust.
+ *
+ * An exact answer beats an approximate one whichever side it arrived
+ * from — the same rule the cap authority applies to a late loader
+ * callback, and for the same reason: a confirmed detail fetch is
+ * better information than a search-hit count, and choosing by
+ * position instead lets an approximate number overwrite a measured
+ * one. Between two of equal confidence the interactive lookup wins,
+ * because it is the one this click asked for.
+ */
+function best(lookup: Answer, published: Answer): Answer {
+	if (!lookup) return published;
+	if (!published) return lookup;
+	return lookup.approximate && !published.approximate ? published : lookup;
+}
+
+/**
+ * The live cap, read AFTER the lookup settles so a probe that landed
+ * mid-flight is visible, and normalised: a reader with no count is
+ * not an answer.
+ */
+function published(readCap?: () => { count: number | null; approximate: boolean } | null): Answer {
+	const cap = readCap?.() ?? null;
+	return cap?.count == null ? null : { count: cap.count, approximate: cap.approximate };
+}
+
+/** An answer that carries a number. `null` means nobody measured one. */
+type Answer = { count: number; approximate: boolean } | null;
 
 /**
  * A lookup result that actually carries a count. A throw and a
