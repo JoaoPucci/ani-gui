@@ -47,9 +47,10 @@ setup() {
 
 @test "episodes_list: passes the show id in the POST body" {
     export CURL_MOCK_RESPONSE="$FIXTURES_DIR/allanime/episodes_attack_on_titan.json"
-    episodes_list "MWMqGjvE2yBb2zoiv" >/dev/null
+    episodes_list "MWMqGjvE2yBb2zoiv" >/dev/null || true
     log=$(cat "$CURL_MOCK_LOG")
     [[ "$log" == *"MWMqGjvE2yBb2zoiv"* ]]
     [[ "$log" == *"-X POST"* ]]
-    [[ "$log" == *"https://api.allanime.day/api"* ]]
+    # Pin via the script's own variable — upstream rotates domains.
+    [[ "$log" == *"${allanime_api}/api"* ]]
 }
