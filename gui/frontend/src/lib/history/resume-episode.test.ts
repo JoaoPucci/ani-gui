@@ -178,3 +178,37 @@ describe('a cap the click is about to advance to is revalidated', () => {
 		expect(r.count).toBe(13);
 	});
 });
+
+describe('a cap that lands while the interactive lookup runs', () => {
+	// The click can start before the background probe settles: the
+	// snapshot cap is null, so the interactive lookup runs. If that
+	// lookup fails while the background probe publishes an exact cap
+	// in the meantime, falling back to Kitsu's optimistic count throws
+	// away a better answer that is already in hand — and Kitsu's count
+	// is exactly the number the probe exists to correct.
+	it('prefers a cap published during the lookup over Kitsu on failure', async () => {
+		let published: number | null = null;
+		const fetchCount = vi.fn(async () => {
+			published = 12; // the background probe lands mid-flight
+			throw new Error('interactive lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => published);
+		expect(r.episode).toBe(12); // replay the real finale, not Kitsu's 13
+		expect(r.count).toBe(12);
+	});
+
+	it('still falls back to Kitsu when no cap arrived', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('interactive lookup failed');
+		});
+		const r = await resolveResumeEpisode(12, null, 24, fetchCount, () => null);
+		expect(r.episode).toBe(13);
+	});
+
+	it('treats the reader as optional for callers that have no live cap', async () => {
+		const fetchCount = vi.fn(async () => 12);
+		const r = await resolveResumeEpisode(5, null, 24, fetchCount);
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(12);
+	});
+});
