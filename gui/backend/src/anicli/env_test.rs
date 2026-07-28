@@ -1294,7 +1294,10 @@ fn failover_grant_survives_single_quotes() {
 fn failover_grant_survives_double_space_and_tab() {
     let two = "case \"$player_function\" in\ndownload) dep_ch_failover  \"yt-dlp,ffmpeg\" ;;\nesac";
     let tab = "case \"$player_function\" in\ndownload) dep_ch_failover\t\"yt-dlp,ffmpeg\" ;;\nesac";
-    assert!(download_branch_invokes_failover(two), "two spaces still grant");
+    assert!(
+        download_branch_invokes_failover(two),
+        "two spaces still grant"
+    );
     assert!(download_branch_invokes_failover(tab), "a tab still grants");
 }
 

@@ -20,7 +20,6 @@ use super::shell_scan::ShellScan;
 /// same-segment remainder included, for one-liner arms) only under a
 /// player-function owner. Comment lines cannot move the scope.
 pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
-    const INVOCATION: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
     // The verdict belongs to the COMPLETE arm: a failover call
     // followed by an unconditional hard ffmpeg requirement later in
     // the same arm still requires ffmpeg, so the grant is decided at
@@ -118,7 +117,7 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
                 // check so nested arm patterns (`Darwin) dep_ch …`)
                 // can't hide it; over-matching only errs toward
                 // requiring ffmpeg, which every script satisfies.
-                if case_owners.len() == level && rest.starts_with(INVOCATION) {
+                if case_owners.len() == level && invokes_yt_dlp_failover(rest) {
                     saw_failover = true;
                 } else if mentions_hard_ffmpeg(rest) {
                     saw_hard_ffmpeg = true;
@@ -128,6 +127,52 @@ pub(crate) fn download_branch_invokes_failover(script_contents: &str) -> bool {
     }
     // A script ending with the arm still open decides the same way.
     saw_failover && !saw_hard_ffmpeg
+}
+
+/// Whether a statement piece IS the yt-dlp failover call — the arm
+/// invoking `dep_ch_failover` with `yt-dlp,ffmpeg` as its first
+/// argument, which is what tells the preflight that yt-dlp alone
+/// suffices.
+///
+/// Shape-matched for the same reason the veto is (see
+/// [`mentions_hard_ffmpeg`]): the script is cached, auto-updated and
+/// user-editable, so `dep_ch_failover  'yt-dlp,ffmpeg'` and a bare
+/// argument mean exactly what the double-quoted spelling means.
+/// Missing one costs a yt-dlp-only user their download behind a
+/// missing-ffmpeg modal the script itself would not have raised.
+///
+/// Anchored at the start of the piece so this reads an invocation
+/// rather than a mention, and the argument must be the yt-dlp pair:
+/// a failover over some other toolset says nothing about yt-dlp.
+fn invokes_yt_dlp_failover(rest: &str) -> bool {
+    const NAME: &str = "dep_ch_failover";
+    const ARG: &str = "yt-dlp,ffmpeg";
+    let bytes = rest.as_bytes();
+    if !rest.starts_with(NAME) {
+        return false;
+    }
+    let mut i = NAME.len();
+    let ws_start = i;
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i == ws_start {
+        return false;
+    }
+    let quote = bytes.get(i).copied().filter(|b| *b == b'"' || *b == b'\'');
+    if quote.is_some() {
+        i += 1;
+    }
+    if !rest[i..].starts_with(ARG) {
+        return false;
+    }
+    let after = bytes.get(i + ARG.len()).copied();
+    match (quote, after) {
+        (Some(q), Some(b)) => b == q,
+        (Some(_), None) => false,
+        (None, Some(b)) => !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b','),
+        (None, None) => true,
+    }
 }
 
 /// Whether a statement piece hard-requires ffmpeg — `dep_ch` called
