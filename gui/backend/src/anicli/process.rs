@@ -497,16 +497,24 @@ impl Drop for TreeKillChild {
         // `id()` is None once the child has been reaped — nothing to
         // walk in that case even if disarm was missed.
         let Some(pid) = self.child.id() else { return };
-        #[cfg(test)]
-        if let Some(probe) = tree_kill_probe() {
-            let _ = std::process::Command::new(probe)
-                .arg(pid.to_string())
-                .status();
-            return;
-        }
-        if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
-            let _ = std::process::Command::new(prog).args(&args).status();
-        }
+        kill_process_tree(pid);
+    }
+}
+
+/// Take down a spawned downloader's whole process tree.
+///
+/// Shared by the drop guard and by the in-flight stop below, so both
+/// paths use the same platform command and the same test seam.
+fn kill_process_tree(pid: u32) {
+    #[cfg(test)]
+    if let Some(probe) = tree_kill_probe() {
+        let _ = std::process::Command::new(probe)
+            .arg(pid.to_string())
+            .status();
+        return;
+    }
+    if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+        let _ = std::process::Command::new(prog).args(&args).status();
     }
 }
 
@@ -803,6 +811,15 @@ where
         std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let collected_for_reader = stderr_collected.clone();
 
+    // Acted on while the script is still running, not after it exits.
+    // A range download is one process looping over episodes, so a
+    // warning on episode 1 means every later episode of that range
+    // takes the same doomed path — the whole season would come down
+    // as mislabeled MPEG-TS before anything looked at the line.
+    let repackage_failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let failed_for_reader = repackage_failed.clone();
+    let child_pid = child.child.id();
+
     let stream_fut = async {
         let mut reader = BufReader::new(stderr_reader);
         let mut buf = String::new();
@@ -819,6 +836,16 @@ where
             let stripped = super::parser::strip_ansi(buf.as_bytes());
             for line in stripped.lines() {
                 on_stderr_line(line);
+            }
+            if !failed_for_reader.load(std::sync::atomic::Ordering::Relaxed)
+                && yt_dlp_could_not_repackage(&stripped)
+            {
+                failed_for_reader.store(true, std::sync::atomic::Ordering::Relaxed);
+                // Stop the tree, not just the shell: the transfer tool
+                // is a child of it and would keep writing.
+                if let Some(pid) = child_pid {
+                    kill_process_tree(pid);
+                }
             }
         }
         Ok::<(), std::io::Error>(())
@@ -849,15 +876,44 @@ where
         Ok::<(), std::io::Error>(())
     };
 
-    let collected = tokio::time::timeout(opts.timeout, async {
+    let outcome = tokio::time::timeout(opts.timeout, async {
         let (a, b) = tokio::join!(stream_fut, drain_stdout);
         a?;
         b?;
         let status = child.child.wait().await?;
         Result::<std::process::ExitStatus>::Ok(status)
     })
-    .await
-    .map_err(|_| AniError::Timeout)??;
+    .await;
+
+    // Once the warning has been read, how the run ended stops
+    // mattering. Exit 0 is not the same as a usable file: yt-dlp
+    // writes the fragments it downloaded even when it cannot
+    // repackage them into the .mp4 container the name promises, and
+    // reports that only on stderr. The result is raw MPEG-TS wearing
+    // an .mp4 extension — it plays in mpv and VLC, which sniff
+    // content, and fails anywhere that trusts the extension.
+    //
+    // Nonzero is the same condition seen from the other side, because
+    // the stop issued above ends the run by signal. So is running out
+    // of clock, which is how the old post-exit placement stranded the
+    // file: it returned Timeout before any cleanup could run. All
+    // three are one answer — ffmpeg was needed and absent — and all
+    // three leave the same file to clear up.
+    //
+    // Checking the tool's own report rather than the provider's
+    // format is deliberate. What allanime serves can change under us,
+    // and a decision made once against today's answer would go
+    // silently wrong the day it does.
+    if repackage_failed.load(std::sync::atomic::Ordering::Relaxed) {
+        // The payload is already on disk under an .mp4 name. Failing
+        // the download and leaving it there is the worst of both: told
+        // it failed, still finds something that looks like the episode.
+        let announced = announced.lock().expect("mutex").clone();
+        discard_mislabeled(download_dir, &announced);
+        return Err(AniError::FfmpegMissing);
+    }
+
+    let collected = outcome.map_err(|_| AniError::Timeout)??;
     // The child has been reaped — its pid (and so the pgid) may be
     // recycled; the tree must not be signalled past this point.
     child.disarm();
@@ -881,27 +937,6 @@ where
         return Err(AniError::Scraper {
             key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
         });
-    }
-    // Exit 0 is not the same as a usable file. yt-dlp writes the
-    // fragments it downloaded even when it cannot repackage them into
-    // the .mp4 container the name promises, and reports that only
-    // here — the process still succeeds. The result is raw MPEG-TS
-    // wearing an .mp4 extension: it plays in mpv and VLC, which sniff
-    // content, and fails anywhere that trusts the extension.
-    //
-    // Checking the tool's own report rather than the provider's
-    // format is deliberate. What allanime serves can change under us,
-    // and a decision made once against today's answer would go
-    // silently wrong the day it does. This fires whenever the
-    // condition actually occurs.
-    let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
-    if yt_dlp_could_not_repackage(&super::parser::strip_ansi(&stderr_bytes)) {
-        // The payload is already on disk under an .mp4 name. Failing
-        // the download and leaving it there is the worst of both: told
-        // it failed, still finds something that looks like the episode.
-        let announced = announced.lock().expect("mutex").clone();
-        discard_mislabeled(download_dir, &announced);
-        return Err(AniError::FfmpegMissing);
     }
     Ok(())
 }
