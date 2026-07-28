@@ -497,16 +497,24 @@ impl Drop for TreeKillChild {
         // `id()` is None once the child has been reaped — nothing to
         // walk in that case even if disarm was missed.
         let Some(pid) = self.child.id() else { return };
-        #[cfg(test)]
-        if let Some(probe) = tree_kill_probe() {
-            let _ = std::process::Command::new(probe)
-                .arg(pid.to_string())
-                .status();
-            return;
-        }
-        if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
-            let _ = std::process::Command::new(prog).args(&args).status();
-        }
+        kill_process_tree(pid);
+    }
+}
+
+/// Take down a spawned downloader's whole process tree.
+///
+/// Shared by the drop guard and by the in-flight stop below, so both
+/// paths use the same platform command and the same test seam.
+fn kill_process_tree(pid: u32) {
+    #[cfg(test)]
+    if let Some(probe) = tree_kill_probe() {
+        let _ = std::process::Command::new(probe)
+            .arg(pid.to_string())
+            .status();
+        return;
+    }
+    if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+        let _ = std::process::Command::new(prog).args(&args).status();
     }
 }
 
@@ -542,6 +550,129 @@ fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)
     Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
+/// Write the classified script bytes to a private temp file, immune
+/// to the installer renaming a new script over the live path
+/// mid-flight. The snapshot deliberately carries NO exec permission:
+/// it is READ by the shell interpreter, never exec(2)'d, so a
+/// `noexec` temp mount cannot break it. The returned `TempDir` owns
+/// the snapshot for the download's lifetime.
+fn stage_script_snapshot(contents: &str, live_path: &Path) -> std::io::Result<StagedScript> {
+    // Beside the live script first: a script that loads a sibling
+    // relative to itself resolves `$(dirname "$0")` to the same
+    // directory it would have under a direct execution. The name is
+    // dotted and pid-tagged so it cannot collide with the script
+    // itself or with a concurrent download.
+    if let Some(dir) = live_path.parent() {
+        // `tempfile` picks the name and creates it O_EXCL, so two
+        // concurrent downloads cannot land on the same path — a pid
+        // is shared by every download in this process.
+        let staged = tempfile::Builder::new()
+            .prefix(".ani-cli-snapshot-")
+            .tempfile_in(dir)
+            .and_then(|mut f| {
+                use std::io::Write;
+                f.as_file_mut().write_all(contents.as_bytes())?;
+                Ok(f)
+            });
+        if let Ok(file) = staged {
+            return Ok(StagedScript::BesideLive(file));
+        }
+    }
+    // A packaged install can ship its script in a read-only
+    // directory. Degrade rather than fail the download: the temp copy
+    // loses `$0`-relative resource loading, which is what shipped
+    // before staging was directory-aware.
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("ani-cli");
+    std::fs::write(&path, contents)?;
+    Ok(StagedScript::Temp { _dir: dir, path })
+}
+
+/// Owns the staged snapshot for the download's lifetime. A temp-dir
+/// copy is cleaned up by the `TempDir`; a copy written beside the
+/// live script has to be removed explicitly, since that directory
+/// outlives the download.
+enum StagedScript {
+    /// Beside the live script, so `$0`'s directory is preserved. The
+    /// `NamedTempFile` owns the unique name and unlinks it on drop,
+    /// which keeps one download's cleanup off another's snapshot.
+    BesideLive(tempfile::NamedTempFile),
+    Temp {
+        /// Held only for its `Drop`, which removes the directory.
+        _dir: tempfile::TempDir,
+        path: PathBuf,
+    },
+}
+
+impl StagedScript {
+    fn path(&self) -> &Path {
+        match self {
+            Self::BesideLive(f) => f.path(),
+            Self::Temp { path, .. } => path,
+        }
+    }
+}
+
+/// The interpreter argv a snapshot must run under, taken from its own
+/// shebang. Because the snapshot is READ rather than exec(2)'d, the
+/// kernel never applies the shebang — so a script declaring `bash`
+/// and using bash-only syntax would break under a hard-coded
+/// `/bin/sh`, and break on downloads only: search and playback route
+/// through the ordinary command builder and keep working.
+///
+/// Only an absolute interpreter path is honored. A relative or bare
+/// name (`#!bash`) falls back to `/bin/sh` rather than being resolved
+/// through PATH or the working directory — that lookup would be
+/// driven by a string in a file the auto-updater rewrites, which is a
+/// worse outcome than running a `sh`-compatible script under `sh`.
+/// The tail is kept so the `#!/usr/bin/env bash` form works, and kept
+/// WHOLE: Linux's `fs/binfmt_script.c` takes the first blank-delimited
+/// word as the interpreter and passes everything after it as a single
+/// argument, doing no tokenizing of its own. Splitting it here would
+/// break `#!/usr/bin/env -S bash -O 'extglob'`, where `env` is the one
+/// that splits the string and strips the quotes.
+fn snapshot_interpreter(contents: &str) -> Vec<String> {
+    const DEFAULT: &str = "/bin/sh";
+    const BLANK: [char; 2] = [' ', '\t'];
+    let fallback = || vec![DEFAULT.to_string()];
+    let Some(shebang) = contents.lines().next().and_then(|l| l.strip_prefix("#!")) else {
+        return fallback();
+    };
+    let line = shebang.trim_matches(BLANK);
+    let (path, tail) = match line.find(BLANK) {
+        Some(i) => (&line[..i], line[i..].trim_start_matches(BLANK)),
+        None => (line, ""),
+    };
+    if !path.starts_with('/') {
+        return fallback();
+    }
+    let mut argv = vec![path.to_string()];
+    if !tail.is_empty() {
+        argv.push(tail.to_string());
+    }
+    argv
+}
+
+/// Build the download spawn. A staged snapshot runs THROUGH its
+/// declared interpreter so a `noexec` temp mount can't refuse it
+/// (the file carries no exec bit and is never exec(2)'d); the
+/// live-path fallback and Windows keep the ordinary command builder,
+/// which already routes through bash.
+fn download_command(
+    spawn_path: &Path,
+    bash_path: Option<&Path>,
+    interpreter: Option<&[String]>,
+) -> tokio::process::Command {
+    match interpreter {
+        Some([program, args @ ..]) => {
+            let mut cmd = tokio::process::Command::new(program);
+            cmd.args(args).arg(spawn_path);
+            cmd
+        }
+        _ => crate::anicli::bash::build_anicli_command(spawn_path, bash_path),
+    }
+}
+
 /// Spawn `ani-cli -d` to download an episode. The `-d` flag flips the
 /// script's player-function to `download`, which delegates to yt-dlp /
 /// ffmpeg / aria2c depending on the source kind. We point `ani-cli` at
@@ -569,8 +700,34 @@ where
 
     let select_str = req.select_index.max(1).to_string();
 
-    let mut cmd =
-        crate::anicli::bash::build_anicli_command(&opts.ani_cli_path, opts.bash_path.as_deref());
+    // Read the active script ONCE and execute a snapshot of those
+    // exact bytes: the auto-updater may atomically rename a new
+    // script over the install path between classification and
+    // spawn, and the preflight verdict must describe the script
+    // that actually runs. An unreadable script degrades to the
+    // live path with the conservative ffmpeg-only classification.
+    let script_contents = std::fs::read_to_string(&opts.ani_cli_path).ok();
+    let snapshot = script_contents
+        .as_deref()
+        .and_then(|contents| stage_script_snapshot(contents, &opts.ani_cli_path).ok());
+    let spawn_path = snapshot
+        .as_ref()
+        .map_or(opts.ani_cli_path.clone(), |s| s.path().to_path_buf());
+
+    // Only a snapshot needs the explicit interpreter — the live path
+    // still exec(2)'s normally, where the kernel reads the shebang
+    // itself. Windows has no shebang semantics, so it keeps the bash
+    // builder either way.
+    let interpreter: Option<Vec<String>> = if cfg!(unix) && snapshot.is_some() {
+        script_contents.as_deref().map(snapshot_interpreter)
+    } else {
+        None
+    };
+    let mut cmd = download_command(
+        &spawn_path,
+        opts.bash_path.as_deref(),
+        interpreter.as_deref(),
+    );
     cmd.arg("-S")
         .arg(&select_str)
         .arg("-d")
@@ -601,14 +758,21 @@ where
         ),
         opts.shim_bin.as_deref(),
     );
-    // Pre-spawn check: ani-cli's `dep_ch "ffmpeg" "aria2c"` exits
-    // the shell instantly when either is missing, and the post-exit
+    // Pre-spawn check: the script's download dep check exits the
+    // shell instantly when its tools are missing, and the post-exit
     // error mapping below would collapse that into a generic
-    // Scraper error. Catch ffmpeg up front so the SSE stream's
-    // first frame is the typed FfmpegMissing the layout can render
-    // a clear modal for. aria2c is bundled (commit d6c9992), so a
-    // missing aria2c falls through and is mapped post-exit below.
-    crate::anicli::env::ensure_ffmpeg_in_path(&composed_path, is_executable)?;
+    // Scraper error. Catch it up front so the SSE stream's first
+    // frame is the typed FfmpegMissing the layout can render a
+    // clear modal for. Which tools count is decided by the *active*
+    // script's own dep line — a stale pre-4.15 cache (auto-update
+    // disabled, failing, or not finished) still hard-requires
+    // ffmpeg, so yt-dlp alone must not pass against it. An
+    // unreadable script degrades to ffmpeg-only, the conservative
+    // direction. aria2c is bundled (commit d6c9992), so a missing
+    // aria2c falls through and is mapped post-exit below.
+    let tool_names =
+        crate::anicli::env::download_tool_names(script_contents.as_deref().unwrap_or(""));
+    crate::anicli::env::ensure_download_tool_in_path(tool_names, &composed_path, is_executable)?;
     cmd.env("PATH", composed_path);
     if let Some(home) = std::env::var_os("HOME") {
         cmd.env("HOME", home);
@@ -647,6 +811,15 @@ where
         std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let collected_for_reader = stderr_collected.clone();
 
+    // Acted on while the script is still running, not after it exits.
+    // A range download is one process looping over episodes, so a
+    // warning on episode 1 means every later episode of that range
+    // takes the same doomed path — the whole season would come down
+    // as mislabeled MPEG-TS before anything looked at the line.
+    let repackage_failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let failed_for_reader = repackage_failed.clone();
+    let child_pid = child.child.id();
+
     let stream_fut = async {
         let mut reader = BufReader::new(stderr_reader);
         let mut buf = String::new();
@@ -664,13 +837,28 @@ where
             for line in stripped.lines() {
                 on_stderr_line(line);
             }
+            if !failed_for_reader.load(std::sync::atomic::Ordering::Relaxed)
+                && yt_dlp_could_not_repackage(&stripped)
+            {
+                failed_for_reader.store(true, std::sync::atomic::Ordering::Relaxed);
+                // Stop the tree, not just the shell: the transfer tool
+                // is a child of it and would keep writing.
+                if let Some(pid) = child_pid {
+                    kill_process_tree(pid);
+                }
+            }
         }
         Ok::<(), std::io::Error>(())
     };
 
-    // Stdout is ignored (ani-cli's download path doesn't print
-    // anything we'd parse), but we still drain it so the pipe doesn't
-    // back up.
+    // Stdout has to be drained anyway or the pipe backs up, and it
+    // carries the one thing that identifies this download's output:
+    // yt-dlp's `[download] Destination:` announcements. Collect them
+    // as they stream so cleanup below has an exact manifest instead
+    // of a guess about which files in a shared directory are ours.
+    let announced: std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let announced_for_reader = announced.clone();
     let stdout_reader = child.child.stdout.take().expect("stdout piped");
     let drain_stdout = async move {
         let mut reader = BufReader::new(stdout_reader);
@@ -680,19 +868,52 @@ where
             if reader.read_line(&mut sink).await? == 0 {
                 break;
             }
+            let stripped = super::parser::strip_ansi(sink.as_bytes());
+            for path in stripped.lines().filter_map(yt_dlp_destination) {
+                announced_for_reader.lock().expect("mutex").push(path);
+            }
         }
         Ok::<(), std::io::Error>(())
     };
 
-    let collected = tokio::time::timeout(opts.timeout, async {
+    let outcome = tokio::time::timeout(opts.timeout, async {
         let (a, b) = tokio::join!(stream_fut, drain_stdout);
         a?;
         b?;
         let status = child.child.wait().await?;
         Result::<std::process::ExitStatus>::Ok(status)
     })
-    .await
-    .map_err(|_| AniError::Timeout)??;
+    .await;
+
+    // Once the warning has been read, how the run ended stops
+    // mattering. Exit 0 is not the same as a usable file: yt-dlp
+    // writes the fragments it downloaded even when it cannot
+    // repackage them into the .mp4 container the name promises, and
+    // reports that only on stderr. The result is raw MPEG-TS wearing
+    // an .mp4 extension — it plays in mpv and VLC, which sniff
+    // content, and fails anywhere that trusts the extension.
+    //
+    // Nonzero is the same condition seen from the other side, because
+    // the stop issued above ends the run by signal. So is running out
+    // of clock, which is how the old post-exit placement stranded the
+    // file: it returned Timeout before any cleanup could run. All
+    // three are one answer — ffmpeg was needed and absent — and all
+    // three leave the same file to clear up.
+    //
+    // Checking the tool's own report rather than the provider's
+    // format is deliberate. What allanime serves can change under us,
+    // and a decision made once against today's answer would go
+    // silently wrong the day it does.
+    if repackage_failed.load(std::sync::atomic::Ordering::Relaxed) {
+        // The payload is already on disk under an .mp4 name. Failing
+        // the download and leaving it there is the worst of both: told
+        // it failed, still finds something that looks like the episode.
+        let announced = announced.lock().expect("mutex").clone();
+        discard_mislabeled(download_dir, &announced);
+        return Err(AniError::FfmpegMissing);
+    }
+
+    let collected = outcome.map_err(|_| AniError::Timeout)??;
     // The child has been reaped — its pid (and so the pgid) may be
     // recycled; the tree must not be signalled past this point.
     child.disarm();
@@ -720,544 +941,79 @@ where
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Serializes tests that mutate process-global env (PATH) with
-    /// tests that fork subprocesses (whose runtime resolves PATH at
-    /// spawn time on some kernels). Without this lock the suite flaked
-    /// at ~40% under `cargo test`'s default parallelism. Tokio mutex
-    /// because the guard crosses `.await` points.
-    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-    #[tokio::test]
-    async fn locate_ani_cli_with_no_path_and_no_fallback_errors() {
-        let _guard = ENV_LOCK.lock().await;
-        // Save and clear $PATH so `which` cannot find ani-cli.
-        let saved = std::env::var_os("PATH");
-        // Use unsafe-free API: the std::env::set_var on stable is safe. The
-        // test mutates process global state; the lock above keeps
-        // subprocess-spawning tests out while PATH is empty.
-        std::env::set_var("PATH", "");
-        let r = locate_ani_cli(None);
-        if let Some(p) = saved {
-            std::env::set_var("PATH", p);
+/// Remove the files this download announced that are not, in fact,
+/// MP4s.
+///
+/// Two independent bounds, so a good file cannot be eaten by either
+/// alone: the path must be one yt-dlp named as its own output for
+/// this run *and* sit directly in the directory we handed it, and its
+/// own first byte must be the MPEG-TS sync byte `0x47`. A real MP4
+/// opens with a length-prefixed `ftyp` box and fails the second test
+/// even when it is ours; a concurrent download's file was never
+/// announced and fails the first, whatever state its bytes are in.
+///
+/// No announcement means no deletion. That is the right way to fail
+/// here — a mislabeled file left behind is recoverable, someone
+/// else's deleted mid-transfer is not.
+fn discard_mislabeled(dir: &Path, announced: &[PathBuf]) {
+    for path in announced {
+        if path.parent() != Some(dir) {
+            continue;
         }
-        assert!(matches!(r, Err(AniError::MissingBinary)));
-    }
-
-    /// Build a stub `ani-cli` script that emits `stderr_msg` and exits
-    /// with `code`. Returned tempdir keeps the file alive for the test.
-    #[cfg(unix)]
-    fn stub_ani_cli(stderr_msg: &str, code: i32) -> (tempfile::TempDir, PathBuf) {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-        let td = tempfile::tempdir().expect("tempdir");
-        let path = td.path().join("ani-cli");
-        let mut f = std::fs::File::create(&path).expect("create stub");
-        // POSIX sh: forward stderr_msg to stderr, exit with the requested
-        // code. Quoting `stderr_msg` is safe because we only ever pass
-        // hard-coded fixture strings here.
-        writeln!(f, "#!/bin/sh\necho \"{stderr_msg}\" 1>&2\nexit {code}").expect("write stub");
-        let mut perm = f.metadata().expect("perm").permissions();
-        perm.set_mode(0o755);
-        std::fs::set_permissions(&path, perm).expect("chmod");
-        (td, path)
-    }
-
-    #[cfg(unix)]
-    fn debug_opts(path: PathBuf) -> DebugOptions {
-        let mut opts = DebugOptions::new(path);
-        // Pin PATH so the parallel `locate_ani_cli_*` test (which
-        // temporarily empties $PATH) can't race-clear our subprocess's
-        // PATH and turn the spawn into MissingBinary.
-        opts.path_override = Some("/usr/bin:/bin".into());
-        opts
-    }
-
-    /// Cover the three exit-classification branches in `run_debug`'s
-    /// non-zero path: "No results found" → typed NoResults; "Episode
-    /// not released" → keyed Scraper; any other stderr → catch-all
-    /// Scraper. Bundled into one test so the parallel
-    /// `locate_ani_cli_*` test can't race-clear $PATH between sub-
-    /// cases and turn a spawn into MissingBinary.
-    ///
-    /// Unix-only because the stub ani-cli script needs shebang
-    /// interpretation; the classification logic itself is platform-
-    /// neutral and exercised on Windows via unit-level parser tests.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn run_debug_classifies_nonzero_exits_by_stderr_pattern() {
-        let _guard = ENV_LOCK.lock().await;
-        let (_td1, p1) = stub_ani_cli("No results found", 1);
-        let r1 = run_debug(&debug_opts(p1), "any", "1", "best", "sub", 1).await;
-        assert!(matches!(r1, Err(AniError::NoResults)), "got: {r1:?}");
-
-        let (_td2, p2) = stub_ani_cli("Episode not released", 1);
-        let r2 = run_debug(&debug_opts(p2), "any", "999", "best", "sub", 1).await;
-        assert!(matches!(r2, Err(AniError::Scraper { .. })), "got: {r2:?}");
-
-        let (_td3, p3) = stub_ani_cli("could not resolve host", 6);
-        let r3 = run_debug(&debug_opts(p3), "any", "1", "best", "sub", 1).await;
-        assert!(matches!(r3, Err(AniError::Scraper { .. })), "got: {r3:?}");
-    }
-
-    /// Same exit-classification logic in the streaming variant — covers
-    /// the SSE play endpoint's error paths.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn run_debug_streaming_classifies_nonzero_exits_by_stderr_pattern() {
-        let _guard = ENV_LOCK.lock().await;
-        let (_td1, p1) = stub_ani_cli("No results found", 1);
-        let r1 = run_debug_streaming(&debug_opts(p1), "any", "1", "best", "sub", 1, |_| {}).await;
-        assert!(matches!(r1, Err(AniError::NoResults)), "got: {r1:?}");
-
-        let (_td2, p2) = stub_ani_cli("Episode not released", 1);
-        let r2 = run_debug_streaming(&debug_opts(p2), "any", "1", "best", "sub", 1, |_| {}).await;
-        assert!(matches!(r2, Err(AniError::Scraper { .. })), "got: {r2:?}");
-    }
-
-    /// ani-cli's `search_anime()` builds its allanime curl POST via
-    /// shell-string interpolation: `--data "{...\"query\":\"$1\"...}"`.
-    /// A literal `"` in the title closes the JSON string mid-way and
-    /// the server returns nothing (manifesting as "No results found").
-    /// Kitsu's canonical title for Naruto Shippuuden's "Konoha Gakuen"
-    /// special is the repro case. Our backend strips embedded quotes
-    /// before handing the title to ani-cli; allanime's fuzzy search
-    /// matches the de-quoted query to the same `_id` with the same
-    /// ranking, so `-S 1` still lands on the right candidate.
-    #[test]
-    fn sanitize_anicli_query_strips_embedded_double_quotes() {
-        let q = r#"Naruto Shippuuden: Shippuu! "Konoha Gakuen" Den"#;
-        assert_eq!(
-            sanitize_anicli_query(q),
-            "Naruto Shippuuden: Shippuu! Konoha Gakuen Den",
-        );
-    }
-
-    #[test]
-    fn sanitize_anicli_query_passes_quote_free_titles_through() {
-        assert_eq!(sanitize_anicli_query("One Piece"), "One Piece");
-        assert_eq!(sanitize_anicli_query(""), "");
-    }
-
-    /// Stub `ani-cli` that echoes each argv token + selected env vars to
-    /// stderr (so the streaming line callback captures them) and exits
-    /// 0. Also stages a no-op `ffmpeg` next to it so spawn_download's
-    /// pre-spawn `ensure_ffmpeg_in_path` finds something on PATH —
-    /// without it the test fails on CI runners that don't have ffmpeg
-    /// installed (macos), even though the stub ani-cli never actually
-    /// invokes ffmpeg. The stub dir is meant to be prepended to
-    /// `path_override` so the pre-check sees the fake binary first.
-    #[cfg(unix)]
-    fn stub_ani_cli_echo() -> (tempfile::TempDir, PathBuf) {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-        let td = tempfile::tempdir().expect("tempdir");
-        let path = td.path().join("ani-cli");
-        let mut f = std::fs::File::create(&path).expect("create stub");
-        // POSIX sh: walk $@ emitting one `argv:<token>` line per arg,
-        // then echo the env var the download path relies on.
-        f.write_all(
-            b"#!/bin/sh\nfor a in \"$@\"; do printf 'argv:%s\\n' \"$a\" 1>&2; done\nprintf 'env:ANI_CLI_DOWNLOAD_DIR=%s\\n' \"${ANI_CLI_DOWNLOAD_DIR:-NOTSET}\" 1>&2\nexit 0\n",
-        )
-        .expect("write stub");
-        let mut perm = f.metadata().expect("perm").permissions();
-        perm.set_mode(0o755);
-        std::fs::set_permissions(&path, perm).expect("chmod");
-
-        // No-op ffmpeg: needs to exist + be executable so the pre-check
-        // passes. Never actually invoked — the stub ani-cli exits 0
-        // without spawning anything.
-        let ffmpeg = td.path().join("ffmpeg");
-        std::fs::write(&ffmpeg, b"#!/bin/sh\nexit 0\n").expect("write ffmpeg stub");
-        std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod ffmpeg");
-
-        (td, path)
-    }
-
-    /// `debug_opts` for download tests — like `debug_opts` but prepends
-    /// the stub dir (which holds the no-op ffmpeg from
-    /// `stub_ani_cli_echo`) to `path_override` so the pre-spawn check
-    /// finds it. The dir is the parent of the stub ani-cli path.
-    #[cfg(unix)]
-    fn debug_opts_dl(stub_ani_cli: PathBuf) -> DebugOptions {
-        let stub_dir = stub_ani_cli
-            .parent()
-            .expect("stub has parent dir")
-            .to_path_buf();
-        let mut opts = DebugOptions::new(stub_ani_cli);
-        opts.path_override = Some(format!("{}:/usr/bin:/bin", stub_dir.display()));
-        opts
-    }
-
-    #[test]
-    fn tree_kill_args_unix_addresses_the_process_group() {
-        let (prog, args) = tree_kill_args(1234, false).expect("unix tree kill");
-        assert_eq!(prog, "kill");
-        assert_eq!(args, vec!["-9", "--", "-1234"]);
-    }
-
-    #[test]
-    fn tree_kill_args_windows_kills_the_tree_by_parent_pid() {
-        // Windows is a shipped target (package:win) and kill_on_drop
-        // only terminates the Git Bash parent there — cancelling a
-        // download must take aria2c / ffmpeg / yt-dlp down with it.
-        // taskkill /T walks the child tree by parent pid; /F because
-        // the transfer tools ignore the graceful signal mid-write.
-        let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");
-        assert_eq!(prog, "taskkill");
-        assert_eq!(args, vec!["/PID", "1234", "/T", "/F"]);
-    }
-
-    proptest::proptest! {
-        // Contract for any pid on both platforms: the command always
-        // names the pid (negated group on unix, bare tree root on
-        // windows) and never comes back empty — every supported
-        // platform has a tree kill.
-        #[test]
-        fn tree_kill_args_always_names_the_pid(
-            pid in proptest::num::u32::ANY,
-            windows in proptest::bool::ANY,
-        ) {
-            let (prog, args) = tree_kill_args(pid, windows).expect("tree kill exists");
-            let want = if windows { pid.to_string() } else { format!("-{pid}") };
-            let named = args.iter().any(|a| a == &want);
-            proptest::prop_assert!(named, "{} args {:?} missing {}", prog, args, want);
+        let mut buf = [0u8; 1];
+        let is_ts = std::fs::File::open(path)
+            .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf))
+            .is_ok_and(|()| buf[0] == 0x47);
+        if is_ts {
+            // Best effort: a file we cannot remove is not worth
+            // failing the already-failing download over.
+            let _ = std::fs::remove_file(path);
         }
-    }
-
-    /// Stub ani-cli that mirrors the download path's process shape:
-    /// it launches a long-sleeping descendant (the "yt-dlp"), reports
-    /// that descendant's pid via a file, and waits on it — like
-    /// ani-cli fronting a transfer tool.
-    #[cfg(unix)]
-    fn stub_ani_cli_with_descendant(pidfile: &std::path::Path) -> (tempfile::TempDir, PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
-        let td = tempfile::tempdir().expect("tempdir");
-        let path = td.path().join("ani-cli");
-        std::fs::write(
-            &path,
-            format!(
-                "#!/bin/sh\nsleep 30 &\necho $! > '{}'\nwait\n",
-                pidfile.display()
-            ),
-        )
-        .expect("write stub");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        let ffmpeg = td.path().join("ffmpeg");
-        std::fs::write(&ffmpeg, b"#!/bin/sh\nexit 0\n").expect("write ffmpeg stub");
-        std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod ffmpeg");
-        (td, path)
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn tree_kill_fires_while_the_parent_is_still_alive() {
-        let _guard = ENV_LOCK.lock().await;
-        // The Windows contract: taskkill /T discovers descendants by
-        // a LIVE parent pid, so the teardown must run before
-        // kill_on_drop reaps the shell. Only observable through the
-        // probe seam — it stands in for the tree-kill command and
-        // records the parent's state (running vs zombie/reaped) at
-        // the exact moment the teardown fires.
-        let probe_td = tempfile::tempdir().expect("probe tempdir");
-        let out = probe_td.path().join("probe.out");
-        let probe = probe_td.path().join("probe.sh");
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::write(
-                &probe,
-                format!(
-                    "#!/bin/sh\nsleep 0.1\nSTATE=$(ps -o state= -p \"$1\" 2>/dev/null | tr -d ' ')\ncase \"$STATE\" in\n  ''|Z*) echo dead > '{out}' ;;\n  *) echo alive > '{out}' ;;\nesac\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
-                    out = out.display()
-                ),
-            )
-            .expect("write probe");
-            std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod probe");
-        }
-        *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
-
-        let pid_td = tempfile::tempdir().expect("pid tempdir");
-        let pidfile = pid_td.path().join("descendant.pid");
-        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
-        let opts = debug_opts(stub);
-        let task = tokio::spawn(async move {
-            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
-        });
-
-        // Wait for the run to be mid-flight, then abort it.
-        {
-            let mut waited_ms = 0u32;
-            while !pidfile.exists() {
-                assert!(waited_ms < 5_000, "descendant never reported its pid");
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                waited_ms += 50;
-            }
-        }
-        task.abort();
-        let _ = task.await;
-
-        let verdict = {
-            let mut waited_ms = 0u32;
-            loop {
-                if let Ok(s) = std::fs::read_to_string(&out) {
-                    if !s.trim().is_empty() {
-                        break s.trim().to_string();
-                    }
-                }
-                assert!(waited_ms < 5_000, "probe never ran");
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                waited_ms += 50;
-            }
-        };
-        *TREE_KILL_PROBE.lock().expect("probe lock") = None;
-        assert_eq!(
-            verdict, "alive",
-            "the tree kill must fire while the parent is still alive — a reaped parent \
-             hides its descendants from taskkill /T on Windows"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn aborting_a_play_resolution_kills_the_whole_process_tree() {
-        let _guard = ENV_LOCK.lock().await;
-        // The click-takeover bypass aborts a started background
-        // resolve and immediately refires interactively. kill_on_drop
-        // reaps the ani-cli shell alone — its in-flight curl /
-        // pipeline children must die with it, or the takeover doubles
-        // allanime traffic at exactly the moment it exists to avoid.
-        let pid_td = tempfile::tempdir().expect("pid tempdir");
-        let pidfile = pid_td.path().join("descendant.pid");
-        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
-        let opts = debug_opts(stub);
-
-        let task = tokio::spawn(async move {
-            let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
-        });
-
-        let pid: i32 = {
-            let mut waited_ms = 0u32;
-            loop {
-                if let Ok(s) = std::fs::read_to_string(&pidfile) {
-                    if let Ok(p) = s.trim().parse() {
-                        break p;
-                    }
-                }
-                assert!(waited_ms < 5_000, "descendant never reported its pid");
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                waited_ms += 50;
-            }
-        };
-
-        task.abort();
-        let _ = task.await;
-
-        let mut dead = false;
-        for _ in 0..40 {
-            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
-                dead = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-        if !dead {
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .status();
-        }
-        assert!(
-            dead,
-            "descendant (pid {pid}) survived the play abort — duplicate allanime traffic"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn aborting_a_download_kills_the_whole_process_tree() {
-        let _guard = ENV_LOCK.lock().await;
-        // Cancelling a download aborts the SSE task, which drops the
-        // spawn_download future. kill_on_drop reaps the ani-cli shell
-        // — but the transfer tool it fronted must die WITH it, or the
-        // dock reports "cancelled" while an orphaned downloader keeps
-        // writing the file and burning bandwidth.
-        let pid_td = tempfile::tempdir().expect("pid tempdir");
-        let pidfile = pid_td.path().join("descendant.pid");
-        let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
-        let dl_dir = tempfile::tempdir().expect("dl tempdir");
-        let opts = debug_opts_dl(stub);
-
-        let task = tokio::spawn(async move {
-            let _ = spawn_download(
-                &opts,
-                &DownloadRequest {
-                    query: "any",
-                    episode: "1",
-                    quality: "best",
-                    mode: "sub",
-                    select_index: 1,
-                },
-                dl_dir.path(),
-                |_| {},
-            )
-            .await;
-        });
-
-        // Wait for the stub to report its descendant's pid.
-        let pid: i32 = {
-            let mut waited_ms = 0u32;
-            loop {
-                if let Ok(s) = std::fs::read_to_string(&pidfile) {
-                    if let Ok(p) = s.trim().parse() {
-                        break p;
-                    }
-                }
-                assert!(waited_ms < 5_000, "descendant never reported its pid");
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                waited_ms += 50;
-            }
-        };
-
-        task.abort();
-        let _ = task.await;
-
-        // The descendant must be gone shortly after the abort. Poll
-        // /proc — a surviving entry means the downloader was orphaned.
-        let mut dead = false;
-        for _ in 0..40 {
-            if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
-                dead = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-        if !dead {
-            // Don't leak the 30s sleeper into the test host on failure.
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .status();
-        }
-        assert!(
-            dead,
-            "descendant (pid {pid}) survived the abort — orphaned downloader"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn spawn_download_passes_d_flag_and_episode_query_quality() {
-        let _guard = ENV_LOCK.lock().await;
-        let (_td, stub) = stub_ani_cli_echo();
-        let dl_dir = tempfile::tempdir().expect("dl tempdir");
-        let captured: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
-        let cap = captured.clone();
-
-        let r = spawn_download(
-            &debug_opts_dl(stub),
-            &DownloadRequest {
-                query: "Naruto Shippuuden",
-                episode: "5",
-                quality: "1080",
-                mode: "sub",
-                select_index: 1,
-            },
-            dl_dir.path(),
-            move |line| cap.lock().expect("lock").push(line.to_string()),
-        )
-        .await;
-        assert!(r.is_ok(), "spawn_download failed: {r:?}");
-
-        let lines = captured.lock().expect("lock").clone();
-        let argv: Vec<&str> = lines
-            .iter()
-            .filter_map(|l| l.strip_prefix("argv:"))
-            .collect();
-        assert!(argv.contains(&"-d"), "argv: {argv:?}");
-        assert!(
-            argv.windows(2).any(|w| w == ["-e", "5"]),
-            "argv missing -e 5: {argv:?}"
-        );
-        assert!(
-            argv.windows(2).any(|w| w == ["-q", "1080"]),
-            "argv missing -q 1080: {argv:?}"
-        );
-        // The query is positional, after the `--` separator.
-        assert!(
-            argv.contains(&"Naruto Shippuuden"),
-            "argv missing query token: {argv:?}"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn spawn_download_includes_dub_flag_when_mode_dub() {
-        let _guard = ENV_LOCK.lock().await;
-        let (_td, stub) = stub_ani_cli_echo();
-        let dl_dir = tempfile::tempdir().expect("dl tempdir");
-        let captured: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
-        let cap = captured.clone();
-        spawn_download(
-            &debug_opts_dl(stub),
-            &DownloadRequest {
-                query: "any",
-                episode: "1",
-                quality: "best",
-                mode: "dub",
-                select_index: 1,
-            },
-            dl_dir.path(),
-            move |line| cap.lock().expect("lock").push(line.to_string()),
-        )
-        .await
-        .expect("ok");
-        let lines = captured.lock().expect("lock").clone();
-        let argv: Vec<&str> = lines
-            .iter()
-            .filter_map(|l| l.strip_prefix("argv:"))
-            .collect();
-        assert!(argv.contains(&"--dub"), "argv missing --dub: {argv:?}");
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn spawn_download_sets_ani_cli_download_dir_env() {
-        let _guard = ENV_LOCK.lock().await;
-        let (_td, stub) = stub_ani_cli_echo();
-        let dl_dir = tempfile::tempdir().expect("dl tempdir");
-        let dl_path = dl_dir.path().to_path_buf();
-        let captured: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
-        let cap = captured.clone();
-        spawn_download(
-            &debug_opts_dl(stub),
-            &DownloadRequest {
-                query: "any",
-                episode: "1",
-                quality: "best",
-                mode: "sub",
-                select_index: 1,
-            },
-            &dl_path,
-            move |line| cap.lock().expect("lock").push(line.to_string()),
-        )
-        .await
-        .expect("ok");
-        let lines = captured.lock().expect("lock").clone();
-        let env_line = lines
-            .iter()
-            .find(|l| l.starts_with("env:ANI_CLI_DOWNLOAD_DIR="))
-            .expect("env line emitted");
-        let value = env_line
-            .trim_start_matches("env:ANI_CLI_DOWNLOAD_DIR=")
-            .to_string();
-        assert_eq!(
-            value,
-            dl_path.to_str().expect("utf-8 path"),
-            "expected ANI_CLI_DOWNLOAD_DIR to point at the chosen dir"
-        );
     }
 }
+
+/// yt-dlp's own report that it left MPEG-TS inside an `.mp4`.
+///
+/// Anchored to the warning line, not to the stream. yt-dlp emits it
+/// through `report_warning`, which prefixes `WARNING:` — measured
+/// against 2025.08.11 the line reads:
+///
+/// ```text
+/// WARNING: out: Possible MPEG-TS in MP4 container or malformed
+/// AAC timestamps. Install ffmpeg to fix this automatically
+/// ```
+///
+/// Everywhere else in the output the same words would be someone's
+/// show title, echoed back by the destination and progress lines. A
+/// title is whatever the provider called the entry, so searching the
+/// whole stream lets a name decide whether downloads succeed.
+///
+/// Within the line the match stays on the stable middle: the leading
+/// id and the trailing advice are respectively arbitrary and
+/// reworded across releases, and pinning either would turn a future
+/// yt-dlp into a silent regression.
+fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        let line = line.trim_start();
+        line.starts_with("WARNING:") && line.contains("Possible MPEG-TS in MP4 container")
+    })
+}
+
+/// The path yt-dlp announces for the file it is about to write, e.g.
+///
+/// ```text
+/// [download] Destination: /home/u/Anime/Show - 01.mp4
+/// ```
+///
+/// This is the only statement in the output about what belongs to
+/// this download, which makes it the manifest cleanup is allowed to
+/// act on.
+fn yt_dlp_destination(line: &str) -> Option<PathBuf> {
+    line.trim()
+        .strip_prefix("[download] Destination: ")
+        .map(|rest| PathBuf::from(rest.trim_end()))
+}
+
+#[cfg(test)]
+#[path = "process_test.rs"]
+mod tests;
