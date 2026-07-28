@@ -126,3 +126,55 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		expect(r).toEqual({ episode: 12, count: 12 });
 	});
 });
+
+describe('a cap the click is about to advance to is revalidated', () => {
+	// The background cap is not always exact. When the scraper gate
+	// refuses the detail fetch, the backend deliberately falls back to
+	// the search hit's count and caches it — its own comment says "off
+	// by one for shows with halves, but good enough for the cap until
+	// next probe". Treating every numeric cap as authoritative then
+	// forwards a phantom episode: true final 12 under an approximate
+	// cap of 13 resolves to 13, and playback fails on an episode that
+	// does not exist.
+	//
+	// The click cannot see whether a cap is approximate, but it does
+	// know when it is standing on the boundary — the only place the
+	// off-by-one can bite. Revalidating just that case costs one
+	// interactive lookup, on the lane that is neither paced nor
+	// refused, while the resume spinner is already up.
+	it('revalidates when the next episode would be the cap itself', async () => {
+		const fetchCount = vi.fn(async () => 12);
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(12); // replay the true finale, not phantom 13
+		expect(r.count).toBe(12);
+	});
+
+	it('keeps the boundary cap when revalidation confirms it', async () => {
+		const fetchCount = vi.fn(async () => 13);
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount);
+		expect(fetchCount).toHaveBeenCalledTimes(1);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+
+	it('trusts the cap when the click is not standing on the boundary', async () => {
+		// Below the cap the off-by-one cannot produce a phantom: the
+		// next episode is strictly inside the range either way, so the
+		// extra lookup would buy nothing.
+		const fetchCount = vi.fn(async () => 12);
+		const r = await resolveResumeEpisode(5, 13, 24, fetchCount);
+		expect(fetchCount).not.toHaveBeenCalled();
+		expect(r.episode).toBe(6);
+		expect(r.count).toBe(13);
+	});
+
+	it('falls back to the background cap when revalidation fails', async () => {
+		const fetchCount = vi.fn(async () => {
+			throw new Error('offline');
+		});
+		const r = await resolveResumeEpisode(12, 13, 24, fetchCount);
+		expect(r.episode).toBe(13);
+		expect(r.count).toBe(13);
+	});
+});
