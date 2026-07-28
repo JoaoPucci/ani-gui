@@ -21,7 +21,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
-	import { filterAvailable, filterAvailableStrict } from '$lib/availability/filter';
+	import { filterAvailable, filterAvailableProgressive } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { m } from '$lib/paraglide/messages';
 
@@ -141,15 +141,22 @@
 				}
 			}
 			const raw = await kitsuSearch(q);
-			// Strict: probe uncached items inline so the user never
-			// sees an unavailable card in their results. Capped
-			// concurrency keeps allmanga happy.
-			results = await filterAvailableStrict(raw, pickAvailabilityMode(config));
+			// Render-then-prune: results appear at the grace deadline
+			// even when upstream probes hang; late negative verdicts
+			// prune their cards silently. The submitted guard drops
+			// emissions from a query the user has already replaced.
+			await filterAvailableProgressive(raw, pickAvailabilityMode(config), (visible) => {
+				if (submitted !== q) return;
+				results = visible;
+				busy = false;
+			});
 		} catch (e) {
-			error = describeError(e);
-			results = null;
+			if (submitted === q) {
+				error = describeError(e);
+				results = null;
+			}
 		} finally {
-			busy = false;
+			if (submitted === q) busy = false;
 		}
 	}
 
