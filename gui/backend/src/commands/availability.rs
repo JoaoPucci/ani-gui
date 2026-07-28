@@ -341,9 +341,10 @@ pub(crate) async fn check_availability_with_base(
             // RateLimited propagates typed (no cache write); other
             // fetch failures fall back to the search hit's count
             // inside the enricher.
-            let (count, extras) = enrich_from_show_fetch(outcome, c, mode)?;
+            let (count, extras, approximate) = enrich_from_show_fetch(outcome, c, mode)?;
             episode_count = count;
             extra_episodes = extras;
+            episode_count_approximate = approximate;
         } else {
             // Gate refused the background fetch — fall back to the
             // count from the search hit. That number counts halves as
@@ -650,7 +651,7 @@ fn enrich_from_show_fetch(
     outcome: Result<crate::scraper::allanime::ShowMetadata>,
     candidate: &crate::scraper::Candidate,
     mode: &str,
-) -> Result<(Option<u32>, Vec<String>)> {
+) -> Result<(Option<u32>, Vec<String>, bool)> {
     match outcome {
         Ok(detail) => {
             let extras = detail
@@ -660,14 +661,18 @@ fn enrich_from_show_fetch(
                 .filter(|t| t.parse::<u32>().is_err())
                 .cloned()
                 .collect();
-            Ok((detail.max_integer_episode(mode), extras))
+            // The detail fetch is authoritative: exact.
+            Ok((detail.max_integer_episode(mode), extras, false))
         }
         Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
             Err(crate::error::AniError::RateLimited { retry_after_secs })
         }
         Err(_) => {
+            // Same search-hit count the gate-refused path falls back
+            // to, and approximate for the same reason: it counts half
+            // episodes as whole ones.
             let n = candidate.available_episodes.for_mode(mode);
-            Ok((if n > 0 { Some(n) } else { None }, Vec::new()))
+            Ok((if n > 0 { Some(n) } else { None }, Vec::new(), true))
         }
     }
 }
