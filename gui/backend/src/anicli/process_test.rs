@@ -591,6 +591,91 @@ async fn spawn_download_accepts_ytdlp_only_with_a_capable_script() {
     assert!(r.is_ok(), "yt-dlp alone must satisfy a 4.15 script: {r:?}");
 }
 
+/// yt-dlp exits 0 after writing a file it could not repackage, and
+/// says so only on stderr:
+///
+///     WARNING: Possible MPEG-TS in MP4 container or malformed AAC
+///     timestamps. Install ffmpeg to fix this automatically
+///
+/// Measured against a real TS-segment stream with ffmpeg off PATH: the
+/// output is raw MPEG-TS (first byte 0x47) carrying an .mp4 name. It
+/// plays in mpv and VLC, which sniff content, and fails anywhere that
+/// trusts the extension.
+///
+/// Nothing reads that line today, so the download reports success and
+/// the user keeps a file that is not what it claims. The exit code
+/// cannot catch it — it is zero — and neither can a one-time check of
+/// what the provider serves, because that can change under us. The
+/// tool reporting the condition as it happens is the only signal that
+/// stays true.
+///
+/// `FfmpegMissing` is the honest classification: ffmpeg was needed and
+/// absent, and the modal's install instructions are already the right
+/// advice.
+#[cfg(unix)]
+#[tokio::test]
+async fn spawn_download_fails_when_yt_dlp_could_not_repackage() {
+    let _guard = ENV_LOCK.lock().await;
+    let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    // Rewrite the stub to emit yt-dlp's real warning and exit 0.
+    std::fs::write(
+        &opts.ani_cli_path,
+        // Keeps the recognized 4.15 arm, or the PREFLIGHT rejects
+        // before anything spawns and the test passes for the wrong
+        // reason — it did exactly that on the first run.
+        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\nexit 0\n",
+    )
+    .expect("rewrite stub");
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+    assert!(
+        matches!(r, Err(AniError::FfmpegMissing)),
+        "an unrepackaged download must not report success: {r:?}"
+    );
+}
+
+/// The mirror: an ordinary successful download says nothing about
+/// fixups, and must stay successful. A guard that fires on any stderr
+/// chatter would break every download.
+#[cfg(unix)]
+#[tokio::test]
+async fn spawn_download_stays_successful_without_the_fixup_warning() {
+    let _guard = ENV_LOCK.lock().await;
+    let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    std::fs::write(
+        &opts.ani_cli_path,
+        "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n        dep_ch \"aria2c\"\n        ;;\nesac\nprintf '%s\\n' '[download] 100% of 58.20KiB in 00:00:00' >&2\nexit 0\n",
+    )
+    .expect("rewrite stub");
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+    assert!(r.is_ok(), "a clean download must stay successful: {r:?}");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn spawn_download_rejects_ytdlp_only_against_a_pre_4_15_script() {
