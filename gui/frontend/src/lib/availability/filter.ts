@@ -97,10 +97,9 @@ export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 	return items.filter((i) => keepCard(cached, i));
 }
 
-/** Inline probe pool shared by the blocking variants: drains
- *  `uncached` with capped concurrency, writing each verdict into
- *  `cached`. `onVerdict` fires after every settled probe, success
- *  or failure. */
+/** Inline probe pool: drains `uncached` with capped concurrency,
+ *  writing each verdict into `cached`. `onVerdict` fires after
+ *  every settled probe, success or failure. */
 async function probeInline<T extends KitsuAnimeRef>(
 	uncached: T[],
 	mode: 'sub' | 'dub',
@@ -138,42 +137,12 @@ async function probeInline<T extends KitsuAnimeRef>(
 	await Promise.all(workers);
 }
 
-/** Strict variant: probes uncached items inline (parallel, capped
- *  concurrency) before returning. Use on surfaces where the user
- *  would rather wait than see unavailable cards rendered. Home
- *  uses the fire-and-forget {@link filterAvailable} so cards
- *  don't disappear mid-session; search uses
- *  {@link filterAvailableProgressive} so one hung probe can't
- *  hold the whole grid. */
-export async function filterAvailableStrict<T extends KitsuAnimeRef>(
-	items: T[],
-	mode: 'sub' | 'dub',
-	concurrency = 4
-): Promise<T[]> {
-	if (items.length === 0) return items;
-	const ids = items.map((i) => i.id);
-	let cached: Record<string, boolean> = {};
-	try {
-		const r = await availabilityBatch(ids, mode);
-		cached = r.cached;
-	} catch {
-		return items;
-	}
-
-	const uncached = items.filter((i) => !(i.id in cached));
-	if (uncached.length > 0) {
-		await probeInline(uncached, mode, cached, concurrency);
-	}
-
-	return items.filter((i) => keepCard(cached, i));
-}
-
-/** Render-then-prune variant for search. Probes uncached items like
- *  the strict variant, but the caller renders through `emit` instead
- *  of a return value: if every verdict settles within `graceMs` the
- *  page gets the exact single flicker-free render the strict variant
- *  gave; otherwise it renders at the deadline with unknown verdicts
- *  still visible, and each late negative prunes its card silently.
+/** Render-then-prune variant for search. Probes uncached items
+ *  inline, but the caller renders through `emit` instead of a
+ *  return value: if every verdict settles within `graceMs` the
+ *  page gets a single flicker-free render with no known-unavailable
+ *  card in it; otherwise it renders at the deadline with unknown
+ *  verdicts still visible, and each late negative prunes its card.
  *  The tradeoff is deliberate — a throttled upstream once held ~20
  *  ready cards hostage for 45 seconds behind one hung probe, and a
  *  card that vanishes a beat later beats a page that never appears.

@@ -14,12 +14,7 @@ const apiMock = vi.hoisted(() => ({
 }));
 vi.mock('$lib/api', () => apiMock);
 
-import {
-	filterAvailable,
-	filterAvailableCacheOnly,
-	filterAvailableProgressive,
-	filterAvailableStrict
-} from './filter';
+import { filterAvailable, filterAvailableCacheOnly, filterAvailableProgressive } from './filter';
 
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -197,95 +192,6 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 	});
 });
 
-describe('filterAvailableStrict (search / inline probe)', () => {
-	beforeEach(() => {
-		apiMock.availabilityBatch.mockReset();
-		apiMock.availabilityWarm.mockReset();
-		apiMock.checkAvailability.mockReset();
-	});
-
-	it('keeps inline probes interactive — the search user is waiting on them', async () => {
-		// Unlike the rail fills, the strict variant BLOCKS the search
-		// results on every uncached probe. Routing those through the
-		// gate's paced background slots turns a cold ~20-hit search
-		// into a ~20-second wait (two admits per hit at 500 ms each).
-		// The user is actively waiting, so these probes ride the
-		// interactive lane like a click would.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: true });
-		await filterAvailableStrict([ref('a')], 'sub');
-		expect(apiMock.checkAvailability).not.toHaveBeenCalledWith(
-			expect.objectContaining({ background: true })
-		);
-	});
-
-	it('inline-probes uncached items and applies their results', async () => {
-		// b is cached false → drops. a is cached true → kept. c is
-		// uncached → probed inline → kept (probe says available).
-		// d is uncached → probed inline → dropped (probe says not).
-		apiMock.availabilityBatch.mockResolvedValueOnce({
-			cached: { a: true, b: false }
-		});
-		apiMock.checkAvailability.mockImplementation(async (args) =>
-			args.kitsu_id === 'c' ? { available: true } : { available: false }
-		);
-		const out = await filterAvailableStrict(
-			[ref('a'), ref('b', { status: 'finished' }), ref('c'), ref('d', { status: 'finished' })],
-			'sub',
-			2
-		);
-		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
-		// Two probes, one per uncached id.
-		expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2);
-	});
-
-	it('keeps unaired and airing shows visible even when the probe says unavailable', async () => {
-		// The strict path probes inline; an upcoming season allmanga
-		// hasn't catalogued yet still renders so the user can open and
-		// plan it.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: false });
-		const out = await filterAvailableStrict(
-			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
-			'sub'
-		);
-		expect(out.map((r) => r.id)).toEqual(['up']);
-	});
-
-	it('forwards the Kitsu start year to inline probes', async () => {
-		// Same symmetry rule as the lazy warm path: the strict probe
-		// must hand the backend picker the year so list-view cards
-		// resolve to the same allmanga show as the detail page.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: true });
-		await filterAvailableStrict([ref('wing', { start_date: '1995-04-07' })], 'sub');
-		expect(apiMock.checkAvailability.mock.calls[0][0]).toMatchObject({
-			kitsu_id: 'wing',
-			year: 1995
-		});
-	});
-
-	it('keeps an item when its inline probe throws (defer to lazy path)', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 503'));
-		const out = await filterAvailableStrict([ref('a')], 'sub');
-		expect(out.map((r) => r.id)).toEqual(['a']);
-	});
-
-	it('returns items unchanged when the batch call itself throws', async () => {
-		apiMock.availabilityBatch.mockRejectedValueOnce(new Error('offline'));
-		const items = [ref('a'), ref('b')];
-		const out = await filterAvailableStrict(items, 'sub');
-		expect(out).toEqual(items);
-	});
-
-	it('returns empty list unchanged without hitting the API', async () => {
-		const out = await filterAvailableStrict([], 'sub');
-		expect(out).toEqual([]);
-		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
-	});
-});
-
 describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	beforeEach(() => {
 		apiMock.availabilityBatch.mockReset();
@@ -402,5 +308,64 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		await filterAvailableProgressive([], 'sub', emit);
 		expect(emit).toHaveBeenCalledWith([]);
 		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
+	});
+
+	it('keeps inline probes interactive — the search user is waiting on them', async () => {
+		// Routing these through the gate's paced background slots
+		// turns a cold ~20-hit search into a ~20-second wait (two
+		// admits per hit at 500 ms each). The user is actively
+		// waiting, so probes ride the interactive lane like a click.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		await filterAvailableProgressive([ref('a')], 'sub', vi.fn());
+		expect(apiMock.checkAvailability).not.toHaveBeenCalledWith(
+			expect.objectContaining({ background: true })
+		);
+	});
+
+	it('probes only uncached items and applies their verdicts', async () => {
+		// b is cached false → drops. a is cached true → kept. c is
+		// uncached → probed → kept. d is uncached → probed → dropped.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
+		apiMock.checkAvailability.mockImplementation(async (args: { kitsu_id: string }) =>
+			args.kitsu_id === 'c' ? { available: true } : { available: false }
+		);
+		const emit = vi.fn();
+		await filterAvailableProgressive(
+			[ref('a'), ref('b', { status: 'finished' }), ref('c'), ref('d', { status: 'finished' })],
+			'sub',
+			emit,
+			2000,
+			2
+		);
+		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a', 'c']);
+		expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps unaired shows visible even when the probe says unavailable', async () => {
+		// An upcoming season allmanga hasn't catalogued yet still
+		// renders so the user can open and plan it.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: false });
+		const emit = vi.fn();
+		await filterAvailableProgressive(
+			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
+			'sub',
+			emit
+		);
+		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['up']);
+	});
+
+	it('forwards the Kitsu start year to inline probes', async () => {
+		// Same symmetry rule as the lazy warm path: the probe must
+		// hand the backend picker the year so list-view cards resolve
+		// to the same allmanga show as the detail page.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		await filterAvailableProgressive([ref('wing', { start_date: '1995-04-07' })], 'sub', vi.fn());
+		expect(apiMock.checkAvailability.mock.calls[0][0]).toMatchObject({
+			kitsu_id: 'wing',
+			year: 1995
+		});
 	});
 });
