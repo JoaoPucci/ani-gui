@@ -46,6 +46,8 @@ const updateCrap = process.argv.includes('--update-crap');
 /** @type {{ layer: string, metric: string, current: number, baseline: number, ok: boolean }[]} */
 const results = [];
 const measured = {};
+/** Offending files behind a high_risk regression, when the summary carries them. */
+let crapHighRiskFiles = null;
 
 function readJson(p) {
 	return JSON.parse(fs.readFileSync(p, 'utf-8'));
@@ -206,6 +208,9 @@ function checkCrap(baseline) {
 	}
 	const cur = readJson(summaryPath);
 	measured.crap = { max: cur.max, p95: cur.p95, high_risk: cur.high_risk };
+	// Kept out of `measured` so --update never writes the file list
+	// into the baseline; it exists only to make a failure diagnosable.
+	if (Array.isArray(cur.high_risk_files)) crapHighRiskFiles = cur.high_risk_files;
 	// CRAP is "lower is better": we ratchet against ceilings, not floors.
 	// A 1.0 fudge stops floating-point round-trips from flagging a no-op
 	// re-measurement as a regression.
@@ -314,6 +319,21 @@ for (const r of results) {
 			pad(bas, widths.baseline) +
 			(r.ok ? 'ok' : 'BELOW BASELINE')
 	);
+}
+
+// A high_risk regression is a count, and a count alone is not
+// actionable: the operator has to learn WHICH file crossed CRAP 30,
+// and re-measuring locally may not reproduce it — a file sitting a
+// fraction under the bar crosses on a coverage difference between
+// environments. `crap-score.mjs --json` records the offenders, so
+// print them alongside the failure. Older summaries have no such
+// key; the list is advisory and its absence changes nothing.
+if (fails.some((f) => f.layer === 'crap' && f.metric === 'high_risk_le') && crapHighRiskFiles) {
+	console.error('\nfiles over the CRAP high-risk bar (>30):');
+	for (const f of crapHighRiskFiles) {
+		const cov = typeof f.cov === 'number' ? `${f.cov}%` : '?';
+		console.error(`  ${String(f.crap).padStart(8)}  ccn=${f.ccn ?? '?'}  cov=${cov}  ${f.file}`);
+	}
 }
 
 if (fails.length > 0) {
