@@ -116,6 +116,9 @@ for (const [file, ccn] of ccnByFile) {
 }
 rows.sort((a, b) => b.crap - a.crap);
 
+/** How many rows of the ranking `--json` carries for diagnostics. */
+const TOP_N = 10;
+
 const max = rows[0]?.crap ?? 0;
 const sorted = rows.map((r) => r.crap).sort((a, b) => a - b);
 const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
@@ -127,15 +130,22 @@ if (jsonFlag) {
 	// file crossed — and the answer is not always reproducible
 	// locally, since a file sitting a fraction under 30 crosses on a
 	// coverage difference between environments.
+	//
+	// `top` is the same argument for the other two metrics. `max` is
+	// by definition `top[0].crap` and `p95` is a rank in this same
+	// ordering, so a regression in either is only diagnosable against
+	// the ranking. It cannot come from `high_risk_files`: max can move
+	// while nothing is over the bar at all, and that list is then
+	// empty. Capped because the report is for reading, not archiving.
+	const report = (r) => ({ file: r.file, ccn: r.ccn, cov: r2(r.coverage * 100), crap: r2(r.crap) });
 	process.stdout.write(
 		JSON.stringify({
 			max: r2(max),
 			p95: r2(p95),
 			high_risk,
 			count: rows.length,
-			high_risk_files: rows
-				.filter((r) => r.crap > 30)
-				.map((r) => ({ file: r.file, ccn: r.ccn, cov: r2(r.coverage * 100), crap: r2(r.crap) }))
+			high_risk_files: rows.filter((r) => r.crap > 30).map(report),
+			top: rows.slice(0, TOP_N).map(report)
 		}) + '\n'
 	);
 } else {
