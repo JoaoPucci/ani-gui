@@ -1289,3 +1289,153 @@ async fn a_failed_repackage_leaves_a_concurrent_downloads_file_alone() {
         "another download's in-flight file is not ours to delete"
     );
 }
+
+/// The spawn scrubs PATH down to the stub directory, so a stub that
+/// has to still be running when the guard fires cannot reach the
+/// system `sleep` — it exits immediately with `sleep: not found` and
+/// the test measures nothing. Link the real one in beside the tool
+/// stubs rather than widening PATH, which would let a real ffmpeg on
+/// the developer's machine change what the preflight sees.
+#[cfg(unix)]
+fn link_sleep_beside(opts: &DebugOptions) {
+    let dir = opts.ani_cli_path.parent().expect("stub dir");
+    let real = find_in_path("sleep").expect("system sleep on the test process PATH");
+    std::os::unix::fs::symlink(real, dir.join("sleep")).expect("link sleep");
+}
+
+/// The stub body shared by the two range tests. `$tail` runs after the
+/// warning, standing in for ani-cli's `for i in $range` loop carrying
+/// on to the next episode.
+///
+/// The destination goes out from a subshell so its stdio buffer is
+/// flushed by that process exiting. A `printf` builtin writing to a
+/// pipe is block-buffered, and these stubs are killed mid-run — real
+/// yt-dlp flushes progress as it downloads, so buffering here would be
+/// an artifact of the stub, not of what is being tested.
+#[cfg(unix)]
+fn ranged_repackage_stub(tail: &str) -> String {
+    format!(
+        "#!/bin/sh\n\
+         version_number=\"4.15.0\"\n\
+         case \"$player_function\" in\n\
+         \x20   download)\n\
+         \x20       dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'\n\
+         \x20       dep_ch \"aria2c\"\n\
+         \x20       ;;\n\
+         esac\n\
+         (printf '%s\\n' \"[download] Destination: $ANI_CLI_DOWNLOAD_DIR/Episode 1.mp4\")\n\
+         printf '\\107\\100\\21\\20' >\"$ANI_CLI_DOWNLOAD_DIR/Episode 1.mp4\"\n\
+         printf '%s\\n' 'WARNING: Show: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+         {tail}\n"
+    )
+}
+
+/// A range download (`-e 1-12`) is ONE ani-cli process looping
+/// `for i in $range; do play_episode; done` (ani-cli:498), and the
+/// dock offers exactly that — the Range picker defaults to 1..count.
+///
+/// Reading the warning only after the child exits means episode 1's
+/// failure is not acted on until episode 12 has also been fetched: the
+/// whole range is downloaded as unusable MPEG-TS, then deleted, and
+/// the user waits out the entire transfer to be told it failed. The
+/// condition does not improve on its own — the next episode goes down
+/// the same yt-dlp-without-ffmpeg path.
+///
+/// The marker file is deliberately not an `.mp4`: cleanup only removes
+/// announced output, so a marker that survived would otherwise be
+/// deleted and the test would pass for the wrong reason.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repackage_warning_stops_the_rest_of_the_range() {
+    let _guard = ENV_LOCK.lock().await;
+    let (_td, opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+    std::fs::write(
+        &opts.ani_cli_path,
+        ranged_repackage_stub("sleep 3\n: >\"$ANI_CLI_DOWNLOAD_DIR/episode-2-started\"\nexit 0"),
+    )
+    .expect("rewrite stub");
+    link_sleep_beside(&opts);
+
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1-12",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+
+    assert!(matches!(r, Err(AniError::FfmpegMissing)), "got {r:?}");
+    assert!(
+        !dl_dir.path().join("episode-2-started").exists(),
+        "the range must stop at the first warning, not fetch the rest of the season first"
+    );
+    assert!(
+        !dl_dir.path().join("Episode 1.mp4").exists(),
+        "and the episode that did fail must still be cleaned up"
+    );
+}
+
+/// The other half of the same gap. Cleanup lives after the timeout
+/// `?`, so a run that is still going when the wall clock runs out
+/// returns `Timeout` and leaves the mislabeled file on disk — the
+/// exact state the cleanup exists to prevent, reachable by waiting.
+///
+/// Stopping the child on the warning normally closes that window, so
+/// the no-op tree-kill probe is what makes this reachable at all: it
+/// stands in for a kill that did not take. The classification is the
+/// point either way — ffmpeg was missing, and saying "timed out"
+/// sends the user to look at their connection.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
+    let _guard = ENV_LOCK.lock().await;
+    let probe_td = tempfile::tempdir().expect("probe tempdir");
+    let probe = probe_td.path().join("noop-kill.sh");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&probe, b"#!/bin/sh\nexit 0\n").expect("write probe");
+        std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+
+    let (_td, mut opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
+    opts.timeout = std::time::Duration::from_millis(1_500);
+    let dl_dir = tempfile::tempdir().expect("dl tempdir");
+    std::fs::write(
+        &opts.ani_cli_path,
+        ranged_repackage_stub("sleep 30\nexit 0"),
+    )
+    .expect("rewrite stub");
+    link_sleep_beside(&opts);
+
+    let r = spawn_download(
+        &opts,
+        &DownloadRequest {
+            query: "Some Show",
+            episode: "1-12",
+            quality: "1080",
+            mode: "sub",
+            select_index: 1,
+        },
+        dl_dir.path(),
+        |_line| {},
+    )
+    .await;
+    *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+
+    assert!(
+        matches!(r, Err(AniError::FfmpegMissing)),
+        "a run the warning already condemned is a missing-ffmpeg failure, not a timeout: {r:?}"
+    );
+    assert!(
+        !dl_dir.path().join("Episode 1.mp4").exists(),
+        "running out of clock must not strand the mislabeled file"
+    );
+}
