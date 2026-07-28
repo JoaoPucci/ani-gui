@@ -77,6 +77,7 @@
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
+	import { createCapAuthority } from '$lib/history/cap-authority';
 	import type { VideoSession } from '$lib/play/global-video';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
@@ -160,6 +161,10 @@
 	// reactivity would be waste, hence the plain Map.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const historyById = new Map<string, HistoryEntry>();
+	// A cap learned by a click pins the row; the loader's late
+	// background probe then carries that value instead of its own
+	// (which may be an approximate breaker fallback).
+	const capAuthority = createCapAuthority();
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
@@ -344,7 +349,7 @@
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
-					onRowReady: rowReady
+					onRowReady: (id, m, count) => rowReady(id, m, capAuthority.resolveLoaderCount(id, count))
 				});
 			})
 			.catch(() => {
@@ -591,6 +596,7 @@
 		settingsLoaded: () => config !== null,
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		setPlayableCount: (id, c) => {
+			capAuthority.recordClickCap(id, c);
 			const m = historyMatches[id];
 			if (m) rowReady(id, m, c);
 			else historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
