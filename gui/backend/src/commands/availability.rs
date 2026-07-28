@@ -755,6 +755,100 @@ mod tests {
         assert!(out.1.is_empty());
     }
 
+    fn enrich_detail(tags: &[String]) -> crate::scraper::allanime::ShowMetadata {
+        serde_json::from_value(serde_json::json!({
+            "_id": "abc",
+            "name": "X",
+            "availableEpisodesDetail": {"sub": tags, "dub": [], "raw": []},
+        }))
+        .expect("detail")
+    }
+
+    proptest::proptest! {
+        /// Provenance follows the OUTCOME KIND and nothing else. A
+        /// detail fetch that answered is exact whatever it answered;
+        /// a failure falls back to the search-hit count and is
+        /// approximate whatever that count is. Position, size and
+        /// mode do not enter into it — which is the invariant a
+        /// later edit is most likely to blur, since the two branches
+        /// return the same shape.
+        #[test]
+        fn provenance_follows_the_outcome_kind(
+            ok in proptest::bool::ANY,
+            sub in 0u32..2000,
+            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..6),
+        ) {
+            let out = enrich_from_show_fetch(
+                if ok { Ok(enrich_detail(&tags)) } else { Err(crate::error::AniError::Network) },
+                &enrich_candidate(sub),
+                "sub",
+            ).expect("not rate limited");
+            proptest::prop_assert_eq!(out.2, !ok);
+        }
+
+        /// A rate limit is never downgraded into the count fallback,
+        /// whatever hint it carries. The caller needs the typed 429 —
+        /// the warm loop backs off on it, and the cache row is better
+        /// left unwritten than written mid-window.
+        #[test]
+        fn a_rate_limit_always_propagates(
+            hint in proptest::option::of(0u64..600),
+            sub in 0u32..2000,
+        ) {
+            let out = enrich_from_show_fetch(
+                Err(crate::error::AniError::RateLimited { retry_after_secs: hint }),
+                &enrich_candidate(sub),
+                "sub",
+            );
+            // Bound outside the macro: `prop_assert!` stringifies its
+            // argument as a format string, and the pattern's braces
+            // would be read as placeholders.
+            let propagated = matches!(
+                out,
+                Err(crate::error::AniError::RateLimited { retry_after_secs }) if retry_after_secs == hint
+            );
+            proptest::prop_assert!(propagated);
+        }
+
+        /// The fallback reports the candidate's own count for the
+        /// mode, and reports "no count" rather than a zero — a cached
+        /// `Some(0)` would read as a real cap of nothing and pin the
+        /// card at episode zero. It never carries extras, because a
+        /// failed fetch learned no tags.
+        #[test]
+        fn the_fallback_reports_the_candidate_count_or_nothing(sub in 0u32..2000) {
+            let out = enrich_from_show_fetch(
+                Err(crate::error::AniError::Network),
+                &enrich_candidate(sub),
+                "sub",
+            ).expect("fallback is Ok");
+            proptest::prop_assert_eq!(out.0, if sub > 0 { Some(sub) } else { None });
+            proptest::prop_assert!(out.1.is_empty());
+        }
+
+        /// A successful fetch splits the mode's tags: whole numbers
+        /// set the cap, everything else becomes an extra. No tag is
+        /// dropped and none appears on both sides.
+        #[test]
+        fn a_successful_fetch_splits_tags_into_cap_and_extras(
+            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..8),
+        ) {
+            let out = enrich_from_show_fetch(
+                Ok(enrich_detail(&tags)),
+                &enrich_candidate(1),
+                "sub",
+            ).expect("ok");
+            let (whole, fractional): (Vec<&String>, Vec<&String>) =
+                tags.iter().partition(|t| t.parse::<u32>().is_ok());
+            proptest::prop_assert_eq!(out.1.len(), fractional.len());
+            proptest::prop_assert!(out.1.iter().all(|e| e.parse::<u32>().is_err()));
+            proptest::prop_assert_eq!(
+                out.0,
+                whole.iter().filter_map(|t| t.parse::<u32>().ok()).max()
+            );
+        }
+    }
+
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
         // A rate-limited probe must not be followed by another request
