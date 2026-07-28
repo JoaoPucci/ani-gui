@@ -1398,3 +1398,33 @@ fn executed_dep_ch_still_vetoes_in_every_command_position() {
         );
     }
 }
+
+/// `case` and `in` are shell keywords separated by BLANKS, not by
+/// one space each. A script written or reformatted with tabs — the
+/// indent style this repo's own shfmt profile uses — still opens the
+/// case statement, and failing to recognize its owner means the
+/// download arm never registers and a capable script is read as
+/// hard-requiring ffmpeg.
+#[test]
+fn case_keyword_accepts_tabs_and_runs_of_blanks() {
+    let cases = [
+        (
+            "tab after the case keyword",
+            "case\t\"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac",
+        ),
+        (
+            "tab before in",
+            "case \"$player_function\"\tin\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac",
+        ),
+        (
+            "runs of spaces on both sides",
+            "case   \"$player_function\"   in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac",
+        ),
+    ];
+    for (label, text) in cases {
+        assert!(
+            download_branch_invokes_failover(text),
+            "{label} still opens the player-function case"
+        );
+    }
+}
