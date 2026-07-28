@@ -1461,3 +1461,38 @@ fn a_parenthesized_other_pattern_does_not_open_the_arm() {
         "only the download arm governs -d mode"
     );
 }
+
+/// `<<` inside an arithmetic expansion is a left shift, not a heredoc
+/// opener. Reading `mask=$((1 << 2))` as one queues `2))` as a
+/// delimiter and then swallows every following line until a line
+/// equals it — which can eat the whole download arm and read a
+/// capable script as hard-requiring ffmpeg.
+#[test]
+fn an_arithmetic_shift_is_not_a_heredoc() {
+    let text = "mask=$((1 << 2))\ncase \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a left shift must not swallow the rest of the script"
+    );
+}
+
+/// Shifts inside the arm itself, and a right shift, are the same
+/// story — and a real heredoc after the arithmetic must still be
+/// honoured, so the fix cannot simply stop tracking heredocs.
+#[test]
+fn arithmetic_shifts_coexist_with_real_heredocs() {
+    let in_arm = "case \"$player_function\" in\ndownload)\n\tbits=$((n >> 1))\n\tdep_ch_failover \"yt-dlp,ffmpeg\"\n\t;;\nesac";
+    assert!(
+        download_branch_invokes_failover(in_arm),
+        "a shift inside the arm does not open a heredoc"
+    );
+
+    // The heredoc body names dep_ch as text; it must stay opaque, so
+    // the grant survives. If heredoc tracking were lost, the body
+    // would read as executable shell and veto.
+    let with_heredoc = "n=$((1 << 3))\ncat <<EOF\ndep_ch \"ffmpeg\"\nEOF\ncase \"$player_function\" in\ndownload) dep_ch_failover \"yt-dlp,ffmpeg\" ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(with_heredoc),
+        "a real heredoc after arithmetic is still tracked"
+    );
+}
