@@ -102,6 +102,34 @@ pub struct AvailabilityResponse {
     /// numeric position. Empty when there are no extras.
     #[serde(default)]
     pub extra_episodes: Vec<String>,
+    /// True when `episode_count` came from the search hit rather than
+    /// the per-show detail fetch — the gate-refused fallback. That
+    /// number counts half episodes as whole ones, so it runs one high
+    /// for shows carrying them, and advancing to it forwards an
+    /// episode that does not exist. Rows carrying this are treated as
+    /// cache misses so they re-probe; see [`cache_hit_is_usable`].
+    /// Absent from rows written before the flag existed, which
+    /// `default` reads as exact.
+    #[serde(default)]
+    pub episode_count_approximate: bool,
+}
+
+/// Whether a cached response may be served as-is, or has to re-probe.
+///
+/// Two kinds of row self-heal rather than being served. A legacy
+/// available row with no count predates count caching and re-probes
+/// to populate it. An approximate row carries the gate-refused
+/// fallback's count, which the detail fetch would have corrected —
+/// serving it would make every later read, including a click trying
+/// to confirm the cap, replay the same wrong number.
+///
+/// A negative row is always usable: `episode_count` is meaningless
+/// when there is no candidate.
+fn cache_hit_is_usable(parsed: &AvailabilityResponse) -> bool {
+    if !parsed.available {
+        return true;
+    }
+    parsed.episode_count.is_some() && !parsed.episode_count_approximate
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
@@ -217,16 +245,14 @@ pub(crate) async fn check_availability_with_base(
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
-    // Legacy rows (available=true, episode_count=None) are treated
-    // as misses so they self-heal: the next visit re-probes and
-    // populates the count. False rows are kept as-is — episode_count
-    // is meaningless when there's no candidate.
+    // Which rows may be served is [`cache_hit_is_usable`]'s call —
+    // legacy count-less rows and gate-refused approximate counts both
+    // re-probe so they self-heal.
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
-                let needs_refresh = parsed.available && parsed.episode_count.is_none();
-                if !needs_refresh {
+                if cache_hit_is_usable(&parsed) {
                     return Ok(parsed);
                 }
             }
@@ -290,6 +316,9 @@ pub(crate) async fn check_availability_with_base(
     // than blocking the cache write.
     let mut episode_count: Option<u32> = None;
     let mut extra_episodes: Vec<String> = Vec::new();
+    // Set only on the gate-refused path, where the count comes from
+    // the search hit instead of the detail fetch.
+    let mut episode_count_approximate = false;
     if let Some(c) = chosen_candidate.as_ref() {
         let prio = if args.background {
             crate::scraper::gate::ScrapePriority::Background
@@ -311,11 +340,16 @@ pub(crate) async fn check_availability_with_base(
             extra_episodes = extras;
         } else {
             // Gate refused the background fetch — fall back to the
-            // count from the search hit. Off by one for shows with
-            // halves, but good enough for the cap until next probe.
+            // count from the search hit. That number counts halves as
+            // whole episodes, so it runs one high for shows carrying
+            // them. Marked approximate so it is never served back from
+            // cache as if the detail fetch had confirmed it: the next
+            // read re-probes, and an interactive caller (which the
+            // gate does not refuse) gets the exact count.
             let n = c.available_episodes.for_mode(mode);
             if n > 0 {
                 episode_count = Some(n);
+                episode_count_approximate = true;
             }
         }
     }
@@ -326,10 +360,13 @@ pub(crate) async fn check_availability_with_base(
             state,
             id,
             mode,
-            available,
-            episode_count,
-            extra_episodes.clone(),
             args.status.as_deref(),
+            &AvailabilityResponse {
+                available,
+                episode_count,
+                extra_episodes: extra_episodes.clone(),
+                episode_count_approximate,
+            },
         );
     }
 
@@ -337,6 +374,7 @@ pub(crate) async fn check_availability_with_base(
         available,
         episode_count,
         extra_episodes,
+        episode_count_approximate,
     })
 }
 
@@ -352,7 +390,18 @@ pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool
     // failure paths). Use ongoing TTL — the next detail-page probe
     // will overwrite this row anyway, since check_availability's
     // self-heal kicks in for rows with episode_count=None.
-    write_cache_full(state, kitsu_id, mode, available, None, Vec::new(), None);
+    write_cache_full(
+        state,
+        kitsu_id,
+        mode,
+        None,
+        &AvailabilityResponse {
+            available,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        },
+    );
 }
 
 /// Pick the positive cache TTL based on Kitsu's airing status.
@@ -466,16 +515,14 @@ pub fn write_cache_full(
     state: &AppState,
     kitsu_id: &str,
     mode: &str,
-    available: bool,
-    episode_count: Option<u32>,
-    extra_episodes: Vec<String>,
     status: Option<&str>,
+    body: &AvailabilityResponse,
 ) {
     if kitsu_id.is_empty() {
         return;
     }
     let key = cache_key(kitsu_id, mode);
-    let ttl = if available {
+    let ttl = if body.available {
         positive_ttl_for(status)
     } else {
         let now = std::time::SystemTime::now()
@@ -484,13 +531,8 @@ pub fn write_cache_full(
             .unwrap_or(0);
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
-    let body = AvailabilityResponse {
-        available,
-        episode_count,
-        extra_episodes,
-    };
-    if let Ok(body) = serde_json::to_string(&body) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ttl);
+    if let Ok(serialized) = serde_json::to_string(body) {
+        let _ = meta_cache_put(&state.cache_pool, &key, &serialized, ttl);
     }
 }
 
@@ -728,6 +770,7 @@ mod tests {
         let ok: Result<AvailabilityResponse> = Ok(AvailabilityResponse {
             available: true,
             episode_count: None,
+            episode_count_approximate: false,
             extra_episodes: Vec::new(),
         });
         assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
@@ -756,6 +799,7 @@ mod tests {
         let r = AvailabilityResponse {
             available: true,
             episode_count: Some(1160),
+            episode_count_approximate: false,
             extra_episodes: vec!["1061.5".into()],
         };
         let json = serde_json::to_string(&r).expect("serialize");
@@ -1037,10 +1081,13 @@ mod tests {
             &state,
             "kid-1",
             "sub",
-            true,
-            Some(1160),
-            vec!["1061.5".into()],
             Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(1160),
+                extra_episodes: vec!["1061.5".into()],
+                episode_count_approximate: false,
+            },
         );
         let resp = batch_cached(
             &state,
@@ -1059,7 +1106,18 @@ mod tests {
     fn write_cache_full_skips_empty_kitsu_id() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
-        write_cache_full(&state, "", "sub", true, Some(12), Vec::new(), None);
+        write_cache_full(
+            &state,
+            "",
+            "sub",
+            None,
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
         // No row in the cache → batch_cached returns an empty map
         // for any id we ask about.
         let resp = batch_cached(
@@ -1186,22 +1244,39 @@ mod tests {
             &state,
             "ongoing-show",
             "sub",
-            true,
-            Some(1107),
-            Vec::new(),
             Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(1107),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
         );
         write_cache_full(
             &state,
             "finished-show",
             "sub",
-            true,
-            Some(12),
-            Vec::new(),
             Some("finished"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
         );
         // Cached as unavailable — no playable count to surface.
-        write_cache_full(&state, "blocked-show", "sub", false, None, Vec::new(), None);
+        write_cache_full(
+            &state,
+            "blocked-show",
+            "sub",
+            None,
+            &AvailabilityResponse {
+                available: false,
+                episode_count: None,
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
         let resp = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1326,11 +1401,13 @@ mod tests {
             &state,
             "kid-approx",
             "sub",
-            true,
-            Some(13),
-            Vec::new(),
             Some("current"),
-            true,
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(13),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: true,
+            },
         );
         let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
             .expect("cache read")
