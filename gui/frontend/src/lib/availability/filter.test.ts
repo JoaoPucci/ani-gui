@@ -14,7 +14,12 @@ const apiMock = vi.hoisted(() => ({
 }));
 vi.mock('$lib/api', () => apiMock);
 
-import { filterAvailable, filterAvailableCacheOnly, filterAvailableStrict } from './filter';
+import {
+	filterAvailable,
+	filterAvailableCacheOnly,
+	filterAvailableProgressive,
+	filterAvailableStrict
+} from './filter';
 
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -277,6 +282,125 @@ describe('filterAvailableStrict (search / inline probe)', () => {
 	it('returns empty list unchanged without hitting the API', async () => {
 		const out = await filterAvailableStrict([], 'sub');
 		expect(out).toEqual([]);
+		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
+	});
+});
+
+describe('filterAvailableProgressive (search / render-then-prune)', () => {
+	beforeEach(() => {
+		apiMock.availabilityBatch.mockReset();
+		apiMock.availabilityWarm.mockReset();
+		apiMock.checkAvailability.mockReset();
+	});
+	afterEach(() => vi.useRealTimers());
+
+	/** A checkAvailability mock whose per-item promises resolve only
+	 *  when the test says so — models slow upstream probes. */
+	function hangingProbes() {
+		const resolvers = new Map<string, (r: { available: boolean }) => void>();
+		apiMock.checkAvailability.mockImplementation(
+			(req: { kitsu_id: string }) =>
+				new Promise<{ available: boolean }>((res) => resolvers.set(req.kitsu_id, res))
+		);
+		return resolvers;
+	}
+
+	it('emits the kept list at the grace deadline while probes still hang', async () => {
+		vi.useFakeTimers();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		hangingProbes();
+		const emit = vi.fn();
+		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
+		const done = filterAvailableProgressive(items, 'sub', emit, 2000);
+		await vi.advanceTimersByTimeAsync(1999);
+		expect(emit).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		// Unknown verdicts keep their cards — the page renders instead
+		// of holding nineteen ready cards hostage to one slow probe.
+		expect(emit).toHaveBeenCalledTimes(1);
+		expect(emit.mock.calls[0][0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a', 'b', 'c']);
+		void done;
+	});
+
+	it('prunes a finished show when its late probe reports unavailable', async () => {
+		vi.useFakeTimers();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		const resolvers = hangingProbes();
+		const emit = vi.fn();
+		const items = [ref('a'), ref('gone', { status: 'finished' })];
+		const done = filterAvailableProgressive(items, 'sub', emit, 2000);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(emit).toHaveBeenCalledTimes(1);
+		resolvers.get('gone')!({ available: false });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(emit).toHaveBeenCalledTimes(2);
+		expect(emit.mock.calls[1][0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+		resolvers.get('a')!({ available: true });
+		await vi.advanceTimersByTimeAsync(0);
+		await done;
+	});
+
+	it('does not re-emit for late verdicts that keep the card', async () => {
+		vi.useFakeTimers();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		const resolvers = hangingProbes();
+		const emit = vi.fn();
+		const done = filterAvailableProgressive([ref('a'), ref('b')], 'sub', emit, 2000);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(emit).toHaveBeenCalledTimes(1);
+		resolvers.get('a')!({ available: true });
+		await vi.advanceTimersByTimeAsync(0);
+		// available:true changes nothing on screen — no churn.
+		expect(emit).toHaveBeenCalledTimes(1);
+		resolvers.get('b')!({ available: true });
+		await vi.advanceTimersByTimeAsync(0);
+		await done;
+	});
+
+	it('emits once without waiting when every probe settles before the grace', async () => {
+		vi.useFakeTimers();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		apiMock.checkAvailability.mockResolvedValue({ available: false });
+		const emit = vi.fn();
+		const items = [ref('a'), ref('gone', { status: 'finished' })];
+		await filterAvailableProgressive(items, 'sub', emit, 2000);
+		// The promise resolved with zero timer advancement — warm
+		// caches keep the exact single-render behavior of the strict
+		// variant, flicker-free.
+		expect(emit).toHaveBeenCalledTimes(1);
+		expect(emit.mock.calls[0][0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+	});
+
+	it('emits once immediately when everything is already cached', async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a'), ref('b', { status: 'finished' })], 'sub', emit);
+		expect(emit).toHaveBeenCalledTimes(1);
+		expect(emit.mock.calls[0][0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+		expect(apiMock.checkAvailability).not.toHaveBeenCalled();
+	});
+
+	it('keeps an item whose probe throws (defer to lazy path)', async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 520'));
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
+		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+	});
+
+	it('emits all items when the batch call itself throws', async () => {
+		apiMock.availabilityBatch.mockRejectedValueOnce(new Error('offline'));
+		const emit = vi.fn();
+		const items = [ref('a'), ref('b')];
+		await filterAvailableProgressive(items, 'sub', emit);
+		expect(emit).toHaveBeenCalledTimes(1);
+		expect(emit.mock.calls[0][0]).toEqual(items);
+	});
+
+	it('emits an empty list without hitting the API', async () => {
+		const emit = vi.fn();
+		await filterAvailableProgressive([], 'sub', emit);
+		expect(emit).toHaveBeenCalledWith([]);
 		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
 	});
 });
