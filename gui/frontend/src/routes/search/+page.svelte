@@ -21,7 +21,8 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
-	import { filterAvailable, filterAvailableProgressive } from '$lib/availability/filter';
+	import { filterAvailable } from '$lib/availability/filter';
+	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { m } from '$lib/paraglide/messages';
 
