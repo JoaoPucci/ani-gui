@@ -124,41 +124,63 @@ pub fn windows_env_passthrough(
         .collect()
 }
 
-/// Locate `ffmpeg` inside a composed PATH string. Pure: caller
-/// supplies the path-list and the executable check, so the test
-/// suite can drive every branch without touching real disk.
+use super::capability::supports_ytdlp_download;
+
+/// Decide which tools satisfy the download preflight for the *active*
+/// script. The cache copy is not always the bundled 4.15: an existing
+/// installation whose auto-update is disabled, failing, or simply not
+/// finished yet can still be running a pre-4.15 script whose download
+/// mode hard-requires ffmpeg (`dep_ch "ffmpeg" "aria2c"`). Accepting
+/// yt-dlp alone against that script would pass the preflight and then
+/// die inside the spawn with a generic scraper error — exactly the
+/// modal-says-fine-but-download-fails gap the preflight exists to
+/// close.
 ///
-/// Returns `Ok(())` when an executable matching the platform's
-/// ffmpeg name (`ffmpeg.exe` on Windows, `ffmpeg` elsewhere) sits
-/// in any of the path components. Otherwise returns
-/// [`AniError::FfmpegMissing`] so the SSE download stream can
-/// short-circuit before spawning ani-cli — surfacing the typed
-/// error early lets the frontend render a clear modal instead of
-/// the generic "Download failed" the post-spawn dep_ch failure
-/// otherwise produces.
-pub fn ensure_ffmpeg_in_path(
+/// Returns the platform-correct binary names: yt-dlp and ffmpeg when
+/// [`supports_ytdlp_download`] recognizes the script, ffmpeg alone
+/// otherwise. Anything unrecognized — an older release, a customized
+/// download arm, unreadable contents passed as empty — falls back to
+/// ffmpeg-only, which every script version satisfies.
+#[must_use]
+pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
+    const BOTH: &[&str] = if cfg!(windows) {
+        &["yt-dlp.exe", "ffmpeg.exe"]
+    } else {
+        &["yt-dlp", "ffmpeg"]
+    };
+    const FFMPEG_ONLY: &[&str] = if cfg!(windows) {
+        &["ffmpeg.exe"]
+    } else {
+        &["ffmpeg"]
+    };
+    if supports_ytdlp_download(script_contents) {
+        BOTH
+    } else {
+        FFMPEG_ONLY
+    }
+}
+
+/// Locate a download-capable tool inside a composed PATH string.
+/// `names` comes from [`download_tool_names`]: yt-dlp OR ffmpeg when
+/// the active script's `-d` mode accepts either (4.15+), ffmpeg alone
+/// for older shapes (aria2c the script checks itself either way).
+/// Pure: caller supplies the names, path-list, and the check, so tests
+/// drive every branch without touching real disk.
+///
+/// # Errors
+/// [`AniError::FfmpegMissing`] when no accepted tool is found — the
+/// frontend modal recommends installing ffmpeg, which remains the
+/// primary suggestion either way.
+pub fn ensure_download_tool_in_path(
+    names: &[&str],
     composed_path: &OsStr,
     is_executable: impl Fn(&Path) -> bool,
 ) -> Result<()> {
-    // Platform-correct binary name: Windows resolves bare names by
-    // appending PATHEXT, but our caller (the bash subprocess on
-    // Windows) walks PATH literally and only matches `ffmpeg.exe`.
-    // Match that behaviour exactly so the pre-check agrees with
-    // what the spawn would see.
-    let exe_name: &str = if cfg!(windows) {
-        "ffmpeg.exe"
-    } else {
-        "ffmpeg"
-    };
     for dir in std::env::split_paths(composed_path) {
-        // split_paths on Unix yields a single empty PathBuf for an
-        // empty input — that path joins to bare "ffmpeg" which would
-        // false-positive in any callback that accepts every path.
-        // bash's command -v likewise ignores empty PATH components.
         if dir.as_os_str().is_empty() {
             continue;
         }
-        if is_executable(&dir.join(exe_name)) {
+        if names.iter().any(|n| is_executable(&dir.join(n))) {
             return Ok(());
         }
     }

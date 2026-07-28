@@ -14,6 +14,7 @@
 
 pub mod bash;
 pub mod botan_shim;
+mod capability;
 mod carried_patches;
 pub mod env;
 pub mod parser;
