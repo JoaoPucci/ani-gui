@@ -1260,4 +1260,93 @@ mod tests {
             "an open breaker must produce zero allanime requests"
         );
     }
+
+    /// The gate-refused fallback caches the search hit's count, which
+    /// runs one high for shows carrying half episodes. The cache
+    /// short-circuit returns any numeric row before the interactive
+    /// lane is even considered, so that degraded value is served back
+    /// to every later caller — including a click trying to confirm
+    /// the cap before advancing onto it. Confirmation against a cache
+    /// that replays the same approximation confirms nothing.
+    ///
+    /// So an approximate row is not a usable hit. It self-heals the
+    /// same way legacy count-less rows do: the next read re-probes,
+    /// and once the gate allows the detail fetch the exact count
+    /// replaces it.
+    #[test]
+    fn an_approximate_cached_count_is_not_a_usable_hit() {
+        let exact = AvailabilityResponse {
+            available: true,
+            episode_count: Some(12),
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(cache_hit_is_usable(&exact), "an exact count is usable");
+
+        let approximate = AvailabilityResponse {
+            episode_count_approximate: true,
+            ..exact.clone()
+        };
+        assert!(
+            !cache_hit_is_usable(&approximate),
+            "an approximate count must re-probe rather than be served"
+        );
+    }
+
+    /// The pre-existing self-healing rules are unchanged: an
+    /// available row with no count re-probes, and a negative row is
+    /// kept as-is because episode_count is meaningless with no
+    /// candidate.
+    #[test]
+    fn usable_hit_rules_for_legacy_and_negative_rows() {
+        let legacy = AvailabilityResponse {
+            available: true,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(!cache_hit_is_usable(&legacy), "a count-less row re-probes");
+
+        let negative = AvailabilityResponse {
+            available: false,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+        };
+        assert!(cache_hit_is_usable(&negative), "a negative row is kept");
+    }
+
+    /// The flag has to survive the cache round-trip, or the re-probe
+    /// rule never fires in production.
+    #[test]
+    fn write_cache_full_round_trips_the_approximate_flag() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = cache_only_state(&td);
+        write_cache_full(
+            &state,
+            "kid-approx",
+            "sub",
+            true,
+            Some(13),
+            Vec::new(),
+            Some("current"),
+            true,
+        );
+        let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
+            .expect("cache read")
+            .expect("row present");
+        let parsed: AvailabilityResponse = serde_json::from_str(&raw).expect("parse");
+        assert!(parsed.episode_count_approximate, "the flag must persist");
+        assert!(!cache_hit_is_usable(&parsed), "and drive the re-probe");
+    }
+
+    /// A row written before the flag existed has no such key, and
+    /// serde must read it as exact rather than refusing to parse.
+    #[test]
+    fn a_legacy_row_without_the_flag_parses_as_exact() {
+        let parsed: AvailabilityResponse =
+            serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
+        assert!(!parsed.episode_count_approximate);
+        assert!(cache_hit_is_usable(&parsed));
+    }
 }
