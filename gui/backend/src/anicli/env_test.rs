@@ -1275,3 +1275,45 @@ fn a_longer_function_name_ending_in_dep_ch_does_not_veto() {
         "a distinct command whose name merely ends in dep_ch must not veto"
     );
 }
+
+/// Codex P2 #3665557944 — the grant side had the same defect the
+/// veto side did: an exact-text match. A script spelling the same
+/// call `dep_ch_failover  'yt-dlp,ffmpeg'` accepts yt-dlp just as
+/// much, but the preflight would miss the grant and block a
+/// yt-dlp-only install behind the missing-ffmpeg modal.
+#[test]
+fn failover_grant_survives_single_quotes() {
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover 'yt-dlp,ffmpeg' ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "a single-quoted argument is the same failover call"
+    );
+}
+
+#[test]
+fn failover_grant_survives_double_space_and_tab() {
+    let two = "case \"$player_function\" in\ndownload) dep_ch_failover  \"yt-dlp,ffmpeg\" ;;\nesac";
+    let tab = "case \"$player_function\" in\ndownload) dep_ch_failover\t\"yt-dlp,ffmpeg\" ;;\nesac";
+    assert!(download_branch_invokes_failover(two), "two spaces still grant");
+    assert!(download_branch_invokes_failover(tab), "a tab still grants");
+}
+
+#[test]
+fn failover_grant_survives_an_unquoted_argument() {
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover yt-dlp,ffmpeg ;;\nesac";
+    assert!(
+        download_branch_invokes_failover(text),
+        "an unquoted argument is the same failover call"
+    );
+}
+
+#[test]
+fn a_different_failover_argument_does_not_grant() {
+    // The grant is specific to the yt-dlp,ffmpeg pair; a failover
+    // over some other toolset says nothing about yt-dlp capability.
+    let text = "case \"$player_function\" in\ndownload) dep_ch_failover \"aria2c,ffmpeg\" ;;\nesac";
+    assert!(
+        !download_branch_invokes_failover(text),
+        "a failover over other tools must not grant yt-dlp"
+    );
+}
