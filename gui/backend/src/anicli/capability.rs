@@ -34,16 +34,29 @@ const FAILOVER_CALL: &str = r#"dep_ch_failover "yt-dlp,ffmpeg""#;
 
 /// Whether the script accepts yt-dlp alone for `-d` downloads.
 pub(crate) fn supports_ytdlp_download(script_contents: &str) -> bool {
-    let _ = (script_contents, FAILOVER_RELEASE, FAILOVER_CALL);
-    todo!("green recognizes the failover release and its dependency call")
+    let Some((major, minor)) = declared_version(script_contents) else {
+        return false;
+    };
+    if (major, minor) < FAILOVER_RELEASE {
+        return false;
+    }
+    script_contents.contains(FAILOVER_CALL)
 }
 
 /// The script's own `version_number="X.Y..."` declaration, as
 /// (major, minor). Must start its line — a different variable whose
 /// name merely ends in `version_number` is not the script's version.
 fn declared_version(script_contents: &str) -> Option<(u32, u32)> {
-    let _ = script_contents;
-    todo!("green parses the script's own version declaration")
+    let raw = script_contents
+        .lines()
+        .find_map(|l| l.strip_prefix("version_number="))?
+        .trim()
+        .trim_matches(['"', '\'']);
+    let mut parts = raw.split('.');
+    let major = parts.next()?.parse().ok()?;
+    // A two-component version is legal; treat the missing minor as 0.
+    let minor = parts.next().map_or(Some(0), |m| m.parse().ok())?;
+    Some((major, minor))
 }
 
 #[cfg(test)]

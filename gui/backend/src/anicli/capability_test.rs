@@ -43,7 +43,8 @@ fn both_the_version_and_the_failover_line_are_required() {
 #[test]
 fn a_later_release_is_still_recognized() {
     for v in ["4.15.1", "4.16.0", "5.0.0", "4.15"] {
-        let script = format!("#!/bin/sh\nversion_number=\"{v}\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n");
+        let script =
+            format!("#!/bin/sh\nversion_number=\"{v}\"\ndep_ch_failover \"yt-dlp,ffmpeg\"\n");
         assert!(
             supports_ytdlp_download(&script),
             "{v} is at or past the failover release"

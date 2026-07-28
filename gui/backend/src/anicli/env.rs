@@ -124,7 +124,7 @@ pub fn windows_env_passthrough(
         .collect()
 }
 
-use super::script_scan::download_branch_invokes_failover;
+use super::capability::supports_ytdlp_download;
 
 /// Decide which tools satisfy the download preflight for the *active*
 /// script. The cache copy is not always the bundled 4.15: an existing
@@ -137,11 +137,10 @@ use super::script_scan::download_branch_invokes_failover;
 /// close.
 ///
 /// Returns the platform-correct binary names: yt-dlp and ffmpeg when
-/// the script's download dep line is 4.15's
-/// `dep_ch_failover "yt-dlp,ffmpeg"`, ffmpeg alone otherwise. Any
-/// unrecognized shape (older script, future upstream change, unreadable
-/// contents passed as empty) falls back to ffmpeg-only — the
-/// conservative direction, since ffmpeg satisfies every script version.
+/// [`supports_ytdlp_download`] recognizes the script, ffmpeg alone
+/// otherwise. Anything unrecognized — an older release, a customized
+/// download arm, unreadable contents passed as empty — falls back to
+/// ffmpeg-only, which every script version satisfies.
 #[must_use]
 pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
     const BOTH: &[&str] = if cfg!(windows) {
@@ -154,7 +153,7 @@ pub fn download_tool_names(script_contents: &str) -> &'static [&'static str] {
     } else {
         &["ffmpeg"]
     };
-    if download_branch_invokes_failover(script_contents) {
+    if supports_ytdlp_download(script_contents) {
         BOTH
     } else {
         FFMPEG_ONLY

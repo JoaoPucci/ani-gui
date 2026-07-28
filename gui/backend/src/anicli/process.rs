@@ -1315,7 +1315,7 @@ mod tests {
             "dep_ch \"ffmpeg\" \"aria2c\" >/dev/null 2>&1 || true"
         };
         let script = format!(
-            "#!/bin/sh\ncase \"$player_function\" in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        {dep_line}\n        ;;\nesac\nexit 0\n"
         );
         f.write_all(script.as_bytes()).expect("write stub");
         let mut perm = f.metadata().expect("perm").permissions();
@@ -1347,7 +1347,7 @@ mod tests {
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
         let body = format!(
-            "#!/bin/sh\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nprintf '%s' \"$0\" >{}\nexit 0\n",
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nprintf '%s' \"$0\" >{}\nexit 0\n",
             argv0_out.display()
         );
         f.write_all(body.as_bytes()).expect("write stub");
@@ -1397,7 +1397,7 @@ mod tests {
         let path = td.path().join("ani-cli");
         let mut f = std::fs::File::create(&path).expect("create stub");
         let body = format!(
-            "#!/bin/sh\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nif [ -x \"$0\" ]; then printf executable >{out}; else printf plain >{out}; fi\nexit 0\n",
+            "#!/bin/sh\nversion_number=\"4.15.0\"\ncase \"$player_function\" in\n    download)\n        dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null 2>&1 || true\n        ;;\nesac\nif [ -x \"$0\" ]; then printf executable >{out}; else printf plain >{out}; fi\nexit 0\n",
             out = mode_out.display()
         );
         f.write_all(body.as_bytes()).expect("write stub");
