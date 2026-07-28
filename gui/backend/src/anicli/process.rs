@@ -555,10 +555,19 @@ fn stage_script_snapshot(contents: &str, live_path: &Path) -> std::io::Result<St
     // dotted and pid-tagged so it cannot collide with the script
     // itself or with a concurrent download.
     if let Some(dir) = live_path.parent() {
-        let name = format!(".ani-cli-snapshot-{}", std::process::id());
-        let path = dir.join(name);
-        if std::fs::write(&path, contents).is_ok() {
-            return Ok(StagedScript::BesideLive(path));
+        // `tempfile` picks the name and creates it O_EXCL, so two
+        // concurrent downloads cannot land on the same path — a pid
+        // is shared by every download in this process.
+        let staged = tempfile::Builder::new()
+            .prefix(".ani-cli-snapshot-")
+            .tempfile_in(dir)
+            .and_then(|mut f| {
+                use std::io::Write;
+                f.as_file_mut().write_all(contents.as_bytes())?;
+                Ok(f)
+            });
+        if let Ok(file) = staged {
+            return Ok(StagedScript::BesideLive(file));
         }
     }
     // A packaged install can ship its script in a read-only
@@ -576,7 +585,10 @@ fn stage_script_snapshot(contents: &str, live_path: &Path) -> std::io::Result<St
 /// live script has to be removed explicitly, since that directory
 /// outlives the download.
 enum StagedScript {
-    BesideLive(PathBuf),
+    /// Beside the live script, so `$0`'s directory is preserved. The
+    /// `NamedTempFile` owns the unique name and unlinks it on drop,
+    /// which keeps one download's cleanup off another's snapshot.
+    BesideLive(tempfile::NamedTempFile),
     Temp {
         /// Held only for its `Drop`, which removes the directory.
         _dir: tempfile::TempDir,
@@ -587,16 +599,8 @@ enum StagedScript {
 impl StagedScript {
     fn path(&self) -> &Path {
         match self {
-            Self::BesideLive(p) => p,
+            Self::BesideLive(f) => f.path(),
             Self::Temp { path, .. } => path,
-        }
-    }
-}
-
-impl Drop for StagedScript {
-    fn drop(&mut self) {
-        if let Self::BesideLive(p) = self {
-            let _ = std::fs::remove_file(p);
         }
     }
 }
