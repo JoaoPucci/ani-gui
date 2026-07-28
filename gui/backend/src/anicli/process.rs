@@ -792,6 +792,11 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
 
+    // Snapshot before spawning so cleanup can tell what THIS download
+    // produced from what was already there — including a user's own
+    // files and any concurrent download's output.
+    let produced_before = mp4_entries(download_dir);
+
     let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
     let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
@@ -887,9 +892,53 @@ where
     // condition actually occurs.
     let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
     if yt_dlp_could_not_repackage(&super::parser::strip_ansi(&stderr_bytes)) {
+        // The payload is already on disk under an .mp4 name. Failing
+        // the download and leaving it there is the worst of both: told
+        // it failed, still finds something that looks like the episode.
+        discard_mislabeled(download_dir, &produced_before);
         return Err(AniError::FfmpegMissing);
     }
     Ok(())
+}
+
+/// `.mp4` entries directly under `dir`, used to bound cleanup to what
+/// a single download produced. Unreadable directory yields an empty
+/// set, which makes the later diff delete nothing — the safe way to
+/// fail for an operation that removes files.
+fn mp4_entries(dir: &Path) -> std::collections::HashSet<std::path::PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return std::collections::HashSet::new();
+    };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mp4")))
+        .collect()
+}
+
+/// Remove the `.mp4` files this download created that are not, in
+/// fact, MP4s.
+///
+/// Two independent bounds, so a good file cannot be eaten by either
+/// alone: the entry must be absent from `before` (so it is ours), and
+/// its own first byte must be the MPEG-TS sync byte `0x47` (so it is
+/// genuinely mislabeled). A real MP4 opens with a length-prefixed
+/// `ftyp` box and fails the second test even if it is ours.
+fn discard_mislabeled(dir: &Path, before: &std::collections::HashSet<std::path::PathBuf>) {
+    for path in mp4_entries(dir) {
+        if before.contains(&path) {
+            continue;
+        }
+        let mut buf = [0u8; 1];
+        let is_ts = std::fs::File::open(&path)
+            .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf))
+            .is_ok_and(|()| buf[0] == 0x47);
+        if is_ts {
+            // Best effort: a file we cannot remove is not worth
+            // failing the already-failing download over.
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 /// yt-dlp's own report that it left MPEG-TS inside an `.mp4`.
