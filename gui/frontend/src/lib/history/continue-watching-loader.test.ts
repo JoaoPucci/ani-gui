@@ -318,3 +318,77 @@ describe('loadContinueWatchingState', () => {
 		expect(result.playableCounts).toEqual({});
 	});
 });
+
+describe('first paint releases before availability (render-then-refine)', () => {
+	it('releases a row with its match before the availability probe resolves', async () => {
+		// The whole point: a card needs only its Kitsu match to render
+		// and be clickable. The probe against the video site refines
+		// the cap later — it must never hold the card. Here the probe
+		// NEVER resolves and the row still releases.
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const neverProbe = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockReturnValue(neverProbe.promise);
+
+		const ready: { id: string; match: KitsuAnimeRef | null; count: number | null }[] = [];
+		void loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady: (id, m, count) => ready.push({ id, match: m, count })
+		});
+
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(ready).toEqual([{ id: 'hist-a', match, count: null }]);
+	});
+
+	it('fires a second onRowReady when the probe refines the playable cap', async () => {
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 24);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const probe = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockReturnValue(probe.promise);
+
+		const ready: { id: string; count: number | null }[] = [];
+		const loaderPromise = loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady: (id, _m, count) => ready.push({ id, count })
+		});
+
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(ready).toEqual([{ id: 'hist-a', count: null }]);
+
+		probe.resolve({ episode_count: 12 });
+		const result = await loaderPromise;
+		expect(ready).toEqual([
+			{ id: 'hist-a', count: null },
+			{ id: 'hist-a', count: 12 }
+		]);
+		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
+	});
+
+	it('does not fire a redundant second callback when the probe has no count', async () => {
+		// A probe that fails or returns no count adds nothing the card
+		// doesn't already have (it fell back to match.episode_count at
+		// release). Re-firing would only re-trigger the episode fetch.
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const fetchAvailability = vi.fn().mockRejectedValue(new Error('breaker open'));
+
+		const onRowReady = vi.fn();
+		const result = await loadContinueWatchingState([entry], {
+			resolveMatch,
+			fetchAvailability,
+			getMode: subMode,
+			onRowReady
+		});
+
+		expect(onRowReady).toHaveBeenCalledTimes(1);
+		expect(onRowReady).toHaveBeenCalledWith('hist-a', match, null);
+		expect(result.playableCounts).toEqual({});
+	});
+});

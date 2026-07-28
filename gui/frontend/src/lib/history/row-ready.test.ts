@@ -232,3 +232,53 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 1 })]]);
 	});
 });
+
+describe('refinement re-fire (render-then-refine)', () => {
+	function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+		let resolveFn!: (v: T) => void;
+		const promise = new Promise<T>((res) => {
+			resolveFn = res;
+		});
+		return { promise, resolve: resolveFn };
+	}
+
+	it('a stale first episode fetch loses to the refinement fetch', async () => {
+		// The loader now calls the handler twice per probed row: once
+		// at match-release (count null), once when the probe refines
+		// the cap. Each call starts an episode fetch; if the FIRST
+		// fetch resolves LAST, its stale episode must not overwrite
+		// the refinement's. Guarded by a per-entry token.
+		const entry = makeEntry('h1', '12', 'Show');
+		const match = makeMatch('k1', 24);
+		const first = defer<KitsuEpisode[]>();
+		const second = defer<KitsuEpisode[]>();
+		const fetchKitsuEpisodes = vi
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const episodes: [string, KitsuEpisode | null][] = [];
+		const handler = makeContinueRowReadyHandler({
+			historyById: new Map([[entry.id, entry]]),
+			fetchKitsuEpisodes,
+			setMatch: () => {},
+			setPlayableCount: () => {},
+			setEpisode: (id, ep) => episodes.push([id, ep])
+		});
+
+		// Release: cap falls back to match.episode_count (24) → next 13.
+		handler(entry.id, match, null);
+		// Refinement: cap 12 → watched 12 of 12 → replay 12.
+		handler(entry.id, match, 12);
+
+		// Refinement's fetch lands first…
+		second.resolve([makeKitsuEpisode(12)]);
+		await Promise.resolve();
+		await Promise.resolve();
+		// …then the stale release-time fetch straggles in.
+		first.resolve([makeKitsuEpisode(13)]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(episodes.at(-1)).toEqual(['h1', makeKitsuEpisode(12)]);
+	});
+});
