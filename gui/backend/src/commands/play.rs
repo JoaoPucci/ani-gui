@@ -222,7 +222,12 @@ async fn enrich_availability_after_success(
         .is_ok()
     {
         let started_at = tokio::time::Instant::now();
-        let got = crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, None).await;
+        let got = crate::scraper::allanime::fetch_show(
+            &state.meta_http,
+            &c.id,
+            state.allanime_base.as_deref(),
+        )
+        .await;
         state
             .scraper_gate
             .record(crate::scraper::gate::outcome_of(&got), started_at);
@@ -328,7 +333,7 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
 }
 
 pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
-    pick_title_and_index_with_base(state, args, None).await
+    pick_title_and_index_with_base(state, args, state.allanime_base.as_deref()).await
 }
 
 /// Scraper-gate priority for a play-shaped request: prefetches (and
@@ -921,6 +926,7 @@ mod tests {
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
         AppState {
+            allanime_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),

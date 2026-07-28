@@ -889,6 +889,7 @@ mod tests {
         use std::path::PathBuf;
         use std::sync::Arc;
         AppState {
+            allanime_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
