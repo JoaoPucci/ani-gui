@@ -1432,4 +1432,38 @@ mod tests {
         assert!(!parsed.episode_count_approximate);
         assert!(cache_hit_is_usable(&parsed));
     }
+
+    /// The search-count fallback happens on TWO paths: the gate
+    /// refusing the detail fetch, and the detail fetch itself
+    /// failing. Both yield the same number with the same half-episode
+    /// overcount, so both have to be marked approximate — otherwise
+    /// the failed-fetch row is cached as exact and the click's
+    /// confirmation reads it straight back.
+    #[test]
+    fn a_failed_detail_fetch_reports_its_count_as_approximate() {
+        let candidate = enrich_candidate(13);
+        let (count, extras, approximate) = enrich_from_show_fetch(
+            Err(crate::error::AniError::Scraper { key: "boom".into() }),
+            &candidate,
+            "sub",
+        )
+        .expect("non-rate-limit errors fall back rather than propagate");
+        assert_eq!(count, Some(13));
+        assert!(extras.is_empty());
+        assert!(
+            approximate,
+            "a search-count fallback is approximate however it was reached"
+        );
+    }
+
+    /// A completed detail fetch is the authoritative count and must
+    /// NOT be marked approximate, or every row would re-probe forever.
+    #[test]
+    fn a_successful_detail_fetch_reports_its_count_as_exact() {
+        let candidate = enrich_candidate(13);
+        let detail = crate::scraper::allanime::ShowMetadata::default();
+        let (_, _, approximate) =
+            enrich_from_show_fetch(Ok(detail), &candidate, "sub").expect("ok");
+        assert!(!approximate, "the detail fetch is authoritative");
+    }
 }
