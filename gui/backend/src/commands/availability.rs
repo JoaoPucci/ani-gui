@@ -204,7 +204,7 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
-    check_availability_with_base(state, args, None).await
+    check_availability_with_base(state, args, state.allanime_base.as_deref()).await
 }
 
 /// [`check_availability`] with the allanime endpoint override exposed
