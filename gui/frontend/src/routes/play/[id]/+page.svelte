@@ -865,6 +865,26 @@
 	 * Cannot collide with a real context, which always carries the
 	 * `id:mode` separator.
 	 */
+	/**
+	 * Which visit to this route the answer belongs to.
+	 *
+	 * The show and the mode describe the ROW being asked about, and
+	 * both come back when the user does. SvelteKit reuses this
+	 * component across an A→B→A round trip, so nothing is destroyed
+	 * and a click abandoned two navigations ago finds the context it
+	 * left behind and acts on it. This advances on every id
+	 * transition, so a question can only be answered to the page that
+	 * asked it (Codex P2 #3674767163).
+	 *
+	 * Derived from the route param rather than the loaded detail: the
+	 * detail is briefly null on any load, and treating that as a
+	 * departure would invalidate a probe nobody navigated away from.
+	 */
+	const visit = $derived.by(() => {
+		void id;
+		return (visitCounter += 1);
+	});
+	let visitCounter = 0;
 	const GONE = 'gone';
 	let gone = false;
 	onDestroy(() => {
@@ -892,7 +912,7 @@
 	 * open to the lookup.
 	 */
 	const writeback = createAvailabilityWriteback(() =>
-		gone ? GONE : `${detail?.id ?? ''}:${capGateMode()}`
+		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
 		if (patch.available !== undefined) showListed = patch.available;
@@ -928,7 +948,7 @@
 				extraEpisodes: r.extra_episodes ?? []
 			};
 		},
-		currentContext: () => (gone ? GONE : `${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
