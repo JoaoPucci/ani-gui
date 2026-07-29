@@ -1,8 +1,22 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import { createApproximateCollector, type ApproximateRow } from './approximate-retry';
 
 export interface ContinueWatchingState {
 	matches: Record<string, KitsuAnimeRef | null>;
 	playableCounts: Record<string, number>;
+	/**
+	 * Rows the scraper gate refused, so their cap is the search hit's
+	 * count rather than a confirmed one. The loader is the only thing
+	 * that sees the flag per row, so it collects them here for
+	 * `retryApproximateCaps` to ask again once the breaker recovers.
+	 *
+	 * Carries the match, not just the id: a re-probe is the same
+	 * availability call this pass made, and that call is keyed on the
+	 * match. Rows with no count at all are absent — there is no wrong
+	 * number to correct, only the match.episode_count fallback the
+	 * card already shows.
+	 */
+	approximateRows: ApproximateRow[];
 }
 
 export interface ContinueWatchingLoaderDeps {
@@ -103,6 +117,9 @@ export async function loadContinueWatchingState(
 	const concurrency = deps.probeConcurrency ?? 4;
 	const matches: Record<string, KitsuAnimeRef | null> = {};
 	const playableCounts: Record<string, number> = {};
+	// Reports every probed row; the collector keeps the ones a retry
+	// should ask about again.
+	const unconfirmed = createApproximateCollector();
 	const modePromise = deps.getMode().catch(() => 'sub' as const);
 
 	const queue: { entry: HistoryEntry; match: KitsuAnimeRef }[] = [];
@@ -155,6 +172,7 @@ export async function loadContinueWatchingState(
 			// row's episode fetch for an identical cap.
 			if (typeof count === 'number') {
 				finalizeRow(job.entry.id, job.match, count, approximate);
+				unconfirmed.record(job.entry.id, job.match, approximate);
 			}
 			pendingProbes--;
 			maybeFinishLoad();
@@ -205,5 +223,5 @@ export async function loadContinueWatchingState(
 
 	if (history.length === 0) drainResolve();
 	await drainSignal;
-	return { matches, playableCounts };
+	return { matches, playableCounts, approximateRows: unconfirmed.rows };
 }

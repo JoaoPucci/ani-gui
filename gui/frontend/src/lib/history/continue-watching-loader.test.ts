@@ -427,3 +427,60 @@ it('reports an exact background count as exact', async () => {
 	});
 	expect(onRowReady).toHaveBeenCalledWith('hist-b', match, 12, false);
 });
+
+describe('reporting the rows whose cap is still unconfirmed', () => {
+	it('lists a row whose probe answered approximate, with the match to re-ask with', async () => {
+		const entry = makeEntry('hist-refused', '5', 'Gate Refused');
+		const match = makeMatch('k-refused', 26);
+
+		const result = await loadContinueWatchingState([entry], {
+			resolveMatch: () => Promise.resolve(match),
+			fetchAvailability: () =>
+				Promise.resolve({ episode_count: 27, episode_count_approximate: true }),
+			getMode: subMode
+		});
+
+		// The caller retrying these needs the Kitsu match, not just the
+		// id: a re-probe is the same availability call the first pass
+		// made, and that call is keyed on the match.
+		expect(result.approximateRows).toEqual([{ entryId: 'hist-refused', match }]);
+	});
+
+	it('leaves out rows whose probe came back confirmed', async () => {
+		const entry = makeEntry('hist-exact', '5', 'Answered');
+		const match = makeMatch('k-exact', 26);
+
+		const result = await loadContinueWatchingState([entry], {
+			resolveMatch: () => Promise.resolve(match),
+			fetchAvailability: () =>
+				Promise.resolve({ episode_count: 26, episode_count_approximate: false }),
+			getMode: subMode
+		});
+
+		expect(result.approximateRows).toEqual([]);
+	});
+
+	it('leaves out rows whose probe never produced a count', async () => {
+		const rejects = makeEntry('hist-rejects', '5', 'Probe Fails');
+		const empty = makeEntry('hist-null', '5', 'No Answer');
+		const unmatched = makeEntry('hist-unmatched', '5', 'No Match');
+		const m1 = makeMatch('k-rej', 26);
+		const m2 = makeMatch('k-null', 26);
+
+		const result = await loadContinueWatchingState([rejects, empty, unmatched], {
+			resolveMatch: (entry: HistoryEntry) => {
+				if (entry.id === 'hist-rejects') return Promise.resolve(m1);
+				if (entry.id === 'hist-null') return Promise.resolve(m2);
+				return Promise.resolve(null);
+			},
+			fetchAvailability: (match: KitsuAnimeRef) =>
+				match.id === 'k-rej' ? Promise.reject(new Error('network')) : Promise.resolve(null),
+			getMode: subMode
+		});
+
+		// None of these carry a wrong number to correct — the card is
+		// already on its match.episode_count fallback, which is what a
+		// countless probe leaves it on either way.
+		expect(result.approximateRows).toEqual([]);
+	});
+});
