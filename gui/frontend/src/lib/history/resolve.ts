@@ -504,6 +504,42 @@ export function isEpisodeCountCompatible(
 	return ratio <= 0.25;
 }
 
+/**
+ * Whether a search hit may stand as a candidate for this history row.
+ *
+ * Two of the three tests here reject on evidence the hit itself
+ * carries — a music video is never an allmanga show, and a count far
+ * from the user's is a different show. The third exists because the
+ * countless-airing lane accepts on no count evidence at all: it only
+ * says a broadcasting show legitimately has no announced total, which
+ * says nothing about WHICH broadcasting show. Above the threshold,
+ * where the count would otherwise have done the rejecting, the hit
+ * has to earn its place on title overlap instead — otherwise the
+ * first airing countless hit the text search returned wins, and
+ * `resolveKitsuMatch` caches its id for a row the user then clicks.
+ *
+ * Below the threshold nothing changes: a countless hit was always
+ * acceptable there, because an ongoing single-cour show has no total
+ * yet either.
+ */
+export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
+	if (isMusicSubtype(hit.subtype)) return false;
+	if (!isEpisodeCountCompatible(preliminary.courSize, hit.episode_count, hit.status)) return false;
+	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
+	return titlesPlausiblySameShow(preliminary.searchTitle, hit);
+}
+
+/** True for the one lane whose acceptance rests on airing status
+ *  rather than on the count: no total, currently broadcasting, and a
+ *  history long enough that the count would otherwise have rejected. */
+function acceptedOnAiringStatusAlone(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
+	return (
+		hit.episode_count == null &&
+		isAiringStatus(hit.status) &&
+		(preliminary.courSize ?? 0) > FINISHED_SHOW_COUR_THRESHOLD
+	);
+}
+
 export function pickKitsuMatch(
 	hits: KitsuAnimeRef[],
 	preliminary: ResumeTarget
@@ -518,11 +554,7 @@ export function pickKitsuMatch(
 	// When nothing survives, surface null so resolveKitsuMatch falls through
 	// to the alias-enrichment path (retries with allmanga englishName / altNames)
 	// instead of the picker landing on a wrong match.
-	const candidates = hits.filter(
-		(h) =>
-			!isMusicSubtype(h.subtype) &&
-			isEpisodeCountCompatible(preliminary.courSize, h.episode_count, h.status)
-	);
+	const candidates = hits.filter((h) => isCandidateForRow(preliminary, h));
 	if (candidates.length === 0) {
 		return null;
 	}
