@@ -95,7 +95,13 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-const screen = () => target.textContent ?? '';
+/** The Continue row's resolved card. The loading branch is a
+ *  non-interactive `div`, so a button carrying the show's name exists
+ *  only once the row's Kitsu match has landed. */
+const resumeButton = () =>
+	Array.from(target.querySelectorAll('button')).find((b) =>
+		b.textContent?.includes('Cowboy Bebop')
+	) ?? null;
 
 describe('home Continue Watching', () => {
 	it('probes availability under the configured mode, not the sub fallback', async () => {
@@ -144,21 +150,23 @@ describe('home Continue Watching', () => {
 
 		app = mount(HomePage, { target });
 
-		// The card renders the moment the row's MATCH is known — the
-		// loader releases it without waiting on the availability probe.
-		// So this is the causal point at which an ungated loader would
-		// already have probed, and asserting here does not depend on
-		// how fast the worker got through history and resolution.
-		await until(
-			() => screen().includes('Cowboy Bebop'),
-			'the history row to resolve and render its card'
-		);
+		// The RESOLVED card, not the title. While `match` is undefined
+		// the row renders a loading placeholder that already shows the
+		// history entry's own title, so waiting on text would fire
+		// before any Kitsu matching happened. Only the resolved branch
+		// renders an interactive button — matching is finished by the
+		// time one exists.
+		await until(() => resumeButton() !== null, 'the row to resolve into an interactive card');
 		expect(probedModes).toEqual([]);
 
 		releaseSettings();
 
 		await until(() => probedModes.length > 0, 'the row to be probed once settings resolved');
+
+		// The assertion that carries the weight, and the one that needs
+		// no ordering luck: whatever probes happen, they all carry the
+		// configured mode. An ungated loader reads the 'sub' fallback,
+		// so its probes fail this whenever they are issued.
 		expect(probedModes.every((m) => m === 'dub')).toBe(true);
-		expect(screen()).toContain('Cowboy Bebop');
 	});
 });
