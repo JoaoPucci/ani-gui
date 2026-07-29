@@ -326,6 +326,99 @@ describe('play route — clicking a dimmed aired episode', () => {
 		release();
 	});
 
+	it('does not let the page-load lookup overwrite a re-ask that already answered', async () => {
+		let releaseSettings!: () => void;
+		const settingsHeld = new Promise<void>((r) => {
+			releaseSettings = r;
+		});
+		let releaseModeLookup!: () => void;
+		const modeLookupHeld = new Promise<void>((r) => {
+			releaseModeLookup = r;
+		});
+		let ordinaryLookups = 0;
+
+		server.use(
+			// Settings land after the page does and flip the mode, which
+			// restarts the availability lookup. That restart is what
+			// puts an ordinary request in flight beside a re-ask.
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await settingsHeld;
+				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) {
+					// The user's re-ask. Authoritative and newest.
+					return HttpResponse.json({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: ['4.5'],
+						episode_count_approximate: false
+					});
+				}
+				ordinaryLookups += 1;
+				if (ordinaryLookups === 1) {
+					return HttpResponse.json({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					});
+				}
+				// The mode change's lookup, held until after the re-ask
+				// has landed — and unconfirmed, so its empty specials
+				// list is "could not look" rather than "there are none".
+				await modeLookupHeld;
+				return HttpResponse.json({
+					available: true,
+					episode_count: 2,
+					extra_episodes: [],
+					episode_count_approximate: true
+				});
+			})
+		);
+
+		app = mount(PlayPage, { target });
+		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
+		await until(() => ordinaryLookups === 1, 'the first availability lookup');
+
+		// Mode flips; its lookup goes out and stays out.
+		releaseSettings();
+		await until(() => ordinaryLookups === 2, 'the mode change to restart the lookup');
+
+		card(AIRED)!.click();
+		await until(
+			() => target.querySelector('li[data-ep-num="4.5"]') !== null,
+			'the re-ask to land and add the special'
+		);
+
+		releaseModeLookup();
+
+		// Bounded, and sound for the same reason as elsewhere: the
+		// write happens on the microtask after the response resolves,
+		// so anything that was going to clobber has by now.
+		await new Promise((r) => setTimeout(r, 300));
+
+		// Both halves of the clobber. The older answer is staler AND
+		// unconfirmed, so letting it win would delete a special that
+		// exists and roll the cap back to a number nobody confirmed.
+		expect(target.querySelector('li[data-ep-num="4.5"]')).not.toBeNull();
+		expect(card(4)?.getAttribute('title')).not.toBe(m.detail_ep_recheck_idle());
+	});
+
 	it('presents the dimmed card as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
