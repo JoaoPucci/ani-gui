@@ -34,12 +34,48 @@ import { beyondPlayable } from './episode-caps';
  *     failed → say so. Silence is indistinguishable from the dead
  *     tile this exists to replace.
  */
+/** What allmanga said, whole. The re-ask replaces the backend's
+ *  entire cached row, so the answer is a row rather than a number. */
+export interface CapGateAnswer {
+	/** Highest integer episode, or null when there is no number. */
+	count: number | null;
+	/** The count came from the search hit rather than the per-show
+	 *  fetch — it counts half-episodes as whole ones and can read one
+	 *  high. Also means `extraEpisodes` is empty because the fetch
+	 *  that would have listed them failed. */
+	approximate: boolean;
+	/** Whether the catalogue has the show at all. */
+	available: boolean;
+	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
+	extraEpisodes: string[];
+}
+
+/**
+ * The parts of a fresh answer a route may write to its own state.
+ *
+ * The routes were reading one field out of a whole replaced row, so
+ * a delisted show stayed enabled and a strip kept its mount-time
+ * specials. This is what survives validation — same context, and
+ * confirmed where confirmation matters.
+ */
+export interface CapGateRefresh {
+	/** Always trustworthy: a search that could not be completed comes
+	 *  back as a failure, never as a false. */
+	available: boolean;
+	/** Null when the answer was unconfirmed — a count that can read
+	 *  high must not replace a real cap. */
+	count: number | null;
+	/** Null when the answer was unconfirmed. The empty list an
+	 *  unconfirmed answer carries means "could not look", not "there
+	 *  are none", and writing it would delete specials that exist. */
+	extraEpisodes: string[] | null;
+}
+
 export interface CapGateProbeDeps {
-	/** Ask allmanga how many episodes it has for THIS SHOW, skipping
-	 *  the cached row. Answers with the count AND whether the backend
-	 *  confirmed it; null when it could not answer at all. Takes no
-	 *  episode: the question is show-level. */
-	probe: () => Promise<{ count: number | null; approximate: boolean } | null>;
+	/** Ask allmanga about THIS SHOW, skipping the cached row. Answers
+	 *  with the whole fresh row; null when it could not answer at all.
+	 *  Takes no episode: the question is show-level. */
+	probe: () => Promise<CapGateAnswer | null>;
 	/** What the answer will be about — read when the click goes out and
 	 *  again when it lands. Everything that changes the meaning of a
 	 *  count belongs in here: the show, because both routes reuse one
@@ -47,13 +83,14 @@ export interface CapGateProbeDeps {
 	 *  catalogues sub and dub separately and settings arrive after the
 	 *  page does. */
 	currentContext: () => string;
-	/** The fresh count reaches the episode — publish it and play. */
-	onCleared: (episode: number, count: number) => void;
-	/** The catalogue answered, and the episode is still not in it.
-	 *  Carries the confirmed count so the strip can correct itself when
-	 *  the catalogue has shrunk, and null when nothing publishable came
-	 *  back. */
-	onStillGated: (episode: number, count: number | null) => void;
+	/** The fresh count reaches the episode — apply the refresh and
+	 *  play. `count` is the same number as `refresh.count`, passed
+	 *  separately so the play path does not re-narrow a nullable. */
+	onCleared: (episode: number, count: number, refresh: CapGateRefresh) => void;
+	/** The catalogue answered, and the episode is still not in it. The
+	 *  refresh still matters — the show may be gone, the cap may have
+	 *  shrunk, the specials may have changed. */
+	onStillGated: (episode: number, refresh: CapGateRefresh) => void;
 	/** We could not ask — offline, rate-limited, backend error. A
 	 *  different sentence: saying "not in the catalogue" here claims a
 	 *  fact nobody established. */
@@ -64,12 +101,39 @@ export interface CapGateProbeDeps {
 	onSuperseded: (episode: number) => void;
 }
 
+/**
+ * Which parts of an answer a route may write. Three fields, three
+ * different reasons to trust them.
+ *
+ * The verdict always. It comes from the search, which either found
+ * the show or did not; an incomplete search is reported upstream as
+ * a failure, so a `false` here was established rather than assumed.
+ *
+ * The extras whenever the per-show fetch answered. That fetch is
+ * what lists them, so `approximate` — which means precisely that it
+ * did not answer — is the only thing that makes the empty list a
+ * "could not look" rather than a "there are none". A delisted show
+ * genuinely has none, and a show whose episodes are all non-integer
+ * has a real list alongside a null count.
+ *
+ * The count only when it is both confirmed and a number. A count
+ * that can read one high must not replace a real cap, and an absent
+ * one is not a cap at all.
+ */
+function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
+	return {
+		available: answer.available,
+		count: answer.approximate ? null : answer.count,
+		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
+	};
+}
+
 export function createCapGateProbe(deps: CapGateProbeDeps): {
 	request: (episode: number) => void;
 	isProbing: (episode: number) => boolean;
 } {
 	/** The shared in-flight lookup, or null when none is out. */
-	let pending: Promise<{ count: number | null; approximate: boolean } | null> | null = null;
+	let pending: Promise<CapGateAnswer | null> | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
 	 *  to the tile the user pressed rather than to the whole strip. */
 	const waiting = new Set<number>();
@@ -95,30 +159,29 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 				.then((answer) => {
 					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);
 					if (answer == null) return deps.onFailed(episode);
+					const refresh = refreshFrom(answer);
 					// An unconfirmed count came from the search hit rather
 					// than the per-show fetch: it counts half-episodes as
 					// whole ones and can read one high, so clearing on it
-					// starts resolving an episode that does not exist —
-					// and publishing it would replace a real cap with a
-					// guess. Nothing to hand back.
-					if (answer.approximate || answer.count == null) {
-						return deps.onStillGated(episode, null);
-					}
+					// starts resolving an episode that does not exist. The
+					// verdict still goes back — a delisted show is news
+					// whatever the count did.
+					if (refresh.count == null) return deps.onStillGated(episode, refresh);
 					// `beyondPlayable` decides the rest, rather than a
 					// fresh comparison: the rule that dimmed the tile has
 					// to be the rule that un-dims it, half-episode
 					// floor-compare included.
 					//
-					// The count goes back either way. A confirmed answer
+					// The refresh goes back either way. A confirmed count
 					// SHORTER than what the page is showing is news:
 					// allmanga pulls episodes and corrects metadata, and
 					// until the strip hears about it every tile between
 					// the two caps stays enabled on a number that is no
 					// longer true.
-					if (beyondPlayable(episode, answer.count)) {
-						return deps.onStillGated(episode, answer.count);
+					if (beyondPlayable(episode, refresh.count)) {
+						return deps.onStillGated(episode, refresh);
 					}
-					deps.onCleared(episode, answer.count);
+					deps.onCleared(episode, refresh.count, refresh);
 				})
 				// Same guard on the failure path: an error toast about a
 				// title the user has already left is noise attached to

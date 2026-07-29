@@ -62,7 +62,7 @@
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
-	import { createCapGateProbe } from '$lib/detail/cap-gate-probe';
+	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
@@ -849,6 +849,23 @@
 	 * the real mode can arrive while the answer is out.
 	 */
 	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
+	/**
+	 * Write back what the re-ask learned about the show.
+	 *
+	 * The lookup replaces the backend's whole cached row, so the strip
+	 * takes the whole row too — not just the number the click was
+	 * about. A shrunken cap would otherwise leave cards enabled above
+	 * it, and the specials spliced into the strip would stay the
+	 * mount-time snapshot: one catalogued since then invisible, one
+	 * pulled since then still on screen and still playable.
+	 *
+	 * Nulls mean "the answer did not establish this", so they are
+	 * skipped rather than written.
+	 */
+	function applyCapGateRefresh(refresh: CapGateRefresh) {
+		if (refresh.count != null) playableEpisodeCount = refresh.count;
+		if (refresh.extraEpisodes != null) extraEpisodes = refresh.extraEpisodes;
+	}
 	const capGate = createCapGateProbe({
 		probe: async () => {
 			const d = detail;
@@ -866,22 +883,23 @@
 				// being questioned and never reaches allmanga.
 				bypass_cache: true
 			});
-			// The controller decides what an unconfirmed count means;
-			// this just carries the provenance across.
-			return { count: r.episode_count, approximate: r.episode_count_approximate === true };
+			// The whole row, not one field of it. The controller decides
+			// which parts of a fresh answer are safe to write back.
+			return {
+				count: r.episode_count,
+				approximate: r.episode_count_approximate === true,
+				available: r.available,
+				extraEpisodes: r.extra_episodes ?? []
+			};
 		},
 		currentContext: () => `${detail?.id ?? ''}:${capGateMode()}`,
-		onCleared: (episode, count) => {
-			playableEpisodeCount = count;
+		onCleared: (episode, _count, refresh) => {
+			applyCapGateRefresh(refresh);
 			switchBusy = false;
 			void switchToEpisode(episode);
 		},
-		onStillGated: (_episode, count) => {
-			// A confirmed count comes back even when it did not reach the
-			// episode, and it can be LOWER than what the strip is showing
-			// — allmanga pulls episodes. Publishing it re-dims the cards
-			// that were enabled on the stale number.
-			if (count != null) playableEpisodeCount = count;
+		onStillGated: (_episode, refresh) => {
+			applyCapGateRefresh(refresh);
 			switchBusy = false;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
 		},
