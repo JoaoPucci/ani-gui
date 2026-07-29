@@ -24,11 +24,17 @@ import type { KitsuAnimeRef } from '$lib/api';
  *     probe. So rows are retried strictly one at a time; firing them
  *     all at once spends the single trial on one row and gets the
  *     rest refused again.
- *   - A confirmed answer is proof the gate is admitting, so the
- *     remaining rows drop to the ordinary background spacing instead
- *     of sitting out a cooldown each.
- *   - Another refusal means the breaker just re-opened, so the next
- *     row is due for a full cooldown again.
+ *   - The first ask is at the ordinary background spacing, not a
+ *     cooldown. An unconfirmed count does not prove the gate refused
+ *     — the backend falls back to the same search-hit count for any
+ *     detail-fetch failure, and one transient error is far below the
+ *     breaker's threshold. Assuming the worst there costs a minute of
+ *     a visibly wrong card for nothing; assuming the best costs one
+ *     probe the gate turns away without touching the network.
+ *   - A retry that comes back unconfirmed IS a fresh refusal, so the
+ *     breaker has just re-opened and later rows wait a full cooldown.
+ *   - A confirmed answer proves the gate is admitting, so the
+ *     remaining rows drop back to the ordinary spacing.
  *
  * Probes stay in the BACKGROUND lane. Retrying as interactive would
  * walk this traffic straight past the gate that exists to keep it
@@ -105,10 +111,14 @@ export async function retryApproximateCaps(
 	const pacedMs = deps.pacedMs ?? DEFAULT_PACED_MS;
 
 	const queue = rows.map((row) => ({ row, attempts: 0 }));
-	// Every row in the queue is here because the gate refused it, so
-	// the breaker was open as of the first pass. Start by assuming it
-	// still is; the first confirmed answer says otherwise.
-	let breakerOpen = true;
+	// Start optimistic. An unconfirmed count is NOT proof the gate
+	// refused: the backend falls back to the same search-hit count
+	// whenever the detail fetch fails at all, and a single transient
+	// error sits well below the breaker's three-failure threshold.
+	// Opening with a cooldown on that assumption would leave the card
+	// wrong for a full minute while the gate was admitting throughout.
+	// Escalation is driven by evidence instead, below.
+	let breakerOpen = false;
 
 	while (queue.length > 0) {
 		if (deps.cancelled?.()) return;
