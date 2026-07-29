@@ -1007,41 +1007,54 @@
 	// the warm holds during the refetch. The cache stamp from the play
 	// handler that brought us here is usually in place, so this is
 	// sub-ms in the common case.
+	// The mode as a value rather than as "whatever `config` currently
+	// is". Settings resolving from null to `sub` leaves the answer
+	// unchanged, and a derived that compares equal does not wake its
+	// dependents — so the common case costs one lookup, not two
+	// identical ones against a source that rate-limits.
+	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+
 	$effect(() => {
 		const d = detail;
+		const mode = availabilityMode;
 		if (!d) return;
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		availabilityResolved = false;
 		let cancelled = false;
-		const settle = writeback.begin();
-		void checkAvailability({
-			title: d.canonical_title,
-			mode,
-			alt_titles: altTitlesFromKitsu(d),
-			episode_count: d.episode_count ?? undefined,
-			year: yearFromKitsuRef(d) ?? undefined,
-			kitsu_id: d.id,
-			status: d.status ?? undefined
-		})
-			.then((r) => {
-				if (cancelled) return;
-				// Whatever a re-ask has since established is the re-ask's
-				// — it is newer and it bypassed the cache. Anything it
-				// left unanswered is still this lookup's to fill.
-				applyAvailabilityPatch(
-					settle({
-						available: r.available,
-						count: r.episode_count,
-						extraEpisodes: r.extra_episodes
-					})
-				);
+		// Untracked below the two reads above: opening the writeback
+		// ticket reads the context, the context reads `config`, and that
+		// would put the effect back on `config`'s identity instead of on
+		// the mode it resolves to.
+		untrack(() => {
+			availabilityResolved = false;
+			const settle = writeback.begin();
+			void checkAvailability({
+				title: d.canonical_title,
+				mode,
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined
 			})
-			.catch(() => {
-				// Cap falls back to Kitsu's count; nothing else to do.
-			})
-			.finally(() => {
-				if (!cancelled) availabilityResolved = true;
-			});
+				.then((r) => {
+					if (cancelled) return;
+					// Whatever a re-ask has since established is the
+					// re-ask's — it is newer and it bypassed the cache.
+					// Anything it left unanswered is still this lookup's.
+					applyAvailabilityPatch(
+						settle({
+							available: r.available,
+							count: r.episode_count,
+							extraEpisodes: r.extra_episodes
+						})
+					);
+				})
+				.catch(() => {
+					// Cap falls back to Kitsu's count; nothing else to do.
+				})
+				.finally(() => {
+					if (!cancelled) availabilityResolved = true;
+				});
+		});
 		return () => {
 			cancelled = true;
 		};

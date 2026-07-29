@@ -12,7 +12,7 @@
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -599,6 +599,76 @@
 	let config = $state<Config | null>(null);
 	let configError = $state<string | null>(null);
 
+	// The mode as a value rather than as "whatever `config` currently
+	// is". Settings resolving from null to `sub` leaves the answer
+	// unchanged, and a derived that compares equal does not wake its
+	// dependents — so the common case costs one lookup, not two
+	// identical ones against a source that rate-limits.
+	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+
+	// Availability against allmanga. Result gates the Play + Download
+	// CTAs so titles outside the catalogue (Western animation, etc.)
+	// get a calm "Not on allmanga" notice instead of a click → error
+	// overlay, and its episode count caps the tiles.
+	//
+	// Its own effect, reading the mode directly, because the mode
+	// arrives after the page does: settings resolve late, so the first
+	// lookup goes out with the fallback `sub`, and a sub count says
+	// nothing about the dub catalogue. Reading the mode inside the
+	// load callback made it invisible to the effect, so nothing
+	// reissued the question and the page kept no cap at all — every
+	// aired dub tile playable until the user navigated (Codex P2
+	// #3674916858). The play route already worked this way.
+	//
+	// Network errors leave availability null — the lazy click-failure
+	// path then handles it.
+	$effect(() => {
+		const d = detail;
+		const mode = availabilityMode;
+		if (!d || isMusicSubtype(d.subtype)) return;
+		let cancelled = false;
+		// Untracked below the two reads above: opening the writeback
+		// ticket reads the context, the context reads `config`, and that
+		// would put the effect back on `config`'s identity instead of on
+		// the mode it resolves to — one wasted lookup on every load.
+		untrack(() => {
+			availabilityResolved = false;
+			const settle = writeback.begin();
+			void checkAvailability({
+				title: d.canonical_title,
+				mode,
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined
+			})
+				.then((r) => {
+					if (cancelled) return;
+					// Whatever a re-ask has since established is the
+					// re-ask's — it is newer and it bypassed the cache.
+					// Anything it left unanswered is still this lookup's.
+					applyAvailabilityPatch(
+						settle({
+							available: r.available,
+							count: r.episode_count,
+							extraEpisodes: r.extra_episodes
+						})
+					);
+				})
+				.catch(() => {
+					// Leave null; lazy fallback in the click handler will
+					// still surface the error.
+				})
+				.finally(() => {
+					if (!cancelled) availabilityResolved = true;
+				});
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	// Synopsis collapse/expand. Default collapsed (long synopses are
 	// dominant otherwise); expands on user request.
 	let synopsisExpanded = $state(false);
@@ -806,48 +876,10 @@
 					// Music videos (a YOASOBI MV, say) never exist on allanime —
 					// it indexes anime episodes, not song clips. Mark the show
 					// unavailable up front instead of letting the probe fuzzy-match
-					// an unrelated anime and play the wrong show.
+					// an unrelated anime and play the wrong show. The lookup
+					// effect below stands down for these.
 					availability = false;
 					availabilityResolved = true;
-				} else {
-					// Probe allmanga in the background. Result gates the
-					// Play + Download CTAs so titles outside the catalog
-					// (Western animation, etc.) get a calm "Not on
-					// allmanga" notice instead of a click → error overlay.
-					// Network errors leave availability null — the lazy
-					// click-failure path then handles it.
-					const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-					const settle = writeback.begin();
-					void checkAvailability({
-						title: d.canonical_title,
-						mode,
-						alt_titles: altTitlesFromKitsu(d),
-						episode_count: d.episode_count ?? undefined,
-						year: yearFromKitsuRef(d) ?? undefined,
-						kitsu_id: d.id,
-						status: d.status ?? undefined
-					})
-						.then((r) => {
-							if (id !== currentId) return;
-							// Whatever a re-ask has since established is the
-							// re-ask's — it is newer and it bypassed the
-							// cache. Anything it left unanswered is still
-							// this lookup's to fill.
-							applyAvailabilityPatch(
-								settle({
-									available: r.available,
-									count: r.episode_count,
-									extraEpisodes: r.extra_episodes
-								})
-							);
-						})
-						.catch(() => {
-							// Leave null; lazy fallback in the click handler
-							// will still surface the error.
-						})
-						.finally(() => {
-							if (id === currentId) availabilityResolved = true;
-						});
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
