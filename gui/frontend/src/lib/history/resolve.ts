@@ -364,8 +364,23 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * the allanime title is an uninformative stub or no Kitsu title is comparable.
  */
 export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
+	// Only a REFUTED identity rejects. A binding that carries other
+	// evidence should not be thrown away because the titles could not
+	// be compared — which is what 'unjudged' means.
+	return titleIdentity(allanimeTitle, ref) !== 'refuted';
+}
+
+/** Whether the titles say these are the same show, say they are not,
+ *  or say nothing at all. The third is a real and distinct outcome:
+ *  an allmanga stub like '1P' has no tokens worth comparing, and a
+ *  hit can carry no usable title of its own. Callers with other
+ *  evidence treat 'unjudged' as acceptable; a caller relying on
+ *  identity ALONE must require 'proven'. */
+export type TitleIdentity = 'proven' | 'refuted' | 'unjudged';
+
+export function titleIdentity(allanimeTitle: string, ref: KitsuAnimeRef): TitleIdentity {
 	const a = titleTokens(allanimeTitle.replace(EPISODE_TAIL_RE, ''));
-	if (!titleIsInformative(a)) return true;
+	if (!titleIsInformative(a)) return 'unjudged';
 	const candidates: string[] = [];
 	if (ref.canonical_title) candidates.push(ref.canonical_title);
 	if (ref.titles) candidates.push(...Object.values(ref.titles));
@@ -380,8 +395,8 @@ export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRe
 		for (const t of a) if (k.has(t)) inter++;
 		best = Math.max(best, Math.min(inter / a.size, inter / k.size));
 	}
-	if (!sawCandidate) return true;
-	return best >= TITLE_OVERLAP_MIN;
+	if (!sawCandidate) return 'unjudged';
+	return best >= TITLE_OVERLAP_MIN ? 'proven' : 'refuted';
 }
 
 /** What to do with a cached Kitsu detail bound to a history entry. `trust` =
@@ -526,7 +541,11 @@ export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef)
 	if (isMusicSubtype(hit.subtype)) return false;
 	if (!isEpisodeCountCompatible(preliminary.courSize, hit.episode_count, hit.status)) return false;
 	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
-	return titlesPlausiblySameShow(preliminary.searchTitle, hit);
+	// 'proven', not merely not-refuted: this lane has no count
+	// evidence to fall back on, so an unjudged title would accept the
+	// hit on nothing — and would take an allmanga stub like '1P' away
+	// from the alias enrichment that exists to resolve it.
+	return titleIdentity(preliminary.searchTitle, hit) === 'proven';
 }
 
 /** True for the one lane whose acceptance rests on airing status
