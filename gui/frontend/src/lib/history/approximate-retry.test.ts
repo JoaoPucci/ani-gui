@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { retryApproximateCaps, type ApproximateRow } from './approximate-retry';
+import {
+	createApproximateCollector,
+	retryApproximateCaps,
+	type ApproximateRow
+} from './approximate-retry';
 import type { KitsuAnimeRef } from '$lib/api';
 
 function ref(id: string): KitsuAnimeRef {
@@ -16,6 +20,10 @@ function ref(id: string): KitsuAnimeRef {
 		episode_count: 26,
 		status: 'finished',
 		start_date: '2019-01-01',
+		end_date: null,
+		subtype: 'TV',
+		age_rating: null,
+		popularity_rank: null,
 		average_rating: null
 	};
 }
@@ -37,16 +45,18 @@ function fakeClock() {
  *  has been probed. Anything past the end repeats the last entry. */
 function answers(...seq: ({ count: number | null; approximate: boolean } | 'reject')[]) {
 	const probes: string[] = [];
+	const modes: string[] = [];
 	const per = new Map<string, number>();
-	const fetchAvailability = vi.fn(async (match: KitsuAnimeRef) => {
+	const fetchAvailability = vi.fn(async (match: KitsuAnimeRef, mode: 'sub' | 'dub') => {
 		probes.push(match.id);
+		modes.push(mode);
 		const n = per.get(match.id) ?? 0;
 		per.set(match.id, n + 1);
 		const a = seq[Math.min(n, seq.length - 1)];
 		if (a === 'reject') throw new Error('probe failed');
 		return { episode_count: a.count, episode_count_approximate: a.approximate };
 	});
-	return { probes, fetchAvailability };
+	return { probes, modes, fetchAvailability };
 }
 
 const exact = (count: number) => ({ count, approximate: false });
@@ -252,13 +262,10 @@ describe('retryApproximateCaps', () => {
 
 	it('probes under the configured mode', async () => {
 		const clock = fakeClock();
-		const seen: string[] = [];
+		const { fetchAvailability, modes } = answers(exact(12));
 
 		await retryApproximateCaps([row('a')], {
-			fetchAvailability: async (_m, mode) => {
-				seen.push(mode);
-				return { episode_count: 12, episode_count_approximate: false };
-			},
+			fetchAvailability,
 			mode: 'dub',
 			onRefined: () => {},
 			wait: clock.wait
@@ -267,7 +274,7 @@ describe('retryApproximateCaps', () => {
 		// A dub user probed under 'sub' reads a playable count for a
 		// track they are not watching — the same mismatch the loader's
 		// getMode gate exists to prevent.
-		expect(seen).toEqual(['dub']);
+		expect(modes).toEqual(['dub']);
 	});
 
 	it('does nothing at all when no row came back approximate', async () => {
@@ -303,5 +310,25 @@ describe('retryApproximateCaps', () => {
 		// card's match.episode_count fallback with nothing.
 		expect(onRefined).not.toHaveBeenCalled();
 		expect(probes).toEqual(['a', 'a']);
+	});
+});
+
+describe('createApproximateCollector', () => {
+	it('keeps only the rows whose count arrived unconfirmed', () => {
+		const c = createApproximateCollector();
+		const a = ref('a');
+		const b = ref('b');
+
+		c.record('hist-a', a, true);
+		c.record('hist-b', b, false);
+
+		expect(c.rows).toEqual([{ entryId: 'hist-a', match: a }]);
+	});
+
+	it('starts empty and stays empty when nothing was refused', () => {
+		const c = createApproximateCollector();
+		expect(c.rows).toEqual([]);
+		c.record('hist-a', ref('a'), false);
+		expect(c.rows).toEqual([]);
 	});
 });

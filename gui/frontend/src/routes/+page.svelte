@@ -81,6 +81,7 @@
 	import type { VideoSession } from '$lib/play/global-video';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
+	import { retryApproximateCaps } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
@@ -184,6 +185,29 @@
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
 		}
 	});
+
+	/**
+	 * Publishes a cap the background side learned — the loader's first
+	 * pass and `retryApproximateCaps`' later re-probe both land here.
+	 * The count and its provenance resolve as ONE value through the
+	 * cap authority: a pinned number with a fresh flag beside it is a
+	 * cap that contradicts itself, and the next click acts on
+	 * whichever half is wrong.
+	 */
+	const publishLoaderCap = (
+		id: string,
+		match: KitsuAnimeRef | null,
+		count: number | null,
+		approximate: boolean
+	) => {
+		const cap = capAuthority.resolveLoaderCap(id, { count, approximate });
+		historyApproximateCaps = { ...historyApproximateCaps, [id]: cap.approximate };
+		rowReady(id, match, cap.count);
+	};
+
+	// Flipped when the route tears down, so a retry loop that outlives
+	// its page stops probing allmanga for a strip nobody is looking at.
+	let continueRetryCancelled = false;
 
 	// Continue Watching rows after first-occurrence-wins dedupe by
 	// resolved Kitsu id. Defensive: when no two rows share a Kitsu id
@@ -355,26 +379,50 @@
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
-					onRowReady: (id, m, count, approximate) => {
-						// One resolution for both halves — a pinned count
-						// with the loader's flag beside it is a cap that
-						// contradicts itself, and the next click acts on
-						// whichever half is wrong.
-						const cap = capAuthority.resolveLoaderCap(id, {
-							count,
-							approximate: approximate === true
-						});
-						historyApproximateCaps = {
-							...historyApproximateCaps,
-							[id]: cap.approximate
-						};
-						rowReady(id, m, cap.count);
-					}
+					onRowReady: (id, m, count, approximate) =>
+						publishLoaderCap(id, m, count, approximate === true)
+				}).then(async (state) => {
+					// Second chance for the rows the scraper gate refused.
+					// Their cap is the search hit's count, which runs high
+					// for shows with recaps, and the backend deliberately
+					// declines to serve it back from cache so it
+					// self-heals — but only if somebody reads again, and
+					// nothing here ever did. Detached on purpose: the
+					// first probe pass is what the strip renders from, and
+					// this waits out a breaker cooldown before its first
+					// ask.
+					if (state.approximateRows.length === 0) return;
+					const mode = pickAvailabilityMode(await settingsPromise);
+					void retryApproximateCaps(state.approximateRows, {
+						// Same background-lane probe the first pass used.
+						// Retrying as interactive would walk this traffic
+						// straight past the gate that exists to keep
+						// background work from poisoning the connection
+						// the user's next click depends on.
+						fetchAvailability: makeFetchAvailability(checkAvailability),
+						mode,
+						onRefined: (id, count) =>
+							publishLoaderCap(id, historyMatches[id] ?? null, count, false),
+						wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+						cancelled: () => continueRetryCancelled,
+						// A confirmed cap needs no second ask, whether the
+						// first pass produced it or a click's interactive
+						// lookup did.
+						shouldRetry: (id) => historyApproximateCaps[id] !== false
+					});
 				});
 			})
 			.catch(() => {
 				history = [];
 			});
+
+		// The retry loop above sits out breaker cooldowns between
+		// probes, so it comfortably outlives a user who lands on home
+		// and navigates on. Leaving it running would keep asking
+		// allmanga about a strip that is no longer mounted.
+		return () => {
+			continueRetryCancelled = true;
+		};
 	});
 
 	$effect(() => {
