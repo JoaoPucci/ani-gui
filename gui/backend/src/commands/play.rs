@@ -21,6 +21,7 @@ use serde::Deserialize;
 use crate::anicli::parser::{parse_progress_line, ProgressLine};
 use crate::anicli::process::{run_debug_streaming, DebugOptions};
 use crate::app::AppState;
+use crate::commands::availability_refresh::{hold_if_still_ours, with_row_if_ours};
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
@@ -206,15 +207,24 @@ async fn enrich_availability_after_success(
     state: &AppState,
     args: &PlayArgs,
     chosen_candidate: Option<&Candidate>,
+    generation_at_start: u64,
 ) {
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
     };
+    let mode_str = args.mode.as_str();
+    let row = crate::commands::availability::cache_key(id, mode_str);
     let Some(c) = chosen_candidate else {
-        crate::commands::availability::write_cache(state, id, &args.mode, true);
+        with_row_if_ours(
+            &state.availability_refreshes,
+            &row,
+            generation_at_start,
+            false,
+            || crate::commands::availability::write_cache(state, id, &args.mode, true),
+        )
+        .await;
         return;
     };
-    let mode_str = args.mode.as_str();
     let detail = if state
         .scraper_gate
         .admit(scrape_priority(args))
@@ -250,6 +260,18 @@ async fn enrich_availability_after_success(
             (cap, ex)
         }
         None => (None, Vec::new()),
+    };
+    // The show fetch above is an await, so the row can have changed
+    // hands since this resolution started. Held until the write lands.
+    let Some(_writing) = hold_if_still_ours(
+        &state.availability_refreshes,
+        &row,
+        generation_at_start,
+        false,
+    )
+    .await
+    else {
+        return;
     };
     // Status unknown at this layer (PlayArgs doesn't carry it).
     // None → write_cache_full uses the conservative ongoing TTL
@@ -295,7 +317,12 @@ pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
 /// optionally stamping the availability cache. Three branches —
 /// see the comments inside for the policy. Extracted out of
 /// `play_with_progress` to keep its ccn under the firm CRAP ceiling.
-fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle) -> AniError {
+async fn classify_picker_miss(
+    state: &AppState,
+    args: &PlayArgs,
+    picked: &PickedTitle,
+    generation_at_start: u64,
+) -> AniError {
     if let Some(e) = picked.rate_limit_error() {
         // Rate-limited window: the typed 429 (with the server's own
         // retry hint) beats every other verdict, and says nothing
@@ -332,7 +359,18 @@ fn classify_picker_miss(state: &AppState, args: &PlayArgs, picked: &PickedTitle)
         "play: picker found no safe allmanga match; surfacing NoResults",
     );
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-        crate::commands::availability::write_cache(state, id, &args.mode, false);
+        // The picking is where this verdict came from, and a re-ask
+        // can have answered since. A negative written over a refresh
+        // disables a show the user was just told about.
+        let row = crate::commands::availability::cache_key(id, args.mode.as_str());
+        with_row_if_ours(
+            &state.availability_refreshes,
+            &row,
+            generation_at_start,
+            false,
+            || crate::commands::availability::write_cache(state, id, &args.mode, false),
+        )
+        .await;
     }
     AniError::NoResults
 }
@@ -694,9 +732,17 @@ where
     // may differ from args.title when alt_titles produced the winning
     // hit (e.g. romanized fallback for shows whose Kitsu canonicalTitle
     // is the English form). See pick_title_and_index().
+    // Captured before the picking, not before the write: the answer a
+    // play resolution stamps is the one it got here, and a refresh can
+    // land any time between.
+    let availability_generation = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
+    );
     let picked = pick_title_and_index(state, args).await;
     if picked.candidate.is_none() {
-        return Err(classify_picker_miss(state, args, &picked));
+        return Err(classify_picker_miss(state, args, &picked, availability_generation).await);
     }
     let search_title = picked.title;
     let select_index = picked.index;
@@ -738,7 +784,13 @@ where
     .inspect_err(|e| note_spawn_failure(args, &search_title, select_index, e));
     record_spawn_outcome(state, spawn_started_at, &resolved);
     let resolved = resolved?;
-    enrich_availability_after_success(state, args, chosen_candidate.as_ref()).await;
+    enrich_availability_after_success(
+        state,
+        args,
+        chosen_candidate.as_ref(),
+        availability_generation,
+    )
+    .await;
 
     // Decide media kind: cheap path-extension first, HEAD fallback
     // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
@@ -951,6 +1003,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 
@@ -1589,8 +1643,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classify_picker_miss_surfaces_rate_limits_before_other_verdicts() {
+    #[tokio::test]
+    async fn classify_picker_miss_surfaces_rate_limits_before_other_verdicts() {
         // Same policy on the embedded-play surface, and crucially: no
         // negative availability write — a rate-limited window says
         // nothing about whether the show exists.
@@ -1599,7 +1653,7 @@ mod tests {
         args.kitsu_id = Some("888".into());
         let mut picked = picked_miss(true, true);
         picked.rate_limited = Some(None);
-        let err = classify_picker_miss(&state, &args, &picked);
+        let err = classify_picker_miss(&state, &args, &picked, 0).await;
         assert!(
             matches!(
                 err,
@@ -1644,8 +1698,8 @@ mod tests {
         assert!(matches!(err, AniError::Network));
     }
 
-    #[test]
-    fn classify_picker_miss_returns_network_on_partial_search_failure() {
+    #[tokio::test]
+    async fn classify_picker_miss_returns_network_on_partial_search_failure() {
         // Codex P2 #3236... : the embedded play path used to surface
         // NoResults when one search errored alongside a success that
         // produced no safe match. The verdict is incomplete in that
@@ -1665,10 +1719,88 @@ mod tests {
             prefetch: false,
             kitsu_id: None,
         };
-        let err = classify_picker_miss(&state, &args, &picked_miss(true, true));
+        let err = classify_picker_miss(&state, &args, &picked_miss(true, true), 0).await;
         assert!(
             matches!(err, AniError::Network),
             "partial failure should surface Network, got {err:?}",
+        );
+    }
+
+    #[tokio::test]
+    async fn a_play_resolution_leaves_the_row_alone_when_a_refresh_answered_first() {
+        // The availability lookup is not the only writer of this row.
+        // A play resolution stamps it too, from an answer it obtained
+        // before it started writing — and it holds that answer across
+        // its own `fetch_show`, which is long enough for a re-ask to
+        // begin and finish. Landing second, it puts the pre-refresh
+        // reading back for the row's whole TTL.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(300))
+                    .set_body_json(serde_json::json!({"data": {"show": null}})),
+            )
+            .mount(&server)
+            .await;
+        let mut state = state_with_proxy_origin();
+        state.allanime_base = Some(server.uri());
+        let state = std::sync::Arc::new(state);
+
+        let mut args = external_args("Ordering Test", "1");
+        args.kitsu_id = Some("889".into());
+        args.mode = "sub".into();
+        let row = crate::commands::availability::cache_key("889", "sub");
+        let started_at = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            args.kitsu_id.as_deref(),
+            args.mode.as_str(),
+        );
+
+        let candidate = Candidate {
+            id: "show-889".into(),
+            name: "Ordering Test".into(),
+            available_episodes: Default::default(),
+            aired_start: None,
+            show_type: None,
+            episode_count: None,
+            status: None,
+        };
+        let bg = {
+            let state = std::sync::Arc::clone(&state);
+            tokio::spawn(async move {
+                enrich_availability_after_success(&state, &args, Some(&candidate), started_at)
+                    .await;
+            })
+        };
+
+        // The user's re-ask answers while the resolution is still out.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        state.availability_refreshes.bump(&row);
+        crate::commands::availability::write_cache_full(
+            &state,
+            "889",
+            "sub",
+            Some("current"),
+            &crate::commands::availability::AvailabilityResponse {
+                available: true,
+                episode_count: Some(7),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+
+        bg.await.expect("the resolution finishes");
+
+        let stored = crate::cache::meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("the refresh's row is still there");
+        let kept: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&stored).expect("row parses");
+        assert_eq!(
+            kept.episode_count,
+            Some(7),
+            "a play resolution must not replace the refresh's row, got {kept:?}"
         );
     }
 

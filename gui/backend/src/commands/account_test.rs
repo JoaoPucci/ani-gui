@@ -33,6 +33,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
     })
 }
 
@@ -868,6 +869,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
     });
     assert!(provider_for_kind(&state, ProviderKind::AniList).is_some());
     assert!(provider_for_kind(&state, ProviderKind::MyAnimeList).is_some());

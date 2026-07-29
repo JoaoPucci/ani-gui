@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::availability_refresh::hold_if_still_ours;
 use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
 use crate::error::Result;
 
@@ -78,6 +79,22 @@ pub struct AvailabilityArgs {
     /// legacy callers keep interactive semantics.
     #[serde(default)]
     pub background: bool,
+    /// Skip the cached row and ask allanime directly.
+    ///
+    /// The stored count is a snapshot — 24h for an ongoing show — and
+    /// allanime catalogues episodes inside that window. A user
+    /// clicking a tile the stored count says is unavailable is asking
+    /// a question the cache cannot answer, so replaying it back is
+    /// worse than not answering: it confirms the tile's own claim
+    /// without anyone having checked.
+    ///
+    /// Only the READ is skipped. The result still goes through
+    /// `write_cache_full` below, so a fresher answer replaces the
+    /// stale row for every other reader rather than being discarded.
+    ///
+    /// Defaults false: every existing caller keeps the cheap path.
+    #[serde(default)]
+    pub bypass_cache: bool,
 }
 
 /// Result of an availability probe — does allmanga carry the show in
@@ -170,7 +187,7 @@ pub struct AvailabilityBatchResponse {
     pub playable_episode_counts: HashMap<String, u32>,
 }
 
-fn cache_key(kitsu_id: &str, mode: &str) -> String {
+pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v9: gate-refused probes now mark their count approximate so it
     //     re-probes instead of being served as exact. v8 rows written
     //     by that path carry the degraded count with no flag, and
@@ -249,12 +266,25 @@ pub(crate) async fn check_availability_with_base(
     allanime_base: Option<&str>,
 ) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
+    // Captured before any network work, compared again before the
+    // write: a refresh answering in between means this lookup's row is
+    // the stale one. See `AvailabilityRefreshes`.
+    let refresh_generation_at_start = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        mode,
+    );
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
     // legacy count-less rows and gate-refused approximate counts both
     // re-probe so they self-heal.
-    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(id) = args
+        .kitsu_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .filter(|_| !args.bypass_cache)
+    {
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
@@ -362,6 +392,32 @@ pub(crate) async fn check_availability_with_base(
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+        // A refresh that answered while this was out has already put a
+        // cache-skipping reading in the row. Writing over it would
+        // reinstate the count this lookup read THROUGH the cache to
+        // get, and hold it for the row's whole TTL.
+        //
+        // Held from before that reading until after the write, so it
+        // still describes the row when the write lands. Reading it and
+        // acting on it are otherwise separated by the airing fetch
+        // below, and a refresh can begin and finish inside that gap
+        // (Codex P2 #3674395584).
+        let row = cache_key(id, mode);
+        let Some(_writing) = hold_if_still_ours(
+            &state.availability_refreshes,
+            &row,
+            refresh_generation_at_start,
+            args.bypass_cache,
+        )
+        .await
+        else {
+            return Ok(AvailabilityResponse {
+                available,
+                episode_count,
+                extra_episodes,
+                episode_count_approximate,
+            });
+        };
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
@@ -1063,6 +1119,7 @@ mod tests {
             kitsu_id: None,
             status: None,
             background: false,
+            bypass_cache: false,
         };
         let _ = check_availability(&state, &args).await;
 
@@ -1099,6 +1156,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 
@@ -1449,6 +1508,224 @@ mod tests {
         assert_eq!(resp.playable_episode_counts.get("finished-show"), Some(&12));
         assert!(!resp.playable_episode_counts.contains_key("blocked-show"));
         assert!(!resp.playable_episode_counts.contains_key("uncached-show"));
+    }
+
+    /// A cached count is a snapshot. For an ongoing show it is kept
+    /// for 24 hours, and allmanga adds episodes inside that window —
+    /// so a user clicking a tile the count says is unavailable is
+    /// asking a question the cache cannot answer. Serving the stored
+    /// number back is exactly the reply that makes the tile look
+    /// broken: it confirms what it was already showing, having asked
+    /// nobody.
+    ///
+    /// `bypass_cache` is how a caller says "do not tell me what you
+    /// remember, go and look". The row is still written afterwards on
+    /// the normal path, so what comes back replaces the stale entry
+    /// for everything else that reads it.
+    #[tokio::test]
+    async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
+        let server = wiremock::MockServer::start().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+
+        // Exactly what a mount-time probe leaves behind: available,
+        // with a confirmed count. `cache_hit_is_usable` accepts it.
+        write_cache_full(
+            &state,
+            "777",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(4),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+
+        let cached: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Bypass Test",
+            "mode": "sub",
+            "kitsu_id": "777"
+        }))
+        .expect("args");
+        let served = check_availability_with_base(&state, &cached, Some(&server.uri())).await;
+        assert_eq!(
+            served.expect("cached row is served").episode_count,
+            Some(4),
+            "without the flag the stored snapshot answers"
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "a usable row must not reach the network"
+        );
+
+        let fresh: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Bypass Test",
+            "mode": "sub",
+            "kitsu_id": "777",
+            "bypass_cache": true
+        }))
+        .expect("args");
+        let _ = check_availability_with_base(&state, &fresh, Some(&server.uri())).await;
+        assert!(
+            !server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "bypass_cache must reach allanime rather than replay the stored count"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
+        // The wiring, not the rule. `may_write_cache` is unit-tested on
+        // its own; this drives the whole lookup, concurrently, because
+        // the generation is captured INSIDE the call — the refresh has
+        // to land while this one is still out for the guard to mean
+        // anything.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(300))
+                    .set_body_json(serde_json::json!({
+                        "data": {"shows": {"edges": []}}
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let row = cache_key("888", "sub");
+
+        // No row yet: this lookup will reach the network and, left to
+        // itself, install a negative one.
+        let stale: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Ordering Test",
+            "mode": "sub",
+            "kitsu_id": "888"
+        }))
+        .expect("args");
+        let base = server.uri();
+        let bg = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let _ = check_availability_with_base(&state, &stale, Some(&base)).await;
+            })
+        };
+
+        // The user's re-ask answers while that one is still in flight.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        state.availability_refreshes.bump(&row);
+        write_cache_full(
+            &state,
+            "888",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(9),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+
+        bg.await.expect("the background lookup finishes");
+
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("the refresh's row is still there");
+        let kept: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert!(
+            kept.available && kept.episode_count == Some(9),
+            "an older lookup must not replace the refresh's row, got {kept:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
+        // Reading the generation and writing the row are two steps, and
+        // the lookup can be overtaken between them — the counter says
+        // "clear" and by the time the write lands it no longer is. So
+        // the reading has to be taken and used under the same lock, and
+        // that is what this pins: while the row is held, a lookup that
+        // has already got its answer must still be waiting.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": {"shows": {"edges": []}}
+                })),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let row = cache_key("889", "sub");
+
+        // Stand in for the refresh that is mid-section: it owns the row
+        // and has not written yet.
+        let held = state.availability_refreshes.for_row(&row);
+        let guard = held.lock().await;
+
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Section Test",
+            "mode": "sub",
+            "kitsu_id": "889"
+        }))
+        .expect("args");
+        let base = server.uri();
+        let bg = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let _ = check_availability_with_base(&state, &args, Some(&base)).await;
+            })
+        };
+
+        // Long enough for the unguarded lookup to finish its round-trip
+        // and write. Nothing may be in the row: the answer is in hand,
+        // but the decision about it is not this lookup's to make yet.
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(
+            meta_cache_get(&state.cache_pool, &row)
+                .expect("cache read")
+                .is_none(),
+            "a lookup wrote the row while another writer held it"
+        );
+
+        // Now the refresh finishes: its row lands, and the count says
+        // so. The waiting lookup must see both.
+        state.availability_refreshes.bump(&row);
+        write_cache_full(
+            &state,
+            "889",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(4),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+        drop(guard);
+
+        bg.await.expect("the background lookup finishes");
+
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("the refresh's row is still there");
+        let kept: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert!(
+            kept.available && kept.episode_count == Some(4),
+            "the lookup released to find a fresher row and overwrote it anyway, got {kept:?}"
+        );
     }
 
     #[tokio::test]

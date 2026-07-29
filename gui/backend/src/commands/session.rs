@@ -158,6 +158,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 

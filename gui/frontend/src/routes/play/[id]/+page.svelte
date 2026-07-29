@@ -62,6 +62,12 @@
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
+	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
+	import {
+		createAvailabilityWriteback,
+		type AvailabilityPatch
+	} from '$lib/detail/availability-writeback';
+	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
@@ -827,11 +833,169 @@
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
+	/**
+	 * Clicking a cap-gated tile re-asks allmanga rather than staying
+	 * inert. The count is a snapshot from when the strip loaded and
+	 * the catalogue catches up while the user is watching.
+	 *
+	 * It BLOCKS, like every other long action here: `switchBusy`
+	 * raises the same state an episode switch does, so there is no
+	 * window in which a second tile can be clicked or the episode page
+	 * can move under the lookup. A cleared count goes straight into
+	 * the switch by NUMBER — not by the metadata object, which the
+	 * strip may have replaced.
+	 */
+	/**
+	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * dub separately and dub lags, so this is part of the question
+	 * rather than a detail of it: the probe sends it, and the context
+	 * the answer is checked against is keyed on it. Settings land after
+	 * the page does, so a click in that gap asks with the fallback and
+	 * the real mode can arrive while the answer is out.
+	 */
+	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
+	/**
+	 * The context once this page is gone.
+	 *
+	 * Leaving the route entirely destroys the component but not the
+	 * promise, and the show and mode it closed over are unchanged — so
+	 * a guard comparing only those would accept the answer and run
+	 * `switchToEpisode`, pulling the user back into playback on a page
+	 * they left. Nothing about the question changed; nobody is asking.
+	 *
+	 * Cannot collide with a real context, which always carries the
+	 * `id:mode` separator.
+	 */
+	/**
+	 * Which visit to this route the answer belongs to.
+	 *
+	 * The show and the mode describe the ROW being asked about, and
+	 * both come back when the user does. SvelteKit reuses this
+	 * component across an A→B→A round trip, so nothing is destroyed
+	 * and a click abandoned two navigations ago finds the context it
+	 * left behind and acts on it. This advances on every id
+	 * transition, so a question can only be answered to the page that
+	 * asked it (Codex P2 #3674767163).
+	 *
+	 * Derived from the route param rather than the loaded detail: the
+	 * detail is briefly null on any load, and treating that as a
+	 * departure would invalidate a probe nobody navigated away from.
+	 */
+	const visit = $derived.by(() => {
+		void id;
+		return (visitCounter += 1);
+	});
+	let visitCounter = 0;
+	const GONE = 'gone';
+	let gone = false;
+	onDestroy(() => {
+		gone = true;
+	});
+	/**
+	 * Write back what the re-ask learned about the show.
+	 *
+	 * The lookup replaces the backend's whole cached row, so the strip
+	 * takes the whole row too — not just the number the click was
+	 * about. A shrunken cap would otherwise leave cards enabled above
+	 * it, and the specials spliced into the strip would stay the
+	 * mount-time snapshot: one catalogued since then invisible, one
+	 * pulled since then still on screen and still playable.
+	 *
+	 * Nulls mean "the answer did not establish this", so they are
+	 * skipped rather than written.
+	 */
+	/**
+	 * Who owns which part of the row while a page-load lookup and a
+	 * re-ask are both out — settings arriving late flips the mode and
+	 * restarts the former while the user is clicking. The re-ask wins
+	 * where it answered — it is newer and it skipped the cache — but
+	 * only where it answered: an unconfirmed count leaves that field
+	 * open to the lookup.
+	 */
+	const writeback = createAvailabilityWriteback(() =>
+		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
+	);
+	function applyAvailabilityPatch(patch: AvailabilityPatch) {
+		if (patch.available !== undefined) showListed = patch.available;
+		if (patch.count !== undefined) playableEpisodeCount = patch.count;
+		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+	}
+	function applyCapGateRefresh(refresh: CapGateRefresh) {
+		applyAvailabilityPatch(writeback.refresh(refresh));
+	}
+	const capGate = createCapGateProbe({
+		probe: async () => {
+			const d = detail;
+			if (!d) return null;
+			const r = await checkAvailability({
+				title: d.canonical_title,
+				mode: capGateMode(),
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined,
+				background: false,
+				// Without this the lookup answers from the very row
+				// being questioned and never reaches allmanga.
+				bypass_cache: true
+			});
+			// The whole row, not one field of it. The controller decides
+			// which parts of a fresh answer are safe to write back.
+			return {
+				count: r.episode_count,
+				approximate: r.episode_count_approximate === true,
+				available: r.available,
+				extraEpisodes: r.extra_episodes ?? []
+			};
+		},
+		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		onCleared: (episode, _count, refresh) => {
+			applyCapGateRefresh(refresh);
+			switchBusy = false;
+			void switchToEpisode(episode);
+		},
+		onStillGated: (_episode, refresh) => {
+			applyCapGateRefresh(refresh);
+			switchBusy = false;
+			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
+		},
+		onFailed: (_episode, refresh) => {
+			// An unconfirmed answer still settled whether the show is
+			// listed, even though it settled nothing about this episode.
+			if (refresh) applyCapGateRefresh(refresh);
+			switchBusy = false;
+			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+		},
+		// The player is on another show now. Release it and say
+		// nothing — a message here would be about a title they left.
+		onSuperseded: () => {
+			switchBusy = false;
+		}
+	});
+
+	/** Tile click for an episode the cap is currently hiding. */
+	function onRecheckEpisode(n: number) {
+		if (switchBusy) return;
+		switchBusy = true;
+		// Set, not cleared. `switchToEpisode` leaves its last caption
+		// behind — its finally only resets `switchBusy` — so without
+		// this the block raised for an allmanga lookup would read as a
+		// provider tick from whatever ran before it.
+		switchProgress = m.detail_ep_recheck_busy();
+		capGate.request(n);
+	}
 	// True once the availability probe settled (result or error). The
 	// strip warm waits on it — until then the playable cap is null and
 	// beyondPlayable reads it as unbounded, so the warm would resolve
 	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
+	/** Whether allmanga has the show at all, as the detail page tracks
+	 *  it. null until the first answer. Separate from the cap: a
+	 *  delisted show comes back without a count, so the cap alone
+	 *  cannot express "there is nothing here" — it just stays where it
+	 *  was and keeps every episode under it looking playable. */
+	let showListed = $state<boolean | null>(null);
 	// Non-integer episode tags allmanga has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
@@ -844,35 +1008,40 @@
 	// the warm holds during the refetch. The cache stamp from the play
 	// handler that brought us here is usually in place, so this is
 	// sub-ms in the common case.
+	// The mode as a value rather than as "whatever `config` currently
+	// is". Settings resolving from null to `sub` leaves the answer
+	// unchanged, and a derived that compares equal does not wake its
+	// dependents — so the common case costs one lookup, not two
+	// identical ones against a source that rate-limits.
+	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+
 	$effect(() => {
 		const d = detail;
+		const mode = availabilityMode;
 		if (!d) return;
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		availabilityResolved = false;
-		let cancelled = false;
-		void checkAvailability({
-			title: d.canonical_title,
-			mode,
-			alt_titles: altTitlesFromKitsu(d),
-			episode_count: d.episode_count ?? undefined,
-			year: yearFromKitsuRef(d) ?? undefined,
-			kitsu_id: d.id,
-			status: d.status ?? undefined
-		})
-			.then((r) => {
-				if (cancelled) return;
-				playableEpisodeCount = r.episode_count;
-				extraEpisodes = r.extra_episodes;
-			})
-			.catch(() => {
-				// Cap falls back to Kitsu's count; nothing else to do.
-			})
-			.finally(() => {
-				if (!cancelled) availabilityResolved = true;
-			});
-		return () => {
-			cancelled = true;
-		};
+		// Untracked below the two reads above: opening the writeback
+		// ticket reads the context, the context reads `config`, and that
+		// would put the effect back on `config`'s identity instead of on
+		// the mode it resolves to.
+		return untrack(() =>
+			startAvailabilityLookup(
+				{
+					title: d.canonical_title,
+					altTitles: altTitlesFromKitsu(d),
+					episodeCount: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsuId: d.id,
+					status: d.status ?? undefined
+				},
+				mode,
+				{
+					check: checkAvailability,
+					begin: () => writeback.begin(),
+					apply: applyAvailabilityPatch,
+					setResolved: (r) => (availabilityResolved = r)
+				}
+			)
+		);
 	});
 
 	// Airing schedule (AniList via the backend), mirroring the detail
@@ -1622,6 +1791,11 @@
 		// switches hold until the answer lands (Codex P2 #3565988145);
 		// aired-but-uncatalogued targets above allmanga's count are
 		// equally doomed (catalog lag).
+		// A delisted show comes back without a count, so the cap check
+		// below cannot catch it — the cap is whatever it already was.
+		// Every path lands here, including auto-play-next, which no
+		// card state would cover.
+		if (showListed === false) return;
 		if (
 			epAirState(targetEp, airing).unaired ||
 			airingIsPending ||
@@ -3077,17 +3251,25 @@
 									type="button"
 									class="ep-card"
 									class:ep-card-current={isCurrent}
-									class:ep-card-unaired={air.unaired || capGated}
+									class:ep-card-unaired={air.unaired || showListed === false}
+									class:ep-card-recheck={capGated && showListed !== false}
 									disabled={(switchBusy && !isCurrent) ||
 										air.unaired ||
 										airingIsPending ||
-										capGated}
+										showListed === false}
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
-										: capGated
+										: showListed === false
 											? m.detail_ep_disabled_tooltip()
-											: undefined}
-									onclick={() => onPickEpisode(ep)}
+											: capGated
+												? m.detail_ep_recheck_idle()
+												: undefined}
+									onclick={() => {
+										// Cap-gated is not "disabled": the count is a
+										// snapshot, so re-ask before refusing.
+										if (capGated) onRecheckEpisode(n);
+										else onPickEpisode(ep);
+									}}
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
@@ -4574,6 +4756,15 @@
 	}
 	.ep-card-unaired .ep-card-thumb-play {
 		display: none;
+	}
+	/* Aired, but above allmanga's last reported count. Dimmed like an
+	   unaired card, but it keeps the pointer and the play icon: the
+	   click re-asks allmanga and, when the count has caught up, plays
+	   the episode. Hiding the icon would advertise the opposite. */
+	.ep-card-recheck {
+		cursor: pointer;
+		opacity: 0.45;
+		filter: saturate(0.35);
 	}
 	/* Center-of-thumb airs label replaces the display-size number.
 	   Smaller than the detail grid's — these cards are ~1/5 row. */

@@ -12,7 +12,7 @@
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -39,6 +39,13 @@
 	import { ctaState } from '$lib/detail/cta-state';
 	import { describeRateLimit } from '$lib/play/error-copy';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
+	import {
+		createAvailabilityWriteback,
+		type AvailabilityPatch
+	} from '$lib/detail/availability-writeback';
+	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import {
 		airedCap,
 		airedTargets,
@@ -110,6 +117,159 @@
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, allmanga 1161).
 	let playableEpisodeCount = $state<number | null>(null);
+	/**
+	 * Clicking a cap-gated tile re-asks allmanga rather than doing
+	 * nothing. The playable count is a snapshot — 24h for an ongoing
+	 * show — and the catalogue catches up inside that window, so the
+	 * tile can be dead for an episode that became streamable hours
+	 * ago.
+	 *
+	 * It BLOCKS, like every other long action here. `actionBusy`
+	 * raises the same overlay a play click does, so there is no window
+	 * in which a second tile can be clicked, the route can change, or
+	 * the episode page can move under the lookup. A cleared count
+	 * falls straight through into startPlay, which holds the overlay
+	 * up — the caption just changes from checking to the usual play
+	 * progress.
+	 */
+	/**
+	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * dub separately and dub lags, so this is part of the question
+	 * rather than a detail of it: the probe sends it, and the context
+	 * the answer is checked against is keyed on it. Settings land after
+	 * the page does, so a click in that gap asks with the fallback and
+	 * the real mode can arrive while the answer is out.
+	 */
+	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
+	/**
+	 * The context once this page is gone.
+	 *
+	 * Leaving the route entirely — Back, or any history navigation —
+	 * destroys the component but not the promise. The show and the
+	 * mode it closed over are unchanged, so a guard that compares only
+	 * those sees a perfectly current answer and acts on it: `startPlay`
+	 * runs, and its `goto` hauls the user back into playback on a page
+	 * they left. Nothing about the question changed; there is simply
+	 * nobody left asking.
+	 *
+	 * Cannot collide with a real context, which always carries the
+	 * `id:mode` separator.
+	 */
+	/**
+	 * Which visit to this route the answer belongs to.
+	 *
+	 * The show and the mode describe the ROW being asked about, and
+	 * both come back when the user does. SvelteKit reuses this
+	 * component across an A→B→A round trip, so nothing is destroyed
+	 * and a click abandoned two navigations ago finds the context it
+	 * left behind and acts on it. This advances on every id
+	 * transition, so a question can only be answered to the page that
+	 * asked it (Codex P2 #3674767163).
+	 *
+	 * Derived from the route param rather than the loaded detail: the
+	 * detail is briefly null on any load, and treating that as a
+	 * departure would invalidate a probe nobody navigated away from.
+	 */
+	const visit = $derived.by(() => {
+		void id;
+		return (visitCounter += 1);
+	});
+	let visitCounter = 0;
+	const GONE = 'gone';
+	let gone = false;
+	onDestroy(() => {
+		gone = true;
+	});
+	/**
+	 * Write back what the re-ask learned about the show.
+	 *
+	 * The lookup replaces the backend's whole cached row, so the page
+	 * has to take the whole row too — not just the number the click
+	 * was about. A delisted show would otherwise keep every tile
+	 * enabled, a shrunken cap would leave tiles enabled above it, and
+	 * a special catalogued since page load would stay invisible.
+	 *
+	 * Nulls mean "the answer did not establish this", so they are
+	 * skipped rather than written.
+	 */
+	/**
+	 * Who owns which part of the row while a page-load lookup and a
+	 * re-ask are both out. The re-ask wins where it answered — it is
+	 * newer and it skipped the cache — but only where it answered:
+	 * an unconfirmed count leaves that field open to the lookup.
+	 */
+	const writeback = createAvailabilityWriteback(() =>
+		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
+	);
+	function applyAvailabilityPatch(patch: AvailabilityPatch) {
+		if (patch.available !== undefined) availability = patch.available;
+		if (patch.count !== undefined) playableEpisodeCount = patch.count;
+		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+	}
+	function applyCapGateRefresh(refresh: CapGateRefresh) {
+		applyAvailabilityPatch(writeback.refresh(refresh));
+	}
+	const capGate = createCapGateProbe({
+		probe: async () => {
+			const d = detail;
+			if (!d) return null;
+			const r = await checkAvailability({
+				title: d.canonical_title,
+				mode: capGateMode(),
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined,
+				background: false,
+				// Without this the lookup answers from the very row
+				// being questioned and never reaches allmanga.
+				bypass_cache: true
+			});
+			// The whole row, not one field of it. The controller decides
+			// which parts of a fresh answer are safe to write back.
+			return {
+				count: r.episode_count,
+				approximate: r.episode_count_approximate === true,
+				available: r.available,
+				extraEpisodes: r.extra_episodes ?? []
+			};
+		},
+		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		onCleared: (episode, _count, refresh) => {
+			applyCapGateRefresh(refresh);
+			// Overlay stays up; startPlay owns it from here.
+			void startPlay(episode);
+		},
+		onStillGated: (_episode, refresh) => {
+			applyCapGateRefresh(refresh);
+			actionBusy = false;
+			actionProgress = null;
+			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
+		},
+		onFailed: (_episode, refresh) => {
+			// An unconfirmed answer still settled whether the show is
+			// listed, even though it settled nothing about this episode.
+			if (refresh) applyCapGateRefresh(refresh);
+			actionBusy = false;
+			actionProgress = null;
+			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+		},
+		// The user is on another show now. Let the page go, say
+		// nothing — a message here would be about a title they left.
+		onSuperseded: () => {
+			actionBusy = false;
+			actionProgress = null;
+		}
+	});
+
+	/** Tile click for an episode the cap is currently hiding. */
+	function onRecheckEpisode(n: number) {
+		if (actionBusy) return;
+		actionBusy = true;
+		actionProgress = m.detail_ep_recheck_busy();
+		capGate.request(n);
+	}
 
 	// Non-integer episode tags allmanga has streamable (recap /
 	// special episodes — e.g. ["1061.5"] for One Piece). Spliced
@@ -440,6 +600,58 @@
 	let config = $state<Config | null>(null);
 	let configError = $state<string | null>(null);
 
+	// The mode as a value rather than as "whatever `config` currently
+	// is". Settings resolving from null to `sub` leaves the answer
+	// unchanged, and a derived that compares equal does not wake its
+	// dependents — so the common case costs one lookup, not two
+	// identical ones against a source that rate-limits.
+	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+
+	// Availability against allmanga. Result gates the Play + Download
+	// CTAs so titles outside the catalogue (Western animation, etc.)
+	// get a calm "Not on allmanga" notice instead of a click → error
+	// overlay, and its episode count caps the tiles.
+	//
+	// Its own effect, reading the mode directly, because the mode
+	// arrives after the page does: settings resolve late, so the first
+	// lookup goes out with the fallback `sub`, and a sub count says
+	// nothing about the dub catalogue. Reading the mode inside the
+	// load callback made it invisible to the effect, so nothing
+	// reissued the question and the page kept no cap at all — every
+	// aired dub tile playable until the user navigated (Codex P2
+	// #3674916858). The play route already worked this way.
+	//
+	// Network errors leave availability null — the lazy click-failure
+	// path then handles it.
+	$effect(() => {
+		const d = detail;
+		const mode = availabilityMode;
+		if (!d || isMusicSubtype(d.subtype)) return;
+		// Untracked below the two reads above: opening the writeback
+		// ticket reads the context, the context reads `config`, and that
+		// would put the effect back on `config`'s identity instead of on
+		// the mode it resolves to.
+		return untrack(() =>
+			startAvailabilityLookup(
+				{
+					title: d.canonical_title,
+					altTitles: altTitlesFromKitsu(d),
+					episodeCount: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsuId: d.id,
+					status: d.status ?? undefined
+				},
+				mode,
+				{
+					check: checkAvailability,
+					begin: () => writeback.begin(),
+					apply: applyAvailabilityPatch,
+					setResolved: (r) => (availabilityResolved = r)
+				}
+			)
+		);
+	});
+
 	// Synopsis collapse/expand. Default collapsed (long synopses are
 	// dominant otherwise); expands on user request.
 	let synopsisExpanded = $state(false);
@@ -647,39 +859,10 @@
 					// Music videos (a YOASOBI MV, say) never exist on allanime —
 					// it indexes anime episodes, not song clips. Mark the show
 					// unavailable up front instead of letting the probe fuzzy-match
-					// an unrelated anime and play the wrong show.
+					// an unrelated anime and play the wrong show. The lookup
+					// effect below stands down for these.
 					availability = false;
 					availabilityResolved = true;
-				} else {
-					// Probe allmanga in the background. Result gates the
-					// Play + Download CTAs so titles outside the catalog
-					// (Western animation, etc.) get a calm "Not on
-					// allmanga" notice instead of a click → error overlay.
-					// Network errors leave availability null — the lazy
-					// click-failure path then handles it.
-					const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-					void checkAvailability({
-						title: d.canonical_title,
-						mode,
-						alt_titles: altTitlesFromKitsu(d),
-						episode_count: d.episode_count ?? undefined,
-						year: yearFromKitsuRef(d) ?? undefined,
-						kitsu_id: d.id,
-						status: d.status ?? undefined
-					})
-						.then((r) => {
-							if (id !== currentId) return;
-							availability = r.available;
-							playableEpisodeCount = r.episode_count;
-							extraEpisodes = r.extra_episodes;
-						})
-						.catch(() => {
-							// Leave null; lazy fallback in the click handler
-							// will still surface the error.
-						})
-						.finally(() => {
-							if (id === currentId) availabilityResolved = true;
-						});
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
@@ -1666,19 +1849,28 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-disabled={availability === false}
+											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false ||
-												air.unaired ||
-												airingIsPending ||
-												capGated}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false || capGated
+												: availability === false
 													? m.detail_ep_disabled_tooltip()
-													: undefined}
+													: capGated
+														? m.detail_ep_recheck_idle()
+														: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(num ?? 0);
+												// `aria-disabled` is advisory — it does not stop a click, and a
+												// delisting leaves the tile cap-gated because it arrives without
+												// a count. Without this the re-ask branch below would ask
+												// allmanga again about a show it just said it does not have.
+												if (availability === false) return;
+												if (air.unaired || airingIsPending) return;
+												// Cap-gated is not "disabled": the count is a
+												// mount-time snapshot, so re-ask before refusing.
+												if (capGated) onRecheckEpisode(num ?? 0);
+												else onPickEpisode(num ?? 0);
 											}}
 										>
 											<span class="ep-thumb">
@@ -1732,19 +1924,26 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-disabled={availability === false}
+											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false ||
-												air.unaired ||
-												airingIsPending ||
-												capGated}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false || capGated
+												: availability === false
 													? m.detail_ep_disabled_tooltip()
-													: undefined}
+													: capGated
+														? m.detail_ep_recheck_idle()
+														: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(n);
+												// `aria-disabled` is advisory — it does not stop a click, and a
+												// delisting leaves the tile cap-gated because it arrives without
+												// a count. Without this the re-ask branch below would ask
+												// allmanga again about a show it just said it does not have.
+												if (availability === false) return;
+												if (air.unaired || airingIsPending) return;
+												if (capGated) onRecheckEpisode(n);
+												else onPickEpisode(n);
 											}}
 										>
 											<span class="ep-thumb">
@@ -2456,6 +2655,17 @@
 	   tiles still render (Kitsu metadata) but as read-only thumbs. */
 	.ep-tile-disabled {
 		cursor: not-allowed;
+		opacity: 0.55;
+		filter: saturate(0.6);
+	}
+
+	/* Aired, but above the episode count allmanga last reported. Dimmed
+	   the same amount as an uncatalogued tile — the episode genuinely
+	   is not streamable yet — but it keeps the pointer and the hover
+	   lift, because clicking it re-asks allmanga. `not-allowed` here
+	   would deny the one affordance the tile exists to offer. */
+	.ep-tile-recheck {
+		cursor: pointer;
 		opacity: 0.55;
 		filter: saturate(0.6);
 	}

@@ -12,6 +12,7 @@ pub mod anilist_eps_thumbs;
 pub mod aniskip;
 pub mod app_info;
 pub mod availability;
+pub mod availability_refresh;
 pub mod cour;
 pub mod download;
 pub mod external_player;

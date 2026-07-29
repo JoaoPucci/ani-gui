@@ -26,7 +26,13 @@ export default defineConfig({
 	// build and `mount()` throws `lifecycle_function_unavailable` —
 	// the server build has no lifecycle at all. Vitest is a Node
 	// process, so the browser condition has to be asked for.
-	resolve: { conditions: ['browser'] },
+	resolve: {
+		alias: {
+			// See tests/acceptance/stubs/lottie-web.ts
+			'lottie-web': new URL('./tests/acceptance/stubs/lottie-web.ts', import.meta.url).pathname
+		},
+		conditions: ['browser']
+	},
 	test: {
 		// happy-dom, not jsdom: it is the DOM implementation already
 		// in devDependencies, so this tier costs no new environment.

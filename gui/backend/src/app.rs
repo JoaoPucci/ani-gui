@@ -108,6 +108,14 @@ pub struct AppState {
     /// later-landing lower write can't regress progress (Codex P2
     /// #3387237642). Process-wide; cloned `Arc` is cheap.
     pub account_write_locks: AccountWriteLocks,
+    /// Per-(kitsu_id, mode) write ordering for the availability cache.
+    /// A user's cache-bypassing re-ask and the page-load lookup can be
+    /// in flight together, and the row is INSERT OR REPLACE — so
+    /// without this the one that finishes last wins, and the ordinary
+    /// lookup landing second reinstates the exact count the re-ask was
+    /// sent to replace for the row's whole TTL. Process-wide; cloned
+    /// `Arc` is cheap.
+    pub availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes,
 }
 
 impl AppState {
@@ -189,6 +197,8 @@ impl AppState {
             internal_secret: InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
             account_write_locks: AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         })
     }
 
@@ -326,6 +336,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
             account_write_locks: AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 

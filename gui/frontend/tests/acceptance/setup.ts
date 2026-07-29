@@ -13,6 +13,12 @@
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { setupServer } from 'msw/node';
 
+import { installElementAnimateStub } from './stubs/element-animate';
+
+// Before any component mounts. See the stub for why happy-dom needs
+// it and why only post-mount DOM changes trip over its absence.
+installElementAnimateStub();
+
 /**
  * The origin every handler is written against. Real runs discover a
  * random port from the preload bridge; a test pins it so the handlers
