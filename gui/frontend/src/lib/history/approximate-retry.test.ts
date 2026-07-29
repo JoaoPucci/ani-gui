@@ -529,4 +529,32 @@ describe('rowWorthRetrying', () => {
 		expect(waits.slice(0, 3)).toEqual([1, 2, 3]);
 		expect(waits.length).toBeLessThan(12);
 	});
+
+	it('does not spend an attempt when the probe never answered at all', async () => {
+		// There are two places the pacer can refuse, and only the later
+		// one comes back as a 200 carrying the flag. When the breaker is
+		// already open the SEARCH is refused first, and the backend
+		// surfaces that as a transport error — so the probe throws and
+		// this side sees `null`, indistinguishable from the backend
+		// being down (Codex P1 #3677174888).
+		//
+		// It does not need to be distinguishable. The budget counts
+		// ANSWERS, and none of these is one; the ladder is what bounds
+		// the loop. Three failures then an exact answer, on a budget of
+		// two.
+		let failuresLeft = 3;
+		const refined: [string, number][] = [];
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => {
+				if (failuresLeft-- > 0) throw new Error('503 gate refused the search');
+				return { episode_count: 4, episode_count_approximate: false };
+			},
+			mode: 'sub',
+			onRefined: (id, count) => refined.push([id, count]),
+			wait: async () => {},
+			maxAttempts: 2
+		});
+
+		expect(refined).toEqual([['e1', 4]]);
+	});
 });
