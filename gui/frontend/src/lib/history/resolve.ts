@@ -364,8 +364,23 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * the allanime title is an uninformative stub or no Kitsu title is comparable.
  */
 export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
+	// Only a REFUTED identity rejects. A binding that carries other
+	// evidence should not be thrown away because the titles could not
+	// be compared — which is what 'unjudged' means.
+	return titleIdentity(allanimeTitle, ref) !== 'refuted';
+}
+
+/** Whether the titles say these are the same show, say they are not,
+ *  or say nothing at all. The third is a real and distinct outcome:
+ *  an allmanga stub like '1P' has no tokens worth comparing, and a
+ *  hit can carry no usable title of its own. Callers with other
+ *  evidence treat 'unjudged' as acceptable; a caller relying on
+ *  identity ALONE must require 'proven'. */
+export type TitleIdentity = 'proven' | 'refuted' | 'unjudged';
+
+export function titleIdentity(allanimeTitle: string, ref: KitsuAnimeRef): TitleIdentity {
 	const a = titleTokens(allanimeTitle.replace(EPISODE_TAIL_RE, ''));
-	if (!titleIsInformative(a)) return true;
+	if (!titleIsInformative(a)) return 'unjudged';
 	const candidates: string[] = [];
 	if (ref.canonical_title) candidates.push(ref.canonical_title);
 	if (ref.titles) candidates.push(...Object.values(ref.titles));
@@ -380,8 +395,8 @@ export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRe
 		for (const t of a) if (k.has(t)) inter++;
 		best = Math.max(best, Math.min(inter / a.size, inter / k.size));
 	}
-	if (!sawCandidate) return true;
-	return best >= TITLE_OVERLAP_MIN;
+	if (!sawCandidate) return 'unjudged';
+	return best >= TITLE_OVERLAP_MIN ? 'proven' : 'refuted';
 }
 
 /** What to do with a cached Kitsu detail bound to a history entry. `trust` =
@@ -419,7 +434,8 @@ export function cachedBindingVerdict(
 	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.
 	if (isMusicSubtype(cached.subtype)) return 'evict';
 	if (!titlesPlausiblySameShow(preliminary.searchTitle, cached)) return 'reresolve';
-	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
+	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count, cached.status))
+		return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
 		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
@@ -444,6 +460,15 @@ export const FINISHED_SHOW_COUR_THRESHOLD = 50;
  *  matches like courSize=20 vs Kitsu=400. */
 export const ONGOING_SHORTFALL_MAX_EPISODES = 50;
 
+/** Kitsu's `status` for a show that is currently broadcasting. The
+ *  other values it serves — `finished`, `tba`, `unreleased`,
+ *  `upcoming` — all describe a show that is either over or has not
+ *  begun, and only a broadcasting one legitimately has no announced
+ *  episode total. */
+export function isAiringStatus(status: string | null | undefined): boolean {
+	return status === 'current';
+}
+
 /** Whether a Kitsu hit's `episode_count` is plausibly the same show
  *  as the user's history record (which carries `courSize` from the
  *  "(N episodes)" tail).
@@ -463,14 +488,24 @@ export const ONGOING_SHORTFALL_MAX_EPISODES = 50;
  *    OVAs sometimes; beyond that it's a different show entirely. */
 export function isEpisodeCountCompatible(
 	courSize: number | null,
-	kitsuEpisodeCount: number | null
+	kitsuEpisodeCount: number | null,
+	kitsuStatus?: string | null
 ): boolean {
 	if (courSize == null) return true;
 	if (kitsuEpisodeCount == null) {
-		// A finished long show in history (>50 episodes) almost
-		// always has a known Kitsu episode_count. A null match is
-		// overwhelmingly a poisoned cache row pointing at an
-		// unrelated short ONA (e.g. Naruto 500 → Duan Nao 2 null).
+		// An open-ended show that is STILL AIRING has no total for
+		// Kitsu to announce, and that is exactly the shape a
+		// four-figure courSize describes: Detective Conan (id 210)
+		// and One Piece (id 12) both read episodeCount null with
+		// status 'current'. Rejecting them dropped every hit from the
+		// candidate list and left the Continue card on its /search
+		// fallback for good.
+		if (isAiringStatus(kitsuStatus)) return true;
+		// The other null is the one this guard was built for: a short
+		// unrelated entry a fuzzy title match landed on, countless
+		// because it has not aired (Naruto 500 → Duan Nao 2, status
+		// 'tba'). Nothing streams a thousand episodes of a show that
+		// never started, so a long history stays incompatible with it.
 		return courSize <= FINISHED_SHOW_COUR_THRESHOLD;
 	}
 	const diff = Math.abs(courSize - kitsuEpisodeCount);
@@ -482,6 +517,46 @@ export function isEpisodeCountCompatible(
 	// Strict over-report lane stays ratio-based.
 	const ratio = diff / Math.max(courSize, kitsuEpisodeCount);
 	return ratio <= 0.25;
+}
+
+/**
+ * Whether a search hit may stand as a candidate for this history row.
+ *
+ * Two of the three tests here reject on evidence the hit itself
+ * carries — a music video is never an allmanga show, and a count far
+ * from the user's is a different show. The third exists because the
+ * countless-airing lane accepts on no count evidence at all: it only
+ * says a broadcasting show legitimately has no announced total, which
+ * says nothing about WHICH broadcasting show. Above the threshold,
+ * where the count would otherwise have done the rejecting, the hit
+ * has to earn its place on title overlap instead — otherwise the
+ * first airing countless hit the text search returned wins, and
+ * `resolveKitsuMatch` caches its id for a row the user then clicks.
+ *
+ * Below the threshold nothing changes: a countless hit was always
+ * acceptable there, because an ongoing single-cour show has no total
+ * yet either.
+ */
+export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
+	if (isMusicSubtype(hit.subtype)) return false;
+	if (!isEpisodeCountCompatible(preliminary.courSize, hit.episode_count, hit.status)) return false;
+	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
+	// 'proven', not merely not-refuted: this lane has no count
+	// evidence to fall back on, so an unjudged title would accept the
+	// hit on nothing — and would take an allmanga stub like '1P' away
+	// from the alias enrichment that exists to resolve it.
+	return titleIdentity(preliminary.searchTitle, hit) === 'proven';
+}
+
+/** True for the one lane whose acceptance rests on airing status
+ *  rather than on the count: no total, currently broadcasting, and a
+ *  history long enough that the count would otherwise have rejected. */
+function acceptedOnAiringStatusAlone(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
+	return (
+		hit.episode_count == null &&
+		isAiringStatus(hit.status) &&
+		(preliminary.courSize ?? 0) > FINISHED_SHOW_COUR_THRESHOLD
+	);
 }
 
 export function pickKitsuMatch(
@@ -498,10 +573,7 @@ export function pickKitsuMatch(
 	// When nothing survives, surface null so resolveKitsuMatch falls through
 	// to the alias-enrichment path (retries with allmanga englishName / altNames)
 	// instead of the picker landing on a wrong match.
-	const candidates = hits.filter(
-		(h) =>
-			!isMusicSubtype(h.subtype) && isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
-	);
+	const candidates = hits.filter((h) => isCandidateForRow(preliminary, h));
 	if (candidates.length === 0) {
 		return null;
 	}
