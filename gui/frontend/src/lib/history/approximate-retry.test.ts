@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
 	createApproximateCollector,
 	retryApproximateCaps,
+	rowWorthRetrying,
 	type ApproximateRow
 } from './approximate-retry';
 import type { KitsuAnimeRef } from '$lib/api';
@@ -412,5 +413,32 @@ describe('createApproximateCollector', () => {
 		expect(c.rows).toEqual([]);
 		c.record('hist-a', ref('a'), false);
 		expect(c.rows).toEqual([]);
+	});
+});
+
+describe('rowWorthRetrying', () => {
+	const ids = (...v: string[]) => new Set(v);
+
+	it('drops a row the user deleted while the retry was waiting', () => {
+		// Deleting a card, or clearing the strip, leaves the route
+		// mounted — so cancellation does not cover this. A dropped row
+		// would keep spending scraper-gate slots, and a confirmed
+		// answer would reach rowReady and fetch Kitsu episodes for an
+		// entry that no longer exists.
+		expect(rowWorthRetrying('gone', ids('other'), {})).toBe(false);
+	});
+
+	it('drops a row whose cap a click already confirmed', () => {
+		expect(rowWorthRetrying('a', ids('a'), { a: false })).toBe(false);
+	});
+
+	it('keeps a row still in history whose cap is still unconfirmed', () => {
+		expect(rowWorthRetrying('a', ids('a'), { a: true })).toBe(true);
+	});
+
+	it('keeps a row with no cap recorded yet', () => {
+		// Absent is not confirmed. Treating it as settled would drop
+		// rows before their first retry ever ran.
+		expect(rowWorthRetrying('a', ids('a'), {})).toBe(true);
 	});
 });
