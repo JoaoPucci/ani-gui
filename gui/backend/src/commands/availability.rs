@@ -1451,6 +1451,78 @@ mod tests {
         assert!(!resp.playable_episode_counts.contains_key("uncached-show"));
     }
 
+    /// A cached count is a snapshot. For an ongoing show it is kept
+    /// for 24 hours, and allmanga adds episodes inside that window —
+    /// so a user clicking a tile the count says is unavailable is
+    /// asking a question the cache cannot answer. Serving the stored
+    /// number back is exactly the reply that makes the tile look
+    /// broken: it confirms what it was already showing, having asked
+    /// nobody.
+    ///
+    /// `bypass_cache` is how a caller says "do not tell me what you
+    /// remember, go and look". The row is still written afterwards on
+    /// the normal path, so what comes back replaces the stale entry
+    /// for everything else that reads it.
+    #[tokio::test]
+    async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
+        let server = wiremock::MockServer::start().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+
+        // Exactly what a mount-time probe leaves behind: available,
+        // with a confirmed count. `cache_hit_is_usable` accepts it.
+        write_cache_full(
+            &state,
+            "777",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(4),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+
+        let cached: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Bypass Test",
+            "mode": "sub",
+            "kitsu_id": "777"
+        }))
+        .expect("args");
+        let served = check_availability_with_base(&state, &cached, Some(&server.uri())).await;
+        assert_eq!(
+            served.expect("cached row is served").episode_count,
+            Some(4),
+            "without the flag the stored snapshot answers"
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "a usable row must not reach the network"
+        );
+
+        let fresh: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Bypass Test",
+            "mode": "sub",
+            "kitsu_id": "777",
+            "bypass_cache": true
+        }))
+        .expect("args");
+        let _ = check_availability_with_base(&state, &fresh, Some(&server.uri())).await;
+        assert!(
+            !server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "bypass_cache must reach allanime rather than replay the stored count"
+        );
+    }
+
     #[tokio::test]
     async fn background_probe_skips_the_network_while_the_breaker_is_open() {
         // Once the breaker is open, a background probe must not touch
