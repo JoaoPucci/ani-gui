@@ -498,4 +498,35 @@ describe('rowWorthRetrying', () => {
 
 		expect(refined).toEqual([['e1', 4]]);
 	});
+
+	it('climbs the ladder while refusals repeat, and still gives up', async () => {
+		// Not charging a refusal an attempt must not also freeze the
+		// wait. Sharing one counter did exactly that: the backoff index
+		// stayed at 0 and the budget never ran down, so a row facing a
+		// refusing pacer re-probed every 500ms for as long as the route
+		// lived — piling contention onto the breaker that was refusing
+		// it. The wait has to climb even when the budget does not.
+		const waits: number[] = [];
+		const refused = {
+			episode_count: 9,
+			episode_count_approximate: true,
+			gate_refused: true
+		};
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => refused,
+			mode: 'sub',
+			onRefined: () => {},
+			wait: async (ms) => {
+				waits.push(ms);
+			},
+			backoffMs: [1, 2, 3],
+			maxAttempts: 2
+		});
+
+		// Strictly climbing, then holding at the top — and terminating,
+		// which is the other half: reaching this line at all means the
+		// loop ended rather than spinning.
+		expect(waits.slice(0, 3)).toEqual([1, 2, 3]);
+		expect(waits.length).toBeLessThan(12);
+	});
 });
