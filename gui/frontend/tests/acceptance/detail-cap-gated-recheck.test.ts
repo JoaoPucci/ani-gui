@@ -285,6 +285,51 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 	});
 
+	it('splices in a special the recheck found, even when the episode stays gated', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				return HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					// The page loaded knowing of no specials. Asking
+					// allmanga directly turns up one catalogued since.
+					extra_episodes: body.bypass_cache ? ['4.5'] : [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		expect(target.querySelector('li[data-ep-num="4.5"]')).toBeNull();
+
+		tile(AIRED)!.click();
+
+		// The clicked episode is still out of reach — the count came
+		// back the same. That must not stop the rest of the fresh row
+		// from landing: the re-ask replaced the whole cached row, and
+		// the strip splices non-integer tags in at their numeric
+		// position, so this special is invisible until it is applied.
+		await until(
+			() => target.querySelector('li[data-ep-num="4.5"]') !== null,
+			'the newly catalogued special to appear in the strip'
+		);
+	});
+
 	it('presents the dimmed tile as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
