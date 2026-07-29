@@ -764,20 +764,57 @@ pub struct AvailabilityWarmArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn candidate_with(sub: u32) -> crate::scraper::allanime::Candidate {
+        crate::scraper::allanime::Candidate {
+            id: "s1".into(),
+            name: "Gate Test".into(),
+            available_episodes: serde_json::from_value(serde_json::json!({"sub": sub, "dub": 0}))
+                .expect("episodes"),
+            aired_start: None,
+            show_type: None,
+            episode_count: None,
+            status: None,
+        }
+    }
+
+    #[test]
+    fn a_refused_fetch_falls_back_to_the_search_hit_and_admits_it_is_rough() {
+        // The search hit counts half episodes as whole ones, so it
+        // runs high — one episode for a show carrying a single recap,
+        // more for a show carrying several. Usable as a cap, never
+        // presentable as confirmed.
+        assert_eq!(
+            enrich_from_search_hit(&candidate_with(5), "sub"),
+            (Some(5), true)
+        );
+    }
+
+    #[test]
+    fn a_search_hit_with_no_count_leaves_the_cap_unknown() {
+        // Zero is what the field reads when allmanga sent no count for
+        // this mode — not a show with nothing in it. Publishing zero
+        // would cap every episode away; unknown lets the next probe
+        // answer.
+        assert_eq!(
+            enrich_from_search_hit(&candidate_with(0), "dub"),
+            (None, false)
+        );
+    }
 
     #[tokio::test]
-    async fn a_gate_refusal_says_so_rather_than_only_looking_approximate() {
-        // `episode_count_approximate` means "this number came from the
-        // search hit". Two very different things set it: the pacer
-        // refused the detail fetch, or the fetch was attempted and
-        // failed. The retry on the frontend treats them the same
-        // because it cannot tell them apart, so it spends one of its
-        // few attempts on a refusal that was never going to answer —
-        // and the breaker admits one trial at a time, so a spent
-        // attempt is a slot taken from a probe that would have.
-        //
-        // Only the refusal is this flag. A failed fetch is still just
-        // approximate.
+    async fn an_answered_probe_does_not_claim_it_was_refused() {
+        // The wiring in the direction that is reachable from here. The
+        // refusal itself is not: the pacer refuses the detail fetch
+        // only while its breaker is open, and a successful search
+        // closes the breaker on its way past — so within one probe the
+        // fetch that follows a successful search is always admitted.
+        // Production hits it because the home route's own warmers are
+        // competing callers and trip the breaker in that window; that
+        // interleaving is a schedule, not a state, and no test holds
+        // it open reliably. Hence the branch itself is a function with
+        // its own cases above, and this pins the flag's default.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
@@ -792,33 +829,19 @@ mod tests {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
 
-        // Three consecutive failures open the breaker; background
-        // admits are refused while it is open. Interactive ones never
-        // are, which is why this probe has to be a background one.
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state
-                .scraper_gate
-                .record_outcome(false, tokio::time::Instant::now());
-        }
-
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Gate Test",
             "mode": "sub",
-            "kitsu_id": "901",
-            "background": true
+            "kitsu_id": "901"
         }))
         .expect("args");
-        let refused = check_availability_with_base(&state, &args, Some(&server.uri()))
+        let answered = check_availability_with_base(&state, &args, Some(&server.uri()))
             .await
-            .expect("the probe still answers from the search hit");
+            .expect("probe answers");
 
         assert!(
-            refused.episode_count_approximate,
-            "a refused fetch still leaves the count approximate"
-        );
-        assert!(
-            refused.gate_refused,
-            "and it has to be distinguishable from a fetch that was tried and failed"
+            !answered.gate_refused,
+            "nothing refused this one, got {answered:?}"
         );
     }
 
