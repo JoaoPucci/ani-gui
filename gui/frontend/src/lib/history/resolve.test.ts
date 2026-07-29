@@ -754,3 +754,74 @@ describe('pickKitsuMatch — music subtype is never playable', () => {
 		expect(pickKitsuMatch([music, movie], r)?.id).toBe('film');
 	});
 });
+
+describe('long-runners Kitsu has no episode total for', () => {
+	// Kitsu leaves `episodeCount` null for open-ended shows that are
+	// still airing — Detective Conan (id 210) and One Piece (id 12)
+	// both read null with status 'current'. A history row for one of
+	// those carries a courSize in the hundreds or thousands, and the
+	// null-count guard rejected the pairing outright: every hit fell
+	// out of the candidate list, the picker returned null, and the
+	// Continue card rendered its /search fallback for good.
+	//
+	// The guard exists for the OTHER null: a short unrelated entry a
+	// fuzzy title match landed on, which has no count because it has
+	// not aired (Duan Nao 2, status 'tba'). Airing status separates
+	// the two — nothing is streaming 1000 episodes of a show that
+	// never started.
+	const hit = (over: Partial<KitsuAnimeRef>): KitsuAnimeRef => ({ ...stubKitsu('x'), ...over });
+
+	const conan = hit({
+		id: '210',
+		canonical_title: 'Detective Conan',
+		slug: 'detective-conan',
+		episode_count: null,
+		subtype: 'TV',
+		status: 'current'
+	});
+	const conanMovie = hit({
+		id: '42313',
+		canonical_title: 'Meitantei Conan: Konjou no Fist',
+		slug: 'detective-conan-movie-23',
+		episode_count: 1,
+		subtype: 'movie',
+		status: 'finished'
+	});
+
+	it('matches an airing show whose Kitsu entry announces no total', () => {
+		const r = resolveHistoryEntry(entry('Detective Conan (1150 episodes)', '1100'), null);
+		// The movie leads, as Kitsu's text search often returns it: the
+		// assertion only means something because the count filter has
+		// to drop it AND keep the countless main series.
+		expect(pickKitsuMatch([conanMovie, conan], r)?.id).toBe('210');
+	});
+
+	it('still rejects a countless entry that is not airing', () => {
+		const r = resolveHistoryEntry(entry('Duan Nao (500 episodes)', '400'), null);
+		const unaired = hit({
+			id: '13884',
+			canonical_title: 'Duan Nao 2',
+			slug: 'duan-nao-2',
+			episode_count: null,
+			subtype: 'ONA',
+			status: 'tba'
+		});
+		expect(pickKitsuMatch([unaired], r)).toBeNull();
+	});
+
+	it('trusts a cached binding to an airing show with no announced total', () => {
+		const r = resolveHistoryEntry(entry('Detective Conan (1150 episodes)', '1100'), null);
+		// Without this the row re-resolves on every single load and
+		// lands back on null, so the cache never gets to help.
+		expect(cachedBindingVerdict(conan, r, false)).toBe('trust');
+	});
+
+	it('leaves short histories alone, airing or not', () => {
+		// Below the threshold a countless entry was always acceptable —
+		// an ongoing single-cour show has no total yet either. Airing
+		// status must not have turned that into a rejection.
+		const r = resolveHistoryEntry(entry('Some Seasonal Show (12 episodes)', '5'), null);
+		const ongoing = hit({ canonical_title: 'Some Seasonal Show', episode_count: null });
+		expect(pickKitsuMatch([ongoing], r)?.id).toBe('x');
+	});
+});
