@@ -106,6 +106,15 @@ export interface ApproximateRetryDeps {
  *     by the third attempt a row that really was gate-refused is past
  *     it. The two earlier attempts cost nothing in that case: a
  *     refusal skips the network entirely by design.
+ *   - 120 s — the cooldown is not the only thing that can hold the
+ *     gate shut. The breaker admits ONE half-open trial, and a trial
+ *     whose future was dropped blocks the next for
+ *     `HALF_OPEN_TRIAL_STALE` (90 s, sized for the 60 s prefetch
+ *     spawn). A trial admitted by somebody else at the cooldown
+ *     boundary would refuse an attempt arriving at 90 s and, since a
+ *     row is dropped for good once its attempts run out, strand its
+ *     wrong cap for the session. The last step lands past that
+ *     window.
  *
  * Read the other way round, this is why the schedule cannot be
  * derived from the answers. `episode_count_approximate` means "this
@@ -118,7 +127,7 @@ export interface ApproximateRetryDeps {
  * of a closed one hammers a gate that is refusing. The ladder claims
  * neither.
  */
-const BACKOFF_MS = [500, 30_000, 60_000];
+const BACKOFF_MS = [500, 30_000, 60_000, 120_000];
 
 export async function retryApproximateCaps(
 	rows: ApproximateRow[],
