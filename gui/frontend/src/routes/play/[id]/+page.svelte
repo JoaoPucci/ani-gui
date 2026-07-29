@@ -3132,7 +3132,8 @@
 									type="button"
 									class="ep-card"
 									class:ep-card-current={isCurrent}
-									class:ep-card-unaired={air.unaired || capGated}
+									class:ep-card-unaired={air.unaired}
+									class:ep-card-recheck={capGated}
 									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
@@ -4631,6 +4632,15 @@
 	}
 	.ep-card-unaired .ep-card-thumb-play {
 		display: none;
+	}
+	/* Aired, but above allmanga's last reported count. Dimmed like an
+	   unaired card, but it keeps the pointer and the play icon: the
+	   click re-asks allmanga and, when the count has caught up, plays
+	   the episode. Hiding the icon would advertise the opposite. */
+	.ep-card-recheck {
+		cursor: pointer;
+		opacity: 0.45;
+		filter: saturate(0.35);
 	}
 	/* Center-of-thumb airs label replaces the display-size number.
 	   Smaller than the detail grid's — these cards are ~1/5 row. */

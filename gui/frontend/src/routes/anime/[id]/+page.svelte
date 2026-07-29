@@ -1728,7 +1728,8 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-disabled={availability === false}
+											class:ep-tile-recheck={capGated}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
@@ -1797,7 +1798,8 @@
 										<button
 											type="button"
 											class="ep-tile"
-											class:ep-tile-disabled={availability === false || capGated}
+											class:ep-tile-disabled={availability === false}
+											class:ep-tile-recheck={capGated}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
@@ -2522,6 +2524,17 @@
 	   tiles still render (Kitsu metadata) but as read-only thumbs. */
 	.ep-tile-disabled {
 		cursor: not-allowed;
+		opacity: 0.55;
+		filter: saturate(0.6);
+	}
+
+	/* Aired, but above the episode count allmanga last reported. Dimmed
+	   the same amount as an uncatalogued tile — the episode genuinely
+	   is not streamable yet — but it keeps the pointer and the hover
+	   lift, because clicking it re-asks allmanga. `not-allowed` here
+	   would deny the one affordance the tile exists to offer. */
+	.ep-tile-recheck {
+		cursor: pointer;
 		opacity: 0.55;
 		filter: saturate(0.6);
 	}
