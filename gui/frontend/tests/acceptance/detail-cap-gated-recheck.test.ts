@@ -1,0 +1,138 @@
+// Acceptance: clicking a dimmed episode actually asks allmanga again.
+//
+// A tile dims when the anime database says the episode aired but it
+// sits above the episode count allmanga reported. That count is
+// cached — 24 hours for an ongoing show — and allmanga catalogues
+// episodes inside that window, so the tile can stay dead long after
+// the episode became streamable.
+//
+// This is the scenario the first version of the feature needed and
+// did not have. The controller's own cases hand it a stand-in for the
+// lookup, so they proved the state machine and nothing about the
+// boundary it exists to cross: the request went out WITHOUT asking to
+// skip the cached row, the lookup answered from the very row being
+// questioned, and the tile reported "still not available" having
+// reached nobody. Every unit case stayed green.
+//
+// So the assertion here is deliberately about the request, not the
+// verdict: a second availability call has to leave the app, and it
+// has to carry the instruction to ignore what is remembered.
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { mount, unmount } from 'svelte';
+
+import { API_BASE, server } from './setup';
+import { page, setParams } from './page-state.svelte';
+import { appConfig, kitsuRef } from './home-handlers';
+
+vi.mock('$app/state', () => ({
+	get page() {
+		return page;
+	}
+}));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(async () => {}),
+	invalidateAll: vi.fn(async () => {}),
+	beforeNavigate: vi.fn(),
+	afterNavigate: vi.fn()
+}));
+
+import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
+import { __resetApiBaseForTests } from '../../src/lib/api';
+
+const KITSU_ID = '42';
+const TITLE = 'Ongoing Show';
+/** The anime database says 5 have aired. */
+const AIRED = 5;
+/** allmanga's cached answer says it only has 4 — so 5 is dimmed. */
+const CACHED_COUNT = 4;
+
+let target: HTMLElement;
+let app: ReturnType<typeof mount> | null = null;
+
+beforeEach(() => {
+	__resetApiBaseForTests(API_BASE);
+	setParams({ id: KITSU_ID });
+	target = document.createElement('div');
+	document.body.appendChild(target);
+});
+
+afterEach(() => {
+	if (app) unmount(app);
+	app = null;
+	target.remove();
+});
+
+async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
+/** The tile for episode `n`, whatever state it is in. */
+const tile = (n: number) =>
+	(target.querySelector(`li[data-ep-num="${n}"] button`) as HTMLButtonElement | null) ?? null;
+
+describe('detail route — clicking a dimmed aired episode', () => {
+	it('asks allmanga again instead of replaying the remembered count', async () => {
+		const probes: { bypass_cache?: boolean }[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			// The database's view: five episodes are out.
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				probes.push(body);
+				return HttpResponse.json({
+					available: true,
+					// Every answer is the stale one. If the click reaches
+					// allmanga the request itself proves it; the count
+					// staying short keeps this scenario about the request
+					// rather than about playback starting.
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+
+		// Episode 5 aired but is past allmanga's count, so it renders
+		// dimmed — the state this whole feature is about.
+		const bypassing = () => probes.filter((p) => p.bypass_cache === true);
+
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		await until(() => probes.length > 0, 'the page-load availability lookup');
+
+		// Counting requests would pass on nothing but a late mount-time
+		// lookup landing after the snapshot. The bypass flag is what
+		// only the re-ask sets, so it identifies the request rather
+		// than merely noticing that one more arrived.
+		expect(bypassing()).toHaveLength(0);
+
+		tile(AIRED)!.click();
+
+		// The two defects this pins, together: the click has to produce
+		// a request at all, and that request has to say "not what you
+		// remember" — without which the lookup answers from the very
+		// row that dimmed the tile and reaches allmanga never.
+		await until(() => bypassing().length > 0, 'the click to send a cache-skipping lookup');
+	});
+});
