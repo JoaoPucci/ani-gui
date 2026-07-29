@@ -12,8 +12,8 @@ function deferredProbe() {
 	let release!: (count: number | null) => void;
 	let reject!: (e: unknown) => void;
 	const calls: number[] = [];
-	const probe = (episode: number) => {
-		calls.push(episode);
+	const probe = () => {
+		calls.push(calls.length + 1);
 		return new Promise<number | null>((res, rej) => {
 			release = res;
 			reject = rej;
@@ -27,7 +27,7 @@ function deferredProbe() {
 	};
 }
 
-function harness(probe: (episode: number) => Promise<number | null>) {
+function harness(probe: () => Promise<number | null>) {
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
 	const gate = createCapGateProbe({
@@ -106,18 +106,37 @@ describe('createCapGateProbe', () => {
 		expect(stillGated).toEqual([5]);
 	});
 
-	it('ignores repeat clicks on an episode already being re-probed', async () => {
+	it('asks once for the whole show, however many tiles are clicked', async () => {
 		const d = deferredProbe();
 		const { gate } = harness(d.probe);
 
 		gate.request(5);
 		gate.request(5);
-		gate.request(5);
+		gate.request(6);
+		gate.request(7);
 
-		// An impatient user must not turn one dimmed tile into a burst
-		// of interactive scraper traffic.
-		expect(d.calls).toEqual([5]);
+		// "How many episodes do you have?" does not vary by episode.
+		// Clicking three different dimmed tiles is the same question
+		// three times, and the site is rate-limited, so it goes out
+		// once and every waiting tile reads the same answer.
+		expect(d.calls).toHaveLength(1);
 		expect(gate.isProbing(5)).toBe(true);
+		expect(gate.isProbing(6)).toBe(true);
+		expect(gate.isProbing(7)).toBe(true);
+	});
+
+	it('judges every waiting tile against the single answer', async () => {
+		const d = deferredProbe();
+		const { gate, cleared, stillGated } = harness(d.probe);
+
+		gate.request(5);
+		gate.request(9);
+		d.release(6);
+		await flush();
+
+		// One answer, two verdicts: 5 is within 6 and plays, 9 is not.
+		expect(cleared).toEqual([{ episode: 5, count: 6 }]);
+		expect(stillGated).toEqual([9]);
 	});
 
 	it('allows a fresh attempt once the previous one settled', async () => {
@@ -133,7 +152,7 @@ describe('createCapGateProbe', () => {
 		expect(d.calls).toEqual([5, 5]);
 	});
 
-	it('tracks in-flight state per episode', () => {
+	it('marks only the tiles that were actually clicked as busy', () => {
 		const gate = createCapGateProbe({
 			probe: () => new Promise<number | null>(() => {}),
 			onCleared: () => {},
@@ -142,7 +161,8 @@ describe('createCapGateProbe', () => {
 
 		gate.request(5);
 
-		// Dimming one tile must not dim its neighbours.
+		// One lookup covers the show, but the spinner belongs to the
+		// tile the user pressed — not to every dimmed tile on screen.
 		expect(gate.isProbing(5)).toBe(true);
 		expect(gate.isProbing(6)).toBe(false);
 	});
@@ -161,10 +181,17 @@ describe('createCapGateProbe', () => {
 		expect(gate.isProbing(5)).toBe(false);
 	});
 
-	it('asks about the episode that was clicked', async () => {
+	it('asks again for a later click once the first answer landed', async () => {
 		const d = deferredProbe();
 		const { gate } = harness(d.probe);
-		gate.request(11);
-		expect(d.calls).toEqual([11]);
+
+		gate.request(5);
+		d.release(4);
+		await flush();
+
+		gate.request(9);
+		// The shared request is only shared while it is in flight; a
+		// click after it settled deserves a current answer.
+		expect(d.calls).toHaveLength(2);
 	});
 });
