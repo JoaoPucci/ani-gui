@@ -21,7 +21,7 @@ use serde::Deserialize;
 use crate::anicli::parser::{parse_progress_line, ProgressLine};
 use crate::anicli::process::{run_debug_streaming, DebugOptions};
 use crate::app::AppState;
-use crate::commands::availability_refresh::hold_if_still_ours;
+use crate::commands::availability_refresh::{hold_if_still_ours, with_row_if_ours};
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
@@ -215,17 +215,14 @@ async fn enrich_availability_after_success(
     let mode_str = args.mode.as_str();
     let row = crate::commands::availability::cache_key(id, mode_str);
     let Some(c) = chosen_candidate else {
-        if hold_if_still_ours(
+        with_row_if_ours(
             &state.availability_refreshes,
             &row,
             generation_at_start,
             false,
+            || crate::commands::availability::write_cache(state, id, &args.mode, true),
         )
-        .await
-        .is_some()
-        {
-            crate::commands::availability::write_cache(state, id, &args.mode, true);
-        }
+        .await;
         return;
     };
     let detail = if state
@@ -366,17 +363,14 @@ async fn classify_picker_miss(
         // can have answered since. A negative written over a refresh
         // disables a show the user was just told about.
         let row = crate::commands::availability::cache_key(id, args.mode.as_str());
-        if hold_if_still_ours(
+        with_row_if_ours(
             &state.availability_refreshes,
             &row,
             generation_at_start,
             false,
+            || crate::commands::availability::write_cache(state, id, &args.mode, false),
         )
-        .await
-        .is_some()
-        {
-            crate::commands::availability::write_cache(state, id, &args.mode, false);
-        }
+        .await;
     }
     AniError::NoResults
 }

@@ -152,6 +152,28 @@ pub async fn hold_if_still_ours(
     Some(guard)
 }
 
+/// Run a write under the row, if the row is still this writer's.
+///
+/// The synchronous counterpart to [`hold_if_still_ours`], and the one
+/// to reach for. Taking the write as a closure means the permission
+/// cannot be held apart from the thing it permits: a caller that
+/// tests the guard and then writes — `hold_if_still_ours(..).await
+/// .is_some()` — has already dropped it, and the row is free again
+/// for exactly as long as the write takes (Codex P2 #3675142224).
+///
+/// `Some(_)` with whatever the write returned, or `None` when a
+/// refresh answered while this writer was out.
+pub async fn with_row_if_ours<T>(
+    refreshes: &AvailabilityRefreshes,
+    key: &str,
+    generation_at_start: u64,
+    bypass_cache: bool,
+    write: impl FnOnce() -> T,
+) -> Option<T> {
+    let _writing = hold_if_still_ours(refreshes, key, generation_at_start, bypass_cache).await?;
+    Some(write())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
