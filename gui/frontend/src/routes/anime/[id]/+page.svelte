@@ -44,6 +44,7 @@
 		createAvailabilityWriteback,
 		type AvailabilityPatch
 	} from '$lib/detail/availability-writeback';
+	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import {
 		airedCap,
@@ -626,47 +627,29 @@
 		const d = detail;
 		const mode = availabilityMode;
 		if (!d || isMusicSubtype(d.subtype)) return;
-		let cancelled = false;
 		// Untracked below the two reads above: opening the writeback
 		// ticket reads the context, the context reads `config`, and that
 		// would put the effect back on `config`'s identity instead of on
-		// the mode it resolves to — one wasted lookup on every load.
-		untrack(() => {
-			availabilityResolved = false;
-			const settle = writeback.begin();
-			void checkAvailability({
-				title: d.canonical_title,
+		// the mode it resolves to.
+		return untrack(() =>
+			startAvailabilityLookup(
+				{
+					title: d.canonical_title,
+					altTitles: altTitlesFromKitsu(d),
+					episodeCount: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsuId: d.id,
+					status: d.status ?? undefined
+				},
 				mode,
-				alt_titles: altTitlesFromKitsu(d),
-				episode_count: d.episode_count ?? undefined,
-				year: yearFromKitsuRef(d) ?? undefined,
-				kitsu_id: d.id,
-				status: d.status ?? undefined
-			})
-				.then((r) => {
-					if (cancelled) return;
-					// Whatever a re-ask has since established is the
-					// re-ask's — it is newer and it bypassed the cache.
-					// Anything it left unanswered is still this lookup's.
-					applyAvailabilityPatch(
-						settle({
-							available: r.available,
-							count: r.episode_count,
-							extraEpisodes: r.extra_episodes
-						})
-					);
-				})
-				.catch(() => {
-					// Leave null; lazy fallback in the click handler will
-					// still surface the error.
-				})
-				.finally(() => {
-					if (!cancelled) availabilityResolved = true;
-				});
-		});
-		return () => {
-			cancelled = true;
-		};
+				{
+					check: checkAvailability,
+					begin: () => writeback.begin(),
+					apply: applyAvailabilityPatch,
+					setResolved: (r) => (availabilityResolved = r)
+				}
+			)
+		);
 	});
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
