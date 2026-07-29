@@ -35,7 +35,10 @@ describe('createAvailabilityWriteback', () => {
 
 		// The verdict is the re-ask's — it skipped the cache to get it,
 		// and this one read through the cache the re-ask was correcting.
-		expect(settle(answer(false, 12))).toEqual({ count: 12, extraEpisodes: [] });
+		// Only that is this case's claim: the count travelling with a
+		// negative answer is superseded along with it, which the
+		// superseded-negative case below is what states.
+		expect(settle(answer(false, 12))).not.toHaveProperty('available');
 	});
 
 	it('does not let a lookup overwrite a count a re-ask confirmed', () => {

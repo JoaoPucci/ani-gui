@@ -67,8 +67,15 @@ export function createAvailabilityWriteback(currentContext: () => string): Avail
 			return (answer: AvailabilityAnswer) => {
 				if (currentContext() !== asked) return {};
 				const patch: AvailabilityPatch = {};
-				if (verdicts === verdictsAtStart) patch.available = answer.available;
-				if (counts === countsAtStart) {
+				const verdictStands = verdicts === verdictsAtStart;
+				if (verdictStands) patch.available = answer.available;
+				// A negative answer's count is not a measurement — it is
+				// the verdict restated, so it is superseded with it. Left
+				// in, it publishes a null cap on a show a re-ask has just
+				// found, and both routes read a null cap as unbounded.
+				// A positive answer counted episodes, and that stands on
+				// its own however the verdict fared.
+				if (counts === countsAtStart && (verdictStands || answer.available)) {
 					patch.count = answer.count;
 					patch.extraEpisodes = answer.extraEpisodes;
 				}
