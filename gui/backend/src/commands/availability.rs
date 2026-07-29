@@ -396,7 +396,15 @@ pub(crate) async fn check_availability_with_base(
         // cache-skipping reading in the row. Writing over it would
         // reinstate the count this lookup read THROUGH the cache to
         // get, and hold it for the row's whole TTL.
+        //
+        // Held from before that reading until after the write, so it
+        // still describes the row when the write lands. Reading it and
+        // acting on it are otherwise separated by the airing fetch
+        // below, and a refresh can begin and finish inside that gap
+        // (Codex P2 #3674395584).
         let row = cache_key(id, mode);
+        let row_lock = state.availability_refreshes.for_row(&row);
+        let _writing = row_lock.lock().await;
         if !may_write_cache(
             &state.availability_refreshes,
             &row,
