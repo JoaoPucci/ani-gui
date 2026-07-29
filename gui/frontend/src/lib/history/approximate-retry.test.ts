@@ -469,4 +469,33 @@ describe('rowWorthRetrying', () => {
 		// rows before their first retry ever ran.
 		expect(rowWorthRetrying('a', ids('a'), {})).toBe(true);
 	});
+
+	it('does not spend an attempt on a probe the pacer refused', async () => {
+		// A refusal is not an answer — nobody asked allmanga anything.
+		// Spending one of the few attempts on it is worse than wasted:
+		// while the breaker is recovering it admits a single probe at a
+		// time, so the attempt that went to a refusal was a slot taken
+		// from a row that would have got a real answer.
+		//
+		// Refused twice, then answered. With refusals counting, the
+		// third ask is the last and the row would be dropped whatever
+		// it said; only by not counting them does the confirmed cap
+		// ever get published.
+		const answers = [
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 4, episode_count_approximate: false }
+		];
+		const refined: [string, number][] = [];
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => answers.shift() ?? null,
+			mode: 'sub',
+			onRefined: (id, count) => refined.push([id, count]),
+			wait: async () => {},
+			maxAttempts: 2
+		});
+
+		expect(refined).toEqual([['e1', 4]]);
+	});
 });
