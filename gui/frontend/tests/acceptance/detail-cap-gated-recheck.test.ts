@@ -373,6 +373,13 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			'the tile to go unavailable once the show is delisted'
 		);
 
+		// The confirmed cap of zero makes EVERY tile cap-gated, so the
+		// recheck styling and tooltip would otherwise win over the
+		// unavailable ones — a pointer cursor and "click to check
+		// again" on a tile whose click is now, correctly, inert.
+		expect(tile(AIRED)!.classList.contains('ep-tile-recheck')).toBe(false);
+		expect(tile(AIRED)!.getAttribute('title')).toBe(m.detail_ep_disabled_tooltip());
+
 		// `aria-disabled` is advisory — it does not stop a click. The
 		// tile is still cap-gated too, because a delisting arrives
 		// without a count, so a handler that checks cap-gated first
