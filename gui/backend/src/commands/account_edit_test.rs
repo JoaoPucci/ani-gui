@@ -40,6 +40,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
     })
 }
 

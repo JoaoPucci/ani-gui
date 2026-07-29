@@ -181,6 +181,7 @@ fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
         internal_secret: ani_gui::account::InternalSecret::random(),
         mal_refresh: ani_gui::meta::mal_user::MalRefreshState::new(),
         account_write_locks: ani_gui::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: ani_gui::commands::availability::AvailabilityRefreshes::new(),
     }
 }
 

@@ -265,6 +265,18 @@ pub(crate) async fn check_availability_with_base(
     allanime_base: Option<&str>,
 ) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
+    // Captured before any network work, compared again before the
+    // write: a refresh answering in between means this lookup's row is
+    // the stale one. See `AvailabilityRefreshes`.
+    let refresh_generation_at_start =
+        args.kitsu_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map_or(0, |id| {
+                state
+                    .availability_refreshes
+                    .generation(&cache_key(id, mode))
+            });
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
@@ -383,6 +395,27 @@ pub(crate) async fn check_availability_with_base(
     }
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+        // A refresh that answered while this was out has already put a
+        // cache-skipping reading in the row. Writing over it would
+        // reinstate the count this lookup read THROUGH the cache to
+        // get, and hold it for the row's whole TTL.
+        let row = cache_key(id, mode);
+        if !may_write_cache(
+            &state.availability_refreshes,
+            &row,
+            refresh_generation_at_start,
+            args.bypass_cache,
+        ) {
+            return Ok(AvailabilityResponse {
+                available,
+                episode_count,
+                extra_episodes,
+                episode_count_approximate,
+            });
+        }
+        if args.bypass_cache {
+            state.availability_refreshes.bump(&row);
+        }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
@@ -533,6 +566,66 @@ fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
     serde_json::from_str::<crate::meta::anilist_airing::AiringStatus>(&body)
         .ok()?
         .next_airing_at
+}
+
+/// Per-`(kitsu_id, mode)` count of cache writes made by a
+/// cache-bypassing refresh.
+///
+/// Two availability lookups for the same row can be in flight at
+/// once: the page-load one, and the one a user's click sends with
+/// `bypass_cache`. `meta_cache_put` is INSERT OR REPLACE, so without
+/// this the later-landing request wins the row regardless of which
+/// question it answered — and the ordinary one read through the cache
+/// to get its answer, so letting it land second reinstates the very
+/// count the refresh was sent to replace, for the whole TTL.
+///
+/// A timestamp cannot stand in for this: `meta_cache.fetched_at` is
+/// whole seconds and the race is sub-second.
+///
+/// Process-wide, like the other write-ordering state on `AppState`;
+/// the cloned `Arc` is cheap.
+#[derive(Clone, Default)]
+pub struct AvailabilityRefreshes {
+    inner: std::sync::Arc<std::sync::Mutex<HashMap<String, u64>>>,
+}
+
+impl AvailabilityRefreshes {
+    /// An empty map. Production builds one at boot; tests per fixture.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// How many refreshes have written this row. Captured by a lookup
+    /// before it goes out, and compared again before it writes.
+    #[must_use]
+    pub fn generation(&self, key: &str) -> u64 {
+        self.inner
+            .lock()
+            .map(|m| m.get(key).copied().unwrap_or(0))
+            .unwrap_or(0)
+    }
+
+    /// Record that a refresh is writing this row.
+    pub fn bump(&self, key: &str) {
+        if let Ok(mut m) = self.inner.lock() {
+            *m.entry(key.to_string()).or_insert(0) += 1;
+        }
+    }
+}
+
+/// Whether a lookup may still write the row it was asked about.
+///
+/// A refresh always may: it skipped the cache, so it is not the stale
+/// one even if another refresh beat it. An ordinary lookup may only
+/// if no refresh has written since it went out.
+fn may_write_cache(
+    refreshes: &AvailabilityRefreshes,
+    key: &str,
+    generation_at_start: u64,
+    bypass_cache: bool,
+) -> bool {
+    bypass_cache || refreshes.generation(key) == generation_at_start
 }
 
 /// Same as [`write_cache`] but lets the caller supply the episode
@@ -1175,6 +1268,7 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+            availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
         }
     }
 

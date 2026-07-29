@@ -114,6 +114,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
     })
 }
 
@@ -141,6 +142,7 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
     })
 }
 
