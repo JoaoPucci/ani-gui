@@ -289,6 +289,7 @@ async fn enrich_availability_after_success(
             // Exact: this count comes from the play resolution's own
             // show fetch, not the gate-refused search-hit fallback.
             episode_count_approximate: false,
+            gate_refused: false,
         },
     );
 }
@@ -1787,6 +1788,7 @@ mod tests {
                 episode_count: Some(7),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
 

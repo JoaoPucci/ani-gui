@@ -67,7 +67,13 @@ export interface ApproximateRetryDeps {
 	fetchAvailability: (
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
-	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
+	) => Promise<{
+		episode_count: number | null;
+		episode_count_approximate?: boolean;
+		/** The pacer refused the detail fetch — nobody asked upstream
+		 *  anything, so this row's turn was never really taken. */
+		gate_refused?: boolean;
+	} | null>;
 	/** Already resolved by the time the first pass finished. */
 	mode: 'sub' | 'dub';
 	/** Fired only for a cap the retry confirmed. */
@@ -163,7 +169,14 @@ export async function retryApproximateCaps(
 		// historyById map that is never rebuilt after the first load.
 		if (deps.cancelled?.()) return;
 		if (skip(deps, job.row.entryId)) continue;
-		job.attempts++;
+		// A refusal is not an answer. Nobody asked allmanga anything,
+		// so charging the row an attempt for it is worse than wasted:
+		// while the breaker recovers it admits one probe at a time, and
+		// the attempt spent here was a slot taken from a row that would
+		// have got a real answer. The row keeps its turn and climbs the
+		// ladder anyway, so a permanently refused upstream still ends —
+		// on the wait, not on the count.
+		if (!answer?.refused) job.attempts++;
 
 		// A count with the approximate flag CLEAR is the only outcome
 		// worth publishing. An approximate one is no more trustworthy
@@ -212,11 +225,15 @@ function skip(deps: ApproximateRetryDeps, entryId: string): boolean {
 async function probe(
 	deps: ApproximateRetryDeps,
 	row: ApproximateRow
-): Promise<{ count: number | null; approximate: boolean } | null> {
+): Promise<{ count: number | null; approximate: boolean; refused: boolean } | null> {
 	try {
 		const r = await deps.fetchAvailability(row.match, deps.mode);
 		if (!r) return null;
-		return { count: r.episode_count ?? null, approximate: r.episode_count_approximate === true };
+		return {
+			count: r.episode_count ?? null,
+			approximate: r.episode_count_approximate === true,
+			refused: r.gate_refused === true
+		};
 	} catch {
 		return null;
 	}
