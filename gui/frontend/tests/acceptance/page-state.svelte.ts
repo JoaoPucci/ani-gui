@@ -33,3 +33,16 @@ export function setParams(next: Record<string, string>): void {
 export function setQuery(q: string): void {
 	url.searchParams.set('q', q);
 }
+
+/**
+ * Point the stub at a path and query string, as a `goto` does.
+ *
+ * The play route carries its whole session in the URL — which episode
+ * is playing, which stream session serves it — so a scenario that
+ * mounts it has to say more than the route param.
+ */
+export function setUrl(pathname: string, query: Record<string, string> = {}): void {
+	url.pathname = pathname;
+	url.search = '';
+	for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+}

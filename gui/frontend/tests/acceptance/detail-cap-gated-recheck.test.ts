@@ -25,6 +25,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -194,5 +195,50 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// stranding the user under an overlay that never clears.
 		release();
 		await until(() => overlay() === null, 'the page to unblock once the check came back short');
+	});
+
+	it('presents the dimmed tile as something to click, not as refused', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+
+		// The tooltip is what distinguishes a dimmed-but-clickable tile
+		// from an unaired or uncatalogued one, so it doubles as the
+		// signal that the cap has actually landed and the tile is in
+		// the state this scenario is about.
+		await until(
+			() => tile(AIRED)!.getAttribute('title') === m.detail_ep_recheck_idle(),
+			'the tile to settle into its cap-gated resting state'
+		);
+
+		// Dimmed says "not right now"; not-allowed says "never, stop
+		// trying". The tile is a live control that re-asks allmanga, so
+		// it must not wear the styling reserved for tiles with nothing
+		// behind them — that is precisely the affordance the whole
+		// feature adds.
+		expect(tile(AIRED)!.classList.contains('ep-tile-disabled')).toBe(false);
 	});
 });
