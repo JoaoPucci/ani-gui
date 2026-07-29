@@ -22,8 +22,9 @@ function deferredProbe() {
 	return {
 		calls,
 		probe,
-		release: (count: number | null, approximate = false) =>
-			release(count === null ? null : { count, approximate }),
+		// The catalogue answered — possibly without a number. Distinct
+		// from `fail()`, which is not being able to ask at all.
+		release: (count: number | null, approximate = false) => release({ count, approximate }),
 		fail: () => reject(new Error('probe failed'))
 	};
 }
@@ -189,9 +190,10 @@ describe('createCapGateProbe', () => {
 
 	it('marks only the tiles that were actually clicked as busy', () => {
 		const gate = createCapGateProbe({
-			probe: () => new Promise<number | null>(() => {}),
+			probe: () => new Promise<never>(() => {}),
 			onCleared: () => {},
-			onStillGated: () => {}
+			onStillGated: () => {},
+			onFailed: () => {}
 		});
 
 		gate.request(5);

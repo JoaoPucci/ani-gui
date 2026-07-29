@@ -7,6 +7,7 @@
 	"ep_airs": "Airs {date}",
 	"ep_disabled_tooltip": "Not in allmanga's catalogue.",
 	"ep_recheck_busy": "Checking with allmanga…",
+	"ep_recheck_failed": "Couldn't check right now — try again in a moment.",
 	"ep_recheck_idle": "Not in allmanga's catalogue yet — click to check again.",
 	"ep_recheck_still_gated": "Still not in allmanga's catalogue.",
 	"ep_unaired": "Unaired",

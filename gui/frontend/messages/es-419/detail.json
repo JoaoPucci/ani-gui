@@ -7,6 +7,7 @@
 	"ep_airs": "Se emite el {date}",
 	"ep_disabled_tooltip": "Fuera del catálogo de allmanga.",
 	"ep_recheck_busy": "Consultando allmanga…",
+	"ep_recheck_failed": "No se pudo comprobar ahora: inténtalo de nuevo en un momento.",
 	"ep_recheck_idle": "Aún no está en el catálogo de allmanga: haz clic para volver a comprobar.",
 	"ep_recheck_still_gated": "Aún no está en el catálogo de allmanga.",
 	"ep_unaired": "Sin emitir",

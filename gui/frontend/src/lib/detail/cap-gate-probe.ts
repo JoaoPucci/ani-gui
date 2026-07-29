@@ -36,13 +36,18 @@ import { beyondPlayable } from './episode-caps';
  */
 export interface CapGateProbeDeps {
 	/** Ask allmanga how many episodes it has for THIS SHOW, skipping
-	 *  the cached row. Resolves to the count, or null when it has
-	 *  none. Takes no episode: the question is show-level. */
-	probe: () => Promise<number | null>;
+	 *  the cached row. Answers with the count AND whether the backend
+	 *  confirmed it; null when it could not answer at all. Takes no
+	 *  episode: the question is show-level. */
+	probe: () => Promise<{ count: number | null; approximate: boolean } | null>;
 	/** The fresh count reaches the episode — publish it and play. */
 	onCleared: (episode: number, count: number) => void;
-	/** Still short, countless, or failed. */
+	/** The catalogue answered, and the episode is still not in it. */
 	onStillGated: (episode: number) => void;
+	/** We could not ask — offline, rate-limited, backend error. A
+	 *  different sentence: saying "not in the catalogue" here claims a
+	 *  fact nobody established. */
+	onFailed: (episode: number) => void;
 }
 
 export function createCapGateProbe(deps: CapGateProbeDeps): {
@@ -50,7 +55,7 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 	isProbing: (episode: number) => boolean;
 } {
 	/** The shared in-flight lookup, or null when none is out. */
-	let pending: Promise<number | null> | null = null;
+	let pending: Promise<{ count: number | null; approximate: boolean } | null> | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
 	 *  to the tile the user pressed rather than to the whole strip. */
 	const waiting = new Set<number>();
@@ -67,18 +72,23 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 				pending = null;
 			});
 			void pending
-				.then((count) => {
-					// `beyondPlayable` decides, rather than a fresh
-					// comparison: the rule that dimmed the tile has to be
-					// the rule that un-dims it, half-episode floor-compare
-					// included.
-					if (count != null && !beyondPlayable(episode, count)) {
-						deps.onCleared(episode, count);
-					} else {
-						deps.onStillGated(episode);
+				.then((answer) => {
+					if (answer == null) return deps.onFailed(episode);
+					// An unconfirmed count came from the search hit rather
+					// than the per-show fetch: it counts half-episodes as
+					// whole ones and can read one high, so clearing on it
+					// starts resolving an episode that does not exist.
+					if (answer.approximate || answer.count == null) {
+						return deps.onStillGated(episode);
 					}
+					// `beyondPlayable` decides the rest, rather than a
+					// fresh comparison: the rule that dimmed the tile has
+					// to be the rule that un-dims it, half-episode
+					// floor-compare included.
+					if (beyondPlayable(episode, answer.count)) return deps.onStillGated(episode);
+					deps.onCleared(episode, answer.count);
 				})
-				.catch(() => deps.onStillGated(episode))
+				.catch(() => deps.onFailed(episode))
 				// Released on every path. A rejection that left the tile
 				// marked would swallow its later clicks as duplicates and
 				// wedge it shut for good.

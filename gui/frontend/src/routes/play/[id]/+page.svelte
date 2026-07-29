@@ -857,13 +857,9 @@
 				// being questioned and never reaches allmanga.
 				bypass_cache: true
 			});
-			// An approximate count came from the search hit rather than
-			// the per-show fetch: it counts half-episodes as whole ones
-			// and can read one high. Clearing a tile on it would start
-			// resolving an episode that does not exist, which is the
-			// error the flag exists to prevent. Unconfirmed is not an
-			// answer.
-			return r.episode_count_approximate ? null : r.episode_count;
+			// The controller decides what an unconfirmed count means;
+			// this just carries the provenance across.
+			return { count: r.episode_count, approximate: r.episode_count_approximate === true };
 		},
 		onCleared: (episode, count) => {
 			playableEpisodeCount = count;
@@ -873,6 +869,10 @@
 		onStillGated: () => {
 			switchBusy = false;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
+		},
+		onFailed: () => {
+			switchBusy = false;
+			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
 		}
 	});
 
