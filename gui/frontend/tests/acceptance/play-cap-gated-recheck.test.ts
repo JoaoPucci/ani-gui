@@ -170,6 +170,62 @@ describe('play route — clicking a dimmed aired episode', () => {
 		);
 	});
 
+	it('splices a refreshed special into the strip, and drops one that went away', async () => {
+		let recheckExtras: string[] = ['4.5'];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				return HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					// The strip loaded knowing of no specials.
+					extra_episodes: body.bypass_cache ? recheckExtras : [],
+					episode_count_approximate: false
+				});
+			}),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		app = mount(PlayPage, { target });
+		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
+		expect(target.querySelector('li[data-ep-num="4.5"]')).toBeNull();
+
+		card(AIRED)!.click();
+
+		// The player builds its own five-wide strip, so the detail
+		// suite proves nothing about this splice.
+		await until(
+			() => target.querySelector('li[data-ep-num="4.5"]') !== null,
+			'the newly catalogued special to appear in the player strip'
+		);
+
+		// And the other direction, which is the one that leaves a dead
+		// card on screen: allmanga pulls the special, and the strip has
+		// to stop offering it.
+		recheckExtras = [];
+		card(AIRED)!.click();
+		await until(
+			() => target.querySelector('li[data-ep-num="4.5"]') === null,
+			'the withdrawn special to leave the player strip'
+		);
+	});
+
 	it('presents the dimmed card as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
