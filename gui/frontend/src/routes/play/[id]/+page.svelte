@@ -922,6 +922,11 @@
 	function onRecheckEpisode(n: number) {
 		if (switchBusy) return;
 		switchBusy = true;
+		// Set, not cleared. `switchToEpisode` leaves its last caption
+		// behind — its finally only resets `switchBusy` — so without
+		// this the block raised for an allmanga lookup would read as a
+		// provider tick from whatever ran before it.
+		switchProgress = m.detail_ep_recheck_busy();
 		capGate.request(n);
 	}
 	// True once the availability probe settled (result or error). The
