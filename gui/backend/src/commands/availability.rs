@@ -765,6 +765,63 @@ pub struct AvailabilityWarmArgs {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn a_gate_refusal_says_so_rather_than_only_looking_approximate() {
+        // `episode_count_approximate` means "this number came from the
+        // search hit". Two very different things set it: the pacer
+        // refused the detail fetch, or the fetch was attempted and
+        // failed. The retry on the frontend treats them the same
+        // because it cannot tell them apart, so it spends one of its
+        // few attempts on a refusal that was never going to answer —
+        // and the breaker admits one trial at a time, so a spent
+        // attempt is a slot taken from a probe that would have.
+        //
+        // Only the refusal is this flag. A failed fetch is still just
+        // approximate.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"data": {"shows": {"edges": [{
+                    "_id": "s1",
+                    "name": "Gate Test",
+                    "availableEpisodes": {"sub": 5, "dub": 0}
+                }]}}}),
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+
+        // Three consecutive failures open the breaker; background
+        // admits are refused while it is open. Interactive ones never
+        // are, which is why this probe has to be a background one.
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state
+                .scraper_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Gate Test",
+            "mode": "sub",
+            "kitsu_id": "901",
+            "background": true
+        }))
+        .expect("args");
+        let refused = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("the probe still answers from the search hit");
+
+        assert!(
+            refused.episode_count_approximate,
+            "a refused fetch still leaves the count approximate"
+        );
+        assert!(
+            refused.gate_refused,
+            "and it has to be distinguishable from a fetch that was tried and failed"
+        );
+    }
+
     fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
         serde_json::from_value(serde_json::json!({
             "_id": "abc",
