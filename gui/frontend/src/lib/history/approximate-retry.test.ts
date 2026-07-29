@@ -283,6 +283,29 @@ describe('retryApproximateCaps', () => {
 		expect(probes).toEqual(['b']);
 	});
 
+	it('rechecks the skip after the wait, not only before it', async () => {
+		const { fetchAvailability, probes } = answers(exact(12));
+		let settled = false;
+
+		await retryApproximateCaps([row('a')], {
+			fetchAvailability,
+			mode: 'sub',
+			onRefined: () => {},
+			// The wait is where a click lands: the later ladder steps are
+			// 30 and 60 seconds long, and a user who clicks the card in
+			// that window gets an exact cap from their own interactive
+			// lookup. Checking only before the wait spends a scraper slot
+			// re-asking a question that has since been answered — and a
+			// failure on that probe counts toward the breaker.
+			wait: async () => {
+				settled = true;
+			},
+			shouldRetry: () => !settled
+		});
+
+		expect(probes).toEqual([]);
+	});
+
 	it('probes under the configured mode', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability, modes } = answers(exact(12));
