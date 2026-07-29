@@ -155,11 +155,14 @@ export async function retryApproximateCaps(
 		if (skip(deps, job.row.entryId)) continue;
 
 		const answer = await probe(deps, job.row);
-		// The request outlives the teardown that started during it, so
-		// the answer has to be dropped rather than published: onRefined
-		// writes to an unmounted component and sends rowReady off for
-		// Kitsu episodes belonging to a page that is gone.
+		// Both ways the answer can have gone stale while it was out.
+		// The route is gone: onRefined would write to an unmounted
+		// component. Or the row is gone but the route is not, which
+		// cancellation cannot see — and publishing there sends
+		// rowReady after Kitsu episodes for a deleted entry, through a
+		// historyById map that is never rebuilt after the first load.
 		if (deps.cancelled?.()) return;
+		if (skip(deps, job.row.entryId)) continue;
 		job.attempts++;
 
 		// A count with the approximate flag CLEAR is the only outcome
