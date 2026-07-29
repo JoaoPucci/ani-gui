@@ -863,6 +863,7 @@
 	 * skipped rather than written.
 	 */
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
+		showListed = refresh.available;
 		if (refresh.count != null) playableEpisodeCount = refresh.count;
 		if (refresh.extraEpisodes != null) extraEpisodes = refresh.extraEpisodes;
 	}
@@ -928,6 +929,12 @@
 	// beyondPlayable reads it as unbounded, so the warm would resolve
 	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
+	/** Whether allmanga has the show at all, as the detail page tracks
+	 *  it. null until the first answer. Separate from the cap: a
+	 *  delisted show comes back without a count, so the cap alone
+	 *  cannot express "there is nothing here" — it just stays where it
+	 *  was and keeps every episode under it looking playable. */
+	let showListed = $state<boolean | null>(null);
 	// Non-integer episode tags allmanga has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
@@ -957,6 +964,7 @@
 		})
 			.then((r) => {
 				if (cancelled) return;
+				showListed = r.available;
 				playableEpisodeCount = r.episode_count;
 				extraEpisodes = r.extra_episodes;
 			})
@@ -1718,6 +1726,11 @@
 		// switches hold until the answer lands (Codex P2 #3565988145);
 		// aired-but-uncatalogued targets above allmanga's count are
 		// equally doomed (catalog lag).
+		// A delisted show comes back without a count, so the cap check
+		// below cannot catch it — the cap is whatever it already was.
+		// Every path lands here, including auto-play-next, which no
+		// card state would cover.
+		if (showListed === false) return;
 		if (
 			epAirState(targetEp, airing).unaired ||
 			airingIsPending ||
@@ -3173,14 +3186,19 @@
 									type="button"
 									class="ep-card"
 									class:ep-card-current={isCurrent}
-									class:ep-card-unaired={air.unaired}
-									class:ep-card-recheck={capGated}
-									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
+									class:ep-card-unaired={air.unaired || showListed === false}
+									class:ep-card-recheck={capGated && showListed !== false}
+									disabled={(switchBusy && !isCurrent) ||
+										air.unaired ||
+										airingIsPending ||
+										showListed === false}
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
-										: capGated
-											? m.detail_ep_recheck_idle()
-											: undefined}
+										: showListed === false
+											? m.detail_ep_disabled_tooltip()
+											: capGated
+												? m.detail_ep_recheck_idle()
+												: undefined}
 									onclick={() => {
 										// Cap-gated is not "disabled": the count is a
 										// snapshot, so re-ask before refusing.
