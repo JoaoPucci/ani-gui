@@ -125,13 +125,34 @@ describe('home Continue Watching', () => {
 				return HttpResponse.json({ available: true, episode_count: 26, approximate: false });
 			}),
 			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([]))
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+
+			// The rest of what a mounted home route reaches for. Every
+			// one is stubbed so `onUnhandledRequest: 'error'` keeps its
+			// meaning: without them the route still reaches availability,
+			// but by way of its failure fallbacks rather than the
+			// cold-cache resolution this scenario describes.
+			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+			// Cold caches: no stored allanime→Kitsu mapping and no
+			// remembered title match, so resolution goes through the
+			// Kitsu search above and writes its result back.
+			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+			http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
 		);
 
 		app = mount(HomePage, { target });
 
-		// Nothing may be probed while the mode is unknown.
-		await new Promise((r) => setTimeout(r, 100));
+		// The card renders the moment the row's MATCH is known — the
+		// loader releases it without waiting on the availability probe.
+		// So this is the causal point at which an ungated loader would
+		// already have probed, and asserting here does not depend on
+		// how fast the worker got through history and resolution.
+		await until(
+			() => screen().includes('Cowboy Bebop'),
+			'the history row to resolve and render its card'
+		);
 		expect(probedModes).toEqual([]);
 
 		releaseSettings();
