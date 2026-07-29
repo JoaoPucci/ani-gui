@@ -741,6 +741,60 @@ mod tests {
     }
 
     #[test]
+    fn an_ordinary_lookup_yields_to_a_refresh_that_landed_while_it_was_out() {
+        let refreshes = AvailabilityRefreshes::new();
+        let key = cache_key("kid-1", "sub");
+        let started_at = refreshes.generation(&key);
+
+        // The user clicked a dimmed tile and the cache-bypassing
+        // lookup came back first, writing the fresh row.
+        refreshes.bump(&key);
+
+        // This one has been out since before that. Its answer is
+        // older, and it read through the cache to get it — writing it
+        // now puts the stale count back for the whole TTL, so the next
+        // page visit restores the gate the refresh just cleared.
+        assert!(!may_write_cache(&refreshes, &key, started_at, false));
+    }
+
+    #[test]
+    fn a_refresh_writes_even_when_another_refresh_landed_first() {
+        let refreshes = AvailabilityRefreshes::new();
+        let key = cache_key("kid-1", "sub");
+        let started_at = refreshes.generation(&key);
+        refreshes.bump(&key);
+
+        // Both skipped the cache, so neither is the stale one — last
+        // write wins is the right rule between them.
+        assert!(may_write_cache(&refreshes, &key, started_at, true));
+    }
+
+    #[test]
+    fn an_undisturbed_lookup_still_writes() {
+        let refreshes = AvailabilityRefreshes::new();
+        let key = cache_key("kid-1", "sub");
+        let started_at = refreshes.generation(&key);
+
+        assert!(may_write_cache(&refreshes, &key, started_at, false));
+    }
+
+    #[test]
+    fn generations_do_not_leak_between_shows_or_modes() {
+        let refreshes = AvailabilityRefreshes::new();
+        let sub = cache_key("kid-1", "sub");
+        let dub = cache_key("kid-1", "dub");
+        let other = cache_key("kid-2", "sub");
+        let sub_started = refreshes.generation(&sub);
+
+        refreshes.bump(&dub);
+        refreshes.bump(&other);
+
+        // A refresh for the dub catalogue, or for a different show,
+        // says nothing about this row.
+        assert!(may_write_cache(&refreshes, &sub, sub_started, false));
+    }
+
+    #[test]
     fn enrich_from_show_fetch_propagates_rate_limits() {
         // A throttled show-metadata fetch must NOT be downgraded to
         // the count fallback: the caller (and the warm loop's
