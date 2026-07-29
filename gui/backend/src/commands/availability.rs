@@ -806,7 +806,6 @@ pub struct AvailabilityWarmArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn candidate_with(sub: u32) -> crate::scraper::allanime::Candidate {
         crate::scraper::allanime::Candidate {
