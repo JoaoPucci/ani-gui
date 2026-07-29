@@ -40,14 +40,20 @@ export interface CapGateProbeDeps {
 	 *  confirmed it; null when it could not answer at all. Takes no
 	 *  episode: the question is show-level. */
 	probe: () => Promise<{ count: number | null; approximate: boolean } | null>;
-	/** Which show the strip is on, read when the click goes out and
-	 *  again when the answer lands. Both routes reuse one component
-	 *  across shows, so this moves under an in-flight lookup. */
-	currentShow: () => string;
+	/** What the answer will be about — read when the click goes out and
+	 *  again when it lands. Everything that changes the meaning of a
+	 *  count belongs in here: the show, because both routes reuse one
+	 *  component across titles, and the audio mode, because allmanga
+	 *  catalogues sub and dub separately and settings arrive after the
+	 *  page does. */
+	currentContext: () => string;
 	/** The fresh count reaches the episode — publish it and play. */
 	onCleared: (episode: number, count: number) => void;
-	/** The catalogue answered, and the episode is still not in it. */
-	onStillGated: (episode: number) => void;
+	/** The catalogue answered, and the episode is still not in it.
+	 *  Carries the confirmed count so the strip can correct itself when
+	 *  the catalogue has shrunk, and null when nothing publishable came
+	 *  back. */
+	onStillGated: (episode: number, count: number | null) => void;
 	/** We could not ask — offline, rate-limited, backend error. A
 	 *  different sentence: saying "not in the catalogue" here claims a
 	 *  fact nobody established. */
@@ -73,11 +79,12 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 		request: (episode) => {
 			if (waiting.has(episode)) return;
 			waiting.add(episode);
-			// Which show this question is about. Compared again when the
-			// answer lands: an episode number means a different episode
-			// on a different strip, so applying it across a move plays
-			// the wrong thing.
-			const asked = deps.currentShow();
+			// What this question is about. Compared again when the answer
+			// lands: an episode number means a different episode on a
+			// different strip, and a sub count says nothing about dub,
+			// so applying an answer across either change plays the wrong
+			// thing.
+			const asked = deps.currentContext();
 			// Cleared as soon as the request settles, so a click after
 			// this one gets a current answer instead of joining a
 			// lookup that has already finished.
@@ -86,27 +93,38 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			});
 			void pending
 				.then((answer) => {
-					if (deps.currentShow() !== asked) return deps.onSuperseded(episode);
+					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);
 					if (answer == null) return deps.onFailed(episode);
 					// An unconfirmed count came from the search hit rather
 					// than the per-show fetch: it counts half-episodes as
 					// whole ones and can read one high, so clearing on it
-					// starts resolving an episode that does not exist.
+					// starts resolving an episode that does not exist —
+					// and publishing it would replace a real cap with a
+					// guess. Nothing to hand back.
 					if (answer.approximate || answer.count == null) {
-						return deps.onStillGated(episode);
+						return deps.onStillGated(episode, null);
 					}
 					// `beyondPlayable` decides the rest, rather than a
 					// fresh comparison: the rule that dimmed the tile has
 					// to be the rule that un-dims it, half-episode
 					// floor-compare included.
-					if (beyondPlayable(episode, answer.count)) return deps.onStillGated(episode);
+					//
+					// The count goes back either way. A confirmed answer
+					// SHORTER than what the page is showing is news:
+					// allmanga pulls episodes and corrects metadata, and
+					// until the strip hears about it every tile between
+					// the two caps stays enabled on a number that is no
+					// longer true.
+					if (beyondPlayable(episode, answer.count)) {
+						return deps.onStillGated(episode, answer.count);
+					}
 					deps.onCleared(episode, answer.count);
 				})
 				// Same guard on the failure path: an error toast about a
 				// title the user has already left is noise attached to
 				// something they are no longer doing.
 				.catch(() =>
-					deps.currentShow() !== asked ? deps.onSuperseded(episode) : deps.onFailed(episode)
+					deps.currentContext() !== asked ? deps.onSuperseded(episode) : deps.onFailed(episode)
 				)
 				// Released on every path. A rejection that left the tile
 				// marked would swallow its later clicks as duplicates and

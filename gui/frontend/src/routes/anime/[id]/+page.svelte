@@ -127,13 +127,22 @@
 	 * up — the caption just changes from checking to the usual play
 	 * progress.
 	 */
+	/**
+	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * dub separately and dub lags, so this is part of the question
+	 * rather than a detail of it: the probe sends it, and the context
+	 * the answer is checked against is keyed on it. Settings land after
+	 * the page does, so a click in that gap asks with the fallback and
+	 * the real mode can arrive while the answer is out.
+	 */
+	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
 	const capGate = createCapGateProbe({
 		probe: async () => {
 			const d = detail;
 			if (!d) return null;
 			const r = await checkAvailability({
 				title: d.canonical_title,
-				mode: (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+				mode: capGateMode(),
 				alt_titles: altTitlesFromKitsu(d),
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
@@ -148,13 +157,18 @@
 			// this just carries the provenance across.
 			return { count: r.episode_count, approximate: r.episode_count_approximate === true };
 		},
-		currentShow: () => detail?.id ?? '',
+		currentContext: () => `${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, count) => {
 			playableEpisodeCount = count;
 			// Overlay stays up; startPlay owns it from here.
 			void startPlay(episode);
 		},
-		onStillGated: () => {
+		onStillGated: (_episode, count) => {
+			// A confirmed count comes back even when it did not reach the
+			// episode, and it can be LOWER than what the strip is showing
+			// — allmanga pulls episodes. Publishing it re-dims the tiles
+			// that were enabled on the stale number.
+			if (count != null) playableEpisodeCount = count;
 			actionBusy = false;
 			actionProgress = null;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });

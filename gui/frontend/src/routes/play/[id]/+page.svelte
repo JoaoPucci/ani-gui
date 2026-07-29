@@ -840,13 +840,22 @@
 	 * the switch by NUMBER — not by the metadata object, which the
 	 * strip may have replaced.
 	 */
+	/**
+	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * dub separately and dub lags, so this is part of the question
+	 * rather than a detail of it: the probe sends it, and the context
+	 * the answer is checked against is keyed on it. Settings land after
+	 * the page does, so a click in that gap asks with the fallback and
+	 * the real mode can arrive while the answer is out.
+	 */
+	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
 	const capGate = createCapGateProbe({
 		probe: async () => {
 			const d = detail;
 			if (!d) return null;
 			const r = await checkAvailability({
 				title: d.canonical_title,
-				mode: (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+				mode: capGateMode(),
 				alt_titles: altTitlesFromKitsu(d),
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
@@ -861,13 +870,18 @@
 			// this just carries the provenance across.
 			return { count: r.episode_count, approximate: r.episode_count_approximate === true };
 		},
-		currentShow: () => detail?.id ?? '',
+		currentContext: () => `${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, count) => {
 			playableEpisodeCount = count;
 			switchBusy = false;
 			void switchToEpisode(episode);
 		},
-		onStillGated: () => {
+		onStillGated: (_episode, count) => {
+			// A confirmed count comes back even when it did not reach the
+			// episode, and it can be LOWER than what the strip is showing
+			// — allmanga pulls episodes. Publishing it re-dims the cards
+			// that were enabled on the stale number.
+			if (count != null) playableEpisodeCount = count;
 			switchBusy = false;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
 		},

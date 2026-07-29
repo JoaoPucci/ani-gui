@@ -197,6 +197,94 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		await until(() => overlay() === null, 'the page to unblock once the check came back short');
 	});
 
+	it('does not play a sub answer once settings land on dub', async () => {
+		let releaseSettings!: () => void;
+		const settingsHeld = new Promise<void>((r) => {
+			releaseSettings = r;
+		});
+		let releaseRecheck!: () => void;
+		const recheckHeld = new Promise<void>((r) => {
+			releaseRecheck = r;
+		});
+		const played: { episode?: string; prefetch?: boolean }[] = [];
+		const probes: { bypass_cache?: boolean; mode?: string }[] = [];
+
+		server.use(
+			// Settings arrive after the page does — the gap a click can
+			// land in. Held open here rather than raced, so the ordering
+			// is the test's rather than the scheduler's.
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await settingsHeld;
+				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
+				probes.push(body);
+				if (body.bypass_cache) await recheckHeld;
+				return HttpResponse.json({
+					available: true,
+					// Reaches episode 5 — but it is the SUB count, because
+					// that is what the click asked with.
+					episode_count: body.bypass_cache ? AIRED + 2 : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			}),
+			http.post(`${API_BASE}/api/play`, async ({ request }) => {
+				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
+				return HttpResponse.json({
+					id: 'session-1',
+					kind: 'hls',
+					has_subtitles: false,
+					quality: '1080',
+					mode: 'sub'
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		await until(() => probes.length > 0, 'the page-load availability lookup');
+
+		tile(AIRED)!.click();
+		await until(
+			() => probes.some((p) => p.bypass_cache === true),
+			'the click to send a cache-skipping lookup'
+		);
+		expect(probes.find((p) => p.bypass_cache)?.mode).toBe('sub');
+
+		// The real mode turns up while the answer is still out, then the
+		// answer lands.
+		releaseSettings();
+		await until(() => tile(AIRED) !== null, 'the page to survive the settings arriving');
+		releaseRecheck();
+
+		// Either outcome ends the wait: dropping the answer releases the
+		// page, and applying it starts a play. Waiting on the release
+		// alone would let the wrong behaviour report itself as a
+		// timeout rather than as the thing it actually did.
+		await until(
+			() => overlay() === null || played.length > 0,
+			'the page to either unblock or start playing'
+		);
+
+		// A sub count of 7 says nothing about what the dub catalogue
+		// has. Playing on it resolves an episode that may not exist.
+		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
+	});
+
 	it('presents the dimmed tile as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
