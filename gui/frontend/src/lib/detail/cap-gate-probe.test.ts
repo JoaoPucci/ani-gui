@@ -36,6 +36,7 @@ function harness(probe: () => Promise<CapGateAnswer | null>) {
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
 	const failed: number[] = [];
+	const failedRefreshes: (CapGateRefresh | null)[] = [];
 	const stillGatedCounts: (number | null)[] = [];
 	const superseded: number[] = [];
 	/** Every refresh the controller judged safe to write, in order,
@@ -58,10 +59,23 @@ function harness(probe: () => Promise<CapGateAnswer | null>) {
 			stillGatedCounts.push(refresh.count);
 			refreshes.push(refresh);
 		},
-		onFailed: (episode) => failed.push(episode),
+		onFailed: (episode, refresh) => {
+			failed.push(episode);
+			failedRefreshes.push(refresh);
+		},
 		onSuperseded: (episode) => superseded.push(episode)
 	});
-	return { gate, cleared, stillGated, stillGatedCounts, refreshes, failed, superseded, showing };
+	return {
+		gate,
+		cleared,
+		stillGated,
+		stillGatedCounts,
+		refreshes,
+		failed,
+		failedRefreshes,
+		superseded,
+		showing
+	};
 }
 
 describe('createCapGateProbe', () => {
@@ -106,7 +120,7 @@ describe('createCapGateProbe', () => {
 
 	it('refuses to clear on a count the backend could not confirm', async () => {
 		const d = deferredProbe();
-		const { gate, cleared, stillGated } = harness(d.probe);
+		const { gate, cleared, stillGated, failed } = harness(d.probe);
 
 		gate.request(5);
 		// Reaches the episode, but came from the search hit rather than
@@ -117,7 +131,27 @@ describe('createCapGateProbe', () => {
 		await flush();
 
 		expect(cleared).toEqual([]);
-		expect(stillGated).toEqual([5]);
+		// And it is not a catalogue verdict either. The per-show fetch
+		// is what would have said whether this episode is there, and it
+		// is the thing that did not answer — so "still not in the
+		// catalogue" asserts exactly what went unestablished.
+		expect(stillGated).toEqual([]);
+		expect(failed).toEqual([5]);
+	});
+
+	it('has nothing to hand back when the lookup could not be made', async () => {
+		const d = deferredProbe();
+		const { gate, failed, failedRefreshes } = harness(d.probe);
+
+		gate.request(5);
+		d.fail();
+		await flush();
+
+		// Offline or rate-limited: no answer at all, so nothing about
+		// the show was established. Distinct from the case above, where
+		// half of one arrived.
+		expect(failed).toEqual([5]);
+		expect(failedRefreshes).toEqual([null]);
 	});
 
 	it('separates a failed lookup from a confirmed short count', async () => {
@@ -267,34 +301,24 @@ describe('createCapGateProbe', () => {
 		expect(refreshes).toEqual([{ available: true, count: 6, extraEpisodes: ['4.5'] }]);
 	});
 
-	it('withholds extras from an unconfirmed answer', async () => {
+	it('withholds count and extras from an unconfirmed answer, but keeps the verdict', async () => {
 		const d = deferredProbe();
-		const { gate, refreshes } = harness(d.probe);
+		const { gate, failedRefreshes } = harness(d.probe);
 
 		gate.request(9);
 		// Unconfirmed means the per-show fetch failed — and that fetch
-		// is what would have listed the specials. The empty list is
-		// "we could not look", not "there are none", so writing it
-		// would delete specials that exist.
+		// is what supplies both the exact count and the specials. The
+		// count can read high; the empty list is "we could not look",
+		// not "there are none", so writing it would delete specials
+		// that exist.
+		//
+		// The verdict survives, because the SEARCH is what produced it
+		// and the search answered. A page showing the show as
+		// unavailable can recover from that.
 		d.release(6, true, { extraEpisodes: [] });
 		await flush();
 
-		expect(refreshes).toEqual([{ available: true, count: null, extraEpisodes: null }]);
-	});
-
-	it('withholds an unconfirmed count from the correction', async () => {
-		const d = deferredProbe();
-		const { gate, stillGated, stillGatedCounts } = harness(d.probe);
-
-		gate.request(9);
-		d.release(6, true);
-		await flush();
-
-		// Same shape of answer, but this one came from the search hit
-		// and can read high. Publishing it would replace a real cap
-		// with a guess.
-		expect(stillGated).toEqual([9]);
-		expect(stillGatedCounts).toEqual([null]);
+		expect(failedRefreshes).toEqual([{ available: true, count: null, extraEpisodes: null }]);
 	});
 
 	it('still answers normally when the strip stayed put', async () => {
