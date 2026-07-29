@@ -1,0 +1,143 @@
+// Acceptance: the Continue Watching early-click flow on the home
+// route — the scenarios #112 deferred to this tier.
+//
+// The home page bootstraps `settingsGet()` and `historyList()` in
+// parallel, so the availability mode is not known when the first
+// history rows arrive. `continue-watching-loader.ts` holds per-row
+// probes until `getMode()` resolves for that reason: a dub user
+// probed under the 'sub' fallback reads the wrong playable count,
+// while the click path later uses the real mode. The race is between
+// two in-flight requests, so it only exists once the route, the
+// loader and the API layer are running together.
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { mount, unmount } from 'svelte';
+
+import { API_BASE, server } from './setup';
+import { page } from './page-state.svelte';
+
+vi.mock('$app/state', () => ({
+	get page() {
+		return page;
+	}
+}));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(async () => {}),
+	invalidateAll: vi.fn(async () => {}),
+	beforeNavigate: vi.fn(),
+	afterNavigate: vi.fn()
+}));
+
+import HomePage from '../../src/routes/+page.svelte';
+import { __resetApiBaseForTests } from '../../src/lib/api';
+
+function ref(id: string, title: string, episodeCount: number) {
+	return {
+		id,
+		canonical_title: title,
+		titles: {},
+		abbreviated_titles: [],
+		slug: title.toLowerCase().replace(/\s+/g, '-'),
+		synopsis: null,
+		poster_image: null,
+		cover_image: null,
+		episode_count: episodeCount,
+		status: 'finished',
+		start_date: '2019-01-01',
+		average_rating: null
+	};
+}
+
+function config(mode: 'sub' | 'dub') {
+	return {
+		locale: 'en',
+		mode,
+		quality: 'best',
+		external_player: '',
+		external_player_kind: 'mpv',
+		external_player_custom_args: '',
+		syncplay_binary: '',
+		image_cache_cap_mb: 100,
+		auto_play_next: false,
+		download_bottom_bar_enabled: true,
+		auto_skip_op: false,
+		auto_skip_ed: false,
+		use_custom_player_controls: true,
+		disable_auto_pip_on_leave: false,
+		auto_update_anicli: false,
+		update_include_prereleases: false,
+		primary_account: ''
+	};
+}
+
+let target: HTMLElement;
+let app: ReturnType<typeof mount> | null = null;
+
+beforeEach(() => {
+	__resetApiBaseForTests(API_BASE);
+	target = document.createElement('div');
+	document.body.appendChild(target);
+});
+
+afterEach(() => {
+	if (app) unmount(app);
+	app = null;
+	target.remove();
+});
+
+async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
+const screen = () => target.textContent ?? '';
+
+describe('home Continue Watching', () => {
+	it('probes availability under the configured mode, not the sub fallback', async () => {
+		const probedModes: string[] = [];
+		let releaseSettings: () => void = () => {};
+		const settingsHeld = new Promise<void>((resolve) => {
+			releaseSettings = resolve;
+		});
+
+		server.use(
+			// Held so history lands first — the ordering the loader has
+			// to survive. Answering immediately would let the mode be
+			// known before any row arrived and prove nothing.
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await settingsHeld;
+				return HttpResponse.json(config('dub'));
+			}),
+			http.get(`${API_BASE}/api/history`, () =>
+				HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+			),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { mode?: string };
+				probedModes.push(body.mode ?? '(none)');
+				return HttpResponse.json({ available: true, episode_count: 26, approximate: false });
+			}),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([]))
+		);
+
+		app = mount(HomePage, { target });
+
+		// Nothing may be probed while the mode is unknown.
+		await new Promise((r) => setTimeout(r, 100));
+		expect(probedModes).toEqual([]);
+
+		releaseSettings();
+
+		await until(() => probedModes.length > 0, 'the row to be probed once settings resolved');
+		expect(probedModes.every((m) => m === 'dub')).toBe(true);
+		expect(screen()).toContain('Cowboy Bebop');
+	});
+});
