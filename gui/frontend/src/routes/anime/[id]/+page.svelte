@@ -1782,6 +1782,11 @@
 														? m.detail_ep_disabled_tooltip()
 														: undefined}
 											onclick={() => {
+												// `aria-disabled` is advisory — it does not stop a click, and a
+												// delisting leaves the tile cap-gated because it arrives without
+												// a count. Without this the re-ask branch below would ask
+												// allmanga again about a show it just said it does not have.
+												if (availability === false) return;
 												if (air.unaired || airingIsPending) return;
 												// Cap-gated is not "disabled": the count is a
 												// mount-time snapshot, so re-ask before refusing.
@@ -1852,6 +1857,11 @@
 														? m.detail_ep_disabled_tooltip()
 														: undefined}
 											onclick={() => {
+												// `aria-disabled` is advisory — it does not stop a click, and a
+												// delisting leaves the tile cap-gated because it arrives without
+												// a count. Without this the re-ask branch below would ask
+												// allmanga again about a show it just said it does not have.
+												if (availability === false) return;
 												if (air.unaired || airingIsPending) return;
 												if (capGated) onRecheckEpisode(n);
 												else onPickEpisode(n);

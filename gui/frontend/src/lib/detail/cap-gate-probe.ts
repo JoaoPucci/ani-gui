@@ -62,8 +62,14 @@ export interface CapGateRefresh {
 	/** Always trustworthy: a search that could not be completed comes
 	 *  back as a failure, never as a false. */
 	available: boolean;
-	/** Null when the answer was unconfirmed — a count that can read
-	 *  high must not replace a real cap. */
+	/** The confirmed cap, or null when the answer did not establish one
+	 *  — a count that can read one high must not replace a real cap.
+	 *
+	 *  A confirmed answer with no number is NOT null here but zero.
+	 *  Null is the routes' word for "no cap known", which
+	 *  `beyondPlayable` reads as unbounded; a delisted show, or one
+	 *  whose whole episode list is non-integer tags, means the
+	 *  opposite. */
 	count: number | null;
 	/** Null when the answer was unconfirmed. The empty list an
 	 *  unconfirmed answer carries means "could not look", not "there
@@ -121,14 +127,18 @@ export interface CapGateProbeDeps {
  * genuinely has none, and a show whose episodes are all non-integer
  * has a real list alongside a null count.
  *
- * The count only when it is both confirmed and a number. A count
- * that can read one high must not replace a real cap, and an absent
- * one is not a cap at all.
+ * The count whenever it is confirmed — including when there is no
+ * number. A count that can read one high must not replace a real
+ * cap, so an unconfirmed one is withheld. But a CONFIRMED answer
+ * without a number is itself a fact: allmanga has the show delisted,
+ * or its whole episode list is non-integer tags. That is a cap of
+ * zero, not an absent cap — null is the routes' word for "unknown",
+ * which `beyondPlayable` reads as unbounded.
  */
 function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 	return {
 		available: answer.available,
-		count: answer.approximate ? null : answer.count,
+		count: answer.approximate ? null : (answer.count ?? 0),
 		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
 	};
 }
@@ -171,10 +181,14 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 					// not a catalogue verdict, however low the search-hit
 					// count reads. It still carries what the SEARCH
 					// established.
-					if (answer.approximate) return deps.onFailed(episode, refresh);
-					// Confirmed, but no number: the catalogue answered and
-					// has no integer episode. That IS a verdict.
-					if (refresh.count == null) return deps.onStillGated(episode, refresh);
+					//
+					// The null check is redundant behind `approximate` —
+					// nothing else produces a null cap — but it is what
+					// narrows the type for the comparisons below, and it
+					// keeps the two from drifting apart.
+					if (answer.approximate || refresh.count == null) {
+						return deps.onFailed(episode, refresh);
+					}
 					// `beyondPlayable` decides the rest, rather than a
 					// fresh comparison: the rule that dimmed the tile has
 					// to be the rule that un-dims it, half-episode
