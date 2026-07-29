@@ -24,17 +24,10 @@ import type { KitsuAnimeRef } from '$lib/api';
  *     probe. So rows are retried strictly one at a time; firing them
  *     all at once spends the single trial on one row and gets the
  *     rest refused again.
- *   - The first ask is at the ordinary background spacing, not a
- *     cooldown. An unconfirmed count does not prove the gate refused
- *     — the backend falls back to the same search-hit count for any
- *     detail-fetch failure, and one transient error is far below the
- *     breaker's threshold. Assuming the worst there costs a minute of
- *     a visibly wrong card for nothing; assuming the best costs one
- *     probe the gate turns away without touching the network.
- *   - A retry that comes back unconfirmed IS a fresh refusal, so the
- *     breaker has just re-opened and later rows wait a full cooldown.
- *   - A confirmed answer proves the gate is admitting, so the
- *     remaining rows drop back to the ordinary spacing.
+ *   - Each row climbs a fixed backoff ladder rather than reacting to
+ *     what its answers looked like. Nothing in the response says
+ *     whether the gate refused, so the ladder is sized to cover both
+ *     the transient case and the breaker cooldown — see `BACKOFF_MS`.
  *
  * Probes stay in the BACKGROUND lane. Retrying as interactive would
  * walk this traffic straight past the gate that exists to keep it
@@ -92,33 +85,49 @@ export interface ApproximateRetryDeps {
 	/** Probes per row before giving up. An upstream that stays refused
 	 *  will not be talked round by a fourth ask. */
 	maxAttempts?: number;
-	/** Matches the backend's `BREAKER_COOLDOWN`. */
-	cooldownMs?: number;
-	/** Matches the backend's `BACKGROUND_INTERVAL`. */
-	pacedMs?: number;
+	/**
+	 * How long a row waits before each of its attempts, indexed by
+	 * attempts already made; the last entry repeats. A fixed ladder
+	 * rather than a reaction to the answers, because nothing in the
+	 * response says whether the gate refused — see the note above
+	 * `BACKOFF_MS`.
+	 */
+	backoffMs?: number[];
 }
 
-const DEFAULT_MAX_ATTEMPTS = 3;
-const DEFAULT_COOLDOWN_MS = 60_000;
-const DEFAULT_PACED_MS = 500;
+/**
+ * The ladder. Its shape is set by what it has to cover, not by what
+ * any single answer means:
+ *
+ *   - 500 ms — the backend's `BACKGROUND_INTERVAL`. Catches the
+ *     common case, a detail fetch that failed once for ordinary
+ *     transient reasons with the gate admitting throughout.
+ *   - 30 s, then 60 s — the backend's `BREAKER_COOLDOWN` is 60 s, so
+ *     by the third attempt a row that really was gate-refused is past
+ *     it. The two earlier attempts cost nothing in that case: a
+ *     refusal skips the network entirely by design.
+ *
+ * Read the other way round, this is why the schedule cannot be
+ * derived from the answers. `episode_count_approximate` means "this
+ * count came from the search hit", which the backend sets for a
+ * gate refusal AND for any failed detail fetch — and the breaker
+ * only opens after three consecutive failures, so one or two
+ * transient errors set the flag with background traffic still
+ * flowing. Treating it as proof of an open breaker delays the
+ * correction by a minute for nothing; treating its absence as proof
+ * of a closed one hammers a gate that is refusing. The ladder claims
+ * neither.
+ */
+const BACKOFF_MS = [500, 30_000, 60_000];
 
 export async function retryApproximateCaps(
 	rows: ApproximateRow[],
 	deps: ApproximateRetryDeps
 ): Promise<void> {
-	const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-	const cooldownMs = deps.cooldownMs ?? DEFAULT_COOLDOWN_MS;
-	const pacedMs = deps.pacedMs ?? DEFAULT_PACED_MS;
+	const backoff = deps.backoffMs ?? BACKOFF_MS;
+	const maxAttempts = deps.maxAttempts ?? backoff.length;
 
 	const queue = rows.map((row) => ({ row, attempts: 0 }));
-	// Start optimistic. An unconfirmed count is NOT proof the gate
-	// refused: the backend falls back to the same search-hit count
-	// whenever the detail fetch fails at all, and a single transient
-	// error sits well below the breaker's three-failure threshold.
-	// Opening with a cooldown on that assumption would leave the card
-	// wrong for a full minute while the gate was admitting throughout.
-	// Escalation is driven by evidence instead, below.
-	let breakerOpen = false;
 
 	while (queue.length > 0) {
 		if (deps.cancelled?.()) return;
@@ -126,7 +135,7 @@ export async function retryApproximateCaps(
 		if (!job) break;
 		if (deps.shouldRetry && !deps.shouldRetry(job.row.entryId)) continue;
 
-		await deps.wait(breakerOpen ? cooldownMs : pacedMs);
+		await deps.wait(backoff[Math.min(job.attempts, backoff.length - 1)]);
 		if (deps.cancelled?.()) return;
 
 		const answer = await probe(deps, job.row);
@@ -139,14 +148,9 @@ export async function retryApproximateCaps(
 		// match.episode_count fallback with nothing.
 		if (answer && answer.count != null && !answer.approximate) {
 			deps.onRefined(job.row.entryId, answer.count, false);
-			breakerOpen = false;
 			continue;
 		}
 
-		// Only a fresh refusal is evidence the breaker re-opened. A
-		// rejected or countless probe says nothing about the gate, so
-		// it leaves the current assumption alone.
-		if (answer?.approximate) breakerOpen = true;
 		if (job.attempts < maxAttempts) queue.push(job);
 	}
 }
