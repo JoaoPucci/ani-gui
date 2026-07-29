@@ -21,6 +21,7 @@ use serde::Deserialize;
 use crate::anicli::parser::{parse_progress_line, ProgressLine};
 use crate::anicli::process::{run_debug_streaming, DebugOptions};
 use crate::app::AppState;
+use crate::commands::availability_refresh::hold_if_still_ours;
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
@@ -211,11 +212,22 @@ async fn enrich_availability_after_success(
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
     };
+    let mode_str = args.mode.as_str();
+    let row = crate::commands::availability::cache_key(id, mode_str);
     let Some(c) = chosen_candidate else {
-        crate::commands::availability::write_cache(state, id, &args.mode, true);
+        if hold_if_still_ours(
+            &state.availability_refreshes,
+            &row,
+            generation_at_start,
+            false,
+        )
+        .await
+        .is_some()
+        {
+            crate::commands::availability::write_cache(state, id, &args.mode, true);
+        }
         return;
     };
-    let mode_str = args.mode.as_str();
     let detail = if state
         .scraper_gate
         .admit(scrape_priority(args))
@@ -251,6 +263,18 @@ async fn enrich_availability_after_success(
             (cap, ex)
         }
         None => (None, Vec::new()),
+    };
+    // The show fetch above is an await, so the row can have changed
+    // hands since this resolution started. Held until the write lands.
+    let Some(_writing) = hold_if_still_ours(
+        &state.availability_refreshes,
+        &row,
+        generation_at_start,
+        false,
+    )
+    .await
+    else {
+        return;
     };
     // Status unknown at this layer (PlayArgs doesn't carry it).
     // None → write_cache_full uses the conservative ongoing TTL
@@ -338,7 +362,21 @@ async fn classify_picker_miss(
         "play: picker found no safe allmanga match; surfacing NoResults",
     );
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-        crate::commands::availability::write_cache(state, id, &args.mode, false);
+        // The picking is where this verdict came from, and a re-ask
+        // can have answered since. A negative written over a refresh
+        // disables a show the user was just told about.
+        let row = crate::commands::availability::cache_key(id, args.mode.as_str());
+        if hold_if_still_ours(
+            &state.availability_refreshes,
+            &row,
+            generation_at_start,
+            false,
+        )
+        .await
+        .is_some()
+        {
+            crate::commands::availability::write_cache(state, id, &args.mode, false);
+        }
     }
     AniError::NoResults
 }

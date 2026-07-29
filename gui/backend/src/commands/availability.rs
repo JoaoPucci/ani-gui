@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
-use crate::commands::availability_refresh::may_write_cache;
+use crate::commands::availability_refresh::hold_if_still_ours;
 use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
 use crate::error::Result;
 
@@ -403,24 +403,21 @@ pub(crate) async fn check_availability_with_base(
         // below, and a refresh can begin and finish inside that gap
         // (Codex P2 #3674395584).
         let row = cache_key(id, mode);
-        let row_lock = state.availability_refreshes.for_row(&row);
-        let _writing = row_lock.lock().await;
-        if !may_write_cache(
+        let Some(_writing) = hold_if_still_ours(
             &state.availability_refreshes,
             &row,
             refresh_generation_at_start,
             args.bypass_cache,
-        ) {
+        )
+        .await
+        else {
             return Ok(AvailabilityResponse {
                 available,
                 episode_count,
                 extra_episodes,
                 episode_count_approximate,
             });
-        }
-        if args.bypass_cache {
-            state.availability_refreshes.bump(&row);
-        }
+        };
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
