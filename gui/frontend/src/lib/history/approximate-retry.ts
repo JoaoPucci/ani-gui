@@ -179,14 +179,21 @@ export async function retryApproximateCaps(
 		// historyById map that is never rebuilt after the first load.
 		if (deps.cancelled?.()) return;
 		if (skip(deps, job.row.entryId)) continue;
-		// A refusal is not an answer. Nobody asked allmanga anything,
-		// so charging the row an attempt for it is worse than wasted:
-		// while the breaker recovers it admits one probe at a time, and
-		// the attempt spent here was a slot taken from a row that would
-		// have got a real answer. The row keeps its turn and climbs the
-		// ladder anyway, so a permanently refused upstream still ends —
-		// on the wait, not on the count.
-		if (!answer?.refused) job.attempts++;
+		// The budget counts ANSWERS. A refusal is not one — nobody
+		// asked allmanga anything — and neither is a probe that never
+		// came back. Charging for either is worse than wasted: while
+		// the breaker recovers it admits one probe at a time, so the
+		// attempt spent here was a slot taken from a row that would
+		// have got a real answer.
+		//
+		// Both matter because the pacer refuses in two places. The
+		// detail fetch answers 200 with the flag; the search, refused
+		// first when the breaker is already open, surfaces as a
+		// transport error and arrives here as `null` — which is also
+		// what a backend that is simply down looks like. It does not
+		// need telling apart: neither answered, so neither counts, and
+		// the ladder is what bounds the loop either way.
+		if (answer && !answer.refused) job.attempts++;
 
 		// A count with the approximate flag CLEAR is the only outcome
 		// worth publishing. An approximate one is no more trustworthy
