@@ -1644,6 +1644,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
+        // Reading the generation and writing the row are two steps, and
+        // the lookup can be overtaken between them — the counter says
+        // "clear" and by the time the write lands it no longer is. So
+        // the reading has to be taken and used under the same lock, and
+        // that is what this pins: while the row is held, a lookup that
+        // has already got its answer must still be waiting.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": {"shows": {"edges": []}}
+                })),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let row = cache_key("889", "sub");
+
+        // Stand in for the refresh that is mid-section: it owns the row
+        // and has not written yet.
+        let held = state.availability_refreshes.for_row(&row);
+        let guard = held.lock().await;
+
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Section Test",
+            "mode": "sub",
+            "kitsu_id": "889"
+        }))
+        .expect("args");
+        let base = server.uri();
+        let bg = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let _ = check_availability_with_base(&state, &args, Some(&base)).await;
+            })
+        };
+
+        // Long enough for the unguarded lookup to finish its round-trip
+        // and write. Nothing may be in the row: the answer is in hand,
+        // but the decision about it is not this lookup's to make yet.
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(
+            meta_cache_get(&state.cache_pool, &row)
+                .expect("cache read")
+                .is_none(),
+            "a lookup wrote the row while another writer held it"
+        );
+
+        // Now the refresh finishes: its row lands, and the count says
+        // so. The waiting lookup must see both.
+        state.availability_refreshes.bump(&row);
+        write_cache_full(
+            &state,
+            "889",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(4),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+        drop(guard);
+
+        bg.await.expect("the background lookup finishes");
+
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("the refresh's row is still there");
+        let kept: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert!(
+            kept.available && kept.episode_count == Some(4),
+            "the lookup released to find a fresher row and overwrote it anyway, got {kept:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn background_probe_skips_the_network_while_the_breaker_is_open() {
         // Once the breaker is open, a background probe must not touch
         // allanime at all — it surfaces the same transient Network

@@ -20,8 +20,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+/// The lock held across one row's read-decide-write section. Async
+/// because the section spans an await: a negative answer for a
+/// pre-premiere show fetches the airing schedule before it writes.
+pub(crate) type RowLock = Arc<tokio::sync::Mutex<()>>;
+
 /// Per-`(kitsu_id, mode)` count of cache writes made by a
-/// cache-bypassing refresh.
+/// cache-bypassing refresh, and the lock that makes reading that
+/// count mean something.
 ///
 /// Keyed per show AND mode because allmanga catalogues sub and dub
 /// separately — a refresh of the dub row says nothing about whether
@@ -32,6 +38,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Default)]
 pub struct AvailabilityRefreshes {
     inner: Arc<Mutex<HashMap<String, u64>>>,
+    locks: Arc<Mutex<HashMap<String, RowLock>>>,
 }
 
 impl AvailabilityRefreshes {
@@ -56,6 +63,26 @@ impl AvailabilityRefreshes {
         if let Ok(mut m) = self.inner.lock() {
             *m.entry(key.to_string()).or_insert(0) += 1;
         }
+    }
+
+    /// The lock guarding one row's whole decide-and-write section.
+    ///
+    /// The generation counter on its own only narrows the race it was
+    /// meant to close: a lookup can read the counter, find it
+    /// unchanged, and still be overtaken before it writes — the
+    /// section is not a single step, and it yields in the middle of
+    /// itself. Whoever resumes last then owns the row, which is the
+    /// behaviour the counter exists to prevent.
+    ///
+    /// Taken before the check and held past the write, so the reading
+    /// still describes the row at the moment of writing. Scoped per
+    /// row, so probes for different shows — or for the other
+    /// catalogue of the same show — never wait on each other. The
+    /// brief std-mutex section only clones the `Arc`; the async mutex
+    /// it hands back is what the caller holds across the await.
+    pub(crate) fn for_row(&self, key: &str) -> RowLock {
+        let mut map = self.locks.lock().expect("availability row-lock map poisoned");
+        Arc::clone(map.entry(key.to_owned()).or_default())
     }
 }
 
