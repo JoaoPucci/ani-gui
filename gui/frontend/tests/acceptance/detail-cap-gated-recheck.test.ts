@@ -506,4 +506,86 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// feature adds.
 		expect(tile(AIRED)!.classList.contains('ep-tile-disabled')).toBe(false);
 	});
+
+	it('does not revive an abandoned re-ask when the user comes back to the show', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		const played: { episode?: string; prefetch?: boolean }[] = [];
+		const OTHER_ID = '43';
+		const OTHER_TITLE = 'Another Show';
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
+				HttpResponse.json({
+					...kitsuRef(String(params.id), String(params.id) === OTHER_ID ? OTHER_TITLE : TITLE, 12),
+					status: 'current'
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			// Two shows are visited, so the per-show reads have to answer
+			// for either id rather than for the one the other scenarios
+			// name explicitly.
+			http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json({ dir: '/tmp' })),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => HttpResponse.json({ ok: true })),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) await held;
+				return HttpResponse.json({
+					available: true,
+					episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			}),
+			http.post(`${API_BASE}/api/play`, async ({ request }) => {
+				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
+				return HttpResponse.json({
+					id: 'session-1',
+					kind: 'hls',
+					has_subtitles: false,
+					quality: '1080',
+					mode: 'sub'
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		tile(AIRED)!.click();
+		await until(() => overlay() !== null, 'the page to block while it checks');
+
+		// The user leaves for another show and comes back. SvelteKit
+		// reuses the component for both, so nothing was destroyed and
+		// the show and mode are the same two strings they were when the
+		// click went out — the answer is about a page that no longer
+		// holds the click that asked for it.
+		setParams({ id: OTHER_ID });
+		await until(
+			() => (target.textContent ?? '').includes(OTHER_TITLE),
+			'the page to move on to the other show'
+		);
+		setParams({ id: KITSU_ID });
+		await until(
+			() => (target.textContent ?? '').includes(TITLE) && tile(AIRED) !== null,
+			`the tile for episode ${AIRED} on the show the user came back to`
+		);
+
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+
+		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
+	});
 });
