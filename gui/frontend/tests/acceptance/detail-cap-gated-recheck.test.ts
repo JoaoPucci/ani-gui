@@ -73,6 +73,9 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** The blocking overlay the page raises for any long action. */
+const overlay = () => target.querySelector('[role="status"].backdrop');
+
 /** The tile for episode `n`, whatever state it is in. */
 const tile = (n: number) =>
 	(target.querySelector(`li[data-ep-num="${n}"] button`) as HTMLButtonElement | null) ?? null;
@@ -134,5 +137,45 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// remember" — without which the lookup answers from the very
 		// row that dimmed the tile and reaches allmanga never.
 		await until(() => bypassing().length > 0, 'the click to send a cache-skipping lookup');
+	});
+
+	it('blocks the page while it checks, like every other long action here', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		expect(overlay()).toBeNull();
+
+		tile(AIRED)!.click();
+
+		// Every other long operation on this page raises the overlay and
+		// holds the user until it resolves. The re-ask was built beside
+		// that convention rather than inside it, and the whole family of
+		// review findings — a second tile clicked, a navigation, an
+		// episode-page change, the busy marker moving — lives in the
+		// window that leaves open. Blocking closes the window.
+		await until(() => overlay() !== null, 'the page to block while it checks');
 	});
 });
