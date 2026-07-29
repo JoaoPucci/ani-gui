@@ -862,7 +862,19 @@
 	 * Nulls mean "the answer did not establish this", so they are
 	 * skipped rather than written.
 	 */
+	/**
+	 * How many re-asks have written back.
+	 *
+	 * The page-load lookup and a re-ask can be out at the same time —
+	 * settings arriving late flips the mode and restarts the former
+	 * while the user is clicking. The re-ask wins whenever it
+	 * answered: it is newer, and it skipped the cache to get a current
+	 * reading. So the ordinary lookup captures this before its request
+	 * and yields if it moved.
+	 */
+	let capRefreshes = 0;
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
+		capRefreshes += 1;
 		showListed = refresh.available;
 		if (refresh.count != null) playableEpisodeCount = refresh.count;
 		if (refresh.extraEpisodes != null) extraEpisodes = refresh.extraEpisodes;
@@ -958,6 +970,7 @@
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		availabilityResolved = false;
 		let cancelled = false;
+		const refreshesAtStart = capRefreshes;
 		void checkAvailability({
 			title: d.canonical_title,
 			mode,
@@ -969,6 +982,11 @@
 		})
 			.then((r) => {
 				if (cancelled) return;
+				// A re-ask answered while this was out. It is newer and
+				// it bypassed the cache, so this reading is the stale
+				// one — and an unconfirmed one would erase the specials
+				// the re-ask just established.
+				if (capRefreshes !== refreshesAtStart) return;
 				showListed = r.available;
 				playableEpisodeCount = r.episode_count;
 				extraEpisodes = r.extra_episodes;
