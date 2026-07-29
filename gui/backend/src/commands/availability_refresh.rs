@@ -157,6 +157,36 @@ mod tests {
     use super::*;
     use crate::commands::availability::cache_key;
 
+    #[tokio::test]
+    async fn a_write_runs_while_the_row_is_still_held() {
+        // The guard has to outlive the write, not just precede it.
+        // `hold_if_still_ours(..).await.is_some()` reads as a check and
+        // is really a drop: the row is free again by the time the write
+        // runs, and on the multi-thread runtime production uses, a
+        // refresh can take it and land its row in that gap — after
+        // which the stale write replaces it for the row's whole TTL.
+        //
+        // So the write goes inside, where it cannot be separated from
+        // the permission to make it.
+        let refreshes = AvailabilityRefreshes::new();
+        let key = cache_key("kid-w", "sub");
+        let started_at = refreshes.generation(&key);
+
+        let held_during_write = with_row_if_ours(&refreshes, &key, started_at, false, || {
+            refreshes.for_row(&key).try_lock().is_err()
+        })
+        .await;
+
+        assert_eq!(
+            held_during_write,
+            Some(true),
+            "the row must still be locked while the write runs"
+        );
+        // And released afterwards, or the next writer for this show
+        // would wait forever.
+        assert!(refreshes.for_row(&key).try_lock().is_ok());
+    }
+
     #[test]
     fn an_ordinary_lookup_yields_to_a_refresh_that_landed_while_it_was_out() {
         let refreshes = AvailabilityRefreshes::new();
