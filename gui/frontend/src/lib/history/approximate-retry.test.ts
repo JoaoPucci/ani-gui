@@ -265,6 +265,31 @@ describe('retryApproximateCaps', () => {
 		expect(probes).toEqual(['a']);
 	});
 
+	it('does not publish an answer that landed after teardown', async () => {
+		const clock = fakeClock();
+		let cancelled = false;
+		const onRefined = vi.fn();
+
+		await retryApproximateCaps([row('a')], {
+			// The route tears down while this probe is in flight — the
+			// window the teardown scenario cannot reach, since it
+			// unmounts during the preceding wait.
+			fetchAvailability: async () => {
+				cancelled = true;
+				return { episode_count: 12, episode_count_approximate: false };
+			},
+			mode: 'sub',
+			onRefined,
+			wait: clock.wait,
+			cancelled: () => cancelled
+		});
+
+		// Publishing here writes to an unmounted component's state and
+		// sends rowReady after a Kitsu episode fetch for a page that no
+		// longer exists.
+		expect(onRefined).not.toHaveBeenCalled();
+	});
+
 	it('skips a row whose cap a click already settled', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability, probes } = answers(exact(12));
