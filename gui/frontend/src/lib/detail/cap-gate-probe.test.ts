@@ -33,13 +33,19 @@ function harness(probe: () => Promise<{ count: number | null; approximate: boole
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
 	const failed: number[] = [];
+	const superseded: number[] = [];
+	/** Which show the strip is on. Both routes reuse one component
+	 *  across shows, so this moves under an in-flight lookup. */
+	const showing = { id: 'show-a' };
 	const gate = createCapGateProbe({
 		probe,
+		currentShow: () => showing.id,
 		onCleared: (episode, count) => cleared.push({ episode, count }),
 		onStillGated: (episode) => stillGated.push(episode),
-		onFailed: (episode) => failed.push(episode)
+		onFailed: (episode) => failed.push(episode),
+		onSuperseded: (episode) => superseded.push(episode)
 	});
-	return { gate, cleared, stillGated, failed };
+	return { gate, cleared, stillGated, failed, superseded, showing };
 }
 
 describe('createCapGateProbe', () => {
@@ -140,6 +146,54 @@ describe('createCapGateProbe', () => {
 		// the catalogue.
 		expect(cleared).toEqual([]);
 		expect(failed).toEqual([5]);
+	});
+
+	it('does not play the old show when the answer lands after a move', async () => {
+		const d = deferredProbe();
+		const { gate, cleared, superseded, showing } = harness(d.probe);
+
+		gate.request(5);
+		// Both routes reuse one component across shows: the user leaves
+		// for another title while the lookup is out, and the strip on
+		// screen is now a different show's.
+		showing.id = 'show-b';
+		d.release(7);
+		await flush();
+
+		// Playing episode 5 here would start the WRONG show's episode 5
+		// — the count belongs to the title the user walked away from.
+		expect(cleared).toEqual([]);
+		expect(superseded).toEqual([5]);
+	});
+
+	it('says nothing about the catalogue when the strip moved on', async () => {
+		const d = deferredProbe();
+		const { gate, stillGated, failed, superseded, showing } = harness(d.probe);
+
+		gate.request(5);
+		showing.id = 'show-b';
+		d.release(4);
+		await flush();
+
+		// "Still not in the catalogue" would be a claim about a show the
+		// user is no longer looking at, attached to an episode number
+		// that means something else on this screen. The page still has
+		// to hear back, though, or it stays blocked forever.
+		expect(stillGated).toEqual([]);
+		expect(failed).toEqual([]);
+		expect(superseded).toEqual([5]);
+	});
+
+	it('still answers normally when the strip stayed put', async () => {
+		const d = deferredProbe();
+		const { gate, cleared, superseded } = harness(d.probe);
+
+		gate.request(5);
+		d.release(7);
+		await flush();
+
+		expect(cleared).toEqual([{ episode: 5, count: 7 }]);
+		expect(superseded).toEqual([]);
 	});
 
 	it('asks once for the whole show, however many tiles are clicked', async () => {
