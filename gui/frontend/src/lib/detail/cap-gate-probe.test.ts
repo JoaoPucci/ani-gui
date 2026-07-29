@@ -33,19 +33,25 @@ function harness(probe: () => Promise<{ count: number | null; approximate: boole
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
 	const failed: number[] = [];
+	const stillGatedCounts: (number | null)[] = [];
 	const superseded: number[] = [];
-	/** Which show the strip is on. Both routes reuse one component
-	 *  across shows, so this moves under an in-flight lookup. */
-	const showing = { id: 'show-a' };
+	/** What the answer will be about: the show the strip is on AND the
+	 *  audio mode. Both routes reuse one component across shows, and
+	 *  the mode arrives asynchronously from settings — so either can
+	 *  move under an in-flight lookup. */
+	const showing = { id: 'show-a', mode: 'sub' };
 	const gate = createCapGateProbe({
 		probe,
-		currentShow: () => showing.id,
+		currentContext: () => `${showing.id}:${showing.mode}`,
 		onCleared: (episode, count) => cleared.push({ episode, count }),
-		onStillGated: (episode) => stillGated.push(episode),
+		onStillGated: (episode, count) => {
+			stillGated.push(episode);
+			stillGatedCounts.push(count);
+		},
 		onFailed: (episode) => failed.push(episode),
 		onSuperseded: (episode) => superseded.push(episode)
 	});
-	return { gate, cleared, stillGated, failed, superseded, showing };
+	return { gate, cleared, stillGated, stillGatedCounts, failed, superseded, showing };
 }
 
 describe('createCapGateProbe', () => {
@@ -184,6 +190,56 @@ describe('createCapGateProbe', () => {
 		expect(superseded).toEqual([5]);
 	});
 
+	it('does not apply a sub answer once the mode has settled to dub', async () => {
+		const d = deferredProbe();
+		const { gate, cleared, superseded, showing } = harness(d.probe);
+
+		gate.request(5);
+		// Settings arrive after the page does, so a click landing in
+		// that gap asks with the fallback mode and the real one turns
+		// up while the answer is out.
+		showing.mode = 'dub';
+		d.release(7);
+		await flush();
+
+		// allmanga catalogues sub and dub separately and dub lags, so a
+		// sub count of 7 unlocking dub episode 5 resolves something the
+		// dub catalogue does not have. Same show, different question.
+		expect(cleared).toEqual([]);
+		expect(superseded).toEqual([5]);
+	});
+
+	it('hands back a confirmed short count so the strip can correct itself', async () => {
+		const d = deferredProbe();
+		const { gate, stillGated, stillGatedCounts } = harness(d.probe);
+
+		gate.request(9);
+		// LOWER than what the page is showing — allmanga pulled an
+		// episode, or corrected its metadata. The tiles between the two
+		// caps are enabled on a number that is no longer true, and
+		// clicking one resolves nothing.
+		d.release(6);
+		await flush();
+
+		expect(stillGated).toEqual([9]);
+		expect(stillGatedCounts).toEqual([6]);
+	});
+
+	it('withholds an unconfirmed count from the correction', async () => {
+		const d = deferredProbe();
+		const { gate, stillGated, stillGatedCounts } = harness(d.probe);
+
+		gate.request(9);
+		d.release(6, true);
+		await flush();
+
+		// Same shape of answer, but this one came from the search hit
+		// and can read high. Publishing it would replace a real cap
+		// with a guess.
+		expect(stillGated).toEqual([9]);
+		expect(stillGatedCounts).toEqual([null]);
+	});
+
 	it('still answers normally when the strip stayed put', async () => {
 		const d = deferredProbe();
 		const { gate, cleared, superseded } = harness(d.probe);
@@ -245,7 +301,7 @@ describe('createCapGateProbe', () => {
 	it('marks only the tiles that were actually clicked as busy', () => {
 		const gate = createCapGateProbe({
 			probe: () => new Promise<never>(() => {}),
-			currentShow: () => 'show-a',
+			currentContext: () => 'show-a:sub',
 			onCleared: () => {},
 			onStillGated: () => {},
 			onFailed: () => {},
