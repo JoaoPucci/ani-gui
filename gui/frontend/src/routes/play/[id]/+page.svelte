@@ -828,15 +828,17 @@
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
-	// Which cap-gated tile is being re-asked about, for the busy
-	// affordance. Display only — `capGate` owns single-flight.
-	let recheckingEp = $state<number | null>(null);
-
 	/**
 	 * Clicking a cap-gated tile re-asks allmanga rather than staying
-	 * inert. The playable count is a snapshot from when the strip
-	 * loaded, and the catalogue catches up while the user is watching.
-	 * Interactive lane, which the scraper gate never refuses.
+	 * inert. The count is a snapshot from when the strip loaded and
+	 * the catalogue catches up while the user is watching.
+	 *
+	 * It BLOCKS, like every other long action here: `switchBusy`
+	 * raises the same state an episode switch does, so there is no
+	 * window in which a second tile can be clicked or the episode page
+	 * can move under the lookup. A cleared count goes straight into
+	 * the switch by NUMBER — not by the metadata object, which the
+	 * strip may have replaced.
 	 */
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -855,24 +857,29 @@
 				// being questioned and never reaches allmanga.
 				bypass_cache: true
 			});
-			return r.episode_count;
+			// An approximate count came from the search hit rather than
+			// the per-show fetch: it counts half-episodes as whole ones
+			// and can read one high. Clearing a tile on it would start
+			// resolving an episode that does not exist, which is the
+			// error the flag exists to prevent. Unconfirmed is not an
+			// answer.
+			return r.episode_count_approximate ? null : r.episode_count;
 		},
 		onCleared: (episode, count) => {
-			recheckingEp = null;
 			playableEpisodeCount = count;
-			const target = (episodes ?? []).find((e) => (e.number ?? e.relative_number ?? 0) === episode);
-			if (target) onPickEpisode(target);
+			switchBusy = false;
+			void switchToEpisode(episode);
 		},
 		onStillGated: () => {
-			recheckingEp = null;
+			switchBusy = false;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
 		}
 	});
 
 	/** Tile click for an episode the cap is currently hiding. */
 	function onRecheckEpisode(n: number) {
-		if (capGate.isProbing(n)) return;
-		recheckingEp = n;
+		if (switchBusy) return;
+		switchBusy = true;
 		capGate.request(n);
 	}
 	// True once the availability probe settled (result or error). The
@@ -3127,13 +3134,10 @@
 									class:ep-card-current={isCurrent}
 									class:ep-card-unaired={air.unaired || capGated}
 									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
-									aria-busy={recheckingEp === n}
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
 										: capGated
-											? recheckingEp === n
-												? m.detail_ep_recheck_busy()
-												: m.detail_ep_recheck_idle()
+											? m.detail_ep_recheck_idle()
 											: undefined}
 									onclick={() => {
 										// Cap-gated is not "disabled": the count is a

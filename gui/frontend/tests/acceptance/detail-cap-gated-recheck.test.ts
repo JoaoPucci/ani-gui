@@ -140,6 +140,11 @@ describe('detail route — clicking a dimmed aired episode', () => {
 	});
 
 	it('blocks the page while it checks, like every other long action here', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
@@ -154,14 +159,21 @@ describe('detail route — clicking a dimmed aired episode', () => {
 				})
 			),
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
+			// The page-load lookup answers at once; the one the click
+			// sends is held open. Racing a poll against a lookup that
+			// resolves in under a millisecond would only ever catch the
+			// overlay by luck — held open, "the page is blocked" is a
+			// state rather than a window.
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) await held;
+				return HttpResponse.json({
 					available: true,
 					episode_count: CACHED_COUNT,
 					extra_episodes: [],
 					episode_count_approximate: false
-				})
-			)
+				});
+			})
 		);
 
 		app = mount(DetailPage, { target });
@@ -177,5 +189,10 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// episode-page change, the busy marker moving — lives in the
 		// window that leaves open. Blocking closes the window.
 		await until(() => overlay() !== null, 'the page to block while it checks');
+
+		// And it lets go again once the answer lands short, rather than
+		// stranding the user under an overlay that never clears.
+		release();
+		await until(() => overlay() === null, 'the page to unblock once the check came back short');
 	});
 });

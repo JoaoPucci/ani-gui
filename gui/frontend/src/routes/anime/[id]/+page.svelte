@@ -112,17 +112,20 @@
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, allmanga 1161).
 	let playableEpisodeCount = $state<number | null>(null);
-	// Which cap-gated tile is being re-asked about, for the busy
-	// affordance. Display only — `capGate` owns single-flight.
-	let recheckingEp = $state<number | null>(null);
-
 	/**
-	 * Clicking a cap-gated tile re-asks allmanga instead of doing
-	 * nothing. The playable count is a mount-time snapshot and the
-	 * catalogue catches up during a visit, so the tile can be dead for
-	 * an episode that became streamable minutes ago. Runs in the
-	 * interactive lane, which the scraper gate never refuses — that is
-	 * why this can succeed where the mount probe did not.
+	 * Clicking a cap-gated tile re-asks allmanga rather than doing
+	 * nothing. The playable count is a snapshot — 24h for an ongoing
+	 * show — and the catalogue catches up inside that window, so the
+	 * tile can be dead for an episode that became streamable hours
+	 * ago.
+	 *
+	 * It BLOCKS, like every other long action here. `actionBusy`
+	 * raises the same overlay a play click does, so there is no window
+	 * in which a second tile can be clicked, the route can change, or
+	 * the episode page can move under the lookup. A cleared count
+	 * falls straight through into startPlay, which holds the overlay
+	 * up — the caption just changes from checking to the usual play
+	 * progress.
 	 */
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -141,23 +144,31 @@
 				// being questioned and never reaches allmanga.
 				bypass_cache: true
 			});
-			return r.episode_count;
+			// An approximate count came from the search hit rather than
+			// the per-show fetch: it counts half-episodes as whole ones
+			// and can read one high. Clearing a tile on it would start
+			// resolving an episode that does not exist, which is the
+			// error the flag exists to prevent. Unconfirmed is not an
+			// answer.
+			return r.episode_count_approximate ? null : r.episode_count;
 		},
 		onCleared: (episode, count) => {
-			recheckingEp = null;
 			playableEpisodeCount = count;
-			onPickEpisode(episode);
+			// Overlay stays up; startPlay owns it from here.
+			void startPlay(episode);
 		},
 		onStillGated: () => {
-			recheckingEp = null;
+			actionBusy = false;
+			actionProgress = null;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
 		}
 	});
 
 	/** Tile click for an episode the cap is currently hiding. */
 	function onRecheckEpisode(n: number) {
-		if (capGate.isProbing(n)) return;
-		recheckingEp = n;
+		if (actionBusy) return;
+		actionBusy = true;
+		actionProgress = m.detail_ep_recheck_busy();
 		capGate.request(n);
 	}
 
@@ -1719,13 +1730,10 @@
 											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
-											aria-busy={recheckingEp === num}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: capGated
-													? recheckingEp === num
-														? m.detail_ep_recheck_busy()
-														: m.detail_ep_recheck_idle()
+													? m.detail_ep_recheck_idle()
 													: availability === false
 														? m.detail_ep_disabled_tooltip()
 														: undefined}
@@ -1791,13 +1799,10 @@
 											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
-											aria-busy={recheckingEp === n}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: capGated
-													? recheckingEp === n
-														? m.detail_ep_recheck_busy()
-														: m.detail_ep_recheck_idle()
+													? m.detail_ep_recheck_idle()
 													: availability === false
 														? m.detail_ep_disabled_tooltip()
 														: undefined}
