@@ -245,9 +245,11 @@ describe('createCapGateProbe', () => {
 	it('marks only the tiles that were actually clicked as busy', () => {
 		const gate = createCapGateProbe({
 			probe: () => new Promise<never>(() => {}),
+			currentShow: () => 'show-a',
 			onCleared: () => {},
 			onStillGated: () => {},
-			onFailed: () => {}
+			onFailed: () => {},
+			onSuperseded: () => {}
 		});
 
 		gate.request(5);

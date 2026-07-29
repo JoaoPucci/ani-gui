@@ -148,6 +148,7 @@
 			// this just carries the provenance across.
 			return { count: r.episode_count, approximate: r.episode_count_approximate === true };
 		},
+		currentShow: () => detail?.id ?? '',
 		onCleared: (episode, count) => {
 			playableEpisodeCount = count;
 			// Overlay stays up; startPlay owns it from here.
@@ -162,6 +163,12 @@
 			actionBusy = false;
 			actionProgress = null;
 			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+		},
+		// The user is on another show now. Let the page go, say
+		// nothing — a message here would be about a title they left.
+		onSuperseded: () => {
+			actionBusy = false;
+			actionProgress = null;
 		}
 	});
 

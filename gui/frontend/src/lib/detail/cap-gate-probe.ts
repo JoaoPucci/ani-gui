@@ -40,6 +40,10 @@ export interface CapGateProbeDeps {
 	 *  confirmed it; null when it could not answer at all. Takes no
 	 *  episode: the question is show-level. */
 	probe: () => Promise<{ count: number | null; approximate: boolean } | null>;
+	/** Which show the strip is on, read when the click goes out and
+	 *  again when the answer lands. Both routes reuse one component
+	 *  across shows, so this moves under an in-flight lookup. */
+	currentShow: () => string;
 	/** The fresh count reaches the episode — publish it and play. */
 	onCleared: (episode: number, count: number) => void;
 	/** The catalogue answered, and the episode is still not in it. */
@@ -48,6 +52,10 @@ export interface CapGateProbeDeps {
 	 *  different sentence: saying "not in the catalogue" here claims a
 	 *  fact nobody established. */
 	onFailed: (episode: number) => void;
+	/** The answer arrived about a show the user has left. Nothing can
+	 *  be said and nothing can be played, but the page has to be let
+	 *  go of — it is blocked waiting on this. */
+	onSuperseded: (episode: number) => void;
 }
 
 export function createCapGateProbe(deps: CapGateProbeDeps): {
@@ -65,6 +73,11 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 		request: (episode) => {
 			if (waiting.has(episode)) return;
 			waiting.add(episode);
+			// Which show this question is about. Compared again when the
+			// answer lands: an episode number means a different episode
+			// on a different strip, so applying it across a move plays
+			// the wrong thing.
+			const asked = deps.currentShow();
 			// Cleared as soon as the request settles, so a click after
 			// this one gets a current answer instead of joining a
 			// lookup that has already finished.
@@ -73,6 +86,7 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			});
 			void pending
 				.then((answer) => {
+					if (deps.currentShow() !== asked) return deps.onSuperseded(episode);
 					if (answer == null) return deps.onFailed(episode);
 					// An unconfirmed count came from the search hit rather
 					// than the per-show fetch: it counts half-episodes as
@@ -88,7 +102,12 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 					if (beyondPlayable(episode, answer.count)) return deps.onStillGated(episode);
 					deps.onCleared(episode, answer.count);
 				})
-				.catch(() => deps.onFailed(episode))
+				// Same guard on the failure path: an error toast about a
+				// title the user has already left is noise attached to
+				// something they are no longer doing.
+				.catch(() =>
+					deps.currentShow() !== asked ? deps.onSuperseded(episode) : deps.onFailed(episode)
+				)
 				// Released on every path. A rejection that left the tile
 				// marked would swallow its later clicks as duplicates and
 				// wedge it shut for good.
