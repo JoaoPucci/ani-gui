@@ -62,6 +62,7 @@
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
+	import { createCapGateProbe } from '$lib/detail/cap-gate-probe';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
@@ -827,6 +828,50 @@
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
+	// Which cap-gated tile is being re-asked about, for the busy
+	// affordance. Display only — `capGate` owns single-flight.
+	let recheckingEp = $state<number | null>(null);
+
+	/**
+	 * Clicking a cap-gated tile re-asks allmanga rather than staying
+	 * inert. The playable count is a snapshot from when the strip
+	 * loaded, and the catalogue catches up while the user is watching.
+	 * Interactive lane, which the scraper gate never refuses.
+	 */
+	const capGate = createCapGateProbe({
+		probe: async () => {
+			const d = detail;
+			if (!d) return null;
+			const r = await checkAvailability({
+				title: d.canonical_title,
+				mode: (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined,
+				background: false
+			});
+			return r.episode_count;
+		},
+		onCleared: (episode, count) => {
+			recheckingEp = null;
+			playableEpisodeCount = count;
+			const target = (episodes ?? []).find((e) => (e.number ?? e.relative_number ?? 0) === episode);
+			if (target) onPickEpisode(target);
+		},
+		onStillGated: () => {
+			recheckingEp = null;
+			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
+		}
+	});
+
+	/** Tile click for an episode the cap is currently hiding. */
+	function onRecheckEpisode(n: number) {
+		if (capGate.isProbing(n)) return;
+		recheckingEp = n;
+		capGate.request(n);
+	}
 	// True once the availability probe settled (result or error). The
 	// strip warm waits on it — until then the playable cap is null and
 	// beyondPlayable reads it as unbounded, so the warm would resolve
@@ -3078,16 +3123,19 @@
 									class="ep-card"
 									class:ep-card-current={isCurrent}
 									class:ep-card-unaired={air.unaired || capGated}
-									disabled={(switchBusy && !isCurrent) ||
-										air.unaired ||
-										airingIsPending ||
-										capGated}
+									disabled={(switchBusy && !isCurrent) || air.unaired || airingIsPending}
+									aria-busy={recheckingEp === n}
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
 										: capGated
-											? m.detail_ep_disabled_tooltip()
+											? m.detail_ep_recheck_busy()
 											: undefined}
-									onclick={() => onPickEpisode(ep)}
+									onclick={() => {
+										// Cap-gated is not "disabled": the count is a
+										// snapshot, so re-ask before refusing.
+										if (capGated) onRecheckEpisode(n);
+										else onPickEpisode(ep);
+									}}
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}

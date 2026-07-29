@@ -39,6 +39,8 @@
 	import { ctaState } from '$lib/detail/cta-state';
 	import { describeRateLimit } from '$lib/play/error-copy';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { createCapGateProbe } from '$lib/detail/cap-gate-probe';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import {
 		airedCap,
 		airedTargets,
@@ -110,6 +112,52 @@
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, allmanga 1161).
 	let playableEpisodeCount = $state<number | null>(null);
+	// Which cap-gated tile is being re-asked about, for the busy
+	// affordance. Display only — `capGate` owns single-flight.
+	let recheckingEp = $state<number | null>(null);
+
+	/**
+	 * Clicking a cap-gated tile re-asks allmanga instead of doing
+	 * nothing. The playable count is a mount-time snapshot and the
+	 * catalogue catches up during a visit, so the tile can be dead for
+	 * an episode that became streamable minutes ago. Runs in the
+	 * interactive lane, which the scraper gate never refuses — that is
+	 * why this can succeed where the mount probe did not.
+	 */
+	const capGate = createCapGateProbe({
+		probe: async (episode) => {
+			const d = detail;
+			if (!d) return null;
+			const r = await checkAvailability({
+				title: d.canonical_title,
+				mode: (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub',
+				alt_titles: altTitlesFromKitsu(d),
+				episode_count: d.episode_count ?? undefined,
+				year: yearFromKitsuRef(d) ?? undefined,
+				kitsu_id: d.id,
+				status: d.status ?? undefined,
+				background: false
+			});
+			void episode;
+			return r.episode_count;
+		},
+		onCleared: (episode, count) => {
+			recheckingEp = null;
+			playableEpisodeCount = count;
+			onPickEpisode(episode);
+		},
+		onStillGated: () => {
+			recheckingEp = null;
+			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
+		}
+	});
+
+	/** Tile click for an episode the cap is currently hiding. */
+	function onRecheckEpisode(n: number) {
+		if (capGate.isProbing(n)) return;
+		recheckingEp = n;
+		capGate.request(n);
+	}
 
 	// Non-integer episode tags allmanga has streamable (recap /
 	// special episodes — e.g. ["1061.5"] for One Piece). Spliced
@@ -1668,17 +1716,21 @@
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false ||
-												air.unaired ||
-												airingIsPending ||
-												capGated}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-busy={recheckingEp === num}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false || capGated
-													? m.detail_ep_disabled_tooltip()
-													: undefined}
+												: capGated
+													? m.detail_ep_recheck_busy()
+													: availability === false
+														? m.detail_ep_disabled_tooltip()
+														: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(num ?? 0);
+												if (air.unaired || airingIsPending) return;
+												// Cap-gated is not "disabled": the count is a
+												// mount-time snapshot, so re-ask before refusing.
+												if (capGated) onRecheckEpisode(num ?? 0);
+												else onPickEpisode(num ?? 0);
 											}}
 										>
 											<span class="ep-thumb">
@@ -1734,17 +1786,19 @@
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false || capGated}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false ||
-												air.unaired ||
-												airingIsPending ||
-												capGated}
+											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-busy={recheckingEp === n}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: availability === false || capGated
-													? m.detail_ep_disabled_tooltip()
-													: undefined}
+												: capGated
+													? m.detail_ep_recheck_busy()
+													: availability === false
+														? m.detail_ep_disabled_tooltip()
+														: undefined}
 											onclick={() => {
-												if (!air.unaired && !airingIsPending && !capGated) onPickEpisode(n);
+												if (air.unaired || airingIsPending) return;
+												if (capGated) onRecheckEpisode(n);
+												else onPickEpisode(n);
 											}}
 										>
 											<span class="ep-thumb">
