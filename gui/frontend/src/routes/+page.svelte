@@ -1034,6 +1034,17 @@
 						</span>
 						<span class="resume-body">
 							<span class="resume-show">{target.displayTitle}</span>
+							<!-- The row the episode line will occupy, held open
+						     rather than grown into. Both terminal branches
+						     carry a second body row — the resolved card its
+						     episode title, the search fallback its faint
+						     fallback label — so reserving one here means the
+						     card's box is the same before and after, and the
+						     rail stops settling card by card as its probes
+						     land. Empty and hidden: it is space, not
+						     content, and a screen reader announcing a blank
+						     line would be worse than the reflow. -->
+							<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
 						</span>
 					</div>
 				{:else}
@@ -1903,6 +1914,16 @@
 	.resume-title-faint {
 		color: var(--bone-300);
 	}
+	/* Empty, so it needs the line box it is standing in for. `1lh`
+	   is exactly one line of whatever `.resume-title` resolves to, so
+	   the reservation tracks the type scale instead of hard-coding a
+	   number that would drift away from it. One line, not the two the
+	   clamp allows: a reservation the content usually overshoots would
+	   trade a grow for a shrink. */
+	.resume-title-reserved {
+		block-size: 1lh;
+	}
+
 	.resume-card-loading .resume-poster-placeholder {
 		animation: pulse 1.6s var(--ease-in-out) infinite;
 	}
