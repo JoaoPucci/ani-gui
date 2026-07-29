@@ -843,6 +843,26 @@ describe('long-runners Kitsu has no episode total for', () => {
 		expect(pickKitsuMatch([conanMovie, conan], r)?.id).toBe('210');
 	});
 
+	it('does not take an uninformative title as identity evidence', () => {
+		// allmanga's primary name is sometimes a stub — '1P' for One
+		// Piece is the documented one. `titlesPlausiblySameShow` answers
+		// true there, but that is "no judgement possible", not proof:
+		// there is nothing in '1P' to compare. This lane has no count
+		// evidence either, so accepting an unjudged title accepts on
+		// nothing at all, and the row never reaches the alias
+		// enrichment that exists to resolve exactly these stubs.
+		const r = resolveHistoryEntry(entry('1P (1100 episodes)', '1050'), null);
+		const unrelated = hit({
+			id: '210',
+			canonical_title: 'Detective Conan',
+			slug: 'detective-conan',
+			episode_count: null,
+			subtype: 'TV',
+			status: 'current'
+		});
+		expect(pickKitsuMatch([unrelated], r)).toBeNull();
+	});
+
 	it('leaves short histories alone, airing or not', () => {
 		// Below the threshold a countless entry was always acceptable —
 		// an ongoing single-cour show has no total yet either. Airing
