@@ -419,7 +419,8 @@ export function cachedBindingVerdict(
 	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.
 	if (isMusicSubtype(cached.subtype)) return 'evict';
 	if (!titlesPlausiblySameShow(preliminary.searchTitle, cached)) return 'reresolve';
-	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count)) return 'reresolve';
+	if (!isEpisodeCountCompatible(preliminary.courSize, cached.episode_count, cached.status))
+		return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
 		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
@@ -444,6 +445,15 @@ export const FINISHED_SHOW_COUR_THRESHOLD = 50;
  *  matches like courSize=20 vs Kitsu=400. */
 export const ONGOING_SHORTFALL_MAX_EPISODES = 50;
 
+/** Kitsu's `status` for a show that is currently broadcasting. The
+ *  other values it serves — `finished`, `tba`, `unreleased`,
+ *  `upcoming` — all describe a show that is either over or has not
+ *  begun, and only a broadcasting one legitimately has no announced
+ *  episode total. */
+export function isAiringStatus(status: string | null | undefined): boolean {
+	return status === 'current';
+}
+
 /** Whether a Kitsu hit's `episode_count` is plausibly the same show
  *  as the user's history record (which carries `courSize` from the
  *  "(N episodes)" tail).
@@ -463,14 +473,24 @@ export const ONGOING_SHORTFALL_MAX_EPISODES = 50;
  *    OVAs sometimes; beyond that it's a different show entirely. */
 export function isEpisodeCountCompatible(
 	courSize: number | null,
-	kitsuEpisodeCount: number | null
+	kitsuEpisodeCount: number | null,
+	kitsuStatus?: string | null
 ): boolean {
 	if (courSize == null) return true;
 	if (kitsuEpisodeCount == null) {
-		// A finished long show in history (>50 episodes) almost
-		// always has a known Kitsu episode_count. A null match is
-		// overwhelmingly a poisoned cache row pointing at an
-		// unrelated short ONA (e.g. Naruto 500 → Duan Nao 2 null).
+		// An open-ended show that is STILL AIRING has no total for
+		// Kitsu to announce, and that is exactly the shape a
+		// four-figure courSize describes: Detective Conan (id 210)
+		// and One Piece (id 12) both read episodeCount null with
+		// status 'current'. Rejecting them dropped every hit from the
+		// candidate list and left the Continue card on its /search
+		// fallback for good.
+		if (isAiringStatus(kitsuStatus)) return true;
+		// The other null is the one this guard was built for: a short
+		// unrelated entry a fuzzy title match landed on, countless
+		// because it has not aired (Naruto 500 → Duan Nao 2, status
+		// 'tba'). Nothing streams a thousand episodes of a show that
+		// never started, so a long history stays incompatible with it.
 		return courSize <= FINISHED_SHOW_COUR_THRESHOLD;
 	}
 	const diff = Math.abs(courSize - kitsuEpisodeCount);
@@ -500,7 +520,8 @@ export function pickKitsuMatch(
 	// instead of the picker landing on a wrong match.
 	const candidates = hits.filter(
 		(h) =>
-			!isMusicSubtype(h.subtype) && isEpisodeCountCompatible(preliminary.courSize, h.episode_count)
+			!isMusicSubtype(h.subtype) &&
+			isEpisodeCountCompatible(preliminary.courSize, h.episode_count, h.status)
 	);
 	if (candidates.length === 0) {
 		return null;
