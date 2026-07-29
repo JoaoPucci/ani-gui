@@ -60,6 +60,8 @@ function answers(...seq: ({ count: number | null; approximate: boolean } | 'reje
 	return { probes, modes, fetchAvailability };
 }
 
+const clockless = async () => {};
+
 const exact = (count: number) => ({ count, approximate: false });
 const stillApproximate = (count: number) => ({ count, approximate: true });
 
@@ -341,6 +343,32 @@ describe('retryApproximateCaps', () => {
 		});
 
 		expect(probes).toEqual([]);
+	});
+
+	it('does not publish for a row removed while the probe was in flight', async () => {
+		const { fetchAvailability } = answers(exact(12));
+		const onRefined = vi.fn();
+		let present = true;
+
+		await retryApproximateCaps([row('a')], {
+			// The user deletes the card while this request is out. The
+			// route stays mounted, so cancellation does not fire — only
+			// the membership check can catch it, and it has to run
+			// again on the way out.
+			fetchAvailability: async (m, mode) => {
+				present = false;
+				return fetchAvailability(m, mode);
+			},
+			mode: 'sub',
+			onRefined,
+			wait: clockless,
+			shouldRetry: () => present
+		});
+
+		// Publishing sends the cap through rowReady, which reads the
+		// page's historyById map — never rebuilt after the initial
+		// load — and fetches Kitsu episodes for the removed entry.
+		expect(onRefined).not.toHaveBeenCalled();
 	});
 
 	it('probes under the configured mode', async () => {
