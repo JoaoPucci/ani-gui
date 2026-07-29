@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::availability_refresh::may_write_cache;
 use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
 use crate::error::Result;
 
@@ -186,7 +187,7 @@ pub struct AvailabilityBatchResponse {
     pub playable_episode_counts: HashMap<String, u32>,
 }
 
-fn cache_key(kitsu_id: &str, mode: &str) -> String {
+pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v9: gate-refused probes now mark their count approximate so it
     //     re-probes instead of being served as exact. v8 rows written
     //     by that path carry the degraded count with no flag, and
@@ -268,15 +269,11 @@ pub(crate) async fn check_availability_with_base(
     // Captured before any network work, compared again before the
     // write: a refresh answering in between means this lookup's row is
     // the stale one. See `AvailabilityRefreshes`.
-    let refresh_generation_at_start =
-        args.kitsu_id
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map_or(0, |id| {
-                state
-                    .availability_refreshes
-                    .generation(&cache_key(id, mode))
-            });
+    let refresh_generation_at_start = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        mode,
+    );
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
@@ -568,66 +565,6 @@ fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
         .next_airing_at
 }
 
-/// Per-`(kitsu_id, mode)` count of cache writes made by a
-/// cache-bypassing refresh.
-///
-/// Two availability lookups for the same row can be in flight at
-/// once: the page-load one, and the one a user's click sends with
-/// `bypass_cache`. `meta_cache_put` is INSERT OR REPLACE, so without
-/// this the later-landing request wins the row regardless of which
-/// question it answered — and the ordinary one read through the cache
-/// to get its answer, so letting it land second reinstates the very
-/// count the refresh was sent to replace, for the whole TTL.
-///
-/// A timestamp cannot stand in for this: `meta_cache.fetched_at` is
-/// whole seconds and the race is sub-second.
-///
-/// Process-wide, like the other write-ordering state on `AppState`;
-/// the cloned `Arc` is cheap.
-#[derive(Clone, Default)]
-pub struct AvailabilityRefreshes {
-    inner: std::sync::Arc<std::sync::Mutex<HashMap<String, u64>>>,
-}
-
-impl AvailabilityRefreshes {
-    /// An empty map. Production builds one at boot; tests per fixture.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// How many refreshes have written this row. Captured by a lookup
-    /// before it goes out, and compared again before it writes.
-    #[must_use]
-    pub fn generation(&self, key: &str) -> u64 {
-        self.inner
-            .lock()
-            .map(|m| m.get(key).copied().unwrap_or(0))
-            .unwrap_or(0)
-    }
-
-    /// Record that a refresh is writing this row.
-    pub fn bump(&self, key: &str) {
-        if let Ok(mut m) = self.inner.lock() {
-            *m.entry(key.to_string()).or_insert(0) += 1;
-        }
-    }
-}
-
-/// Whether a lookup may still write the row it was asked about.
-///
-/// A refresh always may: it skipped the cache, so it is not the stale
-/// one even if another refresh beat it. An ordinary lookup may only
-/// if no refresh has written since it went out.
-fn may_write_cache(
-    refreshes: &AvailabilityRefreshes,
-    key: &str,
-    generation_at_start: u64,
-    bypass_cache: bool,
-) -> bool {
-    bypass_cache || refreshes.generation(key) == generation_at_start
-}
-
 /// Same as [`write_cache`] but lets the caller supply the episode
 /// count + extras when it knows. Used by `check_availability` after
 /// running the play picker; everything else stays on the simpler
@@ -831,60 +768,6 @@ mod tests {
             "__typename": "Show"
         }))
         .expect("candidate")
-    }
-
-    #[test]
-    fn an_ordinary_lookup_yields_to_a_refresh_that_landed_while_it_was_out() {
-        let refreshes = AvailabilityRefreshes::new();
-        let key = cache_key("kid-1", "sub");
-        let started_at = refreshes.generation(&key);
-
-        // The user clicked a dimmed tile and the cache-bypassing
-        // lookup came back first, writing the fresh row.
-        refreshes.bump(&key);
-
-        // This one has been out since before that. Its answer is
-        // older, and it read through the cache to get it — writing it
-        // now puts the stale count back for the whole TTL, so the next
-        // page visit restores the gate the refresh just cleared.
-        assert!(!may_write_cache(&refreshes, &key, started_at, false));
-    }
-
-    #[test]
-    fn a_refresh_writes_even_when_another_refresh_landed_first() {
-        let refreshes = AvailabilityRefreshes::new();
-        let key = cache_key("kid-1", "sub");
-        let started_at = refreshes.generation(&key);
-        refreshes.bump(&key);
-
-        // Both skipped the cache, so neither is the stale one — last
-        // write wins is the right rule between them.
-        assert!(may_write_cache(&refreshes, &key, started_at, true));
-    }
-
-    #[test]
-    fn an_undisturbed_lookup_still_writes() {
-        let refreshes = AvailabilityRefreshes::new();
-        let key = cache_key("kid-1", "sub");
-        let started_at = refreshes.generation(&key);
-
-        assert!(may_write_cache(&refreshes, &key, started_at, false));
-    }
-
-    #[test]
-    fn generations_do_not_leak_between_shows_or_modes() {
-        let refreshes = AvailabilityRefreshes::new();
-        let sub = cache_key("kid-1", "sub");
-        let dub = cache_key("kid-1", "dub");
-        let other = cache_key("kid-2", "sub");
-        let sub_started = refreshes.generation(&sub);
-
-        refreshes.bump(&dub);
-        refreshes.bump(&other);
-
-        // A refresh for the dub catalogue, or for a different show,
-        // says nothing about this row.
-        assert!(may_write_cache(&refreshes, &sub, sub_started, false));
     }
 
     #[test]
@@ -1268,7 +1151,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
-            availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 
@@ -1690,6 +1574,72 @@ mod tests {
                 .expect("recorded")
                 .is_empty(),
             "bypass_cache must reach allanime rather than replay the stored count"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
+        // The wiring, not the rule. `may_write_cache` is unit-tested on
+        // its own; this drives the whole lookup, concurrently, because
+        // the generation is captured INSIDE the call — the refresh has
+        // to land while this one is still out for the guard to mean
+        // anything.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(300))
+                    .set_body_json(serde_json::json!({
+                        "data": {"shows": {"edges": []}}
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let row = cache_key("888", "sub");
+
+        // No row yet: this lookup will reach the network and, left to
+        // itself, install a negative one.
+        let stale: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Ordering Test",
+            "mode": "sub",
+            "kitsu_id": "888"
+        }))
+        .expect("args");
+        let base = server.uri();
+        let bg = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let _ = check_availability_with_base(&state, &stale, Some(&base)).await;
+            })
+        };
+
+        // The user's re-ask answers while that one is still in flight.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        state.availability_refreshes.bump(&row);
+        write_cache_full(
+            &state,
+            "888",
+            "sub",
+            Some("current"),
+            &AvailabilityResponse {
+                available: true,
+                episode_count: Some(9),
+                extra_episodes: Vec::new(),
+                episode_count_approximate: false,
+            },
+        );
+
+        bg.await.expect("the background lookup finishes");
+
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("the refresh's row is still there");
+        let kept: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert!(
+            kept.available && kept.episode_count == Some(9),
+            "an older lookup must not replace the refresh's row, got {kept:?}"
         );
     }
 

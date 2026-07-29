@@ -30,7 +30,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<AppState> {
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
-        availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
     })
 }
 

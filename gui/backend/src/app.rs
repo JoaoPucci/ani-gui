@@ -115,7 +115,7 @@ pub struct AppState {
     /// lookup landing second reinstates the exact count the re-ask was
     /// sent to replace for the row's whole TTL. Process-wide; cloned
     /// `Arc` is cheap.
-    pub availability_refreshes: crate::commands::availability::AvailabilityRefreshes,
+    pub availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes,
 }
 
 impl AppState {
@@ -197,7 +197,8 @@ impl AppState {
             internal_secret: InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
             account_write_locks: AccountWriteLocks::new(),
-            availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         })
     }
 
@@ -335,7 +336,8 @@ mod tests {
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: MalRefreshState::new(),
             account_write_locks: AccountWriteLocks::new(),
-            availability_refreshes: crate::commands::availability::AvailabilityRefreshes::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
     }
 
