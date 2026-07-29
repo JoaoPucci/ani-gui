@@ -283,7 +283,29 @@ describe('createCapGateProbe', () => {
 		// Without this the page keeps the availability it was told at
 		// mount, so every episode stays enabled and every click starts
 		// a resolution against a show that is not there.
-		expect(refreshes).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
+		//
+		// The cap comes back as 0 rather than null. Null is the routes'
+		// word for "no cap known", which `beyondPlayable` reads as
+		// UNBOUNDED — the opposite of what a delisted show means. A
+		// confirmed absence is a cap of zero.
+		expect(refreshes).toEqual([{ available: false, count: 0, extraEpisodes: [] }]);
+	});
+
+	it('caps at zero when the catalogue confirms it has no whole episodes', async () => {
+		const d = deferredProbe();
+		const { gate, refreshes } = harness(d.probe);
+
+		gate.request(5);
+		// The show is listed and the per-show fetch answered — it just
+		// has no integer episode tags. That is a fact about the
+		// catalogue, not a gap in what we learned.
+		d.release(null, false, { available: true, extraEpisodes: ['1.5'] });
+		await flush();
+
+		// Leaving the page's previous cap in place would keep every
+		// tile under it playable against a row that now says none of
+		// them exist.
+		expect(refreshes).toEqual([{ available: true, count: 0, extraEpisodes: ['1.5'] }]);
 	});
 
 	it('carries refreshed extras so the strip picks up specials', async () => {

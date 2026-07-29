@@ -330,6 +330,65 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		);
 	});
 
+	it('stops re-asking once the answer was that the show is gone', async () => {
+		const probes: { bypass_cache?: boolean }[] = [];
+		let delisted = false;
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				probes.push(body);
+				if (body.bypass_cache) delisted = true;
+				return HttpResponse.json({
+					available: !delisted,
+					episode_count: delisted ? null : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		await until(() => probes.length > 0, 'the page-load availability lookup');
+
+		const bypassing = () => probes.filter((p) => p.bypass_cache === true);
+		tile(AIRED)!.click();
+		await until(() => bypassing().length === 1, 'the first re-ask');
+		await until(
+			() => tile(AIRED)?.classList.contains('ep-tile-disabled') === true,
+			'the tile to go unavailable once the show is delisted'
+		);
+
+		// `aria-disabled` is advisory — it does not stop a click. The
+		// tile is still cap-gated too, because a delisting arrives
+		// without a count, so a handler that checks cap-gated first
+		// sends allmanga the same question again about a show it has
+		// just said it does not have.
+		tile(AIRED)!.click();
+
+		// A bounded absence, which is sound here because the defect is
+		// synchronous: the click handler raises the overlay and calls
+		// the lookup in the same turn, so if it were going to happen it
+		// would have by now.
+		await new Promise((r) => setTimeout(r, 300));
+		expect(bypassing()).toHaveLength(1);
+		expect(overlay()).toBeNull();
+	});
+
 	it('presents the dimmed tile as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
