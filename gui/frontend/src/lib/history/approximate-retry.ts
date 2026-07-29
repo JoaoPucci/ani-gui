@@ -146,6 +146,11 @@ export async function retryApproximateCaps(
 		if (skip(deps, job.row.entryId)) continue;
 
 		const answer = await probe(deps, job.row);
+		// The request outlives the teardown that started during it, so
+		// the answer has to be dropped rather than published: onRefined
+		// writes to an unmounted component and sends rowReady off for
+		// Kitsu episodes belonging to a page that is gone.
+		if (deps.cancelled?.()) return;
 		job.attempts++;
 
 		// A count with the approximate flag CLEAR is the only outcome
