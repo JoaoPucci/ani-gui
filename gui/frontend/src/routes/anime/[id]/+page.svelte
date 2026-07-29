@@ -40,6 +40,10 @@
 	import { describeRateLimit } from '$lib/play/error-copy';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
+	import {
+		createAvailabilityWriteback,
+		type AvailabilityPatch
+	} from '$lib/detail/availability-writeback';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import {
 		airedCap,
@@ -168,19 +172,21 @@
 	 * skipped rather than written.
 	 */
 	/**
-	 * How many re-asks have written back.
-	 *
-	 * The page-load lookup and a re-ask can be out at the same time,
-	 * and the re-ask wins whenever it answered: it is newer, and it
-	 * skipped the cache to get a current reading. So the ordinary
-	 * lookup captures this before its request and yields if it moved.
+	 * Who owns which part of the row while a page-load lookup and a
+	 * re-ask are both out. The re-ask wins where it answered — it is
+	 * newer and it skipped the cache — but only where it answered:
+	 * an unconfirmed count leaves that field open to the lookup.
 	 */
-	let capRefreshes = 0;
+	const writeback = createAvailabilityWriteback(() =>
+		gone ? GONE : `${detail?.id ?? ''}:${capGateMode()}`
+	);
+	function applyAvailabilityPatch(patch: AvailabilityPatch) {
+		if (patch.available !== undefined) availability = patch.available;
+		if (patch.count !== undefined) playableEpisodeCount = patch.count;
+		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
-		capRefreshes += 1;
-		availability = refresh.available;
-		if (refresh.count != null) playableEpisodeCount = refresh.count;
-		if (refresh.extraEpisodes != null) extraEpisodes = refresh.extraEpisodes;
+		applyAvailabilityPatch(writeback.refresh(refresh));
 	}
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -791,7 +797,7 @@
 					// Network errors leave availability null — the lazy
 					// click-failure path then handles it.
 					const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-					const refreshesAtStart = capRefreshes;
+					const settle = writeback.begin();
 					void checkAvailability({
 						title: d.canonical_title,
 						mode,
@@ -803,14 +809,17 @@
 					})
 						.then((r) => {
 							if (id !== currentId) return;
-							// A re-ask answered while this was out. It is
-							// newer and it bypassed the cache, so this
-							// reading is the stale one — and an unconfirmed
-							// one would erase the specials it established.
-							if (capRefreshes !== refreshesAtStart) return;
-							availability = r.available;
-							playableEpisodeCount = r.episode_count;
-							extraEpisodes = r.extra_episodes;
+							// Whatever a re-ask has since established is the
+							// re-ask's — it is newer and it bypassed the
+							// cache. Anything it left unanswered is still
+							// this lookup's to fill.
+							applyAvailabilityPatch(
+								settle({
+									available: r.available,
+									count: r.episode_count,
+									extraEpisodes: r.extra_episodes
+								})
+							);
 						})
 						.catch(() => {
 							// Leave null; lazy fallback in the click handler
