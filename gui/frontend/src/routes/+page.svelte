@@ -81,7 +81,7 @@
 	import type { VideoSession } from '$lib/play/global-video';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
-	import { retryApproximateCaps } from '$lib/history/approximate-retry';
+	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
 	import { sortByWatchedAt } from '$lib/history/sort';
@@ -405,10 +405,17 @@
 							publishLoaderCap(id, historyMatches[id] ?? null, count, false),
 						wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 						cancelled: () => continueRetryCancelled,
-						// A confirmed cap needs no second ask, whether the
-						// first pass produced it or a click's interactive
-						// lookup did.
-						shouldRetry: (id) => historyApproximateCaps[id] !== false
+						// A row stops being worth asking about when its cap is
+						// confirmed — by the first pass or by a click's own
+						// interactive lookup — or when the user removes it
+						// from the strip. The route survives a delete, so
+						// the teardown flag does not cover that one.
+						shouldRetry: (id) =>
+							rowWorthRetrying(
+								id,
+								new Set((history ?? []).map((h) => h.id)),
+								historyApproximateCaps
+							)
 					});
 				});
 			})

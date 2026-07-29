@@ -176,6 +176,31 @@ export async function retryApproximateCaps(
 	}
 }
 
+/**
+ * Whether a queued row is still worth asking about.
+ *
+ * Two ways it stops being, and the loop outlives both. A click
+ * confirms the cap through its own interactive lookup, which the gate
+ * never refuses. Or the user deletes the card, or clears the strip —
+ * and the route stays mounted through either, so cancellation does
+ * not cover it. A dropped row would go on spending scraper-gate
+ * slots, and a confirmed answer would still reach `rowReady` and
+ * fetch Kitsu episodes for an entry that is gone.
+ *
+ * Membership comes from the live history rather than the page's
+ * `historyById` map, which is only rebuilt on the initial load.
+ *
+ * An absent cap means unconfirmed, not settled: treating it as
+ * settled would drop every row before its first retry ran.
+ */
+export function rowWorthRetrying(
+	entryId: string,
+	liveHistoryIds: ReadonlySet<string>,
+	approximateCaps: Record<string, boolean>
+): boolean {
+	return liveHistoryIds.has(entryId) && approximateCaps[entryId] !== false;
+}
+
 /** The caller's click-settled check, absent-means-retry. */
 function skip(deps: ApproximateRetryDeps, entryId: string): boolean {
 	return deps.shouldRetry ? !deps.shouldRetry(entryId) : false;
