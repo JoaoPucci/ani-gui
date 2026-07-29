@@ -142,7 +142,16 @@ export async function retryApproximateCaps(
 	const backoff = deps.backoffMs ?? BACKOFF_MS;
 	const maxAttempts = deps.maxAttempts ?? backoff.length;
 
-	const queue = rows.map((row) => ({ row, attempts: 0 }));
+	// Two counters, because they answer different questions. `waits`
+	// is how far up the ladder this row has climbed — it advances on
+	// every probe, refused or not, so a refusing pacer is backed off
+	// from rather than hammered. `attempts` is the budget of real
+	// ANSWERS the row is allowed, which a refusal does not spend
+	// because nobody answered. Sharing one counter froze the ladder
+	// (Codex P1 #3677103268); leaving `waits` unbounded would replace
+	// the hot loop with a slow immortal one, so it caps too.
+	const maxWaits = maxAttempts + backoff.length;
+	const queue = rows.map((row) => ({ row, attempts: 0, waits: 0 }));
 
 	while (queue.length > 0) {
 		if (deps.cancelled?.()) return;
@@ -150,7 +159,8 @@ export async function retryApproximateCaps(
 		if (!job) break;
 		if (skip(deps, job.row.entryId)) continue;
 
-		await deps.wait(backoff[Math.min(job.attempts, backoff.length - 1)]);
+		await deps.wait(backoff[Math.min(job.waits, backoff.length - 1)]);
+		job.waits++;
 		if (deps.cancelled?.()) return;
 		// Again, on the way out. The later steps are half a minute and
 		// a minute long, and a click landing in that window pins an
@@ -188,7 +198,7 @@ export async function retryApproximateCaps(
 			continue;
 		}
 
-		if (job.attempts < maxAttempts) queue.push(job);
+		if (job.attempts < maxAttempts && job.waits < maxWaits) queue.push(job);
 	}
 }
 

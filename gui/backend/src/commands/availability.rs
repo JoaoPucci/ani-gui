@@ -820,6 +820,40 @@ mod tests {
         }
     }
 
+    proptest::proptest! {
+        // The rule the two examples pin at 0 and 5, stated over every
+        // count and both catalogues: a positive hit is a usable cap and
+        // is always rough, a zero hit is no cap at all and claims
+        // nothing. There is no third shape, and in particular no count
+        // that arrives already confirmed — a search hit never is.
+        #[test]
+        fn a_search_hit_is_a_rough_cap_when_it_has_one_and_silent_when_it_does_not(
+            n in 0u32..5000,
+            dub in proptest::bool::ANY,
+        ) {
+            let mode = if dub { "dub" } else { "sub" };
+            let c = crate::scraper::allanime::Candidate {
+                id: "s".into(),
+                name: "S".into(),
+                available_episodes: serde_json::from_value(if dub {
+                    serde_json::json!({"sub": 0, "dub": n})
+                } else {
+                    serde_json::json!({"sub": n, "dub": 0})
+                })
+                .expect("episodes"),
+                aired_start: None,
+                show_type: None,
+                episode_count: None,
+                status: None,
+            };
+
+            proptest::prop_assert_eq!(
+                enrich_from_search_hit(&c, mode),
+                if n > 0 { (Some(n), true) } else { (None, false) }
+            );
+        }
+    }
+
     #[test]
     fn a_refused_fetch_falls_back_to_the_search_hit_and_admits_it_is_rough() {
         // The search hit counts half episodes as whole ones, so it
