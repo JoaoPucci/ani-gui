@@ -9,12 +9,12 @@ const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** A probe whose resolution the test controls. */
 function deferredProbe() {
-	let release!: (count: number | null) => void;
+	let release!: (answer: { count: number | null; approximate: boolean } | null) => void;
 	let reject!: (e: unknown) => void;
 	const calls: number[] = [];
 	const probe = () => {
 		calls.push(calls.length + 1);
-		return new Promise<number | null>((res, rej) => {
+		return new Promise<{ count: number | null; approximate: boolean } | null>((res, rej) => {
 			release = res;
 			reject = rej;
 		});
@@ -22,20 +22,23 @@ function deferredProbe() {
 	return {
 		calls,
 		probe,
-		release: (count: number | null) => release(count),
+		release: (count: number | null, approximate = false) =>
+			release(count === null ? null : { count, approximate }),
 		fail: () => reject(new Error('probe failed'))
 	};
 }
 
-function harness(probe: () => Promise<number | null>) {
+function harness(probe: () => Promise<{ count: number | null; approximate: boolean } | null>) {
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
+	const failed: number[] = [];
 	const gate = createCapGateProbe({
 		probe,
 		onCleared: (episode, count) => cleared.push({ episode, count }),
-		onStillGated: (episode) => stillGated.push(episode)
+		onStillGated: (episode) => stillGated.push(episode),
+		onFailed: (episode) => failed.push(episode)
 	});
-	return { gate, cleared, stillGated };
+	return { gate, cleared, stillGated, failed };
 }
 
 describe('createCapGateProbe', () => {
@@ -78,6 +81,37 @@ describe('createCapGateProbe', () => {
 		expect(cleared).toEqual([{ episode: 5, count: 5 }]);
 	});
 
+	it('refuses to clear on a count the backend could not confirm', async () => {
+		const d = deferredProbe();
+		const { gate, cleared, stillGated } = harness(d.probe);
+
+		gate.request(5);
+		// Reaches the episode, but came from the search hit rather than
+		// the per-show fetch: it counts half-episodes as whole ones and
+		// can read one high. Clearing on it starts resolving an episode
+		// that does not exist.
+		d.release(7, true);
+		await flush();
+
+		expect(cleared).toEqual([]);
+		expect(stillGated).toEqual([5]);
+	});
+
+	it('separates a failed lookup from a confirmed short count', async () => {
+		const d = deferredProbe();
+		const { gate, stillGated, failed } = harness(d.probe);
+
+		gate.request(5);
+		d.fail();
+		await flush();
+
+		// Offline, rate-limited or a backend error means we could not
+		// ask — saying "still not in the catalogue" claims a fact
+		// nobody established.
+		expect(stillGated).toEqual([]);
+		expect(failed).toEqual([5]);
+	});
+
 	it('reports still-gated when the probe cannot answer', async () => {
 		const d = deferredProbe();
 		const { gate, cleared, stillGated } = harness(d.probe);
@@ -92,18 +126,19 @@ describe('createCapGateProbe', () => {
 		expect(stillGated).toEqual([5]);
 	});
 
-	it('reports still-gated when the probe rejects', async () => {
+	it('says nothing was learned when the probe rejects', async () => {
 		const d = deferredProbe();
-		const { gate, cleared, stillGated } = harness(d.probe);
+		const { gate, cleared, failed } = harness(d.probe);
 
 		gate.request(5);
 		d.fail();
 		await flush();
 
 		// Silence is what makes the current tile feel broken; a failed
-		// re-ask still has to say something.
+		// re-ask still has to say something — just not something about
+		// the catalogue.
 		expect(cleared).toEqual([]);
-		expect(stillGated).toEqual([5]);
+		expect(failed).toEqual([5]);
 	});
 
 	it('asks once for the whole show, however many tiles are clicked', async () => {
