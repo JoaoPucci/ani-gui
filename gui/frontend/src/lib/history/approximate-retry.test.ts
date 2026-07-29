@@ -63,7 +63,7 @@ const exact = (count: number) => ({ count, approximate: false });
 const stillApproximate = (count: number) => ({ count, approximate: true });
 
 describe('retryApproximateCaps', () => {
-	it('waits out the breaker cooldown before asking again', async () => {
+	it('asks again at the paced interval first, without assuming the gate refused', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability, probes } = answers(exact(12));
 		let waitedBeforeFirstProbe: number[] = [];
@@ -76,13 +76,18 @@ describe('retryApproximateCaps', () => {
 			mode: 'sub',
 			onRefined: () => {},
 			wait: clock.wait,
-			cooldownMs: 60_000
+			cooldownMs: 60_000,
+			pacedMs: 500
 		});
 
-		// The row is approximate because the gate refused it, which only
-		// happens while the breaker is open. Probing before the cooldown
-		// has elapsed buys a guaranteed second refusal.
-		expect(waitedBeforeFirstProbe).toEqual([60_000]);
+		// An unconfirmed count does NOT prove the gate refused. The
+		// backend falls back to the same search-hit count whenever the
+		// detail fetch fails at all, including a single transient error
+		// well below the breaker's three-failure threshold. Sitting out
+		// a cooldown on that assumption leaves the card offering an
+		// episode that may not exist for a full minute while the gate
+		// was admitting the whole time.
+		expect(waitedBeforeFirstProbe).toEqual([500]);
 		expect(probes).toEqual(['a']);
 	});
 
@@ -147,9 +152,15 @@ describe('retryApproximateCaps', () => {
 		expect(fetchAvailability).toHaveBeenCalledTimes(3);
 	});
 
-	it('drops back to the paced interval once a retry proves the breaker closed', async () => {
+	it('escalates to the cooldown after a refusal and drops back once one lands', async () => {
 		const clock = fakeClock();
-		const { fetchAvailability } = answers(exact(12));
+		let n = 0;
+		const fetchAvailability = async () => {
+			n++;
+			return n === 1
+				? { episode_count: 13, episode_count_approximate: true }
+				: { episode_count: 12, episode_count_approximate: false };
+		};
 
 		await retryApproximateCaps([row('a'), row('b'), row('c')], {
 			fetchAvailability,
@@ -157,17 +168,19 @@ describe('retryApproximateCaps', () => {
 			onRefined: () => {},
 			wait: clock.wait,
 			cooldownMs: 60_000,
-			pacedMs: 500
+			pacedMs: 500,
+			maxAttempts: 1
 		});
 
-		// One cooldown to find out the breaker reopened, then the
-		// ordinary background spacing — an exact answer is proof the
-		// gate is admitting again, so the rest need not sit out a full
-		// cooldown each.
-		expect(clock.waited).toEqual([60_000, 500, 500]);
+		// The round trip in one run. Row a asks at the paced interval
+		// and comes back unconfirmed, which IS evidence the gate just
+		// refused, so row b sits out a cooldown. Row b's confirmed
+		// answer proves the gate is admitting, so row c is paced again
+		// rather than serving another minute of nothing.
+		expect(clock.waited).toEqual([500, 60_000, 500]);
 	});
 
-	it('returns to the cooldown when a retry is refused again', async () => {
+	it('keeps waiting the cooldown while refusals keep coming', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability } = answers(stillApproximate(13));
 
@@ -181,9 +194,9 @@ describe('retryApproximateCaps', () => {
 			maxAttempts: 1
 		});
 
-		// A refusal means the breaker just re-opened, so the next row is
-		// due for another full cooldown rather than the paced interval.
-		expect(clock.waited).toEqual([60_000, 60_000]);
+		// The breaker re-opens on each refusal, so once one has been
+		// observed every later row is due a full cooldown.
+		expect(clock.waited).toEqual([500, 60_000]);
 	});
 
 	it('gives up on a row after the attempt budget', async () => {
