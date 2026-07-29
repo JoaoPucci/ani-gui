@@ -91,10 +91,15 @@ export interface CapGateProbeDeps {
 	 *  refresh still matters — the show may be gone, the cap may have
 	 *  shrunk, the specials may have changed. */
 	onStillGated: (episode: number, refresh: CapGateRefresh) => void;
-	/** We could not ask — offline, rate-limited, backend error. A
-	 *  different sentence: saying "not in the catalogue" here claims a
-	 *  fact nobody established. */
-	onFailed: (episode: number) => void;
+	/** Nothing was established about whether this episode is there —
+	 *  the lookup could not be made, or it came back unconfirmed. A
+	 *  different sentence from still-gated: saying "not in the
+	 *  catalogue" here claims the very thing that went unanswered.
+	 *
+	 *  `refresh` is null when there was no answer at all, and carries
+	 *  what an unconfirmed one did establish otherwise — the search
+	 *  succeeded even when the per-show fetch did not. */
+	onFailed: (episode: number, refresh: CapGateRefresh | null) => void;
 	/** The answer arrived about a show the user has left. Nothing can
 	 *  be said and nothing can be played, but the page has to be let
 	 *  go of — it is blocked waiting on this. */
@@ -158,14 +163,17 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			void pending
 				.then((answer) => {
 					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);
-					if (answer == null) return deps.onFailed(episode);
+					if (answer == null) return deps.onFailed(episode, null);
 					const refresh = refreshFrom(answer);
-					// An unconfirmed count came from the search hit rather
-					// than the per-show fetch: it counts half-episodes as
-					// whole ones and can read one high, so clearing on it
-					// starts resolving an episode that does not exist. The
-					// verdict still goes back — a delisted show is news
-					// whatever the count did.
+					// An unconfirmed answer means the per-show fetch did
+					// not respond — and that fetch is the thing that would
+					// have said whether this episode is there. So it is
+					// not a catalogue verdict, however low the search-hit
+					// count reads. It still carries what the SEARCH
+					// established.
+					if (answer.approximate) return deps.onFailed(episode, refresh);
+					// Confirmed, but no number: the catalogue answered and
+					// has no integer episode. That IS a verdict.
 					if (refresh.count == null) return deps.onStillGated(episode, refresh);
 					// `beyondPlayable` decides the rest, rather than a
 					// fresh comparison: the rule that dimmed the tile has
@@ -187,7 +195,9 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 				// title the user has already left is noise attached to
 				// something they are no longer doing.
 				.catch(() =>
-					deps.currentContext() !== asked ? deps.onSuperseded(episode) : deps.onFailed(episode)
+					deps.currentContext() !== asked
+						? deps.onSuperseded(episode)
+						: deps.onFailed(episode, null)
 				)
 				// Released on every path. A rejection that left the tile
 				// marked would swallow its later clicks as duplicates and

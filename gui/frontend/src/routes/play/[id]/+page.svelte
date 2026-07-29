@@ -903,7 +903,10 @@
 			switchBusy = false;
 			toastStore.push({ kind: 'info', message: m.detail_ep_recheck_still_gated() });
 		},
-		onFailed: () => {
+		onFailed: (_episode, refresh) => {
+			// An unconfirmed answer still settled whether the show is
+			// listed, even though it settled nothing about this episode.
+			if (refresh) applyCapGateRefresh(refresh);
 			switchBusy = false;
 			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
 		},
