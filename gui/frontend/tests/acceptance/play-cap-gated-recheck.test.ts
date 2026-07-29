@@ -277,6 +277,55 @@ describe('play route — clicking a dimmed aired episode', () => {
 		);
 	});
 
+	it('captions the block with what it is actually doing', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) await held;
+				return HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(PlayPage, { target });
+		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
+
+		card(AIRED)!.click();
+
+		// The player's progress caption belongs to whatever ran last —
+		// a provider tick from an earlier switch, say — and nothing
+		// resets it on the way in here. Held open so the caption is a
+		// state rather than a flicker.
+		await until(
+			() => (target.textContent ?? '').includes(m.detail_ep_recheck_busy()),
+			'the overlay to say it is checking with allmanga'
+		);
+		release();
+	});
+
 	it('presents the dimmed card as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
