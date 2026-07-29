@@ -7,6 +7,7 @@
 	"ep_airs": "Estreia em {date}",
 	"ep_disabled_tooltip": "Fora do catálogo do allmanga.",
 	"ep_recheck_busy": "Consultando o allmanga…",
+	"ep_recheck_idle": "Ainda não está no catálogo do allmanga — clique para verificar novamente.",
 	"ep_recheck_still_gated": "Ainda não está no catálogo do allmanga.",
 	"ep_unaired": "Não exibido",
 	"ep_unaired_tooltip": "Este episódio ainda não foi ao ar.",

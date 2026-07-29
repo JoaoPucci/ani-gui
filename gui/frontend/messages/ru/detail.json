@@ -7,6 +7,7 @@
 	"ep_airs": "Выйдет {date}",
 	"ep_disabled_tooltip": "Нет в каталоге allmanga.",
 	"ep_recheck_busy": "Запрос к allmanga…",
+	"ep_recheck_idle": "Пока нет в каталоге allmanga — нажмите, чтобы проверить снова.",
 	"ep_recheck_still_gated": "Пока нет в каталоге allmanga.",
 	"ep_unaired": "Ещё не вышла",
 	"ep_unaired_tooltip": "Этот эпизод ещё не вышел.",

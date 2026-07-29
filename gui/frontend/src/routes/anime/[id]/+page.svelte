@@ -1723,7 +1723,9 @@
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: capGated
-													? m.detail_ep_recheck_busy()
+													? recheckingEp === num
+														? m.detail_ep_recheck_busy()
+														: m.detail_ep_recheck_idle()
 													: availability === false
 														? m.detail_ep_disabled_tooltip()
 														: undefined}
@@ -1793,7 +1795,9 @@
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
 												: capGated
-													? m.detail_ep_recheck_busy()
+													? recheckingEp === n
+														? m.detail_ep_recheck_busy()
+														: m.detail_ep_recheck_idle()
 													: availability === false
 														? m.detail_ep_disabled_tooltip()
 														: undefined}

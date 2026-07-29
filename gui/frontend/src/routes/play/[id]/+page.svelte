@@ -3131,7 +3131,9 @@
 									title={air.unaired
 										? m.detail_ep_unaired_tooltip()
 										: capGated
-											? m.detail_ep_recheck_busy()
+											? recheckingEp === n
+												? m.detail_ep_recheck_busy()
+												: m.detail_ep_recheck_idle()
 											: undefined}
 									onclick={() => {
 										// Cap-gated is not "disabled": the count is a
