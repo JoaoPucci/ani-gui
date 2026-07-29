@@ -99,11 +99,22 @@ describe('retryApproximateCaps', () => {
 
 		// Pins the DEFAULT, which is what ships — the cases below hand
 		// in their own ladder and would keep passing if this one were
-		// flattened. The last step matters most: the backend's
-		// BREAKER_COOLDOWN is 60 s, so a ladder that never reaches past
-		// it leaves a genuinely gate-refused row without a single
-		// attempt the gate would admit.
-		expect(clock.waited).toEqual([500, 30_000, 60_000]);
+		// flattened.
+		expect(clock.waited).toEqual([500, 30_000, 60_000, 120_000]);
+
+		// And the property the last step exists for. A row is dropped
+		// for good once its attempts run out, so the final one has to
+		// land after the worst case the gate can impose: a competing
+		// half-open trial admitted at the 60 s BREAKER_COOLDOWN
+		// boundary blocks every other caller until it goes stale
+		// HALF_OPEN_TRIAL_STALE (90 s) later. A ladder ending at 90.5 s
+		// gets that attempt refused and abandons the row with its wrong
+		// cap for the session.
+		const arrivesAt = clock.waited.reduce<number[]>(
+			(acc, ms) => [...acc, (acc.at(-1) ?? 0) + ms],
+			[]
+		);
+		expect(arrivesAt.at(-1)).toBeGreaterThan(60_000 + 90_000);
 	});
 
 	it('gives every row the same first step regardless of what came before', async () => {
