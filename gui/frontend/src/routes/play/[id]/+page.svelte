@@ -850,6 +850,23 @@
 	 */
 	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
 	/**
+	 * The context once this page is gone.
+	 *
+	 * Leaving the route entirely destroys the component but not the
+	 * promise, and the show and mode it closed over are unchanged — so
+	 * a guard comparing only those would accept the answer and run
+	 * `switchToEpisode`, pulling the user back into playback on a page
+	 * they left. Nothing about the question changed; nobody is asking.
+	 *
+	 * Cannot collide with a real context, which always carries the
+	 * `id:mode` separator.
+	 */
+	const GONE = 'gone';
+	let gone = false;
+	onDestroy(() => {
+		gone = true;
+	});
+	/**
 	 * Write back what the re-ask learned about the show.
 	 *
 	 * The lookup replaces the backend's whole cached row, so the strip
@@ -905,7 +922,7 @@
 				extraEpisodes: r.extra_episodes ?? []
 			};
 		},
-		currentContext: () => `${detail?.id ?? ''}:${capGateMode()}`,
+		currentContext: () => (gone ? GONE : `${detail?.id ?? ''}:${capGateMode()}`),
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;

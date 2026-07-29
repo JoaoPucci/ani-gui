@@ -137,6 +137,25 @@
 	 */
 	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
 	/**
+	 * The context once this page is gone.
+	 *
+	 * Leaving the route entirely — Back, or any history navigation —
+	 * destroys the component but not the promise. The show and the
+	 * mode it closed over are unchanged, so a guard that compares only
+	 * those sees a perfectly current answer and acts on it: `startPlay`
+	 * runs, and its `goto` hauls the user back into playback on a page
+	 * they left. Nothing about the question changed; there is simply
+	 * nobody left asking.
+	 *
+	 * Cannot collide with a real context, which always carries the
+	 * `id:mode` separator.
+	 */
+	const GONE = 'gone';
+	let gone = false;
+	onDestroy(() => {
+		gone = true;
+	});
+	/**
 	 * Write back what the re-ask learned about the show.
 	 *
 	 * The lookup replaces the backend's whole cached row, so the page
@@ -189,7 +208,7 @@
 				extraEpisodes: r.extra_episodes ?? []
 			};
 		},
-		currentContext: () => `${detail?.id ?? ''}:${capGateMode()}`,
+		currentContext: () => (gone ? GONE : `${detail?.id ?? ''}:${capGateMode()}`),
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			// Overlay stays up; startPlay owns it from here.
