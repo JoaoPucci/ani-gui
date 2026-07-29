@@ -226,6 +226,57 @@ describe('play route — clicking a dimmed aired episode', () => {
 		);
 	});
 
+	it('stops offering any episode once the recheck says the show is gone', async () => {
+		let delisted = false;
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				// The re-ask finds the show delisted — allmanga dropped
+				// it, or the resolver corrected which title it matched.
+				// No count comes with that, so the stale cap survives.
+				if (body.bypass_cache) delisted = true;
+				return HttpResponse.json({
+					available: !delisted,
+					episode_count: delisted ? null : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(PlayPage, { target });
+		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
+		// An episode comfortably inside the remembered cap, so nothing
+		// about IT changes — only the show's existence does.
+		await until(() => card(3)?.disabled === false, 'episode 3 to be offered at all');
+
+		card(AIRED)!.click();
+
+		// The verdict is the only thing this answer established: no
+		// count came back, so the cap stays where it was and every
+		// episode at or below it still looks playable. Clicking one
+		// starts a resolution against a show that is not there.
+		await until(
+			() => card(3)?.disabled === true,
+			'episode 3 to stop being offered once the show is delisted'
+		);
+	});
+
 	it('presents the dimmed card as something to click, not as refused', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
