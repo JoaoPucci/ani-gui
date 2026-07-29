@@ -816,6 +816,33 @@ describe('long-runners Kitsu has no episode total for', () => {
 		expect(cachedBindingVerdict(conan, r, false)).toBe('trust');
 	});
 
+	it('will not take an unrelated airing show just because it has no total', () => {
+		// The countless-airing lane accepts on no count evidence at all
+		// — only on "a broadcasting show legitimately has no total",
+		// which says nothing about WHICH broadcasting show. Without an
+		// identity check it reopens the exact class of poisoning the
+		// count guard existed to stop, and `pickKitsuMatch` would cache
+		// the wrong id for a row the user then clicks.
+		const r = resolveHistoryEntry(entry('Detective Conan (1150 episodes)', '1100'), null);
+		const unrelated = hit({
+			id: '12',
+			canonical_title: 'One Piece',
+			slug: 'one-piece',
+			episode_count: null,
+			subtype: 'TV',
+			status: 'current'
+		});
+		expect(pickKitsuMatch([unrelated], r)).toBeNull();
+	});
+
+	it('still takes the right airing long-runner when the titles overlap', () => {
+		// The fence for the case above: 'Meitantei Conan' and Kitsu's
+		// 'Detective Conan' share only one token, so an identity check
+		// set too tight would re-break the row this all exists to fix.
+		const r = resolveHistoryEntry(entry('Meitantei Conan (1150 episodes)', '1100'), null);
+		expect(pickKitsuMatch([conanMovie, conan], r)?.id).toBe('210');
+	});
+
 	it('leaves short histories alone, airing or not', () => {
 		// Below the threshold a countless entry was always acceptable —
 		// an ongoing single-cour show has no total yet either. Airing
