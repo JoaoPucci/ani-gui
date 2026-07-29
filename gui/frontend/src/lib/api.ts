@@ -791,6 +791,18 @@ export interface AvailabilityArgs {
 	 *  background probes and skips them while its breaker is open;
 	 *  interactive checks (detail-page CTA) omit it. */
 	background?: boolean;
+	/** Skip the cached count and ask allmanga directly.
+	 *
+	 *  The stored count is a snapshot — 24h for an ongoing show — and
+	 *  allmanga catalogues episodes inside that window. A user clicking
+	 *  a tile the stored count calls unavailable is asking something
+	 *  the cache cannot answer, so replaying it back confirms the
+	 *  tile's own claim without anyone having checked.
+	 *
+	 *  Only the read is skipped; the fresh result still replaces the
+	 *  stale row for every other reader. Reserve for user-initiated
+	 *  requests — it defeats the point of caching otherwise. */
+	bypass_cache?: boolean;
 }
 
 /** Response from {@link checkAvailability}. `episode_count` is the

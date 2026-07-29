@@ -125,7 +125,7 @@
 	 * why this can succeed where the mount probe did not.
 	 */
 	const capGate = createCapGateProbe({
-		probe: async (episode) => {
+		probe: async () => {
 			const d = detail;
 			if (!d) return null;
 			const r = await checkAvailability({
@@ -136,9 +136,11 @@
 				year: yearFromKitsuRef(d) ?? undefined,
 				kitsu_id: d.id,
 				status: d.status ?? undefined,
-				background: false
+				background: false,
+				// Without this the lookup answers from the very row
+				// being questioned and never reaches allmanga.
+				bypass_cache: true
 			});
-			void episode;
 			return r.episode_count;
 		},
 		onCleared: (episode, count) => {

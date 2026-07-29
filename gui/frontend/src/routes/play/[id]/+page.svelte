@@ -850,7 +850,10 @@
 				year: yearFromKitsuRef(d) ?? undefined,
 				kitsu_id: d.id,
 				status: d.status ?? undefined,
-				background: false
+				background: false,
+				// Without this the lookup answers from the very row
+				// being questioned and never reaches allmanga.
+				bypass_cache: true
 			});
 			return r.episode_count;
 		},

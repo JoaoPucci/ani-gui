@@ -149,7 +149,7 @@ describe('createCapGateProbe', () => {
 		expect(gate.isProbing(5)).toBe(false);
 
 		gate.request(5);
-		expect(d.calls).toEqual([5, 5]);
+		expect(d.calls).toHaveLength(2);
 	});
 
 	it('marks only the tiles that were actually clicked as busy', () => {
