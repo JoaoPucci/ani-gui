@@ -133,10 +133,17 @@ export async function retryApproximateCaps(
 		if (deps.cancelled?.()) return;
 		const job = queue.shift();
 		if (!job) break;
-		if (deps.shouldRetry && !deps.shouldRetry(job.row.entryId)) continue;
+		if (skip(deps, job.row.entryId)) continue;
 
 		await deps.wait(backoff[Math.min(job.attempts, backoff.length - 1)]);
 		if (deps.cancelled?.()) return;
+		// Again, on the way out. The later steps are half a minute and
+		// a minute long, and a click landing in that window pins an
+		// exact cap through its own interactive lookup — which is the
+		// condition the skip exists to detect. Asking only on the way
+		// in spends a scraper slot on a question already answered, and
+		// a failure there counts toward the breaker.
+		if (skip(deps, job.row.entryId)) continue;
 
 		const answer = await probe(deps, job.row);
 		job.attempts++;
@@ -153,6 +160,11 @@ export async function retryApproximateCaps(
 
 		if (job.attempts < maxAttempts) queue.push(job);
 	}
+}
+
+/** The caller's click-settled check, absent-means-retry. */
+function skip(deps: ApproximateRetryDeps, entryId: string): boolean {
+	return deps.shouldRetry ? !deps.shouldRetry(entryId) : false;
 }
 
 async function probe(
