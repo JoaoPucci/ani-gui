@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { createCapGateProbe } from './cap-gate-probe';
+import { createCapGateProbe, type CapGateAnswer, type CapGateRefresh } from './cap-gate-probe';
 
 /** Drain the microtask queue. Counting `await Promise.resolve()`
  *  ticks is brittle — the settle path runs through then/catch/finally
@@ -9,12 +9,12 @@ const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** A probe whose resolution the test controls. */
 function deferredProbe() {
-	let release!: (answer: { count: number | null; approximate: boolean } | null) => void;
+	let release!: (answer: CapGateAnswer | null) => void;
 	let reject!: (e: unknown) => void;
 	const calls: number[] = [];
 	const probe = () => {
 		calls.push(calls.length + 1);
-		return new Promise<{ count: number | null; approximate: boolean } | null>((res, rej) => {
+		return new Promise<CapGateAnswer | null>((res, rej) => {
 			release = res;
 			reject = rej;
 		});
@@ -23,18 +23,24 @@ function deferredProbe() {
 		calls,
 		probe,
 		// The catalogue answered — possibly without a number. Distinct
-		// from `fail()`, which is not being able to ask at all.
-		release: (count: number | null, approximate = false) => release({ count, approximate }),
+		// from `fail()`, which is not being able to ask at all. The
+		// common case is a show that is there with no specials, so
+		// that is the default and cases override what they are about.
+		release: (count: number | null, approximate = false, rest: Partial<CapGateAnswer> = {}) =>
+			release({ count, approximate, available: true, extraEpisodes: [], ...rest }),
 		fail: () => reject(new Error('probe failed'))
 	};
 }
 
-function harness(probe: () => Promise<{ count: number | null; approximate: boolean } | null>) {
+function harness(probe: () => Promise<CapGateAnswer | null>) {
 	const cleared: { episode: number; count: number }[] = [];
 	const stillGated: number[] = [];
 	const failed: number[] = [];
 	const stillGatedCounts: (number | null)[] = [];
 	const superseded: number[] = [];
+	/** Every refresh the controller judged safe to write, in order,
+	 *  from whichever outcome delivered it. */
+	const refreshes: CapGateRefresh[] = [];
 	/** What the answer will be about: the show the strip is on AND the
 	 *  audio mode. Both routes reuse one component across shows, and
 	 *  the mode arrives asynchronously from settings — so either can
@@ -43,15 +49,19 @@ function harness(probe: () => Promise<{ count: number | null; approximate: boole
 	const gate = createCapGateProbe({
 		probe,
 		currentContext: () => `${showing.id}:${showing.mode}`,
-		onCleared: (episode, count) => cleared.push({ episode, count }),
-		onStillGated: (episode, count) => {
+		onCleared: (episode, count, refresh) => {
+			cleared.push({ episode, count });
+			refreshes.push(refresh);
+		},
+		onStillGated: (episode, refresh) => {
 			stillGated.push(episode);
-			stillGatedCounts.push(count);
+			stillGatedCounts.push(refresh.count);
+			refreshes.push(refresh);
 		},
 		onFailed: (episode) => failed.push(episode),
 		onSuperseded: (episode) => superseded.push(episode)
 	});
-	return { gate, cleared, stillGated, stillGatedCounts, failed, superseded, showing };
+	return { gate, cleared, stillGated, stillGatedCounts, refreshes, failed, superseded, showing };
 }
 
 describe('createCapGateProbe', () => {
@@ -223,6 +233,53 @@ describe('createCapGateProbe', () => {
 
 		expect(stillGated).toEqual([9]);
 		expect(stillGatedCounts).toEqual([6]);
+	});
+
+	it('carries the catalogue verdict when the show is no longer listed', async () => {
+		const d = deferredProbe();
+		const { gate, refreshes } = harness(d.probe);
+
+		gate.request(5);
+		// allmanga delisted the show, or the resolver corrected which
+		// title it had matched. A false verdict is always definite —
+		// a search that could not be completed is an error, not a no.
+		d.release(null, false, { available: false });
+		await flush();
+
+		// Without this the page keeps the availability it was told at
+		// mount, so every episode stays enabled and every click starts
+		// a resolution against a show that is not there.
+		expect(refreshes).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
+	});
+
+	it('carries refreshed extras so the strip picks up specials', async () => {
+		const d = deferredProbe();
+		const { gate, refreshes } = harness(d.probe);
+
+		gate.request(9);
+		d.release(6, false, { extraEpisodes: ['4.5'] });
+		await flush();
+
+		// The strip splices non-integer tags in at their numeric
+		// position. A special catalogued since the page loaded is
+		// invisible until this list is replaced — and one that was
+		// pulled stays on screen and playable.
+		expect(refreshes).toEqual([{ available: true, count: 6, extraEpisodes: ['4.5'] }]);
+	});
+
+	it('withholds extras from an unconfirmed answer', async () => {
+		const d = deferredProbe();
+		const { gate, refreshes } = harness(d.probe);
+
+		gate.request(9);
+		// Unconfirmed means the per-show fetch failed — and that fetch
+		// is what would have listed the specials. The empty list is
+		// "we could not look", not "there are none", so writing it
+		// would delete specials that exist.
+		d.release(6, true, { extraEpisodes: [] });
+		await flush();
+
+		expect(refreshes).toEqual([{ available: true, count: null, extraEpisodes: null }]);
 	});
 
 	it('withholds an unconfirmed count from the correction', async () => {
