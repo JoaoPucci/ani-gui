@@ -78,6 +78,22 @@ pub struct AvailabilityArgs {
     /// legacy callers keep interactive semantics.
     #[serde(default)]
     pub background: bool,
+    /// Skip the cached row and ask allanime directly.
+    ///
+    /// The stored count is a snapshot — 24h for an ongoing show — and
+    /// allanime catalogues episodes inside that window. A user
+    /// clicking a tile the stored count says is unavailable is asking
+    /// a question the cache cannot answer, so replaying it back is
+    /// worse than not answering: it confirms the tile's own claim
+    /// without anyone having checked.
+    ///
+    /// Only the READ is skipped. The result still goes through
+    /// `write_cache_full` below, so a fresher answer replaces the
+    /// stale row for every other reader rather than being discarded.
+    ///
+    /// Defaults false: every existing caller keeps the cheap path.
+    #[serde(default)]
+    pub bypass_cache: bool,
 }
 
 /// Result of an availability probe — does allmanga carry the show in
@@ -254,7 +270,12 @@ pub(crate) async fn check_availability_with_base(
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
     // legacy count-less rows and gate-refused approximate counts both
     // re-probe so they self-heal.
-    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(id) = args
+        .kitsu_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .filter(|_| !args.bypass_cache)
+    {
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
@@ -1063,6 +1084,7 @@ mod tests {
             kitsu_id: None,
             status: None,
             background: false,
+            bypass_cache: false,
         };
         let _ = check_availability(&state, &args).await;
 
