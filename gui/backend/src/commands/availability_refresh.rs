@@ -81,7 +81,10 @@ impl AvailabilityRefreshes {
     /// brief std-mutex section only clones the `Arc`; the async mutex
     /// it hands back is what the caller holds across the await.
     pub(crate) fn for_row(&self, key: &str) -> RowLock {
-        let mut map = self.locks.lock().expect("availability row-lock map poisoned");
+        let mut map = self
+            .locks
+            .lock()
+            .expect("availability row-lock map poisoned");
         Arc::clone(map.entry(key.to_owned()).or_default())
     }
 }
@@ -160,6 +163,81 @@ mod tests {
         let started_at = refreshes.generation(&key);
 
         assert!(may_write_cache(&refreshes, &key, started_at, false));
+    }
+
+    proptest::proptest! {
+        // The rule `may_write_cache` applies, stated over every shape
+        // the two inputs can take rather than the four the examples
+        // above pin:
+        //
+        //   • A refresh writes unconditionally. It skipped the cache,
+        //     so no reading it could be holding is the stale one, and
+        //     between two refreshes last-write-wins is correct.
+        //   • An ordinary lookup writes exactly when no refresh has
+        //     landed since it went out — never on a count that moved,
+        //     always on one that did not.
+        //
+        // The predicate decides whether a cached cap outlives its own
+        // correction, so "some refresh, some lookup, some interleaving"
+        // is the honest domain to state it over.
+        #[test]
+        fn a_refresh_writes_whatever_happened_while_it_was_out(
+            landed in 0usize..8,
+        ) {
+            let refreshes = AvailabilityRefreshes::new();
+            let key = cache_key("kid-p", "sub");
+            let started_at = refreshes.generation(&key);
+            for _ in 0..landed {
+                refreshes.bump(&key);
+            }
+
+            proptest::prop_assert!(may_write_cache(&refreshes, &key, started_at, true));
+        }
+
+        #[test]
+        fn a_lookup_writes_exactly_when_no_refresh_landed(
+            landed in 0usize..8,
+        ) {
+            let refreshes = AvailabilityRefreshes::new();
+            let key = cache_key("kid-p", "sub");
+            let started_at = refreshes.generation(&key);
+            for _ in 0..landed {
+                refreshes.bump(&key);
+            }
+
+            proptest::prop_assert_eq!(
+                may_write_cache(&refreshes, &key, started_at, false),
+                landed == 0
+            );
+        }
+
+        #[test]
+        fn only_a_refresh_of_this_very_row_takes_a_lookup_s_turn(
+            id in "[a-z0-9]{1,6}",
+            other_id in "[a-z0-9]{1,6}",
+            noise in 0usize..6,
+            on_this_row in proptest::bool::ANY,
+        ) {
+            // sub and dub are separate catalogues, and separate shows
+            // are separate rows, so a refresh of one settles nothing
+            // about any other. Whatever else lands, the answer tracks
+            // this row and only this row.
+            let refreshes = AvailabilityRefreshes::new();
+            let key = cache_key(&id, "sub");
+            let started_at = refreshes.generation(&key);
+            for _ in 0..noise {
+                refreshes.bump(&cache_key(&id, "dub"));
+                refreshes.bump(&cache_key(&other_id, "dub"));
+            }
+            if on_this_row {
+                refreshes.bump(&key);
+            }
+
+            proptest::prop_assert_eq!(
+                may_write_cache(&refreshes, &key, started_at, false),
+                !on_this_row
+            );
+        }
     }
 
     #[test]
