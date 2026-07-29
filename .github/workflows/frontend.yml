@@ -87,6 +87,10 @@ jobs:
         run: pnpm run test
 
       - if: needs.filter.outputs.relevant == 'true'
+        name: vitest run (acceptance — route mounting + MSW)
+        run: pnpm run test:acceptance
+
+      - if: needs.filter.outputs.relevant == 'true'
         name: vitest run with coverage
         # See crap.yml — the locale bundles are generated, so coverage
         # runs through the script that regenerates them.

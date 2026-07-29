@@ -16,6 +16,7 @@
 		"test": "pnpm i18n:compile && vitest run",
 		"test:coverage": "pnpm i18n:compile && vitest run --coverage",
 		"test:watch": "pnpm i18n:compile && vitest",
+		"test:acceptance": "pnpm i18n:compile && vitest run --config vitest.acceptance.config.ts",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"prepare": "lefthook install -f"
@@ -38,6 +39,7 @@
 		"globals": "17.6.0",
 		"happy-dom": "^20.9.0",
 		"lefthook": "2.1.6",
+		"msw": "^2.15.0",
 		"prettier": "3.8.3",
 		"prettier-plugin-svelte": "3.5.1",
 		"svelte": "5.55.5",
