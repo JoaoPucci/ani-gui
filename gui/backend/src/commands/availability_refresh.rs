@@ -122,6 +122,36 @@ pub fn may_write_cache(
     bypass_cache || refreshes.generation(key) == generation_at_start
 }
 
+/// Take the row and report whether this writer may still have it.
+///
+/// `Some(guard)` — write now, and hold the guard until the write has
+/// landed. `None` — a refresh answered while this one was out, and its
+/// row is the one that should survive.
+///
+/// This is the whole protocol in one call, and every writer of an
+/// availability row goes through it. The lookup is not the only one:
+/// a play resolution stamps the row on success and on a confirmed
+/// miss, and it too holds an answer from before it started writing
+/// (Codex P2 #3674767151). A writer outside this function is a writer
+/// that can put a stale cap back for the row's whole TTL.
+pub async fn hold_if_still_ours(
+    refreshes: &AvailabilityRefreshes,
+    key: &str,
+    generation_at_start: u64,
+    bypass_cache: bool,
+) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    let guard = refreshes.for_row(key).lock_owned().await;
+    if !may_write_cache(refreshes, key, generation_at_start, bypass_cache) {
+        return None;
+    }
+    // Inside the lock, so the count a later writer reads already
+    // includes this one.
+    if bypass_cache {
+        refreshes.bump(key);
+    }
+    Some(guard)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
