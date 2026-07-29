@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setQuery } from './page-state.svelte';
@@ -23,6 +23,10 @@ vi.mock('$app/state', () => ({
 
 import SearchPage from '../../src/routes/search/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+// Expected copy comes from the same message helpers the route renders,
+// per AGENTS.md §6 — a locale or wording change must not fail a test
+// about route behaviour.
+import { m } from '../../src/lib/paraglide/messages';
 
 function ref(id: string, title: string) {
 	return {
@@ -115,29 +119,47 @@ describe('/search late prune', () => {
 	// than fixed here — this PR adds coverage, and changing user-facing
 	// copy is its own change with its own locales.
 	it('falls back to the no-results copy when availability prunes everything', async () => {
+		// The probes are held so the grace render happens first. With
+		// them answering immediately every verdict lands before the
+		// filter's deadline, the route emits only the final empty list,
+		// and the scenario would pass even with render-then-prune
+		// removed entirely.
+		let releaseProbes: () => void = () => {};
+		const probesHeld = new Promise<void>((resolve) => {
+			releaseProbes = resolve;
+		});
+
 		server.use(
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
 				HttpResponse.json([ref('1', 'Gone One'), ref('2', 'Gone Two')])
 			),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({ available: false, episode_count: 0, approximate: false })
-			)
+			http.post(`${API_BASE}/api/availability`, async () => {
+				await probesHeld;
+				return HttpResponse.json({ available: false, episode_count: 0, approximate: false });
+			})
 		);
 
 		setQuery('gone');
 		app = mount(SearchPage, { target });
 
 		await until(
-			() => screen().includes('Nothing matched'),
+			() => screen().includes('Gone One') && screen().includes('Gone Two'),
+			'both results to render at the grace deadline'
+		);
+
+		releaseProbes();
+
+		await until(
+			() => screen().includes(m.search_empty_headline_prefix()),
 			'an empty state once every probe rejected'
 		);
 		expect(screen()).not.toContain('Gone One');
 		expect(screen()).not.toContain('Gone Two');
-		// The distinction this pins: the page cannot currently say
-		// "found, but unavailable", so the availability-filter copy
-		// never appears on this path.
-		expect(screen()).not.toContain('No matches in the current filter.');
+		// The distinction this pins: the page cannot say "found, but
+		// unavailable", so the availability-filter copy never appears
+		// on this path.
+		expect(screen()).not.toContain(m.search_filtered_empty_headline());
 	});
 
 	it('lets the newest run win when the same query is re-submitted mid-flight', async () => {
@@ -149,6 +171,7 @@ describe('/search late prune', () => {
 			releaseFirstA = resolve;
 		});
 		let searchCalls = 0;
+		let staleProbeServed = false;
 
 		server.use(
 			...baseHandlers(),
@@ -164,9 +187,14 @@ describe('/search late prune', () => {
 				if (query === 'trigun') return HttpResponse.json([ref('5', 'Interim Result')]);
 				return HttpResponse.json([ref('7', 'Fresh Result')]);
 			}),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({ available: true, episode_count: 12, approximate: false })
-			)
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_id?: string };
+				// The stale run's only item. Serving its probe is the
+				// last network call that run makes, so it marks the
+				// point after which its filter can resolve and emit.
+				if (body.kitsu_id === '9') staleProbeServed = true;
+				return HttpResponse.json({ available: true, episode_count: 12, approximate: false });
+			})
 		);
 
 		setQuery('cowboy');
@@ -182,8 +210,19 @@ describe('/search late prune', () => {
 		// Only now does the very first run answer. Its generation is
 		// two behind, so its results are dropped rather than painted
 		// over the ones the user is looking at.
+		//
+		// The wait is on the stale run reaching the end of its own
+		// pipeline, not on a fixed delay: a timed bet can expire before
+		// a loaded worker has carried the released response through its
+		// batch and probe calls, and would then pass with the guard
+		// removed. After its last probe is served the rest is
+		// microtasks, so flushing those plus a Svelte tick is enough to
+		// let a broken guard paint.
 		releaseFirstA();
-		await new Promise((r) => setTimeout(r, 200));
+		await until(() => staleProbeServed, "the stale run's probe to be served");
+		await tick();
+		await new Promise((r) => setTimeout(r, 0));
+		await tick();
 
 		expect(screen()).not.toContain('Stale Result');
 		expect(screen()).toContain('Fresh Result');
