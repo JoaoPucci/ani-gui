@@ -1771,15 +1771,15 @@
 											type="button"
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
-											class:ep-tile-recheck={capGated}
+											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: capGated
-													? m.detail_ep_recheck_idle()
-													: availability === false
-														? m.detail_ep_disabled_tooltip()
+												: availability === false
+													? m.detail_ep_disabled_tooltip()
+													: capGated
+														? m.detail_ep_recheck_idle()
 														: undefined}
 											onclick={() => {
 												// `aria-disabled` is advisory — it does not stop a click, and a
@@ -1846,15 +1846,15 @@
 											type="button"
 											class="ep-tile"
 											class:ep-tile-disabled={availability === false}
-											class:ep-tile-recheck={capGated}
+											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
 											aria-disabled={availability === false || air.unaired || airingIsPending}
 											title={air.unaired
 												? m.detail_ep_unaired_tooltip()
-												: capGated
-													? m.detail_ep_recheck_idle()
-													: availability === false
-														? m.detail_ep_disabled_tooltip()
+												: availability === false
+													? m.detail_ep_disabled_tooltip()
+													: capGated
+														? m.detail_ep_recheck_idle()
 														: undefined}
 											onclick={() => {
 												// `aria-disabled` is advisory — it does not stop a click, and a
