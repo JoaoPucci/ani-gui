@@ -656,5 +656,61 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			`episode ${AIRED} to be gated by the dub cap`,
 			3000
 		);
+
+		expect(probes.filter((p) => p.mode === 'dub')).toHaveLength(1);
+	});
+
+	it('does not ask twice when settings confirm the mode it guessed', async () => {
+		let releaseSettings!: () => void;
+		const settingsHeld = new Promise<void>((r) => {
+			releaseSettings = r;
+		});
+		const probes: { bypass_cache?: boolean; mode?: string }[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await settingsHeld;
+				return HttpResponse.json({ ...appConfig(), mode: 'sub' });
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
+				probes.push(body);
+				return HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => probes.length > 0, 'the fallback availability lookup');
+
+		// Settings confirm what the fallback already guessed. The mode
+		// did not change, so nothing about the question did — and
+		// allmanga rate-limits, so asking it twice costs a slot for an
+		// answer already in hand.
+		releaseSettings();
+		await until(
+			() => tile(AIRED)!.getAttribute('title') === m.detail_ep_recheck_idle(),
+			`episode ${AIRED} to settle under the cap`,
+			3000
+		);
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
 	});
 });
