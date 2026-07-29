@@ -588,4 +588,73 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 	});
+
+	it('asks again for the mode that settings landed on', async () => {
+		let releaseSettings!: () => void;
+		const settingsHeld = new Promise<void>((r) => {
+			releaseSettings = r;
+		});
+		let releaseSub!: () => void;
+		const subHeld = new Promise<void>((r) => {
+			releaseSub = r;
+		});
+		const probes: { bypass_cache?: boolean; mode?: string }[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await settingsHeld;
+				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
+				probes.push(body);
+				// The fallback lookup is still out when the real mode
+				// arrives, which is the whole ordering being tested.
+				if (body.mode === 'sub') await subHeld;
+				return HttpResponse.json({
+					available: true,
+					// Dub lags, as it does upstream: the sub catalogue has
+					// everything that aired, the dub catalogue does not.
+					episode_count: body.mode === 'dub' ? CACHED_COUNT : AIRED,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		await until(() => probes.length > 0, 'the fallback availability lookup');
+		expect(probes[0].mode).toBe('sub');
+
+		// Settings land on dub while that first lookup is still out. Its
+		// answer is about the wrong catalogue and is correctly dropped —
+		// so something has to ask again, or the page keeps no cap at all
+		// and every aired dub tile stays playable.
+		releaseSettings();
+		releaseSub();
+
+		await until(
+			() => probes.some((p) => p.mode === 'dub' && !p.bypass_cache),
+			'a second lookup for the mode the user actually has',
+			3000
+		);
+		await until(
+			() => tile(AIRED)!.getAttribute('title') === m.detail_ep_recheck_idle(),
+			`episode ${AIRED} to be gated by the dub cap`,
+			3000
+		);
+	});
 });
