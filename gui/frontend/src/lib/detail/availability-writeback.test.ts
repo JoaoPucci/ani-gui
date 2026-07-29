@@ -106,4 +106,35 @@ describe('createAvailabilityWriteback', () => {
 			extraEpisodes: []
 		});
 	});
+
+	it('drops the count that came with a superseded negative verdict', () => {
+		const wb = createAvailabilityWriteback(() => 'show-1:sub');
+		const settle = wb.begin();
+
+		// A re-ask found the show, but only approximately — so it took
+		// the verdict and left the cap open.
+		wb.refresh({ available: true, count: null, extraEpisodes: null });
+
+		// This lookup says the show is not there at all. Its "no count"
+		// is not a measurement of anything; it is the same claim as its
+		// verdict, and the verdict has been superseded. Publishing it
+		// would put a null cap on a show the re-ask just said exists,
+		// and both routes read a null cap as unbounded — every aired
+		// tile playable on a show nobody has confirmed a cap for.
+		expect(settle(answer(false, null))).toEqual({});
+	});
+
+	it('still lets a confirmed count through when only the verdict was superseded', () => {
+		const wb = createAvailabilityWriteback(() => 'show-1:sub');
+		const settle = wb.begin();
+
+		wb.refresh({ available: true, count: null, extraEpisodes: null });
+
+		// A positive answer's count stands on its own — the lookup
+		// counted episodes. Only the verdict belongs to the re-ask.
+		expect(settle(answer(true, 12, ['12.5']))).toEqual({
+			count: 12,
+			extraEpisodes: ['12.5']
+		});
+	});
 });
