@@ -27,6 +27,10 @@ export default defineConfig({
 	test: {
 		environment: 'node',
 		include: ['src/**/*.{test,spec}.ts', 'tests/**/*.{test,spec}.ts'],
+		// The acceptance tier runs under its own config: it needs a DOM
+		// and browser module resolution, and picking it up here would
+		// run it in `node` where `mount()` does not exist.
+		exclude: ['**/node_modules/**', 'tests/acceptance/**'],
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'lcov'],
