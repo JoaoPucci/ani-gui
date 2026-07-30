@@ -165,6 +165,14 @@ the robust form.
 index rather than from working-tree status, with a case for the
 deleted-file variant.
 
+The failure message is wrong for this case too. `why_unrecoverable`
+sees that `ls-files` succeeds and reports "tracked as a symlink or
+submodule rather than a file", which is neither true nor actionable —
+the fix is `git add` on a path that is already, in a sense, added.
+Reporting the wrong reason has already been a defect on this branch
+once, for symlinks; the same argument applies. Fix it in the same
+change as the detection.
+
 **Setext H2 does not end the section.** The body scan recognises
 `^ {0,3}## `. A heading written as text followed by a line of `-` is
 also an H2, so the section runs past it into the next one.
