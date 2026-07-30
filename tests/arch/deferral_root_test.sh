@@ -187,7 +187,7 @@ fi
 # so the cleanup trap removes it on every exit path — including an
 # interrupt, which the explicit `rm -rf` at the end of this block
 # would miss.
-apostrophe_dir="$(mktemp -d)/o'brien"
+apostrophe_dir="$scratch_dir/o'brien"
 
 # Two properties of the scratch this case creates, checked before it
 # is used. It must live inside the repository — the suite has no
