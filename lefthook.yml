@@ -15,26 +15,46 @@
 # Hooks also auto-skip when their `glob` doesn't match any staged file.
 
 pre-commit:
-  parallel: true
+  # Sequential, not parallel, and the reason is specific: `check` and
+  # `test` both run `pnpm i18n:compile`, which regenerates
+  # src/lib/paraglide/messages/. Run at the same time, one rewrites
+  # those modules while svelte-check is reading them, and the commit
+  # fails with a few hundred "is not a module" errors naming files
+  # that are perfectly fine by the time you look. It failed roughly
+  # half of all frontend commits.
+  #
+  # `frontend-lint` reads the same generated tree, so it is exposed to
+  # the same torn reads even though it does not compile.
+  #
+  # Lefthook cannot express "compile once, then fan out", and the
+  # alternatives are worse: a lock file is not portable to Git Bash,
+  # and a directory swap cannot be made atomic because rename(2)
+  # refuses a non-empty target. Serialising costs about twelve seconds
+  # on a frontend commit; a coin-flip failure costs the whole run plus
+  # the re-run.
+  #
+  # `piped` also stops at the first failure, so the order below is
+  # cheapest-and-most-likely-to-fail first.
+  piped: true
   commands:
     # `root:` makes the command run from that directory and rewrites
     # {staged_files} to be relative to it; globs are therefore matched
     # against the rewritten (root-relative) paths.
 
-    frontend-lint:
-      glob: "**/*.{ts,svelte,js,mjs,cjs,json,css,html}"
+    frontend-test:
+      glob: "**/*.{ts,svelte}"
       root: "gui/frontend/"
-      run: pnpm run lint
+      run: pnpm test
 
     frontend-check:
       glob: "**/*.{ts,svelte}"
       root: "gui/frontend/"
       run: pnpm run check
 
-    frontend-test:
-      glob: "**/*.{ts,svelte}"
+    frontend-lint:
+      glob: "**/*.{ts,svelte,js,mjs,cjs,json,css,html}"
       root: "gui/frontend/"
-      run: pnpm test
+      run: pnpm run lint
 
     rust-fmt:
       glob: "**/*.rs"
