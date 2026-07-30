@@ -57,6 +57,10 @@ interface StubOptions {
 	/** Delay the availability probe to widen the loading window for
 	 *  the "non-interactive loading" assertions. */
 	availabilityDelayMs?: number;
+	/** Override the episode's canonical title. A long one wraps at the
+	 *  card width, which is the case the card-height assertion needs
+	 *  and a short title cannot exercise. */
+	episodeTitle?: string;
 	/** Hook fired whenever the renderer posts to /api/play — lets
 	 *  the test assert the click handler ran with the right episode. */
 	onPlay?: (body: unknown) => void;
@@ -136,7 +140,12 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 			return j(null);
 		}
 		if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
-		if (p.startsWith('/api/kitsu/episodes/')) return j([continueKitsuEpisode6]);
+		if (p.startsWith('/api/kitsu/episodes/'))
+			return j([
+				opts.episodeTitle
+					? { ...continueKitsuEpisode6, canonical_title: opts.episodeTitle }
+					: continueKitsuEpisode6
+			]);
 		if (p.startsWith('/api/title-match')) return j(null);
 		if (p === '/api/kitsu/search') return j([]);
 
@@ -424,6 +433,52 @@ test('Continue card during the availability-probe window is not a /search link',
 		// After the probe lands the card flips to its button form.
 		const card = strip.getByRole('button').first();
 		await expect(card).toBeVisible({ timeout: 10_000 });
+	} finally {
+		await app.close();
+	}
+});
+
+test('Continue card keeps its height when the probe lands, even on a wrapping title', async () => {
+	// The rail resolves row by row, so if a card is a different size
+	// before and after its probe the row settles in visible steps.
+	//
+	// Measured rather than counted: the acceptance tier can compare
+	// structure but has no layout engine, and the failure mode here is
+	// purely a height. The title is deliberately long enough to wrap
+	// at the card width — a short one occupies a single line and hides
+	// the defect, which is exactly what the first version of this fix
+	// was verified against.
+	const { app, page } = await launchAppWithContinueStubs({
+		history: continueHistory,
+		availabilityDelayMs: 1_500,
+		episodeTitle:
+			'The Long Awaited Reunion Beneath the Sakura Tree at the Edge of the World'
+	});
+	try {
+		await waitForStripVisible(page);
+		const strip = page.getByRole('region', { name: /continue watching/i });
+		await expect(strip).toBeVisible({ timeout: 10_000 });
+
+		// Inside the probe window: the placeholder is on screen.
+		await page.waitForTimeout(500);
+		// Class locators, not roles: the strip also holds the rail's
+		// kebab and each card's delete chip, so `getByRole('button')`
+		// picks up a 33px chip and compares it against a card.
+		const loading = strip.locator('.resume-card-loading').first();
+		await expect(loading).toBeVisible();
+		const whileLoading = (await loading.boundingBox())?.height ?? 0;
+		expect(whileLoading).toBeGreaterThan(0);
+
+		// After it lands: the resume button, with the wrapped title.
+		const resolved = strip.locator('button.resume-card').first();
+		await expect(resolved).toBeVisible({ timeout: 10_000 });
+		const whenResolved = (await resolved.boundingBox())?.height ?? 0;
+
+		// Sub-pixel rounding is fine; a line of text is not.
+		expect(
+			Math.abs(whenResolved - whileLoading),
+			`loading=${whileLoading} resolved=${whenResolved}`
+		).toBeLessThan(2);
 	} finally {
 		await app.close();
 	}
