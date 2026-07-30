@@ -268,6 +268,92 @@ const KITSU_ANILIST_MAPPINGS_HIT_BODY: &str = r#"{
 }"#;
 
 #[cfg(test)]
+const KITSU_MAL_MAPPINGS_HIT_BODY: &str = r#"{
+    "data": [{
+        "id": "9100",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+    }],
+    "included": [{
+        "id": "12",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "One Piece",
+            "titles": { "en": "One Piece" },
+            "slug": "one-piece",
+            "synopsis": "Pirates.",
+            "startDate": "1999-10-20",
+            "endDate": null,
+            "episodeCount": 1100,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 1,
+            "posterImage": null,
+            "coverImage": { "original": "https://media.kitsu.app/anime/cover/12.jpg" }
+        }
+    }]
+}"#;
+
+/// Same show but with the null cover a newer ongoing title arrives
+/// with — the case `kitsu_anime_detail` backfills from AniList.
+#[cfg(test)]
+const KITSU_MAL_MAPPINGS_HIT_NO_COVER_BODY: &str = r#"{
+    "data": [{
+        "id": "9101",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "22" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "13" } } }
+    }],
+    "included": [{
+        "id": "13",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "Fresh Seasonal",
+            "titles": { "en": "Fresh Seasonal" },
+            "slug": "fresh-seasonal",
+            "synopsis": "New.",
+            "startDate": "2026-07-03",
+            "endDate": null,
+            "episodeCount": 12,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 500,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }]
+}"#;
+
+#[cfg(test)]
+const KITSU_ANIME_DETAIL_BODY: &str = r#"{
+    "data": {
+        "id": "12",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "One Piece",
+            "titles": { "en": "One Piece" },
+            "slug": "one-piece",
+            "synopsis": "Pirates.",
+            "startDate": "1999-10-20",
+            "endDate": null,
+            "episodeCount": 1100,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 1,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }
+}"#;
+
+#[cfg(test)]
 const KITSU_MAPPINGS_EMPTY_BODY: &str = r#"{ "data": [], "included": [] }"#;
 
 #[tokio::test]
@@ -954,4 +1040,391 @@ fn upsert_cached_entry_writes_through_to_the_cache() {
     let got = cached_list(&state, ProviderKind::AniList, "u").unwrap();
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].status, ListStatus::Watching);
+}
+
+#[tokio::test]
+async fn watch_later_bridge_resolves_a_known_mapping_from_cache_on_the_next_load() {
+    // The rail re-runs this bridge on every home mount. The mapping it
+    // resolves does not change — a MAL id points at the same Kitsu
+    // entry for as long as both exist — so asking again is repeat
+    // traffic against Kitsu for an answer already known.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    // A cache hit resolves the card through the anime-detail path
+    // rather than re-reading the mapping sideload, so the mock has to
+    // serve that too. In production it is usually already cached; when
+    // it is not, it costs the one fetch it would have cost anyway.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANIME_DETAIL_BODY))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let first = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+
+    // Same card both times — the cache must not cost correctness.
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_eq!(first[0].id, second[0].id);
+
+    let mapping_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/mappings")
+        .count();
+    assert_eq!(
+        mapping_calls, 1,
+        "the second load should read the mapping from cache, not Kitsu"
+    );
+    // The first load already held the whole card from the mappings
+    // sideload. Remembering only the id would just trade one per-title
+    // Kitsu request for another.
+    let detail_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path().starts_with("/anime/"))
+        .count();
+    assert_eq!(
+        detail_calls, 0,
+        "a cached mapping should render from local data, not a detail fetch"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_bridge_leaves_a_null_cover_card_for_the_banner_backfill() {
+    // The counterpart to warming the detail cache. A card whose cover
+    // Kitsu has not uploaded yet must NOT be seeded, because
+    // `kitsu_anime_detail` backfills the banner from AniList on a cold
+    // read and a seeded row would suppress that for the whole TTL —
+    // trading one request for a week of blurred-poster fallback, on
+    // exactly the newer ongoing shows the backfill exists for.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(KITSU_MAL_MAPPINGS_HIT_NO_COVER_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/13"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(KITSU_ANIME_DETAIL_BODY.replace("\"12\"", "\"13\"")),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![22], None).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![22], None).await;
+
+    assert_eq!(
+        second.len(),
+        1,
+        "the card still resolves on the second load"
+    );
+    let detail_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path().starts_with("/anime/"))
+        .count();
+    assert!(
+        detail_calls > 0,
+        "a null-cover card must still take the detail path so the banner can be backfilled"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_an_anilist_outage_as_unmappable() {
+    // The AniList batch is the fallback for ids Kitsu has not MAL-
+    // mapped. When it fails there is no answer about those ids at all
+    // — but the failure arrives as an empty map, which reads exactly
+    // like "AniList does not know them either". Recording that as a
+    // dead end hides those cards for the whole negative TTL, long
+    // after AniList is back.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    let anilist = wiremock::MockServer::start().await;
+    // Down for the first load, back for the second.
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .up_to_n_times(1)
+        .mount(&anilist)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while AniList is down"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "the outage must not have been remembered as 'nothing maps this'"
+    );
+    assert_eq!(after_recovery[0].id, "50551");
+}
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_a_kitsu_fallback_error_as_unmappable() {
+    // Same defect one hop later: AniList answers, but the Kitsu lookup
+    // for the id it returned fails. `Ok(None)` means Kitsu genuinely
+    // has no such mapping; `Err` means Kitsu did not say. Only the
+    // first is a dead end worth remembering.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    // The anilist-mapping hop is down for the first load only.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while Kitsu is erroring"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "a Kitsu error must not have been remembered as 'nothing maps this'"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_a_direct_kitsu_error_as_unmappable() {
+    // Phase 1 writes nothing on an error, which is why it looked
+    // exempt. But its error still becomes an ordinary `None`, and that
+    // sends the id into the fallback — where AniList shrugging is
+    // enough to record a dead end. So the negative gets written on
+    // behalf of a route that never actually answered.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    // The direct MAL route is down for the first load only.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    // AniList answers cleanly and simply does not know this id, so the
+    // fallback concludes "nothing maps it" — a conclusion it is only
+    // entitled to draw when the direct route also had its say.
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while the direct route is down"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "a direct-route error must not have been remembered as 'nothing maps this'"
+    );
+    assert_eq!(after_recovery[0].id, "12");
+}
+
+#[tokio::test]
+async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cache() {
+    // Kitsu serves posters and covers as Backblaze presigned links.
+    // The signature outlives neither a seven-day cache row nor a lazy
+    // first read, so a row written without fetching the bytes can
+    // still be valid metadata pointing at a URL that no longer
+    // resolves — a card with broken artwork until the row expires.
+    // The other detail-cache writer pairs its put with a warm; this
+    // one has to as well.
+    use wiremock::matchers::{method, path, query_param};
+    let images = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/cover.jpg"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(vec![0u8; 8]))
+        .mount(&images)
+        .await;
+
+    let signed = format!("{}/cover.jpg?X-Amz-Signature=deadbeef", images.uri());
+    let body =
+        KITSU_MAL_MAPPINGS_HIT_BODY.replace("https://media.kitsu.app/anime/cover/12.jpg", &signed);
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&kitsu)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+
+    // The warm is spawned, so give it a moment to land rather than
+    // asserting on the same tick it was scheduled.
+    for _ in 0..40 {
+        if !images.received_requests().await.unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(
+        !images.received_requests().await.unwrap().is_empty(),
+        "seeding the detail cache must fetch the signed image while the signature is still valid"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_bridge_remembers_a_conclusive_miss_and_asks_neither_route_again() {
+    // The negative half of the cache, which nothing else pins. The
+    // error cases assert what must NOT be written; none of them fails
+    // if a genuine "nothing maps this" were never written either — so
+    // the whole point of the short negative TTL went unverified.
+    //
+    // A miss is the expensive answer: it is what drags in the AniList
+    // batch on top of the Kitsu lookup. Remembering it is what stops
+    // an unmappable title costing both routes on every home mount.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    // AniList answers cleanly and does not know it either. Both routes
+    // have spoken, so the dead end is real and may be recorded.
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let first = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert!(
+        first.is_empty() && second.is_empty(),
+        "nothing maps this id"
+    );
+
+    let mapping_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/mappings")
+        .count();
+    assert_eq!(mapping_calls, 1, "the second load must not re-ask Kitsu");
+    assert_eq!(
+        anilist.received_requests().await.unwrap().len(),
+        1,
+        "the second load must not re-run the AniList batch either"
+    );
 }
