@@ -36,8 +36,22 @@ fi
 # example is documentation about the syntax rather than a use of it —
 # and matching it anyway would let someone demote the live import to a
 # sample and leave this check reporting the contract as loaded.
+#
+# A region closes on the delimiter that opened it: same character, and
+# a run at least as long. Markdown says so, and it matters here — a
+# tilde block quoting a backtick fence, or a four-backtick block
+# quoting a three-backtick one, is a single region with an inner line
+# of content. A parser that toggles on any fence would read that inner
+# line as the close and call everything after it live.
 if awk '
-    /^[[:space:]]*(```|~~~)/ { fenced = !fenced; next }
+    match($0, /^[ \t]*(`{3,}|~{3,})/) {
+        run = substr($0, RSTART, RLENGTH)
+        sub(/^[ \t]*/, "", run)
+        ch = substr(run, 1, 1)
+        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
+        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
+        next
+    }
     !fenced
 ' "$CLAUDE_FILE" | grep -qE '^@AGENTS\.md[[:space:]]*$'; then
     printf 'arch/agents_contract: ok (CLAUDE.md imports AGENTS.md)\n'
