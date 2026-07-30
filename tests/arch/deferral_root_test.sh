@@ -138,7 +138,15 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
         failed=1
     fi
 else
-    printf '  ok       (skipped: could not clone for the apostrophe case)\n'
+    # Not a skip. This clones a local path to a local path with no
+    # network involved, so there is no benign reason for it to fail —
+    # a failure means the environment cannot do something this suite
+    # depends on, and reporting `ok` for that turns a broken checkout
+    # into a green run. The case that made this file necessary was a
+    # path the suite could not handle; reporting success when the path
+    # was never built is the same defect wearing the opposite sign.
+    printf '  FAIL     could not clone for the apostrophe case\n'
+    failed=1
 fi
 
 [ "$failed" -eq 0 ] || { printf 'arch/deferral_root_test: FAILED\n'; exit 1; }
