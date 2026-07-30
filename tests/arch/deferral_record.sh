@@ -141,9 +141,23 @@ done <<EOF
 $paths
 EOF
 
+declared=$(printf '%s' "$paths" | grep -c . || true)
+
+# Zero declarations is not a pass. The section exists to say where a
+# deferral is recorded, so a section that names nothing has either
+# lost its marker or malformed it — and in both cases the loop above
+# runs zero times and finds nothing wrong, which would report success
+# while checking nothing at all. An invariant that can be switched off
+# by deleting a line, silently, is worse than no invariant, because
+# the green is still there to be trusted.
+if [ "$declared" -eq 0 ]; then
+    printf 'arch/deferral_record: the section declares no record — expected at least one `<!-- record-path: ... -->` marker; a deleted or malformed one would disable this check without failing it\n'
+    failed=1
+fi
+
 if [ "$failed" -ne 0 ]; then
     printf 'arch/deferral_record: FAILED\n'
     exit 1
 fi
 
-printf 'arch/deferral_record: ok (%s tracked path(s) cited)\n' "$(printf '%s' "$paths" | grep -c . || true)"
+printf 'arch/deferral_record: ok (%s tracked path(s) cited)\n' "$declared"
