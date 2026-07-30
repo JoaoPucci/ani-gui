@@ -712,15 +712,47 @@ pub fn watched_at_all(state: &AppState) -> Result<std::collections::HashMap<Stri
     Ok(out)
 }
 
-/// Fetch a single anime by Kitsu id. Cache key: `kitsu:anime:<id>`.
+/// Cache key for one anime's detail row, in one place so the reader
+/// and the two writers cannot drift apart.
+///
+/// v3: `cover_image` is now backfilled from AniList's `bannerImage`
+/// when Kitsu's is null. v2 rows have null covers for new ongoing
+/// shows; bumping the version forces a refresh.
+fn anime_detail_key(id: &str) -> String {
+    format!("kitsu:v3:anime:{id}")
+}
+
+/// Seed [`kitsu_anime_detail`]'s cache with a ref some other lookup
+/// already returned in full. The Watch Later bridge gets one from
+/// Kitsu's mappings sideload, and without this the next load would
+/// fetch `/anime/:id` again for a card it already held.
+///
+/// Refs carrying no cover are deliberately NOT written. A cold
+/// `kitsu_anime_detail` backfills the banner from AniList before it
+/// caches, so seeding a null-cover row here would suppress that
+/// backfill for the whole seven days — trading one request for a week
+/// of blurred-poster fallback on exactly the newer ongoing shows the
+/// backfill exists for.
+pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
+    if detail.cover_image.is_none() {
+        return;
+    }
+    if let Ok(body) = serde_json::to_string(detail) {
+        let _ = meta_cache_put(
+            &state.cache_pool,
+            &anime_detail_key(&detail.id),
+            &body,
+            ANIME_DETAIL_TTL.as_secs(),
+        );
+    }
+}
+
+/// Fetch a single anime by Kitsu id, cached under [`anime_detail_key`].
 ///
 /// # Errors
 /// Inherits from [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
 pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnimeRef> {
-    // v3: cover_image now backfilled from AniList's bannerImage
-    //     when Kitsu's is null. v2 rows have null covers for new
-    //     ongoing shows; bumping forces a refresh.
-    let key = format!("kitsu:v3:anime:{id}");
+    let key = anime_detail_key(id);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
             warm_signed_image_urls(state, &body);

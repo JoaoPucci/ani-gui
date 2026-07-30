@@ -440,6 +440,10 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                         Ok(found) => {
                             if let Some(ref r) = found {
                                 remember_mal_map(&state, mal_id, Some(&r.id));
+                                // The mappings sideload already handed
+                                // us the whole card; without this the
+                                // next load would fetch it again.
+                                crate::commands::kitsu::warm_anime_detail_cache(&state, r);
                             }
                             (found, true)
                         }
@@ -522,6 +526,9 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                                     mal_id,
                                     found.as_ref().map(|r| r.id.as_str()),
                                 );
+                            }
+                            if let Some(ref r) = found {
+                                crate::commands::kitsu::warm_anime_detail_cache(&state, r);
                             }
                             (i, found)
                         }
