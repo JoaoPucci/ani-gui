@@ -103,9 +103,16 @@ treat every entry as a lead rather than a fact.
   ascending/descending is absent. Name any further filters wanted
   before starting, rather than reading this as filters being missing.
 - **Update notifier is not resilient to GitHub rate limits.**
-- **Document Picture-in-Picture** — blocked upstream on
-  electron/electron#39633, open since 2023. Do not re-attempt until it
-  lands.
+- **Adopt the `documentPictureInPicture` browser API** for the player's
+  pop-out window. Not a request to write documentation — "Document
+  Picture-in-Picture" is the W3C API's name, which reads as an
+  imperative and has already been misread once.
+
+  Electron exposes the API but omits the window-creation glue, so it
+  cannot work today: electron/electron#39633, open since 2023. Do not
+  re-attempt until that lands. PiP as it exists now — the singleton
+  video that survives navigation — ships and is described in
+  `README.md` and `docs/architecture.md`.
 - **Illustrated brand assets** — post-1.0.
 
 ## Housekeeping
