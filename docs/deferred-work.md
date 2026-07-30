@@ -53,14 +53,31 @@ treat every entry as a lead rather than a fact.
      master-playlist expansion, quality selection, referer selection.
   4. **Downloads**, below.
 
-  Treat this list as a floor rather than a specification. It has been
-  corrected upward three times in a single review — first crypto alone,
-  then `generate_link`/`get_links`, then downloads, now the request
-  that produces the ciphertext — each time by someone reading the
-  script rather than the entry. Anyone planning this work should walk
-  `get_episode_url` end to end and rewrite the list from what is
-  actually there, because nobody has yet done that and every attempt to
-  describe it from memory has been too small.
+  5. **Boot-time wiring**, which blocks deletion independently of all
+     of the above. `AppState::build` calls `locate_ani_cli` and
+     `resolve_anicli_path` and propagates the error, so the app does
+     not start without the script present — porting every playback and
+     download consumer and then deleting it still yields a binary that
+     refuses to boot. Script location, the cache copy, the `-U`
+     updater, and the diagnostics and settings surfaces that report on
+     them all have to go or be replaced. `electron/package.json` also
+     stages the script into the package.
+
+  **This list is evidence, not a specification.** It was corrected five
+  times inside one review — crypto alone, then `generate_link` /
+  `get_links`, then downloads, then the request producing the
+  ciphertext, then boot — and once downward, when it claimed show
+  metadata was still script-only after `fetch_show` had made it native.
+  Every correction came from someone opening the code; none from the
+  entry.
+
+  So do not plan from these bullets. Derive the checklist by finding
+  every consumer of the script — `grep` for the binary name across the
+  backend, the Electron main process and the packaging config, and
+  read `get_episode_url` end to end — and expect that to turn up
+  something this list still omits. A scope corrected five times in one
+  sitting has not converged, and treating the sixth version as
+  complete would be the same mistake as trusting the first.
 
   Downloads are a third part, and the one most easily missed when this
   entry is read as a deletion checklist. `commands/download.rs` calls
