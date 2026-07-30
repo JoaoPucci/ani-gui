@@ -9,6 +9,12 @@ an agent's session state, which nobody else can read and which
 disappears when the session does. An item leaves this list by being
 done or by being decided against in writing.
 
+**These entries were carried across from session state and have proven
+unreliable about their own status.** Seven were already shipped and
+were caught in review of this change, not by the list. Confirm an item
+against the code before starting it, and delete it here when you find
+it done — the list earns trust by being pruned, not by being long.
+
 ## Resolver and provider
 
 - **Replace the bundled `ani-cli` with a native Rust resolver.** The
@@ -33,16 +39,8 @@ done or by being decided against in writing.
 - **Distinguish "no sources upstream" from "show not found"** in the
   play error path. They are the same message today and want different
   advice.
-- **Episode availability should be correct on arrival**, rather than
-  corrected after a probe settles.
-- **Re-probe availability when a dimmed aired-but-uncatalogued tile is
-  clicked.**
 - **Retry gate-refused continue-watching resolves** once the circuit
   breaker recovers.
-- **Continue Watching: the Meitantei Conan row orphans to /search** —
-  the reverse resolve fails for it.
-- **Search holds results behind the strict availability probe**; it
-  should render and prune.
 - **Check the Yani Neko Mini situation.**
 
 ## Testing and CI
@@ -50,9 +48,6 @@ done or by being decided against in writing.
 - **`api_play` is not hermetic** — it hits live allanime, so local runs
   fail on IP throttling and only CI is authoritative. Stub the
   Rust-side search.
-- **Frontend acceptance infrastructure** (MSW plus route mounting, or
-  Playwright) and the first scenarios.
-- **Harden the Playwright cold-launch** against worker teardown.
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
   and three files sit at 29.7–30.0, right on the high-risk boundary.
 - **The pre-commit hook and strict TDD are in tension.** A `test(red):`
@@ -67,7 +62,6 @@ done or by being decided against in writing.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
 - **Play-page keep-alive → normal reload with a persisted position.**
-- **Custom frameless titlebar** with OS-layout-aware window controls.
 - **Search filters** — sort direction and filter options.
 - **Update notifier is not resilient to GitHub rate limits.**
 - **Document Picture-in-Picture** — blocked upstream on
