@@ -48,33 +48,28 @@ why_unrecoverable() {
 # Backticked tokens from the section body (on stdin) that name a repo
 # path.
 #
-# Two questions, in this order: is every character one a path may
-# contain, and is there a slash or a dot to distinguish it from a
-# prose word.
+# Paths the section declares for checking, one per marker line,
+# taken verbatim.
 #
-# Deliberately not a rule about what shape a path takes. Four such
-# rules were tried — must end in an extension, must contain a slash,
-# may start with a dot, must not start with `./` — and each excluded a
-# real record: `docs/notes/`, `follow-ups.md`, `.planning/follow-ups`,
-# `./docs/notes.md`. Enumerating shapes keeps meeting shapes nobody
-# enumerated, and every miss failed the same silent way, dropping the
-# token before the predicate ran so the suite reported success without
-# having checked anything.
+# Not inferred from backticks. Six spellings of a legal record were
+# dropped by successive attempts to recognise one by shape — an
+# extension, a slash, a leading dot, a `./` prefix, then a name with
+# neither slash nor dot, then one containing a space. Git constrains a
+# path almost not at all, so the set of shapes is not enumerable and
+# every miss failed silently, dropping the token before the predicate
+# ran. A guess that cannot terminate is the wrong mechanism, however
+# many times it is refined.
 #
-# Asking what a path may not contain terminates, because that set is
-# small and fixed. Whitespace, `#`, `:` and the rest are what keep
-# `#N · Title`, `git check-ignore` and a URL out; the slash-or-dot
-# test is what keeps a bare prose word out. All four are asserted, so
-# this cannot drift back into matching text.
+# So the section says which paths it means:
 #
-# It errs toward over-matching by design. A false positive fails
-# loudly and gets fixed; a false negative is invisible.
+#     <!-- record-path: docs/follow-ups.md -->
+#
+# The rest of the line after the prefix is the path, spaces and all,
+# up to the closing marker. Declaring is a little more typing and it
+# is exact, which is the trade this check has already paid for six
+# times over.
 cited_paths() {
-    grep -o '`[^`]*`' \
-        | tr -d '`' \
-        | grep -E '^[A-Za-z0-9_./-]+$' \
-        | grep -E '/|\.' \
-        | sort -u
+    sed -n 's/^[[:space:]]*<!-- record-path:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*-->[[:space:]]*$/\1/p'
 }
 
 # An untracked file for the self-test to point the predicate at.
@@ -112,12 +107,20 @@ body=$(awk -v want="$SECTION" '
 paths=$(printf '%s\n' "$body" | cited_paths)
 
 failed=0
-for p in $paths; do
+# `read -r` line by line, because a declared path may contain spaces
+# that a `for` over an unquoted expansion would tear in half. Fed by a
+# here-document rather than a pipe: a pipeline would run the loop in a
+# subshell and `failed` would not survive it, which is the same
+# silent-pass failure in a different costume.
+while IFS= read -r p; do
+    [ -n "$p" ] || continue
     if ! record_is_recoverable "$p"; then
         printf 'arch/deferral_record: AGENTS.md tells agents to record deferred work in `%s`, %s — another checkout cannot read it\n' "$p" "$(why_unrecoverable "$p")"
         failed=1
     fi
-done
+done <<EOF
+$paths
+EOF
 
 if [ "$failed" -ne 0 ]; then
     printf 'arch/deferral_record: FAILED\n'

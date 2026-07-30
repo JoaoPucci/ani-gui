@@ -34,7 +34,16 @@ failed=0
 # variable has no such failure mode.
 scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
 cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
-trap cleanup EXIT HUP INT TERM
+
+# EXIT owns cleanup; the signal handlers only have to end the run.
+# Handling a signal without exiting returns control to the interrupted
+# script, which then carries on against a directory it just deleted
+# and can still reach `exit 0` — a cancelled CI job reporting a pass.
+# The statuses are the conventional 128 + signal number.
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Probe mode: the run re-executes itself with this set so the signal
 # case can watch a real process take a real signal, rather than
@@ -139,9 +148,11 @@ while [ $i -lt 50 ] && [ -z "$probe_dir" ]; do
     [ -n "$probe_dir" ] || sleep 0.1
     i=$((i + 1))
 done
-kill -TERM "$probe_pid" 2>/dev/null
-wait "$probe_pid"
-probe_status=$?
+kill -TERM "$probe_pid" 2>/dev/null || true
+# `set -e` would take the nonzero status of `wait` as a failure of
+# this script, which is precisely the status being measured.
+probe_status=0
+wait "$probe_pid" || probe_status=$?
 
 if [ "$probe_status" -eq 0 ]; then
     printf '  FAIL     a TERMed run exited 0 — cancellation reads as success\n'
@@ -161,10 +172,15 @@ printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
 # checked at all — a silent pass rather than a visible failure.
-parsed() { printf '%s\n' "$1" | cited_paths; }
+
+# A declared record: the marker line, exactly as the section writes it.
+declared() { printf '<!-- record-path: %s -->\n' "$1" | cited_paths; }
+
+# A mention in running prose, which is not a declaration.
+mentioned() { printf 'text about `%s` in a sentence\n' "$1" | cited_paths; }
 
 expect_parsed() {
-    if [ "$(parsed "\`$1\`")" = "$1" ]; then
+    if [ "$(declared "$1")" = "$1" ]; then
         printf '  ok       parses %s\n' "$1"
     else
         printf '  FAIL     dropped %s — %s\n' "$1" "$2"
@@ -173,7 +189,7 @@ expect_parsed() {
 }
 
 expect_not_parsed() {
-    if [ -z "$(parsed "\`$1\`")" ]; then
+    if [ -z "$(mentioned "$1")" ]; then
         printf '  ok       ignores %s (%s)\n' "$1" "$2"
     else
         printf '  FAIL     %s parsed as a path — %s\n' "$1" "$2"

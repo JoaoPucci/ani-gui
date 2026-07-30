@@ -192,8 +192,10 @@ mid-task, exactly one of these is an acceptable outcome:
   entry there leaves with your checkout and a thread citing it points
   at a file nobody else has. Keep that queue if it helps you — but the
   durable record, the one you cite, is the issue.
-  `tests/arch/deferral_record.sh` holds this to the wording of this
-  section.
+  This is held to the wording of the section itself; any path named
+  below is checked for being readable from a fresh clone.
+
+<!-- record-path: tests/arch/deferral_record.sh -->
 - **Ask.** If the tradeoff is genuinely the maintainer's call, put the
   options to them. Silence is not a way to ask.
 
