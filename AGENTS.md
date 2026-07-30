@@ -192,8 +192,21 @@ mid-task, exactly one of these is an acceptable outcome:
   leaves with your checkout and a thread citing it points at a file
   nobody else has. Issues are disabled on this repository, so they are
   not an option either. Keep the internal queue if it helps you — the
-  durable record, the one you cite, is the tracked log. Say what the
-  work is, why it waited, and what done looks like.
+  durable record, the one you cite, is the tracked log.
+
+  Write enough to pick the work back up later and no more: what it is,
+  why it waited, and anything genuinely surprising about it. The log is
+  a set of reminders, not a specification. It does not want a file
+  list, acceptance criteria, or a plan — whoever takes the work scopes
+  it against the code at the time, which is the only scoping worth
+  trusting.
+
+  Reviewing an entry follows from that. An entry that says something
+  false is a defect: it would send a reader to rebuild what already
+  works, or let them believe the job is done when it is not. An entry
+  that leaves things out is not a defect, and asking for the omission
+  to be added is how a reminder turns into a specification. If a `grep`
+  would surface it, leave it out.
 
   Any path declared below is checked for being readable from a fresh
   clone, by `tests/arch/deferral_record.sh`.
