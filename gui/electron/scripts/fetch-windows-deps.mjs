@@ -31,6 +31,8 @@ import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { needsExtraction, assertDepShape } from '../lib/dep-staging.cjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(electronDir, '..', '..');
@@ -177,7 +179,7 @@ async function stageDep(dep) {
 	const stagedBinary = path.join(stagedBinDir, dep.binary);
 	if (existsSync(stagedBinary)) await rm(stagedBinary);
 
-	if (dep.directBinary) {
+	if (!needsExtraction(dep)) {
 		// Nothing to unpack: upstream publishes the executable itself
 		// as the release asset, so the verified download IS the binary.
 		console.log(`[fetch-win-deps] staging ${dep.binary} directly (no archive)`);
@@ -215,6 +217,10 @@ async function stageDep(dep) {
 }
 
 async function main() {
+	// Validate every entry before touching the network: a typo should
+	// cost a syntax error, not a partial download.
+	for (const dep of DEPS) assertDepShape(dep);
+
 	for (const dep of DEPS) {
 		console.log(`[fetch-win-deps] === ${dep.name} ${dep.version} ===`);
 		await stageDep(dep);
