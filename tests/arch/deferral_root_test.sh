@@ -30,7 +30,17 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# The nested clone re-runs this file; it must not recurse.
+# The nested clone re-runs this file; it must not recurse. The guard
+# carries this file's own name because a generic one is readable from
+# any environment: an exported `SKIP_NESTED` — plausible in a shell
+# where some other suite uses it — silently removed the apostrophe
+# case and left the run green, since the guarded branch prints
+# nothing either way.
+#
+# This is the same defect as the `REPO_ROOT` override two checks up,
+# in the same file, reached through a different door. A generic
+# variable name is an input from the environment whether or not it was
+# meant as one.
 
 # No `eval`. Building a command string means quoting the repository
 # path into it, and a checkout under a directory containing an
@@ -109,7 +119,7 @@ mkdir -p "$apostrophe_dir"
 # block. Guarding the whole script made the nested run assert nothing
 # and report success for starting up, which the case above now counts
 # rather than trusts.
-if [ -n "${SKIP_NESTED:-}" ]; then
+if [ -n "${ARCH_DEFERRAL_NESTED:-}" ]; then
     :
 elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
     # The clone carries committed state only, so an uncommitted change
@@ -128,7 +138,7 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
     # run that skipped everything; the count alone could pass a run
     # where one case failed while five others succeeded.
     nested_out=$(cd "$apostrophe_dir/repo" \
-        && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
+        && ARCH_DEFERRAL_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
     nested_status=$?
     nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
     if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 5 ]; then
