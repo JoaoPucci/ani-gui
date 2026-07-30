@@ -239,6 +239,26 @@ else
     printf '  ok       a malformed marker fails\n'
 fi
 
+# A marker inside a fenced example is not a declaration. It would keep
+# the at-least-one guard satisfied after the live marker was deleted,
+# and the example's path is typically something tracked, so the check
+# would pass having examined nothing that is actually the record.
+#
+# Same answer as CLAUDE.md's import: the section may not contain a
+# fence at all. Scoped to the section, since AGENTS.md elsewhere uses
+# fences legitimately and this rule has no business reaching them.
+if check_says "$SECTION_HEAD
+
+\`\`\`
+<!-- record-path: AGENTS.md -->
+\`\`\`
+" fenced; then
+    printf '  FAIL     a fenced example marker counted as a declaration\n'
+    failed=1
+else
+    printf '  ok       a fenced example marker is not a declaration\n'
+fi
+
 # And the check still passes what it should, so the guard above is not
 # just rejecting everything.
 if check_says "$SECTION_HEAD
