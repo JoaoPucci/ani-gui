@@ -110,3 +110,25 @@ to catch reliably anyway. What it buys is termination.
 
 That is a design reversal on a load-bearing check, so it is the
 maintainer's call rather than something to slip into a review round.
+
+**The limit, stated precisely.** Two cases have to be distinguished,
+and only one of them is detectable.
+
+A policy element *duplicated* in an inert position — a second heading
+inside a fence, an HTML comment, a blockquote — is caught by counting,
+because the copy makes two. That holds for every inerting construct
+without knowing what any of them are, and it is asserted for fences
+and for HTML comments.
+
+A policy existing *only* in an inert position — the whole section
+fenced, or commented out, with no live copy — is not detectable
+without parsing Markdown and HTML. Fence tracking currently catches
+the fenced variant and nothing else, which is worse than not catching
+it: it implies a completeness the check does not have, and it has cost
+six rounds of rules with two defects introduced by its own fixes.
+
+The recommendation is therefore to drop the tracking and say plainly
+that the check verifies the policy's *declaration*, not that the
+document renders as intended. A wholly-inert policy section is visible
+to anyone who opens the rendered file and to any reviewer of the diff
+that made it inert; a parser is not the right instrument for it.

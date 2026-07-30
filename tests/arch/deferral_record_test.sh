@@ -345,6 +345,24 @@ else
     printf '  ok       a fence after the declaration is still a fence in the section\n'
 fi
 
+# A heading commented out alongside the live one is a second
+# occurrence and fails on count — no HTML parsing required. The same
+# answer as a duplicated heading, which is the point: uniqueness
+# catches inert copies without anyone deciding what "inert" means.
+if check_says "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+
+<!--
+$SECTION_HEAD
+-->
+" commented_dup; then
+    printf '  FAIL     a commented-out duplicate heading was tolerated\n'
+    failed=1
+else
+    printf '  ok       a commented-out duplicate heading fails on count\n'
+fi
+
 TAB=$(printf '\t')
 if check_says "\`\`\`
 ${TAB}\`\`\`
