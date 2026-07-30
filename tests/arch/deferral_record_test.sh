@@ -259,6 +259,37 @@ else
     printf '  ok       a fenced example marker is not a declaration\n'
 fi
 
+# A heading that merely contains the phrase is a different section.
+# Substring matching would adopt its body — so an appendix carrying a
+# tracked marker could satisfy the guard after the real policy's
+# marker was deleted, and the check would validate a destination the
+# policy never declared.
+if check_says "## Why Scope is negotiable, delivery is not failed
+
+<!-- record-path: AGENTS.md -->
+" lookalike; then
+    printf '  FAIL     a heading merely containing the phrase was treated as the section\n'
+    failed=1
+else
+    printf '  ok       only the exact heading is the section\n'
+fi
+
+# Two sections with the heading is ambiguous rather than twice as
+# good: their bodies concatenate and one can cover for the other.
+if check_says "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+
+$SECTION_HEAD
+
+Some prose and no marker.
+" duplicate; then
+    printf '  FAIL     a duplicated section heading was accepted\n'
+    failed=1
+else
+    printf '  ok       a duplicated section heading is refused\n'
+fi
+
 # And the check still passes what it should, so the guard above is not
 # just rejecting everything.
 if check_says "$SECTION_HEAD
