@@ -222,8 +222,14 @@ body=$(awk -v re="$SECTION_RE" '
         for (i = 1; i <= length(lead); i++) {
             indent = (substr(lead, i, 1) == "\t") ? indent + 4 - (indent % 4) : indent + 1
         }
+        # A fence inside the section is not a boundary, it is the
+        # thing the section forbids — so the line is emitted into the
+        # body for the no-fence rule to find, and membership is left
+        # alone. Clearing it here dropped everything from the opening
+        # line onward, hiding the very construct being prohibited.
+        if (inside) print $0
         if (!fenced) {
-            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run); inside = 0 }
+            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run) }
             next
         }
         if (ch == fence_ch && length(run) >= fence_len && indent < 4 && rest ~ /^[ \t]*$/) { fenced = 0 }
