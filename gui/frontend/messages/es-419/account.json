@@ -48,6 +48,6 @@
 	"expiry_toast_action": "Conectarse",
 	"primary_badge": "Principal",
 	"primary_make": "Hacer principal",
-	"primary_hint": "Encabeza la barra superior y el riel Ver más tarde. El progreso se sigue sincronizando con todos los rastreadores conectados.",
+	"primary_hint": "Se muestra en la barra superior. El riel Ver más tarde ordena de lo más reciente a lo más antiguo; cuando un título está en ambos, se usa la copia de este rastreador. El progreso se sigue sincronizando con todos los rastreadores conectados.",
 	"primary_save_error": "No se pudo guardar el rastreador principal. Inténtalo de nuevo."
 }

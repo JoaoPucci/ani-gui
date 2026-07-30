@@ -48,6 +48,6 @@
 	"expiry_toast_action": "Sign in",
 	"primary_badge": "Primary",
 	"primary_make": "Make primary",
-	"primary_hint": "Leads the topbar and the Watch Later rail. Progress still syncs to every connected tracker.",
+	"primary_hint": "Shown in the topbar. The Watch Later rail lists newest first; this tracker's copy is the one used when a title is on both. Progress still syncs to every connected tracker.",
 	"primary_save_error": "Couldn't save your primary tracker. Try again."
 }
