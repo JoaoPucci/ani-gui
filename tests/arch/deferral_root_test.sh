@@ -55,30 +55,15 @@ trap 'exit 143' TERM
 # variable name is an input from the environment whether or not it was
 # meant as one.
 
-# No `eval`. Building a command string means quoting the repository
-# path into it, and a checkout under a directory containing an
-# apostrophe would then be re-parsed as shell syntax — a test that
-# breaks on where it was cloned is the kind of thing this file exists
-# to catch elsewhere.
-expect_ok() {
-    label=$1
-    shift
-    if "$@" >/dev/null 2>&1; then
-        printf '  ok       %s\n' "$label"
-    else
-        printf '  FAIL     %s\n' "$label"
-        failed=1
+check() {
+    if [ "$2" = pass ]; then
+        if eval "$1" >/dev/null 2>&1; then
+            printf '  ok       %s\n' "$3"
+        else
+            printf '  FAIL     %s\n' "$3"
+            failed=1
+        fi
     fi
-}
-
-# Run a script from its own directory, by relative path.
-from_arch() {
-    (cd "$REPO_ROOT/tests/arch" && sh "./$1")
-}
-
-# Run a script with a hostile ambient root set.
-with_stray_root() {
-    REPO_ROOT=/tmp sh "$REPO_ROOT_ABS/tests/arch/$1"
 }
 
 REPO_ROOT_ABS=$REPO_ROOT
@@ -86,8 +71,8 @@ REPO_ROOT_ABS=$REPO_ROOT
 printf 'arch/deferral_root_test: invocation and environment\n'
 
 for script in deferral_record agents_contract deferral_record_test; do
-    expect_ok "$script.sh resolves the repository when invoked by relative path" \
-        from_arch "$script.sh"
+    check "cd '$REPO_ROOT/tests/arch' && sh ./$script.sh" pass \
+        "$script.sh resolves the repository when invoked by relative path"
 done
 
 # Shell in this repository has to be linted by the shell linter. The
@@ -270,10 +255,10 @@ fi
 
 # A stray REPO_ROOT must not redirect anything. It used to, and the
 # script exited 0 against the wrong tree rather than failing.
-expect_ok "a stray REPO_ROOT does not redirect the record check" \
-    with_stray_root deferral_record.sh
-expect_ok "a stray REPO_ROOT does not redirect the contract check" \
-    with_stray_root agents_contract.sh
+check "REPO_ROOT=/tmp sh '$REPO_ROOT_ABS/tests/arch/deferral_record.sh'" pass \
+    "a stray REPO_ROOT does not redirect the record check"
+check "REPO_ROOT=/tmp sh '$REPO_ROOT_ABS/tests/arch/agents_contract.sh'" pass \
+    "a stray REPO_ROOT does not redirect the contract check"
 
 # The library must honour a root the caller resolved, including when
 # it is sourced rather than executed. Sourcing is the case that got
