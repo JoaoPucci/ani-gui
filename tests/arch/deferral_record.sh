@@ -53,8 +53,14 @@ record_is_recoverable() {
     # link goes, and deliberately so: a symlink to a tracked file
     # would be readable and is refused anyway, which fails loudly and
     # is the direction this check errs in everywhere else.
-    git ls-files --stage -- ":(literal)$1" 2>/dev/null \
-        | grep -qE '^100(644|755) '
+    # Every matched entry, not any of them. A declared directory is one
+    # record and the pathspec then matches everything under it, so
+    # asking whether *some* entry is a regular blob passes a directory
+    # holding one real file beside a link that points nowhere. Asking
+    # whether *no* entry fails the mode test is the same question for
+    # a single file and the right one for a directory.
+    ! git ls-files --stage -- ":(literal)$1" 2>/dev/null \
+        | grep -qvE '^100(644|755) '
 }
 
 # A specific reason for the failure message, so the fix is obvious
