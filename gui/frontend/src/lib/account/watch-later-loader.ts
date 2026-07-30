@@ -5,8 +5,11 @@
  *   1. Fetch each connected provider's cached Plan-to-Watch via
  *      `fetchCachedList` — survives offline / 5xx via the
  *      internal-secret-gated fallback shipped in PR #60.
- *   2. Merge across providers via `mergedWatchLater` — AniList
- *      first, mal_id-deduped.
+ *   2. Merge across providers via `mergedWatchLater` — mal_id-
+ *      deduped and ordered most-recently-planned first. The cap
+ *      below is applied to that order, so a user past the bridge
+ *      limit keeps their newest entries rather than an arbitrary
+ *      slice.
  *   3. Batch-bridge the merged mal_ids to Kitsu refs via
  *      `kitsuByMalIds` so the rail renders with the same metadata
  *      and availability filter the rest of the home page uses.
@@ -44,14 +47,15 @@ export interface WatchLaterDeps {
 	/** $lib/api.kitsuByMalIds — same rationale. */
 	kitsuByMalIds: (malIds: number[]) => Promise<KitsuAnimeRef[]>;
 	/** User's chosen lead tracker (config.primary_account, coerced).
-	 *  Leads the merge so its rows render first and win the mal_id
-	 *  dedupe; unset keeps the AniList-first order. */
+	 *  Leads the merge so its rows win the mal_id dedupe and come
+	 *  first among entries sharing a timestamp; unset keeps the
+	 *  AniList-first walk. */
 	primary?: Provider | null;
 }
 
 /**
- * Run the rail loader end-to-end. Returns the Kitsu refs in
- * merge order. Empty input (no connected provider) → empty output.
+ * Run the rail loader end-to-end. Returns the Kitsu refs in merge
+ * order, which the backend bridge preserves slot-for-slot. Empty input (no connected provider) → empty output.
  * A single provider being unreachable is non-fatal — the merge
  * proceeds with whatever else succeeded. But if EVERY connected
  * provider's fetch fails, the loader rejects rather than resolving
