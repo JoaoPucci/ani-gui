@@ -31,29 +31,29 @@ fi
 
 # An import is `@path` alone on a line. A backticked or indented
 # mention is documentation about the syntax, not an instance of it.
-# Fenced regions are dropped first. Claude Code does not evaluate
-# `@path` inside a code block, so a line that only appears in an
-# example is documentation about the syntax rather than a use of it —
-# and matching it anyway would let someone demote the live import to a
-# sample and leave this check reporting the contract as loaded.
+# Two conditions, and the first exists to make the second exact.
 #
-# A region closes on the delimiter that opened it: same character, and
-# a run at least as long. Markdown says so, and it matters here — a
-# tilde block quoting a backtick fence, or a four-backtick block
-# quoting a three-backtick one, is a single region with an inner line
-# of content. A parser that toggles on any fence would read that inner
-# line as the close and call everything after it live.
-if awk '
-    match($0, /^[ \t]*(`{3,}|~{3,})/) {
-        run = substr($0, RSTART, RLENGTH)
-        sub(/^[ \t]*/, "", run)
-        ch = substr(run, 1, 1)
-        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
-        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
-        next
-    }
-    !fenced
-' "$CLAUDE_FILE" | grep -qE '^@AGENTS\.md[[:space:]]*$'; then
+# CLAUDE.md may not contain a fenced block. It is a pointer file: a
+# paragraph saying where the contract lives and the import that brings
+# it in. Nothing in that needs a code fence, and allowing one costs
+# more than it is worth — Claude Code does not evaluate `@path` inside
+# a fence, so the checker would have to decide which lines are live,
+# and deciding that correctly means implementing Markdown. Three
+# review rounds went into successive versions of that: closing on the
+# wrong delimiter, closing on a shorter run, closing on a run with an
+# info string or one indented into a code block. Each was a real rule
+# and each miss failed silently, accepting an inert import.
+#
+# Refusing fences outright removes the question. With no fenced region
+# in the file, every line is live, and a plain match for the import is
+# exact rather than a guess. If a fence is ever genuinely wanted here,
+# this fails loudly and someone revisits the trade deliberately.
+if grep -qE '^[[:space:]]*(```|~~~)' "$CLAUDE_FILE"; then
+    printf 'arch/agents_contract: %s contains a fenced block — this file may not, because Claude Code does not evaluate `@path` inside one and the import must be unambiguously live\n' "$CLAUDE_FILE"
+    failed=1
+fi
+
+if grep -qE '^@AGENTS\.md[[:space:]]*$' "$CLAUDE_FILE"; then
     printf 'arch/agents_contract: ok (CLAUDE.md imports AGENTS.md)\n'
 else
     printf 'arch/agents_contract: CLAUDE.md does not import AGENTS.md — a prose pointer is not followed, so the contract never reaches the agent\n'
