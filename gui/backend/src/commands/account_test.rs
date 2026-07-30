@@ -1177,3 +1177,59 @@ async fn watch_later_bridge_does_not_remember_a_kitsu_fallback_error_as_unmappab
         "a Kitsu error must not have been remembered as 'nothing maps this'"
     );
 }
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_a_direct_kitsu_error_as_unmappable() {
+    // Phase 1 writes nothing on an error, which is why it looked
+    // exempt. But its error still becomes an ordinary `None`, and that
+    // sends the id into the fallback — where AniList shrugging is
+    // enough to record a dead end. So the negative gets written on
+    // behalf of a route that never actually answered.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    // The direct MAL route is down for the first load only.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    // AniList answers cleanly and simply does not know this id, so the
+    // fallback concludes "nothing maps it" — a conclusion it is only
+    // entitled to draw when the direct route also had its say.
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while the direct route is down"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "a direct-route error must not have been remembered as 'nothing maps this'"
+    );
+    assert_eq!(after_recovery[0].id, "12");
+}
