@@ -268,6 +268,36 @@ const KITSU_ANILIST_MAPPINGS_HIT_BODY: &str = r#"{
 }"#;
 
 #[cfg(test)]
+const KITSU_MAL_MAPPINGS_HIT_BODY: &str = r#"{
+    "data": [{
+        "id": "9100",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+    }],
+    "included": [{
+        "id": "12",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "One Piece",
+            "titles": { "en": "One Piece" },
+            "slug": "one-piece",
+            "synopsis": "Pirates.",
+            "startDate": "1999-10-20",
+            "endDate": null,
+            "episodeCount": 1100,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 1,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }]
+}"#;
+
+#[cfg(test)]
 const KITSU_MAPPINGS_EMPTY_BODY: &str = r#"{ "data": [], "included": [] }"#;
 
 #[tokio::test]
@@ -954,4 +984,44 @@ fn upsert_cached_entry_writes_through_to_the_cache() {
     let got = cached_list(&state, ProviderKind::AniList, "u").unwrap();
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].status, ListStatus::Watching);
+}
+
+#[tokio::test]
+async fn watch_later_bridge_resolves_a_known_mapping_from_cache_on_the_next_load() {
+    // The rail re-runs this bridge on every home mount. The mapping it
+    // resolves does not change — a MAL id points at the same Kitsu
+    // entry for as long as both exist — so asking again is repeat
+    // traffic against Kitsu for an answer already known.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let first = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+
+    // Same card both times — the cache must not cost correctness.
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_eq!(first[0].id, second[0].id);
+
+    let mapping_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/mappings")
+        .count();
+    assert_eq!(
+        mapping_calls, 1,
+        "the second load should read the mapping from cache, not Kitsu"
+    );
 }
