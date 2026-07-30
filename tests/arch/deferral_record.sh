@@ -76,7 +76,7 @@ cited_paths() {
 # losing someone's uncommitted work to prove a point about
 # uncommitted work would be a poor trade.
 make_untracked_probe() {
-    mktemp "$REPO_ROOT/tests/arch/.deferral-probe.XXXXXX"
+    mktemp "${1:-$REPO_ROOT/tests/arch}/.deferral-probe.XXXXXX"
 }
 
 # Sourced as a library by the self-test — define the helpers, run

@@ -93,6 +93,24 @@ else
     printf '  ok       probe never reuses or truncates a path\n'
 fi
 
+# Cleanup has to survive a repo cloned under a path with a space in
+# it. An accumulator that joins paths with spaces cannot represent
+# such a name, so the trap silently removes nothing and hands
+# fragments to `rm -f` — litter left behind, and a wildcard away from
+# removing something else.
+spacey="$REPO_ROOT/tests/arch/.deferral probe dir"
+mkdir -p "$spacey"
+spacey_probe=$(make_untracked_probe "$spacey")
+cleanup
+if [ -e "$spacey_probe" ]; then
+    printf '  FAIL     cleanup left a probe behind under a path with a space\n'
+    failed=1
+    rm -rf "$spacey"
+else
+    printf '  ok       cleanup handles a path containing a space\n'
+fi
+rm -rf "$spacey"
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
@@ -122,6 +140,9 @@ expect_parsed '.planning/follow-ups' 'a record needs no extension to be a record
 expect_parsed 'docs/follow-ups/' 'a directory can be the record just as well'
 expect_parsed '.planning/' 'named in this very section, and unreachable'
 
+expect_parsed 'follow-ups.md' 'a record at the repo root is still a record'
+
+expect_not_parsed 'piped' 'a bare word from the prose'
 expect_not_parsed '#N · Title' 'a citation label, not a path'
 expect_not_parsed 'git check-ignore' 'a command'
 expect_not_parsed 'https://example.com/x' 'a URL'
