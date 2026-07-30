@@ -19,7 +19,7 @@ fi
 # non-zero on the first failing suite; we keep going so the developer sees
 # every failure at once, then exit non-zero at the end if any suite failed.
 overall=0
-for suite in unit network subprocess acceptance property; do
+for suite in unit network subprocess acceptance property arch; do
     dir="$TESTS_BASH_DIR/$suite"
     if [ ! -d "$dir" ]; then
         continue
