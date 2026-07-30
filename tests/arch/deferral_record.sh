@@ -21,7 +21,7 @@ set -eu
 # repository. It matters when this file is sourced as a library too:
 # without the override it would re-derive its own root and `cd` there,
 # silently undoing the caller's choice of repository.
-REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+REPO_ROOT="${ARCH_REPO_ROOT:-${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 cd "$REPO_ROOT"
 
 # Can a contributor who clones this repo read the file at `$1`?
@@ -63,8 +63,16 @@ record_is_recoverable() {
     # holding one real file beside a link that points nowhere. Asking
     # whether *no* entry fails the mode test is the same question for
     # a single file and the right one for a directory.
-    ! git ls-files --stage -- ":(literal)$1" 2>/dev/null \
-        | grep -qvE '^100(644|755) '
+    if git ls-files --stage -- ":(literal)$1" 2>/dev/null \
+        | grep -qvE '^100(644|755) '; then
+        return 1
+    fi
+
+    # `git add -N` records only the intent to add: a regular mode and
+    # the empty blob, which every check above accepts, while
+    # `write-tree` omits the path so no clone carries it. Porcelain
+    # tells them apart — " A" for intent-to-add, "A " for staged.
+    ! git status --porcelain -- ":(literal)$1" 2>/dev/null | grep -q '^ A'
 }
 
 # A specific reason for the failure message, so the fix is obvious
