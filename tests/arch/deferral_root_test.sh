@@ -5,10 +5,12 @@
 #
 #   SC2312 — command substitutions are read for their text, and a
 #       failure arrives as an empty result that the assertion then catches
+#   SC2310 — helpers are invoked in `if` conditions on purpose, so a
+#       failing case reports rather than aborting the run
 #
 # Scoped to this file rather than widened in SHELLCHECK_OPTS, which
 # would also relax the checks guarding the `ani-cli` script itself.
-# shellcheck disable=SC2312
+# shellcheck disable=SC2310,SC2312
 # The checks must resolve this repository regardless of how they are
 # invoked, and must not be redirectable by a stray environment.
 #
