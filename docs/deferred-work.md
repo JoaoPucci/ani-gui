@@ -25,9 +25,6 @@ done or by being decided against in writing.
   taking first.
 - **Validate the botan wrapper on a packaged Windows build** under Git
   Bash.
-- **Relax the download preflight to yt-dlp OR ffmpeg**, matching what
-  the 4.15 script's own dependency line accepts.
-- **Preflight `aria2c`** alongside the downloader tool.
 - **JSON-escape `$1` in `search_anime`** — a carried fork patch that
   was never written.
 
