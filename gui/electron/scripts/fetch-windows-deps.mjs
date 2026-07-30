@@ -31,6 +31,8 @@ import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { needsExtraction, assertDepShape } from '../lib/dep-staging.cjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(electronDir, '..', '..');
@@ -63,6 +65,17 @@ const DEPS = [
 		binary: 'aria2c.exe',
 		// aria2's zip nests the binary under a versioned directory.
 		archivePath: 'aria2-1.37.0-win-64bit-build1/aria2c.exe',
+	},
+	{
+		name: 'yt-dlp',
+		version: '2025.09.26',
+		// Upstream ships a self-contained .exe, not an archive, so
+		// there is nothing to unzip — see `directBinary` below.
+		archiveName: 'yt-dlp.exe',
+		url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2025.09.26/yt-dlp.exe',
+		sha256: 'f930cb6bef322cb692fb9e778ee52952619e75f07f2b063d554ff2100cebf7d9',
+		binary: 'yt-dlp.exe',
+		directBinary: true,
 	},
 ];
 
@@ -166,19 +179,26 @@ async function stageDep(dep) {
 	const stagedBinary = path.join(stagedBinDir, dep.binary);
 	if (existsSync(stagedBinary)) await rm(stagedBinary);
 
-	// Extract the archive entry into a per-dep scratch dir so an
-	// archive's nested layout doesn't collide with another dep's. Then
-	// copy the binary into the flat staged bin dir.
-	const scratchDir = path.join(cacheDir, `extract-${dep.name}`);
-	await mkdir(scratchDir, { recursive: true });
-	console.log(`[fetch-win-deps] extracting ${dep.binary} from ${dep.archiveName}`);
-	await extractZipEntry(zip, dep.archivePath, scratchDir);
+	if (!needsExtraction(dep)) {
+		// Nothing to unpack: upstream publishes the executable itself
+		// as the release asset, so the verified download IS the binary.
+		console.log(`[fetch-win-deps] staging ${dep.binary} directly (no archive)`);
+		await copyFile(zip, stagedBinary);
+	} else {
+		// Extract the archive entry into a per-dep scratch dir so an
+		// archive's nested layout doesn't collide with another dep's.
+		// Then copy the binary into the flat staged bin dir.
+		const scratchDir = path.join(cacheDir, `extract-${dep.name}`);
+		await mkdir(scratchDir, { recursive: true });
+		console.log(`[fetch-win-deps] extracting ${dep.binary} from ${dep.archiveName}`);
+		await extractZipEntry(zip, dep.archivePath, scratchDir);
 
-	const extractedBinary = path.join(scratchDir, dep.archivePath);
-	if (!existsSync(extractedBinary)) {
-		throw new Error(`expected ${extractedBinary} after extracting ${dep.archiveName}`);
+		const extractedBinary = path.join(scratchDir, dep.archivePath);
+		if (!existsSync(extractedBinary)) {
+			throw new Error(`expected ${extractedBinary} after extracting ${dep.archiveName}`);
+		}
+		await copyFile(extractedBinary, stagedBinary);
 	}
-	await copyFile(extractedBinary, stagedBinary);
 	console.log(`[fetch-win-deps] staged → ${stagedBinary}`);
 
 	for (const devDir of devTargetBinDirs) {
@@ -197,6 +217,10 @@ async function stageDep(dep) {
 }
 
 async function main() {
+	// Validate every entry before touching the network: a typo should
+	// cost a syntax error, not a partial download.
+	for (const dep of DEPS) assertDepShape(dep);
+
 	for (const dep of DEPS) {
 		console.log(`[fetch-win-deps] === ${dep.name} ${dep.version} ===`);
 		await stageDep(dep);
