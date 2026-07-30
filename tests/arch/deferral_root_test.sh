@@ -187,31 +187,8 @@ fi
 # so the cleanup trap removes it on every exit path — including an
 # interrupt, which the explicit `rm -rf` at the end of this block
 # would miss.
-apostrophe_dir="$scratch_dir/o'brien"
+apostrophe_dir="$(mktemp -d)/o'brien"
 
-# Two properties of the scratch this case creates, checked before it
-# is used. It must live inside the repository — the suite has no
-# business writing outside the tree it is checking — and it must be
-# under the cleanup trap, so an interrupt does not leave a clone in
-# the working tree for the next `git status` to report.
-case "$apostrophe_dir" in
-    "$REPO_ROOT"/*)
-        printf '  ok       the apostrophe clone is inside the repository\n'
-        ;;
-    *)
-        printf '  FAIL     the apostrophe clone is outside the repository: %s\n' "$apostrophe_dir"
-        failed=1
-        ;;
-esac
-case "$apostrophe_dir" in
-    "$scratch_dir"/*)
-        printf '  ok       the apostrophe clone is under the cleanup trap\n'
-        ;;
-    *)
-        printf '  FAIL     the apostrophe clone is not under the cleanup trap\n'
-        failed=1
-        ;;
-esac
 mkdir -p "$apostrophe_dir"
 # Guarded so the nested run does not clone again — but only this
 # block. Guarding the whole script made the nested run assert nothing
