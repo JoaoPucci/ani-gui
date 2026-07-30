@@ -31,7 +31,15 @@ fi
 
 # An import is `@path` alone on a line. A backticked or indented
 # mention is documentation about the syntax, not an instance of it.
-if grep -qE '^@AGENTS\.md[[:space:]]*$' "$CLAUDE_FILE"; then
+# Fenced regions are dropped first. Claude Code does not evaluate
+# `@path` inside a code block, so a line that only appears in an
+# example is documentation about the syntax rather than a use of it —
+# and matching it anyway would let someone demote the live import to a
+# sample and leave this check reporting the contract as loaded.
+if awk '
+    /^[[:space:]]*(```|~~~)/ { fenced = !fenced; next }
+    !fenced
+' "$CLAUDE_FILE" | grep -qE '^@AGENTS\.md[[:space:]]*$'; then
     printf 'arch/agents_contract: ok (CLAUDE.md imports AGENTS.md)\n'
 else
     printf 'arch/agents_contract: CLAUDE.md does not import AGENTS.md — a prose pointer is not followed, so the contract never reaches the agent\n'

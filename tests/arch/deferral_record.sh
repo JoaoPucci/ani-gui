@@ -67,6 +67,11 @@ why_unrecoverable() {
     # and turns every ignored record into the vaguer "not tracked".
     if git check-ignore -q -- "$1" 2>/dev/null; then
         printf 'which git ignores'
+    elif git ls-files --error-unmatch -- ":(literal)$1" >/dev/null 2>&1; then
+        # Tracked, and still refused — so it is the wrong kind of
+        # entry rather than a missing one. Saying "not tracked" here
+        # would send its author to `git add` a path git already has.
+        printf 'which is tracked as a symlink or submodule rather than a file'
     else
         printf 'which is not tracked by git'
     fi
