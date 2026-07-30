@@ -171,7 +171,44 @@ When pausing for approval, explain what the action does, why it's needed, and wh
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
-## 14. Pointers
+## 14. Scope is negotiable, delivery is not
+
+Never drop a piece of work on the grounds that it is too large. "Too
+much for this change" is a statement about where the work goes, not
+about whether it happens.
+
+When a reviewer raises something valid, or you find something valid
+mid-task, exactly one of these is an acceptable outcome:
+
+- **Do it here.** The default. Estimate the work before declining it —
+  an estimate made in order to justify not doing something tends to
+  come out high.
+- **Do it in its own PR.** Open the follow-up PR, land it, then update
+  the original. Say on the thread which PR carries it.
+- **Open a GitHub issue** describing the work, and link it wherever
+  you deferred it. An unwritten deferral is a dropped one, and a
+  deferral written only where you happen to be standing is the same
+  thing: the internal planning directory is ignored by git, so an
+  entry there leaves with your checkout and a thread citing it points
+  at a file nobody else has. Keep that queue if it helps you — but the
+  durable record, the one you cite, is the issue.
+  `tests/arch/deferral_record.sh` holds this to the wording of this
+  section.
+- **Ask.** If the tradeoff is genuinely the maintainer's call, put the
+  options to them. Silence is not a way to ask.
+
+What is never acceptable is the fifth outcome: replying that the fix
+is out of scope or too costly and leaving nothing behind. That reads
+as a considered engineering judgement while being, in effect, a
+refusal — and the work is lost, because nothing records it.
+
+The same rule applies to your own estimates. Before invoking cost,
+check the cheap path actually is closed: existing conventions in the
+package, a helper already extracted, a test glob that already covers
+the directory. More than once the "large refactor" turned out to be
+one new file next to two just like it.
+
+## 15. Pointers
 
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
