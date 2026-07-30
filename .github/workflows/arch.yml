@@ -34,6 +34,5 @@ jobs:
         run: |
           git remote add upstream https://github.com/pystardust/ani-cli.git
           git fetch --depth=1 upstream tag v4.15 --no-tags
-          git update-ref refs/remotes/upstream/master "$(git rev-parse v4.15)"
       - name: Run architectural invariants
         run: bash tests/arch/run-all.sh

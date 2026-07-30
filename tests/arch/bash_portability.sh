@@ -38,8 +38,19 @@ fi
 # (the carried __ANI_CLI_LIB__ guard). Skip if no upstream remote is
 # configured.
 if git remote get-url upstream >/dev/null 2>&1; then
-    if git fetch upstream master --quiet 2>/dev/null; then
-        diff_lines=$(git diff upstream/master -- ani-cli | grep -cE '^[+-][^+-]' || true)
+    # An immutable tag, not a branch. Fetching `master` makes the
+    # baseline move under us: the count changes when upstream commits,
+    # so a branch that touched nothing goes red, and the first reaction
+    # to a red with no local cause is to raise the ceiling. That is
+    # how it reached 4 against a real 41.
+    #
+    # The tag is the release the vendored script came from. Bumping it
+    # is part of syncing the script, which is where that decision
+    # belongs.
+    UPSTREAM_BASELINE=v4.15
+    if git fetch upstream "tag $UPSTREAM_BASELINE" --no-tags --quiet 2>/dev/null \
+        || git rev-parse -q --verify "$UPSTREAM_BASELINE" >/dev/null; then
+        diff_lines=$(git diff "$UPSTREAM_BASELINE" -- ani-cli | grep -cE '^[+-][^+-]' || true)
         # Each carried line shows as one + or - in the diff. The
         # ceiling is 50, which is the carried patch set AGENTS.md §3
         # lists — the source guard, the greedy name capture, the
