@@ -309,6 +309,53 @@ else
     printf '  ok       a heading inside a fence is not the section\n'
 fi
 
+# A closer with an info string does not close a fence, and neither
+# does one indented into a code block — so the heading after it is
+# still inside the example.
+if check_says "\`\`\`
+\`\`\` text
+$SECTION_HEAD
+
+<!-- record-path: AGENTS.md -->
+\`\`\`
+" bad_closer; then
+    printf '  FAIL     a run with an info string closed the fence\n'
+    failed=1
+else
+    printf '  ok       an info-string run does not close a fence\n'
+fi
+
+# An H2 indented one to three spaces is still an H2, so the body must
+# stop there rather than swallowing the next section.
+if check_says "$SECTION_HEAD
+
+Prose, no marker.
+
+  ## Next Section
+
+<!-- record-path: tests/arch/run-all.sh -->
+" indented_h2; then
+    printf '  FAIL     the body ran past an indented H2 and adopted the next section\n'
+    failed=1
+else
+    printf '  ok       an indented H2 ends the section\n'
+fi
+
+# The marker string may appear once in the whole file. An example
+# anywhere — fenced, indented, quoted — is a second occurrence and
+# fails, which takes the marker out of the fence question entirely.
+if check_says "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+
+Later, an example: <!-- record-path: AGENTS.md -->
+" two_markers; then
+    printf '  FAIL     a second record-path mention was tolerated\n'
+    failed=1
+else
+    printf '  ok       record-path may appear exactly once in the file\n'
+fi
+
 # And the check still passes what it should, so the guard above is not
 # just rejecting everything.
 if check_says "$SECTION_HEAD
