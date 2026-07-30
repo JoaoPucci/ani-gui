@@ -1,4 +1,14 @@
 #!/bin/sh
+
+# Advisories that `-o all` enables and that do not apply to a script
+# whose job is to inspect this repository and report what it finds:
+#
+#   SC2312 — command substitutions are read for their text, and a
+#       failure arrives as an empty result that the assertion then catches
+#
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
+# would also relax the checks guarding the `ani-cli` script itself.
+# shellcheck disable=SC2312
 # The checks must resolve this repository regardless of how they are
 # invoked, and must not be redirectable by a stray environment.
 #
@@ -110,12 +120,14 @@ lint_excludes=$(grep 'sh_checker_exclude' \
 # explicit `tests/arch`, which excludes these scripts just as
 # completely — matching one spelling of the problem instead of the
 # problem.
-excluded_tokens=$(printf '%s' "$lint_excludes" \
-    | sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//')
+excluded_tokens=$(printf '%s' "$lint_excludes" |
+    sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//')
 arch_excluded=0
+lint_subject=tests/arch
 for token in $excluded_tokens; do
-    case tests/arch in
-        "$token"|"$token"/*) arch_excluded=1 ;;
+    case "$lint_subject" in
+        "$token" | "$token"/*) arch_excluded=1 ;;
+        *) ;;
     esac
 done
 if [ "$arch_excluded" -eq 0 ]; then
@@ -148,18 +160,18 @@ allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
 # Comments are stripped first: this file's own commentary names the
 # expansion forms it looks for, and a check that flags the prose
 # explaining it is not measuring the code.
-all_used=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh \
-    | grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}[}:]?' \
-    | sed 's/^\$//; s/^{//; s/[}:]$//' | sort -u)
+all_used=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh |
+    grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}[}:]?' |
+    sed 's/^\$//; s/^{//; s/[}:]$//' | sort -u)
 # Scoped to the suite, not to each file: a name a library assigns and
 # its test reads is not ambient, it is the interface between them.
 all_assigned=$(grep -hoE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' \
-    "$REPO_ROOT"/tests/arch/*.sh \
-    | sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' \
-    | sort -u)
-stray_env=$(printf '%s\n' "$all_used" \
-    | { [ -n "$all_assigned" ] && grep -vxF "$all_assigned" || cat; } \
-    | grep -vE "$allowed_env" || true)
+    "$REPO_ROOT"/tests/arch/*.sh |
+    sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
+    sort -u)
+stray_env=$(printf '%s\n' "$all_used" |
+    { [ -n "$all_assigned" ] && grep -vxF "$all_assigned" || cat; } |
+    grep -vE "$allowed_env" || true)
 if [ -z "$stray_env" ]; then
     printf '  ok       every ambient variable the arch scripts read is namespaced\n'
 else
@@ -186,17 +198,21 @@ apostrophe_dir="$scratch_dir/o'brien"
 # the working tree for the next `git status` to report.
 case "$apostrophe_dir" in
     "$REPO_ROOT"/*)
-        printf '  ok       the apostrophe clone is inside the repository\n' ;;
+        printf '  ok       the apostrophe clone is inside the repository\n'
+        ;;
     *)
         printf '  FAIL     the apostrophe clone is outside the repository: %s\n' "$apostrophe_dir"
-        failed=1 ;;
+        failed=1
+        ;;
 esac
 case "$apostrophe_dir" in
     "$scratch_dir"/*)
-        printf '  ok       the apostrophe clone is under the cleanup trap\n' ;;
+        printf '  ok       the apostrophe clone is under the cleanup trap\n'
+        ;;
     *)
         printf '  FAIL     the apostrophe clone is not under the cleanup trap\n'
-        failed=1 ;;
+        failed=1
+        ;;
 esac
 mkdir -p "$apostrophe_dir"
 # Guarded so the nested run does not clone again — but only this
@@ -210,17 +226,17 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
     # to any of these would go unexercised — the working-tree copies
     # are what this run is meant to be testing.
     cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
-       "$REPO_ROOT/tests/arch/deferral_record.sh" \
-       "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
-       "$REPO_ROOT/tests/arch/agents_contract.sh" \
-       "$apostrophe_dir/repo/tests/arch/"
+        "$REPO_ROOT/tests/arch/deferral_record.sh" \
+        "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
+        "$REPO_ROOT/tests/arch/agents_contract.sh" \
+        "$apostrophe_dir/repo/tests/arch/"
     # The workflow is a subject too, now that a case reads its path
     # filter. Without this the nested run judges the committed copy
     # while the parent judges the tree, and they disagree exactly when
     # the tree is what changed.
     mkdir -p "$apostrophe_dir/repo/.github/workflows"
     cp "$REPO_ROOT/.github/workflows/ani-cli.yml" \
-       "$apostrophe_dir/repo/.github/workflows/"
+        "$apostrophe_dir/repo/.github/workflows/"
     # Count the assertions the nested run makes, rather than trusting
     # its exit status. A guard that skips the whole script would exit
     # zero having checked nothing, and this case would report success
@@ -228,8 +244,8 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
     # Both the exit status and the count. The status alone could pass a
     # run that skipped everything; the count alone could pass a run
     # where one case failed while five others succeeded.
-    nested_out=$(cd "$apostrophe_dir/repo" \
-        && ARCH_DEFERRAL_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
+    nested_out=$(cd "$apostrophe_dir/repo" &&
+        ARCH_DEFERRAL_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
     nested_status=$?
     nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
     if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 5 ]; then
@@ -250,5 +266,8 @@ else
     failed=1
 fi
 
-[ "$failed" -eq 0 ] || { printf 'arch/deferral_root_test: FAILED\n'; exit 1; }
+[ "$failed" -eq 0 ] || {
+    printf 'arch/deferral_root_test: FAILED\n'
+    exit 1
+}
 printf 'arch/deferral_root_test: ok\n'

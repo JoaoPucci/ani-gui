@@ -1,4 +1,14 @@
 #!/bin/sh
+
+# Advisories that `-o all` enables and that do not apply to a script
+# whose job is to inspect this repository and report what it finds:
+#
+#   SC2312 — command substitutions are read for their text, and a
+#       failure arrives as an empty result that the assertion then catches
+#
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
+# would also relax the checks guarding the `ani-cli` script itself.
+# shellcheck disable=SC2312
 # Architectural invariant: the backend never returns localized strings.
 # Errors are stable i18n keys (`error.scraper.timeout`) — the frontend
 # resolves them.

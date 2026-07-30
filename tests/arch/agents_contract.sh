@@ -1,4 +1,18 @@
 #!/bin/sh
+
+# Advisories that `-o all` enables and that do not apply to a script
+# whose job is to inspect this repository and report what it finds:
+#
+#   SC1091 — the sourced path is built at runtime, so it cannot be
+#       followed statically
+#   SC2016 — single quotes are deliberate here — these lines print a
+#       literal `$` or backtick
+#   SC2312 — command substitutions are read for their text, and a
+#       failure arrives as an empty result that the assertion then catches
+#
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
+# would also relax the checks guarding the `ani-cli` script itself.
+# shellcheck disable=SC1091,SC2016,SC2312
 # Architectural invariant: the working contract is actually loaded.
 #
 # CLAUDE.md is the file an agent reads without being asked. AGENTS.md
@@ -116,4 +130,7 @@ elif ! record_is_recoverable "$AGENTS_FILE"; then
     failed=1
 fi
 
-[ "$failed" -eq 0 ] || { printf 'arch/agents_contract: FAILED\n'; exit 1; }
+[ "$failed" -eq 0 ] || {
+    printf 'arch/agents_contract: FAILED\n'
+    exit 1
+}

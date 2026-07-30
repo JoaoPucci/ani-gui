@@ -1,4 +1,18 @@
 #!/bin/sh
+
+# Advisories that `-o all` enables and that do not apply to a script
+# whose job is to inspect this repository and report what it finds:
+#
+#   SC2016 — single quotes are deliberate here — these lines print a
+#       literal `$` or backtick
+#   SC2310 — functions are called in `if` and `!` conditions on
+#       purpose, so a failing check reports rather than aborting the run
+#   SC2312 — command substitutions are read for their text, and a
+#       failure arrives as an empty result that the assertion then catches
+#
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
+# would also relax the checks guarding the `ani-cli` script itself.
+# shellcheck disable=SC2016,SC2310,SC2312
 # Architectural invariant: a deferral AGENTS.md tells you to record
 # must land somewhere another contributor can actually read.
 #
@@ -63,8 +77,8 @@ record_is_recoverable() {
     # holding one real file beside a link that points nowhere. Asking
     # whether *no* entry fails the mode test is the same question for
     # a single file and the right one for a directory.
-    if git ls-files --stage -- ":(literal)$1" 2>/dev/null \
-        | grep -qvE '^100(644|755) '; then
+    if git ls-files --stage -- ":(literal)$1" 2>/dev/null |
+        grep -qvE '^100(644|755) '; then
         return 1
     fi
 

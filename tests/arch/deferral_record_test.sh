@@ -1,4 +1,22 @@
 #!/bin/sh
+
+# Advisories that `-o all` enables and that do not apply to a script
+# whose job is to inspect this repository and report what it finds:
+#
+#   SC1091 — the sourced path is built at runtime, so it cannot be
+#       followed statically
+#   SC2016 — single quotes are deliberate here — these lines print a
+#       literal `$` or backtick
+#   SC2030 — the subshell-local assignment is the case being exercised
+#   SC2031 — same subshell case as SC2030
+#   SC2310 — functions are called in `if` and `!` conditions on
+#       purpose, so a failing check reports rather than aborting the run
+#   SC2312 — command substitutions are read for their text, and a
+#       failure arrives as an empty result that the assertion then catches
+#
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
+# would also relax the checks guarding the `ani-cli` script itself.
+# shellcheck disable=SC1091,SC2016,SC2030,SC2031,SC2310,SC2312
 # Self-test for the deferral-record invariant.
 #
 # The check it guards makes a claim — "a contributor who clones this
@@ -151,7 +169,10 @@ spacey_probe=$(make_untracked_probe "$spacey")
 # Run cleanup against the spacey directory in a subshell, so the
 # assertion sees what the trap would actually do without ending the
 # run's own scratch early.
-( scratch_dir="$spacey"; cleanup )
+(
+    scratch_dir="$spacey"
+    cleanup
+)
 if [ -e "$spacey_probe" ]; then
     printf '  FAIL     cleanup left a probe behind under a path with a space\n'
     failed=1
@@ -168,7 +189,7 @@ ARCH_DEFERRAL_SIGNAL_PROBE=1 sh "$0" >"$probe_out" 2>&1 &
 probe_pid=$!
 probe_dir=''
 i=0
-while [ $i -lt 50 ] && [ -z "$probe_dir" ]; do
+while [ "$i" -lt 50 ] && [ -z "$probe_dir" ]; do
     probe_dir=$(head -n 1 "$probe_out" 2>/dev/null)
     [ -n "$probe_dir" ] || sleep 0.1
     i=$((i + 1))
@@ -296,9 +317,6 @@ Some prose and no marker.
 else
     printf '  ok       a duplicated section heading is refused\n'
 fi
-
-
-
 
 # A heading commented out alongside the live one is a second
 # occurrence and fails on count — no HTML parsing required. The same
@@ -574,10 +592,12 @@ mkdir -p "$claude_link_repo"
 link_msg=$(ARCH_REPO_ROOT="$claude_link_repo" sh "$REPO_ROOT/tests/arch/agents_contract.sh" 2>&1 || true)
 case "$link_msg" in
     *"tracked as a symlink or submodule"*)
-        printf '  ok       CLAUDE.md must itself be a tracked regular file\n' ;;
+        printf '  ok       CLAUDE.md must itself be a tracked regular file\n'
+        ;;
     *)
         printf '  FAIL     symlinked CLAUDE.md not refused for being a symlink: %s\n' "$link_msg"
-        failed=1 ;;
+        failed=1
+        ;;
 esac
 
 # A tracked directory of regular files satisfies the record predicate,
