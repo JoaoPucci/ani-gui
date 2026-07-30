@@ -83,6 +83,16 @@ expect_recoverable tests/arch/run-all.sh
 # Ignored: the defect the invariant was written for.
 expect_rejected .planning/follow-ups.md 'git-ignored'
 
+# A name git would read as an option rather than a file. `--stage` is
+# a real `ls-files` flag, so the query succeeds by listing the whole
+# index and the absent record reads as present.
+expect_rejected '--stage' 'an option name, not a tracked file'
+
+# A name git would read as a glob. `[A]GENTS.md` matches the tracked
+# `AGENTS.md` as a pathspec while the literal file does not exist, so
+# the record is reported readable because something else is.
+expect_rejected '[A]GENTS.md' 'a glob matching a tracked file, but not itself one'
+
 # Absent: nothing ignores it, and it is still not there. This is the
 # case an ignore-only check waves through.
 expect_rejected docs/no-such-follow-ups.md 'not tracked'
