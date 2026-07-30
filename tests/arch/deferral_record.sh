@@ -91,12 +91,21 @@ why_unrecoverable() {
 #
 #     <!-- record-path: docs/follow-ups.md -->
 #
-# The rest of the line after the prefix is the path, spaces and all,
-# up to the closing marker. Declaring is a little more typing and it
-# is exact, which is the trade this check has already paid for six
-# times over.
+# The format is exact: one space after the colon, one space before the
+# closing marker, and everything between them is the path. That single
+# space on each side is the delimiter, so padding and content stay
+# distinguishable — `<!-- record-path: notes.md  -->` declares
+# `notes.md ` with its trailing space intact, which is a legal
+# filename, rather than quietly checking `notes.md` instead and
+# passing because some other file exists.
+#
+# Trimming would have been the easier read and is what a
+# whitespace-tolerant pattern does. It substitutes a nearby filename
+# for the declared one, which is the same silent pass this file exists
+# to prevent — declaring a path is worth nothing if the parser then
+# adjusts it.
 cited_paths() {
-    sed -n 's/^[[:space:]]*<!-- record-path:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*-->[[:space:]]*$/\1/p'
+    sed -n 's/^[[:space:]]*<!-- record-path: \(.*\) -->[[:space:]]*$/\1/p'
 }
 
 # An untracked file for the self-test to point the predicate at.
