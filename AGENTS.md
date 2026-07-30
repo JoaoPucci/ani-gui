@@ -48,7 +48,7 @@ Both outcomes are real. A green-before-red defect has been confirmed this way; s
 
 Per layer:
 
-- Bash changes require bats-core coverage (unit, network-mocked, or acceptance as appropriate).
+- Bash changes require bats-core coverage (unit, network-mocked, or acceptance as appropriate). This covers the shell *product* — the vendored `ani-cli` script — and any shell with a **subject under test**, including under `tests/arch/`. The question is not how much logic a file contains but whether something else is being exercised: a file that builds fixtures, drives a subject through cases and compares results needs a runner that names the failing case, and hand-rolling that is how you end up with an assertion harness nobody reviews. A file that inspects this repository and reports the invariant it found broken is not in that position however many checks it performs — its output *is* the report, and `tests/arch/run-all.sh` already names which check failed. The existing architectural checks stay standalone on that basis.
 - Rust changes require `cargo test`, plus a `proptest` if the function under change is pure.
 - Frontend changes require a `vitest` test (component or store) and an acceptance test if a user-visible flow changes.
 
