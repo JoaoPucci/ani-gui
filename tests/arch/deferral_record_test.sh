@@ -290,6 +290,25 @@ else
     printf '  ok       a duplicated section heading is refused\n'
 fi
 
+# A heading inside a fenced example is not a heading. The body scan
+# starts at it and stops at the next H2, so neither fence line lands
+# in the body and the section's own no-fence rule never sees them —
+# leaving a tracked marker in the example to satisfy the guard while
+# the live policy section is absent entirely.
+if check_says "\`\`\`
+$SECTION_HEAD
+
+<!-- record-path: AGENTS.md -->
+
+## Something Else
+\`\`\`
+" fenced_heading; then
+    printf '  FAIL     a heading inside a fence was treated as the section\n'
+    failed=1
+else
+    printf '  ok       a heading inside a fence is not the section\n'
+fi
+
 # And the check still passes what it should, so the guard above is not
 # just rejecting everything.
 if check_says "$SECTION_HEAD
@@ -472,6 +491,26 @@ if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$import_ok" "$untracked_contra
 else
     printf '  ok       the imported contract must be tracked, not merely present\n'
 fi
+# CLAUDE.md itself has to arrive with the clone. A tracked symlink to
+# something generated or external satisfies a file test and reads
+# fine here, while a fresh clone has no importing file at all.
+claude_link_repo="$scratch_dir/claude-link"
+mkdir -p "$claude_link_repo"
+(
+    cd "$claude_link_repo"
+    git init -q .
+    printf '@AGENTS.md\n' >elsewhere.md
+    ln -s elsewhere.md CLAUDE.md
+    printf 'contract\n' >AGENTS.md
+    git add CLAUDE.md AGENTS.md elsewhere.md
+) >/dev/null 2>&1
+if (cd "$claude_link_repo" && sh "$REPO_ROOT/tests/arch/agents_contract.sh") >/dev/null 2>&1; then
+    printf '  FAIL     a symlinked CLAUDE.md was accepted\n'
+    failed=1
+else
+    printf '  ok       CLAUDE.md must itself be a tracked regular file\n'
+fi
+
 if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$import_ok" AGENTS.md >/dev/null 2>&1; then
     printf '  ok       a tracked contract satisfies the import\n'
 else
