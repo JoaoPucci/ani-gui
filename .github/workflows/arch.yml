@@ -20,5 +20,13 @@ jobs:
           sudo mv actionlint /usr/local/bin/actionlint
       - name: actionlint (workflow syntax)
         run: actionlint
+      # The divergence check compares the vendored ani-cli against
+      # upstream and skips silently when no `upstream` remote exists —
+      # which, on a bare checkout, was always. It has therefore never
+      # run in CI, and neither would anything asserting on it.
+      - name: Configure upstream remote for the divergence check
+        run: |
+          git remote add upstream https://github.com/pystardust/ani-cli.git
+          git fetch --depth=1 upstream master
       - name: Run architectural invariants
         run: bash tests/arch/run-all.sh
