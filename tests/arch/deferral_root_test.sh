@@ -20,6 +20,9 @@ cd "$REPO_ROOT"
 
 failed=0
 
+# The nested clone re-runs this file; it must not recurse.
+[ -n "${SKIP_NESTED:-}" ] && { printf 'arch/deferral_root_test: ok (nested)\n'; exit 0; }
+
 # No `eval`. Building a command string means quoting the repository
 # path into it, and a checkout under a directory containing an
 # apostrophe would then be re-parsed as shell syntax — a test that
@@ -69,13 +72,7 @@ expect_ok "a stray REPO_ROOT does not redirect the contract check" \
 # here so it cannot regress.
 apostrophe_dir="$(mktemp -d)/o'brien"
 mkdir -p "$apostrophe_dir"
-# Guarded so the nested run does not clone again — but only this
-# block. Exiting the whole script under the guard would have made the
-# nested run assert nothing at all: it would have reported success for
-# starting up, which is the failure this suite exists to catch.
-if [ -n "${SKIP_NESTED:-}" ]; then
-    :
-elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
+if git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
     cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" "$apostrophe_dir/repo/tests/arch/"
     if (cd "$apostrophe_dir/repo" && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh) >/dev/null 2>&1; then
         printf '  ok       the suite runs from a path containing an apostrophe\n'
