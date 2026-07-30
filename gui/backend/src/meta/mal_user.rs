@@ -224,3 +224,7 @@ impl UserListProvider for MalProvider {
 #[cfg(test)]
 #[path = "mal_user_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mal_user_parse_prop_test.rs"]
+mod parse_prop_tests;

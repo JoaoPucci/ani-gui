@@ -4,11 +4,22 @@
  * §6.6). Pure helper so the rail's data path is unit-testable
  * without any HTTP / store mocking.
  *
- * Order: AniList first (richer metadata via Kitsu's mappings),
- * MAL second. Dedupe key: `mal_id` — the cross-provider bridge id
- * AniList exposes as `idMal` and MAL returns identically. Entries
- * without a `mal_id` can't be deduped but still render (rare
- * AniList-only titles).
+ * Order: most recently touched on the tracker first, so the rail
+ * leads with what the user last did something about rather than with
+ * whatever the provider's pagination happened to hand back.
+ *
+ * Touched, not planned. `updated_at_epoch_s` is a last-modified
+ * stamp, so editing a Planning entry's score on the tracker moves it
+ * up without it having been planned any more recently. Neither
+ * provider's created-at reaches the cached entry, so this is the
+ * honest reading of the only timestamp there is. Provider order — AniList first
+ * (richer metadata via Kitsu's mappings), MAL second — decides ties
+ * and decides which copy of a duplicate survives.
+ *
+ * Dedupe key: `mal_id` — the cross-provider bridge id AniList
+ * exposes as `idMal` and MAL returns identically. Entries without a
+ * `mal_id` can't be deduped but still render (rare AniList-only
+ * titles).
  */
 
 import type { ListEntry, Provider } from './types';
@@ -23,13 +34,35 @@ const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
 
 /**
  * Build the merge walk order. When `primary` is one of the rail
- * providers it leads (so its rows render first and win the mal_id
- * dedupe); the remaining providers keep their fixed relative order.
- * An unset / non-rail primary leaves `MERGE_ORDER` untouched.
+ * providers it leads, so its rows win the mal_id dedupe and come
+ * first among entries sharing a timestamp; the remaining providers
+ * keep their fixed relative order. An unset / non-rail primary
+ * leaves `MERGE_ORDER` untouched.
  */
 function walkOrder(primary?: Provider | null): ReadonlyArray<Provider> {
 	if (!primary || !MERGE_ORDER.includes(primary)) return MERGE_ORDER;
 	return [primary, ...MERGE_ORDER.filter((p) => p !== primary)];
+}
+
+/**
+ * Most recently touched on the tracker first.
+ *
+ * Runs on the ALREADY-deduped list, and the order matters: sorting
+ * before the dedupe would let the more recently touched copy of a
+ * cross-provider duplicate win, quietly replacing the
+ * primary-provider rule above with a recency one.
+ *
+ * `Array.sort` is stable, so entries the providers touched at the
+ * same moment keep the walk order — provider order survives as the
+ * tie-break rather than as the rule.
+ *
+ * A row the provider never timestamped arrives as 0 (MAL's parser
+ * substitutes it for a missing `updated_at`), which descending puts
+ * at the end. That is where something with no known recency belongs;
+ * ascending would open the rail with it.
+ */
+function byRecency(entries: ListEntry[]): ListEntry[] {
+	return entries.sort((a, b) => b.updated_at_epoch_s - a.updated_at_epoch_s);
 }
 
 export function mergedWatchLater(
@@ -50,5 +83,5 @@ export function mergedWatchLater(
 			out.push(entry);
 		}
 	}
-	return out;
+	return byRecency(out);
 }

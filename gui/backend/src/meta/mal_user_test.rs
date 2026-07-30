@@ -1169,3 +1169,25 @@ async fn delete_entry_surfaces_404_as_upstream_so_partial_double_delete_is_visib
         other => panic!("expected Upstream 404, got {other:?}"),
     }
 }
+
+#[test]
+fn parse_iso8601_to_epoch_applies_the_utc_offset() {
+    // MAL stamps `updated_at` with a real offset. Reading the wall
+    // clock and discarding it was safe only while these values were
+    // compared against each other — every row carried the same skew.
+    // The Watch Later rail now sorts them against AniList's true Unix
+    // seconds, so a `+09:00` row that reads nine hours newer than it
+    // is jumps the queue.
+    use crate::meta::mal_user_parse::parse_iso8601_to_epoch;
+    let utc = parse_iso8601_to_epoch("2026-07-30T00:00:00Z");
+    assert_eq!(
+        parse_iso8601_to_epoch("2026-07-30T09:00:00+09:00"),
+        utc,
+        "an offset ahead of UTC names the same instant, not a later one"
+    );
+    assert_eq!(
+        parse_iso8601_to_epoch("2026-07-29T19:00:00-05:00"),
+        utc,
+        "and an offset behind UTC likewise"
+    );
+}
