@@ -36,6 +36,15 @@ scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
 cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
 trap cleanup EXIT HUP INT TERM
 
+# Probe mode: the run re-executes itself with this set so the signal
+# case can watch a real process take a real signal, rather than
+# inspecting trap definitions and hoping they mean what they say.
+if [ -n "${DEFERRAL_SIGNAL_PROBE:-}" ]; then
+    printf '%s\n' "$scratch_dir"
+    sleep 5
+    exit 0
+fi
+
 expect_recoverable() {
     if record_is_recoverable "$1"; then
         printf '  ok       %s\n' "$1"
@@ -116,6 +125,38 @@ else
     printf '  ok       cleanup handles a path containing a space\n'
 fi
 
+# A cancelled run must stop, and must not report success. A handler
+# that cleans up and returns leaves the script running against a
+# directory it just deleted, and can still reach `exit 0` — so a
+# Ctrl-C in CI looks like a pass.
+probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
+DEFERRAL_SIGNAL_PROBE=1 sh "$0" >"$probe_out" 2>&1 &
+probe_pid=$!
+probe_dir=''
+i=0
+while [ $i -lt 50 ] && [ -z "$probe_dir" ]; do
+    probe_dir=$(head -n 1 "$probe_out" 2>/dev/null)
+    [ -n "$probe_dir" ] || sleep 0.1
+    i=$((i + 1))
+done
+kill -TERM "$probe_pid" 2>/dev/null
+wait "$probe_pid"
+probe_status=$?
+
+if [ "$probe_status" -eq 0 ]; then
+    printf '  FAIL     a TERMed run exited 0 — cancellation reads as success\n'
+    failed=1
+else
+    printf '  ok       a TERMed run exits nonzero (%s)\n' "$probe_status"
+fi
+if [ -n "$probe_dir" ] && [ -d "$probe_dir" ]; then
+    printf '  FAIL     a TERMed run left its scratch directory behind\n'
+    failed=1
+    rm -rf "$probe_dir"
+else
+    printf '  ok       a TERMed run still cleans up\n'
+fi
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
@@ -141,6 +182,8 @@ expect_not_parsed() {
 }
 
 expect_parsed 'docs/follow-ups.md' 'ordinary dotted file'
+expect_parsed 'FOLLOWUPS' 'git permits a name with neither slash nor dot'
+expect_parsed 'docs/follow ups.md' 'git permits a space, so a citation must survive one'
 expect_parsed '.planning/follow-ups' 'a record needs no extension to be a record'
 expect_parsed 'docs/follow-ups/' 'a directory can be the record just as well'
 expect_parsed '.planning/' 'named in this very section, and unreachable'
