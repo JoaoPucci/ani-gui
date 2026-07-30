@@ -10,13 +10,21 @@ disappears when the session does. An item leaves this list by being
 done or by being decided against in writing.
 
 **These entries were carried across from session state and have proven
-unreliable about their own status.** Nine were already shipped, every
-one caught in review of this change rather than by the person who
-wrote the list. Confirm an item against the code before starting it,
+unreliable about their own status.** Review of this change corrected
+more than a dozen, in three kinds: most described work that had
+already shipped; two asserted a problem that never existed in the form
+stated; one was accurate but named so ambiguously that a careful
+reader took it for finished work. Every one was caught here rather
+than by the person who wrote the list.
+
+No exact figure is given deliberately. An earlier draft said "nine",
+went stale within the same review as further rows were pruned, and had
+to be corrected — a fixed count inside a warning about staleness
+decays exactly like the rows it describes. Confirm an item against the code before starting it,
 and delete it here when you find it done — the list earns trust by
 being pruned, not by being long.
 
-Nine out of roughly thirty is not a list with a few stale rows; it is
+A correction rate that high is not a list with a few stale rows; it is
 a list whose status field means nothing yet. A full audit against the
 code is worth doing before anyone plans from it. Until that happens,
 treat every entry as a lead rather than a fact.
@@ -35,8 +43,18 @@ treat every entry as a lead rather than a fact.
      master-playlist expansion, quality selection, referer selection.
 
   Doing only the first produces correct ciphertext handling and still
-  no URL to play. Retires the carried patch set in `AGENTS.md` §3 by
-  deleting the script, but only once both exist.
+  no URL to play.
+
+  Downloads are a third part, and the one most easily missed when this
+  entry is read as a deletion checklist. `commands/download.rs` calls
+  `spawn_download`, which runs `ani-cli -d` for both resolution and
+  transfer, so deleting the script with only playback ported turns the
+  Download flow into a missing-binary failure. The exit condition is
+  every remaining subprocess consumer ported, not the two playback
+  stages.
+
+  Retires the carried patch set in `AGENTS.md` §3 by deleting the
+  script, but only once all of that exists.
 - **The provider's crypto flow changed and playback is broken.**
   Upstream has two competing unmerged fixes. The smaller one
   identifies the real inputs — a lane parameter, build id, locally
@@ -84,8 +102,11 @@ treat every entry as a lead rather than a fact.
   `bash_portability_test.sh` — each builds fixtures, drives another
   script and asserts on results through hand-written helpers.
 
-  Sequenced after the branches carrying those files land, since two of
-  the three do not exist on `master` yet. The bats vendor lives under
+  All three arrive on unmerged branches, so none is on `master` yet and
+  this is sequenced after they land. The subject the third one drives,
+  `tests/arch/bash_portability.sh`, *is* on `master` — it is the check
+  itself, which stays standalone under the rule above and is not part
+  of this port. The bats vendor lives under
   `tests/bash/` behind an installer, so the port also changes how the
   arch suite is invoked and how `arch.yml` runs it.
 
