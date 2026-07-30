@@ -33,17 +33,30 @@ treat every entry as a lead rather than a fact.
 
 - **Replace the bundled `ani-cli` with a native Rust resolver.** Search
   and episode-count disambiguation are already native —
-  `scraper/allanime.rs` stops there. Two things remain only in the
-  script, and both are needed before playback works natively:
+  `scraper/allanime.rs` stops there. Everything below it is script-only
+  and all of it is needed before playback works natively:
 
-  1. **Key derivation and source decryption**, which is what the
-     provider's change just broke.
-  2. **Turning a decrypted `sourceUrl` into a playable stream** —
+  1. **The episode-source request.** `get_episode_url` sends the
+     authenticated persisted GraphQL query for `(showId,
+     translationType, episodeString)` and receives the encrypted
+     `tobeparsed` response. Nothing native produces this, so the stages
+     below have no input without it.
+  2. **Key derivation and source decryption**, which is what the
+     provider's change just broke. This is the stage the entry
+     originally described as the whole of the remaining work.
+  3. **Turning a decrypted `sourceUrl` into a playable stream** —
      `generate_link` / `get_links`: provider embed requests,
      master-playlist expansion, quality selection, referer selection.
+  4. **Downloads**, below.
 
-  Doing only the first produces correct ciphertext handling and still
-  no URL to play.
+  Treat this list as a floor rather than a specification. It has been
+  corrected upward three times in a single review — first crypto alone,
+  then `generate_link`/`get_links`, then downloads, now the request
+  that produces the ciphertext — each time by someone reading the
+  script rather than the entry. Anyone planning this work should walk
+  `get_episode_url` end to end and rewrite the list from what is
+  actually there, because nobody has yet done that and every attempt to
+  describe it from memory has been too small.
 
   Downloads are a third part, and the one most easily missed when this
   entry is read as a deletion checklist. `commands/download.rs` calls
