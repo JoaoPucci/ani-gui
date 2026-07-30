@@ -16,6 +16,7 @@ load '../helpers/loader'
 setup() {
     ARCH_DIR="$REPO_ROOT/tests/arch"
     WORKFLOW="$REPO_ROOT/.github/workflows/ani-cli.yml"
+    BASH_WORKFLOW="$REPO_ROOT/.github/workflows/bash.yml"
 }
 
 @test "each check resolves the repository when invoked by relative path" {
@@ -98,4 +99,14 @@ setup() {
     stray=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
         grep -v '^$' | sort -u | grep -vE "$allowed" || true)
     [ -z "$stray" ] || { echo "readable from any environment: $stray"; return 1; }
+}
+
+@test "the bats job runs when a check these tests cover changes" {
+    # These tests exercise `tests/arch/*.sh`. The job that runs them
+    # decides relevance from the changed paths, so a change to a check
+    # and nothing else has to count — otherwise editing the very thing
+    # under test skips the suite, and the pull request goes green
+    # having run none of it.
+    run grep -c 'tests/arch/' "$BASH_WORKFLOW"
+    [ "$status" -eq 0 ]
 }
