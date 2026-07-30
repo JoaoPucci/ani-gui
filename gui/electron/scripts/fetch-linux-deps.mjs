@@ -16,6 +16,17 @@
 // Bundled today:
 //   - fzf      — required for any spawn (dep_ch fzf at script start)
 //   - aria2c   — required for downloads (dep_ch ffmpeg aria2c)
+//   - yt-dlp   — ani-cli 4.15 PREFERS it over ffmpeg when both are
+//                present, and the two are not equivalent:
+//                  yt-dlp  --fragment-retries infinite -N 16
+//                  ffmpeg  -c copy
+//                Sixteen parallel chunks with infinite per-chunk
+//                retries against one at a time with none. Bundling
+//                gives every user the faster, more failure-tolerant
+//                downloader rather than only those who happened to
+//                install it. ~37 MB, one self-contained file — the
+//                same order as aria2c, so the ~80 MB argument that
+//                keeps ffmpeg out does not apply here.
 //
 // NOT bundled, by design:
 //   - ffmpeg   — too large (~80 MB compressed). Declared as a
@@ -77,6 +88,17 @@ const DEPS = [
 		// aria2's tarball nests the binary under a versioned dir.
 		archivePath: 'aria2-1.37.0-linux-gnu-64bit-build1/aria2c',
 		tarFlag: '-xjf',
+	},
+	{
+		name: 'yt-dlp',
+		version: '2025.09.26',
+		// Upstream ships a self-contained executable, not an archive,
+		// so there is nothing to extract — see `directBinary` below.
+		archiveName: 'yt-dlp_linux',
+		url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2025.09.26/yt-dlp_linux',
+		sha256: 'd2f07382138f4bd882254996502636f5a67a8c5ee5ab8a25807e2784a4878642',
+		binary: 'yt-dlp',
+		directBinary: true,
 	},
 ];
 
@@ -164,16 +186,23 @@ async function stageDep(dep) {
 	const stagedBinary = path.join(stagedBinDir, dep.binary);
 	if (existsSync(stagedBinary)) await rm(stagedBinary);
 
-	const scratchDir = path.join(cacheDir, `extract-${dep.name}`);
-	await mkdir(scratchDir, { recursive: true });
-	console.log(`[fetch-linux-deps] extracting ${dep.binary} from ${dep.archiveName}`);
-	await extractEntry(archive, dep.archivePath, scratchDir, dep.tarFlag);
+	if (dep.directBinary) {
+		// Nothing to unpack: upstream publishes the executable itself
+		// as the release asset, so the verified download IS the binary.
+		console.log(`[fetch-linux-deps] staging ${dep.binary} directly (no archive)`);
+		await copyFile(archive, stagedBinary);
+	} else {
+		const scratchDir = path.join(cacheDir, `extract-${dep.name}`);
+		await mkdir(scratchDir, { recursive: true });
+		console.log(`[fetch-linux-deps] extracting ${dep.binary} from ${dep.archiveName}`);
+		await extractEntry(archive, dep.archivePath, scratchDir, dep.tarFlag);
 
-	const extractedBinary = path.join(scratchDir, dep.archivePath);
-	if (!existsSync(extractedBinary)) {
-		throw new Error(`expected ${extractedBinary} after extracting ${dep.archiveName}`);
+		const extractedBinary = path.join(scratchDir, dep.archivePath);
+		if (!existsSync(extractedBinary)) {
+			throw new Error(`expected ${extractedBinary} after extracting ${dep.archiveName}`);
+		}
+		await copyFile(extractedBinary, stagedBinary);
 	}
-	await copyFile(extractedBinary, stagedBinary);
 	// Force executable bit; tar preserves source perms but we don't
 	// want to depend on that across hosts. 0o755 matches Linux
 	// convention for binaries.
