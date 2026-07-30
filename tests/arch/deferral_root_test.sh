@@ -246,9 +246,15 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
     # Both the exit status and the count. The status alone could pass a
     # run that skipped everything; the count alone could pass a run
     # where one case failed while five others succeeded.
+    # `|| nested_status=$?` matters: a bare command substitution that
+    # fails aborts the whole script under `set -e`, so a failing nested
+    # run used to kill the parent silently instead of being reported.
+    # The nested run also skips the sabotage case — it exists to prove
+    # the apostrophe path works, not to re-run a sub-suite.
+    nested_status=0
     nested_out=$(cd "$apostrophe_dir/repo" &&
-        ARCH_DEFERRAL_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
-    nested_status=$?
+        ARCH_DEFERRAL_NESTED=1 ARCH_DEFERRAL_NO_SABOTAGE=1 \
+            sh tests/arch/deferral_root_test.sh 2>&1) || nested_status=$?
     nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
     if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 5 ]; then
         printf '  ok       the suite asserts (%s cases) from a path containing an apostrophe\n' "$nested_ok"
@@ -258,6 +264,36 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
     fi
 else
     printf '  ok       (skipped: could not clone for the apostrophe case)\n'
+fi
+
+# An environment that cannot build the clone must fail the run rather
+# than report a skip. Nothing about this clone is allowed to fail
+# benignly — it is a local path to a local path inside the repository,
+# no network and no remote — so a failure means the environment cannot
+# do something this suite depends on, and calling that ok states
+# something untrue.
+#
+# Proved by sabotage: a copy of this file with an unsatisfiable
+# `--reference` runs the clone for real and cannot complete it. The
+# copy skips this case, or it would sabotage a copy of itself forever.
+if [ -z "${ARCH_DEFERRAL_NO_SABOTAGE:-}" ]; then
+    sabotaged="$scratch_dir/sabotaged.sh"
+    sed 's|git clone -q --depth=1|git clone -q --depth=1 --reference /nonexistent-ref|' \
+        "$REPO_ROOT/tests/arch/deferral_root_test.sh" >"$sabotaged"
+    # Same `set -e` trap as the nested run: this substitution is
+    # expected to fail, and a bare one would abort this script instead
+    # of letting the case report.
+    sabotage_status=0
+    sabotage_out=$(ARCH_DEFERRAL_NO_SABOTAGE=1 sh "$sabotaged" 2>&1) ||
+        sabotage_status=$?
+    if [ "$sabotage_status" -ne 0 ] &&
+        printf '%s' "$sabotage_out" | grep -q 'could not clone'; then
+        printf '  ok       a clone that cannot be built fails the run\n'
+    else
+        printf '  FAIL     an unbuildable clone left the run passing (status %s)\n' \
+            "$sabotage_status"
+        failed=1
+    fi
 fi
 
 [ "$failed" -eq 0 ] || {
