@@ -349,6 +349,41 @@ else
     printf '  ok       a fence closes only on a run at least as long\n'
 fi
 
+# A fence with an info string does not close a region, and neither
+# does one indented as a code block. Rather than teach the checker
+# those rules — the third round of Markdown minutiae on a six-line
+# pointer file — CLAUDE.md simply may not contain fences at all. With
+# no fenced region anywhere, there is nowhere for an inert import to
+# hide, and the question of where a region ends stops being asked.
+infostring="$scratch_dir/claude-infostring.md"
+printf '```\nexample\n``` text\n@AGENTS.md\n' >"$infostring"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$infostring" >/dev/null 2>&1; then
+    printf '  FAIL     a run with an info string was treated as a close\n'
+    failed=1
+else
+    printf '  ok       a fence with trailing text does not open the file up\n'
+fi
+
+indented_close="$scratch_dir/claude-indented.md"
+printf '```\nexample\n    ```\n@AGENTS.md\n' >"$indented_close"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$indented_close" >/dev/null 2>&1; then
+    printf '  FAIL     an indented run was treated as a close\n'
+    failed=1
+else
+    printf '  ok       an indented run does not open the file up\n'
+fi
+
+# And a live import cannot be smuggled past by putting a fence
+# elsewhere in the file, since fences are refused outright.
+live_plus_fence="$scratch_dir/claude-live-plus-fence.md"
+printf '@AGENTS.md\n\n```\nan example\n```\n' >"$live_plus_fence"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$live_plus_fence" >/dev/null 2>&1; then
+    printf '  FAIL     a file containing any fence was accepted\n'
+    failed=1
+else
+    printf '  ok       any fence at all is refused\n'
+fi
+
 live="$scratch_dir/claude-live.md"
 printf 'Prose.\n\n@AGENTS.md\n' >"$live"
 if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$live" >/dev/null 2>&1; then
