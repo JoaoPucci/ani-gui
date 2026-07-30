@@ -43,11 +43,6 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-[ -n "${ARCH_DEFERRAL_NESTED:-}" ] && {
-    printf 'arch/deferral_root_test: ok (nested)\n'
-    exit 0
-}
-
 # The nested clone re-runs this file; it must not recurse. The guard
 # carries this file's own name because a generic one is readable from
 # any environment: an exported `SKIP_NESTED` — plausible in a shell
@@ -222,7 +217,9 @@ mkdir -p "$apostrophe_dir"
 # block. Guarding the whole script made the nested run assert nothing
 # and report success for starting up, which the case above now counts
 # rather than trusts.
-if git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
+if [ -n "${ARCH_DEFERRAL_NESTED:-}" ]; then
+    :
+elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
     # The clone carries committed state only, so an uncommitted change
     # to any of these would go unexercised — the working-tree copies
     # are what this run is meant to be testing.
