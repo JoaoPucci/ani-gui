@@ -177,37 +177,23 @@ AGENTS_FILE="${1:-$REPO_ROOT/AGENTS.md}"
 # so `## 14X Scope ...` would have counted. A character class says the
 # same thing with no escaping to be dropped.
 SECTION_RE="^## ([0-9]+[.] )?$SECTION\$"
-# Counted outside fenced regions only. A heading inside an example is
-# inert, and finding it by line scan would start the body at it and
-# stop at the next H2 — so neither fence line reaches the body and the
-# section's own no-fence rule never sees them.
+# Counted by line, without regard to what Markdown would render.
 #
-# This is the one place fence tracking is unavoidable: AGENTS.md
-# legitimately uses fences, so they cannot simply be refused as they
-# are in CLAUDE.md and in the section body. It errs toward refusing —
-# a region this misjudges as open hides the heading and fails the
-# check, which is the loud direction.
-headings=$(awk -v re="$SECTION_RE" '
-    match($0, /^[ \t]*(`{3,}|~{3,})/) {
-        run = substr($0, RSTART, RLENGTH)
-        sub(/^[ \t]*/, "", run)
-        ch = substr(run, 1, 1)
-        rest = substr($0, RSTART + RLENGTH)
-        lead = substr($0, 1, RSTART + RLENGTH - length(run) - 1)
-        indent = 0
-        for (i = 1; i <= length(lead); i++) {
-            indent = (substr(lead, i, 1) == "\t") ? indent + 4 - (indent % 4) : indent + 1
-        }
-        if (!fenced) {
-            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run) }
-            next
-        }
-        if (ch == fence_ch && length(run) >= fence_len && indent < 4 && rest ~ /^[ \t]*$/) { fenced = 0 }
-        next
-    }
-    !fenced && $0 ~ re { n++ }
-    END { print n + 0 }
-' "$AGENTS_FILE")
+# This check establishes that the policy's declaration is present,
+# unique and readable. It does not establish that the document renders
+# as intended, and it no longer pretends to: parsing structure to find
+# out whether a heading is "live" took five rounds of fence rules plus
+# an indented-H2 rule, two of them fixing defects the parsing itself
+# introduced, and the set of ways Markdown can render a line inert —
+# fences, HTML comments, blockquotes, indented code — has no end.
+#
+# Uniqueness does the work instead. A heading or marker duplicated in
+# an inert position makes two, and two fails, whatever construct did
+# the inerting. What is left uncovered is a policy that exists *only*
+# inert — the whole section fenced or commented out — which is visible
+# to anyone opening the file and to any reviewer of the diff that did
+# it. A parser is not the right instrument for that.
+headings=$(grep -cE "$SECTION_RE" "$AGENTS_FILE" || true)
 
 if [ "$headings" -eq 0 ]; then
     printf 'arch/deferral_record: no heading "## N. %s" in %s\n' "$SECTION" "$AGENTS_FILE"
@@ -220,30 +206,7 @@ fi
 
 # The section body: from its heading to the next heading or EOF.
 body=$(awk -v re="$SECTION_RE" '
-    match($0, /^[ \t]*(`{3,}|~{3,})/) {
-        run = substr($0, RSTART, RLENGTH)
-        sub(/^[ \t]*/, "", run)
-        ch = substr(run, 1, 1)
-        rest = substr($0, RSTART + RLENGTH)
-        lead = substr($0, 1, RSTART + RLENGTH - length(run) - 1)
-        indent = 0
-        for (i = 1; i <= length(lead); i++) {
-            indent = (substr(lead, i, 1) == "\t") ? indent + 4 - (indent % 4) : indent + 1
-        }
-        # A fence inside the section is not a boundary, it is the
-        # thing the section forbids — so the line is emitted into the
-        # body for the no-fence rule to find, and membership is left
-        # alone. Clearing it here dropped everything from the opening
-        # line onward, hiding the very construct being prohibited.
-        if (inside) print $0
-        if (!fenced) {
-            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run) }
-            next
-        }
-        if (ch == fence_ch && length(run) >= fence_len && indent < 4 && rest ~ /^[ \t]*$/) { fenced = 0 }
-        next
-    }
-    !fenced && /^ {0,3}## / { inside = ($0 ~ re); next }
+    /^ {0,3}#{1,6} / { inside = ($0 ~ re); next }
     inside { print }
 ' "$AGENTS_FILE")
 

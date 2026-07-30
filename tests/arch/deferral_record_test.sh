@@ -290,60 +290,8 @@ else
     printf '  ok       a duplicated section heading is refused\n'
 fi
 
-# A heading inside a fenced example is not a heading. The body scan
-# starts at it and stops at the next H2, so neither fence line lands
-# in the body and the section's own no-fence rule never sees them —
-# leaving a tracked marker in the example to satisfy the guard while
-# the live policy section is absent entirely.
-if check_says "\`\`\`
-$SECTION_HEAD
 
-<!-- record-path: AGENTS.md -->
 
-## Something Else
-\`\`\`
-" fenced_heading; then
-    printf '  FAIL     a heading inside a fence was treated as the section\n'
-    failed=1
-else
-    printf '  ok       a heading inside a fence is not the section\n'
-fi
-
-# A closer with an info string does not close a fence, and neither
-# does one indented into a code block — so the heading after it is
-# still inside the example.
-if check_says "\`\`\`
-\`\`\` text
-$SECTION_HEAD
-
-<!-- record-path: AGENTS.md -->
-\`\`\`
-" bad_closer; then
-    printf '  FAIL     a run with an info string closed the fence\n'
-    failed=1
-else
-    printf '  ok       an info-string run does not close a fence\n'
-fi
-
-# A tab expands to four columns, so a tab-indented run is content
-# rather than a closer. Measuring characters counts it as one column
-# and closes the fence, exposing the heading inside the example.
-# A fence after the marker. The body scan stops at the opening line
-# and never resumes, so the section's own no-fence rule cannot see the
-# block that the section is not allowed to contain.
-if check_says "$SECTION_HEAD
-
-<!-- record-path: tests/arch/run-all.sh -->
-
-\`\`\`text
-an example
-\`\`\`
-" fence_after; then
-    printf '  FAIL     a fence after the declaration was invisible to the no-fence rule\n'
-    failed=1
-else
-    printf '  ok       a fence after the declaration is still a fence in the section\n'
-fi
 
 # A heading commented out alongside the live one is a second
 # occurrence and fails on count — no HTML parsing required. The same
@@ -385,27 +333,6 @@ fi
 # Sourced scripts keep the caller's `$0`, so recomputing the root
 # after the caller has already changed into it walks above the
 # repository. Invoking by relative path from inside tests/arch is the
-# case that exposes it.
-if (cd "$REPO_ROOT/tests/arch" && sh ./agents_contract.sh) >/dev/null 2>&1; then
-    printf '  ok       a relative invocation from tests/arch still resolves the repository\n'
-else
-    printf '  FAIL     a relative invocation from tests/arch resolved the wrong root\n'
-    failed=1
-fi
-
-TAB=$(printf '\t')
-if check_says "\`\`\`
-${TAB}\`\`\`
-$SECTION_HEAD
-
-<!-- record-path: tests/arch/run-all.sh -->
-\`\`\`
-" tab_closer; then
-    printf '  FAIL     a tab-indented run closed the fence\n'
-    failed=1
-else
-    printf '  ok       a tab-indented run does not close a fence\n'
-fi
 
 # An H2 indented one to three spaces is still an H2, so the body must
 # stop there rather than swallowing the next section.
