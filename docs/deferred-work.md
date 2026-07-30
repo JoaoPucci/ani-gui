@@ -17,11 +17,20 @@ it done — the list earns trust by being pruned, not by being long.
 
 ## Resolver and provider
 
-- **Replace the bundled `ani-cli` with a native Rust resolver.** The
-  search and episode-count disambiguation are already native; what the
-  script still uniquely does is key derivation and source decryption.
-  Retires the whole carried patch set in `AGENTS.md` §3 by deleting
-  the script.
+- **Replace the bundled `ani-cli` with a native Rust resolver.** Search
+  and episode-count disambiguation are already native —
+  `scraper/allanime.rs` stops there. Two things remain only in the
+  script, and both are needed before playback works natively:
+
+  1. **Key derivation and source decryption**, which is what the
+     provider's change just broke.
+  2. **Turning a decrypted `sourceUrl` into a playable stream** —
+     `generate_link` / `get_links`: provider embed requests,
+     master-playlist expansion, quality selection, referer selection.
+
+  Doing only the first produces correct ciphertext handling and still
+  no URL to play. Retires the carried patch set in `AGENTS.md` §3 by
+  deleting the script, but only once both exist.
 - **The provider's crypto flow changed and playback is broken.**
   Upstream has two competing unmerged fixes. The smaller one
   identifies the real inputs — a lane parameter, build id, locally
@@ -39,8 +48,6 @@ it done — the list earns trust by being pruned, not by being long.
 - **Distinguish "no sources upstream" from "show not found"** in the
   play error path. They are the same message today and want different
   advice.
-- **Retry gate-refused continue-watching resolves** once the circuit
-  breaker recovers.
 - **Check the Yani Neko Mini situation.**
 
 ## Testing and CI
