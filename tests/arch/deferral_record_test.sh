@@ -325,6 +325,16 @@ else
     printf '  ok       an info-string run does not close a fence\n'
 fi
 
+# A tab expands to four columns, so a tab-indented run is content
+# rather than a closer. Measuring characters counts it as one column
+# and closes the fence, exposing the heading inside the example.
+if check_says "$(printf '\`\`\`\n\t\`\`\`\n%s\n\n<!-- record-path: tests/arch/run-all.sh -->\n\`\`\`\n' "$SECTION_HEAD")" tab_closer; then
+    printf '  FAIL     a tab-indented run closed the fence\n'
+    failed=1
+else
+    printf '  ok       a tab-indented run does not close a fence\n'
+fi
+
 # An H2 indented one to three spaces is still an H2, so the body must
 # stop there rather than swallowing the next section.
 if check_says "$SECTION_HEAD
@@ -563,6 +573,25 @@ case "$link_msg" in
         printf '  FAIL     symlinked CLAUDE.md not refused for being a symlink: %s\n' "$link_msg"
         failed=1 ;;
 esac
+
+# A tracked directory of regular files satisfies the record predicate,
+# which deliberately supports directory declarations — but `@AGENTS.md`
+# has to name an importable file, not a folder.
+dir_repo="$scratch_dir/agents-dir"
+mkdir -p "$dir_repo/AGENTS.md"
+(
+    cd "$dir_repo"
+    git init -q .
+    printf '@AGENTS.md\n' >CLAUDE.md
+    printf 'part\n' >AGENTS.md/part.md
+    git add CLAUDE.md AGENTS.md
+) >/dev/null 2>&1
+if ARCH_REPO_ROOT="$dir_repo" sh "$REPO_ROOT/tests/arch/agents_contract.sh" >/dev/null 2>&1; then
+    printf '  FAIL     AGENTS.md as a tracked directory was accepted\n'
+    failed=1
+else
+    printf '  ok       the imported contract must be a file, not a directory\n'
+fi
 
 # The same shape with a regular tracked CLAUDE.md passes, so the guard
 # is not simply rejecting every scratch repository.
