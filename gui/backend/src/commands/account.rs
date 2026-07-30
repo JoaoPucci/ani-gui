@@ -32,6 +32,7 @@ use crate::account::provider::{
 use crate::account::status::ListStatus;
 use crate::app::AppState;
 use crate::cache::SqlitePool;
+use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_user::AniListProvider;
 use crate::meta::mal_user::MalProvider;
@@ -335,6 +336,54 @@ pub async fn kitsu_for_mal_ids(
     kitsu_for_mal_ids_with_anilist_base(state, mal_ids, None).await
 }
 
+/// How long a resolved MAL → Kitsu mapping is trusted. A MAL id points
+/// at the same Kitsu entry for as long as both exist, so this matches
+/// [`TITLE_MATCH_TTL`](crate::cache::ttl::TITLE_MATCH_TTL) — an id
+/// mapping is at least as stable as a title match.
+const MAL_MAP_TTL_SECS: u64 = 30 * 24 * 60 * 60; // 30d
+
+/// How long "nothing maps this id" is trusted. Deliberately far
+/// shorter than the positive TTL, and the asymmetry is the point: a
+/// miss is the expensive case — it costs a whole AniList
+/// `Page(idMal_in:)` query on every rail load — but it is also the one
+/// that legitimately changes, because Kitsu adds mappings for fresh
+/// seasonal titles within days. A month-long negative would strand a
+/// new show's card for a month.
+const MAL_MAP_MISS_TTL_SECS: u64 = 24 * 60 * 60; // 1d
+
+/// Cache key for one MAL → Kitsu mapping. Keyed on the bridge's own
+/// input rather than on the individual Kitsu lookups inside it, so a
+/// hit skips the AniList fallback hop as well as the Kitsu one.
+fn mal_map_key(mal_id: u32) -> String {
+    format!("kitsu:mal-map:v1:{mal_id}")
+}
+
+/// The cached answer for one id: `Some(kitsu_id)` resolved,
+/// `Some(None)` known-unmappable, `None` never asked.
+///
+/// An empty body is the known-unmappable marker — a Kitsu id is never
+/// empty, so the two cannot be confused.
+fn cached_mal_map(state: &Arc<AppState>, mal_id: u32) -> Option<Option<String>> {
+    match meta_cache_get(&state.cache_pool, &mal_map_key(mal_id)) {
+        Ok(Some(body)) if body.is_empty() => Some(None),
+        Ok(Some(body)) => Some(Some(body)),
+        // A cache read that failed is not evidence about the mapping;
+        // fall through to the network rather than inventing a miss.
+        _ => None,
+    }
+}
+
+/// Record what the bridge resolved, so the next rail load does not ask
+/// again. Best-effort: a failed write costs a repeat lookup, nothing
+/// more.
+fn remember_mal_map(state: &Arc<AppState>, mal_id: u32, kitsu_id: Option<&str>) {
+    let (body, ttl) = match kitsu_id {
+        Some(id) => (id, MAL_MAP_TTL_SECS),
+        None => ("", MAL_MAP_MISS_TTL_SECS),
+    };
+    let _ = meta_cache_put(&state.cache_pool, &mal_map_key(mal_id), body, ttl);
+}
+
 /// [`kitsu_for_mal_ids`] with the AniList endpoint override exposed
 /// for tests (the fallback hop below hits AniList). Production passes
 /// `None` via the public wrapper.
@@ -349,13 +398,40 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         .into_iter()
         .take(WATCH_LATER_BRIDGE_MAX_IDS)
         .collect::<Vec<_>>();
+    // Phase 0: whatever a previous load already resolved. A mapping
+    // does not change, so re-asking Kitsu for one is repeat traffic —
+    // per id, on every home mount. `Some(None)` is a remembered
+    // dead end and short-circuits the AniList hop below too.
+    let known: Vec<Option<Option<String>>> = bounded
+        .iter()
+        .map(|&mal_id| cached_mal_map(state, mal_id))
+        .collect();
+
     // Phase 1: the direct Kitsu lookup, one slot per input id so the
-    // fallback fill below preserves input order.
+    // fallback fill below preserves input order. Ids phase 0 already
+    // answered skip it — including the ones it answered "no".
     let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
-        stream::iter(bounded.iter().copied())
-            .map(|mal_id| {
+        stream::iter(bounded.iter().copied().zip(known.iter().cloned()))
+            .map(|(mal_id, cached)| {
                 let kitsu = state.kitsu.clone();
-                async move { kitsu.lookup_by_mal_id(mal_id).await.ok().flatten() }
+                let state = state.clone();
+                async move {
+                    if let Some(hit) = cached {
+                        // Known-unmappable stays None and is filtered
+                        // out of phase 2 below; a known id is read
+                        // through the anime-detail cache, which is
+                        // where its card already lives.
+                        let id = hit?;
+                        return crate::commands::kitsu::kitsu_anime_detail(&state, &id)
+                            .await
+                            .ok();
+                    }
+                    let found = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten();
+                    if let Some(ref r) = found {
+                        remember_mal_map(&state, mal_id, Some(&r.id));
+                    }
+                    found
+                }
             })
             .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
             .collect()
@@ -369,10 +445,15 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     // works around in the write direction; without this the
     // just-written entry never renders in the rail. A failed batch
     // degrades to dropping those cards for this load, as before.
+    //
+    // An id phase 0 answered "nothing maps this" is NOT a miss for
+    // this purpose: it already came through here once and got the same
+    // answer, and re-entering would put it straight back into the
+    // AniList query this cache exists to avoid.
     let misses: Vec<(usize, u32)> = slots
         .iter()
         .enumerate()
-        .filter(|(_, slot)| slot.is_none())
+        .filter(|(i, slot)| slot.is_none() && known[*i].is_none())
         .map(|(i, _)| (i, bounded[i]))
         .collect();
     if !misses.is_empty() {
@@ -385,14 +466,20 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
             .map(|(i, mal_id)| {
                 let kitsu = state.kitsu.clone();
                 let anilist_id = mal_to_anilist.get(&mal_id).copied();
+                let state = state.clone();
                 async move {
                     let Some(anilist_id) = anilist_id else {
+                        // AniList does not know it either, so nothing
+                        // maps it today. Remembered briefly so the
+                        // next load skips both hops, and only briefly
+                        // because this is the answer most likely to
+                        // change.
+                        remember_mal_map(&state, mal_id, None);
                         return (i, None);
                     };
-                    (
-                        i,
-                        kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten(),
-                    )
+                    let found = kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten();
+                    remember_mal_map(&state, mal_id, found.as_ref().map(|r| r.id.as_str()));
+                    (i, found)
                 }
             })
             .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)

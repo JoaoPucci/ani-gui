@@ -298,6 +298,30 @@ const KITSU_MAL_MAPPINGS_HIT_BODY: &str = r#"{
 }"#;
 
 #[cfg(test)]
+const KITSU_ANIME_DETAIL_BODY: &str = r#"{
+    "data": {
+        "id": "12",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "One Piece",
+            "titles": { "en": "One Piece" },
+            "slug": "one-piece",
+            "synopsis": "Pirates.",
+            "startDate": "1999-10-20",
+            "endDate": null,
+            "episodeCount": 1100,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 1,
+            "posterImage": null,
+            "coverImage": null
+        }
+    }
+}"#;
+
+#[cfg(test)]
 const KITSU_MAPPINGS_EMPTY_BODY: &str = r#"{ "data": [], "included": [] }"#;
 
 #[tokio::test]
@@ -1001,6 +1025,15 @@ async fn watch_later_bridge_resolves_a_known_mapping_from_cache_on_the_next_load
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAL_MAPPINGS_HIT_BODY),
         )
+        .mount(&kitsu)
+        .await;
+    // A cache hit resolves the card through the anime-detail path
+    // rather than re-reading the mapping sideload, so the mock has to
+    // serve that too. In production it is usually already cached; when
+    // it is not, it costs the one fetch it would have cost anyway.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANIME_DETAIL_BODY))
         .mount(&kitsu)
         .await;
     let state = state_with_kitsu(&kitsu.uri());
