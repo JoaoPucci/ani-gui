@@ -132,3 +132,36 @@ that the check verifies the policy's *declaration*, not that the
 document renders as intended. A wholly-inert policy section is visible
 to anyone who opens the rendered file and to any reviewer of the diff
 that made it inert; a parser is not the right instrument for it.
+
+## Three open findings on the deferral checks
+
+Raised in review and not yet fixed. Recorded here so they survive the
+thread.
+
+**Intent-to-add detected by porcelain, not by index metadata.**
+`record_is_recoverable` rejects `git add -N` entries by matching `" A"`
+in `git status --porcelain`. If the file is then deleted from the
+working tree the porcelain line changes, and the check stops
+recognising it. Reading the intent-to-add bit from index metadata is
+the robust form.
+
+**Done looks like:** the predicate identifies intent-to-add from the
+index rather than from working-tree status, with a case for the
+deleted-file variant.
+
+**Setext H2 does not end the section.** The body scan recognises
+`^ {0,3}## `. A heading written as text followed by a line of `-` is
+also an H2, so the section runs past it into the next one.
+
+This belongs to the Markdown-interpretation layer described above, and
+the same argument applies: it is the eighth rule of an open set. The
+recommendation remains to stop parsing document structure rather than
+to add setext handling.
+
+**The signal probe re-execs by `$0`.** `deferral_record_test.sh`
+re-runs itself as `sh "$0"` for the cancellation case. Launched as
+`sh ./deferral_record_test.sh` from `tests/arch`, the re-exec resolves
+against a different working directory. An absolute path fixes it.
+
+**Done looks like:** the probe re-execs by absolute path, asserted by
+running the suite from `tests/arch` as well as from the root.
