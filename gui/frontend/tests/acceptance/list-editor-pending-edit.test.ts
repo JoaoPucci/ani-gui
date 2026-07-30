@@ -46,6 +46,7 @@ vi.mock('$lib/account/set-entry', () => ({
 
 import ListEntryEditor from '../../src/lib/components/ListEntryEditor.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { m } from '../../src/lib/paraglide/messages';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -71,6 +72,16 @@ async function settle() {
 const trigger = () => target.querySelector('button') as HTMLButtonElement;
 const statusSelect = () => target.querySelector('select') as HTMLSelectElement | null;
 
+// Match the label the component actually renders, not an English
+// spelling of it. The popover also holds Remove, ✕ and the two
+// steppers, so this is an exact match rather than a substring — in a
+// locale where one label contains the other, `includes` would pick
+// whichever came first in the DOM.
+const saveButton = () =>
+	Array.from(target.querySelectorAll('button')).find(
+		(b) => b.textContent?.trim() === m.detail_list_save()
+	) ?? null;
+
 describe('list editor after a partial save', () => {
 	it('reopens on the status the user asked for, not the one that landed', async () => {
 		app = mount(ListEntryEditor, {
@@ -93,9 +104,7 @@ describe('list editor after a partial save', () => {
 		select!.dispatchEvent(new Event('change', { bubbles: true }));
 		await settle();
 
-		const save = Array.from(target.querySelectorAll('button')).find((b) =>
-			/save/i.test(b.textContent ?? '')
-		);
+		const save = saveButton();
 		expect(save, 'the Save control should be present').not.toBeNull();
 		save!.click();
 		await settle();
@@ -125,9 +134,8 @@ describe('list editor after a partial save', () => {
 		// change" and the fan-out skips the status — leaving the
 		// tracker that failed still on the old one, forever. The
 		// intent is what forces it to be sent anyway.
-		const retry = Array.from(target.querySelectorAll('button')).find((b) =>
-			/save/i.test(b.textContent ?? '')
-		);
+		const retry = saveButton();
+		expect(retry, 'the Save control should be offered again on reopen').not.toBeNull();
 		retry!.click();
 		await settle();
 
