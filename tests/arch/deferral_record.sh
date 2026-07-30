@@ -184,8 +184,13 @@ headings=$(awk -v re="$SECTION_RE" '
         run = substr($0, RSTART, RLENGTH)
         sub(/^[ \t]*/, "", run)
         ch = substr(run, 1, 1)
-        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
-        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
+        rest = substr($0, RSTART + RLENGTH)
+        indent = index($0, substr(run, 1, 1)) - 1
+        if (!fenced) {
+            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run) }
+            next
+        }
+        if (ch == fence_ch && length(run) >= fence_len && indent < 4 && rest ~ /^[ \t]*$/) { fenced = 0 }
         next
     }
     !fenced && $0 ~ re { n++ }
@@ -207,12 +212,16 @@ body=$(awk -v re="$SECTION_RE" '
         run = substr($0, RSTART, RLENGTH)
         sub(/^[ \t]*/, "", run)
         ch = substr(run, 1, 1)
-        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
-        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
-        inside = 0
+        rest = substr($0, RSTART + RLENGTH)
+        indent = index($0, substr(run, 1, 1)) - 1
+        if (!fenced) {
+            if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run); inside = 0 }
+            next
+        }
+        if (ch == fence_ch && length(run) >= fence_len && indent < 4 && rest ~ /^[ \t]*$/) { fenced = 0 }
         next
     }
-    !fenced && /^## / { inside = ($0 ~ re); next }
+    !fenced && /^ {0,3}## / { inside = ($0 ~ re); next }
     inside { print }
 ' "$AGENTS_FILE")
 
@@ -227,7 +236,15 @@ body=$(awk -v re="$SECTION_RE" '
 # Markdown, and three rounds of that on the import proved the rules
 # arrive faster than they can be learned. Scoped to this section, so
 # the rest of AGENTS.md keeps its fences.
-if printf '%s\n' "$body" | grep -qE '^[[:space:]]*(```|~~~)'; then
+# `record-path` may appear exactly once in the file. An example
+# anywhere — fenced, indented, quoted, or mid-sentence — is a second
+# occurrence and fails, which takes the marker out of the fence
+# question rather than adding another rule to the tracker.
+mentions=$(grep -c 'record-path' "$AGENTS_FILE" || true)
+if [ "$mentions" -ne 1 ]; then
+    printf 'arch/deferral_record: `record-path` appears %s times in %s — exactly one line may mention it, so an example cannot stand in for the declaration\n' "$mentions" "$AGENTS_FILE"
+    failed_fence=1
+elif printf '%s\n' "$body" | grep -qE '^[[:space:]]*(```|~~~)'; then
     printf 'arch/deferral_record: the section contains a fenced block — it may not, because a marker inside an example cannot be told from a live declaration\n'
     failed_fence=1
 else
