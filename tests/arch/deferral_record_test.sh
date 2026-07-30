@@ -55,7 +55,7 @@ trap 'exit 143' TERM
 # Probe mode: the run re-executes itself with this set so the signal
 # case can watch a real process take a real signal, rather than
 # inspecting trap definitions and hoping they mean what they say.
-if [ -n "${DEFERRAL_SIGNAL_PROBE:-}" ]; then
+if [ -n "${ARCH_DEFERRAL_SIGNAL_PROBE:-}" ]; then
     printf '%s\n' "$scratch_dir"
     sleep 5
     exit 0
@@ -164,7 +164,7 @@ fi
 # directory it just deleted, and can still reach `exit 0` — so a
 # Ctrl-C in CI looks like a pass.
 probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
-DEFERRAL_SIGNAL_PROBE=1 sh "$0" >"$probe_out" 2>&1 &
+ARCH_DEFERRAL_SIGNAL_PROBE=1 sh "$0" >"$probe_out" 2>&1 &
 probe_pid=$!
 probe_dir=''
 i=0

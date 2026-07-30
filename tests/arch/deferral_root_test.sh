@@ -84,6 +84,28 @@ expect_ok "a stray REPO_ROOT does not redirect the record check" \
 expect_ok "a stray REPO_ROOT does not redirect the contract check" \
     with_stray_root agents_contract.sh
 
+# Every variable these scripts take from the environment must be
+# namespaced to this suite. This case exists because the same defect
+# was fixed three times here in one review: `REPO_ROOT`, then
+# `SKIP_NESTED`, then `DEFERRAL_SIGNAL_PROBE` — each a plausible name
+# for something else to export, each silently changing what a check
+# did, each found by a reviewer rather than by a run.
+#
+# Fixing them one at a time is what produced the second and third. A
+# name is either namespaced or it is an input from whatever shell the
+# suite happens to run in, and that is checkable, so it is checked.
+allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
+stray_env=$(grep -hoE '\$\{[A-Z][A-Z0-9_]{2,}:-' "$REPO_ROOT"/tests/arch/*.sh \
+    | sed 's/^\${//; s/:-$//' | sort -u \
+    | grep -vE "$allowed_env" || true)
+if [ -z "$stray_env" ]; then
+    printf '  ok       every ambient variable the arch scripts read is namespaced\n'
+else
+    printf '  FAIL     these are readable from any environment: %s\n' \
+        "$(printf '%s' "$stray_env" | tr '\n' ' ')"
+    failed=1
+fi
+
 # A checkout path containing an apostrophe. This exists because the
 # first version of this file built commands as strings and evaluated
 # them, so the path was re-parsed as shell syntax and the suite broke
