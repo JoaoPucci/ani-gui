@@ -328,6 +328,23 @@ fi
 # A tab expands to four columns, so a tab-indented run is content
 # rather than a closer. Measuring characters counts it as one column
 # and closes the fence, exposing the heading inside the example.
+# A fence after the marker. The body scan stops at the opening line
+# and never resumes, so the section's own no-fence rule cannot see the
+# block that the section is not allowed to contain.
+if check_says "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+
+\`\`\`text
+an example
+\`\`\`
+" fence_after; then
+    printf '  FAIL     a fence after the declaration was invisible to the no-fence rule\n'
+    failed=1
+else
+    printf '  ok       a fence after the declaration is still a fence in the section\n'
+fi
+
 TAB=$(printf '\t')
 if check_says "\`\`\`
 ${TAB}\`\`\`
