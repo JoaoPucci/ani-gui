@@ -72,10 +72,13 @@ treat every entry as a lead rather than a fact.
   CI workflow that triggers on the path. Those are examples of what the
   search finds, not the answer.
 
-  Note that native playback does not shorten this list. Every consumer
-  above survives a fully native player, so the two finish lines are
-  sequential and independent, and reaching the first is not progress
-  toward the second.
+  Native playback does retire one consumer — the playback spawn in
+  `anicli/process.rs`, which is the whole point of doing it. It leaves
+  the rest standing: downloads, the boot path, packaging, the bats
+  suites, the arch check and the CI trigger all survive a fully native
+  player. So it is necessary and nowhere near sufficient, and the
+  useful way to hold the two is that finishing playback moves one item
+  off a list nobody has finished enumerating.
 
   Retires the carried patch set in `AGENTS.md` §3 by deleting the
   script, but only once all of that exists.
