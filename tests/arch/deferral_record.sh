@@ -151,14 +151,34 @@ SECTION='Scope is negotiable, delivery is not'
 # against a fixture instead of mutating the real one.
 AGENTS_FILE="${1:-$REPO_ROOT/AGENTS.md}"
 
-if ! grep -q "$SECTION" "$AGENTS_FILE"; then
-    printf 'arch/deferral_record: section "%s" not in %s\n' "$SECTION" "$AGENTS_FILE"
+# The heading, exactly — `## 14. Scope is negotiable, delivery is not`
+# — with the number optional so renumbering the document does not break
+# this. Substring matching would adopt any heading containing the
+# phrase and concatenate its body with the real one, so a marker in a
+# lookalike section could stand in for the policy's own.
+#
+# Exactly one, too. Two matching headings join their bodies for the
+# same reason, and one covering for the other is the failure being
+# guarded against rather than a redundancy worth allowing.
+# `[.]` rather than an escaped dot: awk warns on `\.` in a dynamic
+# regex and falls back to a plain `.`, which matches any character —
+# so `## 14X Scope ...` would have counted. A character class says the
+# same thing with no escaping to be dropped.
+SECTION_RE="^## ([0-9]+[.] )?$SECTION\$"
+headings=$(grep -cE "$SECTION_RE" "$AGENTS_FILE" || true)
+
+if [ "$headings" -eq 0 ]; then
+    printf 'arch/deferral_record: no heading "## N. %s" in %s\n' "$SECTION" "$AGENTS_FILE"
+    exit 1
+fi
+if [ "$headings" -ne 1 ]; then
+    printf 'arch/deferral_record: %s headings match "%s" in %s — exactly one section may carry the policy, or a marker in either can stand in for the other\n' "$headings" "$SECTION" "$AGENTS_FILE"
     exit 1
 fi
 
 # The section body: from its heading to the next heading or EOF.
-body=$(awk -v want="$SECTION" '
-    /^## / { inside = index($0, want) > 0; next }
+body=$(awk -v re="$SECTION_RE" '
+    /^## / { inside = ($0 ~ re); next }
     inside { print }
 ' "$AGENTS_FILE")
 
