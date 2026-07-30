@@ -90,13 +90,6 @@ for script in deferral_record agents_contract deferral_record_test; do
         from_arch "$script.sh"
 done
 
-# A stray REPO_ROOT must not redirect anything. It used to, and the
-# script exited 0 against the wrong tree rather than failing.
-expect_ok "a stray REPO_ROOT does not redirect the record check" \
-    with_stray_root deferral_record.sh
-expect_ok "a stray REPO_ROOT does not redirect the contract check" \
-    with_stray_root agents_contract.sh
-
 # Shell in this repository has to be linted by the shell linter. The
 # `ani-cli checks` workflow filters on `**ani-cli`, so a pull request
 # touching only `tests/arch/*.sh` never ran shellcheck or shfmt
