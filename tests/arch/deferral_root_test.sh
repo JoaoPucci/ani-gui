@@ -74,10 +74,17 @@ apostrophe_dir="$(mktemp -d)/o'brien"
 mkdir -p "$apostrophe_dir"
 if git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
     cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" "$apostrophe_dir/repo/tests/arch/"
-    if (cd "$apostrophe_dir/repo" && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh) >/dev/null 2>&1; then
-        printf '  ok       the suite runs from a path containing an apostrophe\n'
+    # Count the assertions the nested run makes, rather than trusting
+    # its exit status. A guard that skips the whole script would exit
+    # zero having checked nothing, and this case would report success
+    # for a process that merely started.
+    nested_ok=$(cd "$apostrophe_dir/repo" \
+        && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh 2>/dev/null \
+        | grep -c '^  ok' || true)
+    if [ "${nested_ok:-0}" -ge 5 ]; then
+        printf '  ok       the suite asserts (%s cases) from a path containing an apostrophe\n' "$nested_ok"
     else
-        printf '  FAIL     a path containing an apostrophe breaks the suite\n'
+        printf '  FAIL     the nested run made %s assertions, expected at least 5\n' "${nested_ok:-0}"
         failed=1
     fi
 else
