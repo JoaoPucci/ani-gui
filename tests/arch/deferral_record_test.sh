@@ -278,7 +278,11 @@ mkdir -p "$linkrepo"
     printf 'content\n' >real.md
     ln -s /etc/hostname outside.md
     ln -s nowhere.md broken.md
-    git add real.md outside.md broken.md
+    mkdir -p mixed allgood
+    printf 'content\n' >mixed/content.md
+    ln -s /etc/hostname mixed/outside.md
+    printf 'content\n' >allgood/content.md
+    git add real.md outside.md broken.md mixed allgood
 ) >/dev/null 2>&1
 
 link_case() {
@@ -294,6 +298,23 @@ else
     printf '  FAIL     a tracked regular file was rejected\n'
     failed=1
 fi
+# A declared directory is one record, so every entry under it has to
+# carry content. One regular file is enough to satisfy a check that
+# stops at the first match, and the clone still arrives with a link
+# that points nowhere.
+if link_case mixed/; then
+    printf '  FAIL     a directory with one regular file and one symlink accepted\n'
+    failed=1
+else
+    printf '  ok       a directory is rejected when any entry is a link\n'
+fi
+if link_case allgood/; then
+    printf '  ok       a directory of regular files is a record\n'
+else
+    printf '  FAIL     a directory of regular files was rejected\n'
+    failed=1
+fi
+
 for link in outside.md broken.md; do
     if link_case "$link"; then
         printf '  FAIL     tracked symlink %s accepted — the index entry is not the record\n' "$link"
