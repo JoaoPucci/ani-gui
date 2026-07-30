@@ -9,6 +9,18 @@ an agent's session state, which nobody else can read and which
 disappears when the session does. An item leaves this list by being
 done or by being decided against in writing.
 
+**These are reminders, not specifications.** An entry has to be true
+and has to be enough to pick the work back up; it does not have to
+enumerate every file that will change, list acceptance criteria, or
+survive as a plan. Whoever does the work scopes it against the code at
+the time, which is the only scoping that can be trusted anyway.
+
+So when reviewing this file: an entry that states something false is a
+defect, and an entry that leaves things out is not. If reading it
+would send someone to rebuild what already works, or let them think
+the job is finished when it is not, say so. If it merely omits a
+detail a `grep` would surface, that is the intended level of detail.
+
 **Treat every entry as a lead, not a fact.** These were carried across
 from session state and reviewing them turned up more than a dozen
 errors — mostly work that had already shipped, a couple of problems
