@@ -253,6 +253,48 @@ else
     printf '  ok       a section declaring an untracked record fails\n'
 fi
 
+# An index entry is not the same as a readable record. A symlink and
+# a gitlink both get one, and neither carries the content: the link
+# may point outside the repository or at nothing, and a submodule is
+# an empty directory until someone initialises it. Both would have the
+# check report a durable record where a fresh clone finds none.
+#
+# Driven against a scratch repository, since the entries have to exist
+# in an index and this one is not going to grow a symlink for the sake
+# of a test. No commit is needed — `ls-files` reads the index.
+linkrepo="$scratch_dir/linkrepo"
+mkdir -p "$linkrepo"
+(
+    cd "$linkrepo"
+    git init -q .
+    printf 'content\n' >real.md
+    ln -s /etc/hostname outside.md
+    ln -s nowhere.md broken.md
+    git add real.md outside.md broken.md
+) >/dev/null 2>&1
+
+link_case() {
+    if (cd "$linkrepo" && record_is_recoverable "$1"); then
+        return 0
+    fi
+    return 1
+}
+
+if link_case real.md; then
+    printf '  ok       a tracked regular file is a record\n'
+else
+    printf '  FAIL     a tracked regular file was rejected\n'
+    failed=1
+fi
+for link in outside.md broken.md; do
+    if link_case "$link"; then
+        printf '  FAIL     tracked symlink %s accepted — the index entry is not the record\n' "$link"
+        failed=1
+    else
+        printf '  ok       tracked symlink %s rejected\n' "$link"
+    fi
+done
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
