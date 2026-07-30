@@ -37,7 +37,12 @@ treat every entry as a lead rather than a fact.
   query as the script's `episodes_list` and exposes the per-mode
   episode tags through `ShowMetadata`. The native boundary is not
   candidate selection — it stops before stream-source resolution.
-  Everything past that point is script-only.
+  What is script-only is the source resolution itself — the three
+  stages below — not everything downstream of it. Once a playable URL
+  exists the native side already takes over: `commands/play.rs`
+  classifies and caches the resolved URL and opens a stream session,
+  and `proxy/m3u8.rs` fetches and rewrites manifests and signs segment
+  URLs. None of that needs rebuilding.
 
   There are two finish lines and they need different treatment.
 
