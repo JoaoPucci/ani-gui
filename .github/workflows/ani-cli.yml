@@ -24,7 +24,11 @@ jobs:
         SHELLCHECK_OPTS: -s sh -o all -e 2250
         SHFMT_OPTS: -i 4 -ci -d
       with:
-        sh_checker_exclude: "_ani-cli-bash _ani-cli-zsh tests gui"
+        # `tests/bash` holds bats suites, which shellcheck reads
+        # poorly; `tests/arch` is ordinary POSIX sh and is linted. A
+        # bare `tests` here excluded both, so the arch scripts went
+        # unchecked even once the workflow ran for them.
+        sh_checker_exclude: "_ani-cli-bash _ani-cli-zsh tests/bash tests/fixtures tests/tools gui"
       
   check-exec:
     name: Executable Bit
