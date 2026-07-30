@@ -185,17 +185,20 @@ mid-task, exactly one of these is an acceptable outcome:
   come out high.
 - **Do it in its own PR.** Open the follow-up PR, land it, then update
   the original. Say on the thread which PR carries it.
-- **Open a GitHub issue** describing the work, and link it wherever
-  you deferred it. An unwritten deferral is a dropped one, and a
-  deferral written only where you happen to be standing is the same
-  thing: the internal planning directory is ignored by git, so an
-  entry there leaves with your checkout and a thread citing it points
-  at a file nobody else has. Keep that queue if it helps you — but the
-  durable record, the one you cite, is the issue.
-  This is held to the wording of the section itself; any path named
-  below is checked for being readable from a fresh clone.
+- **Add an entry to the deferred-work log**, and link it wherever you
+  deferred it. An unwritten deferral is a dropped one, and a deferral
+  written only where you happen to be standing is the same thing: the
+  internal planning directory is ignored by git, so an entry there
+  leaves with your checkout and a thread citing it points at a file
+  nobody else has. Issues are disabled on this repository, so they are
+  not an option either. Keep the internal queue if it helps you — the
+  durable record, the one you cite, is the tracked log. Say what the
+  work is, why it waited, and what done looks like.
 
-<!-- record-path: tests/arch/deferral_record.sh -->
+  Any path declared below is checked for being readable from a fresh
+  clone, by `tests/arch/deferral_record.sh`.
+
+<!-- record-path: docs/deferred-work.md -->
 - **Ask.** If the tradeoff is genuinely the maintainer's call, put the
   options to them. Silence is not a way to ask.
 
