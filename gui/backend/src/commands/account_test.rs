@@ -1374,3 +1374,57 @@ async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cac
         "seeding the detail cache must fetch the signed image while the signature is still valid"
     );
 }
+
+#[tokio::test]
+async fn watch_later_bridge_remembers_a_conclusive_miss_and_asks_neither_route_again() {
+    // The negative half of the cache, which nothing else pins. The
+    // error cases assert what must NOT be written; none of them fails
+    // if a genuine "nothing maps this" were never written either — so
+    // the whole point of the short negative TTL went unverified.
+    //
+    // A miss is the expensive answer: it is what drags in the AniList
+    // batch on top of the Kitsu lookup. Remembering it is what stops
+    // an unmappable title costing both routes on every home mount.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    // AniList answers cleanly and does not know it either. Both routes
+    // have spoken, so the dead end is real and may be recorded.
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let first = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert!(
+        first.is_empty() && second.is_empty(),
+        "nothing maps this id"
+    );
+
+    let mapping_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/mappings")
+        .count();
+    assert_eq!(mapping_calls, 1, "the second load must not re-ask Kitsu");
+    assert_eq!(
+        anilist.received_requests().await.unwrap().len(),
+        1,
+        "the second load must not re-run the AniList batch either"
+    );
+}
