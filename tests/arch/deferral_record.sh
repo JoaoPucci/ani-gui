@@ -42,7 +42,19 @@ record_is_recoverable() {
     # reading from a fresh clone. It also correctly accepts a
     # force-added file: tracked beats ignored, and such a file really
     # is readable.
-    git ls-files --error-unmatch -- ":(literal)$1" >/dev/null 2>&1
+    git ls-files --error-unmatch -- ":(literal)$1" >/dev/null 2>&1 || return 1
+
+    # Tracked is necessary but not sufficient: the entry has to be
+    # the record, not a pointer to one. A symlink (120000) and a
+    # gitlink (160000) both have index entries and neither carries
+    # content — the link may leave the repository or dangle, and a
+    # submodule is an empty directory until initialised. Requiring a
+    # regular blob (100644 / 100755) is stricter than checking where a
+    # link goes, and deliberately so: a symlink to a tracked file
+    # would be readable and is refused anyway, which fails loudly and
+    # is the direction this check errs in everywhere else.
+    git ls-files --stage -- ":(literal)$1" 2>/dev/null \
+        | grep -qE '^100(644|755) '
 }
 
 # A specific reason for the failure message, so the fix is obvious
