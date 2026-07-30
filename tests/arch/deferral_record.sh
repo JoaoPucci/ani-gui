@@ -155,9 +155,27 @@ body=$(awk -v want="$SECTION" '
     inside { print }
 ' "$AGENTS_FILE")
 
+# The section may not contain a fenced block. A marker inside an
+# example is inert but indistinguishable from a live one by line
+# matching, and it would hold the at-least-one guard open after the
+# real marker was deleted — the check passing while examining an
+# example instead of a record.
+#
+# Refusing fences is the same answer CLAUDE.md's import got, and for
+# the same reason: deciding which lines are live means implementing
+# Markdown, and three rounds of that on the import proved the rules
+# arrive faster than they can be learned. Scoped to this section, so
+# the rest of AGENTS.md keeps its fences.
+if printf '%s\n' "$body" | grep -qE '^[[:space:]]*(```|~~~)'; then
+    printf 'arch/deferral_record: the section contains a fenced block — it may not, because a marker inside an example cannot be told from a live declaration\n'
+    failed_fence=1
+else
+    failed_fence=0
+fi
+
 paths=$(printf '%s\n' "$body" | cited_paths)
 
-failed=0
+failed=$failed_fence
 # `read -r` line by line, because a declared path may contain spaces
 # that a `for` over an unquoted expansion would tear in half. Fed by a
 # here-document rather than a pipe: a pipeline would run the loop in a
