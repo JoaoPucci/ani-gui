@@ -487,6 +487,20 @@ expect_not_parsed() {
 }
 
 expect_parsed 'docs/follow-ups.md' 'ordinary dotted file'
+
+# Indentation makes a line code in Markdown at four spaces, and the
+# boundary is not somewhere this check should have an opinion about —
+# so a declaration must start at column zero, full stop. Anything
+# indented is an example.
+indented_marker() { printf '%s<!-- record-path: docs/x.md -->\n' "$1" | cited_paths; }
+for pad in '    ' '  ' ' '; do
+    if [ -z "$(indented_marker "$pad")" ]; then
+        printf '  ok       an indented marker (%s spaces) is not a declaration\n' "${#pad}"
+    else
+        printf '  FAIL     an indented marker (%s spaces) counted as a declaration\n' "${#pad}"
+        failed=1
+    fi
+done
 expect_parsed 'FOLLOWUPS' 'git permits a name with neither slash nor dot'
 expect_parsed 'docs/follow ups.md' 'git permits a space, so a citation must survive one'
 expect_parsed '.planning/follow-ups' 'a record needs no extension to be a record'
