@@ -77,8 +77,16 @@ treat every entry as a lead rather than a fact.
   CI workflow that triggers on the path. Those are examples of what the
   search finds, not the answer.
 
-  Native playback does retire one consumer — the playback spawn in
-  `anicli/process.rs`, which is the whole point of doing it. It leaves
+  Native playback has to cover every path that resolves a stream, not
+  just the main one. Besides the spawn in `anicli/process.rs`,
+  `commands/play_syncplay.rs` and `commands/play_external_command.rs`
+  both call `run_debug` — so Syncplay and Open in external player stay
+  on the broken script resolver if only the primary path is ported,
+  and the item would declare playback native while two user-visible
+  ways of starting it remain broken.
+
+  Doing all three retires those consumers, which is the whole point of
+  the work. It leaves
   the rest standing: downloads, the boot path, packaging, the bats
   suites, the arch check and the CI trigger all survive a fully native
   player. So it is necessary and nowhere near sufficient, and the
