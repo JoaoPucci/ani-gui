@@ -1,0 +1,133 @@
+#!/bin/sh
+# Self-test for the deferral-record invariant.
+#
+# The check it guards makes a claim — "a contributor who clones this
+# repo can read the cited record" — and there is more than one way for
+# that to be false. A path git ignores is the obvious one. A path that
+# is merely absent is the quiet one: nothing ignores `docs/notes.md`,
+# so an ignore-based check calls it fine while every other checkout
+# has no such file. Both are the same failure to a reader.
+#
+# So the predicate is exercised directly against all three states
+# rather than inferred from whether the suite happens to be green.
+
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+__DEFERRAL_RECORD_LIB__=1
+# shellcheck source=./deferral_record.sh
+. "$REPO_ROOT/tests/arch/deferral_record.sh"
+unset __DEFERRAL_RECORD_LIB__
+
+failed=0
+
+# Anything the run creates goes here and is removed on every exit
+# path, including an interrupt — a suite that leaves litter in the
+# working tree makes the next `git status` lie.
+scratch=''
+cleanup() { [ -n "$scratch" ] && rm -f $scratch; }
+trap cleanup EXIT HUP INT TERM
+
+expect_recoverable() {
+    if record_is_recoverable "$1"; then
+        printf '  ok       %s\n' "$1"
+    else
+        printf '  FAIL     %s — tracked, but the check rejected it\n' "$1"
+        failed=1
+    fi
+}
+
+expect_rejected() {
+    if record_is_recoverable "$1"; then
+        printf '  FAIL     %s — %s, but the check accepted it\n' "$1" "$2"
+        failed=1
+    else
+        printf '  ok       %s (%s)\n' "$1" "$2"
+    fi
+}
+
+printf 'arch/deferral_record_test: predicate cases\n'
+
+# Tracked: the only state that actually survives a fresh clone.
+# Names the suite runner rather than this file's own subject, which
+# is not yet in the index while the invariant is being introduced —
+# a bootstrap detail, not a property of the predicate.
+expect_recoverable tests/arch/run-all.sh
+
+# Ignored: the defect the invariant was written for.
+expect_rejected .planning/follow-ups.md 'git-ignored'
+
+# Absent: nothing ignores it, and it is still not there. This is the
+# case an ignore-only check waves through.
+expect_rejected docs/no-such-follow-ups.md 'not tracked'
+
+# Present on disk but never added — same consequence as absent, since
+# a clone reconstructs from the index, not from someone's disk.
+#
+# The probe must not be a fixed name. A developer with their own file
+# at that path would have it truncated on the way in and deleted on
+# the way out, so the suite would destroy unrelated local work as a
+# side effect of asserting something unrelated to it.
+first_probe=$(make_untracked_probe)
+scratch="$scratch $first_probe"
+expect_rejected "$first_probe" 'untracked working-tree file'
+
+# Non-collision, demonstrated without ever naming a path of our own.
+# Writing a sentinel to a fixed location to prove the probe avoids
+# fixed locations would reintroduce the hazard one line further down:
+# the sentinel is someone's file too. So the first probe becomes the
+# sentinel, and the second has to leave it alone.
+printf 'do not lose me\n' >"$first_probe"
+second_probe=$(make_untracked_probe)
+scratch="$scratch $second_probe"
+
+if [ "$second_probe" = "$first_probe" ]; then
+    printf '  FAIL     probe returned the same path twice\n'
+    failed=1
+elif [ "$(cat "$first_probe" 2>/dev/null)" != 'do not lose me' ]; then
+    printf '  FAIL     probe clobbered an existing file at %s\n' "$first_probe"
+    failed=1
+else
+    printf '  ok       probe never reuses or truncates a path\n'
+fi
+
+printf 'arch/deferral_record_test: parser cases\n'
+
+# The parser runs before the predicate, so anything it drops is never
+# checked at all — a silent pass rather than a visible failure.
+parsed() { printf '%s\n' "$1" | cited_paths; }
+
+expect_parsed() {
+    if [ "$(parsed "\`$1\`")" = "$1" ]; then
+        printf '  ok       parses %s\n' "$1"
+    else
+        printf '  FAIL     dropped %s — %s\n' "$1" "$2"
+        failed=1
+    fi
+}
+
+expect_not_parsed() {
+    if [ -z "$(parsed "\`$1\`")" ]; then
+        printf '  ok       ignores %s (%s)\n' "$1" "$2"
+    else
+        printf '  FAIL     %s parsed as a path — %s\n' "$1" "$2"
+        failed=1
+    fi
+}
+
+expect_parsed 'docs/follow-ups.md' 'ordinary dotted file'
+expect_parsed '.planning/follow-ups' 'a record needs no extension to be a record'
+expect_parsed 'docs/follow-ups/' 'a directory can be the record just as well'
+expect_parsed '.planning/' 'named in this very section, and unreachable'
+
+expect_not_parsed '#N · Title' 'a citation label, not a path'
+expect_not_parsed 'git check-ignore' 'a command'
+expect_not_parsed 'https://example.com/x' 'a URL'
+
+if [ "$failed" -ne 0 ]; then
+    printf 'arch/deferral_record_test: FAILED\n'
+    exit 1
+fi
+printf 'arch/deferral_record_test: ok\n'
