@@ -363,6 +363,36 @@ else
     printf '  ok       a commented-out duplicate heading fails on count\n'
 fi
 
+# `git add -N` records only the intent to add. The entry is in the
+# index with a regular mode and the empty blob, so every mode test
+# passes — but `write-tree` omits the path, so the next commit and
+# every clone from it lack the record entirely.
+ita_repo="$scratch_dir/intent-to-add"
+mkdir -p "$ita_repo"
+(
+    cd "$ita_repo"
+    git init -q .
+    printf 'log\n' >LEDGER.md
+    git add -N LEDGER.md
+) >/dev/null 2>&1
+if (cd "$ita_repo" && record_is_recoverable LEDGER.md); then
+    printf '  FAIL     an intent-to-add record was accepted\n'
+    failed=1
+else
+    printf '  ok       an intent-to-add record is not carried\n'
+fi
+
+# Sourced scripts keep the caller's `$0`, so recomputing the root
+# after the caller has already changed into it walks above the
+# repository. Invoking by relative path from inside tests/arch is the
+# case that exposes it.
+if (cd "$REPO_ROOT/tests/arch" && sh ./agents_contract.sh) >/dev/null 2>&1; then
+    printf '  ok       a relative invocation from tests/arch still resolves the repository\n'
+else
+    printf '  FAIL     a relative invocation from tests/arch resolved the wrong root\n'
+    failed=1
+fi
+
 TAB=$(printf '\t')
 if check_says "\`\`\`
 ${TAB}\`\`\`
