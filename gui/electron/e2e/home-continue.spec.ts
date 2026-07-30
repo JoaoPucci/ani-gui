@@ -57,6 +57,21 @@ interface StubOptions {
 	/** Delay the availability probe to widen the loading window for
 	 *  the "non-interactive loading" assertions. */
 	availabilityDelayMs?: number;
+	/** Override the episode's canonical title. A long one wraps at the
+	 *  card width, which is the case the card-height assertion needs
+	 *  and a short title cannot exercise. Explicit `null` means Kitsu
+	 *  knows the episode but carries no title for it — the branch that
+	 *  falls back to "Episode N", or to nothing at all on a movie. */
+	episodeTitle?: string | null;
+	/** Never answer the Kitsu detail lookup, so the row's match stays
+	 *  `undefined` — exactly the condition the loading branch renders
+	 *  on. The placeholder is then a stable state rather than a
+	 *  transient one. Hanging the availability probe instead does NOT
+	 *  work: the row resolves without waiting for it. */
+	matchHang?: boolean;
+	/** Serve the show as a movie. Combined with `episodeTitle: null`
+	 *  this is the only variant whose body has no episode line. */
+	singleVideo?: boolean;
 	/** Hook fired whenever the renderer posts to /api/play — lets
 	 *  the test assert the click handler ran with the right episode. */
 	onPlay?: (body: unknown) => void;
@@ -135,8 +150,22 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 			}
 			return j(null);
 		}
-		if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
-		if (p.startsWith('/api/kitsu/episodes/')) return j([continueKitsuEpisode6]);
+		if (p.startsWith('/api/kitsu/anime/')) {
+			// Never fulfilled: the request stays pending for the life of
+			// the app, so the row never leaves its loading state.
+			if (opts.matchHang) return;
+			return j(
+				opts.singleVideo
+					? { ...continueKitsuMatch, subtype: 'movie', episode_count: 1 }
+					: continueKitsuMatch
+			);
+		}
+		if (p.startsWith('/api/kitsu/episodes/'))
+			return j([
+				opts.episodeTitle === undefined
+					? continueKitsuEpisode6
+					: { ...continueKitsuEpisode6, canonical_title: opts.episodeTitle }
+			]);
 		if (p.startsWith('/api/title-match')) return j(null);
 		if (p === '/api/kitsu/search') return j([]);
 
@@ -146,7 +175,7 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 			}
 			return j({
 				available: true,
-				episode_count: continueKitsuMatch.episode_count,
+				episode_count: opts.singleVideo ? 1 : continueKitsuMatch.episode_count,
 				extra_episodes: []
 			});
 		}
@@ -427,4 +456,74 @@ test('Continue card during the availability-probe window is not a /search link',
 	} finally {
 		await app.close();
 	}
+});
+
+/** Height of the single Continue card this stub config produces.
+ *  One app launch per call: each state being compared is STABLE
+ *  under its own config, which is what makes the comparison
+ *  trustworthy. Catching them as a live transition inside one launch
+ *  means racing the probe, and that race is not symmetric — once the
+ *  app is warm the probe wins, the placeholder is never on screen,
+ *  and the measurement silently becomes resolved-vs-resolved. */
+async function continueCardHeight(opts: StubOptions, selector: string): Promise<number> {
+	const { app, page } = await launchAppWithContinueStubs(opts);
+	try {
+		await waitForStripVisible(page);
+		const strip = page.getByRole('region', { name: /continue watching/i });
+		await expect(strip).toBeVisible({ timeout: 10_000 });
+		// Class locators, not roles: the strip also holds the rail's
+		// kebab and each card's delete chip, so `getByRole('button')`
+		// picks up a 33px chip and compares it against a card.
+		const card = strip.locator(selector).first();
+		await expect(card).toBeVisible({ timeout: 10_000 });
+		return (await card.boundingBox())?.height ?? 0;
+	} finally {
+		await app.close();
+	}
+}
+
+test('every Continue card is the same height, whatever its probe returns', async () => {
+	// The rail resolves row by row, so a card that changes size when
+	// its probe lands makes the row settle in visible steps.
+	//
+	// Stated as "all four shapes are one height" rather than "before
+	// equals after". Same claim, but measurable without timing, and it
+	// also catches a rail that is ragged with nothing loading at all.
+	// The four are every shape the card has: the placeholder, and the
+	// three terminal bodies — a title that wraps to the clamp, a title
+	// that fits on one line, and a movie with no episode line.
+	//
+	// Measured rather than counted: the acceptance tier can compare
+	// structure but has no layout engine, and the failure here is
+	// purely a height. Four Electron launches, hence the timeout.
+	test.setTimeout(180_000);
+	const LONG = 'The Long Awaited Reunion Beneath the Sakura Tree at the Edge of the World';
+
+	const placeholder = await continueCardHeight(
+		{ history: continueHistory, matchHang: true },
+		'.resume-card-loading'
+	);
+	expect(placeholder).toBeGreaterThan(0);
+
+	const wrappingTitle = await continueCardHeight(
+		{ history: continueHistory, episodeTitle: LONG },
+		'button.resume-card'
+	);
+	const shortTitle = await continueCardHeight(
+		{ history: continueHistory, episodeTitle: 'Six' },
+		'button.resume-card'
+	);
+	// A movie whose episode carries no canonical title renders neither
+	// the episode title nor the "Episode N" fallback.
+	const movieNoTitle = await continueCardHeight(
+		{ history: continueHistory, singleVideo: true, episodeTitle: null },
+		'button.resume-card'
+	);
+
+	const heights = [placeholder, wrappingTitle, shortTitle, movieNoTitle];
+	// Sub-pixel rounding is fine; a line of text is not.
+	expect(
+		Math.max(...heights) - Math.min(...heights),
+		`placeholder=${placeholder} wrapping=${wrappingTitle} short=${shortTitle} movie=${movieNoTitle}`
+	).toBeLessThan(2);
 });
