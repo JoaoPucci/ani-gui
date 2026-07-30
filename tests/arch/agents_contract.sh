@@ -18,23 +18,27 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Overridable so the self-test can drive fixtures instead of mutating
+# the real file.
+CLAUDE_FILE="${1:-$REPO_ROOT/CLAUDE.md}"
+
 failed=0
 
-if [ ! -f CLAUDE.md ]; then
-    printf 'arch/agents_contract: CLAUDE.md is missing\n'
+if [ ! -f "$CLAUDE_FILE" ]; then
+    printf 'arch/agents_contract: %s is missing\n' "$CLAUDE_FILE"
     exit 1
 fi
 
 # An import is `@path` alone on a line. A backticked or indented
 # mention is documentation about the syntax, not an instance of it.
-if grep -qE '^@AGENTS\.md[[:space:]]*$' CLAUDE.md; then
+if grep -qE '^@AGENTS\.md[[:space:]]*$' "$CLAUDE_FILE"; then
     printf 'arch/agents_contract: ok (CLAUDE.md imports AGENTS.md)\n'
 else
     printf 'arch/agents_contract: CLAUDE.md does not import AGENTS.md — a prose pointer is not followed, so the contract never reaches the agent\n'
     failed=1
 fi
 
-if [ ! -f AGENTS.md ]; then
+if [ ! -f "$REPO_ROOT/AGENTS.md" ]; then
     printf 'arch/agents_contract: AGENTS.md is missing, so the import resolves to nothing\n'
     failed=1
 fi

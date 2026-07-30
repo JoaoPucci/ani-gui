@@ -303,6 +303,38 @@ for link in outside.md broken.md; do
     fi
 done
 
+# The reason has to match the fix. A tracked symlink is tracked, so
+# telling its author it "is not tracked by git" sends them to `git
+# add` a path git already has — the one action that cannot help.
+if [ "$(cd "$linkrepo" && why_unrecoverable outside.md)" = 'which is not tracked by git' ]; then
+    printf '  FAIL     a tracked symlink is reported as untracked — the suggested fix is impossible\n'
+    failed=1
+else
+    printf '  ok       a tracked symlink is reported as the wrong kind of entry\n'
+fi
+
+# An import inside a fenced example is not an import. Claude Code does
+# not evaluate `@path` in a code block, so moving the live line into
+# one removes the contract from context — while a plain line-match
+# still finds it and reports the invariant healthy.
+fenced="$scratch_dir/claude-fenced.md"
+printf 'Prose about the syntax:\n\n```\n@AGENTS.md\n```\n' >"$fenced"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$fenced" >/dev/null 2>&1; then
+    printf '  FAIL     an import inside a fence passed — the contract would be out of context\n'
+    failed=1
+else
+    printf '  ok       an import inside a fence does not count\n'
+fi
+
+live="$scratch_dir/claude-live.md"
+printf 'Prose.\n\n@AGENTS.md\n' >"$live"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$live" >/dev/null 2>&1; then
+    printf '  ok       a real import passes\n'
+else
+    printf '  FAIL     a real import was rejected\n'
+    failed=1
+fi
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
