@@ -405,6 +405,30 @@ else
     printf '  ok       any fence at all is refused\n'
 fi
 
+# The import is only worth anything if what it names arrives with the
+# clone. `AGENTS.md` sitting on disk proves nothing — `git rm --cached`
+# leaves it there while removing it from the index, and a symlink to
+# something outside the repository satisfies a file test too. Both
+# leave a fresh clone importing a contract that is not there.
+#
+# Driven in the scratch repository, where a CLAUDE.md with a live
+# import sits beside an AGENTS.md that exists but was never added.
+contract_repo="$scratch_dir/contract-repo"
+mkdir -p "$contract_repo"
+(
+    cd "$contract_repo"
+    git init -q .
+    printf '@AGENTS.md\n' >CLAUDE.md
+    printf 'the contract\n' >AGENTS.md
+    git add CLAUDE.md
+) >/dev/null 2>&1
+if (cd "$contract_repo" && sh "$REPO_ROOT/tests/arch/agents_contract.sh" CLAUDE.md) >/dev/null 2>&1; then
+    printf '  FAIL     an untracked AGENTS.md satisfied the import — a clone would have nothing to import\n'
+    failed=1
+else
+    printf '  ok       the imported contract must be tracked, not merely present\n'
+fi
+
 live="$scratch_dir/claude-live.md"
 printf 'Prose.\n\n@AGENTS.md\n' >"$live"
 if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$live" >/dev/null 2>&1; then
