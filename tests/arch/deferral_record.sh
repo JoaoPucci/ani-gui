@@ -21,7 +21,7 @@ set -eu
 # repository. It matters when this file is sourced as a library too:
 # without the override it would re-derive its own root and `cd` there,
 # silently undoing the caller's choice of repository.
-REPO_ROOT="${ARCH_REPO_ROOT:-${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}}"
+REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
 # Can a contributor who clones this repo read the file at `$1`?

@@ -33,6 +33,13 @@ cd "$REPO_ROOT"
 CLAUDE_FILE="${1:-$REPO_ROOT/CLAUDE.md}"
 AGENTS_FILE="${2:-AGENTS.md}"
 
+# Hand the resolved root over by the specific name. The library keeps
+# the caller's `$0`, which is meaningless after the `cd` above, and it
+# deliberately ignores a bare `REPO_ROOT` so a stray environment
+# variable cannot redirect it.
+ARCH_REPO_ROOT="$REPO_ROOT"
+export ARCH_REPO_ROOT
+
 __DEFERRAL_RECORD_LIB__=1
 # shellcheck source=./deferral_record.sh
 . "$SCRIPT_DIR/deferral_record.sh"
