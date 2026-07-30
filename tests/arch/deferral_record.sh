@@ -48,25 +48,31 @@ why_unrecoverable() {
 # Backticked tokens from the section body (on stdin) that name a repo
 # path.
 #
-# A token is a path if it has a slash or a dot: `docs/notes.md`,
-# `.planning/follow-ups`, `docs/notes/`, and a bare `follow-ups.md` at
-# the repository root all qualify. Every narrowing tried here — an
-# extension, then a slash — turned out to exclude a real record, and
-# each did so by dropping the token before the predicate ran, which
-# surfaces as the invariant passing. A check wrong in that direction
-# says nothing at all while looking like it said yes.
+# Two questions, in this order: is every character one a path may
+# contain, and is there a slash or a dot to distinguish it from a
+# prose word.
 #
-# So this errs toward over-matching. A false positive fails loudly and
-# gets fixed; a false negative is invisible. The exclusions are
-# carried by the character class — `#N · Title` and `git check-ignore`
-# hold characters and spaces it does not admit, a URL is out on its
-# colon, and a bare prose word has neither slash nor dot. All four are
-# asserted in the self-test, so widening cannot quietly reclassify
-# prose as paths.
+# Deliberately not a rule about what shape a path takes. Four such
+# rules were tried — must end in an extension, must contain a slash,
+# may start with a dot, must not start with `./` — and each excluded a
+# real record: `docs/notes/`, `follow-ups.md`, `.planning/follow-ups`,
+# `./docs/notes.md`. Enumerating shapes keeps meeting shapes nobody
+# enumerated, and every miss failed the same silent way, dropping the
+# token before the predicate ran so the suite reported success without
+# having checked anything.
+#
+# Asking what a path may not contain terminates, because that set is
+# small and fixed. Whitespace, `#`, `:` and the rest are what keep
+# `#N · Title`, `git check-ignore` and a URL out; the slash-or-dot
+# test is what keeps a bare prose word out. All four are asserted, so
+# this cannot drift back into matching text.
+#
+# It errs toward over-matching by design. A false positive fails
+# loudly and gets fixed; a false negative is invisible.
 cited_paths() {
     grep -o '`[^`]*`' \
         | tr -d '`' \
-        | grep -E '^\.?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_.-]*)*$' \
+        | grep -E '^[A-Za-z0-9_./-]+$' \
         | grep -E '/|\.' \
         | sort -u
 }
