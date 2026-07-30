@@ -37,8 +37,14 @@ treat every entry as a lead rather than a fact.
   query as the script's `episodes_list` and exposes the per-mode
   episode tags through `ShowMetadata`. The native boundary is not
   candidate selection — it stops before stream-source resolution.
-  Everything past that point is script-only
-  and all of it is needed before playback works natively:
+  Everything past that point is script-only.
+
+  There are two different finish lines here, and the entry previously
+  ran them together. **Native playback** needs stages 1 to 3.
+  **Deleting the script** needs those plus 4 and 5, and 5 blocks
+  deletion on its own regardless of how much has been ported. Reaching
+  the first is not progress toward the second in any way that lets the
+  script go:
 
   1. **The episode-source request.** `get_episode_url` sends the
      authenticated persisted GraphQL query for `(showId,
@@ -51,10 +57,13 @@ treat every entry as a lead rather than a fact.
   3. **Turning a decrypted `sourceUrl` into a playable stream** —
      `generate_link` / `get_links`: provider embed requests,
      master-playlist expansion, quality selection, referer selection.
-  4. **Downloads**, below.
+  4. **Downloads**, below. Also a deletion blocker rather than a
+     playback one — playback can be fully native while `-d` still
+     shells out.
 
-  5. **Boot-time wiring**, which blocks deletion independently of all
-     of the above. `AppState::build` calls `locate_ani_cli` and
+  5. **Boot-time wiring** — a deletion blocker only, and independent of
+     everything above it: native playback works fine with this left
+     alone. `AppState::build` calls `locate_ani_cli` and
      `resolve_anicli_path` and propagates the error, so the app does
      not start without the script present — porting every playback and
      download consumer and then deleting it still yields a binary that
