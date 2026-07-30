@@ -275,6 +275,32 @@ else
     failed=1
 fi
 
+# The library must honour a root the caller resolved, including when
+# it is sourced rather than executed. Sourcing is the case that got
+# missed: executed, the file derives its own root and that happens to
+# be right; sourced by a test that has already pointed at a scratch
+# repository, re-deriving silently `cd`s back to this checkout and the
+# caller's choice is discarded without a word.
+probe_repo=$(mktemp -d "$scratch_dir/sourced-root.XXXXXX")
+(
+    cd "$probe_repo" && git init -q . &&
+        git config user.email t@e && git config user.name t
+) >/dev/null 2>&1
+sourced_root=$(
+    __DEFERRAL_RECORD_LIB__=1 ARCH_REPO_ROOT="$probe_repo" \
+        sh -c '. "$1/tests/arch/deferral_record.sh"; pwd' _ "$REPO_ROOT" 2>/dev/null
+) || sourced_root=''
+case "$sourced_root" in
+    "$probe_repo"*)
+        printf '  ok       the sourced library stays in the caller resolved root\n'
+        ;;
+    *)
+        printf '  FAIL     sourcing the library left the root at %s\n' \
+            "${sourced_root:-unknown}"
+        failed=1
+        ;;
+esac
+
 # An environment that cannot build the clone must fail the run rather
 # than report a skip. Nothing about this clone is allowed to fail
 # benignly — it is a local path to a local path inside the repository,
