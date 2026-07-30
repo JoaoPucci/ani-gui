@@ -98,7 +98,13 @@ fi
 # regular-blob requirement and the literal pathspec, so it is borrowed
 # rather than restated: one definition of "arrives with the clone",
 # hardened once.
-if ! record_is_recoverable "$AGENTS_FILE"; then
+# A file, not a directory. `record_is_recoverable` accepts a tracked
+# directory of regular files — correct for a declared record, wrong
+# here, because `@AGENTS.md` has to name something an import can read.
+if [ "$(git ls-files -- ":(literal)$AGENTS_FILE" 2>/dev/null)" != "$AGENTS_FILE" ]; then
+    printf 'arch/agents_contract: %s is not a single file in the index — the import needs a file to read, not a directory\n' "$AGENTS_FILE"
+    failed=1
+elif ! record_is_recoverable "$AGENTS_FILE"; then
     printf 'arch/agents_contract: %s %s — a clone would import a contract it does not have\n' "$AGENTS_FILE" "$(why_unrecoverable "$AGENTS_FILE")"
     failed=1
 fi

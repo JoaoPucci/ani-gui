@@ -328,7 +328,14 @@ fi
 # A tab expands to four columns, so a tab-indented run is content
 # rather than a closer. Measuring characters counts it as one column
 # and closes the fence, exposing the heading inside the example.
-if check_says "$(printf '\`\`\`\n\t\`\`\`\n%s\n\n<!-- record-path: tests/arch/run-all.sh -->\n\`\`\`\n' "$SECTION_HEAD")" tab_closer; then
+TAB=$(printf '\t')
+if check_says "\`\`\`
+${TAB}\`\`\`
+$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+\`\`\`
+" tab_closer; then
     printf '  FAIL     a tab-indented run closed the fence\n'
     failed=1
 else

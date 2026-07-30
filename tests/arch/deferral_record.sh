@@ -185,7 +185,11 @@ headings=$(awk -v re="$SECTION_RE" '
         sub(/^[ \t]*/, "", run)
         ch = substr(run, 1, 1)
         rest = substr($0, RSTART + RLENGTH)
-        indent = index($0, substr(run, 1, 1)) - 1
+        lead = substr($0, 1, RSTART + RLENGTH - length(run) - 1)
+        indent = 0
+        for (i = 1; i <= length(lead); i++) {
+            indent = (substr(lead, i, 1) == "\t") ? indent + 4 - (indent % 4) : indent + 1
+        }
         if (!fenced) {
             if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run) }
             next
@@ -213,7 +217,11 @@ body=$(awk -v re="$SECTION_RE" '
         sub(/^[ \t]*/, "", run)
         ch = substr(run, 1, 1)
         rest = substr($0, RSTART + RLENGTH)
-        indent = index($0, substr(run, 1, 1)) - 1
+        lead = substr($0, 1, RSTART + RLENGTH - length(run) - 1)
+        indent = 0
+        for (i = 1; i <= length(lead); i++) {
+            indent = (substr(lead, i, 1) == "\t") ? indent + 4 - (indent % 4) : indent + 1
+        }
         if (!fenced) {
             if (indent < 4) { fenced = 1; fence_ch = ch; fence_len = length(run); inside = 0 }
             next

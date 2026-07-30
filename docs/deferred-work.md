@@ -86,3 +86,27 @@ agree with Markdown about fence nesting.
 `docs/testing.md`, about how much verification an invariant of this
 kind should carry — so the next one is built to that standard rather
 than to whatever a review round happens to surface.
+
+**Update.** The count reached twenty-eight findings, and the shape is
+now clear enough to name a specific change rather than only a
+question.
+
+Everything the two checks do falls into one of two kinds. Constraints
+— declare the record path, one `record-path` mention per file, no
+fence in CLAUDE.md or in the section, marker at column zero — each
+closed its category permanently and generated no further findings.
+Interpretation — locating the policy section by parsing Markdown —
+has now taken five rounds of rules (delimiter character, run length,
+info string, indent, tab expansion) and each arrived after the
+previous had shipped.
+
+The proposal is to stop parsing document structure. Verify that the
+heading appears exactly once and that `record-path` appears exactly
+once, and drop section-body extraction along with the fence tracking
+it needs. What that gives up is a contrived case — someone wrapping
+the entire live policy in a fenced block — which breaks the rendered
+document visibly and which no amount of tracking has yet been shown
+to catch reliably anyway. What it buys is termination.
+
+That is a design reversal on a load-bearing check, so it is the
+maintainer's call rather than something to slip into a review round.
