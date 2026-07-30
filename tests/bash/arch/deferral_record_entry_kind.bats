@@ -83,3 +83,19 @@ in_linkrepo() { (cd "$LINKREPO" && record_is_recoverable "$1"); }
 @test "an absent record is reported as untracked" {
     [ "$(why_unrecoverable 'docs/no-such-follow-ups.md')" = 'which is not tracked by git' ]
 }
+
+@test "an intent-to-add record is not carried" {
+    # `git add -N` records only the intent. The entry is in the index
+    # with a regular mode and the empty blob, so every mode test
+    # passes — but `write-tree` omits the path, so the next commit and
+    # every clone from it lack the record entirely.
+    ita="$BATS_TEST_TMPDIR/intent-to-add"
+    mkdir -p "$ita"
+    (
+        cd "$ita" || exit 1
+        git init -q .
+        printf 'log\n' > LEDGER.md
+        git add -N LEDGER.md
+    ) >/dev/null 2>&1
+    ! (cd "$ita" && record_is_recoverable LEDGER.md)
+}

@@ -111,3 +111,28 @@ $SECTION_HEAD
 <!-- record-path: docs/no-such-follow-ups.md -->
 "
 }
+
+@test "an indented H2 ends the section" {
+    # One to three spaces is still an H2, so the body must stop there
+    # rather than swallowing the next section and adopting its marker.
+    ! check_accepts "$SECTION_HEAD
+
+Prose, no marker.
+
+  ## Next Section
+
+<!-- record-path: tests/arch/run-all.sh -->
+"
+}
+
+@test "record-path may appear exactly once in the file" {
+    # An example anywhere — fenced, indented, quoted — is a second
+    # occurrence and fails, which takes the marker out of the fence
+    # question entirely.
+    ! check_accepts "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+
+Later, an example: <!-- record-path: AGENTS.md -->
+"
+}
