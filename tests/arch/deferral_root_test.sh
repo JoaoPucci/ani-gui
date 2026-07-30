@@ -167,8 +167,11 @@ assigned=$(printf '%s\n' "$arch_src" |
     grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
     sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
     sort -u)
-unowned=$(printf '%s\n' "$plain" |
-    { [ -n "$assigned" ] && grep -vxF "$assigned" || cat; })
+if [ -n "$assigned" ]; then
+    unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
+else
+    unowned=$plain
+fi
 stray_env=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
     grep -v '^$' | sort -u | grep -vE "$allowed_env" || true)
 if [ -z "$stray_env" ]; then
