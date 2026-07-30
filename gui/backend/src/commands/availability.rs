@@ -129,6 +129,15 @@ pub struct AvailabilityResponse {
     /// `default` reads as exact.
     #[serde(default)]
     pub episode_count_approximate: bool,
+    /// True when the pacer refused the detail fetch outright, as
+    /// opposed to the fetch being attempted and failing. Both leave
+    /// the count approximate; only this one means nobody asked.
+    ///
+    /// Describes THIS response, not the show — so it is never part of
+    /// what gets cached. The cached row is built separately and
+    /// leaves this false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gate_refused: bool,
 }
 
 /// Whether a cached response may be served as-is, or has to re-probe.
@@ -355,6 +364,9 @@ pub(crate) async fn check_availability_with_base(
     // Set only on the gate-refused path, where the count comes from
     // the search hit instead of the detail fetch.
     let mut episode_count_approximate = false;
+    // Set only where the pacer refuses; a failed fetch is approximate
+    // but not refused.
+    let mut gate_refused = false;
     if let Some(c) = chosen_candidate.as_ref() {
         let prio = if args.background {
             crate::scraper::gate::ScrapePriority::Background
@@ -383,11 +395,10 @@ pub(crate) async fn check_availability_with_base(
             // cache as if the detail fetch had confirmed it: the next
             // read re-probes, and an interactive caller (which the
             // gate does not refuse) gets the exact count.
-            let n = c.available_episodes.for_mode(mode);
-            if n > 0 {
-                episode_count = Some(n);
-                episode_count_approximate = true;
-            }
+            let (count, approximate) = enrich_from_search_hit(c, mode);
+            episode_count = count;
+            episode_count_approximate = approximate;
+            gate_refused = true;
         }
     }
 
@@ -416,6 +427,7 @@ pub(crate) async fn check_availability_with_base(
                 episode_count,
                 extra_episodes,
                 episode_count_approximate,
+                gate_refused,
             });
         };
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -429,6 +441,8 @@ pub(crate) async fn check_availability_with_base(
                 episode_count,
                 extra_episodes: extra_episodes.clone(),
                 episode_count_approximate,
+                // Not cached: it describes this request, not the show.
+                gate_refused: false,
             },
         );
     }
@@ -438,6 +452,7 @@ pub(crate) async fn check_availability_with_base(
         episode_count,
         extra_episodes,
         episode_count_approximate,
+        gate_refused,
     })
 }
 
@@ -463,6 +478,7 @@ pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool
             episode_count: None,
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
+            gate_refused: false,
         },
     );
 }
@@ -530,6 +546,32 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
 /// results — current/unknown shows cap at the ongoing window with or
 /// without a schedule, and `airing_get` itself is cache-first, so a
 /// row already seeded by the detail page costs no network.
+/// The cap when the pacer refused the detail fetch: allmanga's own
+/// search-hit count.
+///
+/// That number counts half episodes as whole ones, so it runs one
+/// high for a show carrying them — and by more for a show carrying
+/// several. Approximate, therefore, and never served back from cache
+/// as though the detail fetch had confirmed it.
+///
+/// Zero hits means the search hit carried no count at all, which is
+/// not the same as a confirmed zero: leave it unset so the row reads
+/// as unknown rather than as a show with nothing in it.
+///
+/// The sibling of [`enrich_from_show_fetch`], for the branch where
+/// there was no fetch to enrich from.
+fn enrich_from_search_hit(
+    c: &crate::scraper::allanime::Candidate,
+    mode: &str,
+) -> (Option<u32>, bool) {
+    let n = c.available_episodes.for_mode(mode);
+    if n > 0 {
+        (Some(n), true)
+    } else {
+        (None, false)
+    }
+}
+
 async fn seed_airing_for_negative(
     state: &AppState,
     kitsu_id: &str,
@@ -765,6 +807,119 @@ pub struct AvailabilityWarmArgs {
 mod tests {
     use super::*;
 
+    fn candidate_with(sub: u32) -> crate::scraper::allanime::Candidate {
+        crate::scraper::allanime::Candidate {
+            id: "s1".into(),
+            name: "Gate Test".into(),
+            available_episodes: serde_json::from_value(serde_json::json!({"sub": sub, "dub": 0}))
+                .expect("episodes"),
+            aired_start: None,
+            show_type: None,
+            episode_count: None,
+            status: None,
+        }
+    }
+
+    proptest::proptest! {
+        // The rule the two examples pin at 0 and 5, stated over every
+        // count and both catalogues: a positive hit is a usable cap and
+        // is always rough, a zero hit is no cap at all and claims
+        // nothing. There is no third shape, and in particular no count
+        // that arrives already confirmed — a search hit never is.
+        #[test]
+        fn a_search_hit_is_a_rough_cap_when_it_has_one_and_silent_when_it_does_not(
+            n in 0u32..5000,
+            dub in proptest::bool::ANY,
+        ) {
+            let mode = if dub { "dub" } else { "sub" };
+            let c = crate::scraper::allanime::Candidate {
+                id: "s".into(),
+                name: "S".into(),
+                available_episodes: serde_json::from_value(if dub {
+                    serde_json::json!({"sub": 0, "dub": n})
+                } else {
+                    serde_json::json!({"sub": n, "dub": 0})
+                })
+                .expect("episodes"),
+                aired_start: None,
+                show_type: None,
+                episode_count: None,
+                status: None,
+            };
+
+            proptest::prop_assert_eq!(
+                enrich_from_search_hit(&c, mode),
+                if n > 0 { (Some(n), true) } else { (None, false) }
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_fetch_falls_back_to_the_search_hit_and_admits_it_is_rough() {
+        // The search hit counts half episodes as whole ones, so it
+        // runs high — one episode for a show carrying a single recap,
+        // more for a show carrying several. Usable as a cap, never
+        // presentable as confirmed.
+        assert_eq!(
+            enrich_from_search_hit(&candidate_with(5), "sub"),
+            (Some(5), true)
+        );
+    }
+
+    #[test]
+    fn a_search_hit_with_no_count_leaves_the_cap_unknown() {
+        // Zero is what the field reads when allmanga sent no count for
+        // this mode — not a show with nothing in it. Publishing zero
+        // would cap every episode away; unknown lets the next probe
+        // answer.
+        assert_eq!(
+            enrich_from_search_hit(&candidate_with(0), "dub"),
+            (None, false)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_answered_probe_does_not_claim_it_was_refused() {
+        // The wiring in the direction that is reachable from here. The
+        // refusal itself is not: the pacer refuses the detail fetch
+        // only while its breaker is open, and a successful search
+        // closes the breaker on its way past — so within one probe the
+        // fetch that follows a successful search is always admitted.
+        // Production hits it because the home route's own warmers are
+        // competing callers and trip the breaker in that window; that
+        // interleaving is a schedule, not a state, and no test holds
+        // it open reliably. Hence the branch itself is a function with
+        // its own cases above, and this pins the flag's default.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"data": {"shows": {"edges": [{
+                    "_id": "s1",
+                    "name": "Gate Test",
+                    "availableEpisodes": {"sub": 5, "dub": 0}
+                }]}}}),
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Gate Test",
+            "mode": "sub",
+            "kitsu_id": "901"
+        }))
+        .expect("args");
+        let answered = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe answers");
+
+        assert!(
+            !answered.gate_refused,
+            "nothing refused this one, got {answered:?}"
+        );
+    }
+
     fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
         serde_json::from_value(serde_json::json!({
             "_id": "abc",
@@ -932,6 +1087,7 @@ mod tests {
             available: true,
             episode_count: None,
             episode_count_approximate: false,
+            gate_refused: false,
             extra_episodes: Vec::new(),
         });
         assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
@@ -961,6 +1117,7 @@ mod tests {
             available: true,
             episode_count: Some(1160),
             episode_count_approximate: false,
+            gate_refused: false,
             extra_episodes: vec!["1061.5".into()],
         };
         let json = serde_json::to_string(&r).expect("serialize");
@@ -1293,6 +1450,7 @@ mod tests {
                 episode_count: Some(1160),
                 extra_episodes: vec!["1061.5".into()],
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         let resp = batch_cached(
@@ -1322,6 +1480,7 @@ mod tests {
                 episode_count: Some(12),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         // No row in the cache → batch_cached returns an empty map
@@ -1456,6 +1615,7 @@ mod tests {
                 episode_count: Some(1107),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         write_cache_full(
@@ -1468,6 +1628,7 @@ mod tests {
                 episode_count: Some(12),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         // Cached as unavailable — no playable count to surface.
@@ -1481,6 +1642,7 @@ mod tests {
                 episode_count: None,
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         let resp = batch_cached(
@@ -1540,6 +1702,7 @@ mod tests {
                 episode_count: Some(4),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
 
@@ -1633,6 +1796,7 @@ mod tests {
                 episode_count: Some(9),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
 
@@ -1712,6 +1876,7 @@ mod tests {
                 episode_count: Some(4),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
+                gate_refused: false,
             },
         );
         drop(guard);
@@ -1779,11 +1944,13 @@ mod tests {
             episode_count: Some(12),
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
+            gate_refused: false,
         };
         assert!(cache_hit_is_usable(&exact), "an exact count is usable");
 
         let approximate = AvailabilityResponse {
             episode_count_approximate: true,
+            gate_refused: false,
             ..exact.clone()
         };
         assert!(
@@ -1803,6 +1970,7 @@ mod tests {
             episode_count: None,
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
+            gate_refused: false,
         };
         assert!(!cache_hit_is_usable(&legacy), "a count-less row re-probes");
 
@@ -1811,6 +1979,7 @@ mod tests {
             episode_count: None,
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
+            gate_refused: false,
         };
         assert!(cache_hit_is_usable(&negative), "a negative row is kept");
     }
@@ -1836,6 +2005,7 @@ mod tests {
                 episode_count: count,
                 extra_episodes: extras,
                 episode_count_approximate: approximate,
+                gate_refused: false,
             };
             proptest::prop_assert_eq!(
                 cache_hit_is_usable(&row),
@@ -1859,6 +2029,7 @@ mod tests {
                 episode_count: count,
                 extra_episodes: Vec::new(),
                 episode_count_approximate: approximate,
+                gate_refused: false,
             };
             proptest::prop_assert!(!cache_hit_is_usable(&row));
         }
@@ -1880,6 +2051,7 @@ mod tests {
                 episode_count: Some(13),
                 extra_episodes: Vec::new(),
                 episode_count_approximate: true,
+                gate_refused: false,
             },
         );
         let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))

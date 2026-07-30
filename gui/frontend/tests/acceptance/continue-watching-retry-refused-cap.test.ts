@@ -155,4 +155,53 @@ describe('Continue Watching card after a gate-refused probe', () => {
 		// is looking at.
 		expect(probes).toHaveLength(1);
 	});
+
+	it('survives a run of refusals and still corrects the card', async () => {
+		// The route-level shape of the thing the helper cases pin: a
+		// refusal is not an answer, so it must not spend the row's
+		// budget — and it must still back off, or the retry hammers the
+		// very pacer that is refusing it. Three refusals here is more
+		// than the answer budget, so with refusals counting the row
+		// would be dropped before the exact answer arrives.
+		const probes: { mode?: string }[] = [];
+		let refusalsLeft = 3;
+		server.use(
+			...homeHandlers({ history: [{ ep_no: String(WATCHED), id: 'allanime-1', title: SHOW }] }, [
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([kitsuRef('1', SHOW, 26)])
+				),
+				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+					probes.push((await request.json()) as { mode?: string });
+					if (refusalsLeft > 0) {
+						refusalsLeft--;
+						return HttpResponse.json({
+							available: true,
+							episode_count: REFUSED_CAP,
+							episode_count_approximate: true,
+							gate_refused: true
+						});
+					}
+					return HttpResponse.json({
+						available: true,
+						episode_count: TRUE_CAP,
+						episode_count_approximate: false
+					});
+				})
+			])
+		);
+		app = mount(HomePage, { target });
+
+		await until(() => offers(REFUSED_CAP), `the card to offer episode ${REFUSED_CAP}`);
+
+		// Generous enough to clear the whole ladder several times over,
+		// which is also what proves the retry is climbing it rather
+		// than spinning at the first rung.
+		await vi.advanceTimersByTimeAsync(PAST_COOLDOWN_MS * 8);
+
+		await until(
+			() => offers(TRUE_CAP),
+			`the card to correct itself to episode ${TRUE_CAP} after the refusals cleared`
+		);
+		expect(refusalsLeft).toBe(0);
+	});
 });

@@ -469,4 +469,92 @@ describe('rowWorthRetrying', () => {
 		// rows before their first retry ever ran.
 		expect(rowWorthRetrying('a', ids('a'), {})).toBe(true);
 	});
+
+	it('does not spend an attempt on a probe the pacer refused', async () => {
+		// A refusal is not an answer — nobody asked allmanga anything.
+		// Spending one of the few attempts on it is worse than wasted:
+		// while the breaker is recovering it admits a single probe at a
+		// time, so the attempt that went to a refusal was a slot taken
+		// from a row that would have got a real answer.
+		//
+		// Refused twice, then answered. With refusals counting, the
+		// third ask is the last and the row would be dropped whatever
+		// it said; only by not counting them does the confirmed cap
+		// ever get published.
+		const answers = [
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 5, episode_count_approximate: true, gate_refused: true },
+			{ episode_count: 4, episode_count_approximate: false }
+		];
+		const refined: [string, number][] = [];
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => answers.shift() ?? null,
+			mode: 'sub',
+			onRefined: (id, count) => refined.push([id, count]),
+			wait: async () => {},
+			maxAttempts: 2
+		});
+
+		expect(refined).toEqual([['e1', 4]]);
+	});
+
+	it('climbs the ladder while refusals repeat, and still gives up', async () => {
+		// Not charging a refusal an attempt must not also freeze the
+		// wait. Sharing one counter did exactly that: the backoff index
+		// stayed at 0 and the budget never ran down, so a row facing a
+		// refusing pacer re-probed every 500ms for as long as the route
+		// lived — piling contention onto the breaker that was refusing
+		// it. The wait has to climb even when the budget does not.
+		const waits: number[] = [];
+		const refused = {
+			episode_count: 9,
+			episode_count_approximate: true,
+			gate_refused: true
+		};
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => refused,
+			mode: 'sub',
+			onRefined: () => {},
+			wait: async (ms) => {
+				waits.push(ms);
+			},
+			backoffMs: [1, 2, 3],
+			maxAttempts: 2
+		});
+
+		// Strictly climbing, then holding at the top — and terminating,
+		// which is the other half: reaching this line at all means the
+		// loop ended rather than spinning.
+		expect(waits.slice(0, 3)).toEqual([1, 2, 3]);
+		expect(waits.length).toBeLessThan(12);
+	});
+
+	it('does not spend an attempt when the probe never answered at all', async () => {
+		// There are two places the pacer can refuse, and only the later
+		// one comes back as a 200 carrying the flag. When the breaker is
+		// already open the SEARCH is refused first, and the backend
+		// surfaces that as a transport error — so the probe throws and
+		// this side sees `null`, indistinguishable from the backend
+		// being down (Codex P1 #3677174888).
+		//
+		// It does not need to be distinguishable. The budget counts
+		// ANSWERS, and none of these is one; the ladder is what bounds
+		// the loop. Three failures then an exact answer, on a budget of
+		// two.
+		let failuresLeft = 3;
+		const refined: [string, number][] = [];
+		await retryApproximateCaps([{ entryId: 'e1', match: ref('42') }], {
+			fetchAvailability: async () => {
+				if (failuresLeft-- > 0) throw new Error('503 gate refused the search');
+				return { episode_count: 4, episode_count_approximate: false };
+			},
+			mode: 'sub',
+			onRefined: (id, count) => refined.push([id, count]),
+			wait: async () => {},
+			maxAttempts: 2
+		});
+
+		expect(refined).toEqual([['e1', 4]]);
+	});
 });

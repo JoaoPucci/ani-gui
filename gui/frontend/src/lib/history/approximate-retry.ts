@@ -67,7 +67,13 @@ export interface ApproximateRetryDeps {
 	fetchAvailability: (
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
-	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
+	) => Promise<{
+		episode_count: number | null;
+		episode_count_approximate?: boolean;
+		/** The pacer refused the detail fetch — nobody asked upstream
+		 *  anything, so this row's turn was never really taken. */
+		gate_refused?: boolean;
+	} | null>;
 	/** Already resolved by the time the first pass finished. */
 	mode: 'sub' | 'dub';
 	/** Fired only for a cap the retry confirmed. */
@@ -136,7 +142,16 @@ export async function retryApproximateCaps(
 	const backoff = deps.backoffMs ?? BACKOFF_MS;
 	const maxAttempts = deps.maxAttempts ?? backoff.length;
 
-	const queue = rows.map((row) => ({ row, attempts: 0 }));
+	// Two counters, because they answer different questions. `waits`
+	// is how far up the ladder this row has climbed — it advances on
+	// every probe, refused or not, so a refusing pacer is backed off
+	// from rather than hammered. `attempts` is the budget of real
+	// ANSWERS the row is allowed, which a refusal does not spend
+	// because nobody answered. Sharing one counter froze the ladder
+	// (Codex P1 #3677103268); leaving `waits` unbounded would replace
+	// the hot loop with a slow immortal one, so it caps too.
+	const maxWaits = maxAttempts + backoff.length;
+	const queue = rows.map((row) => ({ row, attempts: 0, waits: 0 }));
 
 	while (queue.length > 0) {
 		if (deps.cancelled?.()) return;
@@ -144,7 +159,8 @@ export async function retryApproximateCaps(
 		if (!job) break;
 		if (skip(deps, job.row.entryId)) continue;
 
-		await deps.wait(backoff[Math.min(job.attempts, backoff.length - 1)]);
+		await deps.wait(backoff[Math.min(job.waits, backoff.length - 1)]);
+		job.waits++;
 		if (deps.cancelled?.()) return;
 		// Again, on the way out. The later steps are half a minute and
 		// a minute long, and a click landing in that window pins an
@@ -163,7 +179,21 @@ export async function retryApproximateCaps(
 		// historyById map that is never rebuilt after the first load.
 		if (deps.cancelled?.()) return;
 		if (skip(deps, job.row.entryId)) continue;
-		job.attempts++;
+		// The budget counts ANSWERS. A refusal is not one — nobody
+		// asked allmanga anything — and neither is a probe that never
+		// came back. Charging for either is worse than wasted: while
+		// the breaker recovers it admits one probe at a time, so the
+		// attempt spent here was a slot taken from a row that would
+		// have got a real answer.
+		//
+		// Both matter because the pacer refuses in two places. The
+		// detail fetch answers 200 with the flag; the search, refused
+		// first when the breaker is already open, surfaces as a
+		// transport error and arrives here as `null` — which is also
+		// what a backend that is simply down looks like. It does not
+		// need telling apart: neither answered, so neither counts, and
+		// the ladder is what bounds the loop either way.
+		if (answer && !answer.refused) job.attempts++;
 
 		// A count with the approximate flag CLEAR is the only outcome
 		// worth publishing. An approximate one is no more trustworthy
@@ -175,7 +205,7 @@ export async function retryApproximateCaps(
 			continue;
 		}
 
-		if (job.attempts < maxAttempts) queue.push(job);
+		if (job.attempts < maxAttempts && job.waits < maxWaits) queue.push(job);
 	}
 }
 
@@ -212,11 +242,15 @@ function skip(deps: ApproximateRetryDeps, entryId: string): boolean {
 async function probe(
 	deps: ApproximateRetryDeps,
 	row: ApproximateRow
-): Promise<{ count: number | null; approximate: boolean } | null> {
+): Promise<{ count: number | null; approximate: boolean; refused: boolean } | null> {
 	try {
 		const r = await deps.fetchAvailability(row.match, deps.mode);
 		if (!r) return null;
-		return { count: r.episode_count ?? null, approximate: r.episode_count_approximate === true };
+		return {
+			count: r.episode_count ?? null,
+			approximate: r.episode_count_approximate === true,
+			refused: r.gate_refused === true
+		};
 	} catch {
 		return null;
 	}
