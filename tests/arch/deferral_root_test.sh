@@ -84,6 +84,20 @@ expect_ok "a stray REPO_ROOT does not redirect the record check" \
 expect_ok "a stray REPO_ROOT does not redirect the contract check" \
     with_stray_root agents_contract.sh
 
+# Shell in this repository has to be linted by the shell linter. The
+# `ani-cli checks` workflow filters on `**ani-cli`, so a pull request
+# touching only `tests/arch/*.sh` never ran shellcheck or shfmt
+# against the scripts it added — the checks were green because they
+# had not run, which is the same shape as every other finding here.
+lint_paths=$(sed -n '/^  pull_request:/,/^jobs:/p' \
+    "$REPO_ROOT/.github/workflows/ani-cli.yml" | grep -c 'tests/arch' || true)
+if [ "${lint_paths:-0}" -ge 1 ]; then
+    printf '  ok       the shell linter runs for changes under tests/arch\n'
+else
+    printf '  FAIL     tests/arch is not in the shell linter path filter\n'
+    failed=1
+fi
+
 # Every variable these scripts take from the environment must be
 # namespaced to this suite. This case exists because the same defect
 # was fixed three times here in one review: `REPO_ROOT`, then
