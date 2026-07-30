@@ -39,62 +39,43 @@ treat every entry as a lead rather than a fact.
   candidate selection — it stops before stream-source resolution.
   Everything past that point is script-only.
 
-  There are two different finish lines here, and the entry previously
-  ran them together. **Native playback** needs stages 1 to 3.
-  **Deleting the script** needs those plus 4 and 5, and 5 blocks
-  deletion on its own regardless of how much has been ported. Reaching
-  the first is not progress toward the second in any way that lets the
-  script go:
+  There are two finish lines and they need different treatment.
+
+  **Native playback** is bounded and derived from the code:
 
   1. **The episode-source request.** `get_episode_url` sends the
      authenticated persisted GraphQL query for `(showId,
      translationType, episodeString)` and receives the encrypted
-     `tobeparsed` response. Nothing native produces this, so the stages
-     below have no input without it.
+     `tobeparsed` response.
   2. **Key derivation and source decryption**, which is what the
-     provider's change just broke. This is the stage the entry
-     originally described as the whole of the remaining work.
+     provider's change broke.
   3. **Turning a decrypted `sourceUrl` into a playable stream** —
      `generate_link` / `get_links`: provider embed requests,
      master-playlist expansion, quality selection, referer selection.
-  4. **Downloads**, below. Also a deletion blocker rather than a
-     playback one — playback can be fully native while `-d` still
-     shells out.
 
-  5. **Boot-time wiring** — a deletion blocker only, and independent of
-     everything above it: native playback works fine with this left
-     alone. `AppState::build` calls `locate_ani_cli` and
-     `resolve_anicli_path` and propagates the error, so the app does
-     not start without the script present — porting every playback and
-     download consumer and then deleting it still yields a binary that
-     refuses to boot. Script location, the cache copy, the `-U`
-     updater, and the diagnostics and settings surfaces that report on
-     them all have to go or be replaced. `electron/package.json` also
-     stages the script into the package.
+  **Deleting the script is deliberately not enumerated here.** Seven
+  attempts to list it were each corrected by someone reading the
+  repository: downloads, the boot path, the packaging entry, the test
+  suites, and once in the opposite direction when it claimed show
+  metadata was still script-only. An eighth list would carry the same
+  authority as the seven wrong ones.
 
-  **This list is evidence, not a specification.** It was corrected five
-  times inside one review — crypto alone, then `generate_link` /
-  `get_links`, then downloads, then the request producing the
-  ciphertext, then boot — and once downward, when it claimed show
-  metadata was still script-only after `fetch_show` had made it native.
-  Every correction came from someone opening the code; none from the
-  entry.
+  Derive it instead. Search the repository for the binary name and
+  handle every hit — at the time of writing that reaches
+  `commands/download.rs` (`spawn_download` runs `ani-cli -d`),
+  `AppState::build` (`locate_ani_cli` and `resolve_anicli_path`
+  propagate, so the app will not start without it), the
+  `electron/package.json` staging entries, the `-U` updater and the
+  diagnostics and settings surfaces reporting on it, twenty `.bats`
+  files under `tests/bash/` whose `helpers/loader.bash` sources
+  `$REPO_ROOT/ani-cli`, `tests/arch/bash_portability.sh`, and the Bash
+  CI workflow that triggers on the path. Those are examples of what the
+  search finds, not the answer.
 
-  So do not plan from these bullets. Derive the checklist by finding
-  every consumer of the script — `grep` for the binary name across the
-  backend, the Electron main process and the packaging config, and
-  read `get_episode_url` end to end — and expect that to turn up
-  something this list still omits. A scope corrected five times in one
-  sitting has not converged, and treating the sixth version as
-  complete would be the same mistake as trusting the first.
-
-  Downloads are a third part, and the one most easily missed when this
-  entry is read as a deletion checklist. `commands/download.rs` calls
-  `spawn_download`, which runs `ani-cli -d` for both resolution and
-  transfer, so deleting the script with only playback ported turns the
-  Download flow into a missing-binary failure. The exit condition is
-  every remaining subprocess consumer ported, not the two playback
-  stages.
+  Note that native playback does not shorten this list. Every consumer
+  above survives a fully native player, so the two finish lines are
+  sequential and independent, and reaching the first is not progress
+  toward the second.
 
   Retires the carried patch set in `AGENTS.md` §3 by deleting the
   script, but only once all of that exists.
