@@ -24,9 +24,16 @@ jobs:
       # upstream and skips silently when no `upstream` remote exists —
       # which, on a bare checkout, was always. It has therefore never
       # run in CI, and neither would anything asserting on it.
-      - name: Configure upstream remote for the divergence check
+      #
+      # Pinned to the tag the vendored script came from, not to
+      # upstream's moving master. Against a moving baseline the count
+      # changes when upstream commits, so CI could go red on a branch
+      # that touched nothing — a failure with no local cause is worse
+      # than no check. Bumping the pin is part of syncing the script.
+      - name: Configure the upstream divergence baseline
         run: |
           git remote add upstream https://github.com/pystardust/ani-cli.git
-          git fetch --depth=1 upstream master
+          git fetch --depth=1 upstream tag v4.15 --no-tags
+          git update-ref refs/remotes/upstream/master "$(git rev-parse v4.15)"
       - name: Run architectural invariants
         run: bash tests/arch/run-all.sh
