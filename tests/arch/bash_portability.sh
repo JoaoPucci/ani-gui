@@ -48,7 +48,10 @@ if git remote get-url upstream >/dev/null 2>&1; then
     # is part of syncing the script, which is where that decision
     # belongs.
     UPSTREAM_BASELINE=v4.15
-    if git fetch upstream "tag $UPSTREAM_BASELINE" --no-tags --quiet 2>/dev/null \
+    # `tag` and the name are separate arguments — quoted together git
+    # reads them as one refspec and rejects it. That failure was
+    # invisible here because the tag was already fetched locally.
+    if git fetch --depth=1 upstream tag "$UPSTREAM_BASELINE" --no-tags --quiet 2>/dev/null \
         || git rev-parse -q --verify "$UPSTREAM_BASELINE" >/dev/null; then
         diff_lines=$(git diff "$UPSTREAM_BASELINE" -- ani-cli | grep -cE '^[+-][^+-]' || true)
         # Each carried line shows as one + or - in the diff. The
