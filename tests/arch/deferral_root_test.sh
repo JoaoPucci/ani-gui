@@ -137,6 +137,48 @@ else
     failed=1
 fi
 
+# Every variable these scripts read from the environment must be
+# namespaced to this suite. A generic name is an input from whatever
+# shell the suite happens to run in, whether or not anyone meant it as
+# one — which is how `REPO_ROOT` and `SKIP_NESTED` each silently
+# changed what a check did, and each was found by a reviewer rather
+# than by a run.
+#
+# Two ways a name is ambient, and both are needed. Reading it with a
+# default — `${VAR:-}` or `${VAR:=x}` — says outright that it may be
+# absent, which means it may arrive from outside; that holds even when
+# the suite also sets it before re-invoking itself, which is exactly
+# how a self-invocation guard escapes a plainer test. Reading it
+# without a default is ambient only if nothing in the suite ever
+# assigns it, since otherwise it is an ordinary local.
+#
+# Comments are stripped first: this paragraph names the forms it looks
+# for, and a check that flags its own prose is measuring the wrong
+# thing.
+allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
+arch_src=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh)
+defaulted=$(printf '%s\n' "$arch_src" |
+    grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
+    sed 's/^\${//; s/:[-=]$//' | sort -u)
+plain=$(printf '%s\n' "$arch_src" |
+    grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
+    sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+assigned=$(printf '%s\n' "$arch_src" |
+    grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
+    sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
+    sort -u)
+unowned=$(printf '%s\n' "$plain" |
+    { [ -n "$assigned" ] && grep -vxF "$assigned" || cat; })
+stray_env=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
+    grep -v '^$' | sort -u | grep -vE "$allowed_env" || true)
+if [ -z "$stray_env" ]; then
+    printf '  ok       every ambient variable the arch scripts read is namespaced\n'
+else
+    printf '  FAIL     these are readable from any environment: %s\n' \
+        "$(printf '%s' "$stray_env" | tr '\n' ' ')"
+    failed=1
+fi
+
 # A checkout path containing an apostrophe. This exists because the
 # first version of this file built commands as strings and evaluated
 # them, so the path was re-parsed as shell syntax and the suite broke
