@@ -48,7 +48,7 @@ Both outcomes are real. A green-before-red defect has been confirmed this way; s
 
 Per layer:
 
-- Bash changes require bats-core coverage (unit, network-mocked, or acceptance as appropriate).
+- Bash changes require bats-core coverage (unit, network-mocked, or acceptance as appropriate). This covers the shell *product* — the vendored `ani-cli` script — and any shell that carries assertion logic, including under `tests/arch/`. A check that sets up fixtures, drives cases and compares results belongs in bats, where the runner reports which case failed and why. A check that is a single grep printing `ok` or one message does not; it is already its own report, and wrapping it adds ceremony without adding correctness.
 - Rust changes require `cargo test`, plus a `proptest` if the function under change is pure.
 - Frontend changes require a `vitest` test (component or store) and an acceptance test if a user-visible flow changes.
 
