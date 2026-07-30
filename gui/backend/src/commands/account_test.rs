@@ -292,6 +292,38 @@ const KITSU_MAL_MAPPINGS_HIT_BODY: &str = r#"{
             "ageRating": "PG",
             "popularityRank": 1,
             "posterImage": null,
+            "coverImage": { "original": "https://media.kitsu.app/anime/cover/12.jpg" }
+        }
+    }]
+}"#;
+
+/// Same show but with the null cover a newer ongoing title arrives
+/// with — the case `kitsu_anime_detail` backfills from AniList.
+#[cfg(test)]
+const KITSU_MAL_MAPPINGS_HIT_NO_COVER_BODY: &str = r#"{
+    "data": [{
+        "id": "9101",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "22" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "13" } } }
+    }],
+    "included": [{
+        "id": "13",
+        "type": "anime",
+        "attributes": {
+            "canonicalTitle": "Fresh Seasonal",
+            "titles": { "en": "Fresh Seasonal" },
+            "slug": "fresh-seasonal",
+            "synopsis": "New.",
+            "startDate": "2026-07-03",
+            "endDate": null,
+            "episodeCount": 12,
+            "averageRating": null,
+            "subtype": "TV",
+            "status": "current",
+            "ageRating": "PG",
+            "popularityRank": 500,
+            "posterImage": null,
             "coverImage": null
         }
     }]
@@ -1056,6 +1088,70 @@ async fn watch_later_bridge_resolves_a_known_mapping_from_cache_on_the_next_load
     assert_eq!(
         mapping_calls, 1,
         "the second load should read the mapping from cache, not Kitsu"
+    );
+    // The first load already held the whole card from the mappings
+    // sideload. Remembering only the id would just trade one per-title
+    // Kitsu request for another.
+    let detail_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path().starts_with("/anime/"))
+        .count();
+    assert_eq!(
+        detail_calls, 0,
+        "a cached mapping should render from local data, not a detail fetch"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_bridge_leaves_a_null_cover_card_for_the_banner_backfill() {
+    // The counterpart to warming the detail cache. A card whose cover
+    // Kitsu has not uploaded yet must NOT be seeded, because
+    // `kitsu_anime_detail` backfills the banner from AniList on a cold
+    // read and a seeded row would suppress that for the whole TTL —
+    // trading one request for a week of blurred-poster fallback, on
+    // exactly the newer ongoing shows the backfill exists for.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(KITSU_MAL_MAPPINGS_HIT_NO_COVER_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/13"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(KITSU_ANIME_DETAIL_BODY.replace("\"12\"", "\"13\"")),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![22], None).await;
+    let second = kitsu_for_mal_ids_with_anilist_base(&state, vec![22], None).await;
+
+    assert_eq!(
+        second.len(),
+        1,
+        "the card still resolves on the second load"
+    );
+    let detail_calls = kitsu
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path().starts_with("/anime/"))
+        .count();
+    assert!(
+        detail_calls > 0,
+        "a null-cover card must still take the detail path so the banner can be backfilled"
     );
 }
 
