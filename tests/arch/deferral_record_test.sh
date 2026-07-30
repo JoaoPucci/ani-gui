@@ -16,6 +16,13 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Hand the resolved root to the library under the specific name. It
+# deliberately ignores a bare `REPO_ROOT`, and its own `$0` is
+# meaningless after the `cd` above — without this, an invocation by
+# relative path from this directory resolves above the repository.
+ARCH_REPO_ROOT="$REPO_ROOT"
+export ARCH_REPO_ROOT
+
 __DEFERRAL_RECORD_LIB__=1
 # shellcheck source=./deferral_record.sh
 . "$REPO_ROOT/tests/arch/deferral_record.sh"
