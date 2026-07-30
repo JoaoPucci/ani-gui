@@ -48,22 +48,26 @@ why_unrecoverable() {
 # Backticked tokens from the section body (on stdin) that name a repo
 # path.
 #
-# A path is recognised by containing a slash, not by ending in an
-# extension. `.planning/follow-ups` and `docs/notes/` are records just
-# as much as `docs/notes.md` is, and an extension-shaped filter drops
-# them before the predicate ever runs — which shows up as the
-# invariant passing rather than as a failure, the worst way for a
-# check to be wrong.
+# A token is a path if it has a slash or a dot: `docs/notes.md`,
+# `.planning/follow-ups`, `docs/notes/`, and a bare `follow-ups.md` at
+# the repository root all qualify. Every narrowing tried here — an
+# extension, then a slash — turned out to exclude a real record, and
+# each did so by dropping the token before the predicate ran, which
+# surfaces as the invariant passing. A check wrong in that direction
+# says nothing at all while looking like it said yes.
 #
-# The character class carries the exclusions: `#N · Title` and
-# `git check-ignore` hold characters and spaces it does not admit, and
-# a URL is out on its colon. Those three are asserted in the self-test
-# so widening this pattern cannot quietly reclassify prose as paths.
+# So this errs toward over-matching. A false positive fails loudly and
+# gets fixed; a false negative is invisible. The exclusions are
+# carried by the character class — `#N · Title` and `git check-ignore`
+# hold characters and spaces it does not admit, a URL is out on its
+# colon, and a bare prose word has neither slash nor dot. All four are
+# asserted in the self-test, so widening cannot quietly reclassify
+# prose as paths.
 cited_paths() {
     grep -o '`[^`]*`' \
         | tr -d '`' \
-        | grep -E '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]*)+$' \
-        | grep '/' \
+        | grep -E '^\.?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_.-]*)*$' \
+        | grep -E '/|\.' \
         | sort -u
 }
 

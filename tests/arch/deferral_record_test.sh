@@ -26,8 +26,14 @@ failed=0
 # Anything the run creates goes here and is removed on every exit
 # path, including an interrupt — a suite that leaves litter in the
 # working tree makes the next `git status` lie.
-scratch=''
-cleanup() { [ -n "$scratch" ] && rm -f $scratch; }
+# A directory rather than a list of paths: POSIX sh has no arrays, so
+# an accumulator must join filenames with a separator, and any
+# separator is a character some real path contains. A repository
+# cloned under `~/My Repos/` defeats a space-joined one outright —
+# nothing is removed and `rm -f` receives fragments. One quoted
+# variable has no such failure mode.
+scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
+cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
 trap cleanup EXIT HUP INT TERM
 
 expect_recoverable() {
@@ -70,8 +76,7 @@ expect_rejected docs/no-such-follow-ups.md 'not tracked'
 # at that path would have it truncated on the way in and deleted on
 # the way out, so the suite would destroy unrelated local work as a
 # side effect of asserting something unrelated to it.
-first_probe=$(make_untracked_probe)
-scratch="$scratch $first_probe"
+first_probe=$(make_untracked_probe "$scratch_dir")
 expect_rejected "$first_probe" 'untracked working-tree file'
 
 # Non-collision, demonstrated without ever naming a path of our own.
@@ -80,8 +85,7 @@ expect_rejected "$first_probe" 'untracked working-tree file'
 # the sentinel is someone's file too. So the first probe becomes the
 # sentinel, and the second has to leave it alone.
 printf 'do not lose me\n' >"$first_probe"
-second_probe=$(make_untracked_probe)
-scratch="$scratch $second_probe"
+second_probe=$(make_untracked_probe "$scratch_dir")
 
 if [ "$second_probe" = "$first_probe" ]; then
     printf '  FAIL     probe returned the same path twice\n'
@@ -98,18 +102,19 @@ fi
 # such a name, so the trap silently removes nothing and hands
 # fragments to `rm -f` — litter left behind, and a wildcard away from
 # removing something else.
-spacey="$REPO_ROOT/tests/arch/.deferral probe dir"
+spacey="$scratch_dir/a probe dir"
 mkdir -p "$spacey"
 spacey_probe=$(make_untracked_probe "$spacey")
-cleanup
+# Run cleanup against the spacey directory in a subshell, so the
+# assertion sees what the trap would actually do without ending the
+# run's own scratch early.
+( scratch_dir="$spacey"; cleanup )
 if [ -e "$spacey_probe" ]; then
     printf '  FAIL     cleanup left a probe behind under a path with a space\n'
     failed=1
-    rm -rf "$spacey"
 else
     printf '  ok       cleanup handles a path containing a space\n'
 fi
-rm -rf "$spacey"
 
 printf 'arch/deferral_record_test: parser cases\n'
 
