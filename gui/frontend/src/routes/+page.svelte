@@ -1022,6 +1022,13 @@
 								<span class="resume-title resume-title-faint"
 									>{m.home_resume_episode_label({ episode: nextEpisode })}</span
 								>
+							{:else}
+								<!-- Nothing to say here, but the row still has to
+							     exist: a movie card that simply dropped the
+							     episode line would be a line shorter than every
+							     other card in the rail, and a line shorter than
+							     the placeholder it replaced. -->
+								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
 							{/if}
 						</span>
 					</button>
@@ -1080,6 +1087,10 @@
 								<span class="resume-title resume-title-faint"
 									>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
 								>
+							{:else}
+								<!-- Same reservation as the resumable branch: the
+							     row is empty but still has to be there. -->
+								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
 							{/if}
 						</span>
 					</a>
@@ -1749,6 +1760,23 @@
 		scroll-snap-align: start;
 		display: grid;
 		grid-template-rows: auto auto;
+		/* The three card states are three different elements — button
+		   when resumable, div while loading, anchor when the match
+		   failed — and only the button brings a UA box with it. Left
+		   alone it shrinks to its own content (168px under a short
+		   episode title, 256px under a long one) and insets the poster
+		   by its padding, while the div and the anchor fill the strip's
+		   16rem track. Since the poster is `aspect-ratio: 16 / 9`, a
+		   narrower card is also a SHORTER card, which is where most of
+		   the resolve-time jump came from — far more than the episode
+		   line everyone was looking at. Pin the box so all three are
+		   the same rectangle; `text-align` because the UA centres
+		   button text and the other two states start-align it. */
+		inline-size: 100%;
+		padding: 0;
+		border: 0;
+		font: inherit;
+		text-align: start;
 		/* Body owns the thumb-to-text gap (matches PosterCard's
 		   `padding-block-start: var(--space-3)` shape so resume
 		   cards and the rows below align visually). */
@@ -1910,18 +1938,24 @@
 		font-size: 1rem;
 		line-height: 1.3;
 		color: var(--bone-100);
+		/* Always both lines the clamp allows. The clamp caps the line
+		   count at two, so this floor makes the height a constant
+		   rather than a function of how long the episode title is —
+		   which is what lets the placeholder reserve it exactly, and
+		   also what stops a rail of mixed title lengths from being
+		   ragged with nothing loading at all. */
+		min-block-size: 2lh;
 	}
 	.resume-title-faint {
 		color: var(--bone-300);
 	}
-	/* Empty, so it needs the line box it is standing in for. `1lh`
-	   is exactly one line of whatever `.resume-title` resolves to, so
-	   the reservation tracks the type scale instead of hard-coding a
-	   number that would drift away from it. One line, not the two the
-	   clamp allows: a reservation the content usually overshoots would
-	   trade a grow for a shrink. */
+	/* Empty, so it needs the line box it is standing in for — both
+	   lines of it. `lh` rather than a number so the reservation tracks
+	   the type scale instead of drifting away from it. This class also
+	   stands in on the one terminal state that renders no episode line
+	   at all: a movie whose episode carries no canonical title. */
 	.resume-title-reserved {
-		block-size: 1lh;
+		block-size: 2lh;
 	}
 
 	.resume-card-loading .resume-poster-placeholder {
