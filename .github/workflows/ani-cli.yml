@@ -6,6 +6,11 @@ on:
   pull_request:
     paths:
       - "**ani-cli"
+      # The arch checks are shell too, and were unlinted until now: a
+      # pull request touching only these files matched no path here,
+      # so shellcheck and shfmt never ran and the absence read as a
+      # pass.
+      - "tests/arch/**.sh"
 
 jobs:
   sh-checker:
