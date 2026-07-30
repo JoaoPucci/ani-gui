@@ -26,14 +26,21 @@ vi.mock('$app/state', () => ({
 // The save fans out to every connected tracker. Held here so the
 // scenario can answer "one took it, one did not" without standing up
 // two provider stubs.
-const partial = vi.hoisted(() => ({ calls: [] as { status: string; progress: number }[] }));
+const partial = vi.hoisted(() => ({
+	calls: [] as { status: string; statusChanged: boolean }[]
+}));
 vi.mock('$lib/account/set-entry', () => ({
-	syncSetEntry: vi.fn(async (_kitsuId: string, save: { status: string; progress: number }) => {
-		partial.calls.push({ status: save.status, progress: save.progress });
-		// One tracker took it, one did not — which is what makes this a
-		// partial rather than a save or a failure.
-		return { written: 1, failed: 1 };
-	}),
+	syncSetEntry: vi.fn(
+		async (_kitsuId: string, save: { status: string; statusChanged: boolean }) => {
+			// `statusChanged` is the observable that matters: it is what
+			// tells the fan-out to send the status at all, so it is what a
+			// lagging tracker needs on the retry.
+			partial.calls.push({ status: save.status, statusChanged: save.statusChanged });
+			// One tracker took it, one did not — which is what makes this a
+			// partial rather than a save or a failure.
+			return { written: 1, failed: 1 };
+		}
+	),
 	syncRemoveEntry: vi.fn()
 }));
 
@@ -107,6 +114,25 @@ describe('list editor after a partial save', () => {
 		trigger().click();
 		await settle();
 
+		// The form showing 'dropped' proves nothing on its own: the
+		// partial branch already moved `live` to the requested status,
+		// so a reopen with NO surviving intent seeds 'dropped' too.
+		// What separates them is the retry.
 		expect(statusSelect()?.value).toBe('dropped');
+
+		// Save again without touching anything. The pick now equals the
+		// seed, so without a surviving intent this reads as "no status
+		// change" and the fan-out skips the status — leaving the
+		// tracker that failed still on the old one, forever. The
+		// intent is what forces it to be sent anyway.
+		const retry = Array.from(target.querySelectorAll('button')).find((b) =>
+			/save/i.test(b.textContent ?? '')
+		);
+		retry!.click();
+		await settle();
+
+		expect(partial.calls).toHaveLength(2);
+		expect(partial.calls[1].status).toBe('dropped');
+		expect(partial.calls[1].statusChanged).toBe(true);
 	});
 });
