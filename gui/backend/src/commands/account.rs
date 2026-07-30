@@ -458,10 +458,18 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         .collect();
     if !misses.is_empty() {
         let miss_ids: Vec<u32> = misses.iter().map(|&(_, mal_id)| mal_id).collect();
+        // Keep the failure distinguishable from an empty answer. The
+        // old `unwrap_or_default()` flattened a transport / upstream /
+        // parse error into "AniList knows none of these", which then
+        // got written as a dead end for a day — so one blip hid those
+        // cards long after AniList recovered. `None` here means nobody
+        // said anything, and nothing about these ids is recorded.
         let mal_to_anilist =
             crate::meta::anilist::media_ids_for_mals(&state.meta_http, &miss_ids, anilist_base)
                 .await
-                .unwrap_or_default();
+                .ok();
+        let anilist_answered = mal_to_anilist.is_some();
+        let mal_to_anilist = mal_to_anilist.unwrap_or_default();
         let filled: Vec<(usize, Option<crate::meta::kitsu::KitsuAnimeRef>)> = stream::iter(misses)
             .map(|(i, mal_id)| {
                 let kitsu = state.kitsu.clone();
@@ -469,17 +477,25 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                 let state = state.clone();
                 async move {
                     let Some(anilist_id) = anilist_id else {
-                        // AniList does not know it either, so nothing
-                        // maps it today. Remembered briefly so the
-                        // next load skips both hops, and only briefly
-                        // because this is the answer most likely to
-                        // change.
-                        remember_mal_map(&state, mal_id, None);
+                        // Only a dead end if AniList actually answered.
+                        // If the batch failed, this id is simply
+                        // unasked and must stay that way.
+                        if anilist_answered {
+                            remember_mal_map(&state, mal_id, None);
+                        }
                         return (i, None);
                     };
-                    let found = kitsu.lookup_by_anilist_id(anilist_id).await.ok().flatten();
-                    remember_mal_map(&state, mal_id, found.as_ref().map(|r| r.id.as_str()));
-                    (i, found)
+                    // `Ok(None)` is Kitsu saying it has no such
+                    // mapping — a real dead end. `Err` is Kitsu not
+                    // saying, which is not evidence about anything and
+                    // must not be written.
+                    match kitsu.lookup_by_anilist_id(anilist_id).await {
+                        Ok(found) => {
+                            remember_mal_map(&state, mal_id, found.as_ref().map(|r| r.id.as_str()));
+                            (i, found)
+                        }
+                        Err(_) => (i, None),
+                    }
                 }
             })
             .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
