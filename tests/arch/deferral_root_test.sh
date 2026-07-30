@@ -268,6 +268,13 @@ else
     failed=1
 fi
 
+# A stray REPO_ROOT must not redirect anything. It used to, and the
+# script exited 0 against the wrong tree rather than failing.
+expect_ok "a stray REPO_ROOT does not redirect the record check" \
+    with_stray_root deferral_record.sh
+expect_ok "a stray REPO_ROOT does not redirect the contract check" \
+    with_stray_root agents_contract.sh
+
 # The library must honour a root the caller resolved, including when
 # it is sourced rather than executed. Sourcing is the case that got
 # missed: executed, the file derives its own root and that happens to
