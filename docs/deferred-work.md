@@ -72,7 +72,10 @@ treat every entry as a lead rather than a fact.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
 - **Play-page keep-alive → normal reload with a persisted position.**
-- **Search filters** — sort direction and filter options.
+- **Search has no sort *direction* control.** Sorting by relevance,
+  title, year and rating ships, as do subtype filter chips; only
+  ascending/descending is absent. Name any further filters wanted
+  before starting, rather than reading this as filters being missing.
 - **Update notifier is not resilient to GitHub rate limits.**
 - **Document Picture-in-Picture** — blocked upstream on
   electron/electron#39633, open since 2023. Do not re-attempt until it
