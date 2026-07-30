@@ -824,6 +824,12 @@ export interface AvailabilityResponse {
 	 *  several. Absent on responses from before the backend reported
 	 *  provenance, which read as exact. */
 	episode_count_approximate?: boolean;
+	/** True when the scraper gate refused the detail fetch outright,
+	 *  as opposed to the fetch being attempted and failing. Both leave
+	 *  the count approximate; only this one means nobody asked, which
+	 *  is why the cap retry does not spend an attempt on it. Absent on
+	 *  responses from before the backend reported it. */
+	gate_refused?: boolean;
 }
 
 /** "Is this title in allmanga's catalog?" probe. The detail page hits
