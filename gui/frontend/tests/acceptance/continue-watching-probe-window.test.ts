@@ -118,4 +118,40 @@ describe('Continue Watching row during the probe window', () => {
 		await until(() => searchFallback() !== null, 'the unresolvable row to offer search');
 		expect(resumeButton()).toBeNull();
 	});
+
+	it("reserves the resolved card's shape instead of growing into it", async () => {
+		// The rail resolves row by row under a bounded pool, so the
+		// cards land at different moments. If the placeholder is
+		// smaller than what replaces it, every landing nudges the row —
+		// and the user watches it settle for as long as the slowest
+		// probe takes.
+		//
+		// The body is a grid, so what decides the card's height is how
+		// many rows it has. Counting them is the size question without
+		// a layout engine to ask, which happy-dom does not provide.
+		let releaseMatch: () => void = () => {};
+		const matchHeld = new Promise<void>((resolve) => {
+			releaseMatch = resolve;
+		});
+
+		server.use(
+			...homeHandlers({ history: HISTORY }, [
+				http.post(`${API_BASE}/api/kitsu/search`, async () => {
+					await matchHeld;
+					return HttpResponse.json([kitsuRef('1', SHOW, 26)]);
+				})
+			])
+		);
+
+		app = mount(HomePage, { target });
+
+		await until(() => loadingCard() !== null, 'the row to render its placeholder');
+		const whileLoading = loadingCard()!.querySelector('.resume-body')!.childElementCount;
+
+		releaseMatch();
+		await until(() => resumeButton() !== null, 'the row to resolve');
+		const whenResolved = resumeButton()!.querySelector('.resume-body')!.childElementCount;
+
+		expect(whileLoading).toBe(whenResolved);
+	});
 });
