@@ -1329,3 +1329,48 @@ async fn watch_later_bridge_does_not_remember_a_direct_kitsu_error_as_unmappable
     );
     assert_eq!(after_recovery[0].id, "12");
 }
+
+#[tokio::test]
+async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cache() {
+    // Kitsu serves posters and covers as Backblaze presigned links.
+    // The signature outlives neither a seven-day cache row nor a lazy
+    // first read, so a row written without fetching the bytes can
+    // still be valid metadata pointing at a URL that no longer
+    // resolves — a card with broken artwork until the row expires.
+    // The other detail-cache writer pairs its put with a warm; this
+    // one has to as well.
+    use wiremock::matchers::{method, path, query_param};
+    let images = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/cover.jpg"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(vec![0u8; 8]))
+        .mount(&images)
+        .await;
+
+    let signed = format!("{}/cover.jpg?X-Amz-Signature=deadbeef", images.uri());
+    let body =
+        KITSU_MAL_MAPPINGS_HIT_BODY.replace("https://media.kitsu.app/anime/cover/12.jpg", &signed);
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&kitsu)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
+
+    // The warm is spawned, so give it a moment to land rather than
+    // asserting on the same tick it was scheduled.
+    for _ in 0..40 {
+        if !images.received_requests().await.unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(
+        !images.received_requests().await.unwrap().is_empty(),
+        "seeding the detail cache must fetch the signed image while the signature is still valid"
+    );
+}
