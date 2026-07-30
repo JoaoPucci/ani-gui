@@ -410,7 +410,10 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     // Phase 1: the direct Kitsu lookup, one slot per input id so the
     // fallback fill below preserves input order. Ids phase 0 already
     // answered skip it — including the ones it answered "no".
-    let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
+    // Each entry carries whether the direct route ANSWERED, not just
+    // whether it found something. The fallback needs that distinction:
+    // it may only record a dead end when both routes had their say.
+    let phase1: Vec<(Option<crate::meta::kitsu::KitsuAnimeRef>, bool)> =
         stream::iter(bounded.iter().copied().zip(known.iter().cloned()))
             .map(|(mal_id, cached)| {
                 let kitsu = state.kitsu.clone();
@@ -421,21 +424,35 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                         // out of phase 2 below; a known id is read
                         // through the anime-detail cache, which is
                         // where its card already lives.
-                        let id = hit?;
-                        return crate::commands::kitsu::kitsu_anime_detail(&state, &id)
+                        let Some(id) = hit else {
+                            return (None, true);
+                        };
+                        let card = crate::commands::kitsu::kitsu_anime_detail(&state, &id)
                             .await
                             .ok();
+                        return (card, true);
                     }
-                    let found = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten();
-                    if let Some(ref r) = found {
-                        remember_mal_map(&state, mal_id, Some(&r.id));
+                    // `Ok(None)` is Kitsu saying it has no MAL mapping
+                    // — a real answer the fallback may draw a dead end
+                    // from. `Err` is Kitsu not saying, which must not
+                    // let the fallback conclude anything.
+                    match kitsu.lookup_by_mal_id(mal_id).await {
+                        Ok(found) => {
+                            if let Some(ref r) = found {
+                                remember_mal_map(&state, mal_id, Some(&r.id));
+                            }
+                            (found, true)
+                        }
+                        Err(_) => (None, false),
                     }
-                    found
                 }
             })
             .buffered(WATCH_LATER_BRIDGE_CONCURRENCY)
             .collect()
             .await;
+    let direct_answered: Vec<bool> = phase1.iter().map(|(_, ok)| *ok).collect();
+    let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
+        phase1.into_iter().map(|(card, _)| card).collect();
     // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
     // titles) — resolve ALL of them to AniList ids in one batched
     // Page(idMal_in:) query per 50-chunk (Codex P2 #3565216298: the
@@ -475,12 +492,17 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                 let kitsu = state.kitsu.clone();
                 let anilist_id = mal_to_anilist.get(&mal_id).copied();
                 let state = state.clone();
+                // A dead end is a conclusion and needs both routes to
+                // have spoken. If the direct route errored, this id is
+                // still worth trying here — but whatever comes back
+                // must not be written down as final.
+                let may_record_dead_end = direct_answered[i];
                 async move {
                     let Some(anilist_id) = anilist_id else {
                         // Only a dead end if AniList actually answered.
                         // If the batch failed, this id is simply
                         // unasked and must stay that way.
-                        if anilist_answered {
+                        if anilist_answered && may_record_dead_end {
                             remember_mal_map(&state, mal_id, None);
                         }
                         return (i, None);
@@ -491,7 +513,16 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
                     // must not be written.
                     match kitsu.lookup_by_anilist_id(anilist_id).await {
                         Ok(found) => {
-                            remember_mal_map(&state, mal_id, found.as_ref().map(|r| r.id.as_str()));
+                            // A positive is always safe to record; a
+                            // negative only when the direct route
+                            // answered too.
+                            if found.is_some() || may_record_dead_end {
+                                remember_mal_map(
+                                    &state,
+                                    mal_id,
+                                    found.as_ref().map(|r| r.id.as_str()),
+                                );
+                            }
                             (i, found)
                         }
                         Err(_) => (i, None),
