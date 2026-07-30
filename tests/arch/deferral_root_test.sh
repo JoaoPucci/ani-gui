@@ -68,7 +68,28 @@ check() {
 
 REPO_ROOT_ABS=$REPO_ROOT
 
+# The runner must not re-parse what it is given as shell syntax. A
+# checkout under a directory containing an apostrophe is the case that
+# breaks: building a command string interpolates the path into it, and
+# the quote then closes a quote the runner opened. This asserts the
+# property directly rather than waiting for the nested run to die of
+# it further down.
+quote_dir="$scratch_dir/o'brien-probe"
+mkdir -p "$quote_dir"
+printf '#!/bin/sh\nexit 0\n' >"$quote_dir/trivial.sh"
+chmod +x "$quote_dir/trivial.sh"
+
 printf 'arch/deferral_root_test: invocation and environment\n'
+
+# Isolated in a subshell: the failure mode is a syntax error at
+# evaluation time, which would otherwise kill this script outright and
+# report nothing at all.
+if (check "sh '$quote_dir/trivial.sh'" pass probe) >/dev/null 2>&1; then
+    printf '  ok       the runner handles a path containing an apostrophe\n'
+else
+    printf '  FAIL     the runner breaks on a path containing an apostrophe\n'
+    failed=1
+fi
 
 for script in deferral_record agents_contract deferral_record_test; do
     check "cd '$REPO_ROOT/tests/arch' && sh ./$script.sh" pass \
