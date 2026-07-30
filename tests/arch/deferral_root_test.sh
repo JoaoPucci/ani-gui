@@ -20,6 +20,16 @@ cd "$REPO_ROOT"
 
 failed=0
 
+# This file's own scratch, removed on every exit path including an
+# interrupt. It had none: the apostrophe clone used `mktemp -d` and an
+# explicit `rm -rf` that only ran when the block completed.
+scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
+cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # The nested clone re-runs this file; it must not recurse.
 
 # No `eval`. Building a command string means quoting the repository
@@ -69,7 +79,11 @@ expect_ok "a stray REPO_ROOT does not redirect the contract check" \
 # them, so the path was re-parsed as shell syntax and the suite broke
 # on where it had been cloned. Verified by hand at the time; asserted
 # here so it cannot regress.
-apostrophe_dir="$(mktemp -d)/o'brien"
+# Inside the repository and inside the run's own scratch directory,
+# so the cleanup trap removes it on every exit path — including an
+# interrupt, which the explicit `rm -rf` at the end of this block
+# would miss.
+apostrophe_dir="$scratch_dir/o'brien"
 
 # Two properties of the scratch this case creates, checked before it
 # is used. It must live inside the repository — the suite has no
@@ -115,7 +129,6 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
 else
     printf '  ok       (skipped: could not clone for the apostrophe case)\n'
 fi
-rm -rf "$(dirname "$apostrophe_dir")"
 
 [ "$failed" -eq 0 ] || { printf 'arch/deferral_root_test: FAILED\n'; exit 1; }
 printf 'arch/deferral_root_test: ok\n'
