@@ -21,7 +21,6 @@ cd "$REPO_ROOT"
 failed=0
 
 # The nested clone re-runs this file; it must not recurse.
-[ -n "${SKIP_NESTED:-}" ] && { printf 'arch/deferral_root_test: ok (nested)\n'; exit 0; }
 
 # No `eval`. Building a command string means quoting the repository
 # path into it, and a checkout under a directory containing an
@@ -72,7 +71,13 @@ expect_ok "a stray REPO_ROOT does not redirect the contract check" \
 # here so it cannot regress.
 apostrophe_dir="$(mktemp -d)/o'brien"
 mkdir -p "$apostrophe_dir"
-if git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
+# Guarded so the nested run does not clone again — but only this
+# block. Guarding the whole script made the nested run assert nothing
+# and report success for starting up, which the case above now counts
+# rather than trusts.
+if [ -n "${SKIP_NESTED:-}" ]; then
+    :
+elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
     cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" "$apostrophe_dir/repo/tests/arch/"
     # Count the assertions the nested run makes, rather than trusting
     # its exit status. A guard that skips the whole script would exit
