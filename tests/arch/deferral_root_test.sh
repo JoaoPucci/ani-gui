@@ -112,18 +112,29 @@ mkdir -p "$apostrophe_dir"
 if [ -n "${SKIP_NESTED:-}" ]; then
     :
 elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
-    cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" "$apostrophe_dir/repo/tests/arch/"
+    # The clone carries committed state only, so an uncommitted change
+    # to any of these would go unexercised — the working-tree copies
+    # are what this run is meant to be testing.
+    cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
+       "$REPO_ROOT/tests/arch/deferral_record.sh" \
+       "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
+       "$REPO_ROOT/tests/arch/agents_contract.sh" \
+       "$apostrophe_dir/repo/tests/arch/"
     # Count the assertions the nested run makes, rather than trusting
     # its exit status. A guard that skips the whole script would exit
     # zero having checked nothing, and this case would report success
     # for a process that merely started.
-    nested_ok=$(cd "$apostrophe_dir/repo" \
-        && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh 2>/dev/null \
-        | grep -c '^  ok' || true)
-    if [ "${nested_ok:-0}" -ge 5 ]; then
+    # Both the exit status and the count. The status alone could pass a
+    # run that skipped everything; the count alone could pass a run
+    # where one case failed while five others succeeded.
+    nested_out=$(cd "$apostrophe_dir/repo" \
+        && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh 2>&1)
+    nested_status=$?
+    nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
+    if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 5 ]; then
         printf '  ok       the suite asserts (%s cases) from a path containing an apostrophe\n' "$nested_ok"
     else
-        printf '  FAIL     the nested run made %s assertions, expected at least 5\n' "${nested_ok:-0}"
+        printf '  FAIL     nested run: status %s, %s assertions (want 0 and >=5)\n' "$nested_status" "${nested_ok:-0}"
         failed=1
     fi
 else
