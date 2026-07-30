@@ -744,6 +744,11 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
             &body,
             ANIME_DETAIL_TTL.as_secs(),
         );
+        // Same pairing the other writer has, and for the same reason:
+        // these URLs can be Backblaze presigned links whose signature
+        // expires long before the row does. Fetching the bytes now is
+        // what stops the card rendering broken artwork later.
+        warm_signed_image_urls(state, &body);
     }
 }
 
