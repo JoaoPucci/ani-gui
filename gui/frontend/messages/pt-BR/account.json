@@ -48,6 +48,6 @@
 	"expiry_toast_action": "Conectar",
 	"primary_badge": "Principal",
 	"primary_make": "Tornar principal",
-	"primary_hint": "Exibido na barra superior. O trilho Assistir mais tarde lista do mais recente para o mais antigo; quando um título está em ambos, é usada a cópia deste rastreador. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
+	"primary_hint": "Exibido na barra superior. O trilho Assistir mais tarde ordena pelo que foi atualizado mais recentemente no seu rastreador; quando um título está em ambos, é usada a cópia deste rastreador. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
 	"primary_save_error": "Não foi possível salvar o rastreador principal. Tente novamente."
 }

@@ -4,9 +4,15 @@
  * §6.6). Pure helper so the rail's data path is unit-testable
  * without any HTTP / store mocking.
  *
- * Order: most recently touched first, so the rail leads with what
- * the user planned last rather than with whatever the provider's
- * pagination happened to hand back. Provider order — AniList first
+ * Order: most recently touched on the tracker first, so the rail
+ * leads with what the user last did something about rather than with
+ * whatever the provider's pagination happened to hand back.
+ *
+ * Touched, not planned. `updated_at_epoch_s` is a last-modified
+ * stamp, so editing a Planning entry's score on the tracker moves it
+ * up without it having been planned any more recently. Neither
+ * provider's created-at reaches the cached entry, so this is the
+ * honest reading of the only timestamp there is. Provider order — AniList first
  * (richer metadata via Kitsu's mappings), MAL second — decides ties
  * and decides which copy of a duplicate survives.
  *
@@ -39,7 +45,7 @@ function walkOrder(primary?: Provider | null): ReadonlyArray<Provider> {
 }
 
 /**
- * Most recently touched first.
+ * Most recently touched on the tracker first.
  *
  * Runs on the ALREADY-deduped list, and the order matters: sorting
  * before the dedupe would let the more recently touched copy of a
