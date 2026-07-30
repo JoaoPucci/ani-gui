@@ -10,10 +10,16 @@ disappears when the session does. An item leaves this list by being
 done or by being decided against in writing.
 
 **These entries were carried across from session state and have proven
-unreliable about their own status.** Seven were already shipped and
-were caught in review of this change, not by the list. Confirm an item
-against the code before starting it, and delete it here when you find
-it done — the list earns trust by being pruned, not by being long.
+unreliable about their own status.** Nine were already shipped, every
+one caught in review of this change rather than by the person who
+wrote the list. Confirm an item against the code before starting it,
+and delete it here when you find it done — the list earns trust by
+being pruned, not by being long.
+
+Nine out of roughly thirty is not a list with a few stale rows; it is
+a list whose status field means nothing yet. A full audit against the
+code is worth doing before anyone plans from it. Until that happens,
+treat every entry as a lead rather than a fact.
 
 ## Resolver and provider
 
@@ -52,9 +58,6 @@ it done — the list earns trust by being pruned, not by being long.
 
 ## Testing and CI
 
-- **`api_play` is not hermetic** — it hits live allanime, so local runs
-  fail on IP throttling and only CI is authoritative. Stub the
-  Rust-side search.
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
   and three files sit at 29.7–30.0, right on the high-risk boundary.
 - **The pre-commit hook and strict TDD are in tension.** A `test(red):`
