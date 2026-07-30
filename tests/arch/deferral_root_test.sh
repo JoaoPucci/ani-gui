@@ -98,6 +98,21 @@ else
     failed=1
 fi
 
+# Triggering the job is not the same as checking anything. The action
+# takes its own exclude list, and a bare `tests` there skips these
+# scripts after the workflow has started for them — a job that runs
+# and inspects nothing, reported as a pass. The first version of the
+# case above asserted only the trigger and would not have caught it.
+lint_excludes=$(grep 'sh_checker_exclude' \
+    "$REPO_ROOT/.github/workflows/ani-cli.yml" | head -1)
+case "$lint_excludes" in
+    *\ tests\ *|*\ tests\"*)
+        printf '  FAIL     the linter excludes all of tests/, so tests/arch is never checked\n'
+        failed=1 ;;
+    *)
+        printf '  ok       the linter does not exclude tests/arch from checking\n' ;;
+esac
+
 # Every variable these scripts take from the environment must be
 # namespaced to this suite. This case exists because the same defect
 # was fixed three times here in one review: `REPO_ROOT`, then
