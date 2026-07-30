@@ -59,3 +59,30 @@ intend to carry, or a patch landed without being recorded there.
 **Done looks like:** the divergence is reconciled against §3's list —
 ceiling raised to match the intended patches, or an unrecorded patch
 documented or removed — and the suite exits zero on `master`.
+
+## How much verification the deferral invariant should carry
+
+`tests/arch/deferral_record.sh`, its self-test, and
+`tests/arch/agents_contract.sh` grew through fifteen review findings on
+one pull request. Each was real and each was fixed. The pattern in the
+later ones is worth recording: several were introduced by the fix
+before them — the fenced-import gap arrived with the symlink work, and
+the nested-fence gap arrived with the fence work.
+
+That is what happens when a checking apparatus outgrows the thing it
+checks. The policy it guards is two paragraphs of prose that a person
+reads once; the checks around it are now several hundred lines with
+their own test suite, and every change to them has a fair chance of
+opening a new gap somewhere else.
+
+Nothing here is wrong as it stands. The open question is where the
+line sits — whether this level of rigour is what the repository wants
+around a documentation invariant, or whether some of it should be
+simplified back on the grounds that a reviewer reading `AGENTS.md`
+catches the realistic failures more cheaply than a parser that has to
+agree with Markdown about fence nesting.
+
+**Done looks like:** a decision, written into `AGENTS.md` §2 or
+`docs/testing.md`, about how much verification an invariant of this
+kind should carry — so the next one is built to that standard rather
+than to whatever a review round happens to surface.
