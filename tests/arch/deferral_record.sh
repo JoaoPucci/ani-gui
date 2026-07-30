@@ -108,8 +108,12 @@ fi
 
 SECTION='Scope is negotiable, delivery is not'
 
-if ! grep -q "$SECTION" AGENTS.md; then
-    printf 'arch/deferral_record: section "%s" not in AGENTS.md\n' "$SECTION"
+# The contract file, overridable so the self-test can drive this
+# against a fixture instead of mutating the real one.
+AGENTS_FILE="${1:-$REPO_ROOT/AGENTS.md}"
+
+if ! grep -q "$SECTION" "$AGENTS_FILE"; then
+    printf 'arch/deferral_record: section "%s" not in %s\n' "$SECTION" "$AGENTS_FILE"
     exit 1
 fi
 
@@ -117,7 +121,7 @@ fi
 body=$(awk -v want="$SECTION" '
     /^## / { inside = index($0, want) > 0; next }
     inside { print }
-' AGENTS.md)
+' "$AGENTS_FILE")
 
 paths=$(printf '%s\n' "$body" | cited_paths)
 

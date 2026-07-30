@@ -195,6 +195,64 @@ else
     failed=1
 fi
 
+# End-to-end over the check itself, against fixtures rather than the
+# real contract file — mutating that to test it would risk leaving it
+# mutated.
+check_says() {
+    fixture="$scratch_dir/agents-$2.md"
+    printf '%s\n' "$1" >"$fixture"
+    sh "$REPO_ROOT/tests/arch/deferral_record.sh" "$fixture" >/dev/null 2>&1
+}
+
+SECTION_HEAD='## 14. Scope is negotiable, delivery is not'
+
+# A section with no declaration at all. The loop runs zero times and
+# has nothing to report, so the check would print ok and pass — the
+# invariant switched off by deleting one line, with no sign of it.
+if check_says "$SECTION_HEAD
+
+Some prose and no marker at all.
+" nodecl; then
+    printf '  FAIL     a section declaring no record passed — the invariant can be switched off silently\n'
+    failed=1
+else
+    printf '  ok       a section declaring no record fails\n'
+fi
+
+# A malformed marker is the same hole by a different route: it parses
+# to nothing rather than to a wrong path.
+if check_says "$SECTION_HEAD
+
+<!-- record path: tests/arch/run-all.sh -->
+" malformed; then
+    printf '  FAIL     a malformed marker passed as though nothing were declared\n'
+    failed=1
+else
+    printf '  ok       a malformed marker fails\n'
+fi
+
+# And the check still passes what it should, so the guard above is not
+# just rejecting everything.
+if check_says "$SECTION_HEAD
+
+<!-- record-path: tests/arch/run-all.sh -->
+" good; then
+    printf '  ok       a section declaring a tracked record passes\n'
+else
+    printf '  FAIL     a section declaring a tracked record was rejected\n'
+    failed=1
+fi
+
+if check_says "$SECTION_HEAD
+
+<!-- record-path: docs/nobody added this.md -->
+" bad; then
+    printf '  FAIL     a section declaring an untracked record passed\n'
+    failed=1
+else
+    printf '  ok       a section declaring an untracked record fails\n'
+fi
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
