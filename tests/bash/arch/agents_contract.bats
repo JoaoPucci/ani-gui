@@ -25,7 +25,7 @@ setup() {
 # Write a candidate CLAUDE.md and run the check against it.
 contract_accepts() {
     fixture="$BATS_TEST_TMPDIR/claude.md"
-    printf '%s' "$1" > "$fixture"
+    printf '%s' "$1" >"$fixture"
     sh "$CHECK" "$fixture" >/dev/null 2>&1
 }
 
@@ -35,7 +35,7 @@ contract_accepts() {
 }
 
 @test "an import inside a fence does not count" {
-    ! contract_accepts 'Prose about the syntax:
+    run ! contract_accepts 'Prose about the syntax:
 
 ```
 @AGENTS.md
@@ -47,7 +47,7 @@ contract_accepts() {
     # One fenced region with an inner line of content. A parser that
     # toggles on any fence reads the inner line as the close and
     # accepts the inert import after it.
-    ! contract_accepts '~~~
+    run ! contract_accepts '~~~
 ```
 @AGENTS.md
 ~~~
@@ -55,7 +55,7 @@ contract_accepts() {
 }
 
 @test "a fence closes only on a run at least as long" {
-    ! contract_accepts '````
+    run ! contract_accepts '````
 ```
 @AGENTS.md
 ````
@@ -64,7 +64,7 @@ contract_accepts() {
 
 @test "a fence with trailing text does not open the file up" {
     # An info string does not close a region.
-    ! contract_accepts '```
+    run ! contract_accepts '```
 example
 ``` text
 @AGENTS.md
@@ -72,7 +72,7 @@ example
 }
 
 @test "an indented run does not open the file up" {
-    ! contract_accepts '```
+    run ! contract_accepts '```
 example
     ```
 @AGENTS.md
@@ -82,7 +82,7 @@ example
 @test "any fence at all is refused" {
     # A live import cannot be smuggled past by putting a fence
     # elsewhere in the file, because fences are refused outright.
-    ! contract_accepts '@AGENTS.md
+    run ! contract_accepts '@AGENTS.md
 
 ```
 an example

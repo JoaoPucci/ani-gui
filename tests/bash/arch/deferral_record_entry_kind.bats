@@ -26,13 +26,13 @@ setup() {
     (
         cd "$LINKREPO" || exit 1
         git init -q .
-        printf 'content\n' > real.md
+        printf 'content\n' >real.md
         ln -s /etc/hostname outside.md
         ln -s nowhere.md broken.md
         mkdir -p mixed allgood
-        printf 'content\n' > mixed/content.md
+        printf 'content\n' >mixed/content.md
         ln -s /etc/hostname mixed/outside.md
-        printf 'content\n' > allgood/content.md
+        printf 'content\n' >allgood/content.md
         git add real.md outside.md broken.md mixed allgood
     ) >/dev/null 2>&1
 }
@@ -40,17 +40,18 @@ setup() {
 # The predicate resolves paths against the repository it was pointed
 # at, so each case runs from inside the scratch one.
 in_linkrepo() { (cd "$LINKREPO" && record_is_recoverable "$1"); }
+# bats runs each test in its own subshell, so a `cd` here cannot leak.
 
 @test "a tracked regular file is a record" {
     in_linkrepo real.md
 }
 
 @test "a tracked symlink pointing outside the repository is rejected" {
-    ! in_linkrepo outside.md
+    run ! in_linkrepo outside.md
 }
 
 @test "a tracked symlink pointing at nothing is rejected" {
-    ! in_linkrepo broken.md
+    run ! in_linkrepo broken.md
 }
 
 @test "a directory of regular files is a record" {
@@ -62,7 +63,7 @@ in_linkrepo() { (cd "$LINKREPO" && record_is_recoverable "$1"); }
     # to carry content. One regular file is enough to satisfy a check
     # that stops at the first match, and the clone still arrives with
     # a link pointing nowhere.
-    ! in_linkrepo mixed/
+    run ! in_linkrepo mixed/
 }
 
 @test "a tracked symlink is reported as the wrong kind of entry" {
@@ -94,8 +95,9 @@ in_linkrepo() { (cd "$LINKREPO" && record_is_recoverable "$1"); }
     (
         cd "$ita" || exit 1
         git init -q .
-        printf 'log\n' > LEDGER.md
+        printf 'log\n' >LEDGER.md
         git add -N LEDGER.md
     ) >/dev/null 2>&1
-    ! (cd "$ita" && record_is_recoverable LEDGER.md)
+    cd "$ita" || return 1
+    run ! record_is_recoverable LEDGER.md
 }

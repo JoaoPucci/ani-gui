@@ -23,7 +23,7 @@ setup() {
 # Write a fixture contract and run the check against it.
 check_accepts() {
     fixture="$BATS_TEST_TMPDIR/agents.md"
-    printf '%s\n' "$1" > "$fixture"
+    printf '%s\n' "$1" >"$fixture"
     sh "$CHECK" "$fixture" >/dev/null 2>&1
 }
 
@@ -31,7 +31,7 @@ check_accepts() {
     # The loop runs zero times and has nothing to report, so an
     # unguarded check prints ok — the invariant switched off by
     # deleting one line, with no sign of it.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 Some prose and no marker at all.
 "
@@ -40,7 +40,7 @@ Some prose and no marker at all.
 @test "a malformed marker fails" {
     # The same hole by another route: it parses to nothing rather than
     # to a wrong path.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 <!-- record path: tests/arch/run-all.sh -->
 "
@@ -52,7 +52,7 @@ Some prose and no marker at all.
     # tracked — so the check passes having examined nothing real. The
     # answer is that the section may contain no fence at all, scoped to
     # the section since AGENTS.md uses fences legitimately elsewhere.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 \`\`\`
 <!-- record-path: AGENTS.md -->
@@ -65,7 +65,7 @@ Some prose and no marker at all.
     # a tracked marker could satisfy the guard after the real policy's
     # marker was deleted — validating a destination the policy never
     # declared.
-    ! check_accepts "## Why Scope is negotiable, delivery is not failed
+    run ! check_accepts "## Why Scope is negotiable, delivery is not failed
 
 <!-- record-path: AGENTS.md -->
 "
@@ -74,7 +74,7 @@ Some prose and no marker at all.
 @test "a duplicated section heading is refused" {
     # Two sections is ambiguous rather than twice as good: the bodies
     # concatenate and one can cover for the other.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 <!-- record-path: tests/arch/run-all.sh -->
 
@@ -88,7 +88,7 @@ Some prose and no marker.
     # A second occurrence is a second occurrence, and no HTML parsing
     # is required to say so. That is the point of counting: uniqueness
     # catches inert copies without anyone having to define "inert".
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 <!-- record-path: tests/arch/run-all.sh -->
 
@@ -106,7 +106,7 @@ $SECTION_HEAD
 }
 
 @test "a section declaring an untracked record fails" {
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 <!-- record-path: docs/no-such-follow-ups.md -->
 "
@@ -115,7 +115,7 @@ $SECTION_HEAD
 @test "an indented H2 ends the section" {
     # One to three spaces is still an H2, so the body must stop there
     # rather than swallowing the next section and adopting its marker.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 Prose, no marker.
 
@@ -129,7 +129,7 @@ Prose, no marker.
     # An example anywhere — fenced, indented, quoted — is a second
     # occurrence and fails, which takes the marker out of the fence
     # question entirely.
-    ! check_accepts "$SECTION_HEAD
+    run ! check_accepts "$SECTION_HEAD
 
 <!-- record-path: tests/arch/run-all.sh -->
 

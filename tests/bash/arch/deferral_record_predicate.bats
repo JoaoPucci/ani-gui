@@ -31,34 +31,34 @@ setup() {
 
 @test "an ignored path is rejected" {
     # The defect the invariant was written for.
-    ! record_is_recoverable .planning/follow-ups.md
+    run ! record_is_recoverable .planning/follow-ups.md
 }
 
 @test "a name git reads as an option is rejected" {
     # `--stage` is a real `ls-files` flag, so an unguarded query
     # succeeds by listing the whole index and the absent record reads
     # as present.
-    ! record_is_recoverable '--stage'
+    run ! record_is_recoverable '--stage'
 }
 
 @test "a glob matching a tracked file is rejected" {
     # `[A]GENTS.md` matches the tracked `AGENTS.md` as a pathspec while
     # the literal file does not exist, so the record would be reported
     # readable because something else is.
-    ! record_is_recoverable '[A]GENTS.md'
+    run ! record_is_recoverable '[A]GENTS.md'
 }
 
 @test "an absent path is rejected" {
     # The case an ignore-only check waves through: nothing ignores it,
     # and it is still not there.
-    ! record_is_recoverable docs/no-such-follow-ups.md
+    run ! record_is_recoverable docs/no-such-follow-ups.md
 }
 
 @test "a file present but never added is rejected" {
     # Same consequence as absent — a clone rebuilds from the index,
     # not from someone's disk.
     probe=$(make_untracked_probe "$BATS_TEST_TMPDIR")
-    ! record_is_recoverable "$probe"
+    run ! record_is_recoverable "$probe"
 }
 
 @test "the untracked probe never reuses or truncates a path" {
@@ -68,7 +68,7 @@ setup() {
     # naming a path of our own: the first probe becomes the sentinel,
     # and the second has to leave it alone.
     first=$(make_untracked_probe "$BATS_TEST_TMPDIR")
-    printf 'do not lose me\n' > "$first"
+    printf 'do not lose me\n' >"$first"
     second=$(make_untracked_probe "$BATS_TEST_TMPDIR")
     [ "$second" != "$first" ]
     [ "$(cat "$first")" = 'do not lose me' ]

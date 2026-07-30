@@ -63,8 +63,9 @@ setup() {
     # these files after the workflow has started for them.
     excluded=$(grep 'sh_checker_exclude' "$WORKFLOW" | head -1 |
         sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//')
+    subject=tests/arch
     for token in $excluded; do
-        case tests/arch in
+        case "$subject" in
             "$token" | "$token"/*) return 1 ;;
             *) ;;
         esac
@@ -98,7 +99,10 @@ setup() {
     fi
     stray=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
         grep -v '^$' | sort -u | grep -vE "$allowed" || true)
-    [ -z "$stray" ] || { echo "readable from any environment: $stray"; return 1; }
+    [ -z "$stray" ] || {
+        echo "readable from any environment: $stray"
+        return 1
+    }
 }
 
 @test "the bats job runs when a check these tests cover changes" {

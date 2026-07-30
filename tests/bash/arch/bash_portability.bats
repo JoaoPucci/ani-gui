@@ -40,7 +40,7 @@ setup() {
     # tell a newly landed patch from a ceiling that was never
     # satisfiable, which is the distinction the check exists to make.
     probe="$BATS_TEST_TMPDIR/portability.sh"
-    sed 's/-gt 50 \]/-gt 0 ]/' "$ARCH_DIR/bash_portability.sh" > "$probe"
+    sed 's/-gt 50 \]/-gt 0 ]/' "$ARCH_DIR/bash_portability.sh" >"$probe"
     run env ARCH_REPO_ROOT="$REPO_ROOT" sh "$probe"
     [ "$status" -ne 0 ]
     [[ "$output" == *"diverges from upstream"* ]]
