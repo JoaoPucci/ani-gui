@@ -34,7 +34,10 @@ failed=0
 # interrupt. It had none: the apostrophe clone used `mktemp -d` and an
 # explicit `rm -rf` that only ran when the block completed.
 scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
-cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
+cleanup() {
+    rm -f "$REPO_ROOT/tests/arch/.sabotaged-probe.sh"
+    [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"
+}
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -263,7 +266,13 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
         failed=1
     fi
 else
-    printf '  ok       (skipped: could not clone for the apostrophe case)\n'
+    # Not a skip. This clones a local path to a local path inside the
+    # repository, with no network and no remote, so there is no benign
+    # reason for it to fail — a failure means the environment cannot
+    # do something this suite depends on, and reporting ok for that
+    # turns a broken checkout into a green run.
+    printf '  FAIL     could not clone for the apostrophe case\n'
+    failed=1
 fi
 
 # An environment that cannot build the clone must fail the run rather
@@ -277,7 +286,11 @@ fi
 # `--reference` runs the clone for real and cannot complete it. The
 # copy skips this case, or it would sabotage a copy of itself forever.
 if [ -z "${ARCH_DEFERRAL_NO_SABOTAGE:-}" ]; then
-    sabotaged="$scratch_dir/sabotaged.sh"
+    # Must sit beside the original, not inside the scratch directory:
+    # the script derives the repository root from its own path, so a
+    # copy one level deeper resolves to `tests/` and fails for a
+    # reason that has nothing to do with the clone.
+    sabotaged="$REPO_ROOT/tests/arch/.sabotaged-probe.sh"
     sed 's|git clone -q --depth=1|git clone -q --depth=1 --reference /nonexistent-ref|' \
         "$REPO_ROOT/tests/arch/deferral_root_test.sh" >"$sabotaged"
     # Same `set -e` trap as the nested run: this substitution is
