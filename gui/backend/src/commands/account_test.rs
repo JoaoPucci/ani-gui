@@ -1058,3 +1058,122 @@ async fn watch_later_bridge_resolves_a_known_mapping_from_cache_on_the_next_load
         "the second load should read the mapping from cache, not Kitsu"
     );
 }
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_an_anilist_outage_as_unmappable() {
+    // The AniList batch is the fallback for ids Kitsu has not MAL-
+    // mapped. When it fails there is no answer about those ids at all
+    // — but the failure arrives as an empty map, which reads exactly
+    // like "AniList does not know them either". Recording that as a
+    // dead end hides those cards for the whole negative TTL, long
+    // after AniList is back.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    let anilist = wiremock::MockServer::start().await;
+    // Down for the first load, back for the second.
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .up_to_n_times(1)
+        .mount(&anilist)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while AniList is down"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "the outage must not have been remembered as 'nothing maps this'"
+    );
+    assert_eq!(after_recovery[0].id, "50551");
+}
+
+#[tokio::test]
+async fn watch_later_bridge_does_not_remember_a_kitsu_fallback_error_as_unmappable() {
+    // Same defect one hop later: AniList answers, but the Kitsu lookup
+    // for the id it returned fails. `Ok(None)` means Kitsu genuinely
+    // has no such mapping; `Err` means Kitsu did not say. Only the
+    // first is a dead end worth remembering.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    // The anilist-mapping hop is down for the first load only.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(wiremock::ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_MAPPINGS_HIT_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+        )
+        .mount(&anilist)
+        .await;
+
+    let state = state_with_kitsu(&kitsu.uri());
+    let during_outage =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert!(
+        during_outage.is_empty(),
+        "nothing resolves while Kitsu is erroring"
+    );
+
+    let after_recovery =
+        kitsu_for_mal_ids_with_anilist_base(&state, vec![63403], Some(&anilist.uri())).await;
+    assert_eq!(
+        after_recovery.len(),
+        1,
+        "a Kitsu error must not have been remembered as 'nothing maps this'"
+    );
+}
