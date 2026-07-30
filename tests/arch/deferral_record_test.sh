@@ -326,6 +326,29 @@ else
     printf '  ok       an import inside a fence does not count\n'
 fi
 
+# A fence closes only on the delimiter that opened it. A tilde block
+# containing a backtick line, or a four-backtick block containing a
+# three-backtick line, is one fenced region with an inner line of
+# content — and a parser that toggles on any fence reads the inner one
+# as the close and accepts the inert import after it.
+nested_tilde="$scratch_dir/claude-nested-tilde.md"
+printf '~~~\n```\n@AGENTS.md\n~~~\n' >"$nested_tilde"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$nested_tilde" >/dev/null 2>&1; then
+    printf '  FAIL     a backtick line inside a tilde fence ended the fence\n'
+    failed=1
+else
+    printf '  ok       a tilde fence is not closed by a backtick line\n'
+fi
+
+nested_ticks="$scratch_dir/claude-nested-ticks.md"
+printf '````\n```\n@AGENTS.md\n````\n' >"$nested_ticks"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$nested_ticks" >/dev/null 2>&1; then
+    printf '  FAIL     a shorter backtick run closed a longer fence\n'
+    failed=1
+else
+    printf '  ok       a fence closes only on a run at least as long\n'
+fi
+
 live="$scratch_dir/claude-live.md"
 printf 'Prose.\n\n@AGENTS.md\n' >"$live"
 if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$live" >/dev/null 2>&1; then
