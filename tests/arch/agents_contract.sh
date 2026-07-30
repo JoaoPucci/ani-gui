@@ -15,7 +15,17 @@
 
 set -eu
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# Overridable so the self-test can point the whole check at a scratch
+# repository. Without it the script always resolves to its own
+# checkout, which silently turned an earlier version of the tracked-
+# contract test into a tautology: it inspected this repository's
+# tracked files no matter which repository it was run from.
+REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+# Where this script's own siblings live, which is not the same thing
+# once REPO_ROOT is overridden — sourcing the shared helpers from the
+# repository under inspection would look for them in the fixture.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_ROOT"
 
 # Overridable so the self-test can drive fixtures instead of mutating
@@ -23,7 +33,24 @@ cd "$REPO_ROOT"
 CLAUDE_FILE="${1:-$REPO_ROOT/CLAUDE.md}"
 AGENTS_FILE="${2:-AGENTS.md}"
 
+__DEFERRAL_RECORD_LIB__=1
+# shellcheck source=./deferral_record.sh
+. "$SCRIPT_DIR/deferral_record.sh"
+unset __DEFERRAL_RECORD_LIB__
+
 failed=0
+
+# When no fixture is supplied, CLAUDE.md itself has to arrive with the
+# clone. A file test follows a symlink, so a tracked link to something
+# generated or external reads fine while a fresh clone has no
+# importing file at all — the same defect fixed for the contract it
+# imports, on the importing file. Checked before the file is read, and
+# only for the default, since a supplied fixture is the input under
+# test rather than the repository's own.
+if [ "$#" -eq 0 ] && ! record_is_recoverable CLAUDE.md; then
+    printf 'arch/agents_contract: CLAUDE.md %s — a clone would have no file to import from\n' "$(why_unrecoverable CLAUDE.md)"
+    exit 1
+fi
 
 if [ ! -f "$CLAUDE_FILE" ]; then
     printf 'arch/agents_contract: %s is missing\n' "$CLAUDE_FILE"
@@ -71,11 +98,6 @@ fi
 # regular-blob requirement and the literal pathspec, so it is borrowed
 # rather than restated: one definition of "arrives with the clone",
 # hardened once.
-__DEFERRAL_RECORD_LIB__=1
-# shellcheck source=./deferral_record.sh
-. "$REPO_ROOT/tests/arch/deferral_record.sh"
-unset __DEFERRAL_RECORD_LIB__
-
 if ! record_is_recoverable "$AGENTS_FILE"; then
     printf 'arch/agents_contract: %s %s — a clone would import a contract it does not have\n' "$AGENTS_FILE" "$(why_unrecoverable "$AGENTS_FILE")"
     failed=1

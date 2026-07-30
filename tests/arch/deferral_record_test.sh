@@ -504,11 +504,35 @@ mkdir -p "$claude_link_repo"
     printf 'contract\n' >AGENTS.md
     git add CLAUDE.md AGENTS.md elsewhere.md
 ) >/dev/null 2>&1
-if (cd "$claude_link_repo" && sh "$REPO_ROOT/tests/arch/agents_contract.sh") >/dev/null 2>&1; then
-    printf '  FAIL     a symlinked CLAUDE.md was accepted\n'
-    failed=1
+# Assert the reason, not only the exit status. An earlier version of
+# this passed because the script could not find its own helpers under
+# the overridden root — refused, but for a reason that had nothing to
+# do with the symlink.
+link_msg=$(ARCH_REPO_ROOT="$claude_link_repo" sh "$REPO_ROOT/tests/arch/agents_contract.sh" 2>&1 || true)
+case "$link_msg" in
+    *"tracked as a symlink or submodule"*)
+        printf '  ok       CLAUDE.md must itself be a tracked regular file\n' ;;
+    *)
+        printf '  FAIL     symlinked CLAUDE.md not refused for being a symlink: %s\n' "$link_msg"
+        failed=1 ;;
+esac
+
+# The same shape with a regular tracked CLAUDE.md passes, so the guard
+# is not simply rejecting every scratch repository.
+plain_repo="$scratch_dir/claude-plain"
+mkdir -p "$plain_repo"
+(
+    cd "$plain_repo"
+    git init -q .
+    printf '@AGENTS.md\n' >CLAUDE.md
+    printf 'contract\n' >AGENTS.md
+    git add CLAUDE.md AGENTS.md
+) >/dev/null 2>&1
+if ARCH_REPO_ROOT="$plain_repo" sh "$REPO_ROOT/tests/arch/agents_contract.sh" >/dev/null 2>&1; then
+    printf '  ok       a regular tracked CLAUDE.md passes\n'
 else
-    printf '  ok       CLAUDE.md must itself be a tracked regular file\n'
+    printf '  FAIL     a regular tracked CLAUDE.md was rejected\n'
+    failed=1
 fi
 
 if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$import_ok" AGENTS.md >/dev/null 2>&1; then

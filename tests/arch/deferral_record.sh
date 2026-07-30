@@ -165,7 +165,28 @@ AGENTS_FILE="${1:-$REPO_ROOT/AGENTS.md}"
 # so `## 14X Scope ...` would have counted. A character class says the
 # same thing with no escaping to be dropped.
 SECTION_RE="^## ([0-9]+[.] )?$SECTION\$"
-headings=$(grep -cE "$SECTION_RE" "$AGENTS_FILE" || true)
+# Counted outside fenced regions only. A heading inside an example is
+# inert, and finding it by line scan would start the body at it and
+# stop at the next H2 — so neither fence line reaches the body and the
+# section's own no-fence rule never sees them.
+#
+# This is the one place fence tracking is unavoidable: AGENTS.md
+# legitimately uses fences, so they cannot simply be refused as they
+# are in CLAUDE.md and in the section body. It errs toward refusing —
+# a region this misjudges as open hides the heading and fails the
+# check, which is the loud direction.
+headings=$(awk -v re="$SECTION_RE" '
+    match($0, /^[ \t]*(`{3,}|~{3,})/) {
+        run = substr($0, RSTART, RLENGTH)
+        sub(/^[ \t]*/, "", run)
+        ch = substr(run, 1, 1)
+        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
+        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
+        next
+    }
+    !fenced && $0 ~ re { n++ }
+    END { print n + 0 }
+' "$AGENTS_FILE")
 
 if [ "$headings" -eq 0 ]; then
     printf 'arch/deferral_record: no heading "## N. %s" in %s\n' "$SECTION" "$AGENTS_FILE"
@@ -178,7 +199,16 @@ fi
 
 # The section body: from its heading to the next heading or EOF.
 body=$(awk -v re="$SECTION_RE" '
-    /^## / { inside = ($0 ~ re); next }
+    match($0, /^[ \t]*(`{3,}|~{3,})/) {
+        run = substr($0, RSTART, RLENGTH)
+        sub(/^[ \t]*/, "", run)
+        ch = substr(run, 1, 1)
+        if (!fenced) { fenced = 1; fence_ch = ch; fence_len = length(run) }
+        else if (ch == fence_ch && length(run) >= fence_len) { fenced = 0 }
+        inside = 0
+        next
+    }
+    !fenced && /^## / { inside = ($0 ~ re); next }
     inside { print }
 ' "$AGENTS_FILE")
 
