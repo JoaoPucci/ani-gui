@@ -146,6 +146,8 @@ expect_parsed 'docs/follow-ups/' 'a directory can be the record just as well'
 expect_parsed '.planning/' 'named in this very section, and unreachable'
 
 expect_parsed 'follow-ups.md' 'a record at the repo root is still a record'
+expect_parsed './docs/follow-ups.md' 'the explicit repo-relative spelling'
+expect_parsed './follow-ups.md' 'and the same at the root'
 
 expect_not_parsed 'piped' 'a bare word from the prose'
 expect_not_parsed '#N · Title' 'a citation label, not a path'
