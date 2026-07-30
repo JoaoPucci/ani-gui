@@ -69,7 +69,10 @@ expect_ok "a stray REPO_ROOT does not redirect the contract check" \
 # them, so the path was re-parsed as shell syntax and the suite broke
 # on where it had been cloned. Verified by hand at the time; asserted
 # here so it cannot regress.
-apostrophe_dir="$(mktemp -d)/o'brien"
+# Inside the repository, not `/tmp`. The suite has no business
+# writing outside the tree it is checking, and the sibling tests keep
+# their scratch here for the same reason.
+apostrophe_dir="$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-clone.XXXXXX")/o'brien"
 mkdir -p "$apostrophe_dir"
 # Guarded so the nested run does not clone again — but only this
 # block. Guarding the whole script made the nested run assert nothing
