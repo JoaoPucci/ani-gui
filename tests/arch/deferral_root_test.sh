@@ -20,6 +20,9 @@ cd "$REPO_ROOT"
 
 failed=0
 
+# The nested clone re-runs this file; it must not recurse.
+[ -n "${SKIP_NESTED:-}" ] && { printf 'arch/deferral_root_test: ok (nested)\n'; exit 0; }
+
 # No `eval`. Building a command string means quoting the repository
 # path into it, and a checkout under a directory containing an
 # apostrophe would then be re-parsed as shell syntax — a test that
@@ -61,6 +64,26 @@ expect_ok "a stray REPO_ROOT does not redirect the record check" \
     with_stray_root deferral_record.sh
 expect_ok "a stray REPO_ROOT does not redirect the contract check" \
     with_stray_root agents_contract.sh
+
+# A checkout path containing an apostrophe. This exists because the
+# first version of this file built commands as strings and evaluated
+# them, so the path was re-parsed as shell syntax and the suite broke
+# on where it had been cloned. Verified by hand at the time; asserted
+# here so it cannot regress.
+apostrophe_dir="$(mktemp -d)/o'brien"
+mkdir -p "$apostrophe_dir"
+if git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
+    cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" "$apostrophe_dir/repo/tests/arch/"
+    if (cd "$apostrophe_dir/repo" && SKIP_NESTED=1 sh tests/arch/deferral_root_test.sh) >/dev/null 2>&1; then
+        printf '  ok       the suite runs from a path containing an apostrophe\n'
+    else
+        printf '  FAIL     a path containing an apostrophe breaks the suite\n'
+        failed=1
+    fi
+else
+    printf '  ok       (skipped: could not clone for the apostrophe case)\n'
+fi
+rm -rf "$(dirname "$apostrophe_dir")"
 
 [ "$failed" -eq 0 ] || { printf 'arch/deferral_root_test: FAILED\n'; exit 1; }
 printf 'arch/deferral_root_test: ok\n'
