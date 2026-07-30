@@ -32,8 +32,12 @@ treat every entry as a lead rather than a fact.
 ## Resolver and provider
 
 - **Replace the bundled `ani-cli` with a native Rust resolver.** Search
-  and episode-count disambiguation are already native —
-  `scraper/allanime.rs` stops there. Everything below it is script-only
+  and episode-count disambiguation are already native, and so is show
+  metadata: `fetch_show` issues the same `availableEpisodesDetail`
+  query as the script's `episodes_list` and exposes the per-mode
+  episode tags through `ShowMetadata`. The native boundary is not
+  candidate selection — it stops before stream-source resolution.
+  Everything past that point is script-only
   and all of it is needed before playback works natively:
 
   1. **The episode-source request.** `get_episode_url` sends the
