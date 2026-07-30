@@ -54,7 +54,6 @@ treat every entry as a lead rather than a fact.
 - **Distinguish "no sources upstream" from "show not found"** in the
   play error path. They are the same message today and want different
   advice.
-- **Check the Yani Neko Mini situation.**
 
 ## Testing and CI
 
