@@ -1468,3 +1468,7 @@ mod tests {
         assert_eq!(ids, vec!["12", "42", "77"]);
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_key_test.rs"]
+mod key_tests;
