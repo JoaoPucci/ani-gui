@@ -24,6 +24,16 @@ cd "$REPO_ROOT"
 #
 # NOTE: this is the check under test in deferral_record_test.sh.
 record_is_recoverable() {
+    # `--` and `:(literal)` because a declared path is data and git
+    # would otherwise read parts of it as syntax. `--stage` is a real
+    # `ls-files` flag, so without the separator the query lists the
+    # whole index and an absent record reads as present; `[A]GENTS.md`
+    # is a pathspec matching the tracked `AGENTS.md`, so without the
+    # literal magic a record is reported readable because a different
+    # file is. Both are legal filenames. Verified that the pair leaves
+    # the other declared spellings working — a directory, a `./`
+    # prefix, a name containing a space.
+    #
     # Tracked is the whole question. `git check-ignore` answers a
     # narrower one — it is nonzero for a path that is merely absent,
     # so an ignore-based check waves through a record nobody added.
@@ -32,13 +42,18 @@ record_is_recoverable() {
     # reading from a fresh clone. It also correctly accepts a
     # force-added file: tracked beats ignored, and such a file really
     # is readable.
-    git ls-files --error-unmatch "$1" >/dev/null 2>&1
+    git ls-files --error-unmatch -- ":(literal)$1" >/dev/null 2>&1
 }
 
 # A specific reason for the failure message, so the fix is obvious
 # from the suite output rather than requiring a bisect.
 why_unrecoverable() {
-    if git check-ignore -q "$1" 2>/dev/null; then
+    # `--` but not `:(literal)` here. check-ignore matches the name it
+    # is given against the ignore rules rather than against the tree,
+    # so the separator is enough to keep an option name out of the
+    # argument list, while the literal magic stops it matching at all
+    # and turns every ignored record into the vaguer "not tracked".
+    if git check-ignore -q -- "$1" 2>/dev/null; then
         printf 'which git ignores'
     else
         printf 'which is not tracked by git'

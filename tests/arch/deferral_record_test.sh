@@ -178,6 +178,23 @@ else
     printf '  ok       a TERMed run still cleans up\n'
 fi
 
+# The failure message has to name the actual reason. "Ignored" and
+# "not tracked" call for different fixes — unignore it, or add it —
+# and a check that reports the wrong one sends the reader the wrong
+# way.
+if [ "$(why_unrecoverable '.planning/follow-ups.md')" = 'which git ignores' ]; then
+    printf '  ok       an ignored record is reported as ignored\n'
+else
+    printf '  FAIL     an ignored record is misreported as merely untracked\n'
+    failed=1
+fi
+if [ "$(why_unrecoverable 'docs/no-such-follow-ups.md')" = 'which is not tracked by git' ]; then
+    printf '  ok       an absent record is reported as untracked\n'
+else
+    printf '  FAIL     an absent record is misreported\n'
+    failed=1
+fi
+
 printf 'arch/deferral_record_test: parser cases\n'
 
 # The parser runs before the predicate, so anything it drops is never
