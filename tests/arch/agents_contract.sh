@@ -21,6 +21,7 @@ cd "$REPO_ROOT"
 # Overridable so the self-test can drive fixtures instead of mutating
 # the real file.
 CLAUDE_FILE="${1:-$REPO_ROOT/CLAUDE.md}"
+AGENTS_FILE="${2:-AGENTS.md}"
 
 failed=0
 
@@ -60,8 +61,23 @@ else
     failed=1
 fi
 
-if [ ! -f "$REPO_ROOT/AGENTS.md" ]; then
-    printf 'arch/agents_contract: AGENTS.md is missing, so the import resolves to nothing\n'
+# Tracked, not merely present. `git rm --cached` leaves the file on
+# disk while taking it out of the index, and a symlink to something
+# outside the repository passes a file test — both leave a fresh clone
+# importing a contract it does not have, while the reviewer's checkout
+# looks fine.
+#
+# The record check already answers this question, including the
+# regular-blob requirement and the literal pathspec, so it is borrowed
+# rather than restated: one definition of "arrives with the clone",
+# hardened once.
+__DEFERRAL_RECORD_LIB__=1
+# shellcheck source=./deferral_record.sh
+. "$REPO_ROOT/tests/arch/deferral_record.sh"
+unset __DEFERRAL_RECORD_LIB__
+
+if ! record_is_recoverable "$AGENTS_FILE"; then
+    printf 'arch/agents_contract: %s %s — a clone would import a contract it does not have\n' "$AGENTS_FILE" "$(why_unrecoverable "$AGENTS_FILE")"
     failed=1
 fi
 

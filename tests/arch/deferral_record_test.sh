@@ -406,27 +406,26 @@ else
 fi
 
 # The import is only worth anything if what it names arrives with the
-# clone. `AGENTS.md` sitting on disk proves nothing — `git rm --cached`
+# clone. AGENTS.md sitting on disk proves nothing — `git rm --cached`
 # leaves it there while removing it from the index, and a symlink to
 # something outside the repository satisfies a file test too. Both
-# leave a fresh clone importing a contract that is not there.
-#
-# Driven in the scratch repository, where a CLAUDE.md with a live
-# import sits beside an AGENTS.md that exists but was never added.
-contract_repo="$scratch_dir/contract-repo"
-mkdir -p "$contract_repo"
-(
-    cd "$contract_repo"
-    git init -q .
-    printf '@AGENTS.md\n' >CLAUDE.md
-    printf 'the contract\n' >AGENTS.md
-    git add CLAUDE.md
-) >/dev/null 2>&1
-if (cd "$contract_repo" && sh "$REPO_ROOT/tests/arch/agents_contract.sh" CLAUDE.md) >/dev/null 2>&1; then
-    printf '  FAIL     an untracked AGENTS.md satisfied the import — a clone would have nothing to import\n'
+# leave a fresh clone importing a contract that is not there, while
+# the reviewer's checkout looks fine.
+untracked_contract="$scratch_dir/AGENTS-untracked.md"
+printf 'the contract\n' >"$untracked_contract"
+import_ok="$scratch_dir/claude-import-ok.md"
+printf '@AGENTS.md\n' >"$import_ok"
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$import_ok" "$untracked_contract" >/dev/null 2>&1; then
+    printf '  FAIL     an untracked contract satisfied the import — a clone would have nothing to import\n'
     failed=1
 else
     printf '  ok       the imported contract must be tracked, not merely present\n'
+fi
+if sh "$REPO_ROOT/tests/arch/agents_contract.sh" "$import_ok" AGENTS.md >/dev/null 2>&1; then
+    printf '  ok       a tracked contract satisfies the import\n'
+else
+    printf '  FAIL     the real tracked contract was rejected\n'
+    failed=1
 fi
 
 live="$scratch_dir/claude-live.md"
