@@ -74,6 +74,14 @@ expect_rejected() {
 
 printf 'arch/deferral_record_test: predicate cases\n'
 
+# The ledger the policy names. It has to be a tracked file in this
+# repository, because the alternatives are both closed: the internal
+# planning directory is git-ignored, and this repository has issues
+# disabled, so "open an issue" is not a thing a contributor here can
+# do. A policy that names an unreachable mechanism records nothing,
+# which is the outcome section 14 exists to prevent.
+expect_recoverable docs/deferred-work.md
+
 # Tracked: the only state that actually survives a fresh clone.
 # Names the suite runner rather than this file's own subject, which
 # is not yet in the index while the invariant is being introduced —
