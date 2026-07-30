@@ -102,8 +102,15 @@ why_unrecoverable() {
 #
 #     <!-- record-path: docs/follow-ups.md -->
 #
-# The format is exact: one space after the colon, one space before the
-# closing marker, and everything between them is the path. That single
+# The format is exact: the line starts at column zero, one space after
+# the colon, one space before the closing marker, and everything
+# between them is the path.
+#
+# Column zero because four spaces of indentation makes a line an
+# indented code block in Markdown, where a marker is inert — and
+# picking the exact boundary is the habit that produced four rounds of
+# fence rules. Anything indented is an example. A constraint that
+# cannot drift, rather than a judgement that can. That single
 # space on each side is the delimiter, so padding and content stay
 # distinguishable — `<!-- record-path: notes.md  -->` declares
 # `notes.md ` with its trailing space intact, which is a legal
@@ -116,7 +123,7 @@ why_unrecoverable() {
 # to prevent — declaring a path is worth nothing if the parser then
 # adjusts it.
 cited_paths() {
-    sed -n 's/^[[:space:]]*<!-- record-path: \(.*\) -->[[:space:]]*$/\1/p'
+    sed -n 's/^<!-- record-path: \(.*\) -->[[:space:]]*$/\1/p'
 }
 
 # An untracked file for the self-test to point the predicate at.
