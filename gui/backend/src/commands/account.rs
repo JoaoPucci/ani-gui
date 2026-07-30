@@ -677,3 +677,7 @@ async fn push_progress_via(
 #[cfg(test)]
 #[path = "account_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "account_key_test.rs"]
+mod key_tests;
