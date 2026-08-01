@@ -336,7 +336,7 @@ without_heredoc_bodies() {
     awk '
         BEGIN {
             sq = sprintf("%c", 39)
-            opener = "<<-?[ \t]*[\"" sq "]?[A-Za-z_][A-Za-z0-9_]*"
+            opener = "<<-?[ \t]*([\"" sq "][^\"" sq "]*[\"" sq "]|[^ \t;&|<>()]+)"
         }
         {
             if (inside) {
@@ -380,7 +380,7 @@ ambient_stray_names() {
     # whatever the calling shell already put there survives — so the
     # read stays as ambient as it would be with no export at all.
     _assigned=$(printf '%s\n' "$_code" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*=' |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|^[[:space:]]*export[[:space:]]+[A-Z][A-Z0-9_]*=' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
     if [ -n "$_assigned" ]; then
