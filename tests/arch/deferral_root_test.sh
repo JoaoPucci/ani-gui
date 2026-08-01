@@ -665,6 +665,35 @@ else
         failed=1
     fi
 
+    # The other half of registering before creating. A prefix that is
+    # already occupied belongs to somebody — a pid comes round again
+    # after a kill that skipped cleanup — and the trap, armed before
+    # anything was made, would hand it to `rm -rf` as soon as `mkdir`
+    # failed. Refusing outright is what keeps the first guarantee from
+    # buying the opposite one.
+    # Skipped in the child, which carries the variable. A run that
+    # refuses exits before reaching here, so the guard matters only
+    # while the refusal is absent — which is exactly when this case is
+    # meant to fail, and without it that failure is an unbounded fork
+    # rather than a report.
+    if [ -z "${ARCH_DEFERRAL_TMP_PREFIX:-}" ]; then
+        occupied="$scratch_dir/occupied-prefix"
+        mkdir -p "$occupied"
+        printf 'not yours\n' >"$occupied/keep-me"
+        occupied_status=0
+        ARCH_DEFERRAL_TMP_PREFIX="$occupied" \
+            sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
+            occupied_status=$?
+        if [ "$occupied_status" -ne 0 ] && [ -f "$occupied/keep-me" ]; then
+            printf '  ok       an occupied prefix is refused, not adopted\n'
+        else
+            printf '  FAIL     an occupied prefix was adopted or emptied (status %s, keep-me %s)\n' \
+                "$occupied_status" \
+                "$([ -f "$occupied/keep-me" ] && echo present || echo gone)"
+            failed=1
+        fi
+    fi
+
     rm -f "$first_sabotage" "$second_sabotage"
 fi
 
