@@ -367,6 +367,53 @@ esac
 # Proved by sabotage: a copy of this file with an unsatisfiable
 # `--reference` runs the clone for real and cannot complete it. The
 # copy skips this case, or it would sabotage a copy of itself forever.
+# The sabotage probe must not collide with a file a developer already
+# has. A fixed name means `>` truncates whatever sits there and the
+# cleanup trap deletes it; had it been a symlink, the redirection
+# would have written through to its target. That is the hazard
+# `make_untracked_probe` exists for, on the other probe, so the same
+# answer applies: allocate a path, never assume one.
+#
+# Asserted against the allocator directly rather than by running the
+# sabotage step, because that step re-executes this file — a case that
+# re-enters it has to be reasoned about rather than merely written.
+#
+# `set -e` would take a missing allocator as a failure of the whole
+# script, which is the condition being measured.
+alloc_status=0
+first_sabotage=$(make_sabotage_probe 2>/dev/null) || alloc_status=$?
+
+if [ "$alloc_status" -ne 0 ] || [ -z "$first_sabotage" ]; then
+    printf '  FAIL     no collision-free allocator for the sabotage probe\n'
+    failed=1
+else
+    printf 'do not lose me\n' >"$first_sabotage"
+    second_sabotage=$(make_sabotage_probe)
+    if [ "$second_sabotage" = "$first_sabotage" ]; then
+        printf '  FAIL     the sabotage probe returned the same path twice\n'
+        failed=1
+    elif [ "$(cat "$first_sabotage" 2>/dev/null)" != 'do not lose me' ]; then
+        printf '  FAIL     the sabotage probe clobbered an existing file\n'
+        failed=1
+    else
+        printf '  ok       the sabotage probe never reuses or truncates a path\n'
+    fi
+
+    # It also has to sit beside the original: the script derives its
+    # root from its own path, so a copy one level deeper resolves to
+    # `tests/` and fails for a reason unrelated to the measurement.
+    case "$second_sabotage" in
+        "$REPO_ROOT/tests/arch/"*)
+            printf '  ok       the sabotage probe is allocated beside the original\n'
+            ;;
+        *)
+            printf '  FAIL     the sabotage probe is not beside the original\n'
+            failed=1
+            ;;
+    esac
+    rm -f "$first_sabotage" "$second_sabotage"
+fi
+
 if [ -z "${ARCH_DEFERRAL_NO_SABOTAGE:-}" ]; then
     # Must sit beside the original, not inside the scratch directory:
     # the script derives the repository root from its own path, so a
