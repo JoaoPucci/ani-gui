@@ -36,8 +36,18 @@ failed=0
 # interrupt. It had none: the apostrophe clone used `mktemp -d` and an
 # explicit `rm -rf` that only ran when the block completed.
 scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
+# The sabotage probe has to sit beside the original — the script
+# derives its root from its own path, so a copy one level deeper
+# resolves to `tests/` — but "beside" does not mean "at a name we
+# picked". `mktemp` allocates one nobody else holds.
+make_sabotage_probe() {
+    mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX"
+}
+
 cleanup() {
-    rm -f "$REPO_ROOT/tests/arch/.sabotaged-probe.sh"
+    # Only the path this run allocated. A fixed name here removed a
+    # file the run never created.
+    [ -n "${sabotage_probe:-}" ] && rm -f "$sabotage_probe"
     [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"
 }
 trap cleanup EXIT
@@ -419,7 +429,8 @@ if [ -z "${ARCH_DEFERRAL_NO_SABOTAGE:-}" ]; then
     # the script derives the repository root from its own path, so a
     # copy one level deeper resolves to `tests/` and fails for a
     # reason that has nothing to do with the clone.
-    sabotaged="$REPO_ROOT/tests/arch/.sabotaged-probe.sh"
+    sabotage_probe=$(make_sabotage_probe)
+    sabotaged="$sabotage_probe"
     sed 's|git clone -q --depth=1|git clone -q --depth=1 --reference /nonexistent-ref|' \
         "$REPO_ROOT/tests/arch/deferral_root_test.sh" >"$sabotaged"
     # Same `set -e` trap as the nested run: this substitution is
