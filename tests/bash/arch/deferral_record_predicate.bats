@@ -57,8 +57,22 @@ setup() {
 @test "a file present but never added is rejected" {
     # Same consequence as absent — a clone rebuilds from the index,
     # not from someone's disk.
-    probe=$(make_untracked_probe "$BATS_TEST_TMPDIR")
-    run ! record_is_recoverable "$probe"
+    # Inside a repository, not beside one. A probe under
+    # $BATS_TEST_TMPDIR is outside the checkout entirely, so `git
+    # ls-files` rejects it as an external path and the case passes
+    # without ever meeting a file that exists in a working tree and is
+    # absent from its index — which is the state being asserted.
+    repo="$BATS_TEST_TMPDIR/untracked-repo"
+    mkdir -p "$repo"
+    (cd "$repo" && git init -q .) >/dev/null 2>&1
+    probe=$(make_untracked_probe "$repo")
+    [ -e "$probe" ]
+    run ! env ARCH_REPO_ROOT="$repo" sh -c '
+        __DEFERRAL_RECORD_LIB__=1
+        . "$1/tests/arch/deferral_record.sh"
+        cd "$2" || exit 1
+        record_is_recoverable "${3##*/}"
+    ' _ "$REPO_ROOT" "$repo" "$probe"
 }
 
 @test "the untracked probe never reuses or truncates a path" {
