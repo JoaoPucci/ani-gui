@@ -81,8 +81,11 @@ run_from() {
 # about. Anchored to the list item, and scoped to the trigger block so
 # prose further down cannot stand in for wiring.
 filter_covers() {
+    # The path has to end on a boundary, or a sibling that merely
+    # shares the prefix — `tests/archive` for `tests/arch` — satisfies
+    # a request it covers none of.
     sed -n '/^  pull_request:/,/^jobs:/p' "$1" |
-        grep -qE "^[[:space:]]*-[[:space:]]*[\"']?$2"
+        grep -qE "^[[:space:]]*-[[:space:]]*[\"']?$2([/\"'[:space:]]|$)"
 }
 
 # Names the arch scripts read from the environment, over whatever
