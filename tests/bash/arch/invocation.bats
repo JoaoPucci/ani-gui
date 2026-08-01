@@ -286,6 +286,35 @@ YAML
     [ "$status" -ne 0 ]
 }
 
+@test "a quoted hash does not hide the rest of the line" {
+    # `#` opens a comment only where a word could start and only
+    # outside quotes, so `"#${GENERIC_GUARD-}"` is an ordinary
+    # comparison. Stripping from the first hash on the line swallows
+    # the rest of it and the audit reports ok about a name it never
+    # saw.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/quoted-hash.sh"
+    [[ "$output" == *GENERIC_GUARD* ]]
+}
+
+@test "a valueless export does not claim ownership" {
+    # `export NAME` assigns nothing. It marks the name for the
+    # environment and whatever the calling shell put there survives,
+    # so the read is exactly as ambient as it would be with no export
+    # at all.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/bare-export.sh"
+    [[ "$output" == *GENERIC_GUARD* ]]
+}
+
+@test "a lowercase name is still ambient" {
+    # Shell names are not required to be upper case. `skip_nested` is
+    # as legal an environment variable as `SKIP_NESTED` and an export
+    # reaches the read the same way; the shouting is a convention, not
+    # a rule the shell enforces. Patterns anchored on `[A-Z]` see none
+    # of it.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/lowercase-name.sh"
+    [[ "$output" == *skip_nested* ]]
+}
+
 @test "an uppercase loop variable is a local, not an ambient input" {
     # `for SCRIPT in ...` assigns SCRIPT, so nothing about it comes
     # from the calling shell. Recognising `NAME=` and `export NAME` but
