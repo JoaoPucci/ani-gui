@@ -181,6 +181,14 @@ YAML
     }
 }
 
+@test "a single-character name is still ambient" {
+    # One uppercase letter is a valid environment variable, so the
+    # shortest name the audit sees has to be the shortest the shell
+    # accepts.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/single-char-name.sh"
+    [[ "$output" == *X* ]]
+}
+
 @test "a two-character name is still ambient" {
     # `[A-Z][A-Z0-9_]+` needs three characters, so a legal
     # two-character environment name is invisible to all three passes
