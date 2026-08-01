@@ -314,7 +314,7 @@ strip_comments() {
             }
             print out
         }
-    ' "$@"
+    '
 }
 
 ambient_stray_names() {
@@ -413,7 +413,36 @@ else
     failed=1
 fi
 
-stray_env=$(strip_comments "$REPO_ROOT"/tests/arch/*.sh | ambient_stray_names)
+# A heredoc body is data, so an assignment spelled there assigns
+# nothing. Read as one, it makes the name look local and the ambient
+# read underneath stops being reported.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-assignment.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       an assignment inside a heredoc does not claim the name\n'
+else
+    printf '  FAIL     a heredoc assignment hides an ambient read\n'
+    failed=1
+fi
+
+# Case is not part of the rule, and every pattern anchored on `[A-Z]`
+# is blind to a lowercase name in all three passes at once.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/lowercase-name.sh" |
+    grep -qx 'skip_nested'; then
+    printf '  ok       a lowercase name is still ambient\n'
+else
+    printf '  FAIL     a lowercase name escapes the audit entirely\n'
+    failed=1
+fi
+
+# One file at a time. Concatenating them shares the stripper's quote
+# state across file boundaries, so one file ending mid-quote changes
+# how the next is read; and stripping here as well as inside the
+# function ran every script through it twice.
+stray_env=$(
+    for stray_file in "$REPO_ROOT"/tests/arch/*.sh; do
+        ambient_stray_names <"$stray_file"
+    done | sort -u
+)
 if [ -z "$stray_env" ]; then
     printf '  ok       every ambient variable the arch scripts read is namespaced\n'
 else
