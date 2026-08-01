@@ -81,7 +81,8 @@ run_from() {
 # about. Anchored to the list item, and scoped to the trigger block so
 # prose further down cannot stand in for wiring.
 filter_covers() {
-    grep -q "$2" "$1"
+    sed -n '/^  pull_request:/,/^jobs:/p' "$1" |
+        grep -qE "^[[:space:]]*-[[:space:]]*[\"']?$2"
 }
 
 # Names the arch scripts read from the environment, over whatever
@@ -97,8 +98,8 @@ ambient_stray_names() {
     # POSIX operators, each with and without the colon. The colon only
     # decides whether an empty value counts as unset — it says nothing
     # about where the value came from.
-    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
-        sed 's/^\${//; s/:[-=]$//' | sort -u)
+    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:?[-=?+]' |
+        sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
     plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
     assigned=$(printf '%s\n' "$src" |
