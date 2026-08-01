@@ -469,6 +469,26 @@ else
     failed=1
 fi
 
+# The delimiter is any word, not only an identifier. `cat <<123` is
+# legal, and an opener that misses it leaves the body in the source.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-digit-delimiter.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a heredoc delimiter that is not an identifier still ends the body\n'
+else
+    printf '  FAIL     a digit-led heredoc delimiter leaves its body readable as code\n'
+    failed=1
+fi
+
+# An export inside double quotes is text the shell prints, not runs.
+# Matched anywhere on the line, the diagnostic is read as ownership.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/quoted-export.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a quoted export does not claim the name\n'
+else
+    printf '  FAIL     a quoted export is read as a real assignment\n'
+    failed=1
+fi
+
 # One file at a time. Concatenating them shares the stripper's quote
 # state across file boundaries, so one file ending mid-quote changes
 # how the next is read; and stripping here as well as inside the
