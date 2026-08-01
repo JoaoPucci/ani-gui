@@ -431,6 +431,13 @@ esac
 # allocator hands out has to reach the trap, or a signal between
 # allocation and the explicit removal litters the working tree with
 # files the next `git status` reports.
+#
+# Two ways this case could pass without measuring anything, both
+# guarded below. If the child dies before printing, there is nothing
+# to look for and an unguarded loop reports success having checked no
+# paths. And the paths are read a line at a time: a checkout under a
+# directory with a space in it splits an unquoted expansion into
+# fragments, so the test would stat names that were never files.
 leak_out=$(mktemp "$scratch_dir/leak-probe.XXXXXX")
 ARCH_SABOTAGE_LEAK_PROBE=1 sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
     >"$leak_out" 2>&1 &
@@ -440,18 +447,29 @@ while [ "$i" -lt 50 ] && [ "$(wc -l <"$leak_out")" -lt 2 ]; do
     sleep 0.1
     i=$((i + 1))
 done
-leaked=$(cat "$leak_out")
 kill -TERM "$leak_pid" 2>/dev/null || true
-wait "$leak_pid" 2>/dev/null || true
+leak_status=0
+wait "$leak_pid" 2>/dev/null || leak_status=$?
 
+leak_count=$(wc -l <"$leak_out" | tr -d ' ')
 leak_found=0
-for probe in $leaked; do
+while IFS= read -r probe; do
+    [ -n "$probe" ] || continue
     if [ -e "$probe" ]; then
         leak_found=1
         rm -f "$probe"
     fi
-done
-if [ "$leak_found" -eq 0 ]; then
+done <"$leak_out"
+
+if [ "$leak_count" -ne 2 ]; then
+    printf '  FAIL     the leak probe emitted %s paths, not 2 — cleanup was never exercised\n' \
+        "$leak_count"
+    failed=1
+elif [ "$leak_status" -ne 143 ]; then
+    printf '  FAIL     the leak probe exited %s, not 143 — it was not the signal that ended it\n' \
+        "$leak_status"
+    failed=1
+elif [ "$leak_found" -eq 0 ]; then
     printf '  ok       a cancelled run leaves no probes behind\n'
 else
     printf '  FAIL     a cancelled run left an allocated probe in the working tree\n'
