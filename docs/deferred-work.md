@@ -99,7 +99,7 @@ document renders as intended. A wholly-inert policy section is visible
 to anyone who opens the rendered file and to any reviewer of the diff
 that made it inert; a parser is not the right instrument for it.
 
-## Three open findings on the deferral checks
+## Open findings on the deferral checks
 
 Raised in review and not yet fixed. Recorded here so they survive the
 thread.
