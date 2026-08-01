@@ -175,24 +175,52 @@ fi
 # for, and a check that flags its own prose is measuring the wrong
 # thing.
 allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
-arch_src=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh)
-defaulted=$(printf '%s\n' "$arch_src" |
-    grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
-    sed 's/^\${//; s/:[-=]$//' | sort -u)
-plain=$(printf '%s\n' "$arch_src" |
-    grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
-    sed 's/^\$//; s/^{//; s/}$//' | sort -u)
-assigned=$(printf '%s\n' "$arch_src" |
-    grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
-    sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
-    sort -u)
-if [ -n "$assigned" ]; then
-    unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
+
+# The detection, over whatever source it is handed. A function rather
+# than a pipeline inline in the live assertion, so a fixture can be run
+# through the identical code — asserting only against the real scripts
+# means the day it stops detecting anything, it reports ok.
+ambient_stray_names() {
+    _src=$(sed 's/#.*//')
+    _defaulted=$(printf '%s\n' "$_src" |
+        grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
+        sed 's/^\${//; s/:[-=]$//' | sort -u)
+    _plain=$(printf '%s\n' "$_src" |
+        grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
+        sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+    _assigned=$(printf '%s\n' "$_src" |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
+        sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
+        sort -u)
+    if [ -n "$_assigned" ]; then
+        _unowned=$(printf '%s\n' "$_plain" | grep -vxF "$_assigned" || true)
+    else
+        _unowned=$_plain
+    fi
+    printf '%s\n%s\n' "$_defaulted" "$_unowned" |
+        grep -v '^$' | sort -u | grep -vE "$allowed_env" || true
+}
+
+# A colonless POSIX default is exactly as ambient as its colon
+# spelling, and the audit has to say so. The fixture pairs one with an
+# assignment of the same name, which is what makes the case sharp: the
+# assignment takes the name out of the read-but-never-assigned path,
+# leaving the default-expansion path as the only thing that can catch
+# it. A guard written that way inherits whatever the calling shell
+# exported.
+#
+# The fixture is a file outside tests/arch rather than a string here,
+# because this file is itself scanned — test data spelled inline gets
+# reported as a real finding.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/colonless-default.sh" |
+    grep -qx 'SKIP_NESTED'; then
+    printf '  ok       a colonless default expansion is still ambient\n'
 else
-    unowned=$plain
+    printf '  FAIL     a colonless default escapes the audit when the name is also assigned\n'
+    failed=1
 fi
-stray_env=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
-    grep -v '^$' | sort -u | grep -vE "$allowed_env" || true)
+
+stray_env=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh | ambient_stray_names)
 if [ -z "$stray_env" ]; then
     printf '  ok       every ambient variable the arch scripts read is namespaced\n'
 else
