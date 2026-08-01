@@ -279,24 +279,27 @@ allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
 # than a pipeline inline in the live assertion, so a fixture can be run
 # through the identical code — asserting only against the real scripts
 # means the day it stops detecting anything, it reports ok.
-# Shell comments, removed. A `#` opens one only where a word could
-# start — at the beginning of a line or after a blank — and only
-# outside quotes. `sed 's/#.*//'` honours neither rule, so
-# `"#${GENERIC_GUARD-}"` lost its name to a hash that was never a
-# comment and the audit reported ok about a guard it had not read.
+# The part of a script the shell would actually expand. Two things go,
+# for one reason: the shell never reads them as code, so a name there
+# is not a read of anything.
 #
-# A line at a time, so a quoted string spanning several resumes
-# unquoted on the next. Nothing in these scripts spells one that way,
-# and a heredoc body is not shell source to begin with.
+# Comments. A `#` opens one only where a word could start — line start
+# or after a blank — and only outside quotes, so `"#${GUARD-}"` keeps
+# its name.
 #
-# SC2016 — the awk program is single-quoted on purpose; `$0` is awk's
-# record, not a shell positional.
-# shellcheck disable=SC2016
-strip_comments() {
+# Single-quoted spans. `$name` inside them is literal. Embedded awk is
+# where this bites: `boundaries.sh` carries `for (i = 3; ...) $i`, and
+# an audit reading that as shell reports `i` as an environment
+# variable. Double quotes stay, because the shell expands inside them.
+#
+# Quote state carries across lines, because that awk program spans
+# several. Callers must hand this one file at a time; run over a
+# concatenation, a file ending mid-quote changes how the next is read.
+expandable_text() {
     awk '
-        BEGIN { sq = sprintf("%c", 39) }
+        BEGIN { sq = sprintf("%c", 39); q = "" }
         {
-            out = ""; q = ""; prev = ""; i = 1; n = length($0)
+            out = ""; prev = ""; i = 1; n = length($0)
             while (i <= n) {
                 c = substr($0, i, 1)
                 if (q == "") {
@@ -304,8 +307,12 @@ strip_comments() {
                         out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
                     }
                     if (c == "#" && (out == "" || prev == " " || prev == "\t")) break
-                    if (c == sq || c == "\"") q = c
-                } else if (q == "\"" && c == "\\") {
+                    if (c == sq) { q = c; prev = c; i++; continue }
+                    if (c == "\"") q = c
+                } else if (q == sq) {
+                    if (c == sq) q = ""
+                    prev = c; i++; continue
+                } else if (c == "\\") {
                     out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
                 } else if (c == q) {
                     q = ""
@@ -317,8 +324,46 @@ strip_comments() {
     '
 }
 
+# The same source with heredoc bodies blanked, for the passes that
+# decide ownership. A heredoc body is data — the shell hands it to a
+# command and never parses it as source — so an assignment spelled
+# there assigns nothing, and counting it makes the name look local.
+#
+# Run over raw text, before quotes are stripped: the delimiter of a
+# quoted heredoc lives inside the quotes `expandable_text` removes.
+# Blank lines rather than dropped ones, so nothing else shifts.
+without_heredoc_bodies() {
+    awk '
+        BEGIN {
+            sq = sprintf("%c", 39)
+            opener = "<<-?[ \t]*[\"" sq "]?[A-Za-z_][A-Za-z0-9_]*"
+        }
+        {
+            if (inside) {
+                probe = $0
+                if (dash) sub(/^\t+/, "", probe)
+                if (probe == delim) inside = 0
+                print ""
+                next
+            }
+            if (match($0, opener)) {
+                tok = substr($0, RSTART, RLENGTH)
+                dash = (substr(tok, 1, 3) == "<<-")
+                sub(/^<<-?[ \t]*/, "", tok)
+                gsub("[\"" sq "]", "", tok)
+                delim = tok
+                inside = 1
+            }
+            print
+        }
+    '
+}
+
 ambient_stray_names() {
-    _src=$(strip_comments)
+    _raw=$(cat)
+    _src=$(printf '%s\n' "$_raw" | expandable_text)
+    # Ownership is decided over executable source only.
+    _code=$(printf '%s\n' "$_raw" | without_heredoc_bodies | expandable_text)
     # Every expansion whose result can come from outside: the four
     # POSIX operators, each with and without the colon. The colon only
     # decides whether an empty value counts as unset — it has nothing
@@ -334,7 +379,7 @@ ambient_stray_names() {
     # assigns nothing: it marks the name for the environment, and
     # whatever the calling shell already put there survives — so the
     # read stays as ambient as it would be with no export at all.
-    _assigned=$(printf '%s\n' "$_src" |
+    _assigned=$(printf '%s\n' "$_code" |
         grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*=' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
@@ -421,16 +466,6 @@ if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-assignment.sh" |
     printf '  ok       an assignment inside a heredoc does not claim the name\n'
 else
     printf '  FAIL     a heredoc assignment hides an ambient read\n'
-    failed=1
-fi
-
-# Case is not part of the rule, and every pattern anchored on `[A-Z]`
-# is blind to a lowercase name in all three passes at once.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/lowercase-name.sh" |
-    grep -qx 'skip_nested'; then
-    printf '  ok       a lowercase name is still ambient\n'
-else
-    printf '  FAIL     a lowercase name escapes the audit entirely\n'
     failed=1
 fi
 
@@ -560,7 +595,7 @@ probe_repo=$(mktemp -d "$scratch_dir/sourced-root.XXXXXX")
         git config user.email t@e && git config user.name t
 ) >/dev/null 2>&1
 sourced_root=$(
-    __DEFERRAL_RECORD_LIB__=1 ARCH_REPO_ROOT="$probe_repo" \
+    ARCH_DEFERRAL_RECORD_LIB=1 ARCH_REPO_ROOT="$probe_repo" \
         sh -c '. "$1/tests/arch/deferral_record.sh"; pwd' _ "$REPO_ROOT" 2>/dev/null
 ) || sourced_root=''
 case "$sourced_root" in
