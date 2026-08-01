@@ -35,7 +35,6 @@ failed=0
 # This file's own scratch, removed on every exit path including an
 # interrupt. It had none: the apostrophe clone used `mktemp -d` and an
 # explicit `rm -rf` that only ran when the block completed.
-scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
 # The sabotage probe has to sit beside the original — the script
 # derives its root from its own path, so a copy one level deeper
 # resolves to `tests/` — but "beside" does not mean "at a name we
@@ -48,7 +47,6 @@ scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
 #
 # A line per path is safe because `mktemp` generates the names — none
 # of them can contain a newline.
-probe_manifest=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-manifest.XXXXXX")
 
 make_sabotage_probe() {
     _probe=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX")
@@ -78,6 +76,12 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Allocated only after the traps are installed. A signal arriving
+# between an mktemp and the trap that owns its result leaves the
+# file behind with nothing left to remove it.
+scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
+probe_manifest=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-manifest.XXXXXX")
 
 # Probe mode: the run re-executes itself with this set so the leak
 # case watches a real process take a real signal, rather than reading
