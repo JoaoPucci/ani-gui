@@ -99,6 +99,13 @@ mkdir "$scratch_dir" || {
 }
 scratch_owned=1
 
+# Where the gap sits: ownership is recorded after the `mkdir`, so a
+# signal arriving here finds the directory on disk and the cleanup
+# unwilling to touch it. The case below holds this open.
+if [ -n "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
+    sleep "$ARCH_DEFERRAL_PAUSE_AFTER_MKDIR"
+fi
+
 # Probe mode: the run re-executes itself with this set so the signal
 # case can watch a real process take a real signal, rather than
 # inspecting trap definitions and hoping they mean what they say.
@@ -138,6 +145,32 @@ else
     printf '  FAIL     the scratch path came back from an interruptible allocation: %s\n' \
         "$scratch_dir"
     failed=1
+fi
+
+# A run cancelled between making the scratch directory and recording
+# that it owns it must still take the directory with it. Recording
+# ownership afterwards leaves that window open, and a cancelled run
+# then litters the working tree — the thing this scratch exists to
+# avoid, failing in the one situation nobody watches.
+#
+# The window is too short to step into, so the run holds it open on
+# request. Without that the case passes while exercising nothing: the
+# child finishes before the signal lands.
+if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
+    ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \
+        sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
+    gap_pid=$!
+    sleep 1
+    kill -TERM "$gap_pid" 2>/dev/null || true
+    wait "$gap_pid" 2>/dev/null || true
+    gap_left=$(find "$REPO_ROOT/tests/arch" -maxdepth 1 -name '.deferral-scratch.*' 2>/dev/null | wc -l)
+    if [ "$gap_left" -eq 0 ]; then
+        printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
+    else
+        printf '  FAIL     a cancelled run left %s scratch director(ies) behind\n' "$gap_left"
+        find "$REPO_ROOT/tests/arch" -maxdepth 1 -name '.deferral-scratch.*' -exec rm -rf {} +
+        failed=1
+    fi
 fi
 
 printf 'arch/deferral_record_test: predicate cases\n'
