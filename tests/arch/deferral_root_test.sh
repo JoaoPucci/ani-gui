@@ -296,6 +296,30 @@ else
     failed=1
 fi
 
+# A `#` opens a comment only where a word could start, and only
+# outside quotes. Stripping from the first one on the line regardless
+# swallows the rest of `"#${GENERIC_GUARD-}"` — a legal comparison —
+# and the audit then reports ok about a guard whose name it never saw.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/quoted-hash.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a quoted hash does not hide the rest of the line\n'
+else
+    printf '  FAIL     a name after a quoted hash escapes the audit\n'
+    failed=1
+fi
+
+# `export NAME` assigns nothing. It marks the name for the environment
+# and whatever the calling shell put there survives, so the read is
+# exactly as ambient as it would be with no export at all. Counting
+# the bare form as ownership is how a generic guard gets through.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/bare-export.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a valueless export does not claim ownership\n'
+else
+    printf '  FAIL     a bare export removes an ambient name from the audit\n'
+    failed=1
+fi
+
 stray_env=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh | ambient_stray_names)
 if [ -z "$stray_env" ]; then
     printf '  ok       every ambient variable the arch scripts read is namespaced\n'
@@ -559,6 +583,38 @@ else
             failed=1
             ;;
     esac
+
+    # Everything this run creates has to lie under one prefix, and that
+    # prefix has to be a literal rather than something a creating
+    # command handed back.
+    #
+    # This is what closes the window a careful ordering of statements
+    # cannot. `dir=$(mktemp -d ...)` puts the directory on disk the
+    # moment mktemp returns and fills `dir` only when the substitution
+    # completes; a signal in between leaves a directory the trap has no
+    # way to name, however early the trap was installed. A registered
+    # prefix removes the dependency altogether — the cleanup refers to
+    # nothing that a creation produced, so there is no interval during
+    # which it is uninformed.
+    #
+    # Asserted over the paths themselves, since the ordering it stands
+    # for is not observable after the fact.
+    prefix_stem="$REPO_ROOT/tests/arch/.deferral-root.$$"
+    prefix_stray=""
+    for allocated in "$scratch_dir" "$first_sabotage" "$second_sabotage"; do
+        case "$allocated" in
+            "$prefix_stem" | "$prefix_stem".*) ;;
+            *) prefix_stray="$prefix_stray $allocated" ;;
+        esac
+    done
+    if [ -z "$prefix_stray" ]; then
+        printf '  ok       every temporary lies under the one registered prefix\n'
+    else
+        printf '  FAIL     allocated outside the registered prefix:%s\n' \
+            "$prefix_stray"
+        failed=1
+    fi
+
     rm -f "$first_sabotage" "$second_sabotage"
 fi
 
