@@ -262,3 +262,12 @@ YAML
     run sh "$ARCH_DIR/deferral_record.sh" /definitely/not/here
     [ "$status" -ne 0 ]
 }
+
+@test "an uppercase loop variable is a local, not an ambient input" {
+    # `for SCRIPT in ...` assigns SCRIPT, so nothing about it comes
+    # from the calling shell. Recognising `NAME=` and `export NAME` but
+    # not `for NAME` turns a valid local into a reported finding, and
+    # this suite gates every change.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/uppercase-loop-var.sh"
+    [[ "$output" != *SCRIPT* ]]
+}
