@@ -751,6 +751,26 @@ else
                 "$([ -f "$shared.probe.999" ] && echo present || echo gone)"
             failed=1
         fi
+
+        # `test -e` follows the link and answers about the target, so a
+        # dangling symlink reads as a free path. It survives the
+        # refusal, fails the `mkdir`, and is then removed by the
+        # cleanup the refusal exists to prevent — the one shape of
+        # collision the check cannot see.
+        dangling="$scratch_dir/dangling-prefix"
+        ln -s /definitely/not/here "$dangling"
+        dangling_status=0
+        ARCH_DEFERRAL_TMP_PREFIX="$dangling" \
+            sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
+            dangling_status=$?
+        if [ "$dangling_status" -ne 0 ] && [ -L "$dangling" ]; then
+            printf '  ok       a dangling symlink at the prefix is refused, not removed\n'
+        else
+            printf '  FAIL     a dangling symlink at the prefix was adopted or removed (status %s, link %s)\n' \
+                "$dangling_status" \
+                "$([ -L "$dangling" ] && echo present || echo gone)"
+            failed=1
+        fi
     fi
 
     rm -f "$first_sabotage" "$second_sabotage"

@@ -97,6 +97,20 @@ expect_rejected() {
     fi
 }
 
+# The scratch path has to be a literal fixed before anything exists.
+# `mktemp -d` cannot be registered in advance under any ordering: the
+# directory is on disk the moment it returns and the variable holds it
+# only once the substitution completes, so a signal in between leaves
+# it with nothing able to name it. Asserted over the path, because the
+# ordering it stands for is not observable after the fact.
+if [ "$scratch_dir" = "$REPO_ROOT/tests/arch/.deferral-scratch.$$" ]; then
+    printf '  ok       the scratch path is a literal, not an allocation result\n'
+else
+    printf '  FAIL     the scratch path came back from an interruptible allocation: %s\n' \
+        "$scratch_dir"
+    failed=1
+fi
+
 printf 'arch/deferral_record_test: predicate cases\n'
 
 # The ledger the policy names. It has to be a tracked file in this
