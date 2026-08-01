@@ -447,6 +447,25 @@ while [ "$i" -lt 50 ] && [ "$(wc -l <"$leak_out")" -lt 2 ]; do
     sleep 0.1
     i=$((i + 1))
 done
+# Verify the allocations exist while the child still holds them.
+# Counting plausible-looking lines is not evidence: two fabricated
+# paths, or the same one twice, satisfy any count. A path that is on
+# disk now was really allocated, and checking before the signal is the
+# only moment that is true.
+leak_present=0
+leak_seen=""
+while IFS= read -r probe; do
+    case "$probe" in
+        "$REPO_ROOT/tests/arch/.sabotage-probe."*) ;;
+        *) continue ;;
+    esac
+    case "$leak_seen" in
+        *"[$probe]"*) continue ;;
+        *) leak_seen="${leak_seen}[$probe]" ;;
+    esac
+    [ -e "$probe" ] && leak_present=$((leak_present + 1))
+done <"$leak_out"
+
 kill -TERM "$leak_pid" 2>/dev/null || true
 leak_status=0
 wait "$leak_pid" 2>/dev/null || leak_status=$?
@@ -470,9 +489,9 @@ while IFS= read -r probe; do
     fi
 done <"$leak_out"
 
-if [ "$leak_count" -ne 2 ]; then
-    printf '  FAIL     the leak probe emitted %s allocation paths, not 2 — cleanup was never exercised\n' \
-        "$leak_count"
+if [ "$leak_present" -ne 2 ]; then
+    printf '  FAIL     %s distinct probes existed before the signal, not 2 — nothing was allocated to clean up\n' \
+        "$leak_present"
     failed=1
 elif [ "$leak_status" -ne 143 ]; then
     printf '  FAIL     the leak probe exited %s, not 143 — it was not the signal that ended it\n' \
