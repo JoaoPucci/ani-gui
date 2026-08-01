@@ -521,6 +521,17 @@ else
     failed=1
 fi
 
+# A trailing backslash continues the command, so a redirection on the
+# next line belongs to it. Scanned line by line, that line is read as
+# the first body and the second opener is never seen.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-continued-line.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a heredoc opened on a continuation line is tracked\n'
+else
+    printf '  FAIL     a continued command hides its second heredoc body\n'
+    failed=1
+fi
+
 # One file at a time. Concatenating them shares the stripper's quote
 # state across file boundaries, so one file ending mid-quote changes
 # how the next is read; and stripping here as well as inside the
