@@ -57,8 +57,21 @@ failed=0
 # cloned under `~/My Repos/` defeats a space-joined one outright —
 # nothing is removed and `rm -f` receives fragments. One quoted
 # variable has no such failure mode.
-scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
-cleanup() { [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"; }
+#
+# The name is a literal fixed before anything exists, so the cleanup
+# never refers to something a creating command produced. `mktemp -d`
+# cannot offer that under any ordering of statements: the directory is
+# on disk the moment it returns and the variable holds the path only
+# once the substitution completes, and a signal in between leaves it
+# with nothing able to name it.
+scratch_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$$"
+
+# Removal is gated on this run having made the directory. Arming
+# before creating is what closes the leak; without the gate it opens
+# the opposite hole, where a path taken by somebody else is removed on
+# behalf of a run that never created it.
+scratch_owned=""
+cleanup() { [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"; }
 
 # EXIT owns cleanup; the signal handlers only have to end the run.
 # Handling a signal without exiting returns control to the interrupted
@@ -69,6 +82,22 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# `test -e` is false for a dangling symlink, so a link left at this
+# path would read as free, survive the check, and then be removed —
+# the pre-existing thing this refuses to touch. `-L` asks the question
+# `-e` cannot.
+if [ -e "$scratch_dir" ] || [ -L "$scratch_dir" ]; then
+    printf 'arch/deferral_record_test: %s already exists — refusing to reuse or remove a path this run did not create\n' \
+        "$scratch_dir" >&2
+    exit 1
+fi
+mkdir "$scratch_dir" || {
+    printf 'arch/deferral_record_test: %s was claimed while this run was starting\n' \
+        "$scratch_dir" >&2
+    exit 1
+}
+scratch_owned=1
 
 # Probe mode: the run re-executes itself with this set so the signal
 # case can watch a real process take a real signal, rather than

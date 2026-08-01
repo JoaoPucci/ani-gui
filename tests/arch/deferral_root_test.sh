@@ -77,12 +77,17 @@ cleanup() {
 # that was already tried — a manifest cannot be written until the path
 # it names exists, which is the interval this whole arrangement is
 # built to remove.
+# `test -e` follows the link and answers about the target, so a
+# dangling symlink reads as free — survives the check, fails the
+# `mkdir`, and is then removed by the cleanup this refusal exists to
+# prevent. `-L` asks about the link itself, which is the thing that is
+# actually in the way.
 prefix_taken=""
-if [ -e "$tmp_prefix" ]; then
+if [ -e "$tmp_prefix" ] || [ -L "$tmp_prefix" ]; then
     prefix_taken="$tmp_prefix"
 else
     for existing in "$tmp_prefix".*; do
-        if [ -e "$existing" ]; then
+        if [ -e "$existing" ] || [ -L "$existing" ]; then
             prefix_taken="$existing"
             break
         fi
