@@ -51,11 +51,49 @@ failed=0
 # `$$` keeps concurrent runs apart. The collision-freedom `mktemp` was
 # there for is kept by allocating with `set -C`, which fails rather
 # than opens when the path is already taken.
-tmp_prefix="$REPO_ROOT/tests/arch/.deferral-root.$$"
+#
+# `ARCH_DEFERRAL_TMP_PREFIX` exists so the cases below can hand this a
+# prefix they control.
+tmp_prefix="${ARCH_DEFERRAL_TMP_PREFIX:-$REPO_ROOT/tests/arch/.deferral-root.$$}"
 
 cleanup() {
     rm -rf "$tmp_prefix" "$tmp_prefix".*
 }
+
+# Registering the prefix before creating anything buys the guarantee
+# above and costs the opposite one: the cleanup sweeps the whole
+# prefix, so anything already sitting there goes with it. A pid comes
+# round again after a kill that skipped cleanup, so that is reachable
+# rather than theoretical, and it has two shapes.
+#
+# The prefix itself occupied fails loudly — `mkdir` refuses and the
+# run dies with the trap armed. A sibling merely sharing the name
+# fails quietly, which is worse: the directory does not exist, `mkdir`
+# succeeds, the run reports success and removes somebody else's file
+# on the way out.
+#
+# Both are refused here, before anything is armed. Tracking only what
+# this run created is the other way to answer it, and it is the way
+# that was already tried — a manifest cannot be written until the path
+# it names exists, which is the interval this whole arrangement is
+# built to remove.
+prefix_taken=""
+if [ -e "$tmp_prefix" ]; then
+    prefix_taken="$tmp_prefix"
+else
+    for existing in "$tmp_prefix".*; do
+        if [ -e "$existing" ]; then
+            prefix_taken="$existing"
+            break
+        fi
+    done
+fi
+if [ -n "$prefix_taken" ]; then
+    printf 'arch/deferral_root_test: %s already exists — refusing, because this run cleans by prefix and would remove a path it did not create\n' \
+        "$prefix_taken" >&2
+    exit 1
+fi
+
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
