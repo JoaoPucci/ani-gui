@@ -45,6 +45,17 @@ if [ -z "$wired" ]; then
     exit 1
 fi
 
+# Membership in the list is not execution. The loop body has to reach
+# the bats binary, or a suite stays named while the invocation is
+# deleted or put behind a condition that skips it — and a check reading
+# only the list keeps reporting healthy.
+if ! sed -n '/^[[:space:]]*for suite in /,/^done$/p' "$RUNNER" |
+    grep -q 'BATS_BIN'; then
+    printf 'arch/bats_suite_wiring FAIL: the suite loop in %s never reaches the bats binary — every suite it names would be walked and none run\n' \
+        "$RUNNER" >&2
+    exit 1
+fi
+
 failed=0
 
 # Every directory holding bats files has to be on that list. The
