@@ -59,7 +59,20 @@ fi
 scratch="${ARCH_WIRING_SCRATCH:-${TMPDIR:-/tmp}/ani-gui-bats-wiring.$$}"
 record="$scratch/invoked"
 
+# Removal is gated on this run having created the directory, not on
+# the traps having been installed. The two are not the same instant,
+# and between them sits a window in which the handlers are armed and
+# nothing here owns anything — long enough for another process to take
+# the path and have it deleted on behalf of a run that never made it.
+#
+# The residue is the reverse: killed between the `mkdir` and the line
+# that sets this, the run leaves an empty directory behind. That is
+# the trade, and it is the right way round. Leaking an empty directory
+# costs a stale path; removing one costs somebody else's data.
+owned=""
+
 cleanup() {
+    [ -n "$owned" ] || return 0
     rm -rf "$scratch"
 }
 
@@ -97,6 +110,7 @@ if ! mkdir "$scratch" 2>/dev/null; then
         "$scratch" >&2
     exit 1
 fi
+owned=1
 mkdir "$scratch/helpers"
 mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 : >"$record"
@@ -123,7 +137,7 @@ stub="$scratch/.bats-vendor/bats-core/bin/bats"
 cat >"$stub" <<'EOF'
 #!/bin/sh
 for f in "$@"; do
-    (cd "$(dirname "$f")" && pwd)
+    printf '%s/%s\n' "$(cd "$(dirname "$f")" && pwd)" "$(basename "$f")"
 done >>"$ARCH_WIRING_RECORD"
 EOF
 chmod +x "$stub"
@@ -132,11 +146,18 @@ export ARCH_WIRING_RECORD="$record"
 runner_name=$(basename "$RUNNER")
 cp "$RUNNER" "$scratch/helpers/$runner_name"
 
-# One probe per suite that really exists. The stub never opens them, so
-# the contents are immaterial — what matters is that the runner's own
-# "any bats files here?" test says yes for exactly the directories the
-# repository expects to run.
+# Every `.bats` file that really exists, at the path it really sits at.
+# One probe per directory would only establish that each directory was
+# reached: a runner keeping every directory and dropping all but the
+# first file in each satisfies that exactly, while most of a suite
+# stops running.
+#
+# The stub never opens them, so the contents are immaterial. What
+# matters is the shape of the tree the runner walks.
+expected="$scratch/expected"
+: >"$expected"
 suites=0
+files=0
 for dir in "$SUITES_DIR"/*/; do
     [ -d "$dir" ] || continue
     name=$(basename "$dir")
@@ -144,13 +165,29 @@ for dir in "$SUITES_DIR"/*/; do
         .bats-vendor | helpers) continue ;;
         *) ;;
     esac
-    if [ -z "$(find "$dir" -type f -name '*.bats' 2>/dev/null)" ]; then
-        continue
-    fi
-    mkdir "$scratch/$name"
-    : >"$scratch/$name/probe.bats"
-    suites=$((suites + 1))
+    mirrored=0
+    find "$dir" -type f -name '*.bats' 2>/dev/null | while IFS= read -r real; do
+        printf '%s\n' "${real#"$dir"}"
+    done >"$scratch/.relative"
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ "$mirrored" -eq 0 ]; then
+            mkdir "$scratch/$name"
+            mirrored=1
+            suites=$((suites + 1))
+        fi
+        case "$rel" in
+            */*) mkdir -p "$scratch/$name/${rel%/*}" ;;
+            *) ;;
+        esac
+        : >"$scratch/$name/$rel"
+        printf '%s/%s\n' \
+            "$(cd "$scratch/$name/$(dirname "$rel")" && pwd)" \
+            "$(basename "$rel")" >>"$expected"
+        files=$((files + 1))
+    done <"$scratch/.relative"
 done
+rm -f "$scratch/.relative"
 
 # With nothing to require, every runner satisfies this check. That is
 # an absence of evidence rather than a pass, and it has to read as one.
@@ -168,16 +205,12 @@ if ! sh "$scratch/helpers/$runner_name" >"$runner_out" 2>&1; then
     exit 1
 fi
 
+# Every mirrored file, not every mirrored directory. The expected list
+# was written as the tree was built, so it needs no second walk and no
+# second copy of the exclusion rules.
 failed=0
-for dir in "$SUITES_DIR"/*/; do
-    [ -d "$dir" ] || continue
-    name=$(basename "$dir")
-    # The probe marks the directories the first pass mirrored, which is
-    # the exclusion list already applied rather than a second copy of
-    # it. `helpers/` exists in the sandbox too — it holds the runner —
-    # and carries no probe.
-    [ -f "$scratch/$name/probe.bats" ] || continue
-    want=$(cd "$scratch/$name" && pwd)
+while IFS= read -r want <&3; do
+    [ -n "$want" ] || continue
     found=0
     while IFS= read -r invoked; do
         if [ "$invoked" = "$want" ]; then
@@ -186,11 +219,12 @@ for dir in "$SUITES_DIR"/*/; do
         fi
     done <"$record"
     if [ "$found" -eq 0 ]; then
-        printf 'arch/bats_suite_wiring FAIL: %s holds bats files and never reached the bats binary — the runner either does not name it or skips it in the loop body, and either way those cases do not run\n' \
-            "$dir" >&2
+        printf 'arch/bats_suite_wiring FAIL: %s never reached the bats binary — the runner does not name its suite, skips it in the loop body, or drops the file from the list it passes on, and in every case those cases do not run\n' \
+            "${want#"$scratch"/}" >&2
         failed=1
     fi
-done
+done 3<"$expected"
 
 [ "$failed" -eq 0 ] || exit 1
-printf 'arch/bats_suite_wiring: ok (%d bats suites, every one reaching the bats binary)\n' "$suites"
+printf 'arch/bats_suite_wiring: ok (%d bats files across %d suites, every one reaching the bats binary)\n' \
+    "$files" "$suites"
