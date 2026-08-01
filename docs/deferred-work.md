@@ -33,11 +33,14 @@ subject under test needs bats, including under `tests/arch/`, while a
 check that inspects the repository and reports what it found stays
 standalone under the architectural runner.
 
-`deferral_record_test.sh` and `deferral_root_test.sh` are the first
-kind. They build fixtures, drive another script through cases and
-compare results through assertion helpers written by hand. So is
-`bash_portability_test.sh`, which is already on `master`. The checks
-they drive stay where they are.
+`bash_portability_test.sh`, `deferral_record_test.sh` and
+`deferral_root_test.sh` are the first kind. They build fixtures, drive
+another script through cases and compare results through assertion
+helpers written by hand. The checks they drive stay where they are.
+
+Which branch each file currently sits on is deliberately not recorded
+here. That is the part of an entry which goes stale first, and it is
+the part a reader can establish in a second.
 
 The bats vendor lives under `tests/bash/` behind an installer, so the
 move also changes how `run-all.sh` and the workflows invoke the suite.
@@ -218,16 +221,6 @@ starting it, and delete it when you find it done.
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
   -m` — verified with a probe hook. So the gate has to move to
   `commit-msg` and skip only for a `test(red):` subject.
-
-- **Port the arch self-tests to bats.** `AGENTS.md` §2 says shell with a
-  subject under test belongs in bats. Three qualify —
-  `tests/arch/bash_portability_test.sh` (on `master`) plus
-  `deferral_record_test.sh` and `deferral_root_test.sh` (still on a
-  branch) — each builds fixtures, drives another script and asserts
-  through hand-written helpers. The checks they drive stay standalone.
-
-  The bats vendor lives under `tests/bash/` behind an installer, so the
-  port also changes how `run-all.sh` and `arch.yml` invoke the suite.
 
 ## Interface
 
