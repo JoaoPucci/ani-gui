@@ -52,7 +52,12 @@ probe_manifest=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-manifest.XXXXXX")
 
 make_sabotage_probe() {
     _probe=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX")
-    printf '%s\n' "$_probe" >>"$probe_manifest"
+    # The record is the basename, which mktemp controls entirely. An
+    # absolute path carries the checkout prefix, and a newline anywhere
+    # in that prefix splits one record into several — the trap would
+    # then miss the probe and hand a fragment of somebody's path to
+    # `rm -f`.
+    printf '%s\n' "${_probe##*/}" >>"$probe_manifest"
     printf '%s\n' "$_probe"
 }
 
@@ -61,7 +66,9 @@ cleanup() {
     # removed a file the run never created.
     if [ -n "${probe_manifest:-}" ] && [ -f "$probe_manifest" ]; then
         while IFS= read -r allocated; do
-            [ -n "$allocated" ] && rm -f "$allocated"
+            # Rebuilt from the directory this run owns, so the record
+            # never has to carry a path it cannot represent.
+            [ -n "$allocated" ] && rm -f "$REPO_ROOT/tests/arch/$allocated"
         done <"$probe_manifest"
         rm -f "$probe_manifest"
     fi
