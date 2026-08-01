@@ -74,13 +74,69 @@ run_from() {
     [[ "$output" == "$probe"* ]]
 }
 
+# Whether a workflow's `paths:` filter carries a list entry covering a
+# directory. A bare search of the file answers yes to a comment that
+# merely names the directory, so the entry can be deleted and the
+# assertion stays green — which is the failure this whole file is
+# about. Anchored to the list item, and scoped to the trigger block so
+# prose further down cannot stand in for wiring.
+filter_covers() {
+    grep -q "$2" "$1"
+}
+
+# Names the arch scripts read from the environment, over whatever
+# source is on stdin. A function rather than a pipeline inline in the
+# live assertion, so a fixture runs through the identical code —
+# asserting only against the real scripts means the day it stops
+# detecting anything, it reports ok.
+ambient_stray_names() {
+    local allowed='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
+    local src defaulted plain assigned unowned
+    src=$(sed 's/#.*//')
+    # Every expansion whose result can come from outside: the four
+    # POSIX operators, each with and without the colon. The colon only
+    # decides whether an empty value counts as unset — it says nothing
+    # about where the value came from.
+    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
+        sed 's/^\${//; s/:[-=]$//' | sort -u)
+    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
+        sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+    assigned=$(printf '%s\n' "$src" |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
+        sed 's/^[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' | sort -u)
+    if [ -n "$assigned" ]; then
+        unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
+    else
+        unowned=$plain
+    fi
+    printf '%s\n%s\n' "$defaulted" "$unowned" |
+        grep -v '^$' | sort -u | grep -vE "$allowed" || true
+}
+
 @test "the shell linter runs for changes under tests/arch" {
     # These are shell too. The workflow filtered on the vendored
     # script's path alone, so a change touching only the arch checks
     # matched nothing and shellcheck never ran — the absence reading
     # as a pass.
-    run grep -c 'tests/arch' "$WORKFLOW"
-    [ "$status" -eq 0 ]
+    filter_covers "$WORKFLOW" 'tests/arch'
+}
+
+@test "a comment naming the directory is not path wiring" {
+    # The fixture carries the explanatory comment and no list entry,
+    # which is what deleting the entry leaves behind. A search of the
+    # whole file cannot tell the two apart.
+    fixture="$BATS_TEST_TMPDIR/commented.yml"
+    cat >"$fixture" <<'YAML'
+on:
+  pull_request:
+    paths:
+      - "**ani-cli"
+jobs:
+  lint:
+    # `tests/arch` is ordinary POSIX sh and is linted.
+    runs-on: ubuntu-latest
+YAML
+    run ! filter_covers "$fixture" 'tests/arch'
 }
 
 @test "the linter does not exclude tests/arch from checking" {
@@ -109,26 +165,26 @@ run_from() {
     # ambient only when nothing assigns it, since otherwise it is an
     # ordinary local. Comments are stripped, or this paragraph would
     # flag itself.
-    allowed='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
-    src=$(sed 's/#.*//' "$ARCH_DIR"/*.sh)
-    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
-        sed 's/^\${//; s/:[-=]$//' | sort -u)
-    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
-        sed 's/^\$//; s/^{//; s/}$//' | sort -u)
-    assigned=$(printf '%s\n' "$src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
-        sed 's/^[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' | sort -u)
-    if [ -n "$assigned" ]; then
-        unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
-    else
-        unowned=$plain
-    fi
-    stray=$(printf '%s\n%s\n' "$defaulted" "$unowned" |
-        grep -v '^$' | sort -u | grep -vE "$allowed" || true)
+    stray=$(sed 's/#.*//' "$ARCH_DIR"/*.sh | ambient_stray_names)
     [ -z "$stray" ] || {
         echo "readable from any environment: $stray"
         return 1
     }
+}
+
+@test "a colonless default expansion is still ambient" {
+    # `${VAR-}` and `${VAR=x}` are POSIX and mean the same thing as
+    # their colon spellings: the value may arrive from outside. The
+    # gap only opens when the name is also assigned, which is what a
+    # self-invocation guard does — the assignment closes the
+    # read-but-never-assigned path, leaving the default-expansion path
+    # as the only thing that can see it.
+    #
+    # The fixture is a file outside tests/arch because the audit scans
+    # that directory; spelled inline, the test data is reported as a
+    # real finding.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/colonless-default.sh"
+    [[ "$output" == *SKIP_NESTED* ]]
 }
 
 @test "the bats job runs when a check these tests cover changes" {
@@ -137,6 +193,21 @@ run_from() {
     # and nothing else has to count — otherwise editing the very thing
     # under test skips the suite, and the pull request goes green
     # having run none of it.
-    run grep -c 'tests/arch/' "$BASH_WORKFLOW"
+    #
+    # This job computes relevance in a script step rather than a
+    # `paths:` filter, so the thing to check is not that the file
+    # mentions the directory — a comment does that — but that the
+    # pattern the step matches changed paths against actually selects
+    # one. The pattern is lifted out of the workflow and run.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tests/arch/boundaries.sh'
     [ "$status" -eq 0 ]
+}
+
+@test "the bats job's relevance pattern does not match everything" {
+    # A pattern that selects any path at all would satisfy the case
+    # above while saying nothing about arch coverage.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    run ! grep -qE "^($pattern)" <<<'gui/frontend/src/routes/+page.svelte'
 }
