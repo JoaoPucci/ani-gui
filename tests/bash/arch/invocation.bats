@@ -105,9 +105,14 @@ ambient_stray_names() {
         sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
     plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+    # Three ways the suite owns a name: a plain assignment, an export,
+    # and a `for` that binds it. Omitting the loop form turns an
+    # ordinary local into a reported finding, and this audit gates
+    # every change.
     assigned=$(printf '%s\n' "$src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
-        sed 's/^[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' | sort -u)
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
+        sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
+        sort -u)
     if [ -n "$assigned" ]; then
         unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
     else
