@@ -489,6 +489,26 @@ else
     failed=1
 fi
 
+# The shell reads one body per redirection, in order. Tracking a
+# single delimiter ends at the first and reads the second as source.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-two-on-one-command.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       every heredoc on a command is tracked\n'
+else
+    printf '  FAIL     a second heredoc body on one command is read as code\n'
+    failed=1
+fi
+
+# `${#NAME}` is a read of NAME. The `#` sits where the patterns expect
+# a letter, so the read is invisible to all of them.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/parameter-length-read.sh" |
+    grep -qx 'GENERIC_GUARD'; then
+    printf '  ok       a length read counts as a read\n'
+else
+    printf '  FAIL     a parameter-length read escapes the audit\n'
+    failed=1
+fi
+
 # One file at a time. Concatenating them shares the stripper's quote
 # state across file boundaries, so one file ending mid-quote changes
 # how the next is read; and stripping here as well as inside the
