@@ -167,7 +167,7 @@ make_untracked_probe() {
 # Sourced as a library by the self-test — define the helpers, run
 # nothing. Mirrors the __ANI_CLI_LIB__ guard the vendored script uses
 # so its functions can be exercised directly.
-if [ "${__DEFERRAL_RECORD_LIB__:-}" = "1" ]; then
+if [ "${ARCH_DEFERRAL_RECORD_LIB:-}" = "1" ]; then
     return 0
 fi
 

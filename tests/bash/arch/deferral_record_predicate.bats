@@ -12,7 +12,7 @@
 load '../helpers/loader'
 
 setup() {
-    export __DEFERRAL_RECORD_LIB__=1
+    export ARCH_DEFERRAL_RECORD_LIB=1
     export ARCH_REPO_ROOT="$REPO_ROOT"
     # shellcheck disable=SC1091
     . "$REPO_ROOT/tests/arch/deferral_record.sh"
@@ -68,7 +68,7 @@ setup() {
     probe=$(make_untracked_probe "$repo")
     [ -e "$probe" ]
     run ! env ARCH_REPO_ROOT="$repo" sh -c '
-        __DEFERRAL_RECORD_LIB__=1
+        ARCH_DEFERRAL_RECORD_LIB=1
         . "$1/tests/arch/deferral_record.sh"
         cd "$2" || exit 1
         record_is_recoverable "${3##*/}"

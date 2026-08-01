@@ -15,7 +15,7 @@ load '../helpers/loader'
 setup() {
     # The check is sourced as a library, under the guard that stops it
     # executing, and pointed at this repository.
-    export __DEFERRAL_RECORD_LIB__=1
+    export ARCH_DEFERRAL_RECORD_LIB=1
     export ARCH_REPO_ROOT="$REPO_ROOT"
     # shellcheck disable=SC1091
     . "$REPO_ROOT/tests/arch/deferral_record.sh"

@@ -54,10 +54,10 @@ AGENTS_FILE="${2:-AGENTS.md}"
 ARCH_REPO_ROOT="$REPO_ROOT"
 export ARCH_REPO_ROOT
 
-__DEFERRAL_RECORD_LIB__=1
+ARCH_DEFERRAL_RECORD_LIB=1
 # shellcheck source=./deferral_record.sh
 . "$SCRIPT_DIR/deferral_record.sh"
-unset __DEFERRAL_RECORD_LIB__
+unset ARCH_DEFERRAL_RECORD_LIB
 
 failed=0
 

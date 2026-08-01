@@ -69,7 +69,7 @@ run_from() {
     probe="$BATS_TEST_TMPDIR/probe-repo"
     mkdir -p "$probe"
     (cd "$probe" && git init -q .) >/dev/null 2>&1
-    run env __DEFERRAL_RECORD_LIB__=1 ARCH_REPO_ROOT="$probe" \
+    run env ARCH_DEFERRAL_RECORD_LIB=1 ARCH_REPO_ROOT="$probe" \
         sh -c '. "$1/tests/arch/deferral_record.sh"; pwd' _ "$REPO_ROOT"
     [[ "$output" == "$probe"* ]]
 }
@@ -93,26 +93,92 @@ filter_covers() {
 # live assertion, so a fixture runs through the identical code —
 # asserting only against the real scripts means the day it stops
 # detecting anything, it reports ok.
+
+# The part of a script the shell would actually expand. Two things are
+# dropped, for the same reason: the shell never reads them as code, so
+# a name appearing there is not a read of anything.
+#
+# Comments. A `#` opens one only where a word could start — at the
+# beginning of a line or after a blank — and only outside quotes.
+# `sed 's/#.*//'` honours neither rule, so `"#${GENERIC_GUARD-}"` lost
+# its name to a hash that was never a comment.
+#
+# Single-quoted spans. `$name` inside them is literal, by definition of
+# single quotes. Embedded awk is where this bites: `boundaries.sh`
+# carries `for (i = 3; ...) rest = rest ":" $i`, where `$i` is awk's
+# field reference, and an audit that reads it as shell reports `i` as
+# an environment variable the checks depend on. Double quotes are kept,
+# because the shell does expand inside them.
+#
+# Quote state carries across lines, because the strings that matter
+# here do. `boundaries.sh` holds a multi-line awk program in single
+# quotes; resetting per line makes its interior read as ordinary shell
+# from the second line on, which is exactly where its `$i` sits.
+expandable_text() {
+    awk '
+        BEGIN { sq = sprintf("%c", 39); q = "" }
+        {
+            out = ""; prev = ""; i = 1; n = length($0)
+            while (i <= n) {
+                c = substr($0, i, 1)
+                if (q == "") {
+                    if (c == "\\") {
+                        out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
+                    }
+                    if (c == "#" && (out == "" || prev == " " || prev == "\t")) break
+                    if (c == sq) { q = c; prev = c; i++; continue }
+                    if (c == "\"") q = c
+                } else if (q == sq) {
+                    if (c == sq) q = ""
+                    prev = c; i++; continue
+                } else if (c == "\\") {
+                    out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
+                } else if (c == q) {
+                    q = ""
+                }
+                out = out c; prev = c; i++
+            }
+            print out
+        }
+    ' "$@"
+}
+
 ambient_stray_names() {
-    local allowed='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
+    # Case is not part of the rule. `skip_nested` is as legal an
+    # environment variable as `SKIP_NESTED`, so the alphabet matched
+    # below is the alphabet the shell accepts.
+    #
+    # The allowlist is deliberately not widened to absorb that. Every
+    # lowercase local in these scripts is assigned somewhere in them,
+    # which is what makes it a local, and the assignment pass is what
+    # accounts for it. Exempting lower case by name would take back
+    # the whole of what widening the alphabet buys.
+    local allowed='^(ARCH_[A-Za-z0-9_]+|HOME|PATH|TMPDIR|CI)$'
     local src defaulted plain assigned unowned
-    src=$(sed 's/#.*//')
+    src=$(expandable_text)
     # Every expansion whose result can come from outside: the four
     # POSIX operators, each with and without the colon. The colon only
     # decides whether an empty value counts as unset — it says nothing
     # about where the value came from.
-    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]*:?[-=?+]' |
+    defaulted=$(printf '%s\n' "$src" |
+        grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?[-=?+]' |
         sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
-    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]*\}?' |
+    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
-    # Three ways the suite owns a name: a plain assignment, an export,
-    # and a `for` that binds it. Omitting the loop form turns an
-    # ordinary local into a reported finding, and this audit gates
-    # every change.
+    # Four ways the suite owns a name: a plain assignment, an export
+    # carrying a value, a `for` that binds it, and a `read` that binds
+    # it. Omitting any of the binding forms turns an ordinary local
+    # into a reported finding, and this audit gates every change.
     assigned=$(printf '%s\n' "$src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*' |
+        grep -oE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Za-z_][A-Za-z0-9_]*|export[[:space:]]+[A-Za-z_][A-Za-z0-9_]*=' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
+    # `read` takes its flags first, so the bound name is the last token
+    # of the match. Multiple names on one `read` would need more than
+    # this; nothing here spells one.
+    assigned=$(printf '%s\n%s\n' "$assigned" "$(printf '%s\n' "$src" |
+        grep -oE '(^|[[:space:];|&])read[[:space:]]+(-[A-Za-z]+[[:space:]]+)*[A-Za-z_][A-Za-z0-9_]*' |
+        sed 's/.*[[:space:]]//')" | grep -v '^$' | sort -u)
     if [ -n "$assigned" ]; then
         unowned=$(printf '%s\n' "$plain" | grep -vxF "$assigned" || true)
     else
@@ -174,7 +240,7 @@ YAML
     # ambient only when nothing assigns it, since otherwise it is an
     # ordinary local. Comments are stripped, or this paragraph would
     # flag itself.
-    stray=$(sed 's/#.*//' "$ARCH_DIR"/*.sh | ambient_stray_names)
+    stray=$(expandable_text "$ARCH_DIR"/*.sh | ambient_stray_names)
     [ -z "$stray" ] || {
         echo "readable from any environment: $stray"
         return 1

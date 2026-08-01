@@ -16,7 +16,7 @@
 load '../helpers/loader'
 
 setup() {
-    export __DEFERRAL_RECORD_LIB__=1
+    export ARCH_DEFERRAL_RECORD_LIB=1
     export ARCH_REPO_ROOT="$REPO_ROOT"
     # shellcheck disable=SC1091
     . "$REPO_ROOT/tests/arch/deferral_record.sh"
