@@ -182,9 +182,14 @@ allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
 # means the day it stops detecting anything, it reports ok.
 ambient_stray_names() {
     _src=$(sed 's/#.*//')
+    # Every expansion whose result can come from outside: the four
+    # POSIX operators, each with and without the colon. The colon only
+    # decides whether an empty value counts as unset — it has nothing
+    # to do with where the value came from, so requiring it audited
+    # half the spellings.
     _defaulted=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:[-=]' |
-        sed 's/^\${//; s/:[-=]$//' | sort -u)
+        grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:?[-=?+]' |
+        sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
     _plain=$(printf '%s\n' "$_src" |
         grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
