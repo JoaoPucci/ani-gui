@@ -352,7 +352,19 @@ without_heredoc_bodies() {
                 print ""
                 next
             }
-            rest = $0
+            # A trailing backslash continues the command, so the
+            # redirections of one logical line may be spread over
+            # several physical ones. Collect the whole command before
+            # consuming any body, or the continuation is eaten as the
+            # first body and the openers on it are never seen.
+            logical = logical $0
+            if (logical ~ /\\$/) {
+                sub(/\\$/, " ", logical)
+                print
+                next
+            }
+            rest = logical
+            logical = ""
             pending = 0
             at = 1
             while (match(rest, opener)) {
