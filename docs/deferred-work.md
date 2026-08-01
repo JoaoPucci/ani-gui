@@ -26,32 +26,6 @@ Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## Where arch-layer self-tests belong in the test taxonomy
-
-`tests/arch/deferral_record_test.sh` exercises the predicate, path
-parser, probe and signal handling of `tests/arch/deferral_record.sh`
-directly, using its own assertion helpers rather than a framework.
-
-Review asked whether that belongs in the bats-core suite, reading
-`AGENTS.md` §2's "Bash changes require bats-core coverage" as covering
-it. Two readings are available and the text supports both:
-
-- The bash line scopes to the shell *product*. Every bats suite under
-  `tests/bash/**` targets the vendored `ani-cli` script, and
-  `tests/arch/` is a separate tier in the `docs/testing.md` pyramid
-  with its own runner and its own `arch.yml` workflow. Eight arch
-  scripts predate this one and none has bats coverage.
-- The line covers any shell change, in which case those eight are
-  uncovered too and the gap is repository-wide.
-
-Which reading is correct is a question for §2. If it is the second,
-every arch self-test moves, not only this one.
-
-The risk that motivates the question is a bespoke harness that fails
-to report failures. That much was measured and currently holds:
-breaking an assertion produces `arch/deferral_record_test: FAILED` in
-`run-all.sh` and a nonzero exit.
-
 ## How much verification the deferral invariant should carry
 
 `tests/arch/deferral_record.sh`, its self-test, and
@@ -172,10 +146,3 @@ the same argument applies: it is the eighth rule of an open set. The
 recommendation remains to stop parsing document structure rather than
 to add setext handling.
 
-**The signal probe re-execs by `$0`.** `deferral_record_test.sh`
-re-runs itself as `sh "$0"` for the cancellation case. Launched as
-`sh ./deferral_record_test.sh` from `tests/arch`, the re-exec resolves
-against a different working directory. An absolute path fixes it.
-
-Running the suite from `tests/arch` as well as from the root is what
-shows it.
