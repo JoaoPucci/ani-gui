@@ -26,31 +26,21 @@ Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## Where arch-layer self-tests belong in the test taxonomy
+## Port the arch self-tests to bats
 
-`tests/arch/deferral_record_test.sh` exercises the predicate, path
-parser, probe and signal handling of `tests/arch/deferral_record.sh`
-directly, using its own assertion helpers rather than a framework.
+`AGENTS.md` §2 settles where these belong: shell with a separate
+subject under test needs bats, including under `tests/arch/`, while a
+check that inspects the repository and reports what it found stays
+standalone under the architectural runner.
 
-Review asked whether that belongs in the bats-core suite, reading
-`AGENTS.md` §2's "Bash changes require bats-core coverage" as covering
-it. Two readings are available and the text supports both:
+`deferral_record_test.sh` and `deferral_root_test.sh` are the first
+kind. They build fixtures, drive another script through cases and
+compare results through assertion helpers written by hand. So is
+`bash_portability_test.sh`, which is already on `master`. The checks
+they drive stay where they are.
 
-- The bash line scopes to the shell *product*. Every bats suite under
-  `tests/bash/**` targets the vendored `ani-cli` script, and
-  `tests/arch/` is a separate tier in the `docs/testing.md` pyramid
-  with its own runner and its own `arch.yml` workflow. Eight arch
-  scripts predate this one and none has bats coverage.
-- The line covers any shell change, in which case those eight are
-  uncovered too and the gap is repository-wide.
-
-Which reading is correct is a question for §2. If it is the second,
-every arch self-test moves, not only this one.
-
-The risk that motivates the question is a bespoke harness that fails
-to report failures. That much was measured and currently holds:
-breaking an assertion produces `arch/deferral_record_test: FAILED` in
-`run-all.sh` and a nonzero exit.
+The bats vendor lives under `tests/bash/` behind an installer, so the
+move also changes how `run-all.sh` and the workflows invoke the suite.
 
 ## How much verification the deferral invariant should carry
 
