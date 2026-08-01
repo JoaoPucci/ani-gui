@@ -299,6 +299,12 @@ while [ "$i" -lt 50 ] && [ -z "$probe_dir" ]; do
     [ -n "$probe_dir" ] || sleep 0.1
     i=$((i + 1))
 done
+# Whether the directory was really there before the signal. Read after
+# the kill, a path that never existed and a path that was cleaned up
+# are the same observation, and the case cannot tell them apart.
+probe_seen=0
+[ -n "$probe_dir" ] && [ -d "$probe_dir" ] && probe_seen=1
+
 kill -TERM "$probe_pid" 2>/dev/null || true
 # `set -e` would take the nonzero status of `wait` as a failure of
 # this script, which is precisely the status being measured.
@@ -316,7 +322,14 @@ if [ "$probe_status" -ne 143 ]; then
 else
     printf '  ok       a TERMed run exits on the signal (%s)\n' "$probe_status"
 fi
-if [ -n "$probe_dir" ] && [ -d "$probe_dir" ]; then
+# Three outcomes, not two. A child that printed nothing within the
+# window leaves `probe_dir` empty, and treating that as "nothing left
+# behind" reports that cleanup works having watched no directory at
+# all — the same shape as every other vacuous pass on this branch.
+if [ "$probe_seen" -eq 0 ]; then
+    printf '  FAIL     the signal probe never showed a scratch directory to clean up\n'
+    failed=1
+elif [ -d "$probe_dir" ]; then
     printf '  FAIL     a TERMed run left its scratch directory behind\n'
     failed=1
     rm -rf "$probe_dir"
