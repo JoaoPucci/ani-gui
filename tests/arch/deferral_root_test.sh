@@ -339,20 +339,30 @@ without_heredoc_bodies() {
             opener = "<<-?[ \t]*([\"" sq "][^\"" sq "]*[\"" sq "]|[^ \t;&|<>()]+)"
         }
         {
-            if (inside) {
+            # One body per redirection, closed in the order the
+            # redirections were written. A single delimiter ends at the
+            # first and reads the rest as source.
+            if (pending > 0) {
                 probe = $0
-                if (dash) sub(/^\t+/, "", probe)
-                if (probe == delim) inside = 0
+                if (dash[at]) sub(/^\t+/, "", probe)
+                if (probe == delim[at]) {
+                    at++
+                    if (at > pending) pending = 0
+                }
                 print ""
                 next
             }
-            if (match($0, opener)) {
-                tok = substr($0, RSTART, RLENGTH)
-                dash = (substr(tok, 1, 3) == "<<-")
+            rest = $0
+            pending = 0
+            at = 1
+            while (match(rest, opener)) {
+                tok = substr(rest, RSTART, RLENGTH)
+                pending++
+                dash[pending] = (substr(tok, 1, 3) == "<<-")
                 sub(/^<<-?[ \t]*/, "", tok)
                 gsub("[\"" sq "]", "", tok)
-                delim = tok
-                inside = 1
+                delim[pending] = tok
+                rest = substr(rest, RSTART + RLENGTH)
             }
             print
         }
@@ -372,9 +382,11 @@ ambient_stray_names() {
     _defaulted=$(printf '%s\n' "$_src" |
         grep -oE '\$\{[A-Z][A-Z0-9_]*:?[-=?+]' |
         sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
+    # `${#NAME}` is a read of NAME. The `#` sits where a letter is
+    # expected, so it needs its own alternative.
     _plain=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{?[A-Z][A-Z0-9_]*\}?' |
-        sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+        grep -oE '\$\{#?[A-Z][A-Z0-9_]*\}?|\$[A-Z][A-Z0-9_]*' |
+        sed 's/^\$//; s/^{#*//; s/}$//' | sort -u)
     # An export owns a name only when it carries a value. `export NAME`
     # assigns nothing: it marks the name for the environment, and
     # whatever the calling shell already put there survives — so the
