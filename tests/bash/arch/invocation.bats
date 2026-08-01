@@ -212,3 +212,50 @@ YAML
     pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
     run ! grep -qE "^($pattern)" <<<'gui/frontend/src/routes/+page.svelte'
 }
+
+@test "a sibling path does not satisfy the filter" {
+    # `tests/archive/**.sh` shares a prefix with `tests/arch` and covers
+    # none of it. Anchoring only the start of the list item accepts it,
+    # so the wiring can be repointed at an unrelated directory while
+    # the case above stays green.
+    fixture="$BATS_TEST_TMPDIR/sibling.yml"
+    cat >"$fixture" <<'YAML'
+on:
+  pull_request:
+    paths:
+      - "tests/archive/**.sh"
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+YAML
+    run ! filter_covers "$fixture" 'tests/arch'
+}
+
+@test "the bats job runs when the workflow these tests inspect changes" {
+    # `invocation.bats` reads `ani-cli.yml` and asserts things about it,
+    # which makes that file a subject under test. If a change touching
+    # only it does not select the bats job, deleting the path entry —
+    # the exact regression the case above exists to catch — lands with
+    # the suite that catches it never having run.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'.github/workflows/ani-cli.yml'
+    [ "$status" -eq 0 ]
+}
+
+@test "the bats job configures the upstream divergence baseline" {
+    # `bash_portability.bats` skips both of its cases when no `upstream`
+    # remote exists. A fresh CI checkout has none, so without the same
+    # setup `arch.yml` performs the ported suite measures nothing and
+    # reports success.
+    run grep -qE 'remote add upstream' "$BASH_WORKFLOW"
+    [ "$status" -eq 0 ]
+}
+
+@test "a check pointed at a missing file exits nonzero" {
+    # A tool failing inside the pipeline must not leave the check
+    # reporting success. `set -e` takes the failing command
+    # substitution today; this holds it there.
+    run sh "$ARCH_DIR/deferral_record.sh" /definitely/not/here
+    [ "$status" -ne 0 ]
+}
