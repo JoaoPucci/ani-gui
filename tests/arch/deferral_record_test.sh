@@ -299,11 +299,16 @@ kill -TERM "$probe_pid" 2>/dev/null || true
 probe_status=0
 wait "$probe_pid" || probe_status=$?
 
-if [ "$probe_status" -eq 0 ]; then
-    printf '  FAIL     a TERMed run exited 0 — cancellation reads as success\n'
+# Exactly 143, not merely nonzero. A child that dies of anything else —
+# not finding itself, for instance — also exits nonzero, and the case
+# then reports that cancellation works having measured a different
+# failure entirely.
+if [ "$probe_status" -ne 143 ]; then
+    printf '  FAIL     a TERMed run exited %s, not 143 — it did not die of the signal\n' \
+        "$probe_status"
     failed=1
 else
-    printf '  ok       a TERMed run exits nonzero (%s)\n' "$probe_status"
+    printf '  ok       a TERMed run exits on the signal (%s)\n' "$probe_status"
 fi
 if [ -n "$probe_dir" ] && [ -d "$probe_dir" ]; then
     printf '  FAIL     a TERMed run left its scratch directory behind\n'
