@@ -692,6 +692,27 @@ else
                 "$([ -f "$occupied/keep-me" ] && echo present || echo gone)"
             failed=1
         fi
+
+        # A file that merely shares the prefix is the harder half, and
+        # it fails quietly. The prefix itself does not exist, so
+        # `mkdir` succeeds and the run reports success — then removes
+        # somebody else's file on the way out, because the cleanup
+        # covers the whole prefix and not only what this run made.
+        # Nothing in the output says so.
+        shared="$scratch_dir/shared-prefix"
+        printf 'not yours\n' >"$shared.probe.999"
+        shared_status=0
+        ARCH_DEFERRAL_TMP_PREFIX="$shared" \
+            sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
+            shared_status=$?
+        if [ "$shared_status" -ne 0 ] && [ -f "$shared.probe.999" ]; then
+            printf '  ok       a file sharing the prefix is refused, not swept\n'
+        else
+            printf '  FAIL     a file sharing the prefix was swept (status %s, sentinel %s)\n' \
+                "$shared_status" \
+                "$([ -f "$shared.probe.999" ] && echo present || echo gone)"
+            failed=1
+        fi
     fi
 
     rm -f "$first_sabotage" "$second_sabotage"
