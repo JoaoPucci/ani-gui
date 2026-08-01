@@ -35,53 +35,61 @@ failed=0
 # This file's own scratch, removed on every exit path including an
 # interrupt. It had none: the apostrophe clone used `mktemp -d` and an
 # explicit `rm -rf` that only ran when the block completed.
-# The sabotage probe has to sit beside the original — the script
-# derives its root from its own path, so a copy one level deeper
-# resolves to `tests/` — but "beside" does not mean "at a name we
-# picked". `mktemp` allocates one nobody else holds.
-# Every path the allocator hands out is recorded here, so the trap
-# removes all of them however the run ends. Registering at the point of
-# allocation rather than at each call site is what makes that hold for
-# a probe added later: forgetting to clean one up is no longer possible
-# because nobody has to remember.
 #
-# A line per path is safe because `mktemp` generates the names — none
-# of them can contain a newline.
-
-make_sabotage_probe() {
-    _probe=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX")
-    # The record is the basename, which mktemp controls entirely. An
-    # absolute path carries the checkout prefix, and a newline anywhere
-    # in that prefix splits one record into several — the trap would
-    # then miss the probe and hand a fragment of somebody's path to
-    # `rm -f`.
-    printf '%s\n' "${_probe##*/}" >>"$probe_manifest"
-    printf '%s\n' "$_probe"
-}
+# Everything this run creates is named from one prefix, and the prefix
+# is a literal fixed before anything exists. That is the whole point,
+# and it is not the same as installing the traps early. A name that
+# comes back from a creating command cannot be registered in advance
+# under any ordering: `mktemp -d` puts the directory on disk when it
+# returns and the variable holds the path only once the substitution
+# completes, so a signal in that interval leaves something behind that
+# the trap has no way to name. Registering a prefix removes the
+# dependency instead of racing it — the cleanup refers to nothing a
+# creation produced, so there is no interval during which it is
+# uninformed.
+#
+# `$$` keeps concurrent runs apart. The collision-freedom `mktemp` was
+# there for is kept by allocating with `set -C`, which fails rather
+# than opens when the path is already taken.
+tmp_prefix="$REPO_ROOT/tests/arch/.deferral-root.$$"
 
 cleanup() {
-    # Every allocated path, not a fixed name — a fixed name here
-    # removed a file the run never created.
-    if [ -n "${probe_manifest:-}" ] && [ -f "$probe_manifest" ]; then
-        while IFS= read -r allocated; do
-            # Rebuilt from the directory this run owns, so the record
-            # never has to carry a path it cannot represent.
-            [ -n "$allocated" ] && rm -f "$REPO_ROOT/tests/arch/$allocated"
-        done <"$probe_manifest"
-        rm -f "$probe_manifest"
-    fi
-    [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"
+    rm -rf "$tmp_prefix" "$tmp_prefix".*
 }
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Allocated only after the traps are installed. A signal arriving
-# between an mktemp and the trap that owns its result leaves the
-# file behind with nothing left to remove it.
-scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
-probe_manifest=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-manifest.XXXXXX")
+# The sabotage probe has to sit beside the original — the script
+# derives its root from its own path, so a copy one level deeper
+# resolves to `tests/` — which is where the prefix already is.
+make_sabotage_probe() {
+    # A counter in a variable would not survive. This is called inside
+    # command substitutions, and a subshell's increment is lost, so two
+    # calls in one line would hand back the same path. The candidate is
+    # tried against the filesystem instead, and `set -C` makes the
+    # create-if-absent atomic — no window in which two runs agree a
+    # name is free.
+    _n=0
+    while [ "$_n" -lt 1000 ]; do
+        _n=$((_n + 1))
+        _probe="$tmp_prefix.probe.$_n"
+        if (
+            set -C
+            : >"$_probe"
+        ) 2>/dev/null; then
+            printf '%s\n' "$_probe"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Named above, created here. Plain `mkdir` refuses a path that already
+# exists, including a symlink planted at it.
+scratch_dir="$tmp_prefix"
+mkdir "$scratch_dir"
 
 # Probe mode: the run re-executes itself with this set so the leak
 # case watches a real process take a real signal, rather than reading
@@ -228,8 +236,46 @@ allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
 # than a pipeline inline in the live assertion, so a fixture can be run
 # through the identical code — asserting only against the real scripts
 # means the day it stops detecting anything, it reports ok.
+# Shell comments, removed. A `#` opens one only where a word could
+# start — at the beginning of a line or after a blank — and only
+# outside quotes. `sed 's/#.*//'` honours neither rule, so
+# `"#${GENERIC_GUARD-}"` lost its name to a hash that was never a
+# comment and the audit reported ok about a guard it had not read.
+#
+# A line at a time, so a quoted string spanning several resumes
+# unquoted on the next. Nothing in these scripts spells one that way,
+# and a heredoc body is not shell source to begin with.
+#
+# SC2016 — the awk program is single-quoted on purpose; `$0` is awk's
+# record, not a shell positional.
+# shellcheck disable=SC2016
+strip_comments() {
+    awk '
+        BEGIN { sq = sprintf("%c", 39) }
+        {
+            out = ""; q = ""; prev = ""; i = 1; n = length($0)
+            while (i <= n) {
+                c = substr($0, i, 1)
+                if (q == "") {
+                    if (c == "\\") {
+                        out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
+                    }
+                    if (c == "#" && (out == "" || prev == " " || prev == "\t")) break
+                    if (c == sq || c == "\"") q = c
+                } else if (q == "\"" && c == "\\") {
+                    out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
+                } else if (c == q) {
+                    q = ""
+                }
+                out = out c; prev = c; i++
+            }
+            print out
+        }
+    ' "$@"
+}
+
 ambient_stray_names() {
-    _src=$(sed 's/#.*//')
+    _src=$(strip_comments)
     # Every expansion whose result can come from outside: the four
     # POSIX operators, each with and without the colon. The colon only
     # decides whether an empty value counts as unset — it has nothing
@@ -241,8 +287,12 @@ ambient_stray_names() {
     _plain=$(printf '%s\n' "$_src" |
         grep -oE '\$\{?[A-Z][A-Z0-9_]*\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
+    # An export owns a name only when it carries a value. `export NAME`
+    # assigns nothing: it marks the name for the environment, and
+    # whatever the calling shell already put there survives — so the
+    # read stays as ambient as it would be with no export at all.
     _assigned=$(printf '%s\n' "$_src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*' |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*=' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
     if [ -n "$_assigned" ]; then
@@ -320,7 +370,7 @@ else
     failed=1
 fi
 
-stray_env=$(sed 's/#.*//' "$REPO_ROOT"/tests/arch/*.sh | ambient_stray_names)
+stray_env=$(strip_comments "$REPO_ROOT"/tests/arch/*.sh | ambient_stray_names)
 if [ -z "$stray_env" ]; then
     printf '  ok       every ambient variable the arch scripts read is namespaced\n'
 else
@@ -491,7 +541,7 @@ leak_present=0
 leak_seen=""
 while IFS= read -r probe; do
     case "$probe" in
-        "$REPO_ROOT/tests/arch/.sabotage-probe."*) ;;
+        "$REPO_ROOT/tests/arch/.deferral-root."*.probe.*) ;;
         *) continue ;;
     esac
     case "$leak_seen" in
@@ -514,7 +564,7 @@ leak_count=0
 leak_found=0
 while IFS= read -r probe; do
     case "$probe" in
-        "$REPO_ROOT/tests/arch/.sabotage-probe."*) ;;
+        "$REPO_ROOT/tests/arch/.deferral-root."*.probe.*) ;;
         *) continue ;;
     esac
     leak_count=$((leak_count + 1))
