@@ -40,14 +40,31 @@ scratch_dir=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-root.XXXXXX")
 # derives its root from its own path, so a copy one level deeper
 # resolves to `tests/` — but "beside" does not mean "at a name we
 # picked". `mktemp` allocates one nobody else holds.
+# Every path the allocator hands out is recorded here, so the trap
+# removes all of them however the run ends. Registering at the point of
+# allocation rather than at each call site is what makes that hold for
+# a probe added later: forgetting to clean one up is no longer possible
+# because nobody has to remember.
+#
+# A line per path is safe because `mktemp` generates the names — none
+# of them can contain a newline.
+probe_manifest=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-manifest.XXXXXX")
+
 make_sabotage_probe() {
-    mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX"
+    _probe=$(mktemp "$REPO_ROOT/tests/arch/.sabotage-probe.XXXXXX")
+    printf '%s\n' "$_probe" >>"$probe_manifest"
+    printf '%s\n' "$_probe"
 }
 
 cleanup() {
-    # Only the path this run allocated. A fixed name here removed a
-    # file the run never created.
-    [ -n "${sabotage_probe:-}" ] && rm -f "$sabotage_probe"
+    # Every allocated path, not a fixed name — a fixed name here
+    # removed a file the run never created.
+    if [ -n "${probe_manifest:-}" ] && [ -f "$probe_manifest" ]; then
+        while IFS= read -r allocated; do
+            [ -n "$allocated" ] && rm -f "$allocated"
+        done <"$probe_manifest"
+        rm -f "$probe_manifest"
+    fi
     [ -n "${scratch_dir:-}" ] && rm -rf "$scratch_dir"
 }
 trap cleanup EXIT
