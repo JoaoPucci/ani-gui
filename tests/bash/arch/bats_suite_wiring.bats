@@ -61,6 +61,35 @@ edited_runner() {
     run ! sh "$CHECK" "$copy" "$SUITES"
 }
 
+@test "a scratch path that already exists is left alone" {
+    # `<tmpdir>/ani-gui-bats-wiring.$$` is predictable, and a pid comes
+    # round again after a SIGKILL that skipped cleanup. The trap is
+    # armed before the directory is created — deliberately, so no
+    # signal can leave one behind — which means a failed `mkdir` would
+    # otherwise hand somebody else's directory to `rm -rf`.
+    occupied="$BATS_TEST_TMPDIR/occupied"
+    mkdir -p "$occupied"
+    printf 'not yours\n' >"$occupied/keep-me"
+    run ! env ARCH_WIRING_SCRATCH="$occupied" sh "$CHECK" "$RUNNER" "$SUITES"
+    [ -f "$occupied/keep-me" ]
+}
+
+@test "a scratch path containing a quote does not break the stub" {
+    # The stub is generated, and the record path goes into it. Spelled
+    # into the program text, a path holding a double quote closes a
+    # string the program opened and every suite invocation dies of
+    # syntax — reported as suites that never reached the binary, which
+    # is a true statement about a cause that has nothing to do with the
+    # runner.
+    # Driven through `TMPDIR`, which the check already reads, so the
+    # case bites against the code as it stands rather than against a
+    # seam introduced to receive it.
+    quoted="$BATS_TEST_TMPDIR/say \"hi\""
+    mkdir -p "$quoted"
+    run env TMPDIR="$quoted" sh "$CHECK" "$RUNNER" "$SUITES"
+    [ "$status" -eq 0 ]
+}
+
 @test "a suites directory holding nothing is reported, not passed" {
     # With no suite to require, every reading of any runner is
     # vacuously satisfied. A check that has lost its subject has to say
