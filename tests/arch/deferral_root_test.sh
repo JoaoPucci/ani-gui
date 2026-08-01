@@ -55,6 +55,16 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+# Probe mode: the run re-executes itself with this set so the leak
+# case watches a real process take a real signal, rather than reading
+# trap definitions and hoping they mean what they say. It exits before
+# the body, so nothing here re-enters.
+if [ -n "${ARCH_SABOTAGE_LEAK_PROBE:-}" ]; then
+    printf '%s\n' "$(make_sabotage_probe)" "$(make_sabotage_probe)"
+    sleep 5
+    exit 0
+fi
+
 # The nested clone re-runs this file; it must not recurse. The guard
 # carries this file's own name because a generic one is readable from
 # any environment: an exported `SKIP_NESTED` — plausible in a shell
@@ -377,6 +387,37 @@ esac
 # Proved by sabotage: a copy of this file with an unsatisfiable
 # `--reference` runs the clone for real and cannot complete it. The
 # copy skips this case, or it would sabotage a copy of itself forever.
+# A cancelled run must not leave probes behind. Every path the
+# allocator hands out has to reach the trap, or a signal between
+# allocation and the explicit removal litters the working tree with
+# files the next `git status` reports.
+leak_out=$(mktemp "$scratch_dir/leak-probe.XXXXXX")
+ARCH_SABOTAGE_LEAK_PROBE=1 sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
+    >"$leak_out" 2>&1 &
+leak_pid=$!
+i=0
+while [ "$i" -lt 50 ] && [ "$(wc -l <"$leak_out")" -lt 2 ]; do
+    sleep 0.1
+    i=$((i + 1))
+done
+leaked=$(cat "$leak_out")
+kill -TERM "$leak_pid" 2>/dev/null || true
+wait "$leak_pid" 2>/dev/null || true
+
+leak_found=0
+for probe in $leaked; do
+    if [ -e "$probe" ]; then
+        leak_found=1
+        rm -f "$probe"
+    fi
+done
+if [ "$leak_found" -eq 0 ]; then
+    printf '  ok       a cancelled run leaves no probes behind\n'
+else
+    printf '  FAIL     a cancelled run left an allocated probe in the working tree\n'
+    failed=1
+fi
+
 # The sabotage probe must not collide with a file a developer already
 # has. A fixed name means `>` truncates whatever sits there and the
 # cleanup trap deletes it; had it been a symlink, the redirection
