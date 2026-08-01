@@ -115,21 +115,6 @@ document renders as intended. A wholly-inert policy section is visible
 to anyone who opens the rendered file and to any reviewer of the diff
 that made it inert; a parser is not the right instrument for it.
 
-## The awk failure that exits zero
-
-`deferral_record.sh` pointed at a missing AGENTS.md printed
-`awk: fatal: cannot open file` and still exited 0. That was found
-while reproducing a different defect, and it is the same silent-pass
-shape as everything else here: the check reported success having read
-nothing.
-
-The immediate cause was fixed — a stray `REPO_ROOT` can no longer
-redirect the script — but the exit status is not defended in its own
-right. A tool inside the pipeline can fail without the script noticing.
-
-Pointing the check at a path that does not exist is the cheapest way
-to see it.
-
 ## Three open findings on the deferral checks
 
 Raised in review and not yet fixed. Recorded here so they survive the
