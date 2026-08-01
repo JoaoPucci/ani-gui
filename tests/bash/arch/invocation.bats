@@ -19,24 +19,36 @@ setup() {
     BASH_WORKFLOW="$REPO_ROOT/.github/workflows/bash.yml"
 }
 
+# Run a script by relative path from a directory, passing both as
+# arguments rather than pasting them into a shell program. A path is
+# data; the moment it is interpolated into a command string it becomes
+# syntax, and a checkout under `o'brien/` then closes a quote the
+# string opened. `run` already forks, so the `cd` cannot leak into the
+# rest of the test.
+run_from() {
+    cd "$1" || return 1
+    shift
+    sh "$@"
+}
+
 @test "each check resolves the repository when invoked by relative path" {
     for script in deferral_record agents_contract; do
-        run bash -c "cd '$ARCH_DIR' && sh ./$script.sh"
+        run run_from "$ARCH_DIR" "./$script.sh"
         [ "$status" -eq 0 ]
     done
 }
 
 @test "a check runs from a directory whose name contains an apostrophe" {
-    # Nothing stops anyone cloning into `~/o'brien/`, and the case
-    # above builds a shell program out of the checkout path — so the
-    # apostrophe closes the quote the program opened and every case in
-    # this file dies of a syntax error before a check is reached. The
-    # failure names the shell, not the path, which is why the deleted
-    # self-test carried a fixture for it.
+    # Nothing stops anyone cloning into `~/o'brien/`. When the path is
+    # built into a shell program instead of passed to one, the
+    # apostrophe ends the quoting and every case in this file dies of a
+    # syntax error before a check is reached — reporting a failure that
+    # names the shell rather than the path. The self-test this file
+    # replaced carried a fixture for exactly that.
     quoted="$BATS_TEST_TMPDIR/o'brien"
     mkdir -p "$quoted"
     printf '#!/bin/sh\nexit 0\n' >"$quoted/trivial.sh"
-    run bash -c "cd '$quoted' && sh ./trivial.sh"
+    run run_from "$quoted" ./trivial.sh
     [ "$status" -eq 0 ]
 }
 
