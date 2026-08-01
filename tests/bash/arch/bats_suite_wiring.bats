@@ -84,7 +84,12 @@ edited_runner() {
     # Driven through `TMPDIR`, which the check already reads, so the
     # case bites against the code as it stands rather than against a
     # seam introduced to receive it.
-    quoted="$BATS_TEST_TMPDIR/say \"hi\""
+    #
+    # A quote and no whitespace. The runner splits `$files` on purpose
+    # and so cannot carry a suite path containing a space — its own
+    # limitation, and including one here would fail this case for a
+    # reason that has nothing to do with the stub.
+    quoted="$BATS_TEST_TMPDIR/say\"hi\""
     mkdir -p "$quoted"
     run env TMPDIR="$quoted" sh "$CHECK" "$RUNNER" "$SUITES"
     [ "$status" -eq 0 ]

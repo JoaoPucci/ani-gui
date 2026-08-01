@@ -54,19 +54,41 @@ fi
 # it only once the substitution completes, and a signal in between
 # leaves it behind.
 #
-# `$$` keeps concurrent runs apart, and plain `mkdir` refuses a path
-# that already exists — including a symlink planted at it.
-scratch="${TMPDIR:-/tmp}/ani-gui-bats-wiring.$$"
+# `$$` keeps concurrent runs apart. `ARCH_WIRING_SCRATCH` exists so the
+# cases below can hand this a location they control.
+scratch="${ARCH_WIRING_SCRATCH:-${TMPDIR:-/tmp}/ani-gui-bats-wiring.$$}"
 record="$scratch/invoked"
 
 cleanup() {
     rm -rf "$scratch"
 }
+
+# Registering before creating buys the guarantee above and costs the
+# opposite one: a `mkdir` that fails because the path is already taken
+# would hand a directory this run never made to `rm -rf`. A pid comes
+# round again after a kill that skipped cleanup, so that is reachable
+# rather than theoretical.
+#
+# Both are kept by refusing an occupied path before anything is armed,
+# and by disarming on the narrow case where the path was claimed
+# between the two. Whatever is there belongs to somebody, and this
+# check is not the thing to decide it does not.
+if [ -e "$scratch" ]; then
+    printf 'arch/bats_suite_wiring: %s already exists — refusing to reuse or remove a location this run did not create\n' \
+        "$scratch" >&2
+    exit 1
+fi
+
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 
-mkdir "$scratch"
+if ! mkdir "$scratch" 2>/dev/null; then
+    trap - EXIT INT TERM
+    printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
+        "$scratch" >&2
+    exit 1
+fi
 mkdir "$scratch/helpers"
 mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 : >"$record"
@@ -80,14 +102,24 @@ mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 # path as written. The runner reaches its suites through its own
 # location — `helpers/../unit` — so comparing the strings answers a
 # question about spelling rather than about which suite ran.
+# The record path arrives as data. Spelled into the program text it
+# becomes syntax, and a `TMPDIR` holding a double quote then closes a
+# string the stub opened — every suite invocation dies of that, and the
+# check reports suites that never reached the binary. True, and about a
+# cause with nothing to do with the runner.
+#
+# A quoted heredoc so nothing here expands, and the name is
+# `ARCH_`-prefixed because the suite audits these scripts for reads
+# from the environment and a generic name would be a real finding.
 stub="$scratch/.bats-vendor/bats-core/bin/bats"
-cat >"$stub" <<EOF
+cat >"$stub" <<'EOF'
 #!/bin/sh
-for f in "\$@"; do
-    (cd "\$(dirname "\$f")" && pwd)
-done >>"$record"
+for f in "$@"; do
+    (cd "$(dirname "$f")" && pwd)
+done >>"$ARCH_WIRING_RECORD"
 EOF
 chmod +x "$stub"
+export ARCH_WIRING_RECORD="$record"
 
 runner_name=$(basename "$RUNNER")
 cp "$RUNNER" "$scratch/helpers/$runner_name"
