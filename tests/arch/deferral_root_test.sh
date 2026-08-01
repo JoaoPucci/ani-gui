@@ -243,6 +243,17 @@ ambient_stray_names() {
         grep -v '^$' | sort -u | grep -vE "$allowed_env" || true
 }
 
+# One uppercase letter is a legal name too, and the pattern still
+# required something after it. The shortest thing the audit can see has
+# to be the shortest thing the shell accepts.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/single-char-name.sh" |
+    grep -qx 'X'; then
+    printf '  ok       a single-character name is still ambient\n'
+else
+    printf '  FAIL     a single-character name escapes the audit\n'
+    failed=1
+fi
+
 # A two-character name is a legal environment variable, so a guard
 # reading one is exactly as ambient as a longer name. `CI` is on the
 # allowlist above and is itself two characters — under a pattern that
