@@ -255,309 +255,90 @@ else
     failed=1
 fi
 
-# Every variable these scripts read from the environment must be
-# namespaced to this suite. A generic name is an input from whatever
-# shell the suite happens to run in, whether or not anyone meant it as
-# one — which is how `REPO_ROOT` and `SKIP_NESTED` each silently
-# changed what a check did, and each was found by a reviewer rather
-# than by a run.
+# Whether a check can be redirected by the environment it runs in.
 #
-# Two ways a name is ambient, and both are needed. Reading it with a
-# default — `${VAR:-}` or `${VAR:=x}` — says outright that it may be
-# absent, which means it may arrive from outside; that holds even when
-# the suite also sets it before re-invoking itself, which is exactly
-# how a self-invocation guard escapes a plainer test. Reading it
-# without a default is ambient only if nothing in the suite ever
-# assigns it, since otherwise it is an ordinary local.
+# Two have been, for real: `REPO_ROOT` and `SKIP_NESTED` each arrived
+# from an ordinary shell and silently changed what a check did while it
+# still exited 0. That is the property worth holding.
 #
-# Comments are stripped first: this paragraph names the forms it looks
-# for, and a check that flags its own prose is measuring the wrong
-# thing.
-allowed_env='^(ARCH_[A-Z0-9_]+|HOME|PATH|TMPDIR|CI)$'
-
-# The detection, over whatever source it is handed. A function rather
-# than a pipeline inline in the live assertion, so a fixture can be run
-# through the identical code — asserting only against the real scripts
-# means the day it stops detecting anything, it reports ok.
-# The part of a script the shell would actually expand. Two things go,
-# for one reason: the shell never reads them as code, so a name there
-# is not a read of anything.
+# It is held by running the check rather than by reading it. The
+# earlier form audited the source text for names that looked ambient,
+# which meant deciding from `grep` and `awk` which `$NAME` is a read,
+# which assignment owns it, and which text is code at all. That
+# question needs a shell parser, and it was assembled one review round
+# at a time: comments, then quoting, then heredocs, then heredoc
+# delimiters, then several heredocs per command, then line
+# continuations, then command-scoped assignment prefixes — each
+# arriving only once the previous had shipped, and each a defect in the
+# fix before it.
 #
-# Comments. A `#` opens one only where a word could start — line start
-# or after a blank — and only outside quotes, so `"#${GUARD-}"` keeps
-# its name.
+# Running the check asks the question directly. It cannot grow new
+# rules, because it has none.
 #
-# Single-quoted spans. `$name` inside them is literal. Embedded awk is
-# where this bites: `boundaries.sh` carries `for (i = 3; ...) $i`, and
-# an audit reading that as shell reports `i` as an environment
-# variable. Double quotes stay, because the shell expands inside them.
-#
-# Quote state carries across lines, because that awk program spans
-# several. Callers must hand this one file at a time; run over a
-# concatenation, a file ending mid-quote changes how the next is read.
-expandable_text() {
-    awk '
-        BEGIN { sq = sprintf("%c", 39); q = "" }
-        {
-            out = ""; prev = ""; i = 1; n = length($0)
-            while (i <= n) {
-                c = substr($0, i, 1)
-                if (q == "") {
-                    if (c == "\\") {
-                        out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
-                    }
-                    if (c == "#" && (out == "" || prev == " " || prev == "\t")) break
-                    if (c == sq) { q = c; prev = c; i++; continue }
-                    if (c == "\"") q = c
-                } else if (q == sq) {
-                    if (c == sq) q = ""
-                    prev = c; i++; continue
-                } else if (c == "\\") {
-                    out = out c substr($0, i + 1, 1); prev = "x"; i += 2; continue
-                } else if (c == q) {
-                    q = ""
-                }
-                out = out c; prev = c; i++
-            }
-            print out
-        }
-    '
+# What it gives up is naming the offending variable. What it gains is
+# an answer about behaviour rather than about spelling, and a check
+# whose own correctness is obvious. `HOME`, `PATH` and `TMPDIR` are
+# left alone below because these scripts legitimately need them.
+hostile_env() {
+    env \
+        REPO_ROOT=/nonexistent-hostile-root \
+        SKIP_NESTED=1 \
+        GENERIC_GUARD=1 \
+        ROOT=/nonexistent \
+        DIR=/nonexistent \
+        FILE=/nonexistent \
+        DEBUG=1 VERBOSE=1 QUIET=1 FORCE=1 DRY_RUN=1 \
+        "$@"
 }
 
-# The same source with heredoc bodies blanked, for the passes that
-# decide ownership. A heredoc body is data — the shell hands it to a
-# command and never parses it as source — so an assignment spelled
-# there assigns nothing, and counting it makes the name look local.
+# Sensitive when a hostile environment changes either what the check
+# prints or how it exits.
 #
-# Run over raw text, before quotes are stripped: the delimiter of a
-# quoted heredoc lives inside the quotes `expandable_text` removes.
-# Blank lines rather than dropped ones, so nothing else shifts.
-without_heredoc_bodies() {
-    awk '
-        BEGIN {
-            sq = sprintf("%c", 39)
-            opener = "<<-?[ \t]*([\"" sq "][^\"" sq "]*[\"" sq "]|[^ \t;&|<>()]+)"
-        }
-        {
-            # One body per redirection, closed in the order the
-            # redirections were written. A single delimiter ends at the
-            # first and reads the rest as source.
-            if (pending > 0) {
-                probe = $0
-                if (dash[at]) sub(/^\t+/, "", probe)
-                if (probe == delim[at]) {
-                    at++
-                    if (at > pending) pending = 0
-                }
-                print ""
-                next
-            }
-            # A trailing backslash continues the command, so the
-            # redirections of one logical line may be spread over
-            # several physical ones. Collect the whole command before
-            # consuming any body, or the continuation is eaten as the
-            # first body and the openers on it are never seen.
-            logical = logical $0
-            if (logical ~ /\\$/) {
-                sub(/\\$/, " ", logical)
-                print
-                next
-            }
-            rest = logical
-            logical = ""
-            pending = 0
-            at = 1
-            while (match(rest, opener)) {
-                tok = substr(rest, RSTART, RLENGTH)
-                pending++
-                dash[pending] = (substr(tok, 1, 3) == "<<-")
-                sub(/^<<-?[ \t]*/, "", tok)
-                gsub("[\"" sq "]", "", tok)
-                delim[pending] = tok
-                rest = substr(rest, RSTART + RLENGTH)
-            }
-            print
-        }
-    '
-}
+# A clean run happens twice first, to ask whether the check is
+# reproducible against itself at all. `node_tool_tests.sh` is not — it
+# prints durations — and comparing its output to anything reports a
+# difference every time. For those the exit status is the only stable
+# signal, so that is what gets compared. Found by this case on its
+# first run, which is the sort of thing the text audit could never
+# have seen.
+env_sensitive() {
+    _first=$(sh "$1" 2>&1) && _first_status=0 || _first_status=$?
+    _again=$(sh "$1" 2>&1) || true
+    _dirty=$(hostile_env sh "$1" 2>&1) && _dirty_status=0 || _dirty_status=$?
 
-ambient_stray_names() {
-    _raw=$(cat)
-    _src=$(printf '%s\n' "$_raw" | expandable_text)
-    # Ownership is decided over executable source only.
-    _code=$(printf '%s\n' "$_raw" | without_heredoc_bodies | expandable_text)
-    # Every expansion whose result can come from outside: the four
-    # POSIX operators, each with and without the colon. The colon only
-    # decides whether an empty value counts as unset — it has nothing
-    # to do with where the value came from, so requiring it audited
-    # half the spellings.
-    _defaulted=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{[A-Z][A-Z0-9_]*:?[-=?+]' |
-        sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
-    # `${#NAME}` is a read of NAME. The `#` sits where a letter is
-    # expected, so it needs its own alternative.
-    _plain=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{#?[A-Z][A-Z0-9_]*\}?|\$[A-Z][A-Z0-9_]*' |
-        sed 's/^\$//; s/^{#*//; s/}$//' | sort -u)
-    # An export owns a name only when it carries a value. `export NAME`
-    # assigns nothing: it marks the name for the environment, and
-    # whatever the calling shell already put there survives — so the
-    # read stays as ambient as it would be with no export at all.
-    _assigned=$(printf '%s\n' "$_code" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|^[[:space:]]*export[[:space:]]+[A-Z][A-Z0-9_]*=' |
-        sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
-        sort -u)
-    if [ -n "$_assigned" ]; then
-        _unowned=$(printf '%s\n' "$_plain" | grep -vxF "$_assigned" || true)
-    else
-        _unowned=$_plain
+    [ "$_first_status" = "$_dirty_status" ] || return 0
+    if [ "$_first" = "$_again" ] && [ "$_first" != "$_dirty" ]; then
+        return 0
     fi
-    printf '%s\n%s\n' "$_defaulted" "$_unowned" |
-        grep -v '^$' | sort -u | grep -vE "$allowed_env" || true
+    return 1
 }
 
-# One uppercase letter is a legal name too, and the pattern still
-# required something after it. The shortest thing the audit can see has
-# to be the shortest thing the shell accepts.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/single-char-name.sh" |
-    grep -qx 'X'; then
-    printf '  ok       a single-character name is still ambient\n'
+# The hunt has to find something it is known to find, or the day it
+# stops working it reports ok about every check at once.
+if env_sensitive "$REPO_ROOT/tests/fixtures/arch/redirectable-check.sh"; then
+    printf '  ok       a check a stray environment redirects is detected\n'
 else
-    printf '  FAIL     a single-character name escapes the audit\n'
+    printf '  FAIL     a check that reads SKIP_NESTED was not detected as sensitive\n'
     failed=1
 fi
 
-# A two-character name is a legal environment variable, so a guard
-# reading one is exactly as ambient as a longer name. `CI` is on the
-# allowlist above and is itself two characters — under a pattern that
-# cannot match it, that entry never did anything.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/short-name.sh" |
-    grep -qx 'NO'; then
-    printf '  ok       a two-character name is still ambient\n'
+# Every real check, run twice. The self-tests are skipped: they
+# re-execute themselves, and several deliberately vary on exactly the
+# environment this hands them.
+env_strays=''
+for env_check in "$REPO_ROOT"/tests/arch/*.sh; do
+    case "$(basename "$env_check")" in
+        run-all.sh | *_test.sh) continue ;;
+        *) ;;
+    esac
+    if env_sensitive "$env_check"; then
+        env_strays="$env_strays $(basename "$env_check")"
+    fi
+done
+if [ -z "$env_strays" ]; then
+    printf '  ok       no check changes what it does under a hostile environment\n'
 else
-    printf '  FAIL     a two-character name escapes the audit entirely\n'
-    failed=1
-fi
-
-# A colonless POSIX default is exactly as ambient as its colon
-# spelling, and the audit has to say so. The fixture pairs one with an
-# assignment of the same name, which is what makes the case sharp: the
-# assignment takes the name out of the read-but-never-assigned path,
-# leaving the default-expansion path as the only thing that can catch
-# it. A guard written that way inherits whatever the calling shell
-# exported.
-#
-# The fixture is a file outside tests/arch rather than a string here,
-# because this file is itself scanned — test data spelled inline gets
-# reported as a real finding.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/colonless-default.sh" |
-    grep -qx 'SKIP_NESTED'; then
-    printf '  ok       a colonless default expansion is still ambient\n'
-else
-    printf '  FAIL     a colonless default escapes the audit when the name is also assigned\n'
-    failed=1
-fi
-
-# A `#` opens a comment only where a word could start, and only
-# outside quotes. Stripping from the first one on the line regardless
-# swallows the rest of `"#${GENERIC_GUARD-}"` — a legal comparison —
-# and the audit then reports ok about a guard whose name it never saw.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/quoted-hash.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a quoted hash does not hide the rest of the line\n'
-else
-    printf '  FAIL     a name after a quoted hash escapes the audit\n'
-    failed=1
-fi
-
-# `export NAME` assigns nothing. It marks the name for the environment
-# and whatever the calling shell put there survives, so the read is
-# exactly as ambient as it would be with no export at all. Counting
-# the bare form as ownership is how a generic guard gets through.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/bare-export.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a valueless export does not claim ownership\n'
-else
-    printf '  FAIL     a bare export removes an ambient name from the audit\n'
-    failed=1
-fi
-
-# A heredoc body is data, so an assignment spelled there assigns
-# nothing. Read as one, it makes the name look local and the ambient
-# read underneath stops being reported.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-assignment.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       an assignment inside a heredoc does not claim the name\n'
-else
-    printf '  FAIL     a heredoc assignment hides an ambient read\n'
-    failed=1
-fi
-
-# The delimiter is any word, not only an identifier. `cat <<123` is
-# legal, and an opener that misses it leaves the body in the source.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-digit-delimiter.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a heredoc delimiter that is not an identifier still ends the body\n'
-else
-    printf '  FAIL     a digit-led heredoc delimiter leaves its body readable as code\n'
-    failed=1
-fi
-
-# An export inside double quotes is text the shell prints, not runs.
-# Matched anywhere on the line, the diagnostic is read as ownership.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/quoted-export.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a quoted export does not claim the name\n'
-else
-    printf '  FAIL     a quoted export is read as a real assignment\n'
-    failed=1
-fi
-
-# The shell reads one body per redirection, in order. Tracking a
-# single delimiter ends at the first and reads the second as source.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-two-on-one-command.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       every heredoc on a command is tracked\n'
-else
-    printf '  FAIL     a second heredoc body on one command is read as code\n'
-    failed=1
-fi
-
-# `${#NAME}` is a read of NAME. The `#` sits where the patterns expect
-# a letter, so the read is invisible to all of them.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/parameter-length-read.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a length read counts as a read\n'
-else
-    printf '  FAIL     a parameter-length read escapes the audit\n'
-    failed=1
-fi
-
-# A trailing backslash continues the command, so a redirection on the
-# next line belongs to it. Scanned line by line, that line is read as
-# the first body and the second opener is never seen.
-if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/heredoc-continued-line.sh" |
-    grep -qx 'GENERIC_GUARD'; then
-    printf '  ok       a heredoc opened on a continuation line is tracked\n'
-else
-    printf '  FAIL     a continued command hides its second heredoc body\n'
-    failed=1
-fi
-
-# One file at a time. Concatenating them shares the stripper's quote
-# state across file boundaries, so one file ending mid-quote changes
-# how the next is read; and stripping here as well as inside the
-# function ran every script through it twice.
-stray_env=$(
-    for stray_file in "$REPO_ROOT"/tests/arch/*.sh; do
-        ambient_stray_names <"$stray_file"
-    done | sort -u
-)
-if [ -z "$stray_env" ]; then
-    printf '  ok       every ambient variable the arch scripts read is namespaced\n'
-else
-    printf '  FAIL     these are readable from any environment: %s\n' \
-        "$(printf '%s' "$stray_env" | tr '\n' ' ')"
+    printf '  FAIL     a stray environment redirects these checks:%s\n' "$env_strays"
     failed=1
 fi
 
