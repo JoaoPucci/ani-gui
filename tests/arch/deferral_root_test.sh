@@ -451,10 +451,19 @@ kill -TERM "$leak_pid" 2>/dev/null || true
 leak_status=0
 wait "$leak_pid" 2>/dev/null || leak_status=$?
 
-leak_count=$(wc -l <"$leak_out" | tr -d ' ')
+# Count allocations, not lines. stderr is merged into this file, so
+# two diagnostics satisfy a line count while nothing was ever
+# allocated — the loop then finds neither string on disk and the case
+# reports cleanup succeeded. A line only counts if it is a path the
+# allocator could have produced.
+leak_count=0
 leak_found=0
 while IFS= read -r probe; do
-    [ -n "$probe" ] || continue
+    case "$probe" in
+        "$REPO_ROOT/tests/arch/.sabotage-probe."*) ;;
+        *) continue ;;
+    esac
+    leak_count=$((leak_count + 1))
     if [ -e "$probe" ]; then
         leak_found=1
         rm -f "$probe"
@@ -462,7 +471,7 @@ while IFS= read -r probe; do
 done <"$leak_out"
 
 if [ "$leak_count" -ne 2 ]; then
-    printf '  FAIL     the leak probe emitted %s paths, not 2 — cleanup was never exercised\n' \
+    printf '  FAIL     the leak probe emitted %s allocation paths, not 2 — cleanup was never exercised\n' \
         "$leak_count"
     failed=1
 elif [ "$leak_status" -ne 143 ]; then
