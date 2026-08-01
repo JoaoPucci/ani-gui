@@ -92,16 +92,31 @@ if [ -e "$scratch_dir" ] || [ -L "$scratch_dir" ]; then
         "$scratch_dir" >&2
     exit 1
 fi
+# Claimed before the directory is made, not after. Recorded afterwards
+# there is a gap: a signal between the `mkdir` returning and the record
+# being written finds the directory on disk and the cleanup unwilling
+# to touch it, so a cancelled run litters the working tree — which is
+# what this scratch exists to avoid.
+#
+# Claimed first, the gap closes. Ahead of the `mkdir` there is nothing
+# at the path to remove: the refusal above established that, and no
+# live process shares this one's pid. If the `mkdir` fails after all,
+# the claim is given back before the run ends.
+#
+# What remains is a signal arriving while another process holds the
+# path, in the instant between the refusal and the `mkdir`. That is
+# narrower than the window it replaces, and this scratch sits inside
+# the repository rather than in a world-writable directory, so the
+# path is not one a stranger is placing bets on.
+scratch_owned=1
 mkdir "$scratch_dir" || {
+    scratch_owned=""
     printf 'arch/deferral_record_test: %s was claimed while this run was starting\n' \
         "$scratch_dir" >&2
     exit 1
 }
-scratch_owned=1
-
-# Where the gap sits: ownership is recorded after the `mkdir`, so a
-# signal arriving here finds the directory on disk and the cleanup
-# unwilling to touch it. The case below holds this open.
+# Where the gap used to sit. Ownership is claimed before the `mkdir`,
+# so a signal arriving here takes the directory with it.
 if [ -n "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     sleep "$ARCH_DEFERRAL_PAUSE_AFTER_MKDIR"
 fi
@@ -163,12 +178,20 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     sleep 1
     kill -TERM "$gap_pid" 2>/dev/null || true
     wait "$gap_pid" 2>/dev/null || true
-    gap_left=$(find "$REPO_ROOT/tests/arch" -maxdepth 1 -name '.deferral-scratch.*' 2>/dev/null | wc -l)
+    # This run's own scratch is alive and sits under the same name, so
+    # counting every match measures the parent and never the child —
+    # the count is 1 whether or not anything leaked.
+    gap_left=0
+    for stray in "$REPO_ROOT"/tests/arch/.deferral-scratch.*; do
+        [ -e "$stray" ] || continue
+        [ "$stray" = "$scratch_dir" ] && continue
+        gap_left=$((gap_left + 1))
+        rm -rf "$stray"
+    done
     if [ "$gap_left" -eq 0 ]; then
         printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
     else
         printf '  FAIL     a cancelled run left %s scratch director(ies) behind\n' "$gap_left"
-        find "$REPO_ROOT/tests/arch" -maxdepth 1 -name '.deferral-scratch.*' -exec rm -rf {} +
         failed=1
     fi
 fi
