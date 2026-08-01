@@ -50,7 +50,7 @@ edited_runner() {
 
 @test "a runner that never reaches the bats binary is not wiring" {
     # Every suite is walked, none is run, and the loop is intact.
-    copy=$(edited_runner '{ sub(/"\$BATS_BIN" \$files/, ":"); print }')
+    copy=$(edited_runner '{ sub(/"\$BATS_BIN" "\$@"/, ":"); print }')
     run ! sh "$CHECK" "$copy" "$SUITES"
 }
 
