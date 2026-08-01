@@ -26,6 +26,20 @@ setup() {
     done
 }
 
+@test "a check runs from a directory whose name contains an apostrophe" {
+    # Nothing stops anyone cloning into `~/o'brien/`, and the case
+    # above builds a shell program out of the checkout path — so the
+    # apostrophe closes the quote the program opened and every case in
+    # this file dies of a syntax error before a check is reached. The
+    # failure names the shell, not the path, which is why the deleted
+    # self-test carried a fixture for it.
+    quoted="$BATS_TEST_TMPDIR/o'brien"
+    mkdir -p "$quoted"
+    printf '#!/bin/sh\nexit 0\n' >"$quoted/trivial.sh"
+    run bash -c "cd '$quoted' && sh ./trivial.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "a stray REPO_ROOT does not redirect a check" {
     # `REPO_ROOT` is a common name. Only the suite's own
     # `ARCH_REPO_ROOT` may point a check somewhere else.
