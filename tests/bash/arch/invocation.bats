@@ -181,6 +181,16 @@ YAML
     }
 }
 
+@test "a two-character name is still ambient" {
+    # `[A-Z][A-Z0-9_]{2,}` needs three characters, so a legal
+    # two-character environment name is invisible to all three passes
+    # at once — not just the default-expansion one. `CI` sits on the
+    # allowlist and is itself two characters, so under that pattern the
+    # entry never did anything.
+    run ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/short-name.sh"
+    [[ "$output" == *NO* ]]
+}
+
 @test "a colonless default expansion is still ambient" {
     # `${VAR-}` and `${VAR=x}` are POSIX and mean the same thing as
     # their colon spellings: the value may arrive from outside. The
