@@ -83,6 +83,14 @@ trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 
+# Between the check above and the `mkdir` below is a window in which
+# the traps are armed and this run owns nothing. It is too short to
+# step into, so the case that measures it holds it open. Nothing else
+# sets this.
+if [ -n "${ARCH_WIRING_PAUSE_BEFORE_MKDIR:-}" ]; then
+    sleep "$ARCH_WIRING_PAUSE_BEFORE_MKDIR"
+fi
+
 if ! mkdir "$scratch" 2>/dev/null; then
     trap - EXIT INT TERM
     printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
