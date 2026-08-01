@@ -284,7 +284,13 @@ fi
 # directory it just deleted, and can still reach `exit 0` — so a
 # Ctrl-C in CI looks like a pass.
 probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
-ARCH_DEFERRAL_SIGNAL_PROBE=1 sh "$0" >"$probe_out" 2>&1 &
+# By absolute path. `$0` is whatever the caller typed, and this script
+# has changed directory since — so launched as
+# `sh ./deferral_record_test.sh` from `tests/arch`, the child cannot
+# find itself, dies at once, and the case reports on a process that
+# never received a signal.
+ARCH_DEFERRAL_SIGNAL_PROBE=1 \
+    sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >"$probe_out" 2>&1 &
 probe_pid=$!
 probe_dir=''
 i=0

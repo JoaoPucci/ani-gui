@@ -118,7 +118,7 @@ document renders as intended. A wholly-inert policy section is visible
 to anyone who opens the rendered file and to any reviewer of the diff
 that made it inert; a parser is not the right instrument for it.
 
-## Three open findings on the deferral checks
+## Open findings on the deferral checks
 
 Raised in review and not yet fixed. Recorded here so they survive the
 thread.
@@ -149,14 +149,6 @@ This belongs to the Markdown-interpretation layer described above, and
 the same argument applies: it is the eighth rule of an open set. The
 recommendation remains to stop parsing document structure rather than
 to add setext handling.
-
-**The signal probe re-execs by `$0`.** `deferral_record_test.sh`
-re-runs itself as `sh "$0"` for the cancellation case. Launched as
-`sh ./deferral_record_test.sh` from `tests/arch`, the re-exec resolves
-against a different working directory. An absolute path fixes it.
-
-Running the suite from `tests/arch` as well as from the root is what
-shows it.
 
 ---
 
