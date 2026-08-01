@@ -225,13 +225,13 @@ ambient_stray_names() {
     # to do with where the value came from, so requiring it audited
     # half the spellings.
     _defaulted=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{[A-Z][A-Z0-9_]{2,}:?[-=?+]' |
+        grep -oE '\$\{[A-Z][A-Z0-9_]+:?[-=?+]' |
         sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
     _plain=$(printf '%s\n' "$_src" |
-        grep -oE '\$\{?[A-Z][A-Z0-9_]{2,}\}?' |
+        grep -oE '\$\{?[A-Z][A-Z0-9_]+\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
     _assigned=$(printf '%s\n' "$_src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]{2,}=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]{2,}|export[[:space:]]+[A-Z][A-Z0-9_]{2,}' |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]+=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]+|export[[:space:]]+[A-Z][A-Z0-9_]+' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
     if [ -n "$_assigned" ]; then
