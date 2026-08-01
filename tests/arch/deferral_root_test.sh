@@ -243,6 +243,18 @@ ambient_stray_names() {
         grep -v '^$' | sort -u | grep -vE "$allowed_env" || true
 }
 
+# A two-character name is a legal environment variable, so a guard
+# reading one is exactly as ambient as a longer name. `CI` is on the
+# allowlist above and is itself two characters — under a pattern that
+# cannot match it, that entry never did anything.
+if ambient_stray_names <"$REPO_ROOT/tests/fixtures/arch/short-name.sh" |
+    grep -qx 'NO'; then
+    printf '  ok       a two-character name is still ambient\n'
+else
+    printf '  FAIL     a two-character name escapes the audit entirely\n'
+    failed=1
+fi
+
 # A colonless POSIX default is exactly as ambient as its colon
 # spelling, and the audit has to say so. The fixture pairs one with an
 # assignment of the same name, which is what makes the case sharp: the
