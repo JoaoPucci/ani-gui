@@ -125,6 +125,17 @@ edited_runner() {
     [ -f "$target/keep-me" ]
 }
 
+@test "a path containing a space does not stop the suites running" {
+    # The runner word-split its file list, so a checkout under
+    # `~/My Repos/` could not run its own tests: every filename arrived
+    # at bats in pieces. This check builds a sandbox under `TMPDIR`, so
+    # it is the place that notices.
+    spaced="$BATS_TEST_TMPDIR/a b"
+    mkdir -p "$spaced"
+    run env TMPDIR="$spaced" sh "$CHECK" "$RUNNER" "$SUITES"
+    [ "$status" -eq 0 ]
+}
+
 @test "a suites directory holding nothing is reported, not passed" {
     # With no suite to require, every reading of any runner is
     # vacuously satisfied. A check that has lost its subject has to say
