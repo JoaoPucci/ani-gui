@@ -101,16 +101,16 @@ ambient_stray_names() {
     # POSIX operators, each with and without the colon. The colon only
     # decides whether an empty value counts as unset — it says nothing
     # about where the value came from.
-    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]+:?[-=?+]' |
+    defaulted=$(printf '%s\n' "$src" | grep -oE '\$\{[A-Z][A-Z0-9_]*:?[-=?+]' |
         sed 's/^\${//; s/[-:=?+].*$//' | sort -u)
-    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]+\}?' |
+    plain=$(printf '%s\n' "$src" | grep -oE '\$\{?[A-Z][A-Z0-9_]*\}?' |
         sed 's/^\$//; s/^{//; s/}$//' | sort -u)
     # Three ways the suite owns a name: a plain assignment, an export,
     # and a `for` that binds it. Omitting the loop form turns an
     # ordinary local into a reported finding, and this audit gates
     # every change.
     assigned=$(printf '%s\n' "$src" |
-        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]+=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]+|export[[:space:]]+[A-Z][A-Z0-9_]+' |
+        grep -oE '^[[:space:]]*[A-Z][A-Z0-9_]*=|^[[:space:]]*for[[:space:]]+[A-Z][A-Z0-9_]*|export[[:space:]]+[A-Z][A-Z0-9_]*' |
         sed 's/^[[:space:]]*//; s/^for[[:space:]]*//; s/^export[[:space:]]*//; s/=$//' |
         sort -u)
     if [ -n "$assigned" ]; then
@@ -190,7 +190,7 @@ YAML
 }
 
 @test "a two-character name is still ambient" {
-    # `[A-Z][A-Z0-9_]+` needs three characters, so a legal
+    # `[A-Z][A-Z0-9_]*` needs three characters, so a legal
     # two-character environment name is invisible to all three passes
     # at once — not just the default-expansion one. `CI` sits on the
     # allowlist and is itself two characters, so under that pattern the
