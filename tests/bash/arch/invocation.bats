@@ -115,7 +115,11 @@ unconditional() {
 #
 # One pattern for selection and count, so the two can never disagree
 # about what a declaration is.
-EXCLUSION_KEY_RE="^[[:space:]]*(\"sh_checker_exclude\"|'sh_checker_exclude'|sh_checker_exclude|\"[^\"]*\\\\[^\"]*\")[[:space:]]*:|^[[:space:]]*[?:]([[:space:]]|\$)"
+# The alias/anchor arm selects any line opening with `*` or `&` that
+# carries a colon: `*k: "list"` resolves to a key this read cannot
+# name, so it must be seen and then refused, while `&a key: value`
+# anchors a key that parses normally once selected.
+EXCLUSION_KEY_RE="^[[:space:]]*(\"sh_checker_exclude\"|'sh_checker_exclude'|sh_checker_exclude|\"[^\"]*\\\\[^\"]*\")[[:space:]]*:|^[[:space:]]*[?:]([[:space:]]|\$)|^[[:space:]]*[*&][^:]*:"
 
 select_exclusion_line() {
     grep -E "$EXCLUSION_KEY_RE" "$1" | head -1 || true
@@ -130,7 +134,16 @@ exclusion_declarations() {
 }
 
 parse_exclusions() {
-    sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
+    # The leading strip means an unextractable line reaches the
+    # refusal with its first real character exposed — an alias or
+    # anchor opener is then caught by the same arms that refuse those
+    # openers in values. The strip's own substitution would satisfy
+    # the first `t` and skip the second extraction, so a branch to
+    # the next line clears the flag before the extractions run.
+    sed "s/^[[:space:]]*//
+t clear
+: clear
+s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
 s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
 }
 
@@ -143,10 +156,12 @@ s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
 # key with nothing after it excludes nothing, and that is a correct
 # read.
 exclusions_unreadable() {
+    # shellcheck disable=SC2016 # the unexpanded ${{ is the subject
     case "$1" in
         *sh_checker_exclude*) return 0 ;;
         '>'* | '|'* | '['* | '{'* | '&'* | '*'*) return 0 ;;
         *\\*) return 0 ;;
+        *'${{'*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -271,7 +286,11 @@ count_arch_lint_names() {
     # never share a physical line; counting both halves over-counts
     # one declaration, the failing-closed direction.
     local name_re='Arch Shellcheck \+ Shfmt'
-    grep -cE "(\"name\"|'name'|name|\"[^\"]*\\\\[^\"]*\")[[:space:]]*:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)|^[[:space:]]*[?:]([[:space:]]|\$)" || true
+    # An alias token directly before the colon can stand for any key
+    # at all, so it joins the key alternation and the value side
+    # decides; an expression value that textually carries the name
+    # counts, and evaluating expressions is deliberately out of scope.
+    grep -cE "(\"name\"|'name'|name|\"[^\"]*\\\\[^\"]*\"|\*[^:[:space:]]+)[[:space:]]*:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$|[\"']?\\\$[{][{].*${name_re})|^[[:space:]]*[?:]([[:space:]]|\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
