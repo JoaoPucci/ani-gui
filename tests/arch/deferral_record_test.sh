@@ -363,32 +363,24 @@ fi
 # case are lines a signal never reaches.
 if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
     [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
-    leak_before=' '
-    for leak_path in "$REPO_ROOT/tests/arch/".deferral-scratch.*; do
-        [ -e "$leak_path" ] || continue
-        leak_before="$leak_before${leak_path##*/} "
-    done
-
     ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL=3 \
         sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
     leak_pid=$!
 
-    # A new sibling has to be observed before the signal — and not the
-    # child's own scratch, which its ordinary cleanup already covers:
-    # a fixture nobody saw created reads afterwards as one cleaned up.
+    # The child's leakable fixture is known exactly: its sentinel is a
+    # literal spelled from its pid, which is the pid just captured.
+    # Everything this case observes and removes is that one path —
+    # ownership is derived, never inferred from which names are new.
+    # The fixture has to be observed before the signal: one nobody saw
+    # created reads afterwards as one cleaned up.
+    leak_fixture="$REPO_ROOT/tests/arch/.deferral-scratch.gap-sentinel.$leak_pid"
     leak_seen=0
     i=0
     while [ "$i" -lt 50 ]; do
-        for leak_path in "$REPO_ROOT/tests/arch/".deferral-scratch.*; do
-            [ -e "$leak_path" ] || continue
-            leak_name=${leak_path##*/}
-            [ "$leak_name" = ".deferral-scratch.$leak_pid" ] && continue
-            case "$leak_before" in
-                *" $leak_name "*) ;;
-                *) leak_seen=1 ;;
-            esac
-        done
-        [ "$leak_seen" -eq 1 ] && break
+        if [ -e "$leak_fixture" ]; then
+            leak_seen=1
+            break
+        fi
         kill -0 "$leak_pid" 2>/dev/null || break
         sleep 0.1
         i=$((i + 1))
@@ -415,17 +407,6 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
     leak_status=0
     wait "$leak_pid" || leak_status=$?
 
-    leak_stray=''
-    for leak_path in "$REPO_ROOT/tests/arch/".deferral-scratch.*; do
-        [ -e "$leak_path" ] || continue
-        leak_name=${leak_path##*/}
-        [ "$leak_name" = ".deferral-scratch.$leak_pid" ] && continue
-        case "$leak_before" in
-            *" $leak_name "*) ;;
-            *) leak_stray="$leak_stray $leak_name" ;;
-        esac
-    done
-
     if [ "$leak_seen" -eq 0 ]; then
         printf '  FAIL     the killed run never showed a gap fixture (exit %s)\n' \
             "$leak_status"
@@ -434,18 +415,17 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
         printf '  FAIL     the killed run exited %s, not 143 — it did not die of the signal\n' \
             "$leak_status"
         failed=1
-    elif [ -n "$leak_stray" ]; then
-        printf '  FAIL     a killed run left gap fixtures behind:%s\n' "$leak_stray"
+    elif [ -e "$leak_fixture" ]; then
+        printf '  FAIL     a killed run left its gap sentinel behind: %s\n' \
+            "${leak_fixture##*/}"
         failed=1
+        # A leak is a defect just reported, not litter for a future run
+        # to refuse — and the only path removed is the one derived from
+        # the child's pid.
+        rm -rf "$leak_fixture"
     else
         printf '  ok       a run killed holding gap fixtures takes them along\n'
     fi
-    # A leak is a defect just reported, not litter for a future run to
-    # refuse. Only names this case watched appear here, so nothing
-    # pre-existing is touched.
-    for leak_name in $leak_stray; do
-        rm -rf "$REPO_ROOT/tests/arch/$leak_name"
-    done
 
     if [ -z "$leak_bystander" ]; then
         : # refused above, already reported
