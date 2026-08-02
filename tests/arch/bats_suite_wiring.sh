@@ -94,6 +94,7 @@ owned=""
 
 cleanup() {
     [ -n "$owned" ] || return 0
+    owned=""
     rm -rf "$scratch"
 }
 
@@ -113,9 +114,14 @@ if [ -e "$scratch" ]; then
     exit 1
 fi
 
+# EXIT owns cleanup; the signal handlers only end the run. `exit`
+# inside a trap fires the EXIT trap, so a handler that also called
+# cleanup ran it twice — and between the two calls the predictable
+# path could be recreated by someone else, handing the second removal
+# a directory this run never made.
 trap cleanup EXIT
-trap 'cleanup; exit 130' INT
-trap 'cleanup; exit 143' TERM
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Between the check above and the `mkdir` below is a window in which
 # the traps are armed and this run owns nothing. It is too short to
