@@ -226,6 +226,37 @@ scan_workflows() {
     [ "$single_count" -eq 1 ]
 }
 
+@test "a block-scalar name declaration is not silently missed" {
+    # `name: >-` resolves to the job name on the next physical line,
+    # where a single-line count cannot read it — a second producer
+    # hides behind the fold. Counted as a potential producer, any
+    # block-scalar job name fails the uniqueness case loudly instead:
+    # refusal by over-count, the failing-closed direction.
+    block_count=$(printf 'jobs:\n  a:\n    name: >-\n      Arch Shellcheck + Shfmt\n' |
+        count_arch_lint_names)
+    [ "$block_count" -ge 1 ]
+}
+
+@test "a commented bare name counts as a producer" {
+    # A bare scalar ends at the line's end or at an inline comment;
+    # `name: Arch Shellcheck + Shfmt # required` resolves to exactly
+    # the required name. The comment completes the bare form's
+    # delimiter set.
+    comment_count=$(printf '%s\n' '    name: Arch Shellcheck + Shfmt # required job' |
+        count_arch_lint_names)
+    [ "$comment_count" -eq 1 ]
+}
+
+@test "a bare exclusion list is refused, not scanned" {
+    # A plain scalar continues onto an indented next line with nothing
+    # on its first line to say so: the fragment before the break is a
+    # valid-looking token list missing exactly the entry that
+    # mattered. The readable set is the quoted single-line forms.
+    probe=$(printf '%s\n' '      sh_checker_exclude: ani-cli' |
+        parse_exclusions)
+    exclusions_unreadable "$probe"
+}
+
 @test "a .yaml workflow enters the producer scan" {
     # GitHub loads workflows with either extension. A scan reading
     # only *.yml never sees a duplicate.yaml declaring the name, and
