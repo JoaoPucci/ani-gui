@@ -495,6 +495,26 @@ while [ "$i" -lt 50 ] && [ "$(wc -l <"$leak_out")" -lt 2 ]; do
     sleep 0.1
     i=$((i + 1))
 done
+# The protocol first: every record the probe emits has to be spelled
+# from an alphabet this run controls. An absolute path carries the
+# checkout prefix, and a newline anywhere in that prefix splits one
+# record into several — the reader then matches nothing and reports a
+# failure about serialization, not about cleanup.
+leak_protocol_ok=1
+while IFS= read -r probe_line; do
+    [ -n "$probe_line" ] || continue
+    case "$probe_line" in
+        */*) leak_protocol_ok=0 ;;
+        *) ;;
+    esac
+done <"$leak_out"
+if [ "$leak_protocol_ok" -eq 1 ]; then
+    printf '  ok       the leak probe reports names, not paths\n'
+else
+    printf '  FAIL     the leak probe serializes absolute paths — a newline in the checkout path splits its records\n'
+    failed=1
+fi
+
 # Verify the allocations exist while the child still holds them.
 # Counting plausible-looking lines is not evidence: two fabricated
 # paths, or the same one twice, satisfy any count. A path that is on

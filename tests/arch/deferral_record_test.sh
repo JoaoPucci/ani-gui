@@ -180,6 +180,12 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     # else's — a concurrent run's, or a developer's. A sweep that
     # removes every match destroys their state on the way to
     # reporting ours.
+    # A directory already sitting at the fixed spelling is somebody
+    # else's, and the case must leave it exactly as found.
+    gap_foreign="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
+    mkdir -p "$gap_foreign"
+    printf 'someone elses\n' >"$gap_foreign/prior"
+
     gap_sentinel="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
     mkdir -p "$gap_sentinel"
     printf 'not yours\n' >"$gap_sentinel/keep-me"
@@ -235,6 +241,14 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         failed=1
     fi
     rm -rf "$gap_sentinel"
+
+    if [ -f "$gap_foreign/prior" ]; then
+        printf '  ok       a pre-existing directory at the fixed spelling is left alone\n'
+    else
+        printf '  FAIL     the case adopted a directory somebody else already owned\n'
+        failed=1
+    fi
+    rm -rf "$gap_foreign"
 fi
 
 printf 'arch/deferral_record_test: predicate cases\n'
