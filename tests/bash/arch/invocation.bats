@@ -342,6 +342,13 @@ YAML
 # gutted spelling runs through exactly the check the live file does.
 # Invocation-shaped, like the runner-wiring constraint: `git` has to
 # be the command of its line, so an echoed mention does not count.
+#
+# Deliberately not covered, and said so: the same line as heredoc
+# payload, which no regex can tell from a command — that distinction
+# needs a shell parser, the interpretation these checks no longer
+# attempt. This green means "a line of the setup's exact shape
+# exists"; the evasion requires a reviewed workflow edit that spells
+# out the mimicry, which is what review is for.
 configures_upstream() {
     grep -qE '^[[:space:]]*git remote add upstream([[:space:]]|$)' "$1"
 }

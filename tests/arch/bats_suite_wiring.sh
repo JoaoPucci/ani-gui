@@ -54,10 +54,15 @@ fi
 # AGENTS.md rule on how these checks may read source.
 #
 # Deliberately not covered, and said so: a step that is present but
-# gated behind a condition that never holds. Associating an `if:` with
-# its step means parsing YAML structure, which is the interpretation
-# this suite no longer does; the relevance-filter cases in the bats
-# suite cover the pattern the filter actually uses.
+# gated behind a condition that never holds, and a line inside a
+# block scalar or heredoc that textually mimics the step while being
+# payload. Telling either apart from the real thing means parsing
+# YAML and then shell — heredocs were the third rung of the ten-round
+# ladder the AGENTS.md rule records — so this green means "a line of
+# the invocation's exact shape exists", no more. Both evasions
+# require a reviewed workflow edit that spells out the mimicry, which
+# is what review is for; the relevance-filter cases in the bats suite
+# cover the pattern the filter actually uses.
 if [ ! -f "$WORKFLOW" ]; then
     printf 'arch/bats_suite_wiring: %s is missing\n' "$WORKFLOW" >&2
     exit 1
