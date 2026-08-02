@@ -294,6 +294,21 @@ else
     failed=1
 fi
 
+# YAML also spells the value as a block scalar: `sh_checker_exclude: >-`
+# with the list on the next line. Line-oriented extraction of that line
+# yields the fold marker while the value goes unread — no key text
+# survives, so nothing trips the refusal, and an exclude list that does
+# cover tests/arch scans as not covering it. The boundary stands: this
+# check reads the inline spellings only. But a spelling past the
+# boundary has to arrive as a refusal, not as a pass.
+block_probe=$(printf '%s\n' '      sh_checker_exclude: >-' | parse_exclusions)
+if exclusions_unreadable "$block_probe"; then
+    printf '  ok       a block-scalar exclusion is refused, not scanned\n'
+else
+    printf '  FAIL     a block-scalar exclusion reads as: %s\n' "${block_probe:-nothing}"
+    failed=1
+fi
+
 if [ -f "$arch_lint_workflow" ]; then
     lint_excludes=$(grep 'sh_checker_exclude' "$arch_lint_workflow" | head -1 || true)
     excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
