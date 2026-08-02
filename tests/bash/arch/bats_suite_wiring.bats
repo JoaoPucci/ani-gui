@@ -104,25 +104,39 @@ edited_runner() {
     run ! sh "$CHECK" "$copy" "$SUITES"
 }
 
+# The window scenario: hold the check open before its `mkdir`, take
+# the path from under it, TERM it, and require the stranger's file to
+# survive. A helper rather than inline, so a case can also assert what
+# happens when the timing does not hold.
+window_scenario() {
+    _pause=$1
+    _target=$2
+    env ARCH_WIRING_SCRATCH="$_target" ARCH_WIRING_PAUSE_BEFORE_MKDIR="$_pause" \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    sleep 1
+    mkdir -p "$_target"
+    printf 'not yours\n' >"$_target/keep-me"
+    kill -TERM "$_pid" 2>/dev/null || true
+    wait "$_pid" 2>/dev/null || true
+    [ -f "$_target/keep-me" ]
+}
+
 @test "a signal before the claim leaves a stranger's directory alone" {
     # The traps are armed before `mkdir`, deliberately, so that no
     # signal can leave a directory behind. That leaves a window in
     # which they are armed and this run owns nothing: another process
     # taking the path in that instant has it removed by a handler
     # acting on behalf of a run that never created it.
-    #
-    # The window is too short to step into, so the check holds it open
-    # on request. Everything else here is ordinary.
-    target="$BATS_TEST_TMPDIR/window"
-    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_BEFORE_MKDIR=3 \
-        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
-    pid=$!
-    sleep 1
-    mkdir -p "$target"
-    printf 'not yours\n' >"$target/keep-me"
-    kill -TERM "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    [ -f "$target/keep-me" ]
+    window_scenario 3 "$BATS_TEST_TMPDIR/window"
+}
+
+@test "the window case refuses a child that raced through" {
+    # With no pause the child finishes long before the parent takes
+    # the path: nothing is signalled, nothing exercises the window,
+    # and the sentinel survives trivially. A scenario that cannot tell
+    # this from the real thing reports on cleanup it never watched.
+    run ! window_scenario 0 "$BATS_TEST_TMPDIR/window-raced"
 }
 
 @test "a path containing a space does not stop the suites running" {
