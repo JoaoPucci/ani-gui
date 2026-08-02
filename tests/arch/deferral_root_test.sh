@@ -276,6 +276,24 @@ else
     failed=1
 fi
 
+# GitHub loads workflows with either extension. A scan reading only
+# `*.yml` never sees a `duplicate.yaml` declaring the name, and the
+# uniqueness case certifies a name two jobs answer for while the file
+# that breaks it sits beside the ones it read.
+yaml_dir="$scratch_dir/yaml-scan"
+mkdir "$yaml_dir"
+printf 'jobs:\n  a:\n    name: %s\n' "$arch_lint_name" >"$yaml_dir/a.yml"
+printf 'jobs:\n  b:\n    name: %s\n' "$arch_lint_name" >"$yaml_dir/b.yaml"
+yaml_count=$(scan_workflows "$yaml_dir" | count_arch_lint_names)
+if [ "${yaml_count:-0}" -eq 2 ]; then
+    printf '  ok       a .yaml workflow enters the producer scan\n'
+else
+    printf '  FAIL     a fixture directory with a .yml and a .yaml producer counts %s, not 2\n' \
+        "${yaml_count:-0}"
+    failed=1
+fi
+rm -rf "$yaml_dir"
+
 # A longer name is a different check: `Arch Shellcheck + Shfmt
 # (legacy)` cannot answer for the required name, so counting it makes
 # the uniqueness case fail with two producers while only one job
