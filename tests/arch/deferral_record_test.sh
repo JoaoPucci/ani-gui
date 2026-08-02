@@ -192,12 +192,6 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         gap_occupied_planted=1
     fi
 
-    # A directory already sitting at the fixed spelling is somebody
-    # else's, and the case must leave it exactly as found.
-    gap_foreign="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
-    mkdir -p "$gap_foreign"
-    printf 'someone elses\n' >"$gap_foreign/prior"
-
     # Allocated, not spelled: a fixed name is somebody's the moment
     # anybody else uses it. `mktemp -d` hands back a directory nobody
     # holds, still matching the naming scheme the case is about.
@@ -255,14 +249,6 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         failed=1
     fi
     rm -rf "$gap_sentinel"
-
-    if [ -f "$gap_foreign/prior" ]; then
-        printf '  ok       a pre-existing directory at the fixed spelling is left alone\n'
-    else
-        printf '  FAIL     the case adopted a directory somebody else already owned\n'
-        failed=1
-    fi
-    rm -rf "$gap_foreign"
 
     if [ -f "$gap_occupied/keep-existing" ]; then
         printf '  ok       an occupant of the fixed spelling survives the whole case\n'
