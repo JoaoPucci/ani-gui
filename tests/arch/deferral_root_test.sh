@@ -503,6 +503,28 @@ else
     failed=1
 fi
 
+# GitHub evaluates expressions in names after YAML resolves:
+# `name: "${{ 'Arch Shellcheck + Shfmt' }}"` reaches branch
+# protection as exactly the required name, while the scalar the count
+# reads is neither the literal nor any refused spelling. An
+# expression value that textually carries the name counts as a
+# potential producer. What this count deliberately does not attempt
+# is evaluating expressions: a name constructed without its text
+# appearing — format(), join(), an env lookup — is invisible to any
+# line read, and that boundary is stated here rather than implied
+# away. The live tree keeps expression names off the check-producing
+# workflows, which is what the uniqueness case continues to certify.
+# shellcheck disable=SC2016 # the unexpanded ${{ is the subject
+expr_name_probe=$(printf 'name: "${{ %s }}"\n' "'$arch_lint_name'" |
+    count_arch_lint_names)
+if [ "${expr_name_probe:-0}" -ge 1 ]; then
+    printf '  ok       an expression carrying the name is not silently missed\n'
+else
+    printf '  FAIL     an expression-valued name carrying the literal counts %s — invisible to the scan\n' \
+        "${expr_name_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
@@ -730,6 +752,23 @@ else
     failed=1
 fi
 rm -f "$alias_key_excl"
+
+# The action evaluates expressions in its inputs: an exclusion spelled
+# `"${{ 'ani-cli tests/arch' }}"` reaches the linter as the resolved
+# list, while the extraction hands back the unresolved expression and
+# its whitespace-split tokens match nothing. An expression is a value
+# this read cannot resolve — refused, like every other spelling past
+# the extraction's boundary.
+# shellcheck disable=SC2016 # the unexpanded ${{ is the subject
+expr_excl_probe=$(printf 'sh_checker_exclude: "${{ %s }}"\n' "'ani-cli tests/arch'" |
+    parse_exclusions)
+if exclusions_unreadable "$expr_excl_probe"; then
+    printf '  ok       an expression-valued exclusion is refused, not scanned\n'
+else
+    printf '  FAIL     an expression-valued exclusion reads as: %s\n' \
+        "${expr_excl_probe:-nothing}"
+    failed=1
+fi
 
 # Two declarations are two exclude lists — a second sh-checker step
 # carries its own — and reading the first says nothing about the
