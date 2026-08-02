@@ -637,6 +637,25 @@ rm -f "$stripped_workflow"
 #
 # One pattern for selection and count, so the two can never disagree
 # about what a declaration is.
+# How many step lines invoke the sh-checker action. Carrying the
+# required name is not linting: the job has to reach the action for
+# anything to be inspected, and the count is a syntactic constraint —
+# a `uses:` line naming the action either exists or does not.
+lint_action_uses() {
+    grep -cE "uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker" "$1" || true
+}
+
+# Whether the workflow actually lints: exactly one invocation of the
+# action and exactly one exclusion declaration. Zero of either is a
+# workflow that starts, succeeds and inspects nothing — the coverage
+# case would then read an empty token list as "nothing excluded" and
+# certify it. More than one of either is ambiguity the reads above
+# already refuse to resolve.
+lint_step_present() {
+    [ "$(lint_action_uses "$1")" -eq 1 ] &&
+        [ "$(exclusion_declarations "$1")" -eq 1 ]
+}
+
 # The alias/anchor arm selects any line opening with `*` or `&` that
 # carries a colon: `*k: "list"` resolves to a key this read cannot
 # name, so it must be seen and then refused, while `&a key: value`
@@ -887,6 +906,14 @@ else
 fi
 
 if [ -f "$arch_lint_workflow" ]; then
+    # A workflow that never reaches the action lints nothing, however
+    # its exclude list reads. Required before the list is trusted.
+    if lint_step_present "$arch_lint_workflow"; then
+        printf '  ok       the workflow invokes the lint action with one exclude list\n'
+    else
+        printf '  FAIL     the workflow does not invoke the lint action with exactly one exclude list\n'
+        failed=1
+    fi
     lint_excludes=$(select_exclusion_line "$arch_lint_workflow")
     excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
 
