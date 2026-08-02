@@ -234,6 +234,18 @@ YAML
     exclusions_unreadable "$probe"
 }
 
+@test "an escaped exclusion is refused, not scanned" {
+    # Double-quoted YAML resolves escapes: "tests\x2farch" reaches the
+    # action as tests/arch and excludes these scripts. The extraction
+    # keeps the backslash, the token then matches nothing, and the
+    # scan reports the scripts linted. Escapes are YAML the extraction
+    # does not resolve — refused, like the other spellings it cannot
+    # read.
+    probe=$(printf '%s\n' '      sh_checker_exclude: "ani-cli tests\x2farch"' |
+        parse_exclusions)
+    exclusions_unreadable "$probe"
+}
+
 @test "the bats job runs when a check these tests cover changes" {
     # These tests exercise `tests/arch/*.sh`. The job that runs them
     # decides relevance from the changed paths, so a change to a check
