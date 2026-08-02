@@ -514,12 +514,22 @@ fi
 # as a function so a fixture file runs through the same selection the
 # live read runs. A declaration is the line where the key sits at the
 # start, modulo indentation — a comment or any other mid-line mention
-# is not one and must not shadow the line that is. YAML permits
-# whitespace before the colon, so the key pattern tolerates it; a
-# spaced declaration still refuses in parse_exclusions, which is the
-# failing-closed direction.
+# is not one and must not shadow the line that is. The key has
+# spellings of its own: both quoted forms resolve to the same key the
+# bare form declares, a double-quoted key carrying a backslash can be
+# that key whatever it looks like, and the explicit form (`? key` /
+# `: value`) puts key and value on lines this read cannot join. All
+# of them select and count — the quoted forms then refuse in
+# parse_exclusions through their surviving key text, and the explicit
+# halves each count, so the ambiguity refusal fires. YAML permits
+# whitespace before the colon; the pattern tolerates it.
+#
+# One pattern for selection and count, so the two can never disagree
+# about what a declaration is.
+exclusion_key_re="^[[:space:]]*(\"sh_checker_exclude\"|'sh_checker_exclude'|sh_checker_exclude|\"[^\"]*\\\\[^\"]*\")[[:space:]]*:|^[[:space:]]*[?:]([[:space:]]|\$)"
+
 select_exclusion_line() {
-    grep -E "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" | head -1 || true
+    grep -E "$exclusion_key_re" "$1" | head -1 || true
 }
 
 # How many lines declare the key. One is a list; more than one is two
@@ -527,7 +537,7 @@ select_exclusion_line() {
 # reading the first says nothing about the second, so the live read
 # refuses the count rather than picking a winner.
 exclusion_declarations() {
-    grep -cE "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" || true
+    grep -cE "$exclusion_key_re" "$1" || true
 }
 
 parse_exclusions() {
