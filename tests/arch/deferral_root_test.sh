@@ -266,6 +266,24 @@ else
     failed=1
 fi
 
+# A longer name is a different check: `Arch Shellcheck + Shfmt
+# (legacy)` cannot answer for the required name, so counting it makes
+# the uniqueness case fail with two producers while only one job
+# holds the name that matters. The count has to stop at the name's
+# closing delimiter — the quote it opened with, or the end of the
+# bare scalar.
+suffix_probe=$(printf '%s\n' "    name: $arch_lint_name (legacy)" |
+    count_arch_lint_names)
+suffix_quoted_probe=$(printf '%s\n' "    name: \"$arch_lint_name (legacy)\"" |
+    count_arch_lint_names)
+if [ "${suffix_probe:-0}" -eq 0 ] && [ "${suffix_quoted_probe:-0}" -eq 0 ]; then
+    printf '  ok       a longer name does not count as a producer\n'
+else
+    printf '  FAIL     longer names count %s and %s producers, not 0 and 0\n' \
+        "${suffix_probe:-0}" "${suffix_quoted_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
