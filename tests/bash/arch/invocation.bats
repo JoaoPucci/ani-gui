@@ -196,6 +196,20 @@ count_arch_lint_names() {
     [ "$count" -eq 1 ]
 }
 
+@test "a quoted spelling of the check name counts as a producer" {
+    # YAML accepts `name: "Arch Shellcheck + Shfmt"` and the single-
+    # quoted form as the same declaration. A count that reads only the
+    # bare spelling stays at one while a quoted second producer
+    # answers for the required check name — the exact ambiguity the
+    # uniqueness case exists to reject.
+    quoted_count=$(printf '%s\n' '    name: "Arch Shellcheck + Shfmt"' |
+        count_arch_lint_names)
+    single_count=$(printf '%s\n' "    name: 'Arch Shellcheck + Shfmt'" |
+        count_arch_lint_names)
+    [ "$quoted_count" -eq 1 ]
+    [ "$single_count" -eq 1 ]
+}
+
 @test "the arch lint workflow fires unconditionally" {
     unconditional "$WORKFLOW"
 }
