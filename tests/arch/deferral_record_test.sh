@@ -331,7 +331,18 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         gap_sentinel=""
     fi
 
-    if [ -f "$gap_occupied/keep-existing" ]; then
+    # The marker is asserted only when this run planted it: a real
+    # occupant is somebody else's directory, with contents this file
+    # never wrote, and all survival can mean for it is that the path
+    # still exists.
+    if [ "$gap_occupied_planted" -eq 1 ]; then
+        if [ -f "$gap_occupied/keep-existing" ]; then
+            printf '  ok       an occupant of the fixed spelling survives the whole case\n'
+        else
+            printf '  FAIL     the case destroyed the occupant it planted at the fixed spelling\n'
+            failed=1
+        fi
+    elif [ -e "$gap_occupied" ] || [ -L "$gap_occupied" ]; then
         printf '  ok       an occupant of the fixed spelling survives the whole case\n'
     else
         printf '  FAIL     the case destroyed a pre-existing occupant of the fixed spelling\n'
