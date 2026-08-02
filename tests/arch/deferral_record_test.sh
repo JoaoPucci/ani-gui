@@ -85,10 +85,13 @@ gap_sentinel=""
 gap_sentinel_owned=""
 gap_occupied=""
 gap_occupied_planted=0
+foreign_occupant=""
+foreign_occupant_planted=0
 cleanup() {
     [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"
     [ -n "$gap_sentinel_owned" ] && rm -rf "$gap_sentinel"
     [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
+    [ "$foreign_occupant_planted" -eq 1 ] && rm -rf "$foreign_occupant"
     :
 }
 
@@ -194,6 +197,19 @@ fi
 # request. Without that the case passes while exercising nothing: the
 # child finishes before the signal lands.
 if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
+    # A foreign occupant of the fixed spelling: same path, contents
+    # this file never wrote. Planted only when the path is free,
+    # registered with cleanup, removed only by the run that planted
+    # it — the occupant assertions below have to hold for a directory
+    # whose insides they do not know, because a real developer-owned
+    # occupant does not carry this file's marker.
+    foreign_occupant="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
+    if [ ! -e "$foreign_occupant" ] && [ ! -L "$foreign_occupant" ]; then
+        mkdir "$foreign_occupant"
+        printf 'foreign\n' >"$foreign_occupant/foreign-state"
+        foreign_occupant_planted=1
+    fi
+
     # A sibling that merely shares the naming scheme is somebody
     # else's — a concurrent run's, or a developer's. A sweep that
     # removes every match destroys their state on the way to
@@ -399,6 +415,22 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
     for leak_name in $leak_stray; do
         rm -rf "$REPO_ROOT/tests/arch/$leak_name"
     done
+fi
+
+# The foreign occupant crossed the gap case and the leak case; its
+# contents have to be exactly what was planted. Removed only by the
+# run that planted it — when a real occupant held the path instead,
+# there is nothing here to assert or remove, and the gap case's own
+# occupant assertion already covered survival.
+if [ "$foreign_occupant_planted" -eq 1 ]; then
+    if [ -f "$foreign_occupant/foreign-state" ]; then
+        printf '  ok       an occupant with arbitrary contents survives the whole run\n'
+    else
+        printf '  FAIL     the run altered an occupant it did not create\n'
+        failed=1
+    fi
+    rm -rf "$foreign_occupant"
+    foreign_occupant_planted=0
 fi
 
 printf 'arch/deferral_record_test: predicate cases\n'
