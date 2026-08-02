@@ -525,12 +525,19 @@ else
     failed=1
 fi
 
+# Whether a workflow fires unconditionally: it exists and its trigger
+# block names no paths, as a function so a fixture file runs through
+# the same reading the live case runs.
+unconditional() {
+    [ -f "$1" ] || return 1
+    ! sed -n '/^on:/,/^[a-z]/p' "$1" | grep -q 'paths'
+}
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
 # again. No filter, no gap, no race.
-if [ -f "$arch_lint_workflow" ] &&
-    ! sed -n '/^on:/,/^[a-z]/p' "$arch_lint_workflow" | grep -q 'paths'; then
+if unconditional "$arch_lint_workflow"; then
     printf '  ok       the arch lint workflow fires unconditionally\n'
 else
     printf '  FAIL     the arch lint workflow is missing or path-gated\n'
