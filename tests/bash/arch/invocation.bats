@@ -86,8 +86,19 @@ unconditional() {
 
 # The exclusion extraction and its refusal, as functions so a fixture
 # spelling runs through exactly the code the live line runs through.
+#
+# Quotes are stripped only in pairs: the first two substitutions each
+# take a value whose quote closes on the line it opened on, and the
+# unquoted plain form falls through to the last. A quote that opens
+# and never closes matches neither pair, the third command leaves the
+# line untouched, and the surviving key text lands in the refusal —
+# a scalar continued on the next physical line must not read as the
+# fragment before the break.
 parse_exclusions() {
-    sed "s/.*sh_checker_exclude:[[:space:]]*[\"']*//; s/[\"'].*//"
+    sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
+s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t
+/sh_checker_exclude:[[:space:]]*[\"']/b
+s/.*sh_checker_exclude:[[:space:]]*//"
 }
 
 # Three ways an extraction fails, all refused: the key text survives
