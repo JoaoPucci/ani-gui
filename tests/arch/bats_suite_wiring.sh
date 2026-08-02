@@ -98,28 +98,43 @@ record="$scratch/invoked"
 # the path and have it deleted on behalf of a run that never made it.
 #
 # The residue is the reverse: killed between the `mkdir` and the line
-# that sets this — or between the flag and the marker below — the run
+# that sets this — or between the flag and the nonce below —
+# the run
 # leaves a directory behind. That is the trade, and it is the right
 # way round. Leaking a directory costs a stale path; removing one
 # costs somebody else's data.
 owned=""
 
+scratch_nonce=""
 cleanup() {
     [ -n "$owned" ] || return 0
     owned=""
-    # `owned` says this run created a directory at the path, not that
-    # the directory there now is that one. The marker is the identity:
-    # absent, the path has been taken since, and removal would act on
-    # somebody else's data.
-    [ -e "$scratch/.created-by.$$" ] || return 0
-    # The window between deciding and removing, held open on request
-    # so a case can step into it; the beacon tells the case the
-    # decision has been made. Nothing else sets either.
+    # Deciding and removing have to be one claim. A check on the path
+    # followed by an rm removes whatever occupies the path by then —
+    # the two can be different directories, and a pid-derived marker
+    # can be recreated. The rename takes the occupant out of the
+    # shared namespace atomically; the nonce planted at creation,
+    # held nowhere but this process, says whether it is this run's
+    # directory; a stranger's is put back untouched. An occupied
+    # reclaim path means leaking ours rather than guessing.
+    reclaimed="$scratch.reclaimed.$$"
+    if [ -e "$reclaimed" ] || [ -L "$reclaimed" ]; then
+        return 0
+    fi
+    mv "$scratch" "$reclaimed" 2>/dev/null || return 0
+    # The window between claiming and removing, held open on request
+    # so a case can step into it; the beacon tells the case the claim
+    # has been made. Nothing else sets either.
     if [ -n "${ARCH_WIRING_PAUSE_IN_CLEANUP:-}" ]; then
         : >"${ARCH_WIRING_CLEANUP_BEACON:-/dev/null}"
         sleep "$ARCH_WIRING_PAUSE_IN_CLEANUP"
     fi
-    rm -rf "$scratch"
+    reclaimed_nonce=$(cat "$reclaimed/.claim" 2>/dev/null || true)
+    if [ -n "$scratch_nonce" ] && [ "$reclaimed_nonce" = "$scratch_nonce" ]; then
+        rm -rf "$reclaimed"
+    else
+        mv "$reclaimed" "$scratch" 2>/dev/null || true
+    fi
 }
 
 # Registering before creating buys the guarantee above and costs the
@@ -163,7 +178,13 @@ if ! mkdir "$scratch" 2>/dev/null; then
     exit 1
 fi
 owned=1
-: >"$scratch/.created-by.$$"
+# The directory's identity, planted the moment the claim lands: a
+# random token written into the directory and held nowhere but this
+# process. An inode is not identity — tmpfs hands a freed inode
+# straight to the next mkdir — and a pid-derived marker can be
+# recreated; a value that exists only in this shell's memory cannot.
+scratch_nonce=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+printf '%s' "$scratch_nonce" >"$scratch/.claim"
 
 # The window after the claim: the directory exists and is owned, and
 # whether cleanup acts on the directory this run made or on whatever
