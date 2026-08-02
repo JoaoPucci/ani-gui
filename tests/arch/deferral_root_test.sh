@@ -627,6 +627,37 @@ else
 fi
 rm -f "$shadow_input"
 
+# The exclusion key has quoted and explicit spellings, exactly as the
+# name key does. `"sh_checker_exclude": "ani-cli tests/arch"` is a
+# valid action input that resolves to the same key, but a selection
+# reading only the bare spelling never sees it: the token list comes
+# back empty, empty reads as excluding nothing, and the suite
+# certifies scripts the action excludes. Seen, the quoted-key line
+# refuses in the parse through its surviving key text — so the fix is
+# to make the selection see it, and the refusal already waits behind
+# it. The explicit form (`? key` / `: value`) is unreadable the same
+# way the explicit name form is, and counts so the ambiguity refusal
+# fires.
+quoted_key_excl="$scratch_dir/quoted-key-excl.yml"
+printf '%s\n' '          "sh_checker_exclude": "ani-cli tests/arch"' \
+    >"$quoted_key_excl"
+quoted_key_count=$(exclusion_declarations "$quoted_key_excl")
+quoted_key_tokens=$(select_exclusion_line "$quoted_key_excl" | parse_exclusions)
+explicit_key_excl="$scratch_dir/explicit-key-excl.yml"
+printf '          ? sh_checker_exclude\n          : "ani-cli tests/arch"\n' \
+    >"$explicit_key_excl"
+explicit_excl_count=$(exclusion_declarations "$explicit_key_excl")
+if [ "${quoted_key_count:-0}" -eq 1 ] &&
+    exclusions_unreadable "$quoted_key_tokens" &&
+    [ "${explicit_excl_count:-0}" -ge 1 ]; then
+    printf '  ok       a quoted or explicit exclusion key is not silently missed\n'
+else
+    printf '  FAIL     quoted/explicit exclusion keys: %s declarations, tokens read as %s, explicit counts %s\n' \
+        "${quoted_key_count:-0}" "${quoted_key_tokens:-nothing}" "${explicit_excl_count:-0}"
+    failed=1
+fi
+rm -f "$quoted_key_excl" "$explicit_key_excl"
+
 # Two declarations are two exclude lists — a second sh-checker step
 # carries its own — and reading the first says nothing about the
 # second, which is exactly where an exclusion of these scripts would
