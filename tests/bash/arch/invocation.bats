@@ -179,14 +179,20 @@ env_sensitive() {
     }
 }
 
+# How many lines on stdin declare the arch lint's check name, as a
+# function so a fixture spelling runs through exactly the count the
+# live scan runs.
+count_arch_lint_names() {
+    grep -c 'name:[[:space:]]*Arch Shellcheck + Shfmt' || true
+}
+
 @test "exactly one workflow reports the arch lint check name" {
     # The green has to be attributable. `Shellcheck + Shfmt` is a name
     # three workflows report, two of them succeeding without reading
     # these files, and branch protection accepts the first success
     # under a required name — so the arch lint owns a name nothing
     # else answers for.
-    count=$(cat "$REPO_ROOT/.github/workflows/"*.yml |
-        grep -c 'name:[[:space:]]*Arch Shellcheck + Shfmt' || true)
+    count=$(cat "$REPO_ROOT/.github/workflows/"*.yml | count_arch_lint_names)
     [ "$count" -eq 1 ]
 }
 
