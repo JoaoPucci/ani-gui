@@ -142,14 +142,31 @@ hostile_env() {
         "$@"
 }
 
+# The clean runs shed the same names hostile_env sets — the two lists
+# are the same list, name for name. Without this, a caller already
+# exporting one of them poisons the baseline: every run sees the name,
+# nothing differs, and the sensitivity vanishes. The hostile run needs
+# no unsetting; it overrides each name explicitly.
+clean_env() {
+    env \
+        -u REPO_ROOT \
+        -u SKIP_NESTED \
+        -u GENERIC_GUARD \
+        -u ROOT \
+        -u DIR \
+        -u FILE \
+        -u DEBUG -u VERBOSE -u QUIET -u FORCE -u DRY_RUN \
+        "$@"
+}
+
 # Sensitive when the hostile environment changes what the check prints
 # or how it exits. A clean run happens twice first: a check that is not
 # reproducible against itself — one that prints durations — differs
 # from anything, and for those the exit status is the only stable
 # signal.
 env_sensitive() {
-    _first=$(sh "$1" 2>&1) && _first_status=0 || _first_status=$?
-    _again=$(sh "$1" 2>&1) || true
+    _first=$(clean_env sh "$1" 2>&1) && _first_status=0 || _first_status=$?
+    _again=$(clean_env sh "$1" 2>&1) || true
     _dirty=$(hostile_env sh "$1" 2>&1) && _dirty_status=0 || _dirty_status=$?
 
     [ "$_first_status" = "$_dirty_status" ] || return 0
@@ -200,13 +217,18 @@ env_sensitive() {
 # all make the same declaration, so all three count — and each ends
 # at its closing delimiter, because a longer name is a different
 # check.
-# A bare scalar ends at the line's end or an inline comment; a
-# block-scalar `name:` resolves on the next physical line where this
-# count cannot read it, so it counts as a potential producer —
-# refusal by over-count, failing closed.
+# A bare scalar ends at the line's end, an inline comment, or a flow
+# terminator; a block-scalar `name:` resolves on the next physical
+# line where this count cannot read it, so it counts as a potential
+# producer — refusal by over-count, failing closed. The same refusal
+# covers the quoted spellings this count cannot read: a double-quoted
+# value containing a backslash resolves through escapes it does not
+# interpret, and a quote left open on the line continues the scalar
+# past where it reads. Single-quoted scalars have no escapes, so only
+# their unterminated form is unreadable.
 count_arch_lint_names() {
     local name_re='Arch Shellcheck \+ Shfmt'
-    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*(#.*)?\$|[>|])" || true
+    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*([]#,}].*)?\$|[>|]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
