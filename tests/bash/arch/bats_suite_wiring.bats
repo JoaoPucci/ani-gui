@@ -136,6 +136,25 @@ edited_runner() {
     [ "$status" -eq 0 ]
 }
 
+@test "a workflow that never invokes the runner is not wiring" {
+    # The check proves the runner reaches every suite. That is worth
+    # nothing if CI never reaches the runner: delete the `Run bats
+    # suites` step from bash.yml and the suites stop running while
+    # every invariant about the runner stays green.
+    gutted="$BATS_TEST_TMPDIR/bash.yml"
+    sed '/run-suite\.sh/d' "$REPO_ROOT/.github/workflows/bash.yml" >"$gutted"
+    if cmp -s "$gutted" "$REPO_ROOT/.github/workflows/bash.yml"; then
+        echo "sabotage removed nothing"
+        return 1
+    fi
+    run ! sh "$CHECK" "$RUNNER" "$SUITES" "$gutted"
+}
+
+@test "the real workflow invokes the runner" {
+    run sh "$CHECK" "$RUNNER" "$SUITES" "$REPO_ROOT/.github/workflows/bash.yml"
+    [ "$status" -eq 0 ]
+}
+
 @test "a suites directory holding nothing is reported, not passed" {
     # With no suite to require, every reading of any runner is
     # vacuously satisfied. A check that has lost its subject has to say
