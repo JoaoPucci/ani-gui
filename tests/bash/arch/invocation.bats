@@ -99,6 +99,13 @@ unconditional() {
 # passes through untouched, and the surviving key text lands in the
 # refusal. The readable set is exactly the spellings whose first line
 # provably carries the whole value.
+# Which physical line of a workflow file carries the exclusion key,
+# as a function so a fixture file runs through the same selection the
+# live read runs.
+select_exclusion_line() {
+    grep 'sh_checker_exclude' "$1" | head -1 || true
+}
+
 parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
 s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
@@ -394,7 +401,7 @@ YAML
     # action takes its own exclude list, and a bare `tests` there skips
     # these files after the workflow has started for them. A value the
     # extraction cannot read fails here too — refused, not scanned.
-    line=$(grep 'sh_checker_exclude' "$WORKFLOW" | head -1)
+    line=$(select_exclusion_line "$WORKFLOW")
     tokens=$(printf '%s' "$line" | parse_exclusions)
     run ! exclusions_unreadable "$tokens"
     subject=tests/arch
