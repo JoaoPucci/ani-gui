@@ -230,8 +230,16 @@ done
 # resolves it the same way: a name nothing else answers for.
 arch_lint_workflow="$REPO_ROOT/.github/workflows/arch-lint.yml"
 arch_lint_name='Arch Shellcheck + Shfmt'
+
+# How many lines on stdin declare the arch lint's check name, as a
+# function so a fixture spelling runs through the same count the live
+# scan runs.
+count_arch_lint_names() {
+    grep -c "name:[[:space:]]*$arch_lint_name" || true
+}
+
 producer_lines=$(cat "$REPO_ROOT/.github/workflows/"*.yml 2>/dev/null |
-    grep -c "name:[[:space:]]*$arch_lint_name" || true)
+    count_arch_lint_names)
 if [ "${producer_lines:-0}" -eq 1 ]; then
     printf '  ok       exactly one workflow reports the arch lint check name\n'
 else
