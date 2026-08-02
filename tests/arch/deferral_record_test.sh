@@ -176,6 +176,14 @@ fi
 # request. Without that the case passes while exercising nothing: the
 # child finishes before the signal lands.
 if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
+    # A sibling that merely shares the naming scheme is somebody
+    # else's — a concurrent run's, or a developer's. A sweep that
+    # removes every match destroys their state on the way to
+    # reporting ours.
+    gap_sentinel="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
+    mkdir -p "$gap_sentinel"
+    printf 'not yours\n' >"$gap_sentinel/keep-me"
+
     ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \
         sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
     gap_pid=$!
@@ -198,6 +206,14 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         printf '  FAIL     a cancelled run left %s scratch director(ies) behind\n' "$gap_left"
         failed=1
     fi
+
+    if [ -f "$gap_sentinel/keep-me" ]; then
+        printf '  ok       a sibling sharing the naming scheme survives the case\n'
+    else
+        printf '  FAIL     the case swept a scratch directory it did not create\n'
+        failed=1
+    fi
+    rm -rf "$gap_sentinel"
 fi
 
 printf 'arch/deferral_record_test: predicate cases\n'
