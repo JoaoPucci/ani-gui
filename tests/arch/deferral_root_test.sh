@@ -396,6 +396,34 @@ else
     failed=1
 fi
 
+# A plain scalar continues onto a more-indented next line and folds
+# with a space: `name: Arch Shellcheck` over `+ Shfmt` resolves to
+# exactly the required name while neither physical line spells it.
+# Every folded spelling starts with a strict prefix of the name
+# broken at a space — a finite set, derived from the constant above —
+# so a bare name line spelling such a prefix counts as a potential
+# producer: refusal by over-count, failing closed. `name:` with an
+# empty value is the zero-length prefix of the same spelling, and a
+# value opening with an anchor, alias or tag resolves through
+# indirection this count does not follow, so those are refused the
+# same way. None of these shapes appears in the live workflows, so
+# the over-count costs nothing until someone writes one — and then it
+# fails loudly instead of certifying.
+folded_probe=$(printf 'jobs:\n  a:\n    name: Arch Shellcheck\n      + Shfmt\n' |
+    count_arch_lint_names)
+empty_probe=$(printf '%s\n' '    name:' | count_arch_lint_names)
+alias_probe=$(printf '%s\n' '    name: *shared-name' | count_arch_lint_names)
+tag_probe=$(printf '%s\n' "    name: !!str $arch_lint_name" |
+    count_arch_lint_names)
+if [ "${folded_probe:-0}" -ge 1 ] && [ "${empty_probe:-0}" -ge 1 ] &&
+    [ "${alias_probe:-0}" -ge 1 ] && [ "${tag_probe:-0}" -ge 1 ]; then
+    printf '  ok       a folded, indirect or empty name spelling is not silently missed\n'
+else
+    printf '  FAIL     folded/indirect name spellings count %s, %s, %s and %s — invisible to the scan\n' \
+        "${folded_probe:-0}" "${empty_probe:-0}" "${alias_probe:-0}" "${tag_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
