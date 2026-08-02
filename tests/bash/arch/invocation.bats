@@ -195,13 +195,19 @@ count_arch_lint_names() {
     grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*\$)" || true
 }
 
+# Every workflow file in a directory, as a function so a fixture
+# directory runs through the same enumeration the live scan runs.
+scan_workflows() {
+    cat "$1"/*.yml 2>/dev/null || true
+}
+
 @test "exactly one workflow reports the arch lint check name" {
     # The green has to be attributable. `Shellcheck + Shfmt` is a name
     # three workflows report, two of them succeeding without reading
     # these files, and branch protection accepts the first success
     # under a required name — so the arch lint owns a name nothing
     # else answers for.
-    count=$(cat "$REPO_ROOT/.github/workflows/"*.yml | count_arch_lint_names)
+    count=$(scan_workflows "$REPO_ROOT/.github/workflows" | count_arch_lint_names)
     [ "$count" -eq 1 ]
 }
 
