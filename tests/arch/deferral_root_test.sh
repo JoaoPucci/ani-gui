@@ -242,9 +242,14 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # A block-scalar `name:` counts too: the name it resolves to sits on
 # the next physical line where this count cannot read it, so any such
 # declaration is treated as a potential producer — refusal by
-# over-count, failing closed.
+# over-count, failing closed. The same refusal covers the quoted
+# spellings this count cannot read: a double-quoted value containing a
+# backslash resolves through escapes it does not interpret, and a
+# quote left open on the line continues the scalar past where it
+# reads. Single-quoted scalars have no escapes, so only their
+# unterminated form is unreadable.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|])" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
