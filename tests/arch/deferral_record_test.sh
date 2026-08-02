@@ -129,7 +129,10 @@ fi
 # case can watch a real process take a real signal, rather than
 # inspecting trap definitions and hoping they mean what they say.
 if [ -n "${ARCH_DEFERRAL_SIGNAL_PROBE:-}" ]; then
-    printf '%s\n' "$scratch_dir"
+    # The basename, not the path: the record crosses a pipe and the
+    # spelling here is the only part of the path no checkout location
+    # can put a delimiter into.
+    printf '%s\n' "${scratch_dir##*/}"
     sleep 5
     exit 0
 fi
@@ -355,11 +358,11 @@ probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
 ARCH_DEFERRAL_SIGNAL_PROBE=1 \
     sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >"$probe_out" 2>&1 &
 probe_pid=$!
-probe_dir=''
+probe_record=''
 i=0
-while [ "$i" -lt 50 ] && [ -z "$probe_dir" ]; do
-    probe_dir=$(head -n 1 "$probe_out" 2>/dev/null)
-    [ -n "$probe_dir" ] || sleep 0.1
+while [ "$i" -lt 50 ] && [ -z "$probe_record" ]; do
+    probe_record=$(head -n 1 "$probe_out" 2>/dev/null)
+    [ -n "$probe_record" ] || sleep 0.1
     i=$((i + 1))
 done
 # The record crosses a pipe; the path must not. Serialized whole, a
@@ -369,19 +372,24 @@ done
 # whose spelling this file controls; the path is rebuilt where it is
 # read. An empty record is judged by the three-outcome case below,
 # not here.
-case "$probe_dir" in
+case "$probe_record" in
     '') ;;
     */*)
-        printf '  FAIL     the signal probe serialized a path, not a name: %s\n' "$probe_dir"
+        printf '  FAIL     the signal probe serialized a path, not a name: %s\n' "$probe_record"
         failed=1
         ;;
     *) printf '  ok       the signal probe reports a name, not a path\n' ;;
 esac
+# The child's scratch lives where this run's does; only the name
+# travelled. An empty record must not reconstruct to the parent
+# directory itself, which exists whether or not the probe ever ran.
+probe_dir=''
+[ -n "$probe_record" ] && probe_dir="$REPO_ROOT/tests/arch/$probe_record"
 # Whether the directory was really there before the signal. Read after
 # the kill, a path that never existed and a path that was cleaned up
 # are the same observation, and the case cannot tell them apart.
 probe_seen=0
-[ -n "$probe_dir" ] && [ -d "$probe_dir" ] && probe_seen=1
+[ -n "$probe_record" ] && [ -d "$probe_dir" ] && probe_seen=1
 
 kill -TERM "$probe_pid" 2>/dev/null || true
 # `set -e` would take the nonzero status of `wait` as a failure of
