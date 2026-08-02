@@ -244,7 +244,7 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # declaration is treated as a potential producer — refusal by
 # over-count, failing closed.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*\$|[>|])" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*(#.*)?\$|[>|])" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
