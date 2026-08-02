@@ -477,6 +477,13 @@ fi
 # passes through untouched, and the surviving key text lands in the
 # refusal. The readable set is exactly the spellings whose first line
 # provably carries the whole value.
+# Which physical line of a workflow file carries the exclusion key,
+# as a function so a fixture file runs through the same selection the
+# live read runs.
+select_exclusion_line() {
+    grep 'sh_checker_exclude' "$1" | head -1 || true
+}
+
 parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
 s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
@@ -576,7 +583,7 @@ else
 fi
 
 if [ -f "$arch_lint_workflow" ]; then
-    lint_excludes=$(grep 'sh_checker_exclude' "$arch_lint_workflow" | head -1 || true)
+    lint_excludes=$(select_exclusion_line "$arch_lint_workflow")
     excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
 
     # Refuse what cannot be read. Any spelling beyond the forms the
