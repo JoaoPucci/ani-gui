@@ -492,6 +492,64 @@ scan_workflows() {
     [ "${explicit_excl_count:-0}" -ge 1 ]
 }
 
+@test "an aliased name key is not silently missed" {
+    # An alias can BE the key: with `&k name` anchored elsewhere,
+    # `*k: Arch Shellcheck + Shfmt` resolves to the same name
+    # property, and no physical line spells a recognized key. An alias
+    # token followed by a colon can stand for any key at all, so it
+    # counts whenever its value could be the required name — the same
+    # combining logic the backslash-quoted key uses. Both alias-key
+    # spacings count, since YAML accepts the colon adjacent or spaced.
+    alias_key_count=$(printf '%s\n' '    *job_name_key: Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    alias_spaced_count=$(printf '%s\n' '    *job_name_key : Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    [ "$alias_key_count" -ge 1 ]
+    [ "$alias_spaced_count" -ge 1 ]
+}
+
+@test "an expression carrying the name is not silently missed" {
+    # GitHub evaluates expressions in names after YAML resolves, so an
+    # expression value that textually carries the required name
+    # reaches branch protection as exactly that name while the scalar
+    # the count reads is neither the literal nor any refused spelling.
+    # What the count deliberately does not attempt is evaluating
+    # expressions: a name constructed without its text appearing —
+    # format(), join(), an env lookup — is invisible to any line read,
+    # and that boundary is stated here rather than implied away.
+    # shellcheck disable=SC2016 # the unexpanded ${{ is the subject
+    expr_count=$(printf 'name: "${{ %s }}"\n' "'Arch Shellcheck + Shfmt'" |
+        count_arch_lint_names)
+    [ "$expr_count" -ge 1 ]
+}
+
+@test "an aliased exclusion key is seen and refused" {
+    # With `&k sh_checker_exclude` anchored elsewhere,
+    # `*k: "ani-cli tests/arch"` resolves to the expected input while
+    # no line spells the key. The declaration has to be counted and
+    # selected, and then refused — an alias key could stand for
+    # anything, and the list behind it cannot be read from this line.
+    alias_excl="$BATS_TEST_TMPDIR/alias-key-excl.yml"
+    printf '%s\n' '          *exclude_key: "ani-cli tests/arch"' >"$alias_excl"
+    alias_excl_count=$(exclusion_declarations "$alias_excl")
+    alias_excl_tokens=$(select_exclusion_line "$alias_excl" | parse_exclusions)
+    [ "${alias_excl_count:-0}" -ge 1 ]
+    exclusions_unreadable "$alias_excl_tokens"
+}
+
+@test "an expression-valued exclusion is refused, not scanned" {
+    # The action evaluates expressions in its inputs: an exclusion
+    # spelled as an expression reaches the linter as the resolved
+    # list, while the extraction hands back the unresolved expression
+    # and its whitespace-split tokens match nothing. An expression is
+    # a value this read cannot resolve — refused, like every other
+    # spelling past the extraction's boundary.
+    # shellcheck disable=SC2016 # the unexpanded ${{ is the subject
+    expr_excl=$(printf 'sh_checker_exclude: "${{ %s }}"\n' "'ani-cli tests/arch'" |
+        parse_exclusions)
+    exclusions_unreadable "$expr_excl"
+}
+
 @test "a commented mention does not shadow the declaration beneath it" {
     # A comment mentioning the key is not a declaration. Selected as
     # one, it shadows the live line beneath it: the comment's tokens
