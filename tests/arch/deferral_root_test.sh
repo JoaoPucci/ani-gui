@@ -572,34 +572,6 @@ else
 fi
 rm -f "$quoted_on_gate"
 
-# Carrying the required name is not linting. A job that keeps the
-# name but drops the sh-checker step satisfies branch protection
-# while inspecting nothing, and with no exclusion declared the
-# coverage case reads empty tokens as "nothing excluded" — an
-# echo-only job certified as the lint. The workflow has to invoke the
-# action, exactly once, and declare its exclude list, exactly once;
-# zero of either is a workflow that no longer lints.
-stripped_workflow="$scratch_dir/stripped-lint.yml"
-printf '%s\n' 'on: push' 'jobs:' '  arch-sh-checker:' \
-    "    name: $arch_lint_name" '    runs-on: ubuntu-latest' \
-    '    steps:' '      - run: echo done' >"$stripped_workflow"
-live_lints=0
-if lint_step_present "$arch_lint_workflow" 2>/dev/null; then
-    live_lints=1
-fi
-stripped_refused=1
-if lint_step_present "$stripped_workflow" 2>/dev/null; then
-    stripped_refused=0
-fi
-if [ "$live_lints" -eq 1 ] && [ "$stripped_refused" -eq 1 ]; then
-    printf '  ok       the name-holding job invokes the lint action with its exclude list\n'
-else
-    printf '  FAIL     lint-step presence reads live=%s stripped-refused=%s — a name without the action certifies\n' \
-        "$live_lints" "$stripped_refused"
-    failed=1
-fi
-rm -f "$stripped_workflow"
-
 # Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
@@ -904,6 +876,34 @@ else
     printf '  FAIL     an escaped exclusion reads as: %s\n' "${escape_probe:-nothing}"
     failed=1
 fi
+
+# Carrying the required name is not linting. A job that keeps the
+# name but drops the sh-checker step satisfies branch protection
+# while inspecting nothing, and with no exclusion declared the
+# coverage case reads empty tokens as "nothing excluded" — an
+# echo-only job certified as the lint. The workflow has to invoke the
+# action, exactly once, and declare its exclude list, exactly once;
+# zero of either is a workflow that no longer lints.
+stripped_workflow="$scratch_dir/stripped-lint.yml"
+printf '%s\n' 'on: push' 'jobs:' '  arch-sh-checker:' \
+    "    name: $arch_lint_name" '    runs-on: ubuntu-latest' \
+    '    steps:' '      - run: echo done' >"$stripped_workflow"
+live_lints=0
+if lint_step_present "$arch_lint_workflow" 2>/dev/null; then
+    live_lints=1
+fi
+stripped_refused=1
+if lint_step_present "$stripped_workflow" 2>/dev/null; then
+    stripped_refused=0
+fi
+if [ "$live_lints" -eq 1 ] && [ "$stripped_refused" -eq 1 ]; then
+    printf '  ok       the name-holding job invokes the lint action with its exclude list\n'
+else
+    printf '  FAIL     lint-step presence reads live=%s stripped-refused=%s — a name without the action certifies\n' \
+        "$live_lints" "$stripped_refused"
+    failed=1
+fi
+rm -f "$stripped_workflow"
 
 if [ -f "$arch_lint_workflow" ]; then
     # A workflow that never reaches the action lints nothing, however
