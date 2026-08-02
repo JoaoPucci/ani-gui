@@ -573,6 +573,23 @@ hostile_env() {
         "$@"
 }
 
+# The clean runs shed the same names hostile_env sets — the two lists
+# are the same list, name for name. Without this, a caller already
+# exporting one of them poisons the baseline: every run sees the name,
+# nothing differs, and the sensitivity vanishes. The hostile run needs
+# no unsetting; it overrides each name explicitly.
+clean_env() {
+    env \
+        -u REPO_ROOT \
+        -u SKIP_NESTED \
+        -u GENERIC_GUARD \
+        -u ROOT \
+        -u DIR \
+        -u FILE \
+        -u DEBUG -u VERBOSE -u QUIET -u FORCE -u DRY_RUN \
+        "$@"
+}
+
 # Sensitive when a hostile environment changes either what the check
 # prints or how it exits.
 #
@@ -584,8 +601,8 @@ hostile_env() {
 # first run, which is the sort of thing the text audit could never
 # have seen.
 env_sensitive() {
-    _first=$(sh "$1" 2>&1) && _first_status=0 || _first_status=$?
-    _again=$(sh "$1" 2>&1) || true
+    _first=$(clean_env sh "$1" 2>&1) && _first_status=0 || _first_status=$?
+    _again=$(clean_env sh "$1" 2>&1) || true
     _dirty=$(hostile_env sh "$1" 2>&1) && _dirty_status=0 || _dirty_status=$?
 
     [ "$_first_status" = "$_dirty_status" ] || return 0
