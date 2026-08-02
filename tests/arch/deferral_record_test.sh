@@ -362,6 +362,21 @@ while [ "$i" -lt 50 ] && [ -z "$probe_dir" ]; do
     [ -n "$probe_dir" ] || sleep 0.1
     i=$((i + 1))
 done
+# The record crosses a pipe; the path must not. Serialized whole, a
+# checkout under a directory whose name holds a newline prints one
+# path as two records, the reader keeps the first fragment, and the
+# suite fails despite a cleanup that worked. The record is a name
+# whose spelling this file controls; the path is rebuilt where it is
+# read. An empty record is judged by the three-outcome case below,
+# not here.
+case "$probe_dir" in
+    '') ;;
+    */*)
+        printf '  FAIL     the signal probe serialized a path, not a name: %s\n' "$probe_dir"
+        failed=1
+        ;;
+    *) printf '  ok       the signal probe reports a name, not a path\n' ;;
+esac
 # Whether the directory was really there before the signal. Read after
 # the kill, a path that never existed and a path that was cleaned up
 # are the same observation, and the case cannot tell them apart.
