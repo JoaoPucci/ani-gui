@@ -62,7 +62,12 @@ if [ ! -f "$WORKFLOW" ]; then
     printf 'arch/bats_suite_wiring: %s is missing\n' "$WORKFLOW" >&2
     exit 1
 fi
-if ! grep -qE '^[[:space:]]*run:.*run-suite\.sh' "$WORKFLOW"; then
+# Invocation-shaped: the runner is the command of the run step, not a
+# word somewhere on the line. `run: echo <runner>` names it and
+# executes nothing, and a bare containment match certified exactly
+# that.
+if ! grep -qE '^[[:space:]]*run:[[:space:]]*(\./)?tests/bash/helpers/run-suite\.sh([[:space:]]|$)' \
+    "$WORKFLOW"; then
     printf 'arch/bats_suite_wiring FAIL: %s never invokes run-suite.sh — every suite the runner would reach stays unrun in CI\n' \
         "$WORKFLOW" >&2
     exit 1
