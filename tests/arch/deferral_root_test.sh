@@ -243,7 +243,13 @@ count_arch_lint_names() {
     grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*\$)" || true
 }
 
-producer_lines=$(cat "$REPO_ROOT/.github/workflows/"*.yml 2>/dev/null |
+# Every workflow file in a directory, as a function so a fixture
+# directory runs through the same enumeration the live scan runs.
+scan_workflows() {
+    cat "$1"/*.yml 2>/dev/null || true
+}
+
+producer_lines=$(scan_workflows "$REPO_ROOT/.github/workflows" |
     count_arch_lint_names)
 if [ "${producer_lines:-0}" -eq 1 ]; then
     printf '  ok       exactly one workflow reports the arch lint check name\n'
