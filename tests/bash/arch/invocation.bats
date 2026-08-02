@@ -338,12 +338,18 @@ YAML
     [ "$status" -eq 0 ]
 }
 
+# Whether a workflow sets up the upstream remote, as a function so a
+# gutted spelling runs through exactly the check the live file does.
+configures_upstream() {
+    grep -qE 'remote add upstream' "$1"
+}
+
 @test "the bats job configures the upstream divergence baseline" {
     # `bash_portability.bats` skips both of its cases when no `upstream`
     # remote exists. A fresh CI checkout has none, so without the same
     # setup `arch.yml` performs the ported suite measures nothing and
     # reports success.
-    run grep -qE 'remote add upstream' "$BASH_WORKFLOW"
+    run configures_upstream "$BASH_WORKFLOW"
     [ "$status" -eq 0 ]
 }
 
