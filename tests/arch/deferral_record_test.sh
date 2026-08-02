@@ -87,11 +87,14 @@ gap_occupied=""
 gap_occupied_planted=0
 foreign_occupant=""
 foreign_occupant_planted=0
+leak_bystander=""
+leak_bystander_owned=""
 cleanup() {
     [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"
     [ -n "$gap_sentinel_owned" ] && rm -rf "$gap_sentinel"
     [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
     [ "$foreign_occupant_planted" -eq 1 ] && rm -rf "$foreign_occupant"
+    [ -n "$leak_bystander_owned" ] && rm -rf "$leak_bystander"
     :
 }
 
@@ -391,6 +394,23 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
         i=$((i + 1))
     done
 
+    # A bystander created while the case is watching: a concurrent
+    # run's or a developer's directory, appearing after any snapshot
+    # this case took. What the case removes afterwards has to be
+    # derived from what the child owns — a new name is not the same
+    # fact as the child's name.
+    leak_bystander="$REPO_ROOT/tests/arch/.deferral-scratch.bystander.$$"
+    if [ -e "$leak_bystander" ] || [ -L "$leak_bystander" ]; then
+        printf '  FAIL     %s already exists — refusing to reuse a path this run did not create\n' \
+            "$leak_bystander"
+        failed=1
+        leak_bystander=""
+    else
+        leak_bystander_owned=1
+        mkdir "$leak_bystander"
+        printf 'not yours\n' >"$leak_bystander/keep-me"
+    fi
+
     kill -TERM "$leak_pid" 2>/dev/null || true
     leak_status=0
     wait "$leak_pid" || leak_status=$?
@@ -426,6 +446,20 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
     for leak_name in $leak_stray; do
         rm -rf "$REPO_ROOT/tests/arch/$leak_name"
     done
+
+    if [ -z "$leak_bystander" ]; then
+        : # refused above, already reported
+    elif [ -f "$leak_bystander/keep-me" ]; then
+        printf '  ok       a bystander created mid-case survives it\n'
+    else
+        printf '  FAIL     the case swept a bystander it did not create\n'
+        failed=1
+    fi
+    if [ -n "$leak_bystander" ]; then
+        rm -rf "$leak_bystander"
+        leak_bystander_owned=""
+        leak_bystander=""
+    fi
 fi
 
 # The foreign occupant crossed the gap case and the leak case; its
