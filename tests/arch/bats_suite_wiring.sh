@@ -41,9 +41,30 @@ cd "$REPO_ROOT"
 
 RUNNER="${1:-$REPO_ROOT/tests/bash/helpers/run-suite.sh}"
 SUITES_DIR="${2:-$REPO_ROOT/tests/bash}"
+WORKFLOW="${3:-$REPO_ROOT/.github/workflows/bash.yml}"
 
 if [ ! -f "$RUNNER" ]; then
     printf 'arch/bats_suite_wiring: %s is missing\n' "$RUNNER" >&2
+    exit 1
+fi
+
+# The runner reaching every suite is worth nothing if CI never reaches
+# the runner. This is a syntactic constraint — the workflow either
+# contains a step invoking `run-suite.sh` or it does not — per the
+# AGENTS.md rule on how these checks may read source.
+#
+# Deliberately not covered, and said so: a step that is present but
+# gated behind a condition that never holds. Associating an `if:` with
+# its step means parsing YAML structure, which is the interpretation
+# this suite no longer does; the relevance-filter cases in the bats
+# suite cover the pattern the filter actually uses.
+if [ ! -f "$WORKFLOW" ]; then
+    printf 'arch/bats_suite_wiring: %s is missing\n' "$WORKFLOW" >&2
+    exit 1
+fi
+if ! grep -qE '^[[:space:]]*run:.*run-suite\.sh' "$WORKFLOW"; then
+    printf 'arch/bats_suite_wiring FAIL: %s never invokes run-suite.sh — every suite the runner would reach stays unrun in CI\n' \
+        "$WORKFLOW" >&2
     exit 1
 fi
 
