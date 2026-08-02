@@ -207,6 +207,51 @@ swap_scenario() {
     swap_scenario 3 "$BATS_TEST_TMPDIR/swap"
 }
 
+@test "a swap during cleanup's decision window is left alone" {
+    # Deciding and removing are two operations: replace the scratch
+    # between the ownership check and the rm, and the removal acts on
+    # a directory the check never examined — the replacement needs no
+    # marker to die. The claim has to be atomic with what it claims.
+    target="$BATS_TEST_TMPDIR/cleanup-swap"
+    beacon="$BATS_TEST_TMPDIR/cleanup-beacon"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=2 \
+        ARCH_WIRING_PAUSE_IN_CLEANUP=3 \
+        ARCH_WIRING_CLEANUP_BEACON="$beacon" \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    _seen=0
+    for _ in $(seq 1 50); do
+        [ -d "$target" ] && {
+            _seen=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_seen" -eq 1 ]
+    kill -0 "$_pid" 2>/dev/null
+    kill -TERM "$_pid" 2>/dev/null
+    # The beacon marks the decision made and the window open: swapping
+    # before it would exercise the already-covered pre-cleanup swap.
+    _decided=0
+    for _ in $(seq 1 80); do
+        [ -e "$beacon" ] && {
+            _decided=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_decided" -eq 1 ]
+    rm -rf "$target"
+    mkdir -p "$target"
+    printf 'not yours\n' >"$target/keep-me"
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    [ "$_status" -eq 143 ]
+    [ -f "$target/keep-me" ]
+}
+
 @test "the swap case refuses a child that never made a scratch" {
     # Pointed at an uncreatable path the check exits before owning
     # anything; replacing a directory it never made and finding the

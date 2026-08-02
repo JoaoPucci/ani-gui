@@ -112,6 +112,13 @@ cleanup() {
     # absent, the path has been taken since, and removal would act on
     # somebody else's data.
     [ -e "$scratch/.created-by.$$" ] || return 0
+    # The window between deciding and removing, held open on request
+    # so a case can step into it; the beacon tells the case the
+    # decision has been made. Nothing else sets either.
+    if [ -n "${ARCH_WIRING_PAUSE_IN_CLEANUP:-}" ]; then
+        : >"${ARCH_WIRING_CLEANUP_BEACON:-/dev/null}"
+        sleep "$ARCH_WIRING_PAUSE_IN_CLEANUP"
+    fi
     rm -rf "$scratch"
 }
 
