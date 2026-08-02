@@ -131,6 +131,7 @@ fi
 # path could be recreated by someone else, handing the second removal
 # a directory this run never made.
 trap cleanup EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -143,7 +144,7 @@ if [ -n "${ARCH_WIRING_PAUSE_BEFORE_MKDIR:-}" ]; then
 fi
 
 if ! mkdir "$scratch" 2>/dev/null; then
-    trap - EXIT INT TERM
+    trap - EXIT HUP INT TERM
     printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
         "$scratch" >&2
     exit 1
