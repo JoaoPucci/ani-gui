@@ -427,6 +427,54 @@ scan_workflows() {
     [ "$spaced_count" -eq 1 ]
 }
 
+@test "a quoted, escaped or explicit key spelling is not silently missed" {
+    # The key itself has spellings too. A quoted key resolves to the
+    # same mapping key the bare form declares; a double-quoted key
+    # containing a backslash resolves through escapes this count does
+    # not interpret, so it could be `name` whatever it looks like;
+    # and the explicit form puts the key on a `?` line with the value
+    # on a `:` line beneath it, where no line carries both. The
+    # readable spellings count as the bare key does, and the
+    # unreadable ones count as potential producers — refusal by
+    # over-count, failing closed.
+    dq_key_count=$(printf '%s\n' '    "name": Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    sq_key_count=$(printf '%s\n' "    'name': Arch Shellcheck + Shfmt" |
+        count_arch_lint_names)
+    esc_key_count=$(printf '%s\n' '    "na\u006de": Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    explicit_key_count=$(printf '    ? name\n    : Arch Shellcheck + Shfmt\n' |
+        count_arch_lint_names)
+    [ "$dq_key_count" -eq 1 ]
+    [ "$sq_key_count" -eq 1 ]
+    [ "$esc_key_count" -ge 1 ]
+    [ "$explicit_key_count" -ge 1 ]
+}
+
+@test "a quoted or explicit exclusion key is not silently missed" {
+    # "sh_checker_exclude": "ani-cli tests/arch" is a valid action
+    # input resolving to the same key the bare spelling declares, but
+    # a selection reading only the bare form never sees it: the token
+    # list comes back empty, empty reads as excluding nothing, and
+    # the case above certifies scripts the action excludes. Seen, the
+    # quoted-key line refuses in the parse through its surviving key
+    # text — so the fix is selection, and the refusal already waits
+    # behind it. The explicit form counts both its lines, so the
+    # ambiguity refusal fires on it.
+    quoted_key_excl="$BATS_TEST_TMPDIR/quoted-key-excl.yml"
+    printf '%s\n' '          "sh_checker_exclude": "ani-cli tests/arch"' \
+        >"$quoted_key_excl"
+    quoted_key_count=$(exclusion_declarations "$quoted_key_excl")
+    quoted_key_tokens=$(select_exclusion_line "$quoted_key_excl" | parse_exclusions)
+    explicit_key_excl="$BATS_TEST_TMPDIR/explicit-key-excl.yml"
+    printf '          ? sh_checker_exclude\n          : "ani-cli tests/arch"\n' \
+        >"$explicit_key_excl"
+    explicit_excl_count=$(exclusion_declarations "$explicit_key_excl")
+    [ "$quoted_key_count" -eq 1 ]
+    exclusions_unreadable "$quoted_key_tokens"
+    [ "${explicit_excl_count:-0}" -ge 1 ]
+}
+
 @test "a commented mention does not shadow the declaration beneath it" {
     # A comment mentioning the key is not a declaration. Selected as
     # one, it shadows the live line beneath it: the comment's tokens
