@@ -225,6 +225,30 @@ scan_workflows() {
     [ "$single_count" -eq 1 ]
 }
 
+@test "a .yaml workflow enters the producer scan" {
+    # GitHub loads workflows with either extension. A scan reading
+    # only *.yml never sees a duplicate.yaml declaring the name, and
+    # the uniqueness case certifies a name two jobs answer for while
+    # the file that breaks it sits beside the ones it read.
+    yaml_dir="$BATS_TEST_TMPDIR/yaml-scan"
+    mkdir "$yaml_dir"
+    printf 'jobs:\n  a:\n    name: Arch Shellcheck + Shfmt\n' >"$yaml_dir/a.yml"
+    printf 'jobs:\n  b:\n    name: Arch Shellcheck + Shfmt\n' >"$yaml_dir/b.yaml"
+    yaml_count=$(scan_workflows "$yaml_dir" | count_arch_lint_names)
+    [ "$yaml_count" -eq 2 ]
+}
+
+@test "the bats job runs when a .yaml workflow changes" {
+    # The scan reads the whole directory, so a workflow with the
+    # longer extension is a subject too: a duplicate producer in
+    # duplicate.yaml must not land while the case that rejects it is
+    # skipped as irrelevant.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'.github/workflows/duplicate.yaml'
+    [ "$status" -eq 0 ]
+}
+
 @test "a longer name does not count as a producer" {
     # `Arch Shellcheck + Shfmt (legacy)` is a different check — it
     # cannot answer for the required name — but a prefix-only count
