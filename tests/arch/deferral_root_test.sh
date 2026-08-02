@@ -244,8 +244,41 @@ lint_excludes=$(grep 'sh_checker_exclude' \
 # explicit `tests/arch`, which excludes these scripts just as
 # completely — matching one spelling of the problem instead of the
 # problem.
-excluded_tokens=$(printf '%s' "$lint_excludes" |
-    sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//')
+#
+# A function over stdin, so a fixture spelling runs through the same
+# code as the live line.
+parse_exclusions() {
+    sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//'
+}
+
+# The extraction has to survive the quote spellings the action accepts.
+# Stripping only double quotes leaves a single-quoted value carrying
+# its quote characters, the tokens then match nothing, and the check
+# reports the scripts linted while the action still excludes them.
+lint_probe=$(printf "%s\n" "      sh_checker_exclude: 'tests/probe other'" |
+    parse_exclusions)
+if [ "$lint_probe" = 'tests/probe other' ]; then
+    printf '  ok       the exclusion extraction survives a single-quoted value\n'
+else
+    printf '  FAIL     a single-quoted exclusion list is read as %s\n' "${lint_probe:-nothing}"
+    failed=1
+fi
+
+excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
+
+# Refuse what cannot be read. An extraction that fails leaves the key
+# text in the value; scanning that as tokens matches nothing and reads
+# as a pass. Any spelling beyond the two quote forms is out of scope by
+# the contract's incompleteness rule — but it has to arrive here as a
+# refusal, not as silence.
+case "$excluded_tokens" in
+    *sh_checker_exclude*)
+        printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
+        failed=1
+        excluded_tokens=''
+        ;;
+    *) ;;
+esac
 arch_excluded=0
 lint_subject=tests/arch
 for token in $excluded_tokens; do
