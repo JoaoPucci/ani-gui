@@ -184,6 +184,16 @@ window_scenario() {
     [ "$status" -eq 0 ]
 }
 
+@test "the signal traps end the run and leave cleanup to EXIT" {
+    # `exit` inside a signal trap fires the EXIT trap, so a handler
+    # that calls cleanup itself runs it twice — and between the two
+    # calls the predictable scratch path can be recreated by someone
+    # else, handing the second removal a directory this run never
+    # made. A syntactic constraint: the INT and TERM traps may only
+    # end the run.
+    run ! grep -E "trap 'cleanup.*(INT|TERM)" "$CHECK"
+}
+
 @test "a suites directory holding nothing is reported, not passed" {
     # With no suite to require, every reading of any runner is
     # vacuously satisfied. A check that has lost its subject has to say
