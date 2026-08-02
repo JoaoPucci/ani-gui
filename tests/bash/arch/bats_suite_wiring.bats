@@ -214,6 +214,40 @@ swap_scenario() {
     run ! swap_scenario 3 "$BATS_TEST_TMPDIR/no-such-parent/swap"
 }
 
+@test "SIGHUP cleans the scratch like INT and TERM" {
+    # A closing terminal or dropped SSH session delivers HUP. With no
+    # handler, sh dies without running the EXIT trap, the PID-named
+    # scratch stays behind, and a later run that draws the same PID
+    # refuses the stale path — an interrupted local run poisoning a
+    # future one.
+    target="$BATS_TEST_TMPDIR/hup"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=3 \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    pid=$!
+    # The scratch has to be seen to exist, and the child has to still
+    # be alive to receive the signal — a run that already ended proves
+    # nothing about its handlers.
+    seen=0
+    for _ in $(seq 1 50); do
+        [ -d "$target" ] && {
+            seen=1
+            break
+        }
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$seen" -eq 1 ]
+    kill -0 "$pid" 2>/dev/null
+    kill -HUP "$pid" 2>/dev/null
+    hup_status=0
+    wait "$pid" 2>/dev/null || hup_status=$?
+    # 129 either way — signal death and `exit 129` share the code —
+    # so the discriminator is the scratch: only a run whose EXIT trap
+    # fired has removed it.
+    [ "$hup_status" -eq 129 ]
+    [ ! -e "$target" ]
+}
+
 @test "a path containing a space does not stop the suites running" {
     # The runner word-split its file list, so a checkout under
     # `~/My Repos/` could not run its own tests: every filename arrived
