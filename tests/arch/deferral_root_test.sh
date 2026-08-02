@@ -551,6 +551,56 @@ else
     failed=1
 fi
 
+# A comment mentioning the key is not a declaration. Selected as one,
+# it shadows the live line beneath it: the comment's tokens parse
+# cleanly, the declaration that actually configures the action is
+# never read, and the case reports the scripts linted while the live
+# list excludes them. The declaration is the line where the key sits
+# at the start, modulo indentation; a mention anywhere else on a line
+# is commentary or someone else's value.
+shadow_input="$scratch_dir/comment-shadow.yml"
+printf '%s\n' \
+    '          # sh_checker_exclude: "ani-cli"' \
+    '          sh_checker_exclude: "ani-cli tests/arch"' \
+    >"$shadow_input"
+shadow_tokens=$(select_exclusion_line "$shadow_input" | parse_exclusions)
+shadow_hit=0
+shadow_subject=tests/arch
+for token in $shadow_tokens; do
+    case "$shadow_subject" in
+        "$token" | "$token"/*) shadow_hit=1 ;;
+        *) ;;
+    esac
+done
+if [ "$shadow_hit" -eq 1 ]; then
+    printf '  ok       a commented mention does not shadow the declaration beneath it\n'
+else
+    printf '  FAIL     a comment mentioning the key shadows the live exclusion list, which reads as: %s\n' \
+        "${shadow_tokens:-nothing}"
+    failed=1
+fi
+rm -f "$shadow_input"
+
+# Two declarations are two exclude lists — a second sh-checker step
+# carries its own — and reading the first says nothing about the
+# second, which is exactly where an exclusion of these scripts would
+# hide. The count is the fact the live read refuses on; more than one
+# declaration is ambiguity, not a list.
+ambiguous_input="$scratch_dir/ambiguous-excl.yml"
+printf '%s\n' \
+    '          sh_checker_exclude: "ani-cli"' \
+    '          sh_checker_exclude: "tests/arch"' \
+    >"$ambiguous_input"
+ambiguous_count=$(exclusion_declarations "$ambiguous_input" 2>/dev/null || true)
+if [ "${ambiguous_count:-0}" -eq 2 ]; then
+    printf '  ok       a second exclusion declaration is counted, not skipped\n'
+else
+    printf '  FAIL     two exclusion declarations count as %s — the second is invisible\n' \
+        "${ambiguous_count:-0}"
+    failed=1
+fi
+rm -f "$ambiguous_input"
+
 # YAML also continues a quoted scalar onto the next physical line:
 # `sh_checker_exclude: "ani-cli` with the rest beneath it resolves to
 # one list, while a line-oriented read of the first line extracts a
