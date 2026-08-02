@@ -187,9 +187,12 @@ env_sensitive() {
 # How many lines on stdin declare the arch lint's check name, as a
 # function so a fixture spelling runs through exactly the count the
 # live scan runs. YAML's bare, double- and single-quoted spellings
-# all make the same declaration, so all three count.
+# all make the same declaration, so all three count — and each ends
+# at its closing delimiter, because a longer name is a different
+# check.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*[\"']?Arch Shellcheck \+ Shfmt" || true
+    local name_re='Arch Shellcheck \+ Shfmt'
+    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*\$)" || true
 }
 
 @test "exactly one workflow reports the arch lint check name" {
