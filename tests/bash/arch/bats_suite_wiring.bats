@@ -252,6 +252,59 @@ swap_scenario() {
     [ -f "$target/keep-me" ]
 }
 
+@test "restoring a stranger's directory never nests it" {
+    # Between renaming a foreign occupant aside and putting it back,
+    # the path can be taken again. mv onto an existing directory
+    # moves the source inside it — cleanup would relocate data this
+    # run never owned. When the destination is occupied, the foreign
+    # directory stays at the reclaim path instead.
+    target="$BATS_TEST_TMPDIR/nest-swap"
+    beacon="$BATS_TEST_TMPDIR/nest-beacon"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=2 \
+        ARCH_WIRING_PAUSE_IN_CLEANUP=3 \
+        ARCH_WIRING_CLEANUP_BEACON="$beacon" \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    _seen=0
+    for _ in $(seq 1 50); do
+        [ -d "$target" ] && {
+            _seen=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_seen" -eq 1 ]
+    kill -0 "$_pid" 2>/dev/null
+    # A foreign occupant replaces the scratch before cleanup runs...
+    rm -rf "$target"
+    mkdir -p "$target"
+    printf 'first\n' >"$target/keep-a"
+    kill -TERM "$_pid" 2>/dev/null
+    _claimed=0
+    for _ in $(seq 1 80); do
+        [ -e "$beacon" ] && {
+            _claimed=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_claimed" -eq 1 ]
+    # ...and while cleanup holds it aside, the path is taken again.
+    mkdir -p "$target"
+    printf 'second\n' >"$target/keep-b"
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    [ "$_status" -eq 143 ]
+    # The second occupant is intact and nothing was nested into it;
+    # the first survives wherever cleanup parked it.
+    [ -f "$target/keep-b" ]
+    [ "$(ls "$target")" = "keep-b" ]
+    _first=$(find "$BATS_TEST_TMPDIR" -name keep-a 2>/dev/null | head -1)
+    [ -n "$_first" ]
+}
+
 @test "the swap case refuses a child that never made a scratch" {
     # Pointed at an uncreatable path the check exits before owning
     # anything; replacing a directory it never made and finding the
