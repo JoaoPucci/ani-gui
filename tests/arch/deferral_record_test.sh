@@ -74,8 +74,22 @@ scratch_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$$"
 # before creating is what closes the leak; without the gate it opens
 # the opposite hole, where a path taken by somebody else is removed on
 # behalf of a run that never created it.
+#
+# The gap case's fixtures are siblings of the scratch by design, so
+# each is registered here the moment this run owns it: the sentinel by
+# allocation, the occupant only when this run planted it. The case
+# clears each registration when it removes the fixture itself, so no
+# exit path removes a predictable path twice.
 scratch_owned=""
-cleanup() { [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"; }
+gap_sentinel=""
+gap_occupied=""
+gap_occupied_planted=0
+cleanup() {
+    [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"
+    [ -n "$gap_sentinel" ] && rm -rf "$gap_sentinel"
+    [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
+    :
+}
 
 # EXIT owns cleanup; the signal handlers only have to end the run.
 # Handling a signal without exiting returns control to the interrupted
@@ -259,6 +273,7 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         failed=1
     fi
     rm -rf "$gap_sentinel"
+    gap_sentinel=""
 
     if [ -f "$gap_occupied/keep-existing" ]; then
         printf '  ok       an occupant of the fixed spelling survives the whole case\n'
@@ -267,6 +282,7 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         failed=1
     fi
     [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
+    gap_occupied_planted=0
 fi
 
 # Killed while the gap case holds its fixtures — the sentinel it
