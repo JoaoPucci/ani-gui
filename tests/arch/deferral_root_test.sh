@@ -527,10 +527,17 @@ fi
 
 # Whether a workflow fires unconditionally: it exists and its trigger
 # block names no paths, as a function so a fixture file runs through
-# the same reading the live case runs.
+# the same reading the live case runs. The trigger key has spellings
+# — quoted forms and key-colon spacing resolve to the same key — so
+# the range accepts them, and its end is any following top-level key
+# whatever its spelling. A block that cannot be located at all reads
+# as conditional: an empty range contains no `paths` for the wrong
+# reason, and certifying from it is the failing-open direction.
 unconditional() {
     [ -f "$1" ] || return 1
-    ! sed -n '/^on:/,/^[a-z]/p' "$1" | grep -q 'paths'
+    _trigger=$(sed -nE "/^(\"on\"|'on'|on)[[:space:]]*:/,/^[^[:space:]#]/p" "$1")
+    [ -n "$_trigger" ] || return 1
+    ! printf '%s\n' "$_trigger" | grep -q 'paths'
 }
 
 # A path filter would reopen both gaps at once: a pull request the
