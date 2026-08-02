@@ -277,6 +277,25 @@ else
     failed=1
 fi
 
+# A block scalar declares the same name on the next physical line:
+# `name: >-` followed by the indented name resolves to the job name
+# GitHub sees, while a single-line count sees nothing. Missed, a
+# second producer hides behind the fold; counted as a producer, any
+# block-scalar job name fails the uniqueness case loudly — refusal by
+# over-count, the failing-closed direction.
+block_dir="$scratch_dir/block-name"
+mkdir "$block_dir"
+printf 'jobs:\n  a:\n    name: >-\n      %s\n' "$arch_lint_name" >"$block_dir/a.yml"
+block_count=$(scan_workflows "$block_dir" | count_arch_lint_names)
+if [ "${block_count:-0}" -ge 1 ]; then
+    printf '  ok       a block-scalar name declaration is not silently missed\n'
+else
+    printf '  FAIL     a block-scalar producer counts %s — invisible to the scan\n' \
+        "${block_count:-0}"
+    failed=1
+fi
+rm -rf "$block_dir"
+
 # GitHub loads workflows with either extension. A scan reading only
 # `*.yml` never sees a `duplicate.yaml` declaring the name, and the
 # uniqueness case certifies a name two jobs answer for while the file
