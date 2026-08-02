@@ -336,6 +336,20 @@ else
     failed=1
 fi
 
+# A bare scalar ends at the line's end or at an inline comment —
+# `name: Arch Shellcheck + Shfmt # required` resolves to exactly the
+# required name, and an end-anchored-only pattern misses it. With the
+# comment, that is the complete delimiter set for the bare form.
+comment_probe=$(printf '%s\n' "    name: $arch_lint_name # required job" |
+    count_arch_lint_names)
+if [ "${comment_probe:-0}" -eq 1 ]; then
+    printf '  ok       a commented bare name counts as a producer\n'
+else
+    printf '  FAIL     a commented bare name counts %s producers, not 1\n' \
+        "${comment_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
