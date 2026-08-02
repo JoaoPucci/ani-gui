@@ -268,7 +268,7 @@ count_arch_lint_names() {
     # decides, exactly as for the backslash-quoted key. An anchor
     # BEFORE a key (`&a name: v`) needs no arm: the key spelling
     # still appears on the line and matches its own alternative.
-    grep -cE "(\"name\"|'name'|name|\"[^\"]*\\\\[^\"]*\"|\*[^:[:space:]]+)[[:space:]]*:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)|^[[:space:]]*[?:]([[:space:]]|\$)" || true
+    grep -cE "(\"name\"|'name'|name|\"[^\"]*\\\\[^\"]*\"|\*[^:[:space:]]+)[[:space:]]*:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$|[\"']?\\\$[{][{].*${arch_lint_name_re})|^[[:space:]]*[?:]([[:space:]]|\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
@@ -617,10 +617,12 @@ s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
 # tokens the action receives. An empty value is not refused: a key
 # with nothing after it excludes nothing, and that is a correct read.
 exclusions_unreadable() {
+    # shellcheck disable=SC2016 # the unexpanded ${{ is the subject
     case "$1" in
         *sh_checker_exclude*) return 0 ;;
         '>'* | '|'* | '['* | '{'* | '&'* | '*'*) return 0 ;;
         *\\*) return 0 ;;
+        *'${{'*) return 0 ;;
         *) return 1 ;;
     esac
 }
