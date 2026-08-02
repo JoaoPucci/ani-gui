@@ -233,9 +233,10 @@ arch_lint_name='Arch Shellcheck + Shfmt'
 
 # How many lines on stdin declare the arch lint's check name, as a
 # function so a fixture spelling runs through the same count the live
-# scan runs.
+# scan runs. YAML's bare, double- and single-quoted spellings all
+# make the same declaration, so all three count.
 count_arch_lint_names() {
-    grep -c "name:[[:space:]]*$arch_lint_name" || true
+    grep -c "name:[[:space:]]*[\"']\{0,1\}$arch_lint_name" || true
 }
 
 producer_lines=$(cat "$REPO_ROOT/.github/workflows/"*.yml 2>/dev/null |
