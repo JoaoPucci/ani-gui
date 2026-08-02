@@ -87,14 +87,20 @@ record="$scratch/invoked"
 # the path and have it deleted on behalf of a run that never made it.
 #
 # The residue is the reverse: killed between the `mkdir` and the line
-# that sets this, the run leaves an empty directory behind. That is
-# the trade, and it is the right way round. Leaking an empty directory
-# costs a stale path; removing one costs somebody else's data.
+# that sets this — or between the flag and the marker below — the run
+# leaves a directory behind. That is the trade, and it is the right
+# way round. Leaking a directory costs a stale path; removing one
+# costs somebody else's data.
 owned=""
 
 cleanup() {
     [ -n "$owned" ] || return 0
     owned=""
+    # `owned` says this run created a directory at the path, not that
+    # the directory there now is that one. The marker is the identity:
+    # absent, the path has been taken since, and removal would act on
+    # somebody else's data.
+    [ -e "$scratch/.created-by.$$" ] || return 0
     rm -rf "$scratch"
 }
 
@@ -138,6 +144,7 @@ if ! mkdir "$scratch" 2>/dev/null; then
     exit 1
 fi
 owned=1
+: >"$scratch/.created-by.$$"
 
 # The window after the claim: the directory exists and is owned, and
 # whether cleanup acts on the directory this run made or on whatever
