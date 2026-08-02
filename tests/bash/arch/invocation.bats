@@ -237,6 +237,19 @@ YAML
     exclusions_unreadable "$probe"
 }
 
+@test "an unterminated quoted exclusion is refused, not scanned" {
+    # YAML continues a quoted scalar onto the next physical line:
+    # `sh_checker_exclude: "ani-cli` with `tests/arch"` beneath it
+    # resolves to one list, while a line-oriented read of the first
+    # line extracts a valid-looking fragment — no key text, no YAML
+    # syntax, no escape for the refusal arms to catch, and missing
+    # exactly the entry that mattered. A quote that opens on the line
+    # and never closes means the value is not on the line.
+    probe=$(printf '%s\n' '      sh_checker_exclude: "ani-cli' |
+        parse_exclusions)
+    exclusions_unreadable "$probe"
+}
+
 @test "an escaped exclusion is refused, not scanned" {
     # Double-quoted YAML resolves escapes: "tests\x2farch" reaches the
     # action as tests/arch and excludes these scripts. The extraction
