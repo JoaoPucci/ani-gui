@@ -288,6 +288,22 @@ swap_scenario() {
     run ! sh "$CHECK" "$RUNNER" "$SUITES" "$mentioned"
 }
 
+@test "a run step that masks the runner's status is not wiring" {
+    # `run: ./tests/bash/helpers/run-suite.sh || true` executes every
+    # suite and discards the outcome: a failing suite can no longer
+    # fail CI. The runner has to be the entire step, aside from
+    # whitespace — trailing shell is how a green stops meaning
+    # anything.
+    masked="$BATS_TEST_TMPDIR/masked.yml"
+    sed 's#run: \./tests/bash/helpers/run-suite\.sh#run: ./tests/bash/helpers/run-suite.sh || true#' \
+        "$REPO_ROOT/.github/workflows/bash.yml" >"$masked"
+    if cmp -s "$masked" "$REPO_ROOT/.github/workflows/bash.yml"; then
+        echo "sabotage changed nothing"
+        return 1
+    fi
+    run ! sh "$CHECK" "$RUNNER" "$SUITES" "$masked"
+}
+
 @test "the real workflow invokes the runner" {
     run sh "$CHECK" "$RUNNER" "$SUITES" "$REPO_ROOT/.github/workflows/bash.yml"
     [ "$status" -eq 0 ]
