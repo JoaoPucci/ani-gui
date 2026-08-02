@@ -340,8 +340,10 @@ YAML
 
 # Whether a workflow sets up the upstream remote, as a function so a
 # gutted spelling runs through exactly the check the live file does.
+# Invocation-shaped, like the runner-wiring constraint: `git` has to
+# be the command of its line, so an echoed mention does not count.
 configures_upstream() {
-    grep -qE 'remote add upstream' "$1"
+    grep -qE '^[[:space:]]*git remote add upstream([[:space:]]|$)' "$1"
 }
 
 @test "the bats job configures the upstream divergence baseline" {
