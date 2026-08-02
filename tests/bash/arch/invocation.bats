@@ -276,14 +276,14 @@ YAML
 }
 
 @test "the bats job runs when the workflow these tests inspect changes" {
-    # `invocation.bats` reads `ani-cli.yml` and asserts things about it,
-    # which makes that file a subject under test. If a change touching
-    # only it does not select the bats job, deleting the path entry —
-    # the exact regression the case above exists to catch — lands with
-    # the suite that catches it never having run.
+    # `invocation.bats` reads `arch-lint.yml` and asserts things about
+    # it, which makes that file a subject under test. If a change
+    # touching only it does not select the bats job, gutting the lint
+    # workflow — the exact regression the cases above exist to catch —
+    # lands with the suite that catches it never having run.
     pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
     [ -n "$pattern" ]
-    run grep -qE "^($pattern)" <<<'.github/workflows/ani-cli.yml'
+    run grep -qE "^($pattern)" <<<'.github/workflows/arch-lint.yml'
     [ "$status" -eq 0 ]
 }
 
