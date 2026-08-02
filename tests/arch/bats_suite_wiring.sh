@@ -132,7 +132,13 @@ cleanup() {
     reclaimed_nonce=$(cat "$reclaimed/.claim" 2>/dev/null || true)
     if [ -n "$scratch_nonce" ] && [ "$reclaimed_nonce" = "$scratch_nonce" ]; then
         rm -rf "$reclaimed"
-    else
+    elif [ ! -e "$scratch" ] && [ ! -L "$scratch" ]; then
+        # Restore only into an absent destination: mv onto an existing
+        # directory nests the source inside it, relocating data this
+        # run never owned. A path taken again while the stranger's
+        # directory was held aside means leaving it at the reclaim
+        # path — parked, named, and findable — rather than moving it
+        # into somebody else's directory.
         mv "$reclaimed" "$scratch" 2>/dev/null || true
     fi
 }
