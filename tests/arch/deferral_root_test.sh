@@ -248,6 +248,23 @@ else
     failed=1
 fi
 
+# YAML accepts the double- and single-quoted spellings as the same
+# declaration the bare form makes. A count reading only the bare form
+# stays at one while a quoted second producer answers for the
+# required name — the exact ambiguity the case above exists to
+# reject.
+quoted_probe=$(printf '%s\n' "    name: \"$arch_lint_name\"" |
+    count_arch_lint_names)
+single_probe=$(printf '%s\n' "    name: '$arch_lint_name'" |
+    count_arch_lint_names)
+if [ "${quoted_probe:-0}" -eq 1 ] && [ "${single_probe:-0}" -eq 1 ]; then
+    printf '  ok       a quoted spelling of the check name counts as a producer\n'
+else
+    printf '  FAIL     quoted spellings count %s and %s producers, not 1 and 1\n' \
+        "${quoted_probe:-0}" "${single_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
