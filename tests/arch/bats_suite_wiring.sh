@@ -105,7 +105,7 @@ record="$scratch/invoked"
 # costs somebody else's data.
 owned=""
 
-scratch_nonce=""
+claim_held=""
 cleanup() {
     [ -n "$owned" ] || return 0
     owned=""
@@ -113,8 +113,8 @@ cleanup() {
     # followed by an rm removes whatever occupies the path by then —
     # the two can be different directories, and a pid-derived marker
     # can be recreated. The rename takes the occupant out of the
-    # shared namespace atomically; the nonce planted at creation,
-    # held nowhere but this process, says whether it is this run's
+    # shared namespace atomically; the claim file opened at creation
+    # and held open on a descriptor says whether it is this run's
     # directory; a stranger's is put back untouched. An occupied
     # reclaim path means leaking ours rather than guessing.
     reclaimed="$scratch.reclaimed.$$"
@@ -129,8 +129,16 @@ cleanup() {
         : >"${ARCH_WIRING_CLEANUP_BEACON:-/dev/null}"
         sleep "$ARCH_WIRING_PAUSE_IN_CLEANUP"
     fi
-    reclaimed_nonce=$(cat "$reclaimed/.claim" 2>/dev/null || true)
-    if [ -n "$scratch_nonce" ] && [ "$reclaimed_nonce" = "$scratch_nonce" ]; then
+    # Identity is the open descriptor, not anything stored on disk. A
+    # token written into the directory is readable by any same-user
+    # process, and whatever can be read can be copied into a
+    # replacement — the comparison then surrenders a directory this
+    # run never made. `-ef` asks whether the reclaimed claim file IS
+    # the file this run opened: the descriptor pins the inode for as
+    # long as the process lives, so no copy can be the same file.
+    # shellcheck disable=SC3013 # -ef: dash, bash and busybox all provide it, and content comparison is the defect this replaces
+    if [ -n "$claim_held" ] && [ -e /dev/fd/9 ] &&
+        [ "$reclaimed/.claim" -ef /dev/fd/9 ]; then
         rm -rf "$reclaimed"
     elif [ ! -e "$scratch" ] && [ ! -L "$scratch" ]; then
         # Restore only into an absent destination: mv onto an existing
@@ -185,12 +193,16 @@ if ! mkdir "$scratch" 2>/dev/null; then
 fi
 owned=1
 # The directory's identity, planted the moment the claim lands: a
-# random token written into the directory and held nowhere but this
-# process. An inode is not identity — tmpfs hands a freed inode
-# straight to the next mkdir — and a pid-derived marker can be
-# recreated; a value that exists only in this shell's memory cannot.
-scratch_nonce=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
-printf '%s' "$scratch_nonce" >"$scratch/.claim"
+# claim file created inside it and immediately opened on a descriptor
+# this process keeps for its whole life. The open pins the inode — a
+# freed inode can be reused by tmpfs, but not while a descriptor
+# holds it — and nothing about the identity lives on disk where a
+# same-user process could read and reproduce it. Content is
+# deliberately not the identity: anything readable is copyable into a
+# replacement, and a pid-derived marker can be recreated outright.
+: >"$scratch/.claim"
+exec 9<"$scratch/.claim"
+claim_held=1
 
 # The window after the claim: the directory exists and is owned, and
 # whether cleanup acts on the directory this run made or on whatever
