@@ -245,8 +245,9 @@ count_arch_lint_names() {
 
 # Every workflow file in a directory, as a function so a fixture
 # directory runs through the same enumeration the live scan runs.
+# GitHub loads both extensions, so both are read.
 scan_workflows() {
-    cat "$1"/*.yml 2>/dev/null || true
+    cat "$1"/*.yml "$1"/*.yaml 2>/dev/null || true
 }
 
 producer_lines=$(scan_workflows "$REPO_ROOT/.github/workflows" |
