@@ -353,6 +353,22 @@ configures_upstream() {
     [ "$status" -eq 0 ]
 }
 
+@test "a step that merely mentions the upstream setup is not configuration" {
+    # `echo git remote add upstream ...` prints the command and creates
+    # no remote: both portability cases then skip, the suite measures
+    # nothing, and a containment match still reports the baseline
+    # configured. The command has to be in command position — the same
+    # shape the runner-wiring constraint takes.
+    mentioned="$BATS_TEST_TMPDIR/mentioned-upstream.yml"
+    sed 's/git remote add upstream/echo git remote add upstream/' \
+        "$BASH_WORKFLOW" >"$mentioned"
+    if cmp -s "$mentioned" "$BASH_WORKFLOW"; then
+        echo "sabotage changed nothing"
+        return 1
+    fi
+    run ! configures_upstream "$mentioned"
+}
+
 @test "a check pointed at a missing file exits nonzero" {
     # A tool failing inside the pipeline must not leave the check
     # reporting success. `set -e` takes the failing command
