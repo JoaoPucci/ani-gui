@@ -180,6 +180,18 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     # else's — a concurrent run's, or a developer's. A sweep that
     # removes every match destroys their state on the way to
     # reporting ours.
+    # An occupant of the fixed spelling, planted before the case runs.
+    # It is somebody's — the case may not create, write into, or
+    # remove anything at this path, and the assertion at the end holds
+    # that for every future edit of this block.
+    gap_occupied="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
+    gap_occupied_planted=0
+    if [ ! -e "$gap_occupied" ]; then
+        mkdir "$gap_occupied"
+        printf 'keep existing\n' >"$gap_occupied/keep-existing"
+        gap_occupied_planted=1
+    fi
+
     # A directory already sitting at the fixed spelling is somebody
     # else's, and the case must leave it exactly as found.
     gap_foreign="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
@@ -251,6 +263,14 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         failed=1
     fi
     rm -rf "$gap_foreign"
+
+    if [ -f "$gap_occupied/keep-existing" ]; then
+        printf '  ok       an occupant of the fixed spelling survives the whole case\n'
+    else
+        printf '  FAIL     the case destroyed a pre-existing occupant of the fixed spelling\n'
+        failed=1
+    fi
+    [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
 fi
 
 printf 'arch/deferral_record_test: predicate cases\n'
