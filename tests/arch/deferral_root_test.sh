@@ -247,9 +247,13 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # backslash resolves through escapes it does not interpret, and a
 # quote left open on the line continues the scalar past where it
 # reads. Single-quoted scalars have no escapes, so only their
-# unterminated form is unreadable.
+# unterminated form is unreadable. It also covers what continues or
+# indirects: a bare value that is a strict space-broken prefix of the
+# name (or empty) is the first physical line of a folded spelling
+# that resolves to the name, and a value opening with an anchor,
+# alias or tag resolves somewhere a line count never looks.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$)" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
