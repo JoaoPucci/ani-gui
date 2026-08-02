@@ -477,6 +477,26 @@ else
     failed=1
 fi
 
+# An alias can BE the key: with `&k name` anchored elsewhere,
+# `*k: Arch Shellcheck + Shfmt` resolves to the same name property,
+# and no physical line spells a recognized key. An alias token
+# followed by a colon can stand for any key at all, so it counts
+# whenever its value could be the required name — the same combining
+# logic the backslash-quoted key uses: the key side says "possibly
+# name", the value side decides. Both alias-key spacings count, since
+# YAML accepts the colon adjacent or spaced.
+alias_key_probe=$(printf '%s\n' "    *job_name_key: $arch_lint_name" |
+    count_arch_lint_names)
+alias_key_spaced_probe=$(printf '%s\n' "    *job_name_key : $arch_lint_name" |
+    count_arch_lint_names)
+if [ "${alias_key_probe:-0}" -ge 1 ] && [ "${alias_key_spaced_probe:-0}" -ge 1 ]; then
+    printf '  ok       an aliased name key is not silently missed\n'
+else
+    printf '  FAIL     aliased name keys count %s and %s — invisible to the scan\n' \
+        "${alias_key_probe:-0}" "${alias_key_spaced_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
@@ -667,6 +687,30 @@ else
     failed=1
 fi
 rm -f "$quoted_key_excl" "$explicit_key_excl"
+
+# An alias can be the exclusion key too: with `&k sh_checker_exclude`
+# anchored elsewhere, `*k: "ani-cli tests/arch"` resolves to the
+# expected input while no line spells the key. The declaration has to
+# be seen — counted and selected — and then refused, because an alias
+# key could stand for anything and the list behind it cannot be read
+# from this line.
+alias_key_excl="$scratch_dir/alias-key-excl.yml"
+printf '%s\n' '          *exclude_key: "ani-cli tests/arch"' \
+    >"$alias_key_excl"
+alias_excl_count=$(exclusion_declarations "$alias_key_excl")
+alias_excl_tokens=$(select_exclusion_line "$alias_key_excl" | parse_exclusions)
+alias_excl_refused=0
+if exclusions_unreadable "$alias_excl_tokens"; then
+    alias_excl_refused=1
+fi
+if [ "${alias_excl_count:-0}" -ge 1 ] && [ "$alias_excl_refused" -eq 1 ]; then
+    printf '  ok       an aliased exclusion key is seen and refused\n'
+else
+    printf '  FAIL     an aliased exclusion key counts %s declarations and its tokens read as %s\n' \
+        "${alias_excl_count:-0}" "${alias_excl_tokens:-nothing}"
+    failed=1
+fi
+rm -f "$alias_key_excl"
 
 # Two declarations are two exclude lists — a second sh-checker step
 # carries its own — and reading the first says nothing about the
