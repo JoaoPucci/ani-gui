@@ -604,6 +604,23 @@ else
     failed=1
 fi
 
+# The stray environment the hunt exists to catch can just as easily be
+# the one this suite itself runs under. A caller that already exports
+# a hostile name hands it to the clean runs too: all three runs are
+# then redirected alike, the difference vanishes, and a sensitive
+# check reads as clean. The clean baseline has to shed the hostile
+# names, not merely differ from them.
+if (
+    SKIP_NESTED=1
+    export SKIP_NESTED
+    env_sensitive "$REPO_ROOT/tests/fixtures/arch/redirectable-check.sh"
+); then
+    printf '  ok       an exported hostile name cannot poison the clean baseline\n'
+else
+    printf '  FAIL     a caller exporting SKIP_NESTED=1 hides the sensitivity the calibration proves detectable\n'
+    failed=1
+fi
+
 # Every real check, run twice. The self-tests are skipped: they
 # re-execute themselves, and several deliberately vary on exactly the
 # environment this hands them.
