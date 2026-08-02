@@ -350,6 +350,20 @@ else
     failed=1
 fi
 
+# Flow style puts the whole job on one line: in
+# `jobs: {stub: {name: Arch Shellcheck + Shfmt}}` the bare scalar
+# ends at the closing brace, not at the line's end. Flow terminators
+# complete the bare form's delimiter set alongside the comment.
+flow_probe=$(printf '%s\n' "    jobs: {stub: {name: $arch_lint_name}}" |
+    count_arch_lint_names)
+if [ "${flow_probe:-0}" -eq 1 ]; then
+    printf '  ok       a flow-style name counts as a producer\n'
+else
+    printf '  FAIL     a flow-style name counts %s producers, not 1\n' \
+        "${flow_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
