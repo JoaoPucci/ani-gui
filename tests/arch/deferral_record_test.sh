@@ -186,8 +186,10 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     mkdir -p "$gap_foreign"
     printf 'someone elses\n' >"$gap_foreign/prior"
 
-    gap_sentinel="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
-    mkdir -p "$gap_sentinel"
+    # Allocated, not spelled: a fixed name is somebody's the moment
+    # anybody else uses it. `mktemp -d` hands back a directory nobody
+    # holds, still matching the naming scheme the case is about.
+    gap_sentinel=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
     printf 'not yours\n' >"$gap_sentinel/keep-me"
 
     ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \

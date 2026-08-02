@@ -139,7 +139,13 @@ mkdir "$scratch_dir"
 # trap definitions and hoping they mean what they say. It exits before
 # the body, so nothing here re-enters.
 if [ -n "${ARCH_SABOTAGE_LEAK_PROBE:-}" ]; then
-    printf '%s\n' "$(make_sabotage_probe)" "$(make_sabotage_probe)"
+    # Basenames only. An absolute path carries the checkout prefix,
+    # and a newline anywhere in that prefix splits one record into
+    # several — the reader then matches nothing. The basename is
+    # `.deferral-root.<pid>.probe.<n>`, an alphabet this run controls.
+    _p1=$(make_sabotage_probe)
+    _p2=$(make_sabotage_probe)
+    printf '%s\n' "${_p1##*/}" "${_p2##*/}"
     sleep 5
     exit 0
 fi
@@ -524,14 +530,14 @@ leak_present=0
 leak_seen=""
 while IFS= read -r probe; do
     case "$probe" in
-        "$REPO_ROOT/tests/arch/.deferral-root."*.probe.*) ;;
+        .deferral-root.*.probe.*) ;;
         *) continue ;;
     esac
     case "$leak_seen" in
         *"[$probe]"*) continue ;;
         *) leak_seen="${leak_seen}[$probe]" ;;
     esac
-    [ -e "$probe" ] && leak_present=$((leak_present + 1))
+    [ -e "$REPO_ROOT/tests/arch/$probe" ] && leak_present=$((leak_present + 1))
 done <"$leak_out"
 
 kill -TERM "$leak_pid" 2>/dev/null || true
@@ -547,13 +553,13 @@ leak_count=0
 leak_found=0
 while IFS= read -r probe; do
     case "$probe" in
-        "$REPO_ROOT/tests/arch/.deferral-root."*.probe.*) ;;
+        .deferral-root.*.probe.*) ;;
         *) continue ;;
     esac
     leak_count=$((leak_count + 1))
-    if [ -e "$probe" ]; then
+    if [ -e "$REPO_ROOT/tests/arch/$probe" ]; then
         leak_found=1
-        rm -f "$probe"
+        rm -f "$REPO_ROOT/tests/arch/$probe"
     fi
 done <"$leak_out"
 
