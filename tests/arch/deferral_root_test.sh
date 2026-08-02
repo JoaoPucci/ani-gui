@@ -314,6 +314,20 @@ else
     failed=1
 fi
 
+# Double-quoted YAML resolves escapes: "tests\x2farch" reaches the
+# action as tests/arch and excludes these scripts, while the
+# extraction keeps the backslash and the token matches nothing — the
+# same silent pass the block-scalar case closed, one spelling over.
+# An escape is YAML the extraction does not resolve.
+escape_probe=$(printf '%s\n' '      sh_checker_exclude: "ani-cli tests\x2farch"' |
+    parse_exclusions)
+if exclusions_unreadable "$escape_probe"; then
+    printf '  ok       an escaped exclusion is refused, not scanned\n'
+else
+    printf '  FAIL     an escaped exclusion reads as: %s\n' "${escape_probe:-nothing}"
+    failed=1
+fi
+
 if [ -f "$arch_lint_workflow" ]; then
     lint_excludes=$(grep 'sh_checker_exclude' "$arch_lint_workflow" | head -1 || true)
     excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
