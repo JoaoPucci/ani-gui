@@ -218,30 +218,48 @@ for script in deferral_record agents_contract deferral_record_test; do
         from_arch "$script.sh"
 done
 
-# Shell in this repository has to be linted by the shell linter. The
-# `ani-cli checks` workflow filters on `**ani-cli`, so a pull request
-# touching only `tests/arch/*.sh` never ran shellcheck or shfmt
-# against the scripts it added — the checks were green because they
-# had not run, which is the same shape as every other finding here.
-lint_paths=$(sed -n '/^  pull_request:/,/^jobs:/p' \
-    "$REPO_ROOT/.github/workflows/ani-cli.yml" | grep -c 'tests/arch' || true)
-if [ "${lint_paths:-0}" -ge 1 ]; then
-    printf '  ok       the shell linter runs for changes under tests/arch\n'
+# Shell in this repository has to be linted by the shell linter, and
+# the green has to be attributable. `Shellcheck + Shfmt` is reported
+# by three workflows — the vendored `ani-cli checks`, its instant
+# inverse stub, and the unconditional mirror whose exclude list
+# covers all of `tests` — and branch protection is satisfied by the
+# first success under a required name. On a pull request touching
+# only the arch checks, a stub's echo can land before the real lint
+# finishes, so a shellcheck failure in these load-bearing scripts
+# could still merge. no-awk-required.yml documents the same race and
+# resolves it the same way: a name nothing else answers for.
+arch_lint_workflow="$REPO_ROOT/.github/workflows/arch-lint.yml"
+arch_lint_name='Arch Shellcheck + Shfmt'
+producer_lines=$(cat "$REPO_ROOT/.github/workflows/"*.yml 2>/dev/null |
+    grep -c "name:[[:space:]]*$arch_lint_name" || true)
+if [ "${producer_lines:-0}" -eq 1 ]; then
+    printf '  ok       exactly one workflow reports the arch lint check name\n'
 else
-    printf '  FAIL     tests/arch is not in the shell linter path filter\n'
+    printf '  FAIL     %s workflows report the arch lint check name, so another job can answer for the lint\n' \
+        "${producer_lines:-0}"
     failed=1
 fi
 
-# Triggering the job is not the same as checking anything. The action
+# A path filter would reopen both gaps at once: a pull request the
+# filter misses never lints these scripts, and the mirror pair that
+# papers over the zero-diff case is a second producer of the name
+# again. No filter, no gap, no race.
+if [ -f "$arch_lint_workflow" ] &&
+    ! sed -n '/^on:/,/^[a-z]/p' "$arch_lint_workflow" | grep -q 'paths'; then
+    printf '  ok       the arch lint workflow fires unconditionally\n'
+else
+    printf '  FAIL     the arch lint workflow is missing or path-gated\n'
+    failed=1
+fi
+
+# Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
-# and inspects nothing, reported as a pass. The first version of the
-# case above asserted only the trigger and would not have caught it.
-lint_excludes=$(grep 'sh_checker_exclude' \
-    "$REPO_ROOT/.github/workflows/ani-cli.yml" | head -1)
+# and inspects nothing, reported as a pass.
+#
 # Read the exclude list as a list, not as a string to pattern-match.
-# The first version tested for a bare `tests` and would have passed an
-# explicit `tests/arch`, which excludes these scripts just as
+# An earlier version tested for a bare `tests` and would have passed
+# an explicit `tests/arch`, which excludes these scripts just as
 # completely — matching one spelling of the problem instead of the
 # problem.
 #
@@ -264,33 +282,39 @@ else
     failed=1
 fi
 
-excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
+if [ -f "$arch_lint_workflow" ]; then
+    lint_excludes=$(grep 'sh_checker_exclude' "$arch_lint_workflow" | head -1 || true)
+    excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
 
-# Refuse what cannot be read. An extraction that fails leaves the key
-# text in the value; scanning that as tokens matches nothing and reads
-# as a pass. Any spelling beyond the two quote forms is out of scope by
-# the contract's incompleteness rule — but it has to arrive here as a
-# refusal, not as silence.
-case "$excluded_tokens" in
-    *sh_checker_exclude*)
-        printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
-        failed=1
-        excluded_tokens=''
-        ;;
-    *) ;;
-esac
-arch_excluded=0
-lint_subject=tests/arch
-for token in $excluded_tokens; do
-    case "$lint_subject" in
-        "$token" | "$token"/*) arch_excluded=1 ;;
+    # Refuse what cannot be read. An extraction that fails leaves the
+    # key text in the value; scanning that as tokens matches nothing
+    # and reads as a pass. Any spelling beyond the two quote forms is
+    # out of scope by the contract's incompleteness rule — but it has
+    # to arrive here as a refusal, not as silence.
+    case "$excluded_tokens" in
+        *sh_checker_exclude*)
+            printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
+            failed=1
+            excluded_tokens=''
+            ;;
         *) ;;
     esac
-done
-if [ "$arch_excluded" -eq 0 ]; then
-    printf '  ok       the linter does not exclude tests/arch from checking\n'
+    arch_excluded=0
+    lint_subject=tests/arch
+    for token in $excluded_tokens; do
+        case "$lint_subject" in
+            "$token" | "$token"/*) arch_excluded=1 ;;
+            *) ;;
+        esac
+    done
+    if [ "$arch_excluded" -eq 0 ]; then
+        printf '  ok       the linter does not exclude tests/arch from checking\n'
+    else
+        printf '  FAIL     the linter exclude list covers tests/arch, so it is never checked\n'
+        failed=1
+    fi
 else
-    printf '  FAIL     the linter exclude list covers tests/arch, so it is never checked\n'
+    printf '  FAIL     no exclude list to read: the arch lint workflow does not exist\n'
     failed=1
 fi
 
