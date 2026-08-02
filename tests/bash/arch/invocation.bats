@@ -90,16 +90,19 @@ parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*[\"']*//; s/[\"'].*//"
 }
 
-# Two ways an extraction fails, both refused: the key text survives
-# into the value, or the value opens with YAML syntax — block scalar,
+# Three ways an extraction fails, all refused: the key text survives
+# into the value, the value opens with YAML syntax — block scalar,
 # flow collection, anchor or alias — meaning the real list lives
-# somewhere this line-oriented read never looked. An empty value is
-# not refused: a key with nothing after it excludes nothing, and that
-# is a correct read.
+# somewhere this line-oriented read never looked, or the value carries
+# an escape the extraction does not resolve, so the tokens as read are
+# not the tokens the action receives. An empty value is not refused: a
+# key with nothing after it excludes nothing, and that is a correct
+# read.
 exclusions_unreadable() {
     case "$1" in
         *sh_checker_exclude*) return 0 ;;
         '>'* | '|'* | '['* | '{'* | '&'* | '*'*) return 0 ;;
+        *\\*) return 0 ;;
         *) return 1 ;;
     esac
 }
