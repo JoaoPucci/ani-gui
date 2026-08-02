@@ -244,7 +244,7 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # declaration is treated as a potential producer — refusal by
 # over-count, failing closed.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*(#.*)?\$|[>|])" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|])" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
@@ -338,8 +338,7 @@ fi
 
 # A bare scalar ends at the line's end or at an inline comment —
 # `name: Arch Shellcheck + Shfmt # required` resolves to exactly the
-# required name, and an end-anchored-only pattern misses it. With the
-# comment, that is the complete delimiter set for the bare form.
+# required name, and an end-anchored-only pattern misses it.
 comment_probe=$(printf '%s\n' "    name: $arch_lint_name # required job" |
     count_arch_lint_names)
 if [ "${comment_probe:-0}" -eq 1 ]; then
@@ -352,8 +351,13 @@ fi
 
 # Flow style puts the whole job on one line: in
 # `jobs: {stub: {name: Arch Shellcheck + Shfmt}}` the bare scalar
-# ends at the closing brace, not at the line's end. Flow terminators
-# complete the bare form's delimiter set alongside the comment.
+# ends at the closing brace, not at the line's end. The flow
+# terminators `}`, `,` and `]` complete the bare form's delimiter set
+# alongside the comment. The count does not track flow context, so a
+# block-context line whose scalar happens to continue with one of
+# these characters spells a longer name yet still counts — an
+# over-count that fails the uniqueness case loudly, the failing-closed
+# direction.
 flow_probe=$(printf '%s\n' "    jobs: {stub: {name: $arch_lint_name}}" |
     count_arch_lint_names)
 if [ "${flow_probe:-0}" -eq 1 ]; then
