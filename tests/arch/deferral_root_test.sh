@@ -444,6 +444,32 @@ else
     failed=1
 fi
 
+# The key itself has spellings too. A quoted key resolves to the same
+# mapping key the bare form declares, so `"name": ...` and
+# `'name': ...` are the same declaration; a double-quoted key
+# containing a backslash resolves through escapes this count does not
+# interpret, so it could be `name` whatever it looks like; and the
+# explicit form puts the key on a `?` line with the value on a `:`
+# line beneath it, where no line carries both. The readable spellings
+# count as the bare key does, and the unreadable ones count as
+# potential producers — refusal by over-count, failing closed.
+dq_key_probe=$(printf '%s\n' "    \"name\": $arch_lint_name" |
+    count_arch_lint_names)
+sq_key_probe=$(printf '%s\n' "    'name': $arch_lint_name" |
+    count_arch_lint_names)
+esc_key_probe=$(printf '%s\n' "    \"na\\u006de\": $arch_lint_name" |
+    count_arch_lint_names)
+explicit_key_probe=$(printf '    ? name\n    : %s\n' "$arch_lint_name" |
+    count_arch_lint_names)
+if [ "${dq_key_probe:-0}" -eq 1 ] && [ "${sq_key_probe:-0}" -eq 1 ] &&
+    [ "${esc_key_probe:-0}" -ge 1 ] && [ "${explicit_key_probe:-0}" -ge 1 ]; then
+    printf '  ok       a quoted, escaped or explicit key spelling is not silently missed\n'
+else
+    printf '  FAIL     quoted/escaped/explicit key spellings count %s, %s, %s and %s — invisible to the scan\n' \
+        "${dq_key_probe:-0}" "${sq_key_probe:-0}" "${esc_key_probe:-0}" "${explicit_key_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
