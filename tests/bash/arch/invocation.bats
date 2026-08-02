@@ -92,18 +92,16 @@ unconditional() {
 # The exclusion extraction and its refusal, as functions so a fixture
 # spelling runs through exactly the code the live line runs through.
 #
-# Quotes are stripped only in pairs: the first two substitutions each
-# take a value whose quote closes on the line it opened on, and the
-# unquoted plain form falls through to the last. A quote that opens
-# and never closes matches neither pair, the third command leaves the
-# line untouched, and the surviving key text lands in the refusal —
-# a scalar continued on the next physical line must not read as the
-# fragment before the break.
+# Only the paired-quote forms extract: a value whose quote closes on
+# the line it opened on, double or single. Everything else — an
+# unterminated quote, a block scalar, and the bare plain form, which
+# can continue onto the next line with no first-line signal at all —
+# passes through untouched, and the surviving key text lands in the
+# refusal. The readable set is exactly the spellings whose first line
+# provably carries the whole value.
 parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
-s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t
-/sh_checker_exclude:[[:space:]]*[\"']/b
-s/.*sh_checker_exclude:[[:space:]]*//"
+s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
 }
 
 # Three ways an extraction fails, all refused: the key text survives
@@ -190,9 +188,13 @@ env_sensitive() {
 # all make the same declaration, so all three count — and each ends
 # at its closing delimiter, because a longer name is a different
 # check.
+# A bare scalar ends at the line's end or an inline comment; a
+# block-scalar `name:` resolves on the next physical line where this
+# count cannot read it, so it counts as a potential producer —
+# refusal by over-count, failing closed.
 count_arch_lint_names() {
     local name_re='Arch Shellcheck \+ Shfmt'
-    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*\$)" || true
+    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*(#.*)?\$|[>|])" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
