@@ -216,6 +216,20 @@ count_arch_lint_names() {
     [ "$single_count" -eq 1 ]
 }
 
+@test "a longer name does not count as a producer" {
+    # `Arch Shellcheck + Shfmt (legacy)` is a different check — it
+    # cannot answer for the required name — but a prefix-only count
+    # includes it, and the uniqueness case then fails with two
+    # producers while only one job holds the name that matters. The
+    # count has to stop at the name's closing delimiter.
+    suffix_count=$(printf '%s\n' '    name: Arch Shellcheck + Shfmt (legacy)' |
+        count_arch_lint_names)
+    suffix_quoted=$(printf '%s\n' '    name: "Arch Shellcheck + Shfmt (legacy)"' |
+        count_arch_lint_names)
+    [ "$suffix_count" -eq 0 ]
+    [ "$suffix_quoted" -eq 0 ]
+}
+
 @test "the arch lint workflow fires unconditionally" {
     unconditional "$WORKFLOW"
 }
