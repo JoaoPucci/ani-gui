@@ -154,6 +154,66 @@ window_scenario() {
     run ! window_scenario 0 "$BATS_TEST_TMPDIR/window-raced"
 }
 
+# The swap scenario: let the check create its scratch, hold it open,
+# replace the directory with somebody else's, TERM it, and require the
+# replacement to survive. `owned` records that this run created a
+# directory at the path — not which directory — so removal gated on it
+# alone acts on whatever sits there by exit.
+swap_scenario() {
+    _pause=$1
+    _target=$2
+    env ARCH_WIRING_SCRATCH="$_target" ARCH_WIRING_PAUSE_AFTER_MKDIR="$_pause" \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    # The scratch has to be seen to exist first: replacing a directory
+    # the check never made exercises nothing.
+    _seen=0
+    for _ in $(seq 1 50); do
+        [ -d "$_target" ] && {
+            _seen=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_seen" -eq 1 ] || {
+        wait "$_pid" 2>/dev/null || true
+        echo "the check never created $_target"
+        return 1
+    }
+    kill -0 "$_pid" 2>/dev/null || {
+        wait "$_pid" 2>/dev/null || true
+        echo "swap child exited before the path was swapped"
+        return 1
+    }
+    rm -rf "$_target"
+    mkdir -p "$_target"
+    printf 'not yours\n' >"$_target/keep-me"
+    kill -TERM "$_pid" 2>/dev/null || true
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    [ "$_status" -eq 143 ] || {
+        echo "swap child exited $_status, not 143"
+        return 1
+    }
+    [ -f "$_target/keep-me" ]
+}
+
+@test "cleanup leaves a replaced scratch directory alone" {
+    # Another process can remove the predictable path after this check
+    # creates it and put its own directory there before exit. A cleanup
+    # that only remembers "this run created something at the path"
+    # removes the replacement on behalf of a directory that is gone.
+    swap_scenario 3 "$BATS_TEST_TMPDIR/swap"
+}
+
+@test "the swap case refuses a child that never made a scratch" {
+    # Pointed at an uncreatable path the check exits before owning
+    # anything; replacing a directory it never made and finding the
+    # sentinel intact would describe cleanup nobody ran.
+    run ! swap_scenario 3 "$BATS_TEST_TMPDIR/no-such-parent/swap"
+}
+
 @test "a path containing a space does not stop the suites running" {
     # The runner word-split its file list, so a checkout under
     # `~/My Repos/` could not run its own tests: every filename arrived

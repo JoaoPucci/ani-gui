@@ -138,6 +138,15 @@ if ! mkdir "$scratch" 2>/dev/null; then
     exit 1
 fi
 owned=1
+
+# The window after the claim: the directory exists and is owned, and
+# whether cleanup acts on the directory this run made or on whatever
+# sits at the path by then is the difference the swap case measures.
+# Nothing else sets this.
+if [ -n "${ARCH_WIRING_PAUSE_AFTER_MKDIR:-}" ]; then
+    sleep "$ARCH_WIRING_PAUSE_AFTER_MKDIR"
+fi
+
 mkdir "$scratch/helpers"
 mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 : >"$record"
