@@ -15,7 +15,7 @@ load '../helpers/loader'
 
 setup() {
     ARCH_DIR="$REPO_ROOT/tests/arch"
-    WORKFLOW="$REPO_ROOT/.github/workflows/ani-cli.yml"
+    WORKFLOW="$REPO_ROOT/.github/workflows/arch-lint.yml"
     BASH_WORKFLOW="$REPO_ROOT/.github/workflows/bash.yml"
 }
 
@@ -74,18 +74,34 @@ run_from() {
     [[ "$output" == "$probe"* ]]
 }
 
-# Whether a workflow's `paths:` filter carries a list entry covering a
-# directory. A bare search of the file answers yes to a comment that
-# merely names the directory, so the entry can be deleted and the
-# assertion stays green — which is the failure this whole file is
-# about. Anchored to the list item, and scoped to the trigger block so
-# prose further down cannot stand in for wiring.
-filter_covers() {
-    # The path has to end on a boundary, or a sibling that merely
-    # shares the prefix — `tests/archive` for `tests/arch` — satisfies
-    # a request it covers none of.
-    sed -n '/^  pull_request:/,/^jobs:/p' "$1" |
-        grep -qE "^[[:space:]]*-[[:space:]]*[\"']?$2([/\"'[:space:]]|$)"
+# Whether a workflow fires unconditionally: it exists and its trigger
+# block names no paths. A filter would reopen two gaps at once — a
+# pull request the filter misses never lints the arch scripts, and the
+# stub-mirror pair that papers over the zero-diff case is a second
+# producer of the check name, able to answer for a lint that failed.
+unconditional() {
+    [ -f "$1" ] || return 1
+    ! sed -n '/^on:/,/^[a-z]/p' "$1" | grep -q 'paths'
+}
+
+# The exclusion extraction and its refusal, as functions so a fixture
+# spelling runs through exactly the code the live line runs through.
+parse_exclusions() {
+    sed "s/.*sh_checker_exclude:[[:space:]]*[\"']*//; s/[\"'].*//"
+}
+
+# Two ways an extraction fails, both refused: the key text survives
+# into the value, or the value opens with YAML syntax — block scalar,
+# flow collection, anchor or alias — meaning the real list lives
+# somewhere this line-oriented read never looked. An empty value is
+# not refused: a key with nothing after it excludes nothing, and that
+# is a correct read.
+exclusions_unreadable() {
+    case "$1" in
+        *sh_checker_exclude*) return 0 ;;
+        '>'* | '|'* | '['* | '{'* | '&'* | '*'*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # Whether a check can be redirected by the environment it runs in.
@@ -149,45 +165,73 @@ env_sensitive() {
     }
 }
 
-@test "the shell linter runs for changes under tests/arch" {
-    # These are shell too. The workflow filtered on the vendored
-    # script's path alone, so a change touching only the arch checks
-    # matched nothing and shellcheck never ran — the absence reading
-    # as a pass.
-    filter_covers "$WORKFLOW" 'tests/arch'
+@test "exactly one workflow reports the arch lint check name" {
+    # The green has to be attributable. `Shellcheck + Shfmt` is a name
+    # three workflows report, two of them succeeding without reading
+    # these files, and branch protection accepts the first success
+    # under a required name — so the arch lint owns a name nothing
+    # else answers for.
+    count=$(cat "$REPO_ROOT/.github/workflows/"*.yml |
+        grep -c 'name:[[:space:]]*Arch Shellcheck + Shfmt' || true)
+    [ "$count" -eq 1 ]
 }
 
-@test "a comment naming the directory is not path wiring" {
-    # The fixture carries the explanatory comment and no list entry,
-    # which is what deleting the entry leaves behind. A search of the
-    # whole file cannot tell the two apart.
-    fixture="$BATS_TEST_TMPDIR/commented.yml"
+@test "the arch lint workflow fires unconditionally" {
+    unconditional "$WORKFLOW"
+}
+
+@test "a path-gated workflow does not count as unconditional" {
+    # The fixture is the workflow with a filter added — what a
+    # well-meaning edit narrowing CI would leave behind. The helper
+    # has to reject it, or the case above certifies a lint that can
+    # be skipped.
+    fixture="$BATS_TEST_TMPDIR/gated.yml"
     cat >"$fixture" <<'YAML'
 on:
   pull_request:
     paths:
-      - "**ani-cli"
+      - "tests/arch/**.sh"
 jobs:
   lint:
-    # `tests/arch` is ordinary POSIX sh and is linted.
     runs-on: ubuntu-latest
 YAML
-    run ! filter_covers "$fixture" 'tests/arch'
+    run ! unconditional "$fixture"
 }
 
 @test "the linter does not exclude tests/arch from checking" {
     # Starting the job is not the same as inspecting anything. The
     # action takes its own exclude list, and a bare `tests` there skips
-    # these files after the workflow has started for them.
-    excluded=$(grep 'sh_checker_exclude' "$WORKFLOW" | head -1 |
-        sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//')
+    # these files after the workflow has started for them. A value the
+    # extraction cannot read fails here too — refused, not scanned.
+    line=$(grep 'sh_checker_exclude' "$WORKFLOW" | head -1)
+    tokens=$(printf '%s' "$line" | parse_exclusions)
+    run ! exclusions_unreadable "$tokens"
     subject=tests/arch
-    for token in $excluded; do
+    for token in $tokens; do
         case "$subject" in
             "$token" | "$token"/*) return 1 ;;
             *) ;;
         esac
     done
+}
+
+@test "the exclusion extraction survives a single-quoted value" {
+    # Stripping only double quotes leaves a single-quoted value
+    # carrying its quote characters; the tokens then match nothing and
+    # the case above reports the scripts linted while the action still
+    # excludes them.
+    probe=$(printf '%s\n' "      sh_checker_exclude: 'tests/probe other'" |
+        parse_exclusions)
+    [ "$probe" = 'tests/probe other' ]
+}
+
+@test "a block-scalar exclusion is refused, not scanned" {
+    # `sh_checker_exclude: >-` keeps the value on the next line; the
+    # extraction returns the fold marker, no key text survives, and an
+    # exclude list that does cover tests/arch would scan as not
+    # covering it. Past-the-boundary spellings arrive as refusals.
+    probe=$(printf '%s\n' '      sh_checker_exclude: >-' | parse_exclusions)
+    exclusions_unreadable "$probe"
 }
 
 @test "the bats job runs when a check these tests cover changes" {
@@ -215,22 +259,20 @@ YAML
     run ! grep -qE "^($pattern)" <<<'gui/frontend/src/routes/+page.svelte'
 }
 
-@test "a sibling path does not satisfy the filter" {
-    # `tests/archive/**.sh` shares a prefix with `tests/arch` and covers
-    # none of it. Anchoring only the start of the list item accepts it,
-    # so the wiring can be repointed at an unrelated directory while
-    # the case above stays green.
-    fixture="$BATS_TEST_TMPDIR/sibling.yml"
-    cat >"$fixture" <<'YAML'
-on:
-  pull_request:
-    paths:
-      - "tests/archive/**.sh"
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-YAML
-    run ! filter_covers "$fixture" 'tests/arch'
+@test "a sibling token does not read as excluding tests/arch" {
+    # `tests/archive` shares a prefix with `tests/arch` and excludes
+    # none of it; matching on the prefix alone would fail the exclusion
+    # case for a token that leaves these scripts linted.
+    tokens=$(printf '%s\n' '      sh_checker_exclude: "tests/archive gui"' |
+        parse_exclusions)
+    run ! exclusions_unreadable "$tokens"
+    subject=tests/arch
+    for token in $tokens; do
+        case "$subject" in
+            "$token" | "$token"/*) return 1 ;;
+            *) ;;
+        esac
+    done
 }
 
 @test "the bats job runs when the workflow these tests inspect changes" {
