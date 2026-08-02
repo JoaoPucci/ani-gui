@@ -239,8 +239,12 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # scan runs. YAML's bare, double- and single-quoted spellings all
 # make the same declaration, so all three count — and each ends at
 # its closing delimiter, because a longer name is a different check.
+# A block-scalar `name:` counts too: the name it resolves to sits on
+# the next physical line where this count cannot read it, so any such
+# declaration is treated as a potential producer — refusal by
+# over-count, failing closed.
 count_arch_lint_names() {
-    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*\$)" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*\$|[>|])" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
