@@ -316,6 +316,23 @@ else
     failed=1
 fi
 
+# YAML also continues a quoted scalar onto the next physical line:
+# `sh_checker_exclude: "ani-cli` with the rest beneath it resolves to
+# one list, while a line-oriented read of the first line extracts a
+# valid-looking fragment — a token list missing exactly the entry
+# that mattered, and nothing in it for a refusal to catch. A quote
+# that opens on the line and never closes means the value is not on
+# the line.
+unterminated_probe=$(printf '%s\n' '      sh_checker_exclude: "ani-cli' |
+    parse_exclusions)
+if exclusions_unreadable "$unterminated_probe"; then
+    printf '  ok       an unterminated quoted exclusion is refused, not scanned\n'
+else
+    printf '  FAIL     an unterminated quoted exclusion reads as: %s\n' \
+        "${unterminated_probe:-nothing}"
+    failed=1
+fi
+
 # Double-quoted YAML resolves escapes: "tests\x2farch" reaches the
 # action as tests/arch and excludes these scripts, while the
 # extraction keeps the backslash and the token matches nothing — the
