@@ -194,6 +194,15 @@ window_scenario() {
     run ! grep -E "trap 'cleanup.*(INT|TERM)" "$CHECK"
 }
 
+@test "a runner that filters every test away is not wiring" {
+    # `--filter` selects tests by description; a selector matching
+    # nothing runs zero tests while every file still reaches the
+    # binary. A stub that reads all arguments as filenames records the
+    # real files, ignores the selector, and certifies an empty run.
+    copy=$(edited_runner '{ sub(/"\$BATS_BIN" "\$@"/, "\"$BATS_BIN\" --filter no-such-test \"$@\""); print }')
+    run ! sh "$CHECK" "$copy" "$SUITES"
+}
+
 @test "a suites directory holding nothing is reported, not passed" {
     # With no suite to require, every reading of any runner is
     # vacuously satisfied. A check that has lost its subject has to say
