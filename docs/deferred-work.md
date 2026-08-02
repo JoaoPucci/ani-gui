@@ -26,78 +26,6 @@ Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## How much verification the deferral invariant should carry
-
-`tests/arch/deferral_record.sh`, its self-test, and
-`tests/arch/agents_contract.sh` grew through fifteen review findings on
-one pull request. Each was real and each was fixed. The pattern in the
-later ones is worth recording: several were introduced by the fix
-before them — the fenced-import gap arrived with the symlink work, and
-the nested-fence gap arrived with the fence work.
-
-That is what happens when a checking apparatus outgrows the thing it
-checks. The policy it guards is two paragraphs of prose that a person
-reads once; the checks around it are now several hundred lines with
-their own test suite, and every change to them has a fair chance of
-opening a new gap somewhere else.
-
-Nothing here is wrong as it stands. The open question is where the
-line sits — whether this level of rigour is what the repository wants
-around a documentation invariant, or whether some of it should be
-simplified back on the grounds that a reviewer reading `AGENTS.md`
-catches the realistic failures more cheaply than a parser that has to
-agree with Markdown about fence nesting.
-
-What is missing is a written standard — in `AGENTS.md` §2 or
-`docs/testing.md` — for how much verification an invariant of this kind
-carries, so the next one is built to it rather than to whatever a
-review round happens to surface.
-
-**Update.** The count reached twenty-eight findings, and the shape is
-now clear enough to name a specific change rather than only a
-question.
-
-Everything the two checks do falls into one of two kinds. Constraints
-— declare the record path, one `record-path` mention per file, no
-fence in CLAUDE.md or in the section, marker at column zero — each
-closed its category permanently and generated no further findings.
-Interpretation — locating the policy section by parsing Markdown —
-has now taken five rounds of rules (delimiter character, run length,
-info string, indent, tab expansion) and each arrived after the
-previous had shipped.
-
-The proposal is to stop parsing document structure. Verify that the
-heading appears exactly once and that `record-path` appears exactly
-once, and drop section-body extraction along with the fence tracking
-it needs. What that gives up is a contrived case — someone wrapping
-the entire live policy in a fenced block — which breaks the rendered
-document visibly and which no amount of tracking has yet been shown
-to catch reliably anyway. What it buys is termination.
-
-That is a design reversal on a load-bearing check, so it is the
-maintainer's call rather than something to slip into a review round.
-
-**The limit, stated precisely.** Two cases have to be distinguished,
-and only one of them is detectable.
-
-A policy element *duplicated* in an inert position — a second heading
-inside a fence, an HTML comment, a blockquote — is caught by counting,
-because the copy makes two. That holds for every inerting construct
-without knowing what any of them are, and it is asserted for fences
-and for HTML comments.
-
-A policy existing *only* in an inert position — the whole section
-fenced, or commented out, with no live copy — is not detectable
-without parsing Markdown and HTML. Fence tracking currently catches
-the fenced variant and nothing else, which is worse than not catching
-it: it implies a completeness the check does not have, and it has cost
-six rounds of rules with two defects introduced by its own fixes.
-
-The recommendation is therefore to drop the tracking and say plainly
-that the check verifies the policy's *declaration*, not that the
-document renders as intended. A wholly-inert policy section is visible
-to anyone who opens the rendered file and to any reviewer of the diff
-that made it inert; a parser is not the right instrument for it.
 
 ## Open findings on the deferral checks
 
@@ -130,7 +58,6 @@ This belongs to the Markdown-interpretation layer described above, and
 the same argument applies: it is the eighth rule of an open set. The
 recommendation remains to stop parsing document structure rather than
 to add setext handling.
-
 
 ---
 

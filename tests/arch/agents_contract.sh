@@ -54,6 +54,10 @@ AGENTS_FILE="${2:-AGENTS.md}"
 ARCH_REPO_ROOT="$REPO_ROOT"
 export ARCH_REPO_ROOT
 
+# The library reads this after being sourced. shellcheck cannot follow
+# a source path built at runtime, so it sees an assignment and no use.
+# The old spelling was exempt only because it led with underscores.
+# shellcheck disable=SC2034
 ARCH_DEFERRAL_RECORD_LIB=1
 # shellcheck source=./deferral_record.sh
 . "$SCRIPT_DIR/deferral_record.sh"

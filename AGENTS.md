@@ -54,6 +54,45 @@ Per layer:
 
 Architectural invariants in `tests/arch/` are load-bearing. Do not weaken them — extend them.
 
+**How an architectural check may establish its invariant.** Reading
+source is allowed — `shellcheck` runs over this repository and is the
+right shape of tool. What is not allowed is inferring behaviour from
+source with ad-hoc pattern matching. A check may:
+
+- **run its subject** and assert on what it does, or
+- **assert a syntactic constraint** — something a `grep` either finds
+  or does not, such as a marker at column zero or exactly one mention
+  of a declared path per file, or
+- **use a real parser**, meaning an existing tool with a grammar, not
+  one assembled here.
+
+It may not decide, from regular expressions, what a piece of source
+*means*: which `$NAME` is a read from the environment, which
+assignment owns it, which text is code at all. Those questions need a
+shell parser, and the attempt to build one out of `grep` and `awk`
+cost this repository ten review rounds — comments, then quoting, then
+heredocs, then heredoc delimiters, then several heredocs per command,
+then line continuations, then command-scoped assignment prefixes —
+seven of them defects introduced by the fix before. Every one of the
+findings was correct, and every fix revealed the next rule of the
+grammar.
+
+The distinction is empirical, not aesthetic. On that same branch the
+constraint-shaped rules each closed their category permanently and
+generated no further findings; the interpretation-shaped ones did not
+terminate.
+
+Where the property is behavioural and cheap to exercise, run the
+subject. `tests/arch/deferral_root_test.sh` establishes that no stray
+environment can redirect a check by running each one twice — once
+clean, once under a hostile environment — and comparing output and
+exit status. It replaced an audit that tried to find the same thing by
+reading variable names.
+
+And a check that is deliberately incomplete has to say so. The failure
+worth avoiding is not a gap; it is a green run that implies more than
+the check knows.
+
 Never modify a test to make production code pass. Modify production code, or change the test in its own `test(red)` commit with a written justification in the body.
 
 The full pyramid (unit → acceptance → e2e → property → architectural invariants → mutation) lives in `docs/testing.md`.
