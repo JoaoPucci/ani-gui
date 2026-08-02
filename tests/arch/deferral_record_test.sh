@@ -187,24 +187,45 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \
         sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
     gap_pid=$!
-    sleep 1
-    kill -TERM "$gap_pid" 2>/dev/null || true
-    wait "$gap_pid" 2>/dev/null || true
-    # This run's own scratch is alive and sits under the same name, so
-    # counting every match measures the parent and never the child —
-    # the count is 1 whether or not anything leaked.
-    gap_left=0
-    for stray in "$REPO_ROOT"/tests/arch/.deferral-scratch.*; do
-        [ -e "$stray" ] || continue
-        [ "$stray" = "$scratch_dir" ] && continue
-        gap_left=$((gap_left + 1))
-        rm -rf "$stray"
+    # The child names its scratch from its own pid, which is the pid
+    # just captured — so the one path this case may touch is known
+    # exactly, and nothing that merely shares the naming scheme is.
+    gap_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$gap_pid"
+
+    # Observed to exist before the signal, or the case has nothing to
+    # measure: a child that dies before allocating leaves no
+    # directory, and "no directory afterwards" would then read as
+    # cleanup having worked.
+    gap_seen=0
+    i=0
+    while [ "$i" -lt 50 ]; do
+        if [ -d "$gap_dir" ]; then
+            gap_seen=1
+            break
+        fi
+        sleep 0.1
+        i=$((i + 1))
     done
-    if [ "$gap_left" -eq 0 ]; then
-        printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
-    else
-        printf '  FAIL     a cancelled run left %s scratch director(ies) behind\n' "$gap_left"
+
+    kill -TERM "$gap_pid" 2>/dev/null || true
+    gap_status=0
+    wait "$gap_pid" || gap_status=$?
+
+    if [ "$gap_seen" -eq 0 ]; then
+        printf '  FAIL     the ownership-gap child never reached its scratch (exit %s)\n' \
+            "$gap_status"
         failed=1
+    elif [ "$gap_status" -ne 143 ]; then
+        printf '  FAIL     the ownership-gap child exited %s, not 143 — it did not die of the signal\n' \
+            "$gap_status"
+        failed=1
+        rm -rf "$gap_dir"
+    elif [ -d "$gap_dir" ]; then
+        printf '  FAIL     a cancelled run left its scratch directory behind\n'
+        failed=1
+        rm -rf "$gap_dir"
+    else
+        printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
     fi
 
     if [ -f "$gap_sentinel/keep-me" ]; then
