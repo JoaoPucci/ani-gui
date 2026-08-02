@@ -38,18 +38,23 @@ run_from() {
     done
 }
 
-@test "a check runs from a directory whose name contains an apostrophe" {
-    # Nothing stops anyone cloning into `~/o'brien/`. When the path is
-    # built into a shell program instead of passed to one, the
-    # apostrophe ends the quoting and every case in this file dies of a
-    # syntax error before a check is reached — reporting a failure that
-    # names the shell rather than the path. The self-test this file
-    # replaced carried a fixture for exactly that.
+@test "the real checks run from a path containing an apostrophe" {
+    # Nothing stops anyone cloning into `~/o'brien/`. A repository
+    # root carrying an apostrophe reaches every path expansion a check
+    # makes; one unquoted use and the quoting ends where the name
+    # does. The subject has to be the actual checks — a trivial script
+    # that resolves nothing proves only that the shell can start. The
+    # symlink gives the real repository an apostrophe-bearing root:
+    # `$0` resolves through it, `pwd` keeps the logical path, and the
+    # checks run their real work with the apostrophe in every path
+    # they build.
     quoted="$BATS_TEST_TMPDIR/o'brien"
     mkdir -p "$quoted"
-    printf '#!/bin/sh\nexit 0\n' >"$quoted/trivial.sh"
-    run run_from "$quoted" ./trivial.sh
-    [ "$status" -eq 0 ]
+    ln -s "$REPO_ROOT" "$quoted/repo"
+    for script in deferral_record agents_contract; do
+        run sh "$quoted/repo/tests/arch/$script.sh"
+        [ "$status" -eq 0 ]
+    done
 }
 
 @test "a stray REPO_ROOT does not redirect a check" {
