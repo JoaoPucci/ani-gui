@@ -269,6 +269,18 @@ parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*[\"']*//; s/[\"'].*//"
 }
 
+# The refusal decision over an extracted value, as a function for the
+# same reason: a fixture spelling has to ask exactly the question the
+# live line asks. An extraction that fails leaves the key text in the
+# value; scanning that as tokens matches nothing and reads as a pass,
+# so it has to arrive as a refusal, not as silence.
+exclusions_unreadable() {
+    case "$1" in
+        *sh_checker_exclude*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # The extraction has to survive the quote spellings the action accepts.
 # Stripping only double quotes leaves a single-quoted value carrying
 # its quote characters, the tokens then match nothing, and the check
@@ -286,19 +298,14 @@ if [ -f "$arch_lint_workflow" ]; then
     lint_excludes=$(grep 'sh_checker_exclude' "$arch_lint_workflow" | head -1 || true)
     excluded_tokens=$(printf '%s' "$lint_excludes" | parse_exclusions)
 
-    # Refuse what cannot be read. An extraction that fails leaves the
-    # key text in the value; scanning that as tokens matches nothing
-    # and reads as a pass. Any spelling beyond the two quote forms is
-    # out of scope by the contract's incompleteness rule — but it has
-    # to arrive here as a refusal, not as silence.
-    case "$excluded_tokens" in
-        *sh_checker_exclude*)
-            printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
-            failed=1
-            excluded_tokens=''
-            ;;
-        *) ;;
-    esac
+    # Refuse what cannot be read. Any spelling beyond the forms the
+    # extraction understands is out of scope by the contract's
+    # incompleteness rule — but it has to be refused, not scanned.
+    if exclusions_unreadable "$excluded_tokens"; then
+        printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
+        failed=1
+        excluded_tokens=''
+    fi
     arch_excluded=0
     lint_subject=tests/arch
     for token in $excluded_tokens; do
