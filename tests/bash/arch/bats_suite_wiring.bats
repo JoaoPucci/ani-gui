@@ -115,10 +115,25 @@ window_scenario() {
         sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
     _pid=$!
     sleep 1
+    # Still inside the window, or there is no window: a child that
+    # already exited was never signalled, the sentinel survives
+    # trivially, and success would describe cleanup nobody watched.
+    kill -0 "$_pid" 2>/dev/null || {
+        wait "$_pid" 2>/dev/null || true
+        echo "window child exited before the path was taken"
+        return 1
+    }
     mkdir -p "$_target"
     printf 'not yours\n' >"$_target/keep-me"
     kill -TERM "$_pid" 2>/dev/null || true
-    wait "$_pid" 2>/dev/null || true
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    # 143 exactly: anything else means the child died of something
+    # other than the signal this scenario delivers.
+    [ "$_status" -eq 143 ] || {
+        echo "window child exited $_status, not 143"
+        return 1
+    }
     [ -f "$_target/keep-me" ]
 }
 
