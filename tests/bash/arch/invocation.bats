@@ -326,6 +326,18 @@ YAML
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when any workflow changes" {
+    # The producer-uniqueness case scans every file under
+    # .github/workflows/, which makes the whole directory a subject: a
+    # duplicate of the arch lint's check name added in rust.yml must
+    # not land while the case that rejects it is skipped as
+    # irrelevant.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'.github/workflows/rust.yml'
+    [ "$status" -eq 0 ]
+}
+
 @test "the bats job configures the upstream divergence baseline" {
     # `bash_portability.bats` skips both of its cases when no `upstream`
     # remote exists. A fresh CI checkout has none, so without the same
