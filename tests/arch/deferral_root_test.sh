@@ -362,18 +362,16 @@ fi
 # A function over stdin, so a fixture spelling runs through the same
 # code as the live line.
 #
-# Quotes are stripped only in pairs. The first two substitutions each
-# take a value whose quote closes on the line; a quote that opens and
-# never closes matches neither, the third command leaves that line
-# untouched, and the surviving key text lands in the refusal — a
-# quoted scalar continued on the next physical line must not read as
-# the fragment before the break. The unquoted plain form falls
-# through to the last substitution.
+# Only the paired-quote forms extract: a value whose quote closes on
+# the line it opened on, double or single. Everything else — an
+# unterminated quote, a block scalar, and the bare plain form, which
+# can continue onto the next line with no first-line signal at all —
+# passes through untouched, and the surviving key text lands in the
+# refusal. The readable set is exactly the spellings whose first line
+# provably carries the whole value.
 parse_exclusions() {
     sed "s/.*sh_checker_exclude:[[:space:]]*\"\([^\"]*\)\".*/\1/; t
-s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t
-/sh_checker_exclude:[[:space:]]*[\"']/b
-s/.*sh_checker_exclude:[[:space:]]*//"
+s/.*sh_checker_exclude:[[:space:]]*'\([^']*\)'.*/\1/; t"
 }
 
 # The refusal decision over an extracted value, as a function for the
