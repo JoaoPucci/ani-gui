@@ -271,12 +271,17 @@ parse_exclusions() {
 
 # The refusal decision over an extracted value, as a function for the
 # same reason: a fixture spelling has to ask exactly the question the
-# live line asks. An extraction that fails leaves the key text in the
-# value; scanning that as tokens matches nothing and reads as a pass,
-# so it has to arrive as a refusal, not as silence.
+# live line asks. Two ways an extraction fails, both refused: the key
+# text survives into the value, or the value opens with YAML syntax —
+# a block scalar (`>`, `|`), flow collection (`[`, `{`), anchor or
+# alias (`&`, `*`) — meaning the list lives somewhere this
+# line-oriented read never looked. Scanning either as tokens matches
+# nothing and reads as a pass. An empty value is not refused: a key
+# with nothing after it excludes nothing, and that is a correct read.
 exclusions_unreadable() {
     case "$1" in
         *sh_checker_exclude*) return 0 ;;
+        '>'* | '|'* | '['* | '{'* | '&'* | '*'*) return 0 ;;
         *) return 1 ;;
     esac
 }
