@@ -544,6 +544,27 @@ else
     failed=1
 fi
 
+# The trigger key has spellings too: `"on":` declares the same
+# trigger the bare key declares, and a reading that recognizes only
+# the bare spelling finds no block at all — an empty range contains
+# no `paths`, so a path-gated workflow reads as unconditional, which
+# is the failing-open direction. A trigger block that cannot be
+# located must read as conditional.
+quoted_on_gate="$scratch_dir/quoted-on-gate.yml"
+printf '%s\n' '"on":' '  pull_request:' '    paths:' '      - "src/**"' \
+    'permissions:' '  contents: read' >"$quoted_on_gate"
+quoted_on_hidden=0
+if unconditional "$quoted_on_gate"; then
+    quoted_on_hidden=1
+fi
+if [ "$quoted_on_hidden" -eq 0 ]; then
+    printf '  ok       a quoted trigger key cannot hide a path filter\n'
+else
+    printf '  FAIL     a path filter behind a quoted trigger key reads as unconditional\n'
+    failed=1
+fi
+rm -f "$quoted_on_gate"
+
 # Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
