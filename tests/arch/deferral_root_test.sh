@@ -230,13 +230,17 @@ done
 # resolves it the same way: a name nothing else answers for.
 arch_lint_workflow="$REPO_ROOT/.github/workflows/arch-lint.yml"
 arch_lint_name='Arch Shellcheck + Shfmt'
+# The same name with its one regex-special character escaped, for the
+# count below.
+arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 
 # How many lines on stdin declare the arch lint's check name, as a
 # function so a fixture spelling runs through the same count the live
 # scan runs. YAML's bare, double- and single-quoted spellings all
-# make the same declaration, so all three count.
+# make the same declaration, so all three count — and each ends at
+# its closing delimiter, because a longer name is a different check.
 count_arch_lint_names() {
-    grep -c "name:[[:space:]]*[\"']\{0,1\}$arch_lint_name" || true
+    grep -cE "name:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*\$)" || true
 }
 
 producer_lines=$(cat "$REPO_ROOT/.github/workflows/"*.yml 2>/dev/null |
