@@ -248,7 +248,7 @@ lint_excludes=$(grep 'sh_checker_exclude' \
 # A function over stdin, so a fixture spelling runs through the same
 # code as the live line.
 parse_exclusions() {
-    sed 's/.*sh_checker_exclude:[[:space:]]*"//; s/".*//'
+    sed "s/.*sh_checker_exclude:[[:space:]]*[\"']*//; s/[\"'].*//"
 }
 
 # The extraction has to survive the quote spellings the action accepts.
@@ -318,6 +318,13 @@ fi
 # an answer about behaviour rather than about spelling, and a check
 # whose own correctness is obvious. `HOME`, `PATH` and `TMPDIR` are
 # left alone below because these scripts legitimately need them.
+#
+# The coverage is exactly the list below, and the report says so. A
+# check gating on a name absent from it is invisible here — the
+# hostile run inherits or omits that name exactly as the clean run
+# does — and the contract requires an incomplete check to state its
+# boundary rather than imply coverage it does not have. When a new
+# generic name bites, the remedy is one line: add it.
 hostile_env() {
     env \
         REPO_ROOT=/nonexistent-hostile-root \
@@ -375,7 +382,7 @@ for env_check in "$REPO_ROOT"/tests/arch/*.sh; do
     fi
 done
 if [ -z "$env_strays" ]; then
-    printf '  ok       no check changes what it does under a hostile environment\n'
+    printf '  ok       no check varies under the hostile names this run injects\n'
 else
     printf '  FAIL     a stray environment redirects these checks:%s\n' "$env_strays"
     failed=1
