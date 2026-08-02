@@ -40,7 +40,9 @@ cd "$REPO_ROOT"
 
 # Can a contributor who clones this repo read the file at `$1`?
 #
-# NOTE: this is the check under test in deferral_record_test.sh.
+# NOTE: this predicate is the subject under test in
+# tests/bash/arch/deferral_record_predicate.bats and
+# tests/bash/arch/deferral_record_entry_kind.bats.
 record_is_recoverable() {
     # `--` and `:(literal)` because a declared path is data and git
     # would otherwise read parts of it as syntax. `--stage` is a real
