@@ -163,6 +163,19 @@ mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 stub="$scratch/.bats-vendor/bats-core/bin/bats"
 cat >"$stub" <<'EOF'
 #!/bin/sh
+# Every argument has to be a test file. An option changes what runs —
+# `--filter` can select zero tests while every file still arrives —
+# so the stub refuses anything option-shaped rather than certifying a
+# run whose shape it did not understand.
+for f in "$@"; do
+    case "$f" in
+        -*)
+            echo "stub: refusing option $f" >&2
+            exit 1
+            ;;
+        *) ;;
+    esac
+done
 for f in "$@"; do
     printf '%s/%s\n' "$(cd "$(dirname "$f")" && pwd)" "$(basename "$f")"
 done >>"$ARCH_WIRING_RECORD"
