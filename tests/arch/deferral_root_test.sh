@@ -423,6 +423,21 @@ else
     failed=1
 fi
 
+# A plain scalar continues onto an indented next line with nothing on
+# its first line to say so: `sh_checker_exclude: ani-cli` continued
+# by an indented `tests/arch` resolves to both tokens while a
+# line-oriented read keeps the fragment. No spelling of the bare form
+# is safe to read, so the readable set narrows to the quoted
+# single-line forms and the bare form arrives as a refusal.
+plain_probe=$(printf '%s\n' '      sh_checker_exclude: ani-cli' |
+    parse_exclusions)
+if exclusions_unreadable "$plain_probe"; then
+    printf '  ok       a bare exclusion list is refused, not scanned\n'
+else
+    printf '  FAIL     a bare exclusion list reads as: %s\n' "${plain_probe:-nothing}"
+    failed=1
+fi
+
 # YAML also continues a quoted scalar onto the next physical line:
 # `sh_checker_exclude: "ani-cli` with the rest beneath it resolves to
 # one list, while a line-oriented read of the first line extracts a
