@@ -129,16 +129,19 @@ cleanup() {
         : >"${ARCH_WIRING_CLEANUP_BEACON:-/dev/null}"
         sleep "$ARCH_WIRING_PAUSE_IN_CLEANUP"
     fi
-    # Identity is the open descriptor, not anything stored on disk. A
-    # token written into the directory is readable by any same-user
-    # process, and whatever can be read can be copied into a
-    # replacement — the comparison then surrenders a directory this
-    # run never made. `-ef` asks whether the reclaimed claim file IS
-    # the file this run opened: the descriptor pins the inode for as
-    # long as the process lives, so no copy can be the same file.
+    # Identity is the open descriptor on the directory itself, not
+    # anything stored on disk and not a file. A token written into
+    # the directory is readable and therefore copyable; a claim FILE
+    # is hard-linkable, and the link is the held inode — either way a
+    # replacement can carry the credential. A directory cannot be
+    # hard-linked, so `-ef` against the descriptor asks the one
+    # question nothing else can answer for: is the reclaimed path the
+    # directory this run created. The rename preserves its inode; the
+    # descriptor pins it against reuse for as long as the process
+    # lives.
     # shellcheck disable=SC3013 # -ef: dash, bash and busybox all provide it, and content comparison is the defect this replaces
     if [ -n "$claim_held" ] && [ -e /dev/fd/9 ] &&
-        [ "$reclaimed/.claim" -ef /dev/fd/9 ]; then
+        [ "$reclaimed" -ef /dev/fd/9 ]; then
         rm -rf "$reclaimed"
     elif [ ! -e "$scratch" ] && [ ! -L "$scratch" ]; then
         # Restore only into an absent destination: mv onto an existing
@@ -192,16 +195,16 @@ if ! mkdir "$scratch" 2>/dev/null; then
     exit 1
 fi
 owned=1
-# The directory's identity, planted the moment the claim lands: a
-# claim file created inside it and immediately opened on a descriptor
-# this process keeps for its whole life. The open pins the inode — a
-# freed inode can be reused by tmpfs, but not while a descriptor
-# holds it — and nothing about the identity lives on disk where a
-# same-user process could read and reproduce it. Content is
-# deliberately not the identity: anything readable is copyable into a
-# replacement, and a pid-derived marker can be recreated outright.
+# The directory's identity: the directory itself, opened on a
+# descriptor this process keeps for its whole life. The open pins the
+# inode — a freed inode can be reused by tmpfs, but not while a
+# descriptor holds it — and a directory, unlike a file, cannot be
+# hard-linked into a replacement, so nothing a same-user process can
+# read, copy or link reproduces the identity. The `.claim` file
+# remains only as the visible marker the cases synchronise on; it
+# carries no authority.
 : >"$scratch/.claim"
-exec 9<"$scratch/.claim"
+exec 9<"$scratch"
 claim_held=1
 
 # The window after the claim: the directory exists and is owned, and

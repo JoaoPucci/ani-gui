@@ -84,9 +84,34 @@ run_from() {
 # pull request the filter misses never lints the arch scripts, and the
 # stub-mirror pair that papers over the zero-diff case is a second
 # producer of the check name, able to answer for a lint that failed.
+# The trigger key has spellings — quoted forms and key-colon spacing
+# resolve to the same key — so the range accepts them, and its end is
+# any following top-level key whatever its spelling. A block that
+# cannot be located at all reads as conditional: an empty range
+# contains no `paths` for the wrong reason, and certifying from it is
+# the failing-open direction.
 unconditional() {
     [ -f "$1" ] || return 1
-    ! sed -n '/^on:/,/^[a-z]/p' "$1" | grep -q 'paths'
+    _trigger=$(sed -nE "/^(\"on\"|'on'|on)[[:space:]]*:/,/^[^[:space:]#]/p" "$1")
+    [ -n "$_trigger" ] || return 1
+    ! printf '%s\n' "$_trigger" | grep -q 'paths'
+}
+
+# How many step lines invoke the sh-checker action. Carrying the
+# required name is not linting: the job has to reach the action for
+# anything to be inspected, and the count is a syntactic constraint —
+# a `uses:` line naming the action either exists or does not.
+lint_action_uses() {
+    grep -cE "uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker" "$1" || true
+}
+
+# Whether the workflow actually lints: exactly one invocation of the
+# action and exactly one exclusion declaration. Zero of either is a
+# workflow that starts, succeeds and inspects nothing; more than one
+# of either is ambiguity the reads below already refuse to resolve.
+lint_step_present() {
+    [ "$(lint_action_uses "$1")" -eq 1 ] &&
+        [ "$(exclusion_declarations "$1")" -eq 1 ]
 }
 
 # The exclusion extraction and its refusal, as functions so a fixture
