@@ -368,6 +368,29 @@ else
     failed=1
 fi
 
+# A double-quoted scalar can spell the name through escapes —
+# `"Arch Shellcheck \u002b Shfmt"` resolves to exactly the required
+# name — and a quote left open on the line continues the scalar where
+# a line count cannot follow. Neither spelling is readable here, so
+# both count as potential producers: refusal by over-count, the same
+# failing-closed arm the block scalar takes. Single-quoted scalars
+# have no escapes — a backslash there is a literal, a different name —
+# so only the unterminated form of that spelling is unreadable.
+escaped_probe=$(printf '%s\n' '    name: "Arch Shellcheck \u002b Shfmt"' |
+    count_arch_lint_names)
+open_dq_probe=$(printf '%s\n' "    name: \"$arch_lint_name" |
+    count_arch_lint_names)
+open_sq_probe=$(printf '%s\n' "    name: '$arch_lint_name" |
+    count_arch_lint_names)
+if [ "${escaped_probe:-0}" -ge 1 ] && [ "${open_dq_probe:-0}" -ge 1 ] &&
+    [ "${open_sq_probe:-0}" -ge 1 ]; then
+    printf '  ok       an unreadable quoted spelling is not silently missed\n'
+else
+    printf '  FAIL     unreadable quoted spellings count %s, %s and %s — invisible to the scan\n' \
+        "${escaped_probe:-0}" "${open_dq_probe:-0}" "${open_sq_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
