@@ -101,9 +101,22 @@ unconditional() {
 # provably carries the whole value.
 # Which physical line of a workflow file carries the exclusion key,
 # as a function so a fixture file runs through the same selection the
-# live read runs.
+# live read runs. A declaration is the line where the key sits at the
+# start, modulo indentation — a comment or any other mid-line mention
+# is not one and must not shadow the line that is. YAML permits
+# whitespace before the colon, so the key pattern tolerates it; a
+# spaced declaration still refuses in parse_exclusions, the
+# failing-closed direction.
 select_exclusion_line() {
-    grep 'sh_checker_exclude' "$1" | head -1 || true
+    grep -E "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" | head -1 || true
+}
+
+# How many lines declare the key. One is a list; more than one is two
+# exclude lists — a second sh-checker step carries its own — and
+# reading the first says nothing about the second, so the live case
+# refuses the count rather than picking a winner.
+exclusion_declarations() {
+    grep -cE "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" || true
 }
 
 parse_exclusions() {
@@ -232,10 +245,16 @@ env_sensitive() {
 # value containing a backslash resolves through escapes it does not
 # interpret, and a quote left open on the line continues the scalar
 # past where it reads. Single-quoted scalars have no escapes, so only
-# their unterminated form is unreadable.
+# their unterminated form is unreadable. It also covers what
+# continues or indirects: a bare value that is a strict space-broken
+# prefix of the name (or empty) is the first physical line of a
+# folded spelling that resolves to the name, and a value opening with
+# an anchor, alias or tag resolves somewhere a line count never
+# looks. The key side tolerates whitespace before the colon, which
+# YAML strips.
 count_arch_lint_names() {
     local name_re='Arch Shellcheck \+ Shfmt'
-    grep -cE "name:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*([]#,}].*)?\$|[>|]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$)" || true
+    grep -cE "name[[:space:]]*:[[:space:]]*(\"$name_re\"|'$name_re'|${name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
@@ -473,6 +492,11 @@ YAML
     # action takes its own exclude list, and a bare `tests` there skips
     # these files after the workflow has started for them. A value the
     # extraction cannot read fails here too — refused, not scanned.
+    # More than one declaration is the same situation reached another
+    # way: the list this read did not pick may be the one that
+    # matters.
+    declaration_count=$(exclusion_declarations "$WORKFLOW")
+    [ "$declaration_count" -le 1 ]
     line=$(select_exclusion_line "$WORKFLOW")
     tokens=$(printf '%s' "$line" | parse_exclusions)
     run ! exclusions_unreadable "$tokens"
