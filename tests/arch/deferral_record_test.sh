@@ -82,11 +82,12 @@ scratch_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$$"
 # exit path removes a predictable path twice.
 scratch_owned=""
 gap_sentinel=""
+gap_sentinel_owned=""
 gap_occupied=""
 gap_occupied_planted=0
 cleanup() {
     [ -n "$scratch_owned" ] && rm -rf "$scratch_dir"
-    [ -n "$gap_sentinel" ] && rm -rf "$gap_sentinel"
+    [ -n "$gap_sentinel_owned" ] && rm -rf "$gap_sentinel"
     [ "$gap_occupied_planted" -eq 1 ] && rm -rf "$gap_occupied"
     :
 }
@@ -209,11 +210,30 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         gap_occupied_planted=1
     fi
 
-    # Allocated, not spelled: a fixed name is somebody's the moment
-    # anybody else uses it. `mktemp -d` hands back a directory nobody
-    # holds, still matching the naming scheme the case is about.
-    gap_sentinel=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
-    printf 'not yours\n' >"$gap_sentinel/keep-me"
+    # A literal spelled before anything exists, like the scratch:
+    # cleanup knows the path before creation begins, so no signal can
+    # arrive between an allocator returning and a variable catching
+    # up. What mktemp offered instead — collision safety — the refusal
+    # supplies: whatever already holds the path is somebody's, and the
+    # case reports it rather than adopting it. The name still matches
+    # the scheme the case is about.
+    gap_sentinel="$REPO_ROOT/tests/arch/.deferral-scratch.gap-sentinel.$$"
+    if [ -e "$gap_sentinel" ] || [ -L "$gap_sentinel" ]; then
+        printf '  FAIL     %s already exists — refusing to reuse a path this run did not create\n' \
+            "$gap_sentinel"
+        failed=1
+        gap_sentinel=""
+    else
+        gap_sentinel_owned=1
+        if mkdir "$gap_sentinel" 2>/dev/null; then
+            printf 'not yours\n' >"$gap_sentinel/keep-me"
+        else
+            gap_sentinel_owned=""
+            printf '  FAIL     %s was claimed while the case was starting\n' "$gap_sentinel"
+            failed=1
+            gap_sentinel=""
+        fi
+    fi
 
     # Like the scratch: cleanup has to know the path before creation
     # begins, and a command substitution cannot offer that — the
@@ -221,7 +241,8 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     # holds it only once the substitution completes, and a signal in
     # between leaves a directory nothing can name. The ordering is not
     # observable after the fact, so it is asserted over the spelling.
-    if [ "$gap_sentinel" = "$REPO_ROOT/tests/arch/.deferral-scratch.gap-sentinel.$$" ]; then
+    if [ -z "$gap_sentinel" ] ||
+        [ "$gap_sentinel" = "$REPO_ROOT/tests/arch/.deferral-scratch.gap-sentinel.$$" ]; then
         printf '  ok       the gap sentinel is a literal, not an allocation result\n'
     else
         printf '  FAIL     the gap sentinel came back from an interruptible allocation: %s\n' \
@@ -280,14 +301,19 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
     fi
 
-    if [ -f "$gap_sentinel/keep-me" ]; then
+    if [ -z "$gap_sentinel" ]; then
+        : # refused or lost above, already reported
+    elif [ -f "$gap_sentinel/keep-me" ]; then
         printf '  ok       a sibling sharing the naming scheme survives the case\n'
     else
         printf '  FAIL     the case swept a scratch directory it did not create\n'
         failed=1
     fi
-    rm -rf "$gap_sentinel"
-    gap_sentinel=""
+    if [ -n "$gap_sentinel" ]; then
+        rm -rf "$gap_sentinel"
+        gap_sentinel_owned=""
+        gap_sentinel=""
+    fi
 
     if [ -f "$gap_occupied/keep-existing" ]; then
         printf '  ok       an occupant of the fixed spelling survives the whole case\n'
