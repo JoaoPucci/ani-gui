@@ -239,6 +239,21 @@ swap_scenario() {
     run ! sh "$CHECK" "$RUNNER" "$SUITES" "$gutted"
 }
 
+@test "a run step that merely mentions the runner is not wiring" {
+    # `run: echo ./tests/bash/helpers/run-suite.sh` names the runner
+    # and never executes it: every ported case disappears from CI
+    # while a constraint that only looks for the path on a run line
+    # stays green. The runner has to be the command, not a word.
+    mentioned="$BATS_TEST_TMPDIR/mentioned.yml"
+    sed 's|run: \./tests/bash/helpers/run-suite\.sh|run: echo ./tests/bash/helpers/run-suite.sh|' \
+        "$REPO_ROOT/.github/workflows/bash.yml" >"$mentioned"
+    if cmp -s "$mentioned" "$REPO_ROOT/.github/workflows/bash.yml"; then
+        echo "sabotage changed nothing"
+        return 1
+    fi
+    run ! sh "$CHECK" "$RUNNER" "$SUITES" "$mentioned"
+}
+
 @test "the real workflow invokes the runner" {
     run sh "$CHECK" "$RUNNER" "$SUITES" "$REPO_ROOT/.github/workflows/bash.yml"
     [ "$status" -eq 0 ]
