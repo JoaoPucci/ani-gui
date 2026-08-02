@@ -286,6 +286,40 @@ swap_scenario() {
     [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
 }
 
+@test "a hard-linked claim does not surrender a replacement" {
+    # Holding a descriptor prevents inode reuse but not another hard
+    # link to the same inode: a process that links the original claim
+    # file into its replacement hands cleanup a path that IS the held
+    # file, and an identity carried by the claim file alone then
+    # surrenders the replacement. The identity has to be something a
+    # replacement owner cannot link — and a directory cannot be
+    # hard-linked.
+    target="$BATS_TEST_TMPDIR/claim-link"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=3 \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    _seen=0
+    for _ in $(seq 1 50); do
+        [ -f "$target/.claim" ] && {
+            _seen=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_seen" -eq 1 ]
+    kill -0 "$_pid" 2>/dev/null
+    mv "$target" "$target.stolen"
+    mkdir -p "$target"
+    ln "$target.stolen/.claim" "$target/.claim"
+    printf 'not yours\n' >"$target/keep-me"
+    kill -TERM "$_pid" 2>/dev/null
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    [ "$_status" -eq 143 ]
+    [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
+}
+
 @test "restoring a stranger's directory never nests it" {
     # Between renaming a foreign occupant aside and putting it back,
     # the path can be taken again. mv onto an existing directory

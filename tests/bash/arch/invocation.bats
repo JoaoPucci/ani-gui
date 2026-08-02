@@ -611,6 +611,34 @@ scan_workflows() {
     unconditional "$WORKFLOW"
 }
 
+@test "a quoted trigger key cannot hide a path filter" {
+    # "on": declares the same trigger the bare key declares, but a
+    # reading that recognizes only the bare spelling finds no block at
+    # all — an empty range contains no paths, so a path-gated workflow
+    # reads as unconditional, the failing-open direction. A trigger
+    # block that cannot be located must read as conditional.
+    gated="$BATS_TEST_TMPDIR/quoted-on-gate.yml"
+    printf '%s\n' '"on":' '  pull_request:' '    paths:' \
+        '      - "src/**"' 'permissions:' '  contents: read' >"$gated"
+    run ! unconditional "$gated"
+}
+
+@test "the name-holding job invokes the lint action with its exclude list" {
+    # Carrying the required name is not linting. A job that keeps the
+    # name but drops the sh-checker step satisfies branch protection
+    # while inspecting nothing, and with no exclusion declared the
+    # coverage case reads empty tokens as "nothing excluded" — an
+    # echo-only job certified as the lint. The workflow has to invoke
+    # the action, exactly once, and declare its exclude list, exactly
+    # once.
+    stripped="$BATS_TEST_TMPDIR/stripped-lint.yml"
+    printf '%s\n' 'on: push' 'jobs:' '  arch-sh-checker:' \
+        '    name: Arch Shellcheck + Shfmt' '    runs-on: ubuntu-latest' \
+        '    steps:' '      - run: echo done' >"$stripped"
+    lint_step_present "$WORKFLOW"
+    run ! lint_step_present "$stripped"
+}
+
 @test "a path-gated workflow does not count as unconditional" {
     # The fixture is the workflow with a filter added — what a
     # well-meaning edit narrowing CI would leave behind. The helper
