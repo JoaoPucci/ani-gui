@@ -479,9 +479,22 @@ fi
 # provably carries the whole value.
 # Which physical line of a workflow file carries the exclusion key,
 # as a function so a fixture file runs through the same selection the
-# live read runs.
+# live read runs. A declaration is the line where the key sits at the
+# start, modulo indentation — a comment or any other mid-line mention
+# is not one and must not shadow the line that is. YAML permits
+# whitespace before the colon, so the key pattern tolerates it; a
+# spaced declaration still refuses in parse_exclusions, which is the
+# failing-closed direction.
 select_exclusion_line() {
-    grep 'sh_checker_exclude' "$1" | head -1 || true
+    grep -E "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" | head -1 || true
+}
+
+# How many lines declare the key. One is a list; more than one is two
+# exclude lists — a second sh-checker step carries its own — and
+# reading the first says nothing about the second, so the live read
+# refuses the count rather than picking a winner.
+exclusion_declarations() {
+    grep -cE "^[[:space:]]*sh_checker_exclude[[:space:]]*:" "$1" || true
 }
 
 parse_exclusions() {
@@ -639,7 +652,16 @@ if [ -f "$arch_lint_workflow" ]; then
     # Refuse what cannot be read. Any spelling beyond the forms the
     # extraction understands is out of scope by the contract's
     # incompleteness rule — but it has to be refused, not scanned.
-    if exclusions_unreadable "$excluded_tokens"; then
+    # More than one declaration is the same situation reached another
+    # way: the list this read did not pick may be the one that
+    # matters.
+    declaration_count=$(exclusion_declarations "$arch_lint_workflow")
+    if [ "${declaration_count:-0}" -gt 1 ]; then
+        printf '  FAIL     %s lines declare the exclusion key — ambiguous, refusing to pick one\n' \
+            "$declaration_count"
+        failed=1
+        excluded_tokens=''
+    elif exclusions_unreadable "$excluded_tokens"; then
         printf '  FAIL     the exclusion list could not be read: %s\n' "$lint_excludes"
         failed=1
         excluded_tokens=''
