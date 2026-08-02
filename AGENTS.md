@@ -83,7 +83,7 @@ generated no further findings; the interpretation-shaped ones did not
 terminate.
 
 Where the property is behavioural and cheap to exercise, run the
-subject. `tests/arch/deferral_root_test.sh` establishes that no stray
+subject. `tests/bash/arch/invocation.bats` establishes that no stray
 environment can redirect a check by running each one twice — once
 clean, once under a hostile environment — and comparing output and
 exit status. It replaced an audit that tried to find the same thing by
