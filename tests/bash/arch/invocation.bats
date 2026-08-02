@@ -374,6 +374,78 @@ scan_workflows() {
     [ "$suffix_quoted" -eq 0 ]
 }
 
+@test "a folded, indirect or empty name spelling is not silently missed" {
+    # A plain scalar continues onto a more-indented next line and
+    # folds with a space: `name: Arch Shellcheck` over `+ Shfmt`
+    # resolves to exactly the required name while neither physical
+    # line spells it. Every folded spelling starts with a strict
+    # space-broken prefix of the name — a finite set for a fixed
+    # literal — so a bare prefix line counts as a potential producer:
+    # refusal by over-count, failing closed. `name:` with an empty
+    # value is the zero-length prefix of the same spelling, and a
+    # value opening with an anchor, alias or tag resolves through
+    # indirection a line count does not follow, so those are refused
+    # the same way.
+    folded_count=$(printf 'jobs:\n  a:\n    name: Arch Shellcheck\n      + Shfmt\n' |
+        count_arch_lint_names)
+    empty_count=$(printf '%s\n' '    name:' | count_arch_lint_names)
+    alias_count=$(printf '%s\n' '    name: *shared-name' | count_arch_lint_names)
+    tag_count=$(printf '%s\n' '    name: !!str Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    [ "$folded_count" -ge 1 ]
+    [ "$empty_count" -ge 1 ]
+    [ "$alias_count" -ge 1 ]
+    [ "$tag_count" -ge 1 ]
+}
+
+@test "a spaced key colon still counts as a producer" {
+    # YAML permits whitespace between a key and its colon:
+    # `name : Arch Shellcheck + Shfmt` declares the same job name the
+    # unspaced spelling declares. A pattern requiring the colon to
+    # touch the key reads the spaced form as no declaration at all.
+    spaced_count=$(printf '%s\n' '    name : Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    [ "$spaced_count" -eq 1 ]
+}
+
+@test "a commented mention does not shadow the declaration beneath it" {
+    # A comment mentioning the key is not a declaration. Selected as
+    # one, it shadows the live line beneath it: the comment's tokens
+    # parse cleanly, the declaration that actually configures the
+    # action is never read, and the case above reports the scripts
+    # linted while the live list excludes them.
+    shadow_input="$BATS_TEST_TMPDIR/comment-shadow.yml"
+    printf '%s\n' \
+        '          # sh_checker_exclude: "ani-cli"' \
+        '          sh_checker_exclude: "ani-cli tests/arch"' \
+        >"$shadow_input"
+    shadow_tokens=$(select_exclusion_line "$shadow_input" | parse_exclusions)
+    shadow_hit=0
+    subject=tests/arch
+    for token in $shadow_tokens; do
+        case "$subject" in
+            "$token" | "$token"/*) shadow_hit=1 ;;
+            *) ;;
+        esac
+    done
+    [ "$shadow_hit" -eq 1 ]
+}
+
+@test "a second exclusion declaration is counted, not skipped" {
+    # Two declarations are two exclude lists — a second sh-checker
+    # step carries its own — and reading the first says nothing about
+    # the second, which is exactly where an exclusion of these
+    # scripts would hide. The count is the fact the live case refuses
+    # on; more than one declaration is ambiguity, not a list.
+    ambiguous_input="$BATS_TEST_TMPDIR/ambiguous-excl.yml"
+    printf '%s\n' \
+        '          sh_checker_exclude: "ani-cli"' \
+        '          sh_checker_exclude: "tests/arch"' \
+        >"$ambiguous_input"
+    ambiguous_count=$(exclusion_declarations "$ambiguous_input" 2>/dev/null || true)
+    [ "${ambiguous_count:-0}" -eq 2 ]
+}
+
 @test "the arch lint workflow fires unconditionally" {
     unconditional "$WORKFLOW"
 }
