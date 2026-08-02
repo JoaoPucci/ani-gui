@@ -1,0 +1,42 @@
+name: 'arch checks'
+# Lints the architectural checks under tests/arch/. Ours-owned, so it
+# can run unconditionally — and that is the point:
+#
+#   - No path filter means no inverse stub and no required-mirrors
+#     entry: the zero-diff gap those exist to paper over cannot open.
+#   - A check name nothing else reports means nothing else can answer
+#     for it. The arch lint briefly rode `Shellcheck + Shfmt`, a name
+#     three workflows produce; two of them succeed instantly without
+#     reading these files, and branch protection is satisfied by the
+#     first success under a required name — the same race
+#     no-awk-required.yml documents and avoids the same way.
+#
+# tests/arch/deferral_root_test.sh asserts both properties, and that
+# the exclude list below never covers tests/arch.
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the sh-checker
+        uses: luizm/action-sh-checker@master
+        env:
+          SHELLCHECK_OPTS: -s sh -o all -e 2250
+          SHFMT_OPTS: -i 4 -ci -d
+        with:
+          # The vendored script and its shims are covered by the
+          # upstream `Shellcheck + Shfmt` name; `tests/bash` holds
+          # bats suites linted by bash.yml under a bash dialect;
+          # fixtures and tools are not lint subjects. `tests/arch` is
+          # ordinary POSIX sh and is what this workflow exists for.
+          sh_checker_exclude: "ani-cli _ani-cli-bash _ani-cli-zsh tests/bash tests/fixtures tests/tools gui"

@@ -462,12 +462,12 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
         "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
         "$REPO_ROOT/tests/arch/agents_contract.sh" \
         "$apostrophe_dir/repo/tests/arch/"
-    # The workflow is a subject too, now that a case reads its path
-    # filter. Without this the nested run judges the committed copy
-    # while the parent judges the tree, and they disagree exactly when
-    # the tree is what changed.
+    # The workflow is a subject too, now that cases read its trigger
+    # and exclude list. Without this the nested run judges the
+    # committed copy while the parent judges the tree, and they
+    # disagree exactly when the tree is what changed.
     mkdir -p "$apostrophe_dir/repo/.github/workflows"
-    cp "$REPO_ROOT/.github/workflows/ani-cli.yml" \
+    cp "$REPO_ROOT/.github/workflows/arch-lint.yml" \
         "$apostrophe_dir/repo/.github/workflows/"
     # Count the assertions the nested run makes, rather than trusting
     # its exit status. A guard that skips the whole script would exit
