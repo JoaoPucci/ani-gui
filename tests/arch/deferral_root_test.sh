@@ -253,9 +253,16 @@ arch_lint_name_re='Arch Shellcheck \+ Shfmt'
 # that resolves to the name, and a value opening with an anchor,
 # alias or tag resolves somewhere a line count never looks.
 count_arch_lint_names() {
-    # `name[[:space:]]*:` because YAML permits whitespace between the
-    # key and its colon; the spaced spelling declares the same name.
-    grep -cE "name[[:space:]]*:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)" || true
+    # The key side accepts the spellings that resolve to `name`: the
+    # bare form, both quoted forms, and — refusal by over-count — any
+    # double-quoted key carrying a backslash, since escapes can spell
+    # the key however they like. `[[:space:]]*:` because YAML permits
+    # whitespace between the key and its colon. The trailing
+    # alternative counts explicit-form lines (`? key` / `: value`),
+    # where key and value never share a physical line; counting both
+    # halves over-counts one declaration, the failing-closed
+    # direction.
+    grep -cE "(\"name\"|'name'|name|\"[^\"]*\\\\[^\"]*\")[[:space:]]*:[[:space:]]*(\"$arch_lint_name_re\"|'$arch_lint_name_re'|${arch_lint_name_re}[[:space:]]*([]#,}].*)?\$|[>|&*!]|\"[^\"]*\\\\[^\"]*\"|\"[^\"]*\$|'[^']*\$|(Arch( Shellcheck( \+)?)?)?[[:space:]]*\$)|^[[:space:]]*[?:]([[:space:]]|\$)" || true
 }
 
 # Every workflow file in a directory, as a function so a fixture
