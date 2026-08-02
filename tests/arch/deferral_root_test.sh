@@ -428,6 +428,20 @@ else
     failed=1
 fi
 
+# YAML permits whitespace between a key and its colon:
+# `name : Arch Shellcheck + Shfmt` declares the same job name the
+# unspaced spelling declares. A pattern requiring the colon to touch
+# the key reads the spaced form as no declaration at all.
+spaced_key_probe=$(printf '%s\n' "    name : $arch_lint_name" |
+    count_arch_lint_names)
+if [ "${spaced_key_probe:-0}" -eq 1 ]; then
+    printf '  ok       a spaced key colon still counts as a producer\n'
+else
+    printf '  FAIL     a spaced key colon counts %s producers, not 1\n' \
+        "${spaced_key_probe:-0}"
+    failed=1
+fi
+
 # A path filter would reopen both gaps at once: a pull request the
 # filter misses never lints these scripts, and the mirror pair that
 # papers over the zero-diff case is a second producer of the name
