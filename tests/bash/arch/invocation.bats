@@ -165,6 +165,18 @@ env_sensitive() {
     env_sensitive "$REPO_ROOT/tests/fixtures/arch/redirectable-check.sh"
 }
 
+@test "an exported hostile name cannot poison the clean baseline" {
+    # The stray environment the hunt exists to catch can just as
+    # easily be the one this suite itself runs under. A caller that
+    # already exports a hostile name hands it to the clean runs too:
+    # all three runs are then redirected alike, the difference
+    # vanishes, and a sensitive check reads as clean. The clean
+    # baseline has to shed the hostile names, not merely differ from
+    # them.
+    export SKIP_NESTED=1
+    env_sensitive "$REPO_ROOT/tests/fixtures/arch/redirectable-check.sh"
+}
+
 @test "no check changes what it does under a hostile environment" {
     strays=''
     for check in "$ARCH_DIR"/*.sh; do
@@ -247,6 +259,42 @@ scan_workflows() {
     comment_count=$(printf '%s\n' '    name: Arch Shellcheck + Shfmt # required job' |
         count_arch_lint_names)
     [ "$comment_count" -eq 1 ]
+}
+
+@test "a flow-style name counts as a producer" {
+    # Flow style puts the whole job on one line: in
+    # `jobs: {stub: {name: Arch Shellcheck + Shfmt}}` the bare scalar
+    # ends at the closing brace, not at the line's end. The flow
+    # terminators `}`, `,` and `]` complete the bare form's delimiter
+    # set alongside the comment. The count does not track flow
+    # context, so a block-context scalar continuing with one of these
+    # characters spells a longer name yet still counts — an over-count
+    # that fails the uniqueness case loudly, the failing-closed
+    # direction.
+    flow_count=$(printf '%s\n' '    jobs: {stub: {name: Arch Shellcheck + Shfmt}}' |
+        count_arch_lint_names)
+    [ "$flow_count" -eq 1 ]
+}
+
+@test "an unreadable quoted spelling is not silently missed" {
+    # A double-quoted scalar can spell the name through escapes —
+    # `\u002b` resolves to `+` — and a
+    # quote left open on the line continues the scalar where a line
+    # count cannot follow. Neither spelling is readable here, so both
+    # count as potential producers: refusal by over-count, the same
+    # failing-closed arm the block scalar takes. Single-quoted scalars
+    # have no escapes — a backslash there is a literal, a different
+    # name — so only the unterminated form of that spelling is
+    # unreadable.
+    escaped_count=$(printf '%s %s\n' '    name:' '"Arch Shellcheck \u002b Shfmt"' |
+        count_arch_lint_names)
+    open_dq_count=$(printf '%s\n' '    name: "Arch Shellcheck + Shfmt' |
+        count_arch_lint_names)
+    open_sq_count=$(printf '%s\n' "    name: 'Arch Shellcheck + Shfmt" |
+        count_arch_lint_names)
+    [ "$escaped_count" -ge 1 ]
+    [ "$open_dq_count" -ge 1 ]
+    [ "$open_sq_count" -ge 1 ]
 }
 
 @test "a bare exclusion list is refused, not scanned" {
