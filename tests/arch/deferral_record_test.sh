@@ -215,6 +215,20 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     gap_sentinel=$(mktemp -d "$REPO_ROOT/tests/arch/.deferral-scratch.XXXXXX")
     printf 'not yours\n' >"$gap_sentinel/keep-me"
 
+    # Like the scratch: cleanup has to know the path before creation
+    # begins, and a command substitution cannot offer that — the
+    # directory exists the moment the allocator returns, the variable
+    # holds it only once the substitution completes, and a signal in
+    # between leaves a directory nothing can name. The ordering is not
+    # observable after the fact, so it is asserted over the spelling.
+    if [ "$gap_sentinel" = "$REPO_ROOT/tests/arch/.deferral-scratch.gap-sentinel.$$" ]; then
+        printf '  ok       the gap sentinel is a literal, not an allocation result\n'
+    else
+        printf '  FAIL     the gap sentinel came back from an interruptible allocation: %s\n' \
+            "$gap_sentinel"
+        failed=1
+    fi
+
     # The window in which this run holds fixtures outside its scratch.
     # Too short to step into, so held open on request; the leak case
     # below is what asks.
