@@ -74,11 +74,15 @@ fn detail_year_is_the_season_links_year() {
 }
 
 #[test]
-fn encode_query_only_swaps_spaces_for_plus() {
-    // Byte parity with the script's `sed 's| |+|g'`: the CLI and the
-    // GUI must send the same query or their result lists diverge.
+fn encode_query_form_urlencodes_the_title() {
+    // The script's naive `sed 's| |+|g'` sends reserved characters
+    // raw, and the provider 400s on them — "ChäoS;HEAd" was
+    // unsearchable, and the 400 read as an upstream block that
+    // stopped the whole walk. Full form-urlencoding keeps the
+    // space→+ shape for plain titles and makes every title sendable.
     assert_eq!(encode_query("one piece"), "one+piece");
-    assert_eq!(encode_query("k-on!"), "k-on!");
+    assert_eq!(encode_query("Ch\u{e4}oS;HEAd"), "Ch%C3%A4oS%3BHEAd");
+    assert_eq!(encode_query("D.Gray-man + \u{2606}"), "D.Gray-man+%2B+%E2%98%86");
 }
 
 // ── episodes + languages + embed parsing ────────────────────────────
