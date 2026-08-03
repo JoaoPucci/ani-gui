@@ -31,6 +31,15 @@ fn hit(slug: &str, title: &str) -> BrowseHit {
     BrowseHit {
         slug: slug.into(),
         title: title.into(),
+        kind: None,
+    }
+}
+
+fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
+    BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some(kind.into()),
     }
 }
 
@@ -427,4 +436,43 @@ async fn an_off_by_one_year_still_competes_on_count() {
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "boundary-show-1");
+}
+
+#[tokio::test]
+async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
+    // The browse card names its format. A Movie cannot be the
+    // 12-episode series the caller expects, however well its count
+    // or position scores — the same class of mispick the allanime
+    // picker's type filter used to catch.
+    let client = AnidbClient::new(EpisodesTable(&[(1, 12), (2, 12)]));
+    let hits = [
+        typed_hit("recap-movie-1", "Recap Movie", "Movie"),
+        typed_hit("the-series-2", "The Series", "TV"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", None)
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-series-2");
+}
+
+#[tokio::test]
+async fn a_pool_of_only_movies_under_a_series_expectation_is_rejected() {
+    let client = AnidbClient::new(EpisodesTable(&[(1, 12)]));
+    let hits = [typed_hit("recap-movie-1", "Recap Movie", "Movie")];
+    let err = pick_candidate(&client, &hits, Some(12), "the series", None)
+        .await
+        .expect_err("a movie cannot satisfy a series expectation");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_single_video_expectation_keeps_movie_candidates() {
+    // Kitsu movies expect one episode — the badge agrees, no
+    // disproof. Unknown badges never exclude either way.
+    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
+    let picked = pick_candidate(&client, &hits, Some(1), "the movie", None)
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-movie-1");
 }
