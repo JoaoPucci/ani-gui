@@ -805,7 +805,12 @@ mod tests {
         use std::sync::Arc;
         AppState {
             allanime_base: None,
-            anidb_base: None,
+            // Unroutable: the fresh-resolve fallback must fail fast in
+            // tests instead of walking the live provider. Windows
+            // runners ship a system curl.exe, so a None base turns
+            // "the fallback errors" into a real network resolve that
+            // can succeed.
+            anidb_base: Some("http://127.0.0.1:1".into()),
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
