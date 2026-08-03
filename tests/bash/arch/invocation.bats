@@ -268,12 +268,36 @@ for path in paths:
 
 if len(producers) != 1:
     problems.append(f"{len(producers)} resolved producers of the required name, not 1")
+def pr_unrestricted(trig):
+    # Branch protection gates pull requests, so the producer must
+    # report on them: `pull_request` as the whole trigger, a member
+    # of its list, or a key with a bare value. A pull_request carrying
+    # any configuration — types, branches, paths — restricts when the
+    # check reports, and a restriction this reading cannot vouch for
+    # refuses.
+    if trig == "pull_request":
+        return True
+    if isinstance(trig, list):
+        return "pull_request" in trig
+    if isinstance(trig, dict):
+        return "pull_request" in trig and trig["pull_request"] is None
+    return False
+
+
 for path, doc, jid, job in producers:
     trigger = doc.get("on", doc.get(True))
     if trigger is None:
         problems.append(f"{path}: producer has no trigger")
     if gated(trigger):
         problems.append(f"{path}: producer trigger is path-filtered")
+    if not pr_unrestricted(trigger):
+        problems.append(f"{path}: trigger lacks an unrestricted pull_request event")
+    # A conditional or failure-tolerant job cannot gate anything,
+    # whatever its steps do.
+    if "if" in job:
+        problems.append(f"{path}: job {jid} is conditional")
+    if job.get("continue-on-error") not in (None, False):
+        problems.append(f"{path}: job {jid} tolerates failure")
     steps = job.get("steps")
     if not isinstance(steps, list):
         problems.append(f"{path}: job {jid} has no steps")
@@ -288,6 +312,13 @@ for path, doc, jid, job in producers:
     if len(lint) != 1:
         problems.append(f"{path}: job {jid} invokes the lint action {len(lint)} times, not 1")
         continue
+    # A step that can be skipped or whose failure is ignored counts
+    # as no lint at all: the job then succeeds and satisfies branch
+    # protection while inspecting nothing.
+    if "if" in lint[0]:
+        problems.append(f"{path}: the lint step is conditional")
+    if lint[0].get("continue-on-error") not in (None, False):
+        problems.append(f"{path}: the lint step tolerates failure")
     inputs = lint[0].get("with")
     if not isinstance(inputs, dict):
         problems.append(f"{path}: the lint step declares no inputs")
@@ -856,7 +887,7 @@ YAML
     bracket_dir="$BATS_TEST_TMPDIR/br[a]cket"
     mkdir "$bracket_dir"
     cat >"$bracket_dir/producer.yml" <<'YAML'
-"on": push
+"on": pull_request
 jobs:
   arch-sh-checker:
     name: Arch Shellcheck + Shfmt
