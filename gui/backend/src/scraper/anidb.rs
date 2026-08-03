@@ -59,7 +59,7 @@ impl BrowseHit {
     /// The provider's internal id: the digits after the slug's last
     /// hyphen.
     pub fn numeric_id(&self) -> Option<u64> {
-        todo!()
+        slug_numeric_id(&self.slug)
     }
 }
 
@@ -67,7 +67,10 @@ impl BrowseHit {
 /// the 1-based episode number shown to users.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpisodeRef {
+    /// The provider's episode db id — what the languages endpoint
+    /// takes.
     pub id: u64,
+    /// 1-based episode number as shown to users.
     pub number: u32,
 }
 
@@ -76,20 +79,32 @@ pub struct EpisodeRef {
 pub struct LanguageEmbed {
     /// Provider language code: `jpn` for sub, `eng` for dub.
     pub language: String,
+    /// The player page the master-playlist URL is extracted from.
     pub embed_url: String,
 }
 
 /// Whether a response body is cloudflare's challenge interstitial
 /// rather than provider content.
 pub fn is_cloudflare_interstitial(body: &str) -> bool {
-    let _ = body;
-    todo!()
+    body.contains("Just a moment")
 }
 
 /// Space→`+` and nothing else, mirroring the script's `sed 's| |+|g'`.
 pub fn encode_query(query: &str) -> String {
-    let _ = query;
-    todo!()
+    query.replace(' ', "+")
+}
+
+/// The digits after a slug's last hyphen, when there are any.
+fn slug_numeric_id(slug: &str) -> Option<u64> {
+    slug.rsplit('-').next()?.parse().ok()
+}
+
+/// Decode the three entities the provider's titles carry, `&amp;`
+/// last so it cannot re-form another entity.
+fn decode_entities(s: &str) -> String {
+    s.replace("&#039;", "'")
+        .replace("&quot;", "\"")
+        .replace("&amp;", "&")
 }
 
 /// Extract browse hits from the search page HTML. Titles are
@@ -97,8 +112,38 @@ pub fn encode_query(query: &str) -> String {
 /// matching anchors yields an empty list — "no results" is the
 /// caller's verdict, not a parse failure.
 pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
-    let _ = html;
-    todo!()
+    let mut hits = Vec::new();
+    // Anchor-scoped scan, like the script's `<a href` split: the slug
+    // must come from the href and the title from the same anchor's
+    // image alt, or a page-level scan pairs values across cards.
+    for chunk in html.split("<a href").skip(1) {
+        let Some(slug) = chunk
+            .split_once("anime/")
+            .map(|(_, rest)| rest)
+            .and_then(|rest| rest.split('"').next())
+        else {
+            continue;
+        };
+        if slug_numeric_id(slug).is_none()
+            || !slug
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            continue;
+        }
+        let Some(title) = chunk
+            .split_once("alt=\"")
+            .map(|(_, rest)| rest)
+            .and_then(|rest| rest.split('"').next())
+        else {
+            continue;
+        };
+        hits.push(BrowseHit {
+            slug: slug.to_string(),
+            title: decode_entities(title),
+        });
+    }
+    hits
 }
 
 /// Parse the episodes endpoint's JSON array into id/number pairs,
@@ -107,8 +152,21 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
 /// # Errors
 /// [`AniError::ParseFailed`] when the body isn't the expected array.
 pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
-    let _ = json;
-    todo!()
+    #[derive(serde::Deserialize)]
+    struct Row {
+        id: u64,
+        number: u32,
+    }
+    let rows: Vec<Row> = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
+        detail: format!("anidb episodes: {e}"),
+    })?;
+    Ok(rows
+        .into_iter()
+        .map(|r| EpisodeRef {
+            id: r.id,
+            number: r.number,
+        })
+        .collect())
 }
 
 /// Parse the languages endpoint's JSON array into per-language embeds.
@@ -116,29 +174,48 @@ pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
 /// # Errors
 /// [`AniError::ParseFailed`] when the body isn't the expected array.
 pub fn parse_languages(json: &str) -> Result<Vec<LanguageEmbed>> {
-    let _ = json;
-    todo!()
+    #[derive(serde::Deserialize)]
+    struct Row {
+        language: String,
+        embed_url: String,
+    }
+    let rows: Vec<Row> = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
+        detail: format!("anidb languages: {e}"),
+    })?;
+    Ok(rows
+        .into_iter()
+        .map(|r| LanguageEmbed {
+            language: r.language,
+            embed_url: r.embed_url,
+        })
+        .collect())
 }
 
 /// The embed the given mode plays: `jpn` for sub, `eng` for dub —
 /// first match wins, as in the script.
 pub fn preferred_embed<'a>(embeds: &'a [LanguageEmbed], mode: &str) -> Option<&'a LanguageEmbed> {
-    let _ = (embeds, mode);
-    todo!()
+    let lang = if mode == "dub" { "eng" } else { "jpn" };
+    embeds.iter().find(|e| e.language == lang)
 }
 
 /// Pull the master-playlist URL out of an embed page's jwplayer
 /// setup (`file: '…'`, first occurrence).
 pub fn extract_master_url(embed_html: &str) -> Option<String> {
-    let _ = embed_html;
-    todo!()
+    let (_, rest) = embed_html.split_once("file: '")?;
+    let url = rest.split('\'').next()?;
+    if url.is_empty() {
+        return None;
+    }
+    Some(url.to_string())
 }
 
 /// A fetched response: enough for the client to tell content from a
 /// challenge page without transport details leaking upward.
 #[derive(Debug, Clone)]
 pub struct FetchResponse {
+    /// HTTP status of the final response after redirects.
     pub status: u16,
+    /// Response body, lossily decoded.
     pub body: String,
 }
 
@@ -167,8 +244,21 @@ impl CurlImpersonateFetch {
     /// string, returning the first executable found — the same
     /// preference order as the script's `dep_ch_failover`.
     pub fn resolve(extra_dir: Option<&Path>, path_env: &str) -> Option<Self> {
-        let _ = (extra_dir, path_env);
-        todo!()
+        for name in CURL_FAILOVER {
+            if let Some(dir) = extra_dir {
+                let candidate = dir.join(name);
+                if is_executable(&candidate) {
+                    return Some(Self { exe: candidate });
+                }
+            }
+            for dir in std::env::split_paths(path_env) {
+                let candidate = dir.join(name);
+                if is_executable(&candidate) {
+                    return Some(Self { exe: candidate });
+                }
+            }
+        }
+        None
     }
 
     /// The resolved executable, for logging and diagnostics.
@@ -177,11 +267,57 @@ impl CurlImpersonateFetch {
     }
 }
 
+/// Whether `path` names an executable regular file.
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
+/// Per-request deadline for the subprocess; slightly above the
+/// script's own `--max-time 10` so curl reports its timeout first.
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
 #[async_trait::async_trait]
 impl AnidbFetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
-        let _ = url;
-        todo!()
+        // `-w` appends the status after the body; the last line is
+        // split back off. Mirrors the script's anidb_curl flags.
+        let mut cmd = tokio::process::Command::new(&self.exe);
+        cmd.arg("-sL")
+            .arg("-A")
+            .arg(IMPERSONATE_AGENT)
+            .arg("--max-time")
+            .arg("10")
+            .arg("-w")
+            .arg("\n%{http_code}")
+            .arg(url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let output = tokio::time::timeout(FETCH_TIMEOUT, cmd.output())
+            .await
+            .map_err(|_| AniError::Timeout)?
+            .map_err(|_| AniError::Network)?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
+        let status: u16 = status_line.trim().parse().map_err(|_| AniError::Network)?;
+        if status == 0 {
+            // curl writes 000 when the transfer itself failed.
+            return Err(AniError::Network);
+        }
+        Ok(FetchResponse {
+            status,
+            body: body.to_string(),
+        })
     }
 }
 
@@ -193,6 +329,7 @@ pub struct AnidbClient<F> {
 }
 
 impl<F: AnidbFetch> AnidbClient<F> {
+    /// A client against the production origin.
     pub fn new(fetch: F) -> Self {
         Self {
             fetch,
@@ -215,8 +352,9 @@ impl<F: AnidbFetch> AnidbClient<F> {
     /// [`AniError::Upstream`] when cloudflare or the site refuses,
     /// plus the transport errors of [`AnidbFetch::get`].
     pub async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
-        let _ = query;
-        todo!()
+        let url = format!("{}/browse?q={}", self.base, encode_query(query));
+        let body = self.content(&url).await?;
+        Ok(parse_browse(&body))
     }
 
     /// List a show's episodes by slug.
@@ -225,8 +363,12 @@ impl<F: AnidbFetch> AnidbClient<F> {
     /// [`AniError::ParseFailed`] on a malformed slug or body, plus
     /// upstream/transport errors as in [`Self::search`].
     pub async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
-        let _ = slug;
-        todo!()
+        let id = slug_numeric_id(slug).ok_or_else(|| AniError::ParseFailed {
+            detail: format!("anidb slug without numeric tail: {slug}"),
+        })?;
+        let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
+        let body = self.content(&url).await?;
+        parse_episodes(&body)
     }
 
     /// Resolve an episode's master-playlist URL for `sub`/`dub`:
@@ -236,8 +378,28 @@ impl<F: AnidbFetch> AnidbClient<F> {
     /// [`AniError::NoResults`] when no embed matches the mode or the
     /// embed page carries no playlist, plus upstream/transport errors.
     pub async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<String> {
-        let _ = (episode_id, mode);
-        todo!()
+        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
+        let body = self.content(&url).await?;
+        let embeds = parse_languages(&body)?;
+        let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
+        let embed_body = self.content(&embed.embed_url).await?;
+        extract_master_url(&embed_body).ok_or(AniError::NoResults)
+    }
+
+    /// Fetch `url` and hand back content, refusing challenge pages
+    /// and non-success statuses as typed upstream errors.
+    async fn content(&self, url: &str) -> Result<String> {
+        let resp = self.fetch.get(url).await?;
+        if is_cloudflare_interstitial(&resp.body) {
+            let status = if resp.status >= 400 { resp.status } else { 403 };
+            return Err(AniError::Upstream { status });
+        }
+        if !(200..300).contains(&resp.status) {
+            return Err(AniError::Upstream {
+                status: resp.status,
+            });
+        }
+        Ok(resp.body)
     }
 }
 
