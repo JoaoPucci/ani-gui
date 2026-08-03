@@ -257,10 +257,36 @@ pub(super) async fn stamp_availability_after_native(
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach the provider by any transport.
-fn anidb_client(
+pub(super) fn anidb_client(
     state: &AppState,
 ) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
     anidb_client_with_base(state, state.anidb_base.as_deref())
+}
+
+/// Map a native resolution outcome onto the breaker's vocabulary.
+/// Shared by every surface that runs the walk: rate limits carry
+/// their retry hint through, everything else is a plain
+/// success/failure signal.
+pub(super) fn native_gate_outcome<T>(
+    res: &std::result::Result<T, crate::commands::play_native_resolve::NativeError>,
+) -> crate::scraper::gate::ScrapeOutcome {
+    match res {
+        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
+        // A clean miss is the provider ANSWERING — every search
+        // completed and nothing matched. Only weather (transport,
+        // refusals, rate limits) is distress; counting misses as
+        // failures let a run of uncarried titles brown out all
+        // background traffic.
+        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
+        Err(ne) => match ne.error {
+            AniError::RateLimited { retry_after_secs } => {
+                crate::scraper::gate::ScrapeOutcome::RateLimited {
+                    retry_after: retry_after_secs.map(std::time::Duration::from_secs),
+                }
+            }
+            _ => crate::scraper::gate::ScrapeOutcome::Failure,
+        },
+    }
 }
 
 /// [`anidb_client`] with an explicit origin override, shared with the
@@ -600,24 +626,9 @@ where
     .await;
     // Feed the breaker the resolution's outcome so background traffic
     // backs off after provider-shaped failures.
-    let outcome = match &native {
-        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
-        // A clean miss is the provider ANSWERING — every search
-        // completed and nothing matched. Only weather (transport,
-        // refusals, rate limits) is distress; counting misses as
-        // failures let a run of uncarried titles brown out all
-        // background traffic.
-        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
-        Err(ne) => match ne.error {
-            AniError::RateLimited { retry_after_secs } => {
-                crate::scraper::gate::ScrapeOutcome::RateLimited {
-                    retry_after: retry_after_secs.map(std::time::Duration::from_secs),
-                }
-            }
-            _ => crate::scraper::gate::ScrapeOutcome::Failure,
-        },
-    };
-    state.scraper_gate.record(outcome, resolve_started_at);
+    state
+        .scraper_gate
+        .record(native_gate_outcome(&native), resolve_started_at);
     let native = match native {
         Ok(n) => n,
         Err(ne) => {
