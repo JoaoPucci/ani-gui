@@ -107,10 +107,15 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 /// Bubbles AniList / Kitsu transport failures only when the fallback
 /// also fails. Cache write failures are silently ignored.
 pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
+    // v5: the bridge gained the anilist/anime mapping fallback for
+    //     entries Kitsu hasn't MAL-mapped yet. v4 rows were built
+    //     without it and silently omit exactly the newest seasonal
+    //     shows (TYBW's fourth cour was missing from the strip);
+    //     bumping refreshes them.
     // v4: bridge backfills cover_image from AniList's bannerImage
     //     when Kitsu's is null (new ongoing shows). v3 rows have
     //     null covers for those entries; bumping forces a refresh.
-    const KEY: &str = "kitsu:v4:trending_anilist";
+    const KEY: &str = "kitsu:v5:trending_anilist";
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -153,8 +158,12 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
 /// fail to bridge (rare; a couple per page at most).
 const ANILIST_TRENDING_LIMIT: u8 = 25;
 
-/// Concurrent MAL → Kitsu lookups for a list of AniList refs,
-/// dropping entries with no MAL id and entries Kitsu can't bridge.
+/// Concurrent AniList → Kitsu lookups for a list of AniList refs.
+/// Each entry tries Kitsu's `myanimelist/anime` mapping first, then
+/// its `anilist/anime` mapping — Kitsu's MAL table lags brand-new
+/// seasonal entries by weeks while the AniList row exists from day
+/// one, and a drop here removes exactly the season's hottest shows
+/// from the strip. Entries mapped on neither site are dropped.
 /// Preserves the AniList ranking — order matters because the home
 /// hero takes the first 5–6 entries. `FuturesOrdered` runs the
 /// lookups concurrently and yields results in the input order; the
@@ -172,8 +181,14 @@ pub(super) async fn bridge_anilist_to_kitsu(
         let kitsu = state.kitsu.clone();
         let banner = entry.banner_image.clone();
         futures.push_back(async move {
-            let mal_id = entry.id_mal?;
-            let mut kref = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten()?;
+            let by_mal = match entry.id_mal {
+                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
+                None => None,
+            };
+            let mut kref = match by_mal {
+                Some(k) => k,
+                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
+            };
             // Backfill banner from AniList when Kitsu hasn't
             // catalogued one. New ongoing shows like Slime S4 land
             // on Kitsu before their cataloguers upload a banner;
@@ -1378,19 +1393,19 @@ mod tests {
         }
     }
 
-    /// Build a /mappings response that bridges `mal_id` → kitsu
-    /// anime `kitsu_id` with a synthetic title. Keeps the test
-    /// fixtures self-contained without depending on the real
+    /// Build a /mappings response that bridges `external_id` on
+    /// `site` → kitsu anime `kitsu_id` with a synthetic title. Keeps
+    /// the test fixtures self-contained without depending on the real
     /// Kitsu fixture files (which are sized for One Piece).
-    fn mapping_response(mal_id: u32, kitsu_id: &str, title: &str) -> String {
+    fn site_mapping_response(site: &str, external_id: u32, kitsu_id: &str, title: &str) -> String {
         format!(
             r##"{{
                 "data": [{{
-                    "id": "m-{mal_id}",
+                    "id": "m-{external_id}",
                     "type": "mappings",
                     "attributes": {{
-                        "externalSite": "myanimelist/anime",
-                        "externalId": "{mal_id}"
+                        "externalSite": "{site}",
+                        "externalId": "{external_id}"
                     }},
                     "relationships": {{
                         "item": {{ "data": {{ "type": "anime", "id": "{kitsu_id}" }} }}
@@ -1420,41 +1435,65 @@ mod tests {
         )
     }
 
+    fn mapping_response(mal_id: u32, kitsu_id: &str, title: &str) -> String {
+        site_mapping_response("myanimelist/anime", mal_id, kitsu_id, title)
+    }
+
     fn empty_mapping_response() -> String {
         r#"{"data":[],"included":[]}"#.to_string()
     }
 
     #[tokio::test]
-    async fn bridge_drops_entries_with_no_mal_id() {
+    async fn an_entry_without_a_mal_id_bridges_via_its_anilist_id() {
+        // AniList indexes some shows MAL doesn't. Kitsu's mappings
+        // table carries anilist/anime rows too, so a missing idMal
+        // must fall back to the entry's own AniList id instead of
+        // dropping the show from the strip.
         let server = MockServer::start().await;
-        // Only mal_id=21 is bridgeable; the entry without an idMal
-        // should be skipped before any /mappings call. The mock
-        // responds for /mappings unconditionally so an unexpected
-        // call would still pass — assertion is on the OUTPUT.
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "21"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_string(mapping_response(21, "12", "Show A")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "anilist/anime"))
+            .and(query_param("filter[externalId]", "1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    1,
+                    "31",
+                    "Show B",
+                )),
             )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
         let anilist = vec![
-            anilist_ref(1, None),     // skipped (no mal id)
-            anilist_ref(2, Some(21)), // bridged
+            anilist_ref(1, None),     // bridges via anilist/anime
+            anilist_ref(2, Some(21)), // bridges via myanimelist/anime
         ];
         let out = bridge_anilist_to_kitsu(&state, anilist).await;
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "12");
+        let ids: Vec<_> = out.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["31", "12"]);
     }
 
     #[tokio::test]
-    async fn bridge_drops_entries_kitsu_cant_map() {
+    async fn an_unmapped_mal_id_falls_back_to_the_anilist_id() {
+        // Kitsu's MAL mapping table lags new seasonal entries (TYBW's
+        // fourth cour trended for weeks with no myanimelist/anime
+        // row) while the anilist/anime row exists from day one.
+        // A MAL miss must retry by AniList id before dropping the
+        // season's biggest show from the home strip.
         let server = MockServer::start().await;
-        // 21 maps; 99 returns empty.
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "21"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_string(mapping_response(21, "12", "Show A")),
@@ -1463,15 +1502,43 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "99"))
             .respond_with(ResponseTemplate::new(200).set_body_string(empty_mapping_response()))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "anilist/anime"))
+            .and(query_param("filter[externalId]", "2"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    2,
+                    "31",
+                    "Show B",
+                )),
+            )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
         let anilist = vec![anilist_ref(1, Some(21)), anilist_ref(2, Some(99))];
         let out = bridge_anilist_to_kitsu(&state, anilist).await;
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "12");
+        let ids: Vec<_> = out.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["12", "31"]);
+    }
+
+    #[tokio::test]
+    async fn an_entry_unmapped_on_both_sites_is_dropped() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(empty_mapping_response()))
+            .mount(&server)
+            .await;
+        let state = state_with_kitsu_at(&server.uri());
+        let out = bridge_anilist_to_kitsu(&state, vec![anilist_ref(7, Some(99))]).await;
+        assert!(out.is_empty());
     }
 
     #[tokio::test]
