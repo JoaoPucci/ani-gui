@@ -869,6 +869,69 @@ YAML
     certified_by_resolution "$bracket_dir"
 }
 
+@test "a lint that cannot gate pull requests is refused, not certified" {
+    # Counting the step is not enough: a step carrying if: false
+    # never runs, one carrying continue-on-error: true cannot fail
+    # the job, a workflow_dispatch-only trigger never reports on pull
+    # requests, and a pull_request event restricted to chosen types
+    # skips the pushes branch protection exists to gate. Each shape
+    # is valid YAML and resolves cleanly.
+    gate_dir="$BATS_TEST_TMPDIR/ungateable"
+    mkdir "$gate_dir"
+    cat >"$gate_dir/producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        if: false
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    run ! certified_by_resolution "$gate_dir"
+    cat >"$gate_dir/producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        continue-on-error: true
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    run ! certified_by_resolution "$gate_dir"
+    cat >"$gate_dir/producer.yml" <<'YAML'
+"on": workflow_dispatch
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    run ! certified_by_resolution "$gate_dir"
+    cat >"$gate_dir/producer.yml" <<'YAML'
+"on":
+  pull_request:
+    types: [labeled]
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    run ! certified_by_resolution "$gate_dir"
+}
+
 @test "a status-flapping check is flagged, not certified" {
     # A check whose output repeats while its exit status flaps between
     # identical runs passes the reproducibility gate, and the status
