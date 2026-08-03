@@ -23,6 +23,20 @@ pub(super) fn slug_numeric_id(slug: &str) -> Option<u64> {
     slug.rsplit('-').next()?.parse().ok()
 }
 
+/// The Kitsu-searchable text an anidb slug carries: its hyphenated
+/// words with the trailing numeric id removed (`one-piece-69` →
+/// `one piece`). `None` when `slug` isn't slug-shaped — legacy
+/// allanime ids are mixed-case and hyphenless, so they fall through
+/// to their own resolve path.
+pub fn slug_search_term(slug: &str) -> Option<String> {
+    slug_numeric_id(slug)?;
+    let (words, _id) = slug.rsplit_once('-')?;
+    if words.is_empty() {
+        return None;
+    }
+    Some(words.replace('-', " "))
+}
+
 /// Decode the three entities the provider's titles carry, `&amp;`
 /// last so it cannot re-form another entity.
 fn decode_entities(s: &str) -> String {
