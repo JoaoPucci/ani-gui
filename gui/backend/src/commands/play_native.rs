@@ -41,6 +41,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// is known: each candidate's detail page names its premiere year,
 /// and a known year more than one off Kitsu's excludes the
 /// candidate — the identity signal applies even to a lone candidate.
+/// Only an exact year counts as positive identity; one year off is
+/// tolerated (December premieres straddle catalogue years) without
+/// vouching for the candidate.
 /// Unknown years (a 404ing detail page, a page without a season
 /// link) never exclude, so a provider markup change degrades to
 /// year-blind picking rather than emptying pools. A pool whose every
@@ -61,7 +64,14 @@ async fn year_filtered<'a, F: AnidbFetch>(
     let mut excluded_any = false;
     for h in head {
         match client.detail_year(&h.slug).await {
-            Some(y) if y.abs_diff(year) <= 1 => kept.push((h, true)),
+            // Exact match is positive identity; one year off is the
+            // December-premiere allowance — enough to stay in the
+            // pool and compete on count, never enough to vouch for
+            // a candidate (the rescue and the countless preference
+            // key on the flag, and a boundary-tolerated movie must
+            // not ride them past a large count mismatch).
+            Some(y) if y == year => kept.push((h, true)),
+            Some(y) if y.abs_diff(year) <= 1 => kept.push((h, false)),
             Some(_) => excluded_any = true,
             None => kept.push((h, false)),
         }
