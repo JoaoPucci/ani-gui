@@ -47,27 +47,21 @@ if git remote get-url upstream >/dev/null 2>&1; then
     # The tag is the release the vendored script came from. Bumping it
     # is part of syncing the script, which is where that decision
     # belongs.
-    UPSTREAM_BASELINE=v4.15
+    UPSTREAM_BASELINE=v5.0
     # `tag` and the name are separate arguments — quoted together git
     # reads them as one refspec and rejects it. That failure was
     # invisible here because the tag was already fetched locally.
-    if git fetch --depth=1 upstream tag "$UPSTREAM_BASELINE" --no-tags --quiet 2>/dev/null \
-        || git rev-parse -q --verify "$UPSTREAM_BASELINE" >/dev/null; then
+    if git fetch --depth=1 upstream tag "$UPSTREAM_BASELINE" --no-tags --quiet 2>/dev/null ||
+        git rev-parse -q --verify "$UPSTREAM_BASELINE" >/dev/null; then
         diff_lines=$(git diff "$UPSTREAM_BASELINE" -- ani-cli | grep -cE '^[+-][^+-]' || true)
         # Each carried line shows as one + or - in the diff. The
-        # ceiling is 50, which is the carried patch set AGENTS.md §3
-        # lists — the source guard, the greedy name capture, the
-        # watched-episode fallback, the portable base64, and the
-        # flatpak player acceptance — with room for one more small
-        # one before this has to be looked at again.
-        #
-        # It was 4, describing only the guard, and the real diff has
-        # been 41 for some time. A ceiling that everything fails
-        # against stops being a signal, so raising it to match the
-        # patches we mean to carry is the repair; lowering it back is
-        # what the native resolver eventually does by deleting the
-        # script.
-        if [ "$diff_lines" -gt 50 ]; then
+        # ceiling is 4: the 5.0 sync retired every 4.15 patch, so the
+        # carried set AGENTS.md §3 lists is the source guard alone
+        # (one line), with room for one small patch before this has
+        # to be looked at again. The 4.15-era ceiling was 50, sized
+        # for five patches; carrying that forward against a one-line
+        # reality would let a 45-line stray edit ride under it.
+        if [ "$diff_lines" -gt 4 ]; then
             printf 'arch/bash_portability FAIL: ani-cli diverges from upstream by %d lines (max 50) — a patch beyond the set in AGENTS.md §3 has landed, or one grew\n' "$diff_lines" >&2
             failed=1
         fi
