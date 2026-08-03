@@ -68,21 +68,29 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
     hits
 }
 
-/// Parse the episodes endpoint's JSON array into id/number pairs,
-/// preserving order.
+/// Parse the episodes endpoint's response into id/number pairs,
+/// preserving order. The provider wraps the list in an `episodes`
+/// envelope and carries `number2`/`filler` fields alongside; only
+/// id and number matter here, and unknown fields pass through
+/// serde untouched.
 ///
 /// # Errors
-/// [`AniError::ParseFailed`] when the body isn't the expected array.
+/// [`AniError::ParseFailed`] when the body isn't the expected shape.
 pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
     #[derive(serde::Deserialize)]
     struct Row {
         id: u64,
         number: u32,
     }
-    let rows: Vec<Row> = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        episodes: Vec<Row>,
+    }
+    let env: Envelope = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
         detail: format!("anidb episodes: {e}"),
     })?;
-    Ok(rows
+    Ok(env
+        .episodes
         .into_iter()
         .map(|r| EpisodeRef {
             id: r.id,
@@ -91,23 +99,31 @@ pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
         .collect())
 }
 
-/// Parse the languages endpoint's JSON array into per-language embeds.
+/// Parse the languages endpoint's response into per-language embeds.
+/// The provider wraps the list in a `languages` envelope and names
+/// the language field `code` ("jpn"/"eng"), with a display `name`
+/// alongside that nothing here needs.
 ///
 /// # Errors
-/// [`AniError::ParseFailed`] when the body isn't the expected array.
+/// [`AniError::ParseFailed`] when the body isn't the expected shape.
 pub fn parse_languages(json: &str) -> Result<Vec<LanguageEmbed>> {
     #[derive(serde::Deserialize)]
     struct Row {
-        language: String,
+        code: String,
         embed_url: String,
     }
-    let rows: Vec<Row> = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        languages: Vec<Row>,
+    }
+    let env: Envelope = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
         detail: format!("anidb languages: {e}"),
     })?;
-    Ok(rows
+    Ok(env
+        .languages
         .into_iter()
         .map(|r| LanguageEmbed {
-            language: r.language,
+            language: r.code,
             embed_url: r.embed_url,
         })
         .collect())
