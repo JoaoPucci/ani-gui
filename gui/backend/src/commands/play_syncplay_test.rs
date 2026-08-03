@@ -19,14 +19,14 @@ async fn stub_provider(mock: &MockServer, query: &str) {
         .and(path("/api/frontend/anime/77/episodes"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_string(r#"[{"id":701,"number":1},{"id":702,"number":2}]"#),
+                .set_body_string(r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2}]}"#),
         )
         .mount(mock)
         .await;
     Mock::given(method("GET"))
         .and(path("/api/frontend/episode/702/languages"))
         .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            r#"[{{"language":"jpn","embed_url":"{}/e/x"}}]"#,
+            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
             mock.uri()
         )))
         .mount(mock)
