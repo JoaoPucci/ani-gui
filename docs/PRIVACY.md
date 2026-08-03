@@ -54,8 +54,8 @@ requires it; the exceptions are the two automatic checks that run on
 launch (the update checks below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the underlying allmanga / allanime catalogue
-  used by `ani-cli`. These requests carry the search terms you typed
+  only if connected), and the anidb.app streaming catalogue playback
+  resolves against. These requests carry the search terms you typed
   or the anime IDs you're browsing; they do not carry any account
   identifier unless you've connected one.
 - **Video playback** — the chosen episode URL is fetched directly

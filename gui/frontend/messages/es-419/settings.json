@@ -56,7 +56,7 @@
 	"field_custom_controls_hint": "Reemplaza la barra nativa de Chromium por la nuestra con tema. La línea de tiempo con color de acento combina con cada serie y el botón Saltar OP/Outro permanece visible en pantalla completa. Desactivado usa la barra de Chromium (mejor para PiP y el menú nativo de subtítulos).",
 	"custom_controls_aria_label": "Controles personalizados del reproductor",
 	"field_auto_update_anicli_key": "Mantener ani-cli al día",
-	"field_auto_update_anicli_hint": "Al iniciar, ejecuta la autoactualización del script ani-cli si la copia local tiene más de un día. La API de allmanga cambia a diario; con esto desactivado, las correcciones de scraping publicadas hace horas no te llegan hasta la próxima versión de ani-gui.",
+	"field_auto_update_anicli_hint": "Al iniciar, ejecuta la autoactualización del script ani-cli si la copia local tiene más de un día. La API de anidb.app cambia a diario; con esto desactivado, las correcciones de scraping publicadas hace horas no te llegan hasta la próxima versión de ani-gui.",
 	"auto_update_anicli_aria_label": "Mantener ani-cli al día",
 	"field_update_include_prereleases_key": "Incluir pre-lanzamientos en la verificación de actualizaciones",
 	"field_update_include_prereleases_hint": "Cuando está activo, el indicador de actualización aparece tanto para lanzamientos estables como para pre-lanzamientos (release candidates, betas). Todas las versiones de ani-gui publicadas hasta ahora son pre-lanzamientos — desactivarlo mantiene el indicador en silencio hasta la primera versión estable.",
