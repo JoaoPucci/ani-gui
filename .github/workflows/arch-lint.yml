@@ -11,7 +11,7 @@ name: 'arch checks'
 #     first success under a required name — the same race
 #     no-awk-required.yml documents and avoids the same way.
 #
-# tests/arch/deferral_root_test.sh asserts both properties, and that
+# tests/bash/arch/invocation.bats asserts both properties, and that
 # the exclude list below never covers tests/arch.
 on:
   pull_request:

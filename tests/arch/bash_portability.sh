@@ -10,7 +10,9 @@
 
 set -eu
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# Overridable so a test can point the check at a scratch tree, the
+# same way the sibling checks in this directory take it.
+REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
 if [ ! -f ani-cli ]; then
