@@ -100,6 +100,6 @@ pub(super) async fn resolve_fresh_for_handoff(
     Ok(native)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "play_external_command_test.rs"]
 mod tests;

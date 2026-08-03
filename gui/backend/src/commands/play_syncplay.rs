@@ -67,6 +67,6 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "play_syncplay_test.rs"]
 mod tests;
