@@ -676,6 +676,75 @@ scan_workflows() {
     run ! unconditional "$gated"
 }
 
+@test "the resolved workflow structure certifies what the text layer cannot" {
+    # The text readings are one layer, each covering the spellings it
+    # names, and YAML has more: `<<: *defaults` delivers the required
+    # name into a job while no line of the job spells a name, and a
+    # lookalike action repository satisfies a prefix match while being
+    # somebody else's code. Resolution reads neither spelling — it
+    # reads the resolved structure, where both collapse to the values
+    # GitHub sees.
+    certified_by_resolution "$REPO_ROOT/.github/workflows"
+    merge_dir="$BATS_TEST_TMPDIR/merge-key-producer"
+    mkdir "$merge_dir"
+    cat >"$merge_dir/covert.yml" <<'YAML'
+defs: &d
+  name: Arch Shellcheck + Shfmt
+"on": push
+jobs:
+  stub:
+    <<: *d
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+YAML
+    run ! certified_by_resolution "$merge_dir"
+    look_dir="$BATS_TEST_TMPDIR/lookalike-action"
+    mkdir "$look_dir"
+    cat >"$look_dir/covert.yml" <<'YAML'
+"on": push
+jobs:
+  stub:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker-evil@v1
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    run ! certified_by_resolution "$look_dir"
+}
+
+@test "a status-flapping check is flagged, not certified" {
+    # A check whose output repeats while its exit status flaps between
+    # identical runs passes the reproducibility gate, and the status
+    # comparison that follows is built on a coin flip. Noise reads as
+    # sensitive so a human looks.
+    flapping="$BATS_TEST_TMPDIR/flapping-check.sh"
+    cat >"$flapping" <<'FLAP'
+#!/bin/sh
+marker="$0.marker"
+if [ -e "$marker" ]; then
+    rm -f "$marker"
+    exit 1
+fi
+: >"$marker"
+exit 0
+FLAP
+    env_sensitive "$flapping"
+}
+
+@test "the bats job runs when the gitignore contract changes" {
+    # deferral_record_entry_kind.bats asserts that .planning/ is
+    # ignored, so .gitignore is an input of the ported suite: a PR
+    # touching only it must count as relevant, or the case that reads
+    # it goes green by never running.
+    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'.gitignore'
+    [ "$status" -eq 0 ]
+}
+
 @test "a commented mention does not shadow the declaration beneath it" {
     # A comment mentioning the key is not a declaration. Selected as
     # one, it shadows the live line beneath it: the comment's tokens
