@@ -61,6 +61,12 @@ pub struct PlayArgs {
     /// ep-count + threshold.
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
+    /// Format disproof against the provider's card badges — a Movie
+    /// candidate cannot satisfy a special/TV entry. Optional so old
+    /// clients keep working.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Fallback titles to try when the canonical title returns no
     /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
@@ -572,6 +578,7 @@ where
         mode: &args.mode,
         expected_count: args.episode_count,
         year: args.year,
+        subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
     let native = crate::commands::play_native_resolve::resolve_native(
@@ -586,6 +593,12 @@ where
     // backs off after provider-shaped failures.
     let outcome = match &native {
         Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
+        // A clean miss is the provider ANSWERING — every search
+        // completed and nothing matched. Only weather (transport,
+        // refusals, rate limits) is distress; counting misses as
+        // failures let a run of uncarried titles brown out all
+        // background traffic.
+        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
         Err(ne) => match ne.error {
             AniError::RateLimited { retry_after_secs } => {
                 crate::scraper::gate::ScrapeOutcome::RateLimited {
@@ -730,6 +743,7 @@ mod tests {
                 mode,
                 quality,
                 episode_count,
+                subtype: None,
                 year,
                 alt_titles: vec![],
                 prefetch,
@@ -857,6 +871,7 @@ mod tests {
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
@@ -981,6 +996,7 @@ mod tests {
             episode: episode.into(),
             mode: "sub".into(),
             quality: Some("best".into()),
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
@@ -1251,6 +1267,7 @@ mod tests {
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
@@ -1559,6 +1576,7 @@ mod tests {
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: alts.iter().map(|s| (*s).to_string()).collect(),
@@ -1580,6 +1598,7 @@ mod tests {
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],

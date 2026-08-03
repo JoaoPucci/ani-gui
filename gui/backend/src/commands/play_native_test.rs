@@ -227,9 +227,16 @@ async fn a_year_match_beats_count_tied_cour_siblings() {
         hit("tybw-the-separation-677", "TYBW - The Separation"),
         hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026), None)
-        .await
-        .expect("picked");
+    let picked = pick_candidate(
+        &client,
+        &hits,
+        Some(13),
+        "tybw kashin-tan",
+        Some(2026),
+        None,
+    )
+    .await
+    .expect("picked");
     assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
 }
 
@@ -245,9 +252,16 @@ async fn year_mismatches_are_excluded_before_scoring() {
         hit("mobile-suit-gundam-wing-2", "Mobile Suit Gundam Wing"),
         hit("mobile-suit-gundam-1", "Mobile Suit Gundam"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(44), "kidou senshi gundam", Some(1979), None)
-        .await
-        .expect("picked");
+    let picked = pick_candidate(
+        &client,
+        &hits,
+        Some(44),
+        "kidou senshi gundam",
+        Some(1979),
+        None,
+    )
+    .await
+    .expect("picked");
     assert_eq!(picked.hit.slug, "mobile-suit-gundam-1");
 }
 
@@ -315,9 +329,16 @@ async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
     // currently-airing show becomes unresolvable through that alias.
     let client = AnidbClient::new(YearTable(&[(6378, 2, Some(2026))]));
     let hits = [hit("tybw-the-calamity-6378", "TYBW - The Calamity")];
-    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026), None)
-        .await
-        .expect("picked");
+    let picked = pick_candidate(
+        &client,
+        &hits,
+        Some(13),
+        "tybw kashin-tan",
+        Some(2026),
+        None,
+    )
+    .await
+    .expect("picked");
     assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
 }
 
