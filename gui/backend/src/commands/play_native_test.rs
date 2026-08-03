@@ -332,3 +332,57 @@ async fn year_filters_apply_without_an_episode_count() {
 // Silence the unused import when EpisodeRef isn't referenced directly.
 #[allow(dead_code)]
 fn _types(_: EpisodeRef) {}
+
+#[tokio::test]
+async fn a_countless_pick_prefers_the_year_confirmed_candidate() {
+    // Kitsu's count is null while a show airs — exactly when the
+    // provider's token search pollutes the pool. Positional order
+    // must lose to a candidate whose detail year matches Kitsu's.
+    let client = AnidbClient::new(YearTable(&[(1, 1, None), (2, 4, Some(2026))]));
+    let hits = [hit("some-movie-1", "Some Movie"), hit("the-show-2", "The Show")];
+    let picked = pick_candidate(&client, &hits, None, "unrelated words", Some(2026))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-show-2");
+}
+
+#[tokio::test]
+async fn a_countless_garbage_pool_with_only_unknown_survivors_is_rejected() {
+    // The live Tai-Ari shape: the full romaji title token-matched
+    // four unrelated shows; the year filter excluded the three with
+    // known decades-off years, leaving one movie whose detail page
+    // names no season. With no count to vouch for it, a pool the
+    // year evidence already showed to be mostly wrong must not be
+    // won by the one candidate with no identity evidence at all —
+    // rejecting it lets the walk's next alias find the real entry.
+    let client = AnidbClient::new(YearTable(&[
+        (1, 1, Some(1991)),
+        (2, 4, Some(1975)),
+        (3, 12, Some(2001)),
+        (4, 1, None),
+    ]));
+    let hits = [
+        hit("old-movie-1", "Old Movie"),
+        hit("old-robot-2", "Old Robot"),
+        hit("old-maids-3", "Old Maids"),
+        hit("unknown-movie-4", "Unknown Movie"),
+    ];
+    let err = pick_candidate(&client, &hits, None, "the real show", Some(2026))
+        .await
+        .expect_err("pool rejected");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_countless_clean_pool_with_an_unknown_year_still_picks_first() {
+    // The year stays a soft hint when it disproved nothing: a pool
+    // with no exclusions and an unknown-year first hit keeps the
+    // provider's own ranking, so pages without season links don't
+    // become unresolvable.
+    let client = AnidbClient::new(YearTable(&[(1, 12, None)]));
+    let hits = [hit("plain-show-1", "Plain Show")];
+    let picked = pick_candidate(&client, &hits, None, "unrelated", Some(2026))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "plain-show-1");
+}
