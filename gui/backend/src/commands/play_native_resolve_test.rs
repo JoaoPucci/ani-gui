@@ -64,6 +64,22 @@ impl AnidbFetch for Provider {
                     .into(),
             });
         }
+        if url.contains("/api/frontend/anime/88/episodes") {
+            // A continuation entry: the provider keeps the franchise's
+            // cumulative numbering, so this two-episode cour lists 41
+            // and 42 (the TYBW fourth-cour shape, captured live).
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"episodes":[{"id":8841,"number":41},{"id":8842,"number":42}]}"#.into(),
+            });
+        }
+        if url.contains("/api/frontend/episode/8841/languages") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#
+                    .into(),
+            });
+        }
         if url.contains("/api/frontend/episode/702/languages") {
             return Ok(FetchResponse {
                 status: 200,
@@ -234,4 +250,33 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
     .await;
     let err = got.expect_err("no dub embed");
     assert!(!err.clean_miss);
+}
+
+#[tokio::test]
+async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
+    // anidb.app numbers a later cour cumulatively: TYBW's fourth part
+    // lists episodes 41 and 42, while Kitsu (and so every episode the
+    // UI can request) numbers the same cour 1..13. Episode "1" must
+    // land on the entry's first listed episode, and the cap must come
+    // back in the request's numbering — 2 aired — not the provider's
+    // raw 42, or the strip unlocks eleven episodes that don't exist.
+    let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
+    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let (got, _) = run(&provider, "the sequel", &[], "1", Some(13)).await;
+    let resolved = got.expect("episode 1 resolves through the offset");
+    assert_eq!(resolved.slug, "the-sequel-88");
+    assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
+    assert_eq!(resolved.episode_cap, Some(2));
+}
+
+#[tokio::test]
+async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
+    // Kitsu episode 3 would map to provider 43 — not aired, not
+    // listed. The dead-end classification must survive the offset.
+    let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
+    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let (got, _) = run(&provider, "the sequel", &[], "3", Some(13)).await;
+    let err = got.expect_err("episode 3 has not aired");
+    assert!(!err.clean_miss);
+    assert!(matches!(err.error, AniError::NoResults));
 }
