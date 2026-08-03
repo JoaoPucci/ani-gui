@@ -89,12 +89,16 @@ pub fn parse_progress_line(line: &str) -> Option<ProgressLine> {
             text: trimmed.to_string(),
         });
     }
-    if let Some(provider) = trimmed.strip_suffix(" Links Fetched") {
-        let provider = provider.trim();
-        if !provider.is_empty() {
-            return Some(ProgressLine::LinksFetched {
-                provider: provider.to_string(),
-            });
+    // 4.15 emitted "<provider> Links Fetched" per provider; 5.0 emits
+    // one lowercase "anidb.app links fetched". Both classify.
+    for suffix in [" Links Fetched", " links fetched"] {
+        if let Some(provider) = trimmed.strip_suffix(suffix) {
+            let provider = provider.trim();
+            if !provider.is_empty() {
+                return Some(ProgressLine::LinksFetched {
+                    provider: provider.to_string(),
+                });
+            }
         }
     }
     Some(ProgressLine::Other {
