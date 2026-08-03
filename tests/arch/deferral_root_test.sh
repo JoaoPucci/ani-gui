@@ -1107,6 +1107,91 @@ else
 fi
 rm -rf "$merge_dir"
 
+# Counting the step is not enough: a step carrying `if: false` never
+# runs, one carrying `continue-on-error: true` cannot fail the job,
+# and a trigger without a bare `pull_request` event never reports on
+# the pull requests branch protection exists to gate. Each shape is
+# valid YAML, resolves cleanly, and certifies a job that inspects
+# nothing where it matters — so each is refused: the producer job and
+# its lint step must be unconditional and failure-gating, and the
+# trigger must include pull_request without restrictions.
+gate_dir="$scratch_dir/ungateable"
+mkdir "$gate_dir"
+cat >"$gate_dir/producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        if: false
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+skipped_refused=1
+if certified_by_resolution "$gate_dir" 2>/dev/null; then
+    skipped_refused=0
+fi
+cat >"$gate_dir/producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        continue-on-error: true
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+soft_refused=1
+if certified_by_resolution "$gate_dir" 2>/dev/null; then
+    soft_refused=0
+fi
+cat >"$gate_dir/producer.yml" <<'YAML'
+"on": workflow_dispatch
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+dispatch_refused=1
+if certified_by_resolution "$gate_dir" 2>/dev/null; then
+    dispatch_refused=0
+fi
+cat >"$gate_dir/producer.yml" <<'YAML'
+"on":
+  pull_request:
+    types: [labeled]
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+restricted_refused=1
+if certified_by_resolution "$gate_dir" 2>/dev/null; then
+    restricted_refused=0
+fi
+if [ "$skipped_refused" -eq 1 ] && [ "$soft_refused" -eq 1 ] &&
+    [ "$dispatch_refused" -eq 1 ] && [ "$restricted_refused" -eq 1 ]; then
+    printf '  ok       a lint that cannot gate pull requests is refused, not certified
+'
+else
+    printf '  FAIL     ungateable shapes certify: skipped=%s soft-fail=%s dispatch-only=%s restricted-pr=%s (1 = refused)
+' "$skipped_refused" "$soft_refused" "$dispatch_refused" "$restricted_refused"
+    failed=1
+fi
+rm -rf "$gate_dir"
+
 # A checkout path is data, not pattern syntax: a directory carrying a
 # glob metacharacter — nothing stops anyone cloning into ani-[gui] —
 # must enumerate exactly like any other, or the certification refuses
