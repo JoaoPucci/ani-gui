@@ -124,6 +124,23 @@ pub async fn pick_candidate<F: AnidbFetch>(
     let needle = search_title.trim().to_lowercase();
     let (head, year_excluded_any) = year_filtered(client, hits, year).await?;
 
+    // Format disproof, the layer the allanime picker carried as its
+    // type filter: a card badged `Movie` cannot be the multi-episode
+    // series the caller expects, however well its count or position
+    // scores. Unknown badges never exclude, and single-video
+    // expectations keep movie candidates. A pool left empty here is
+    // disproven — the next alias may carry the real show.
+    let head: Vec<_> = if matches!(expected, Some(n) if n > 1) {
+        head.into_iter()
+            .filter(|(h, _)| h.kind.as_deref() != Some("Movie"))
+            .collect()
+    } else {
+        head
+    };
+    if head.is_empty() {
+        return Err(crate::error::AniError::NoResults);
+    }
+
     let Some(expected) = expected else {
         // No count signal: an exact title beats positional order,
         // then a candidate whose own year matched Kitsu's beats the
