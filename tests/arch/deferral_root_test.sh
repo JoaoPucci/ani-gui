@@ -905,6 +905,32 @@ else
 fi
 rm -f "$stripped_workflow"
 
+# The counts have to hold within the job that carries the name, not
+# across the file. Split them — an echo-only job holding the required
+# name beside a second job invoking the action with the sole exclude
+# list — and branch protection is satisfied by the echo job while the
+# lint runs somewhere branch protection never looks. File-wide counts
+# read one of each and certify it.
+split_workflow="$scratch_dir/split-lint.yml"
+printf '%s\n' 'on: push' 'jobs:' '  stub:' \
+    "    name: $arch_lint_name" '    runs-on: ubuntu-latest' \
+    '    steps:' '      - run: echo done' \
+    '  real-lint:' '    runs-on: ubuntu-latest' '    steps:' \
+    '      - uses: luizm/action-sh-checker@master' \
+    '        with:' \
+    '          sh_checker_exclude: "ani-cli"' >"$split_workflow"
+split_refused=1
+if lint_step_present "$split_workflow" 2>/dev/null; then
+    split_refused=0
+fi
+if [ "$split_refused" -eq 1 ]; then
+    printf '  ok       a name-holding job cannot borrow another job'"'"'s lint step\n'
+else
+    printf '  FAIL     an echo job with the name certifies on the strength of a different job'"'"'s lint\n'
+    failed=1
+fi
+rm -f "$split_workflow"
+
 if [ -f "$arch_lint_workflow" ]; then
     # A workflow that never reaches the action lints nothing, however
     # its exclude list reads. Required before the list is trusted.
