@@ -353,12 +353,17 @@ swap_scenario() {
     [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
 }
 
-@test "restoring a stranger's directory never nests it" {
-    # Between renaming a foreign occupant aside and putting it back,
-    # the path can be taken again. mv onto an existing directory
-    # moves the source inside it — cleanup would relocate data this
-    # run never owned. When the destination is occupied, the foreign
-    # directory stays at the reclaim path instead.
+@test "foreign occupants pass cleanup's decision window untouched" {
+    # Cleanup holds nothing aside any more: it removes only what the
+    # bound descriptor vouches for, so a foreign occupant at the
+    # predictable path — and anything written into it while cleanup's
+    # decision window is open — is never renamed, nested or removed.
+    # This case previously asserted the rename-and-restore mechanics
+    # ("restoring a stranger's directory never nests it"); with no
+    # restore left to nest, the invariant it protected is now held by
+    # cleanup not touching the path at all, and the assertions follow
+    # the surviving property: every foreign file stays where its
+    # owner put it.
     target="$BATS_TEST_TMPDIR/nest-swap"
     beacon="$BATS_TEST_TMPDIR/nest-beacon"
     env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=2 \
@@ -392,18 +397,13 @@ swap_scenario() {
         sleep 0.1
     done
     [ "$_claimed" -eq 1 ]
-    # ...and while cleanup holds it aside, the path is taken again.
-    mkdir -p "$target"
+    # ...and more foreign data lands while the window is open.
     printf 'second\n' >"$target/keep-b"
     _status=0
     wait "$_pid" 2>/dev/null || _status=$?
     [ "$_status" -eq 143 ]
-    # The second occupant is intact and nothing was nested into it;
-    # the first survives wherever cleanup parked it.
+    [ -f "$target/keep-a" ]
     [ -f "$target/keep-b" ]
-    [ "$(ls "$target")" = "keep-b" ]
-    _first=$(find "$BATS_TEST_TMPDIR" -name keep-a 2>/dev/null | head -1)
-    [ -n "$_first" ]
 }
 
 @test "the swap case refuses a child that never made a scratch" {

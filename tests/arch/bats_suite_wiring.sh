@@ -81,15 +81,29 @@ fi
 
 # Named before it is created, and registered for cleanup before that,
 # so an interrupt at any point during setup finds the location already
-# known. A name built by a command substitution cannot offer that: the
-# directory exists the moment `mktemp` returns and the variable holds
-# it only once the substitution completes, and a signal in between
-# leaves it behind.
+# known. Computing a name is not creating anything: both names below
+# are plain strings until the mkdir, unlike `mktemp`, whose directory
+# exists before the variable holds it and leaks if a signal lands in
+# between.
 #
 # `$$` keeps concurrent runs apart. `ARCH_WIRING_SCRATCH` exists so the
 # cases below can hand this a location they control.
+#
+# The directory is BUILT away from the predictable path and only
+# exposed there once its identity is bound. A watcher of the
+# predictable path — inotify makes that cheap — could otherwise
+# replace the directory between its creation and the descriptor
+# open, and the run would authenticate the replacement as its own.
+# The build name carries a random suffix so the watcher has no path
+# to watch; what it can observe is creation events in the parent
+# directory, which narrows its window to the two adjacent calls
+# below — a race stated as this file's boundary, since a same-user
+# process able to interpose between adjacent syscalls can equally
+# ptrace this shell and make any check pass.
 scratch="${ARCH_WIRING_SCRATCH:-${TMPDIR:-/tmp}/ani-gui-bats-wiring.$$}"
 record="$scratch/invoked"
+build_suffix=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+build="$scratch.build.${build_suffix:-$$}"
 
 # Removal is gated on this run having created the directory, not on
 # the traps having been installed. The two are not the same instant,
@@ -109,48 +123,37 @@ claim_held=""
 cleanup() {
     [ -n "$owned" ] || return 0
     owned=""
-    # Deciding and removing have to be one claim. A check on the path
-    # followed by an rm removes whatever occupies the path by then —
-    # the two can be different directories, and a pid-derived marker
-    # can be recreated. The rename takes the occupant out of the
-    # shared namespace atomically; the claim file opened at creation
-    # and held open on a descriptor says whether it is this run's
-    # directory; a stranger's is put back untouched. An occupied
-    # reclaim path means leaking ours rather than guessing.
-    reclaimed="$scratch.reclaimed.$$"
-    if [ -e "$reclaimed" ] || [ -L "$reclaimed" ]; then
-        return 0
-    fi
-    mv "$scratch" "$reclaimed" 2>/dev/null || return 0
-    # The window between claiming and removing, held open on request
-    # so a case can step into it; the beacon tells the case the claim
-    # has been made. Nothing else sets either.
+    # The window between deciding and removing, held open on request
+    # so a case can step into it; the beacon tells the case cleanup
+    # has begun. Nothing else sets either.
     if [ -n "${ARCH_WIRING_PAUSE_IN_CLEANUP:-}" ]; then
         : >"${ARCH_WIRING_CLEANUP_BEACON:-/dev/null}"
         sleep "$ARCH_WIRING_PAUSE_IN_CLEANUP"
     fi
-    # Identity is the open descriptor on the directory itself, not
-    # anything stored on disk and not a file. A token written into
-    # the directory is readable and therefore copyable; a claim FILE
-    # is hard-linkable, and the link is the held inode — either way a
+    # Identity is the open descriptor on the build directory itself,
+    # nothing stored on disk and not a file. A token written into the
+    # directory is readable and therefore copyable; a claim FILE is
+    # hard-linkable, and the link is the held inode — either way a
     # replacement can carry the credential. A directory cannot be
     # hard-linked, so `-ef` against the descriptor asks the one
-    # question nothing else can answer for: is the reclaimed path the
-    # directory this run created. The rename preserves its inode; the
-    # descriptor pins it against reuse for as long as the process
-    # lives.
+    # question nothing else can answer for: is the path still the
+    # directory this run bound. Whatever fails the comparison is
+    # somebody else's and stays. Two removals, each guarded: the
+    # exposed symlink only while it still resolves to the bound
+    # directory — a foreign occupant at the predictable path is left
+    # alone, and a directory swapped in behind the check makes the
+    # plain rm fail rather than recurse — and the build directory
+    # only while it IS the bound directory, so a stolen build leaks
+    # instead of surrendering its replacement.
     # shellcheck disable=SC3013 # -ef: dash, bash and busybox all provide it, and content comparison is the defect this replaces
     if [ -n "$claim_held" ] && [ -e /dev/fd/9 ] &&
-        [ "$reclaimed" -ef /dev/fd/9 ]; then
-        rm -rf "$reclaimed"
-    elif [ ! -e "$scratch" ] && [ ! -L "$scratch" ]; then
-        # Restore only into an absent destination: mv onto an existing
-        # directory nests the source inside it, relocating data this
-        # run never owned. A path taken again while the stranger's
-        # directory was held aside means leaving it at the reclaim
-        # path — parked, named, and findable — rather than moving it
-        # into somebody else's directory.
-        mv "$reclaimed" "$scratch" 2>/dev/null || true
+        [ "$scratch" -ef /dev/fd/9 ]; then
+        rm -f "$scratch" 2>/dev/null || true
+    fi
+    # shellcheck disable=SC3013 # as above
+    if [ -n "$claim_held" ] && [ -e /dev/fd/9 ] &&
+        [ "$build" -ef /dev/fd/9 ]; then
+        rm -rf "$build"
     fi
 }
 
@@ -164,7 +167,7 @@ cleanup() {
 # and by disarming on the narrow case where the path was claimed
 # between the two. Whatever is there belongs to somebody, and this
 # check is not the thing to decide it does not.
-if [ -e "$scratch" ]; then
+if [ -e "$scratch" ] || [ -L "$scratch" ]; then
     printf 'arch/bats_suite_wiring: %s already exists — refusing to reuse or remove a location this run did not create\n' \
         "$scratch" >&2
     exit 1
@@ -188,16 +191,18 @@ if [ -n "${ARCH_WIRING_PAUSE_BEFORE_MKDIR:-}" ]; then
     sleep "$ARCH_WIRING_PAUSE_BEFORE_MKDIR"
 fi
 
-if ! mkdir "$scratch" 2>/dev/null; then
+if ! mkdir "$build" 2>/dev/null; then
     trap - EXIT HUP INT TERM
-    printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
-        "$scratch" >&2
+    printf 'arch/bats_suite_wiring: %s could not be created — refusing to continue without a directory of its own\n' \
+        "$build" >&2
     exit 1
 fi
 owned=1
 # The window between creating the directory and binding its identity,
 # held open on request so a case can step into it; the beacon tells
-# the case creation has happened. Nothing else sets either.
+# the case creation has happened. Nothing else sets either. A kill
+# inside this window leaks the build directory: the descriptor is not
+# bound yet, and cleanup deletes nothing it cannot verify.
 if [ -n "${ARCH_WIRING_PAUSE_BEFORE_BIND:-}" ]; then
     : >"${ARCH_WIRING_BIND_BEACON:-/dev/null}"
     sleep "$ARCH_WIRING_PAUSE_BEFORE_BIND"
@@ -210,9 +215,19 @@ fi
 # read, copy or link reproduces the identity. The `.claim` file
 # remains only as the visible marker the cases synchronise on; it
 # carries no authority.
-: >"$scratch/.claim"
-exec 9<"$scratch"
+: >"$build/.claim"
+exec 9<"$build"
 claim_held=1
+
+# Exposure, after the bind and atomic: symlink creation fails on an
+# occupied path rather than replacing or nesting anything, so a
+# squatter at the predictable path produces a refusal — and the
+# cleanup this exit fires removes only the bound build directory.
+if ! ln -s "$build" "$scratch" 2>/dev/null; then
+    printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
+        "$scratch" >&2
+    exit 1
+fi
 
 # The window after the claim: the directory exists and is owned, and
 # whether cleanup acts on the directory this run made or on whatever
