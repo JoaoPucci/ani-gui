@@ -32,8 +32,14 @@ fn decode_entities(s: &str) -> String {
 /// The year the detail page's premiere-season link names
 /// (`/browse?season=fall&year=1999` → 1999). `None` when the page
 /// carries no season link.
-pub fn parse_detail_year(_html: &str) -> Option<u32> {
-    None
+pub fn parse_detail_year(html: &str) -> Option<u32> {
+    let (_, after) = html.split_once("browse?season=")?;
+    let (_, after_year) = after.split_once("year=")?;
+    let digits: String = after_year
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
 }
 
 /// Extract browse hits from the search page HTML. Titles are

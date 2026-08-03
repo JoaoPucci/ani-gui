@@ -238,6 +238,8 @@ impl AnidbFetch for FixtureFetch {
             fixture("browse_one_piece.html")
         } else if url.contains("/api/frontend/anime/69/episodes") {
             fixture("episodes_one_piece.json")
+        } else if url.ends_with("/anime/one-piece-69") {
+            fixture("detail_one_piece.html")
         } else if url.contains("/api/frontend/episode/9001/languages") {
             fixture("languages_op.json")
         } else if url.contains("embed.example") {
@@ -279,6 +281,15 @@ async fn client_episodes_keys_the_request_on_the_numeric_tail() {
     let eps = client.episodes("one-piece-69").await.expect("episodes");
     assert_eq!(eps.len(), 3);
     assert!(client.episodes("no-numeric-tail").await.is_err());
+}
+
+#[tokio::test]
+async fn client_detail_year_reads_the_fixture_and_soft_misses() {
+    let client = AnidbClient::new(FixtureFetch);
+    assert_eq!(client.detail_year("one-piece-69").await, Some(1999));
+    // A slug with no detail route 404s; the year is a hint, so the
+    // miss is a soft None rather than an error.
+    assert_eq!(client.detail_year("no-such-show-1").await, None);
 }
 
 #[tokio::test]

@@ -154,6 +154,16 @@ impl<F: AnidbFetch> AnidbClient<F> {
         extract_master_url(&embed_body).ok_or(AniError::NoResults)
     }
 
+    /// The premiere year the slug's detail page names, when it names
+    /// one. Soft: a fetch or parse miss is `None`, never an error —
+    /// the year is an identity hint for the picker, and resolution
+    /// must not die on a missing hint.
+    pub async fn detail_year(&self, slug: &str) -> Option<u32> {
+        let url = format!("{}/anime/{slug}", self.base);
+        let body = self.content(&url).await.ok()?;
+        parse_detail_year(&body)
+    }
+
     /// Fetch `url` and hand back content, refusing challenge pages
     /// and non-success statuses as typed upstream errors.
     async fn content(&self, url: &str) -> Result<String> {
