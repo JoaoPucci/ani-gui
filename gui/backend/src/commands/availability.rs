@@ -973,6 +973,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_continuation_entry_caps_in_per_entry_numbering() {
+        // The provider numbers continuation cours cumulatively (TYBW's
+        // fourth part lists 41 and 42). The cap the frontend gates the
+        // strip with must speak Kitsu's per-entry numbering: 2 aired,
+        // not a raw 42 that unlocks episodes that don't exist.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Sequel Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<a href="/anime/sequel-show-9"><img alt="Sequel Show"/></a>"#),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/9/episodes"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Sequel Show",
+            "mode": "sub",
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(got.episode_count, Some(2));
+    }
+
+    #[tokio::test]
     async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
         use wiremock::matchers::method;
         let server = wiremock::MockServer::start().await;
