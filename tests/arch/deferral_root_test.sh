@@ -1185,6 +1185,50 @@ else
 fi
 rm -rf "$shim_dir"
 
+# Everything above asks whether a workflow could be spelled so as to
+# defeat a reading. That question has no end: YAML and Actions both
+# have more syntax than any finite reading covers, and each answered
+# spelling leaves the next one open. The question with an end is
+# whether the workflows are the ones a human blessed — equality
+# against a recorded snapshot, where any change of any spelling is a
+# difference and stops the run until somebody looks.
+#
+# The snapshot records what matters and nothing else: every
+# workflow's resolved job names, so a second job answering for the
+# required check name is a difference whatever syntax produced it,
+# and the arch lint workflow's whole resolved structure, so a
+# skipped step, a tolerated failure, a narrowed trigger or a
+# swapped action is a difference too. A step added to an unrelated
+# workflow is not, which keeps the pin off everyday work.
+snapshot_live=0
+if workflows_match_snapshot "$REPO_ROOT/.github/workflows" 2>/dev/null; then
+    snapshot_live=1
+fi
+tampered_dir="$scratch_dir/tampered-workflows"
+mkdir "$tampered_dir"
+cp "$REPO_ROOT/.github/workflows"/*.yml "$tampered_dir/"
+cat >"$tampered_dir/zz-second-producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  stub:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+YAML
+tampered_caught=0
+if ! workflows_match_snapshot "$tampered_dir" 2>/dev/null; then
+    tampered_caught=1
+fi
+rm -rf "$tampered_dir"
+if [ "$snapshot_live" -eq 1 ] && [ "$tampered_caught" -eq 1 ]; then
+    printf '  ok       the workflows equal the blessed snapshot\n'
+else
+    printf '  FAIL     snapshot gate reads live=%s tampered-caught=%s — an unblessed workflow change passes\n' \
+        "$snapshot_live" "$tampered_caught"
+    failed=1
+fi
+
 # Counting the step is not enough: a step carrying `if: false` never
 # runs, one carrying `continue-on-error: true` cannot fail the job,
 # and a trigger without a bare `pull_request` event never reports on
