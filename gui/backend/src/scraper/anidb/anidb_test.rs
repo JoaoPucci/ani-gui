@@ -90,6 +90,26 @@ fn detail_year_is_the_season_links_year() {
 }
 
 #[test]
+fn slug_search_term_is_the_words_without_the_id_tail() {
+    // The reverse-resolver searches Kitsu with this text when a
+    // history row keys on a slug, so the derivation must reject
+    // everything that isn't slug-shaped: legacy allanime ids
+    // (hyphenless mixed-case) and word-only strings keep their own
+    // resolve path, and a bare number carries no searchable words.
+    assert_eq!(
+        slug_search_term("one-piece-69").as_deref(),
+        Some("one piece")
+    );
+    assert_eq!(
+        slug_search_term("86-eighty-six-1234").as_deref(),
+        Some("86 eighty six")
+    );
+    assert_eq!(slug_search_term("ReooPAxPMsHM4KPMY"), None);
+    assert_eq!(slug_search_term("no-numeric-tail"), None);
+    assert_eq!(slug_search_term("12345"), None);
+}
+
+#[test]
 fn encode_query_form_urlencodes_the_title() {
     // The script's naive `sed 's| |+|g'` sends reserved characters
     // raw, and the provider 400s on them — "ChäoS;HEAd" was
