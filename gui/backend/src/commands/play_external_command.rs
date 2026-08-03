@@ -69,6 +69,7 @@ pub(super) async fn resolve_fresh_for_handoff(
         mode: &args.mode,
         expected_count: args.episode_count,
         year: args.year,
+        subtype: args.subtype.as_deref(),
     };
     let started_at = tokio::time::Instant::now();
     let mut sink = |_p: crate::anicli::parser::ProgressLine| {};

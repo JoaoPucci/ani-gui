@@ -96,6 +96,7 @@ fn play_args() -> PlayArgs {
         episode: "2".into(),
         mode: "sub".into(),
         quality: None,
+        subtype: None,
         episode_count: Some(2),
         year: None,
         alt_titles: Vec::new(),
