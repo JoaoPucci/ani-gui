@@ -34,8 +34,7 @@ pub struct PickedShow {
 /// short shows a hard floor of 3 — the same rule the allanime picker
 /// converged on after the sibling-mispick rounds.
 pub fn ep_count_threshold(expected: u32) -> u32 {
-    let _ = expected;
-    todo!()
+    (expected / 10).max(3)
 }
 
 /// Pick the show a query meant from browse `hits`, using Kitsu's
@@ -60,8 +59,58 @@ pub async fn pick_candidate<F: AnidbFetch>(
     expected: Option<u32>,
     search_title: &str,
 ) -> Result<PickedShow> {
-    let _ = (client, hits, expected, search_title);
-    todo!()
+    let needle = search_title.trim().to_lowercase();
+    let probed = hits.iter().take(MAX_PROBED_CANDIDATES);
+
+    let Some(expected) = expected else {
+        // No count signal: an exact title beats positional order,
+        // else the provider's own ranking stands. The single probe
+        // still runs so the caller gets the episode list it needs.
+        let chosen = hits
+            .iter()
+            .take(MAX_PROBED_CANDIDATES)
+            .find(|h| h.title.trim().to_lowercase() == needle)
+            .or_else(|| hits.first())
+            .ok_or(crate::error::AniError::NoResults)?;
+        let episodes = client.episodes(&chosen.slug).await?;
+        return Ok(PickedShow {
+            hit: chosen.clone(),
+            episodes,
+        });
+    };
+
+    // Probe the bounded head of the list; a failing probe removes
+    // the candidate, never the pick.
+    let mut probed_ok: Vec<(&BrowseHit, Vec<crate::scraper::anidb::EpisodeRef>, u32)> = Vec::new();
+    for h in probed {
+        match client.episodes(&h.slug).await {
+            Ok(eps) => {
+                let count = u32::try_from(eps.len()).unwrap_or(u32::MAX);
+                probed_ok.push((h, eps, count.abs_diff(expected)));
+            }
+            Err(e) => {
+                tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
+            }
+        }
+    }
+    let best_dist = probed_ok
+        .iter()
+        .map(|(_, _, d)| *d)
+        .min()
+        .ok_or(crate::error::AniError::NoResults)?;
+    if best_dist > ep_count_threshold(expected) {
+        return Err(crate::error::AniError::NoResults);
+    }
+    let winner_idx = probed_ok
+        .iter()
+        .position(|(h, _, d)| *d == best_dist && h.title.trim().to_lowercase() == needle)
+        .or_else(|| probed_ok.iter().position(|(_, _, d)| *d == best_dist))
+        .expect("best_dist came from this list");
+    let (hit, episodes, _) = probed_ok.swap_remove(winner_idx);
+    Ok(PickedShow {
+        hit: hit.clone(),
+        episodes,
+    })
 }
 
 #[cfg(test)]
