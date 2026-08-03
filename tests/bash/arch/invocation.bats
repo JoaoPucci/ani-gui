@@ -223,6 +223,33 @@ resolution_python() {
     return 1
 }
 
+# Whether a workflow directory equals the blessed snapshot. The
+# projection lives in one place — tests/tools/workflow-snapshot.py,
+# which both this comparison and the regeneration run — so the two
+# sides cannot drift apart into disagreeing about what is recorded.
+# Regenerating is deliberately a human act with no seam here: no
+# environment variable makes this rewrite its own expectations, which
+# is the defect it exists to catch in other checks.
+#
+#   python3 tests/tools/workflow-snapshot.py .github/workflows \
+#       > tests/arch/workflows.snapshot.json
+workflows_match_snapshot() {
+    _snap_py=$(resolution_python) || {
+        printf 'snapshot gate unavailable: no python3 with PyYAML\n' >&2
+        return 1
+    }
+    _generated=$("$_snap_py" "$REPO_ROOT/tests/tools/workflow-snapshot.py" "$1" 2>&1) || {
+        printf '%s\n' "$_generated" >&2
+        return 1
+    }
+    # An empty projection would compare equal to an empty snapshot and
+    # certify nothing; neither side is allowed to be empty.
+    [ -n "$_generated" ] || return 1
+    [ -s "$REPO_ROOT/tests/arch/workflows.snapshot.json" ] || return 1
+    printf '%s\n' "$_generated" |
+        diff -u "$REPO_ROOT/tests/arch/workflows.snapshot.json" - >&2
+}
+
 certified_by_resolution() {
     _resolution_py=$(resolution_python) || {
         printf 'resolution layer unavailable: no python3 with PyYAML\n' >&2
