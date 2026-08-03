@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
-use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
+use crate::commands::play::anidb_client_with_base;
+use crate::commands::play_native_resolve::pick_native_walk;
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
@@ -264,15 +265,16 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
-    check_availability_with_base(state, args, state.allanime_base.as_deref()).await
+    check_availability_with_base(state, args, state.anidb_base.as_deref()).await
 }
 
-/// [`check_availability`] with the allanime endpoint override exposed
-/// for tests. Production passes `None` via the public wrapper.
+/// [`check_availability`] with the anidb origin override exposed for
+/// tests. Production passes `None` via the public wrapper, which
+/// falls back to `state.anidb_base` and then the real site.
 pub(crate) async fn check_availability_with_base(
     state: &AppState,
     args: &AvailabilityArgs,
-    allanime_base: Option<&str>,
+    anidb_base: Option<&str>,
 ) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
     // Captured before any network work, compared again before the
@@ -304,104 +306,45 @@ pub(crate) async fn check_availability_with_base(
         }
     }
 
-    // Funnel through the play picker so availability honours the
-    // same disambiguation play uses. Synthesise a PlayArgs view —
-    // episode + quality + prefetch are unused by pick_title_and_index
-    // but the type needs them.
-    let play_view = PlayArgs {
-        title: args.title.clone(),
-        episode: "1".into(),
-        mode: mode.into(),
-        quality: None,
-        episode_count: args.episode_count,
-        year: args.year,
-        subtype: None,
-        alt_titles: args.alt_titles.clone(),
-        // `prefetch` doubles as the scraper-gate priority: background
-        // probes (rail warms, home-loader fills) are paced and refused
-        // while the breaker is open; interactive checks (detail-page
-        // CTA) always go through.
-        prefetch: args.background,
-        kitsu_id: args.kitsu_id.clone(),
+    // Funnel through the native walk so availability honours the
+    // same alias recovery and disambiguation play uses. The pick's
+    // episodes probe already pays for the full list, so the cap comes
+    // back exact and free — the second detail fetch, its gate-refused
+    // fallback and the approximate-count provenance all retire with
+    // the provider.
+    let client = anidb_client_with_base(state, anidb_base)?;
+    let prio = if args.background {
+        crate::scraper::gate::ScrapePriority::Background
+    } else {
+        crate::scraper::gate::ScrapePriority::Interactive
     };
-    let picked = pick_title_and_index_with_base(state, &play_view, allanime_base).await;
-    // Rate-limited window: surface the typed 429 with the server's
-    // retry hint instead of the generic Network below — retry layers
-    // key off it, and the row stays unwritten either way.
-    if picked.candidate.is_none() {
-        if let Some(e) = picked.rate_limit_error() {
-            return Err(e);
-        }
-    }
-    let chosen_candidate = picked.candidate;
-    // Transient: every allanime preflight search errored. Don't
-    // poison the availability row with `available=false` — the show
-    // may well be there, we just couldn't ask. Surface a Network
-    // error so the API handler returns a non-200; the frontend's
-    // probe logic already keeps unset entries unset on error.
-    // Codex P2 #3233589818.
-    if chosen_candidate.is_none() && !picked.any_search_succeeded {
-        return Err(crate::error::AniError::Network);
-    }
-    // Partial failure: at least one search errored alongside the
-    // ones that returned Ok. The verdict is incomplete (the failed
-    // canonical may actually have a hit), so surface Network too
-    // and let the next probe re-attempt — same handling as the
-    // all-errored case for cache hygiene. Codex P2 #3233658501.
-    if chosen_candidate.is_none() && picked.any_search_errored {
-        return Err(crate::error::AniError::Network);
-    }
-    let available = chosen_candidate.is_some();
-
-    // For the cap we need the actual episode-tag list (allmanga's
-    // `availableEpisodes` is a COUNT that includes half-episodes,
-    // which makes it +1 too high for shows with recaps like One
-    // Piece). Fetch the show's `availableEpisodesDetail` and split
-    // into max-integer + non-integer extras. Failures fall back to
-    // the count, which is wrong by ±1 in rare cases but better
-    // than blocking the cache write.
-    let mut episode_count: Option<u32> = None;
-    let mut extra_episodes: Vec<String> = Vec::new();
-    // Set only on the gate-refused path, where the count comes from
-    // the search hit instead of the detail fetch.
-    let mut episode_count_approximate = false;
-    // Set only where the pacer refuses; a failed fetch is approximate
-    // but not refused.
-    let mut gate_refused = false;
-    if let Some(c) = chosen_candidate.as_ref() {
-        let prio = if args.background {
-            crate::scraper::gate::ScrapePriority::Background
-        } else {
-            crate::scraper::gate::ScrapePriority::Interactive
-        };
-        if state.scraper_gate.admit(prio).await.is_ok() {
-            let started_at = tokio::time::Instant::now();
-            let outcome =
-                crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
-            state
-                .scraper_gate
-                .record(crate::scraper::gate::outcome_of(&outcome), started_at);
-            // RateLimited propagates typed (no cache write); other
-            // fetch failures fall back to the search hit's count
-            // inside the enricher.
-            let (count, extras, approximate) = enrich_from_show_fetch(outcome, c, mode)?;
-            episode_count = count;
-            extra_episodes = extras;
-            episode_count_approximate = approximate;
-        } else {
-            // Gate refused the background fetch — fall back to the
-            // count from the search hit. That number counts halves as
-            // whole episodes, so it runs one high for shows carrying
-            // them. Marked approximate so it is never served back from
-            // cache as if the detail fetch had confirmed it: the next
-            // read re-probes, and an interactive caller (which the
-            // gate does not refuse) gets the exact count.
-            let (count, approximate) = enrich_from_search_hit(c, mode);
-            episode_count = count;
-            episode_count_approximate = approximate;
-            gate_refused = true;
-        }
-    }
+    let walk_started_at = tokio::time::Instant::now();
+    let picked = pick_native_walk(
+        &client,
+        Some(&state.scraper_gate),
+        prio,
+        &args.title,
+        &args.alt_titles,
+        args.episode_count,
+    )
+    .await;
+    let outcome = match &picked {
+        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
+        Err(_) => crate::scraper::gate::ScrapeOutcome::Failure,
+    };
+    state.scraper_gate.record(outcome, walk_started_at);
+    let (available, episode_count) = match picked {
+        Ok(p) => (true, p.episodes.iter().map(|e| e.number).max()),
+        // Clean miss: the only verdict that proves absence — flows
+        // into the cache write below.
+        Err(ne) if ne.clean_miss => (false, None),
+        // Weather (transport failures, upstream refusals, a refused
+        // background admit): surface typed, persist nothing.
+        Err(ne) => return Err(ne.error),
+    };
+    let extra_episodes: Vec<String> = Vec::new();
+    let episode_count_approximate = false;
+    let gate_refused = false;
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
         // A refresh that answered while this was out has already put a
@@ -533,43 +476,6 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
         scheduled
     } else {
         scheduled.min(AVAILABILITY_TTL_ONGOING_SECS)
-    }
-}
-
-/// Seed the airing cache before a pre-premiere negative write. The
-/// premiere-aware TTL in [`negative_ttl_for`] reads the airing:v2
-/// row, but only the detail/play pages write it — the first negative
-/// probe for an upcoming title from the list-view warmer (or one that
-/// races detail's airing fetch) would otherwise decide on a missing
-/// schedule and cache a 24h row that outlives a premiere hours away
-/// (Codex P2 #3566017944). Scoped to exactly the rows where the
-/// schedule changes the decision: pre-premiere statuses on negative
-/// results — current/unknown shows cap at the ongoing window with or
-/// without a schedule, and `airing_get` itself is cache-first, so a
-/// row already seeded by the detail page costs no network.
-/// The cap when the pacer refused the detail fetch: allmanga's own
-/// search-hit count.
-///
-/// That number counts half episodes as whole ones, so it runs one
-/// high for a show carrying them — and by more for a show carrying
-/// several. Approximate, therefore, and never served back from cache
-/// as though the detail fetch had confirmed it.
-///
-/// Zero hits means the search hit carried no count at all, which is
-/// not the same as a confirmed zero: leave it unset so the row reads
-/// as unknown rather than as a show with nothing in it.
-///
-/// The sibling of [`enrich_from_show_fetch`], for the branch where
-/// there was no fetch to enrich from.
-fn enrich_from_search_hit(
-    c: &crate::scraper::allanime::Candidate,
-    mode: &str,
-) -> (Option<u32>, bool) {
-    let n = c.available_episodes.for_mode(mode);
-    if n > 0 {
-        (Some(n), true)
-    } else {
-        (None, false)
     }
 }
 
@@ -738,44 +644,6 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
     }
 }
 
-/// Fold the show-metadata fetch outcome into `(episode_count,
-/// extras)`. `RateLimited` propagates: the throttle window must
-/// reach the caller — and through it the warm loop's backoff —
-/// instead of being silently downgraded, and the cache row is
-/// better left unwritten than written from degraded data
-/// mid-window (the next probe re-attempts). Every other failure
-/// keeps the count fallback from the search hit: off by one for
-/// shows with half-episodes, but better than blocking the write.
-fn enrich_from_show_fetch(
-    outcome: Result<crate::scraper::allanime::ShowMetadata>,
-    candidate: &crate::scraper::Candidate,
-    mode: &str,
-) -> Result<(Option<u32>, Vec<String>, bool)> {
-    match outcome {
-        Ok(detail) => {
-            let extras = detail
-                .available_episodes_detail
-                .for_mode(mode)
-                .iter()
-                .filter(|t| t.parse::<u32>().is_err())
-                .cloned()
-                .collect();
-            // The detail fetch is authoritative: exact.
-            Ok((detail.max_integer_episode(mode), extras, false))
-        }
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            Err(crate::error::AniError::RateLimited { retry_after_secs })
-        }
-        Err(_) => {
-            // Same search-hit count the gate-refused path falls back
-            // to, and approximate for the same reason: it counts half
-            // episodes as whole ones.
-            let n = candidate.available_episodes.for_mode(mode);
-            Ok((if n > 0 { Some(n) } else { None }, Vec::new(), true))
-        }
-    }
-}
-
 /// How long the warm loop sleeps after one probe, given its outcome.
 /// A rate-limited probe waits out the upstream's advertised window
 /// (floored at 1 s so a "0 seconds" answer can't become a hot loop;
@@ -807,259 +675,6 @@ pub struct AvailabilityWarmArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn candidate_with(sub: u32) -> crate::scraper::allanime::Candidate {
-        crate::scraper::allanime::Candidate {
-            id: "s1".into(),
-            name: "Gate Test".into(),
-            available_episodes: serde_json::from_value(serde_json::json!({"sub": sub, "dub": 0}))
-                .expect("episodes"),
-            aired_start: None,
-            show_type: None,
-            episode_count: None,
-            status: None,
-        }
-    }
-
-    proptest::proptest! {
-        // The rule the two examples pin at 0 and 5, stated over every
-        // count and both catalogues: a positive hit is a usable cap and
-        // is always rough, a zero hit is no cap at all and claims
-        // nothing. There is no third shape, and in particular no count
-        // that arrives already confirmed — a search hit never is.
-        #[test]
-        fn a_search_hit_is_a_rough_cap_when_it_has_one_and_silent_when_it_does_not(
-            n in 0u32..5000,
-            dub in proptest::bool::ANY,
-        ) {
-            let mode = if dub { "dub" } else { "sub" };
-            let c = crate::scraper::allanime::Candidate {
-                id: "s".into(),
-                name: "S".into(),
-                available_episodes: serde_json::from_value(if dub {
-                    serde_json::json!({"sub": 0, "dub": n})
-                } else {
-                    serde_json::json!({"sub": n, "dub": 0})
-                })
-                .expect("episodes"),
-                aired_start: None,
-                show_type: None,
-                episode_count: None,
-                status: None,
-            };
-
-            proptest::prop_assert_eq!(
-                enrich_from_search_hit(&c, mode),
-                if n > 0 { (Some(n), true) } else { (None, false) }
-            );
-        }
-    }
-
-    #[test]
-    fn a_refused_fetch_falls_back_to_the_search_hit_and_admits_it_is_rough() {
-        // The search hit counts half episodes as whole ones, so it
-        // runs high — one episode for a show carrying a single recap,
-        // more for a show carrying several. Usable as a cap, never
-        // presentable as confirmed.
-        assert_eq!(
-            enrich_from_search_hit(&candidate_with(5), "sub"),
-            (Some(5), true)
-        );
-    }
-
-    #[test]
-    fn a_search_hit_with_no_count_leaves_the_cap_unknown() {
-        // Zero is what the field reads when allmanga sent no count for
-        // this mode — not a show with nothing in it. Publishing zero
-        // would cap every episode away; unknown lets the next probe
-        // answer.
-        assert_eq!(
-            enrich_from_search_hit(&candidate_with(0), "dub"),
-            (None, false)
-        );
-    }
-
-    #[tokio::test]
-    async fn an_answered_probe_does_not_claim_it_was_refused() {
-        // The wiring in the direction that is reachable from here. The
-        // refusal itself is not: the pacer refuses the detail fetch
-        // only while its breaker is open, and a successful search
-        // closes the breaker on its way past — so within one probe the
-        // fetch that follows a successful search is always admitted.
-        // Production hits it because the home route's own warmers are
-        // competing callers and trip the breaker in that window; that
-        // interleaving is a schedule, not a state, and no test holds
-        // it open reliably. Hence the branch itself is a function with
-        // its own cases above, and this pins the flag's default.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"data": {"shows": {"edges": [{
-                    "_id": "s1",
-                    "name": "Gate Test",
-                    "availableEpisodes": {"sub": 5, "dub": 0}
-                }]}}}),
-            ))
-            .mount(&server)
-            .await;
-        let td = tempfile::tempdir().expect("td");
-        let state = cache_only_state(&td);
-
-        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
-            "title": "Gate Test",
-            "mode": "sub",
-            "kitsu_id": "901"
-        }))
-        .expect("args");
-        let answered = check_availability_with_base(&state, &args, Some(&server.uri()))
-            .await
-            .expect("probe answers");
-
-        assert!(
-            !answered.gate_refused,
-            "nothing refused this one, got {answered:?}"
-        );
-    }
-
-    fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
-        serde_json::from_value(serde_json::json!({
-            "_id": "abc",
-            "name": "X",
-            "availableEpisodes": {"sub": sub, "dub": 0, "raw": 0},
-            "__typename": "Show"
-        }))
-        .expect("candidate")
-    }
-
-    #[test]
-    fn enrich_from_show_fetch_propagates_rate_limits() {
-        // A throttled show-metadata fetch must NOT be downgraded to
-        // the count fallback: the caller (and the warm loop's
-        // backoff) needs the typed 429 + hint, and the cache row is
-        // better left unwritten than written mid-window.
-        let out = enrich_from_show_fetch(
-            Err(crate::error::AniError::RateLimited {
-                retry_after_secs: Some(9),
-            }),
-            &enrich_candidate(12),
-            "sub",
-        );
-        assert!(
-            matches!(
-                out,
-                Err(crate::error::AniError::RateLimited {
-                    retry_after_secs: Some(9)
-                })
-            ),
-            "got {out:?}"
-        );
-    }
-
-    #[test]
-    fn enrich_from_show_fetch_keeps_the_count_fallback_for_other_failures() {
-        let out = enrich_from_show_fetch(
-            Err(crate::error::AniError::Network),
-            &enrich_candidate(12),
-            "sub",
-        )
-        .expect("fallback is Ok");
-        assert_eq!(out.0, Some(12));
-        assert!(out.1.is_empty());
-    }
-
-    fn enrich_detail(tags: &[String]) -> crate::scraper::allanime::ShowMetadata {
-        serde_json::from_value(serde_json::json!({
-            "_id": "abc",
-            "name": "X",
-            "availableEpisodesDetail": {"sub": tags, "dub": [], "raw": []},
-        }))
-        .expect("detail")
-    }
-
-    proptest::proptest! {
-        /// Provenance follows the OUTCOME KIND and nothing else. A
-        /// detail fetch that answered is exact whatever it answered;
-        /// a failure falls back to the search-hit count and is
-        /// approximate whatever that count is. Position, size and
-        /// mode do not enter into it — which is the invariant a
-        /// later edit is most likely to blur, since the two branches
-        /// return the same shape.
-        #[test]
-        fn provenance_follows_the_outcome_kind(
-            ok in proptest::bool::ANY,
-            sub in 0u32..2000,
-            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..6),
-        ) {
-            let out = enrich_from_show_fetch(
-                if ok { Ok(enrich_detail(&tags)) } else { Err(crate::error::AniError::Network) },
-                &enrich_candidate(sub),
-                "sub",
-            ).expect("not rate limited");
-            proptest::prop_assert_eq!(out.2, !ok);
-        }
-
-        /// A rate limit is never downgraded into the count fallback,
-        /// whatever hint it carries. The caller needs the typed 429 —
-        /// the warm loop backs off on it, and the cache row is better
-        /// left unwritten than written mid-window.
-        #[test]
-        fn a_rate_limit_always_propagates(
-            hint in proptest::option::of(0u64..600),
-            sub in 0u32..2000,
-        ) {
-            let out = enrich_from_show_fetch(
-                Err(crate::error::AniError::RateLimited { retry_after_secs: hint }),
-                &enrich_candidate(sub),
-                "sub",
-            );
-            // Bound outside the macro: `prop_assert!` stringifies its
-            // argument as a format string, and the pattern's braces
-            // would be read as placeholders.
-            let propagated = matches!(
-                out,
-                Err(crate::error::AniError::RateLimited { retry_after_secs }) if retry_after_secs == hint
-            );
-            proptest::prop_assert!(propagated);
-        }
-
-        /// The fallback reports the candidate's own count for the
-        /// mode, and reports "no count" rather than a zero — a cached
-        /// `Some(0)` would read as a real cap of nothing and pin the
-        /// card at episode zero. It never carries extras, because a
-        /// failed fetch learned no tags.
-        #[test]
-        fn the_fallback_reports_the_candidate_count_or_nothing(sub in 0u32..2000) {
-            let out = enrich_from_show_fetch(
-                Err(crate::error::AniError::Network),
-                &enrich_candidate(sub),
-                "sub",
-            ).expect("fallback is Ok");
-            proptest::prop_assert_eq!(out.0, if sub > 0 { Some(sub) } else { None });
-            proptest::prop_assert!(out.1.is_empty());
-        }
-
-        /// A successful fetch splits the mode's tags: whole numbers
-        /// set the cap, everything else becomes an extra. No tag is
-        /// dropped and none appears on both sides.
-        #[test]
-        fn a_successful_fetch_splits_tags_into_cap_and_extras(
-            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..8),
-        ) {
-            let out = enrich_from_show_fetch(
-                Ok(enrich_detail(&tags)),
-                &enrich_candidate(1),
-                "sub",
-            ).expect("ok");
-            let (whole, fractional): (Vec<&String>, Vec<&String>) =
-                tags.iter().partition(|t| t.parse::<u32>().is_ok());
-            proptest::prop_assert_eq!(out.1.len(), fractional.len());
-            proptest::prop_assert!(out.1.iter().all(|e| e.parse::<u32>().is_err()));
-            proptest::prop_assert_eq!(
-                out.0,
-                whole.iter().filter_map(|t| t.parse::<u32>().ok()).max()
-            );
-        }
-    }
 
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
@@ -1377,7 +992,7 @@ mod tests {
             },
         );
         assert!(
-            cached.cached.get("556").is_none(),
+            !cached.cached.contains_key("556"),
             "weather must not be persisted"
         );
     }
@@ -2160,39 +1775,5 @@ mod tests {
             serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
         assert!(!parsed.episode_count_approximate);
         assert!(cache_hit_is_usable(&parsed));
-    }
-
-    /// The search-count fallback happens on TWO paths: the gate
-    /// refusing the detail fetch, and the detail fetch itself
-    /// failing. Both yield the same number with the same half-episode
-    /// overcount, so both have to be marked approximate — otherwise
-    /// the failed-fetch row is cached as exact and the click's
-    /// confirmation reads it straight back.
-    #[test]
-    fn a_failed_detail_fetch_reports_its_count_as_approximate() {
-        let candidate = enrich_candidate(13);
-        let (count, extras, approximate) = enrich_from_show_fetch(
-            Err(crate::error::AniError::Scraper { key: "boom" }),
-            &candidate,
-            "sub",
-        )
-        .expect("non-rate-limit errors fall back rather than propagate");
-        assert_eq!(count, Some(13));
-        assert!(extras.is_empty());
-        assert!(
-            approximate,
-            "a search-count fallback is approximate however it was reached"
-        );
-    }
-
-    /// A completed detail fetch is the authoritative count and must
-    /// NOT be marked approximate, or every row would re-probe forever.
-    #[test]
-    fn a_successful_detail_fetch_reports_its_count_as_exact() {
-        let candidate = enrich_candidate(13);
-        let detail = crate::scraper::allanime::ShowMetadata::default();
-        let (_, _, approximate) =
-            enrich_from_show_fetch(Ok(detail), &candidate, "sub").expect("ok");
-        assert!(!approximate, "the detail fetch is authoritative");
     }
 }
