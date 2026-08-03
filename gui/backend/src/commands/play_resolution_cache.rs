@@ -74,10 +74,14 @@ use crate::proxy::MediaKind;
 ///   row warmed by the old order-dependent pick (e.g. Part 1's key
 ///   pointing at Part 2's stream) would keep serving the wrong cour on
 ///   a HEAD-passing hit; bumping evicts those so the new tie-break runs.
+// v8: the picker gained the year identity filter for cour and
+// franchise siblings. A v7 row resolved without it can hold the
+// wrong part's stream (the TYBW Part-1-for-Part-4 mispick) and a
+// HEAD-passing hit would keep serving it; bumping re-resolves.
 // v7: the provider moved to anidb — upstream URLs, show ids (now
 // slugs) and titles from the allanime era are all unreplayable, so
 // every v6 row becomes an unreachable miss.
-const SCHEMA: &str = "v7";
+const SCHEMA: &str = "v8";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
