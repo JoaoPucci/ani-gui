@@ -174,30 +174,6 @@ where
     })
 }
 
-/// Classify a full [`spawn_download`] run for the scraper gate. The
-/// play paths record every upstream-proving outcome because their
-/// subprocess ends at resolution, but `ani-cli -d` spans resolution
-/// plus up to an hour of aria2c / yt-dlp / ffmpeg transfer. Its
-/// success signal is stale by construction: `started_at` predates the
-/// allmanga lookup by the whole transfer, and the gate's staleness
-/// guard only rejects stale successes while the breaker is already
-/// open — recording one here would reset a failure run building up
-/// mid-download and let the breaker need more than three current
-/// failures to open. Only `NoResults` feeds the gate: ani-cli dies
-/// with it at the search stage, before any transfer, so it's still
-/// fresh when reported — and the picker just confirmed the show
-/// exists, making it the rate-limit signature. Everything else (the
-/// pre-spawn ffmpeg check, a missing binary, the transfer timeout,
-/// the generic `Scraper` catch-all any non-zero tool exit maps to)
-/// is local or transfer-stage noise and records nothing.
-fn download_gate_signal<T>(result: &Result<T>) -> Option<bool> {
-    match result {
-        Ok(_) => None,
-        Err(AniError::NoResults) => Some(false),
-        Err(_) => None,
-    }
-}
-
 /// Resolve the destination directory from args + paths::download_dir.
 /// Errors when neither path is available (no XDG, no HOME, no
 /// override) — that case is unreachable from the GUI, which always
@@ -258,7 +234,6 @@ pub(crate) async fn spawn_download_tool<F>(
 where
     F: FnMut(&str) + Send,
 {
-    let _ = quality;
     let find = |name: &str| -> Option<std::path::PathBuf> {
         std::env::split_paths(path_env)
             .map(|d| d.join(name))
@@ -281,6 +256,17 @@ where
             .arg("16")
             .arg("-o")
             .arg(&target);
+        // v5 downloads the variant select_quality chose; the same
+        // preference expressed through yt-dlp's format sort.
+        match quality {
+            Some("worst") => {
+                cmd.arg("-S").arg("+res");
+            }
+            Some(q) if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() => {
+                cmd.arg("-S").arg(format!("res:{q}"));
+            }
+            _ => {}
+        }
         match run_tool(cmd, timeout, on_line).await {
             Ok(()) => return Ok(()),
             Err(e) => {
@@ -525,46 +511,6 @@ mod tests {
     }
 
     #[test]
-    fn download_gate_signal_counts_only_no_results() {
-        // NoResults after the picker confirmed the show exists is
-        // the rate-limit signature, and ani-cli dies with it at the
-        // search stage — before any transfer — so it's still fresh
-        // when reported. A full-run success is NOT gate evidence:
-        // it lands after minutes of transfer, so its resolution
-        // proof is stale by construction and recording it would
-        // reset a failure run that built up during the download.
-        assert_eq!(download_gate_signal::<()>(&Ok(())), None);
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::NoResults)),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn download_gate_signal_ignores_local_and_transfer_stage_failures() {
-        // ffmpeg missing is a pre-spawn local check; MissingBinary
-        // never reached the network; the 1 h timeout and the generic
-        // Scraper catch-all are dominated by aria2c / yt-dlp / ffmpeg
-        // transfer deaths on this path. None of them says anything
-        // about allanime's health, so none may move the breaker.
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::FfmpegMissing)),
-            None
-        );
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::MissingBinary)),
-            None
-        );
-        assert_eq!(download_gate_signal::<()>(&Err(AniError::Timeout)), None);
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-            })),
-            None
-        );
-    }
-
-    #[test]
     fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         let a = DownloadArgs {
             title: "x".into(),
@@ -581,7 +527,3 @@ mod tests {
         assert_eq!(p, PathBuf::from("/tmp/explicit"));
     }
 }
-
-#[cfg(test)]
-#[path = "download_test.rs"]
-mod proptests;
