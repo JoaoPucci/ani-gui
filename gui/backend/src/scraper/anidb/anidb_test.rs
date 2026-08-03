@@ -124,6 +124,7 @@ fn slug_search_term_is_the_words_without_the_id_tail() {
     assert_eq!(slug_search_term("ReooPAxPMsHM4KPMY"), None);
     assert_eq!(slug_search_term("no-numeric-tail"), None);
     assert_eq!(slug_search_term("12345"), None);
+    assert_eq!(slug_search_term("-69"), None);
 }
 
 #[test]
@@ -218,6 +219,19 @@ fn stage_exe(dir: &std::path::Path, name: &str) {
     let mut perms = std::fs::metadata(&p).expect("meta").permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&p, perms).expect("chmod");
+}
+
+#[cfg(windows)]
+#[test]
+fn resolve_finds_the_exe_suffixed_curl_on_windows() {
+    // The system curl ships as curl.exe; a resolve that only checks
+    // the bare failover names never finds it and the transport dies
+    // with Network on every Windows machine.
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(dir.path().join("curl.exe"), "MZ").expect("write stub");
+    let path_env = dir.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve(None, &path_env).expect("resolved");
+    assert!(fetch.exe().ends_with("curl.exe"));
 }
 
 #[cfg(unix)]
