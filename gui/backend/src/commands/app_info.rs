@@ -11,7 +11,7 @@ pub struct AppInfo {
     pub version: String,
     /// Detected `ani-cli` script path.
     pub ani_cli_path: String,
-    /// Where this build of ani-gui keeps its history (shared with the CLI).
+    /// Where this build of ani-gui keeps its own watch history.
     pub history_path: String,
     /// `http://127.0.0.1:<port>` for the streaming proxy.
     pub proxy_base_url: String,
@@ -50,7 +50,7 @@ mod tests {
             ani_cli_path: PathBuf::from("/usr/local/bin/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            history_path: PathBuf::from("/home/u/.local/state/ani-cli/ani-hsts"),
+            history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -74,7 +74,7 @@ mod tests {
         // version.
         assert!(info.version.starts_with(crate::VERSION));
         assert_eq!(info.ani_cli_path, "/usr/local/bin/ani-cli");
-        assert_eq!(info.history_path, "/home/u/.local/state/ani-cli/ani-hsts");
+        assert_eq!(info.history_path, "/home/u/.local/state/ani-gui/history");
         assert_eq!(info.proxy_base_url, "http://127.0.0.1:42337");
     }
 

@@ -6,7 +6,7 @@
 //!   origin, and the kernel-assigned base URL once the listener is up)
 //! - the resolved path to `ani-cli` and a [`DebugOptions`] template the
 //!   commands fill in per call
-//! - the path of the shared ani-hsts history file
+//! - the path of the GUI's own watch-history file
 //! - a concurrency limiter for ani-cli invocations so we never hammer
 //!   allanime
 //!
@@ -153,7 +153,7 @@ impl AppState {
         // Windows pointer instead of a generic missing-binary error.
         // Unix: the field stays None — the script runs via shebang.
         let bash_path = resolve_bash_path()?;
-        let history_path = paths::ani_cli_history().ok_or(AniError::Io)?;
+        let history_path = paths::gui_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
         let metadata_db = paths::metadata_db().ok_or(AniError::Io)?;
