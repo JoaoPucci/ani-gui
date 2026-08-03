@@ -1095,6 +1095,50 @@ else
 fi
 rm -rf "$merge_dir"
 
+# A checkout path is data, not pattern syntax: a directory carrying a
+# glob metacharacter — nothing stops anyone cloning into ani-[gui] —
+# must enumerate exactly like any other, or the certification refuses
+# an innocent checkout for a reason that has nothing to do with its
+# workflows. The same portability property the apostrophe cases pin
+# for the shell, pinned for the enumeration.
+bracket_dir="$scratch_dir/br[a]cket"
+mkdir "$bracket_dir"
+cat >"$bracket_dir/producer.yml" <<'YAML'
+"on": push
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+bracket_certified=0
+if certified_by_resolution "$bracket_dir" 2>/dev/null; then
+    bracket_certified=1
+fi
+if [ "$bracket_certified" -eq 1 ]; then
+    printf '  ok       a bracket-bearing checkout path enumerates literally\n'
+else
+    printf '  FAIL     a glob metacharacter in the checkout path empties the enumeration\n'
+    failed=1
+fi
+rm -rf "$bracket_dir"
+
+# The parser the certification stands on has to be provisioned where
+# the suite runs, or the refusal that guards against a missing parser
+# fires on every fresh environment for want of a package rather than
+# a defect. The CI workflow that runs this suite must install it, and
+# the requirement is pinned here the same way the relevance cases pin
+# bash.yml.
+if grep -q 'python3-yaml' "$REPO_ROOT/.github/workflows/arch.yml"; then
+    printf '  ok       the arch workflow provisions the parser the suite stands on\n'
+else
+    printf '  FAIL     nothing installs PyYAML where the architectural suite runs\n'
+    failed=1
+fi
+
 # Carrying the required name is not linting. A job that keeps the
 # name but drops the sh-checker step satisfies branch protection
 # while inspecting nothing, and with no exclusion declared the
