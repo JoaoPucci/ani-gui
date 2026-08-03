@@ -37,7 +37,7 @@ tests/
 │   ├── acceptance/        # full-CLI-run scenarios
 │   └── property/          # generator harness for pure functions
 ├── fixtures/              # shared goldens (bash + rust + ts)
-│   ├── allanime/          # GraphQL responses, tobeparsed blobs
+│   ├── anidb/             # synthesized anidb.app response shapes
 │   ├── kitsu/             # JSON:API responses
 │   ├── anilist/           # GraphQL responses
 │   ├── m3u8/              # master + media playlists, edge cases
