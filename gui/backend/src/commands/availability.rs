@@ -198,6 +198,14 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v10: the provider changed (allanime → anidb.app). A verdict
+    //      answers "is this on the provider", so every row probed
+    //      against the old catalogue is about a question nobody asks
+    //      anymore: it can say yes for shows anidb.app doesn't carry
+    //      (the click then errors) and no for shows it does (the
+    //      title stays hidden), for up to the 30-day positive TTL.
+    //      Re-keying orphans them all; the stale rows age out of
+    //      SQLite by TTL as usual.
     // v9: gate-refused probes now mark their count approximate so it
     //     re-probes instead of being served as exact. v8 rows written
     //     by that path carry the degraded count with no flag, and
@@ -247,7 +255,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v9:{kitsu_id}:{m}")
+    format!("availability:v10:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
