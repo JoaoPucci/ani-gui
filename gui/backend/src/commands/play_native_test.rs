@@ -389,3 +389,42 @@ async fn a_countless_clean_pool_with_an_unknown_year_still_picks_first() {
         .expect("picked");
     assert_eq!(picked.hit.slug, "plain-show-1");
 }
+
+#[tokio::test]
+async fn an_off_by_one_year_carries_no_identity_for_the_rescue() {
+    // The live Ninjaboy mispick: a Jan-2025 movie in Tai-Ari's
+    // token-garbage pool sat within the year filter's ±1 tolerance
+    // (the December-premiere allowance), so the airing-part rescue
+    // treated it as identity-confirmed and picked a 1-episode movie
+    // for a 12-episode show. Off-by-one keeps a candidate in the
+    // pool but must not vouch for it: with the far-off siblings
+    // excluded and no exact-year survivor, the pool is rejected so
+    // the next alias finds the real entry.
+    let client = AnidbClient::new(YearTable(&[
+        (1, 1, Some(1991)),
+        (2, 12, Some(2001)),
+        (3, 1, Some(2025)),
+    ]));
+    let hits = [
+        hit("old-movie-1", "Old Movie"),
+        hit("old-maids-2", "Old Maids"),
+        hit("boundary-movie-3", "Boundary Movie"),
+    ];
+    let err = pick_candidate(&client, &hits, Some(12), "the real show", Some(2026))
+        .await
+        .expect_err("no exact-year survivor to rescue");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn an_off_by_one_year_still_competes_on_count() {
+    // The tolerance keeps its original job: a season-boundary entry
+    // (Kitsu says 2025, the provider files the winter premiere under
+    // 2026) whose count agrees must keep winning outright.
+    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2026))]));
+    let hits = [hit("boundary-show-1", "Boundary Show")];
+    let picked = pick_candidate(&client, &hits, Some(12), "boundary show", Some(2025))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "boundary-show-1");
+}
