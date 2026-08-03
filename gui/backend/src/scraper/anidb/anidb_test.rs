@@ -61,6 +61,19 @@ fn numeric_id_is_the_slug_tail() {
 }
 
 #[test]
+fn detail_year_is_the_season_links_year() {
+    // The detail page names its premiere season as a browse link
+    // ("Fall 1999" → /browse?season=fall&year=1999). That year is the
+    // picker's identity signal for cour siblings whose episode counts
+    // tie — the browse cards themselves carry no year at all.
+    assert_eq!(
+        parse_detail_year(&fixture("detail_one_piece.html")),
+        Some(1999)
+    );
+    assert_eq!(parse_detail_year("<html>no season link</html>"), None);
+}
+
+#[test]
 fn encode_query_only_swaps_spaces_for_plus() {
     // Byte parity with the script's `sed 's| |+|g'`: the CLI and the
     // GUI must send the same query or their result lists diverge.

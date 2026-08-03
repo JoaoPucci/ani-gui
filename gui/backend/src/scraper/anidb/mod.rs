@@ -25,8 +25,8 @@ pub mod fetch;
 pub mod parse;
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
 pub use parse::{
-    encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_episodes,
-    parse_languages, preferred_embed,
+    encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_detail_year,
+    parse_episodes, parse_languages, preferred_embed,
 };
 
 use crate::error::{AniError, Result};

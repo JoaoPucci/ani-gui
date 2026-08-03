@@ -29,6 +29,13 @@ fn decode_entities(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// The year the detail page's premiere-season link names
+/// (`/browse?season=fall&year=1999` → 1999). `None` when the page
+/// carries no season link.
+pub fn parse_detail_year(_html: &str) -> Option<u32> {
+    None
+}
+
 /// Extract browse hits from the search page HTML. Titles are
 /// entity-decoded (`&#039;`, `&quot;`, `&amp;`). A page without
 /// matching anchors yields an empty list — "no results" is the
