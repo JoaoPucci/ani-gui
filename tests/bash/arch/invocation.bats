@@ -974,6 +974,23 @@ YAML
     run ! certified_by_resolution "$gate_dir"
 }
 
+@test "a yaml-less python3 shim on PATH does not defeat the certification" {
+    # The interpreter on PATH is not always the one the package
+    # manager provisioned: a pyenv shim or virtualenv python3 without
+    # PyYAML shadows /usr/bin/python3, and a certification that
+    # trusts the shim refuses on machines where the dependency is
+    # installed. The shim runs the real interpreter with -S so
+    # site-packages never load.
+    shim_dir="$BATS_TEST_TMPDIR/python-shim"
+    mkdir "$shim_dir"
+    cat >"$shim_dir/python3" <<'SHIM'
+#!/bin/sh
+exec /usr/bin/python3 -S -E "$@"
+SHIM
+    chmod +x "$shim_dir/python3"
+    PATH="$shim_dir:$PATH" certified_by_resolution "$REPO_ROOT/.github/workflows"
+}
+
 @test "a status-flapping check is flagged, not certified" {
     # A check whose output repeats while its exit status flaps between
     # identical runs passes the reproducibility gate, and the status
