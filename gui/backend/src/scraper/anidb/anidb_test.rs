@@ -30,6 +30,20 @@ fn parse_browse_decodes_html_entities_in_titles() {
 }
 
 #[test]
+fn parse_browse_reads_the_type_badge_when_the_card_carries_one() {
+    // Live cards carry a `badge badge-*` span naming the entry's
+    // format (TV / Movie / OVA...). The picker uses it to disprove
+    // single-video candidates against multi-episode expectations,
+    // so the parse must surface it — and a card without a badge
+    // (the fixture's third entry) must read as unknown, never
+    // excluded.
+    let hits = parse_browse(&fixture("browse_one_piece.html"));
+    assert_eq!(hits[0].kind.as_deref(), Some("TV"));
+    assert_eq!(hits[1].kind.as_deref(), Some("Movie"));
+    assert_eq!(hits[2].kind, None);
+}
+
+#[test]
 fn parse_browse_yields_empty_on_a_result_less_page() {
     assert!(parse_browse(&fixture("browse_empty.html")).is_empty());
 }
