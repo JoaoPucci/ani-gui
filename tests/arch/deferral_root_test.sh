@@ -708,8 +708,28 @@ lint_step_present() {
 # differs at edges; a divergence surfaces as a refusal or a wrong
 # producer count, never as a silent pass, because the certification
 # demands exactly one well-formed producer.
+# The interpreter that runs the certification: PATH's python3 when it
+# can import yaml — a virtualenv that provides PyYAML is the
+# environment's choice — otherwise /usr/bin/python3, where the Debian
+# package installs it. A shim without the module no longer answers
+# for the provisioned interpreter beside it; when neither can import
+# yaml, the missing-parser refusal stands.
+resolution_python() {
+    for _py in python3 /usr/bin/python3; do
+        if "$_py" -c 'import yaml' 2>/dev/null; then
+            printf '%s\n' "$_py"
+            return 0
+        fi
+    done
+    return 1
+}
+
 certified_by_resolution() {
-    python3 - "$1" "$arch_lint_name" <<'PYCERT'
+    _resolution_py=$(resolution_python) || {
+        printf 'resolution layer unavailable: no python3 with PyYAML\n' >&2
+        return 1
+    }
+    "$_resolution_py" - "$1" "$arch_lint_name" <<'PYCERT'
 import os
 import sys
 
