@@ -11,10 +11,12 @@
 # live site.
 #
 # Routing rules (first match wins), mirroring the anidb.app flow:
-#   - browse?q=nohit      → browse_empty.html (a results page with no
-#     anime anchors, for the "No results found!" path)
-#   - browse?q=cloudflare → browse_cloudflare.html (a "Just a moment"
-#     interstitial, for the blocked-by-cloudflare die)
+#   - browse query containing "nohit" → browse_empty.html (a results
+#     page with no anime anchors, for the "No results found!" path).
+#     Substring match: the Rust driver's `--` separator rides into the
+#     query ("--+nohit"), so exact q= matching would miss it.
+#   - browse query containing "cloudflare" → browse_cloudflare.html (a
+#     "Just a moment" interstitial, for the blocked-by-cloudflare die)
 #   - browse?q=…          → browse_one_piece.html (three anchors; the
 #     third carries an &#039; entity in its alt title)
 #   - /api/frontend/anime/<id>/episodes  → episodes_one_piece.json
@@ -54,10 +56,10 @@ emit() {
 }
 
 case "$args" in
-    *browse?q=nohit*)
+    *browse\?q=*nohit*)
         emit "$fixtures/browse_empty.html"
         ;;
-    *browse?q=cloudflare*)
+    *browse\?q=*cloudflare*)
         emit "$fixtures/browse_cloudflare.html"
         ;;
     *browse?q=*)
