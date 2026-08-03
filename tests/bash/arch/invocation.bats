@@ -594,6 +594,49 @@ scan_workflows() {
     exclusions_unreadable "$expr_excl"
 }
 
+@test "a name-holding job cannot borrow another job's lint step" {
+    # The counts have to hold within the job that carries the name,
+    # not across the file: an echo-only job holding the required name
+    # beside a second job invoking the action with the sole exclude
+    # list satisfies branch protection while the lint runs somewhere
+    # branch protection never looks.
+    split="$BATS_TEST_TMPDIR/split-lint.yml"
+    printf '%s\n' 'on: push' 'jobs:' '  stub:' \
+        '    name: Arch Shellcheck + Shfmt' '    runs-on: ubuntu-latest' \
+        '    steps:' '      - run: echo done' \
+        '  real-lint:' '    runs-on: ubuntu-latest' '    steps:' \
+        '      - uses: luizm/action-sh-checker@master' \
+        '        with:' \
+        '          sh_checker_exclude: "ani-cli"' >"$split"
+    run ! lint_step_present "$split"
+}
+
+@test "a commented action mention does not count as the lint step" {
+    # A mention is not a step: a comment spelling the action satisfies
+    # an unanchored match, and an env key can spell the input name
+    # without the action ever reading it — an echo-only job dressed
+    # as the lint.
+    commented="$BATS_TEST_TMPDIR/commented-lint.yml"
+    printf '%s\n' 'on: push' 'jobs:' '  arch-sh-checker:' \
+        '    name: Arch Shellcheck + Shfmt' '    runs-on: ubuntu-latest' \
+        '    env:' '      sh_checker_exclude: "ani-cli"' \
+        '    steps:' \
+        '      # uses: luizm/action-sh-checker@master' \
+        '      - run: echo done' >"$commented"
+    run ! lint_step_present "$commented"
+}
+
+@test "an escaped filter key cannot hide a path filter" {
+    # A double-quoted key carrying an escape resolves to paths while
+    # spelling none of its letters where a literal search looks. Any
+    # key spelling the reading cannot resolve reads as a filter being
+    # hidden, not as its absence.
+    gated="$BATS_TEST_TMPDIR/escaped-paths-gate.yml"
+    printf '%s\n' 'on:' '  pull_request:' '    "pa\x74hs":' \
+        '      - "src/**"' 'permissions:' '  contents: read' >"$gated"
+    run ! unconditional "$gated"
+}
+
 @test "a commented mention does not shadow the declaration beneath it" {
     # A comment mentioning the key is not a declaration. Selected as
     # one, it shadows the live line beneath it: the comment's tokens
