@@ -195,6 +195,13 @@ if ! mkdir "$scratch" 2>/dev/null; then
     exit 1
 fi
 owned=1
+# The window between creating the directory and binding its identity,
+# held open on request so a case can step into it; the beacon tells
+# the case creation has happened. Nothing else sets either.
+if [ -n "${ARCH_WIRING_PAUSE_BEFORE_BIND:-}" ]; then
+    : >"${ARCH_WIRING_BIND_BEACON:-/dev/null}"
+    sleep "$ARCH_WIRING_PAUSE_BEFORE_BIND"
+fi
 # The directory's identity: the directory itself, opened on a
 # descriptor this process keeps for its whole life. The open pins the
 # inode — a freed inode can be reused by tmpfs, but not while a

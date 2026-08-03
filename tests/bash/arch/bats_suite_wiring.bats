@@ -286,6 +286,39 @@ swap_scenario() {
     [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
 }
 
+@test "a replacement landing before the identity binds is not adopted" {
+    # The descriptor is acquired by pathname, after the path already
+    # exists: a process that replaces the directory between creation
+    # and the open hands the run a foreign directory to authenticate
+    # as its own, and cleanup deletes it. The identity has to be bound
+    # before the predictable path holds anything to replace.
+    target="$BATS_TEST_TMPDIR/bind-swap"
+    beacon="$BATS_TEST_TMPDIR/bind-beacon"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_BEFORE_BIND=3 \
+        ARCH_WIRING_BIND_BEACON="$beacon" \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    _created=0
+    for _ in $(seq 1 50); do
+        [ -e "$beacon" ] && {
+            _created=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_created" -eq 1 ]
+    kill -0 "$_pid" 2>/dev/null
+    rm -rf "$target" 2>/dev/null || true
+    mkdir -p "$target"
+    printf 'not yours\n' >"$target/keep-me"
+    # No signal: the run must live past the bind, or the window under
+    # test never closes behind the replacement. It continues into its
+    # real work against the foreign directory and exits on its own.
+    wait "$_pid" 2>/dev/null || true
+    [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
+}
+
 @test "a hard-linked claim does not surrender a replacement" {
     # Holding a descriptor prevents inode reuse but not another hard
     # link to the same inode: a process that links the original claim
