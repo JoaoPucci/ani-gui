@@ -107,10 +107,15 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 /// Bubbles AniList / Kitsu transport failures only when the fallback
 /// also fails. Cache write failures are silently ignored.
 pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
+    // v5: the bridge gained the anilist/anime mapping fallback for
+    //     entries Kitsu hasn't MAL-mapped yet. v4 rows were built
+    //     without it and silently omit exactly the newest seasonal
+    //     shows (TYBW's fourth cour was missing from the strip);
+    //     bumping refreshes them.
     // v4: bridge backfills cover_image from AniList's bannerImage
     //     when Kitsu's is null (new ongoing shows). v3 rows have
     //     null covers for those entries; bumping forces a refresh.
-    const KEY: &str = "kitsu:v4:trending_anilist";
+    const KEY: &str = "kitsu:v5:trending_anilist";
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -153,8 +158,12 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
 /// fail to bridge (rare; a couple per page at most).
 const ANILIST_TRENDING_LIMIT: u8 = 25;
 
-/// Concurrent MAL → Kitsu lookups for a list of AniList refs,
-/// dropping entries with no MAL id and entries Kitsu can't bridge.
+/// Concurrent AniList → Kitsu lookups for a list of AniList refs.
+/// Each entry tries Kitsu's `myanimelist/anime` mapping first, then
+/// its `anilist/anime` mapping — Kitsu's MAL table lags brand-new
+/// seasonal entries by weeks while the AniList row exists from day
+/// one, and a drop here removes exactly the season's hottest shows
+/// from the strip. Entries mapped on neither site are dropped.
 /// Preserves the AniList ranking — order matters because the home
 /// hero takes the first 5–6 entries. `FuturesOrdered` runs the
 /// lookups concurrently and yields results in the input order; the
@@ -172,8 +181,14 @@ pub(super) async fn bridge_anilist_to_kitsu(
         let kitsu = state.kitsu.clone();
         let banner = entry.banner_image.clone();
         futures.push_back(async move {
-            let mal_id = entry.id_mal?;
-            let mut kref = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten()?;
+            let by_mal = match entry.id_mal {
+                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
+                None => None,
+            };
+            let mut kref = match by_mal {
+                Some(k) => k,
+                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
+            };
             // Backfill banner from AniList when Kitsu hasn't
             // catalogued one. New ongoing shows like Slime S4 land
             // on Kitsu before their cataloguers upload a banner;
@@ -1448,12 +1463,14 @@ mod tests {
             .and(path("/mappings"))
             .and(query_param("filter[externalSite]", "anilist/anime"))
             .and(query_param("filter[externalId]", "1"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(site_mapping_response(
-                "anilist/anime",
-                1,
-                "31",
-                "Show B",
-            )))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    1,
+                    "31",
+                    "Show B",
+                )),
+            )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
@@ -1494,12 +1511,14 @@ mod tests {
             .and(path("/mappings"))
             .and(query_param("filter[externalSite]", "anilist/anime"))
             .and(query_param("filter[externalId]", "2"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(site_mapping_response(
-                "anilist/anime",
-                2,
-                "31",
-                "Show B",
-            )))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    2,
+                    "31",
+                    "Show B",
+                )),
+            )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
