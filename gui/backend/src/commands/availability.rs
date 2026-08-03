@@ -198,6 +198,11 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v11: the cap moved to per-entry (Kitsu) numbering. A v10 row
+    //      probed against a continuation cour carries the provider's
+    //      cumulative number as its count (TYBW part four: 42 for a
+    //      2-episode entry) and would keep unlocking phantom strip
+    //      tiles for the whole positive TTL; re-keying re-probes.
     // v10: the provider changed (allanime → anidb.app). A verdict
     //      answers "is this on the provider", so every row probed
     //      against the old catalogue is about a question nobody asks
@@ -255,7 +260,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v10:{kitsu_id}:{m}")
+    format!("availability:v11:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -343,7 +348,10 @@ pub(crate) async fn check_availability_with_base(
     };
     state.scraper_gate.record(outcome, walk_started_at);
     let (available, episode_count) = match picked {
-        Ok(p) => (true, p.episodes.iter().map(|e| e.number).max()),
+        Ok(p) => (
+            true,
+            crate::commands::play_native_resolve::kitsu_episode_cap(&p.episodes),
+        ),
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below.
         Err(ne) if ne.clean_miss => (false, None),
@@ -984,16 +992,19 @@ mod tests {
             .and(path("/browse"))
             .and(query_param("q", "Sequel Show"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string(r#"<a href="/anime/sequel-show-9"><img alt="Sequel Show"/></a>"#),
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/sequel-show-9"><img alt="Sequel Show"/></a>"#,
+                ),
             )
             .mount(&server)
             .await;
         wiremock::Mock::given(method("GET"))
             .and(path("/api/frontend/anime/9/episodes"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#,
-            ))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#,
+                ),
+            )
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("td");
@@ -1326,8 +1337,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v10:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v10:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v11:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v11:kid-1:dub");
     }
 
     #[test]
