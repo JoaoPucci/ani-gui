@@ -217,6 +217,7 @@ fn play_args_view(args: &DownloadArgs) -> PlayArgs {
         quality: args.quality.clone(),
         episode_count: args.episode_count,
         year: args.year,
+        subtype: None,
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),

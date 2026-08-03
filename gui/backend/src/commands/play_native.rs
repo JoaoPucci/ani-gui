@@ -115,6 +115,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
     expected: Option<u32>,
     search_title: &str,
     year: Option<u32>,
+    subtype: Option<&str>,
 ) -> Result<PickedShow> {
     if hits.is_empty() {
         // Nothing to probe: a clean absence of candidates, distinct
@@ -126,11 +127,15 @@ pub async fn pick_candidate<F: AnidbFetch>(
 
     // Format disproof, the layer the allanime picker carried as its
     // type filter: a card badged `Movie` cannot be the multi-episode
-    // series the caller expects, however well its count or position
-    // scores. Unknown badges never exclude, and single-video
-    // expectations keep movie candidates. A pool left empty here is
-    // disproven — the next alias may carry the real show.
-    let head: Vec<_> = if matches!(expected, Some(n) if n > 1) {
+    // series the caller expects — nor the clicked entry when Kitsu
+    // says it is anything but a movie (the special-vs-movie shape:
+    // both are single videos, count-tied, and only the format tells
+    // them apart). Unknown badges never exclude, an absent subtype
+    // keeps single-video pools permissive, and a pool left empty
+    // here is disproven — the next alias may carry the real show.
+    let expects_non_movie = matches!(expected, Some(n) if n > 1)
+        || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
+    let head: Vec<_> = if expects_non_movie {
         head.into_iter()
             .filter(|(h, _)| h.kind.as_deref() != Some("Movie"))
             .collect()

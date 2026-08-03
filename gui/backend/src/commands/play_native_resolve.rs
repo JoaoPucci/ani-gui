@@ -65,6 +65,10 @@ pub struct NativeResolveRequest<'a> {
     /// The year the show premiered per Kitsu, when known. The
     /// picker's identity signal for cour and franchise siblings.
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`),
+    /// when the caller has it. Format disproof against the browse
+    /// cards' badges.
+    pub subtype: Option<&'a str>,
 }
 
 /// Search the request's title then its fallbacks in order, pick, and
@@ -112,7 +116,9 @@ where
                 if hits.is_empty() {
                     continue;
                 }
-                match pick_candidate(client, &hits, req.expected_count, t, req.year).await {
+                match pick_candidate(client, &hits, req.expected_count, t, req.year, req.subtype)
+                    .await
+                {
                     Ok(picked) => {
                         on_progress(ProgressLine::Other {
                             text: format!("Matched {}", picked.hit.title),

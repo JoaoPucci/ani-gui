@@ -132,6 +132,7 @@ async fn run(
             mode: "sub",
             expected_count: expected,
             year: None,
+            subtype: None,
         },
         &mut |p| events.push(p),
     )
@@ -244,6 +245,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             mode: "dub",
             expected_count: Some(3),
             year: None,
+            subtype: None,
         },
         &mut sink,
     )
