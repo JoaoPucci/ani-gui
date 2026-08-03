@@ -32,6 +32,7 @@ export function buildDownloadArgs(input: BuildDownloadArgsInput): DownloadArgs {
 		quality: input.quality,
 		episode_count: input.detail.episode_count ?? undefined,
 		year: yearFromKitsuRef(input.detail) ?? undefined,
+		subtype: input.detail?.subtype ?? undefined,
 		alt_titles: altTitlesFromKitsu(input.detail),
 		kitsu_id: input.kitsuId
 	};

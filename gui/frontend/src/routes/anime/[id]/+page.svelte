@@ -219,6 +219,7 @@
 				alt_titles: altTitlesFromKitsu(d),
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
+				subtype: d?.subtype ?? undefined,
 				kitsu_id: d.id,
 				status: d.status ?? undefined,
 				background: false,
@@ -638,6 +639,7 @@
 					altTitles: altTitlesFromKitsu(d),
 					episodeCount: d.episode_count ?? undefined,
 					year: yearFromKitsuRef(d) ?? undefined,
+					subtype: d?.subtype ?? undefined,
 					kitsuId: d.id,
 					status: d.status ?? undefined
 				},
@@ -970,6 +972,7 @@
 						quality,
 						episode_count: detail?.episode_count ?? null,
 						year: yearFromKitsuRef(detail),
+						subtype: detail?.subtype ?? undefined,
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching — the
 						// 12 calls fired here resolve in arbitrary order, so
@@ -1271,6 +1274,7 @@
 							quality,
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
+							subtype: detail?.subtype ?? undefined,
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1300,6 +1304,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? undefined,
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});

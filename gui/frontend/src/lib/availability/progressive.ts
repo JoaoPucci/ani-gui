@@ -38,6 +38,7 @@ async function probeInline<T extends KitsuAnimeRef>(
 					alt_titles: altTitlesFromKitsu(item),
 					episode_count: item.episode_count ?? undefined,
 					year: yearFromKitsuRef(item) ?? undefined,
+					subtype: item?.subtype ?? undefined,
 					kitsu_id: item.id,
 					status: item.status ?? undefined
 					// Interactive, unlike the rail fills: the user is
