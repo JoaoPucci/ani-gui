@@ -1256,17 +1256,13 @@ mod tests {
     #[tokio::test]
     async fn check_availability_honours_the_state_level_override() {
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "data": {"shows": {"edges": []}}
-                })),
-            )
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = cache_only_state(&td);
-        state.allanime_base = Some(server.uri());
+        state.anidb_base = Some(server.uri());
 
         let args = AvailabilityArgs {
             title: "Anything".into(),
@@ -1285,6 +1281,104 @@ mod tests {
         assert!(
             hits >= 1,
             "the search must reach the state's stub, saw {hits} requests"
+        );
+    }
+
+    /// One-show anidb stub: browse answers with a single slug whose
+    /// episodes endpoint lists `count` episodes.
+    async fn stub_one_show(count: u32) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        let eps: Vec<String> = (1..=count)
+            .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
+            .collect();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/5/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(format!("[{}]", eps.join(","))),
+            )
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
+        // The pick already paid for the episodes list, so the cap is
+        // exact and free: no approximate flag, no gate-refused
+        // degradation — the mechanisms those flags existed for are
+        // gone from this path.
+        let server = stub_one_show(7).await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Probe Show",
+            "mode": "sub",
+            "kitsu_id": "555",
+            "episode_count": 7
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(got.episode_count, Some(7));
+        assert!(got.extra_episodes.is_empty());
+        assert!(!got.episode_count_approximate);
+        assert!(!got.gate_refused);
+
+        // And the verdict round-trips through the cache.
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["555".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("555"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
+        use wiremock::matchers::method;
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Down Show",
+            "mode": "sub",
+            "kitsu_id": "556"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(matches!(
+            got,
+            Err(crate::error::AniError::Network | crate::error::AniError::Upstream { .. })
+        ));
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["556".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            cached.cached.get("556").is_none(),
+            "weather must not be persisted"
         );
     }
 
@@ -1743,7 +1837,7 @@ mod tests {
                 .await
                 .expect("recorded")
                 .is_empty(),
-            "bypass_cache must reach allanime rather than replay the stored count"
+            "bypass_cache must reach the provider rather than replay the stored count"
         );
     }
 
@@ -1755,13 +1849,11 @@ mod tests {
         // to land while this one is still out for the guard to mean
         // anything.
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .respond_with(
                 wiremock::ResponseTemplate::new(200)
                     .set_delay(std::time::Duration::from_millis(300))
-                    .set_body_json(serde_json::json!({
-                        "data": {"shows": {"edges": []}}
-                    })),
+                    .set_body_string("<p>no results</p>"),
             )
             .mount(&server)
             .await;
@@ -1823,12 +1915,8 @@ mod tests {
         // that is what this pins: while the row is held, a lookup that
         // has already got its answer must still be waiting.
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "data": {"shows": {"edges": []}}
-                })),
-            )
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("td");
@@ -1923,7 +2011,7 @@ mod tests {
                 .await
                 .expect("recorded")
                 .is_empty(),
-            "an open breaker must produce zero allanime requests"
+            "an open breaker must produce zero provider requests"
         );
     }
 
