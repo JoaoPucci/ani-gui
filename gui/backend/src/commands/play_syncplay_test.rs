@@ -73,7 +73,6 @@ fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState
         ani_cli_path: std::path::PathBuf::from("/nonexistent/never-spawned/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: dir.join("ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: dir.join("images"),
