@@ -339,7 +339,10 @@ async fn a_countless_pick_prefers_the_year_confirmed_candidate() {
     // provider's token search pollutes the pool. Positional order
     // must lose to a candidate whose detail year matches Kitsu's.
     let client = AnidbClient::new(YearTable(&[(1, 1, None), (2, 4, Some(2026))]));
-    let hits = [hit("some-movie-1", "Some Movie"), hit("the-show-2", "The Show")];
+    let hits = [
+        hit("some-movie-1", "Some Movie"),
+        hit("the-show-2", "The Show"),
+    ];
     let picked = pick_candidate(&client, &hits, None, "unrelated words", Some(2026))
         .await
         .expect("picked");
