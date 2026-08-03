@@ -60,6 +60,10 @@ pub struct AvailabilityArgs {
     /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype, forwarded to the picker's format disproof so
+    /// availability verdicts agree with what play would pick.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
     /// check still runs but its result isn't persisted.
     #[serde(default)]
@@ -340,6 +344,7 @@ pub(crate) async fn check_availability_with_base(
         &args.alt_titles,
         args.episode_count,
         args.year,
+        args.subtype.as_deref(),
     )
     .await;
     let outcome = match &picked {
@@ -901,6 +906,7 @@ mod tests {
             mode: "sub".into(),
             alt_titles: Vec::new(),
             episode_count: None,
+            subtype: None,
             year: None,
             kitsu_id: None,
             status: None,

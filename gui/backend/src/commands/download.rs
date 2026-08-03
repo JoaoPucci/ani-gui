@@ -40,6 +40,9 @@ pub struct DownloadArgs {
     /// to the picker as the year tie-break; see [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype, for the picker's format disproof.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Fallback titles tried when the canonical title returns no
     /// allanime hits. Same wire forms as [`PlayArgs::alt_titles`].
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
@@ -115,6 +118,7 @@ where
         mode: &args.mode,
         expected_count: args.episode_count,
         year: args.year,
+        subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
     let mut forward = |p: crate::anicli::parser::ProgressLine| {
@@ -532,6 +536,7 @@ mod tests {
             mode: "sub".into(),
             quality: None,
             episode_count: None,
+            subtype: None,
             year: None,
             alt_titles: vec![],
             kitsu_id: None,
