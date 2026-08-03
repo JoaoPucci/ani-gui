@@ -2,7 +2,7 @@
 //!
 //! ## Design
 //!
-//! When the backend resolves a stream URL (via [`crate::anicli::process::run_debug`])
+//! When the backend resolves a stream URL
 //! it creates a [`StreamSession`] and stores it in a process-global table
 //! keyed by [`SessionId`] (a UUID). The session holds the upstream master
 //! URL, the `Referer:` header the CDN requires, and a TTL.
