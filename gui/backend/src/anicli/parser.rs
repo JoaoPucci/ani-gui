@@ -281,6 +281,19 @@ mod progress_tests {
     use super::*;
 
     #[test]
+    fn parse_progress_line_classifies_v5_links_fetched() {
+        // ani-cli 5.0 spells the progress line "anidb.app links
+        // fetched" (lowercase); the SSE overlay must classify it or
+        // the loading text regresses to a generic banner.
+        assert_eq!(
+            parse_progress_line("anidb.app links fetched"),
+            Some(ProgressLine::LinksFetched {
+                provider: "anidb.app".into()
+            })
+        );
+    }
+
+    #[test]
     fn parse_progress_line_classifies_links_fetched_with_provider_name() {
         assert_eq!(
             parse_progress_line("youtube Links Fetched"),
