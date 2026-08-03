@@ -62,6 +62,9 @@ pub struct NativeResolveRequest<'a> {
     pub mode: &'a str,
     /// Kitsu's episode count, when known.
     pub expected_count: Option<u32>,
+    /// The year the show premiered per Kitsu, when known. The
+    /// picker's identity signal for cour and franchise siblings.
+    pub year: Option<u32>,
 }
 
 /// Search the request's title then its fallbacks in order, pick, and
@@ -109,7 +112,7 @@ where
                 if hits.is_empty() {
                     continue;
                 }
-                match pick_candidate(client, &hits, req.expected_count, t).await {
+                match pick_candidate(client, &hits, req.expected_count, t, req.year).await {
                     Ok(picked) => {
                         on_progress(ProgressLine::Other {
                             text: format!("Matched {}", picked.hit.title),

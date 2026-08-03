@@ -571,6 +571,7 @@ where
         episode: &args.episode,
         mode: &args.mode,
         expected_count: args.episode_count,
+        year: args.year,
     };
     let resolve_started_at = tokio::time::Instant::now();
     let native = crate::commands::play_native_resolve::resolve_native(

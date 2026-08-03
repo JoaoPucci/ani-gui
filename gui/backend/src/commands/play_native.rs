@@ -58,6 +58,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
     hits: &[BrowseHit],
     expected: Option<u32>,
     search_title: &str,
+    _year: Option<u32>,
 ) -> Result<PickedShow> {
     if hits.is_empty() {
         // Nothing to probe: a clean absence of candidates, distinct
