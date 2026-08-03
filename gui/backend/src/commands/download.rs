@@ -245,9 +245,122 @@ where
     })
 }
 
+/// Spawn the download tool directly on a resolved stream URL —
+/// yt-dlp when present (v5's own arguments: fragment-retrying,
+/// 16-way concurrent), falling back to ffmpeg stream-copy when
+/// yt-dlp is missing or fails, exactly as ani-cli 5.0's download()
+/// chains them. Streams each stderr line into `on_line`; the child
+/// dies with a dropped future (kill_on_drop), which is what the
+/// dock's Cancel rides.
+///
+/// `path_env` is the PATH searched for the tools — the caller passes
+/// the process environment; tests stage stub executables.
+///
+/// # Errors
+/// [`AniError::Config`] when neither tool is on `path_env`;
+/// [`AniError::Scraper`] when the chosen tool exits non-zero;
+/// [`AniError::Timeout`] past the transfer deadline.
+pub(crate) async fn spawn_download_tool<F>(
+    master_url: &str,
+    dest: &std::path::Path,
+    file_stem: &str,
+    path_env: &str,
+    timeout: std::time::Duration,
+    on_line: &mut F,
+) -> Result<()>
+where
+    F: FnMut(&str) + Send,
+{
+    let _ = (master_url, dest, file_stem, path_env, timeout, on_line);
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\n{script}\n")).expect("write stub");
+        let mut perms = std::fs::metadata(&p).expect("meta").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        stage_tool(bin.path(), "yt-dlp", "echo \"ytdlp $*\" >&2; exit 0");
+        stage_tool(bin.path(), "ffmpeg", "echo ffmpeg-ran >&2; exit 0");
+        let mut lines = Vec::new();
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "Show Episode 2",
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |l: &str| lines.push(l.to_string()),
+        )
+        .await
+        .expect("yt-dlp path succeeds");
+        let joined = lines.join("\n");
+        assert!(joined.contains("ytdlp"), "yt-dlp ran: {joined}");
+        assert!(
+            joined.contains("--fragment-retries infinite") && joined.contains("-N 16"),
+            "v5's arguments ride along: {joined}"
+        );
+        assert!(
+            joined.contains("Show Episode 2.mp4"),
+            "the target name matches the CLI's shape: {joined}"
+        );
+        assert!(!joined.contains("ffmpeg-ran"), "no fallback on success");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tool_spawn_falls_back_to_ffmpeg_when_ytdlp_fails() {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+        stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+        let mut lines = Vec::new();
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "Show Episode 2",
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |l: &str| lines.push(l.to_string()),
+        )
+        .await
+        .expect("ffmpeg fallback succeeds");
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("-c copy"),
+            "ffmpeg stream-copies the resolved url: {joined}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tool_spawn_with_no_tools_is_a_config_error() {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let got = spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "X",
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(5),
+            &mut |_l: &str| {},
+        )
+        .await;
+        assert!(matches!(got, Err(AniError::Config)));
+    }
 
     #[test]
     fn download_args_round_trips_through_json_with_optional_fields() {
