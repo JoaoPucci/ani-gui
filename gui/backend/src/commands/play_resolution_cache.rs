@@ -74,7 +74,10 @@ use crate::proxy::MediaKind;
 ///   row warmed by the old order-dependent pick (e.g. Part 1's key
 ///   pointing at Part 2's stream) would keep serving the wrong cour on
 ///   a HEAD-passing hit; bumping evicts those so the new tie-break runs.
-const SCHEMA: &str = "v6";
+// v7: the provider moved to anidb — upstream URLs, show ids (now
+// slugs) and titles from the allanime era are all unreplayable, so
+// every v6 row becomes an unreachable miss.
+const SCHEMA: &str = "v7";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -254,7 +257,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v6:"), "got {k}");
+        assert!(k.starts_with("play:v7:"), "got {k}");
     }
 
     #[test]
