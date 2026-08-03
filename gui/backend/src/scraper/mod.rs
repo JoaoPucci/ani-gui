@@ -31,6 +31,7 @@
 //!   patch the same way upstream does.
 
 pub mod allanime;
+pub mod anidb;
 pub mod gate;
 pub mod outcome;
 mod reservation;
