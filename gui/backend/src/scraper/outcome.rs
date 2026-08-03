@@ -24,19 +24,3 @@ pub enum ScrapeOutcome {
         retry_after: Option<Duration>,
     },
 }
-
-/// Classify a request result for
-/// [`ScraperGate::record`](super::gate::ScraperGate::record): the
-/// typed in-band rate limit carries its advertised hint to the gate,
-/// every other error folds to an untyped failure.
-pub fn outcome_of<T>(r: &Result<T, crate::error::AniError>) -> ScrapeOutcome {
-    match r {
-        Ok(_) => ScrapeOutcome::Success,
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            ScrapeOutcome::RateLimited {
-                retry_after: retry_after_secs.map(Duration::from_secs),
-            }
-        }
-        Err(_) => ScrapeOutcome::Failure,
-    }
-}

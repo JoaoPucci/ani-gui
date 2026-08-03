@@ -2,7 +2,7 @@
 //!
 //! ## Design
 //!
-//! When the backend resolves a stream URL (via [`crate::anicli::process::run_debug`])
+//! When the backend resolves a stream URL
 //! it creates a [`StreamSession`] and stores it in a process-global table
 //! keyed by [`SessionId`] (a UUID). The session holds the upstream master
 //! URL, the `Referer:` header the CDN requires, and a TTL.
@@ -147,8 +147,6 @@ pub struct StreamSession {
     pub media_kind: MediaKind,
     /// `Referer:` header the upstream CDN requires.
     pub referer: String,
-    /// Optional subtitle (`.vtt`) URL — also proxied with referer injection.
-    pub subtitle_url: Option<url::Url>,
     /// Wall-clock expiry. After this point the session is GC'd on next read.
     pub expires_at: SystemTime,
 }
@@ -161,13 +159,9 @@ impl StreamSession {
     /// stronger signal (e.g. a HEAD response) should use
     /// [`Self::new_with_kind`] instead.
     #[must_use]
-    pub fn new(
-        upstream_url: url::Url,
-        referer: impl Into<String>,
-        subtitle_url: Option<url::Url>,
-    ) -> Self {
+    pub fn new(upstream_url: url::Url, referer: impl Into<String>) -> Self {
         let kind = MediaKind::from_url(&upstream_url).unwrap_or(MediaKind::Hls);
-        Self::new_with_kind(upstream_url, kind, referer, subtitle_url)
+        Self::new_with_kind(upstream_url, kind, referer)
     }
 
     /// Build a session with an explicit [`MediaKind`]. Use this when
@@ -178,14 +172,12 @@ impl StreamSession {
         upstream_url: url::Url,
         media_kind: MediaKind,
         referer: impl Into<String>,
-        subtitle_url: Option<url::Url>,
     ) -> Self {
         Self {
             id: SessionId::new(),
             upstream_url,
             media_kind,
             referer: referer.into(),
-            subtitle_url,
             expires_at: SystemTime::now() + DEFAULT_SESSION_TTL,
         }
     }
@@ -374,7 +366,7 @@ mod tests {
     #[test]
     fn stream_session_carries_media_kind() {
         let url = url::Url::parse("https://video.example/file.mp4").unwrap();
-        let sess = StreamSession::new(url, "ref", None);
+        let sess = StreamSession::new(url, "ref");
         assert_eq!(sess.media_kind, MediaKind::Mp4);
     }
 
@@ -443,7 +435,6 @@ mod tests {
         let sess = StreamSession::new(
             url::Url::parse("https://example.com/master.m3u8").unwrap(),
             "https://allmanga.to",
-            None,
         );
         let id = sess.id;
         assert_eq!(table.len(), 0);
@@ -463,7 +454,6 @@ mod tests {
         let mut sess = StreamSession::new(
             url::Url::parse("https://example.com/master.m3u8").unwrap(),
             "ref",
-            None,
         );
         sess.expires_at = SystemTime::now() - Duration::from_secs(1);
         let id = table.insert(sess);
@@ -474,16 +464,9 @@ mod tests {
     #[test]
     fn sweep_evicts_only_expired() {
         let table = SessionTable::new();
-        let live = StreamSession::new(
-            url::Url::parse("https://a.example/m.m3u8").unwrap(),
-            "ref",
-            None,
-        );
-        let mut dead = StreamSession::new(
-            url::Url::parse("https://b.example/m.m3u8").unwrap(),
-            "ref",
-            None,
-        );
+        let live = StreamSession::new(url::Url::parse("https://a.example/m.m3u8").unwrap(), "ref");
+        let mut dead =
+            StreamSession::new(url::Url::parse("https://b.example/m.m3u8").unwrap(), "ref");
         dead.expires_at = SystemTime::now() - Duration::from_secs(1);
         let live_id = table.insert(live);
         let dead_id = table.insert(dead);

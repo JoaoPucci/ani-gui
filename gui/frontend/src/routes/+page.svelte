@@ -653,6 +653,7 @@
 		quality: a.quality,
 		episode_count: a.match.episode_count ?? null,
 		year: yearFromKitsuRef(a.match),
+		subtype: a.match?.subtype ?? undefined,
 		alt_titles: altTitlesFromKitsu(a.match),
 		kitsu_id: a.match.id
 	});
@@ -714,7 +715,6 @@
 				`episode=${c.episode}`,
 				`kind=${c.media_kind}`
 			];
-			if (c.subtitle_url) parts.push('sub=1');
 			// Carry the session's resolved quality/mode so /play records
 			// the true setting (and a later switch re-resolves).
 			if (c.quality) parts.push(`q=${encodeURIComponent(c.quality)}`);

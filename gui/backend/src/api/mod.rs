@@ -789,7 +789,6 @@ mod tests {
     fn test_app_state(td: &TempDir) -> AppState {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -799,7 +798,6 @@ mod tests {
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: td.path().join("ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
@@ -1399,7 +1397,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://example/x.m3u8".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Hls,
                 show_id: String::new(),
                 show_title: String::new(),
@@ -1443,7 +1440,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -1495,7 +1491,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -1522,7 +1517,7 @@ mod tests {
         // Verify the reverse mapping was persisted by reading the
         // cache row directly. The frontend will read this via the
         // GET /api/allmanga-kitsu-map/:show_id endpoint.
-        let key = "allmanga2kitsu:v2:vDTSJHSpYnrkZnAvG";
+        let key = "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG";
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
     }
@@ -1558,7 +1553,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
@@ -1611,7 +1605,7 @@ mod tests {
         // the mapping write was suppressed. Surface decisions stay in
         // tracing::warn for diagnostics.
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v2:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v3:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
@@ -1645,7 +1639,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "seq-show".into(),
                 show_title: "Some Sequel (12 episodes)".into(),
@@ -1691,7 +1684,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v2:seq-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:seq-show").expect("get");
         assert_eq!(
             stored,
             Some("99001".to_string()),
@@ -1720,7 +1713,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "seq2-show".into(),
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
@@ -1766,7 +1758,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v2:seq2-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:seq2-show").expect("get");
         assert_eq!(
             stored,
             Some("99002".to_string()),
@@ -1805,7 +1797,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
@@ -1831,7 +1822,7 @@ mod tests {
             .expect("oneshot");
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v2:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v3:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored,
@@ -1904,7 +1895,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -2031,7 +2021,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://example/m.m3u8".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Hls,
                 show_id: "abc".into(),
                 show_title: "Some Show (12 episodes)".into(),
@@ -2153,7 +2142,6 @@ mod tests {
             "command": "/nonexistent/no-such-player-binary",
             "url": "https://example.com/test.m3u8",
             "referer": null,
-            "subtitle_url": null,
             "media_kind": "hls"
         });
         let response = router

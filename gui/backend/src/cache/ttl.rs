@@ -41,7 +41,7 @@ pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
 /// TTL for cached play resolutions (canonical_title + mode + quality +
-/// episode → upstream URL + referer + subtitle + media_kind). 7d is
+/// episode → upstream URL + referer + media_kind). 7d is
 /// generous because the *real* validity gate is the per-read HEAD
 /// check + an evict-on-player-failure feedback loop — a stale row
 /// survives until the next access, where HEAD or playback failure

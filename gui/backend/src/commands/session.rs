@@ -1,5 +1,5 @@
 //! `create_session` command — the frontend hands the backend a resolved
-//! upstream HLS URL (with referer + optional subtitle) and gets back the
+//! upstream HLS URL (with referer) and gets back the
 //! proxy URL hls.js / `<video>` should fetch.
 //!
 //! In M1.5 the upstream URL comes from a manual paste field; in M2+ it'll
@@ -19,8 +19,6 @@ pub struct CreateSessionArgs {
     pub upstream_url: String,
     /// `Referer:` header the upstream CDN expects (empty string if none).
     pub referer: String,
-    /// Optional WebVTT subtitle URL.
-    pub subtitle_url: Option<String>,
 }
 
 /// What the frontend gets back: a session id, the proxy URL the
@@ -39,8 +37,6 @@ pub struct CreateSessionResponse {
     /// What kind of media the URL serves — drives hls.js vs `<video src>`
     /// on the renderer. Wire form is "hls" / "mp4" (lowercase).
     pub media_kind: MediaKind,
-    /// Full proxy URL for the subtitle, when present.
-    pub subtitle_url: Option<String>,
     /// `true` when the play resolution came from the long-term cache
     /// (no fresh ani-cli spawn). The renderer uses this to decide
     /// whether to silently evict + retry on a player error: a cache
@@ -58,8 +54,8 @@ pub struct CreateSessionResponse {
 /// should use [`create_session_with_kind`] instead.
 ///
 /// # Errors
-/// - [`AniError::ParseFailed`] if `upstream_url` or `subtitle_url` is not a
-///   parseable URL or uses a scheme other than `http`/`https`.
+/// - [`AniError::ParseFailed`] if `upstream_url` is not a parseable
+///   URL or uses a scheme other than `http`/`https`.
 pub fn create_session(state: &AppState, args: &CreateSessionArgs) -> Result<CreateSessionResponse> {
     let upstream = parse_http_url(&args.upstream_url, "upstream_url")?;
     let kind = MediaKind::from_url(&upstream).unwrap_or(MediaKind::Hls);
@@ -87,13 +83,7 @@ fn create_session_inner(
     upstream: Url,
     media_kind: MediaKind,
 ) -> Result<CreateSessionResponse> {
-    let subtitle = match args.subtitle_url.as_deref() {
-        None | Some("") => None,
-        Some(s) => Some(parse_http_url(s, "subtitle_url")?),
-    };
-
-    let session =
-        StreamSession::new_with_kind(upstream, media_kind, args.referer.clone(), subtitle.clone());
+    let session = StreamSession::new_with_kind(upstream, media_kind, args.referer.clone());
     let id = session.id;
     state.sessions.insert(session);
 
@@ -105,14 +95,11 @@ fn create_session_inner(
         MediaKind::Mp4 => "file.mp4",
     };
     let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
-    let subtitle_url =
-        subtitle.map(|_| format!("{}/s/{}/sub.vtt", state.proxy_origin.base, session_str));
 
     Ok(CreateSessionResponse {
         session_id: session_str,
         media_url,
         media_kind,
-        subtitle_url,
         cache_hit: false, // play layer flips when serving cached
     })
 }
@@ -138,7 +125,6 @@ mod tests {
 
     fn make_state(port: u16) -> AppState {
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -148,7 +134,6 @@ mod tests {
             ani_cli_path: PathBuf::from("/x"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: PathBuf::from("/y/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
@@ -172,7 +157,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
             },
         )
         .expect("ok");
@@ -191,7 +175,6 @@ mod tests {
             resp.media_url.contains(&resp.session_id),
             "master url embeds the returned session id"
         );
-        assert_eq!(resp.subtitle_url, None);
     }
 
     #[test]
@@ -202,7 +185,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
             },
         )
         .unwrap();
@@ -214,40 +196,6 @@ mod tests {
             "https://cdn.example/master.m3u8"
         );
         assert_eq!(stored.referer, "https://allmanga.to");
-        assert!(stored.subtitle_url.is_none());
-    }
-
-    #[test]
-    fn create_session_with_subtitle_returns_proxy_subtitle_url() {
-        let state = make_state(40_002);
-        let resp = create_session(
-            &state,
-            &CreateSessionArgs {
-                upstream_url: "https://cdn.example/master.m3u8".into(),
-                referer: "https://allmanga.to".into(),
-                subtitle_url: Some("https://cdn.example/captions.vtt".into()),
-            },
-        )
-        .unwrap();
-        let sub = resp.subtitle_url.expect("subtitle url present");
-        assert!(sub.starts_with("http://127.0.0.1:40002/s/"));
-        assert!(sub.ends_with("/sub.vtt"));
-        assert!(sub.contains(&resp.session_id));
-    }
-
-    #[test]
-    fn empty_subtitle_string_is_treated_as_none() {
-        let state = make_state(40_003);
-        let resp = create_session(
-            &state,
-            &CreateSessionArgs {
-                upstream_url: "https://cdn.example/master.m3u8".into(),
-                referer: String::new(),
-                subtitle_url: Some(String::new()),
-            },
-        )
-        .unwrap();
-        assert_eq!(resp.subtitle_url, None);
     }
 
     #[test]
@@ -258,7 +206,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "not a url".into(),
                 referer: String::new(),
-                subtitle_url: None,
             },
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
@@ -273,26 +220,10 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "file:///etc/passwd".into(),
                 referer: String::new(),
-                subtitle_url: None,
             },
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
         assert_eq!(state.sessions.len(), 0);
-    }
-
-    #[test]
-    fn invalid_subtitle_url_returns_parse_failed_and_does_not_leak_session() {
-        let state = make_state(40_006);
-        let r = create_session(
-            &state,
-            &CreateSessionArgs {
-                upstream_url: "https://cdn.example/master.m3u8".into(),
-                referer: String::new(),
-                subtitle_url: Some("ftp://x/y.vtt".into()),
-            },
-        );
-        assert!(matches!(r, Err(AniError::ParseFailed { .. })));
-        assert_eq!(state.sessions.len(), 0, "validation runs before insert");
     }
 
     #[test]
@@ -303,7 +234,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "http://insecure.example/master.m3u8".into(),
                 referer: String::new(),
-                subtitle_url: None,
             },
         )
         .expect("plain http allowed");
@@ -318,14 +248,12 @@ mod tests {
             session_id: "abc".into(),
             media_url: "http://x/m".into(),
             media_kind: crate::proxy::MediaKind::Hls,
-            subtitle_url: None,
             cache_hit: false,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));
         assert!(s.contains("\"media_url\":\"http://x/m\""));
         assert!(s.contains("\"media_kind\":\"hls\""));
-        assert!(s.contains("\"subtitle_url\":null"));
     }
 
     /// HLS upstreams (.m3u8) get a media_url that points at the
@@ -341,7 +269,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://video.example/1080/file.mp4".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
             },
         )
         .expect("ok");
@@ -362,7 +289,6 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
             },
         )
         .expect("ok");

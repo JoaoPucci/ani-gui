@@ -5,11 +5,11 @@
 	"audio_group_label": "Audio",
 	"download_button": "Download",
 	"ep_airs": "Airs {date}",
-	"ep_disabled_tooltip": "Not in allmanga's catalogue.",
-	"ep_recheck_busy": "Checking with allmanga…",
+	"ep_disabled_tooltip": "Not in anidb.app's catalogue.",
+	"ep_recheck_busy": "Checking with anidb.app…",
 	"ep_recheck_failed": "Couldn't check right now — try again in a moment.",
-	"ep_recheck_idle": "Not in allmanga's catalogue yet — click to check again.",
-	"ep_recheck_still_gated": "Still not in allmanga's catalogue.",
+	"ep_recheck_idle": "Not in anidb.app's catalogue yet — click to check again.",
+	"ep_recheck_still_gated": "Still not in anidb.app's catalogue.",
 	"ep_unaired": "Unaired",
 	"ep_unaired_tooltip": "This episode hasn't aired yet.",
 	"episode_frame_num_key": "ep",
@@ -42,7 +42,7 @@
 	"error_play_headline": "Couldn't play episode {episode}",
 	"error_play_headline_single": "Couldn't play this",
 	"error_play_network": "Network trouble reaching the streaming source. Check your connection and try again.",
-	"error_play_no_results": "This title isn't in the streaming catalogue. allmanga doesn't index it.",
+	"error_play_no_results": "This title isn't in the streaming catalogue. anidb.app doesn't index it.",
 	"error_play_scraper": "Couldn't resolve a working stream right now. The streaming source looks unhappy — try again in a few minutes.",
 	"error_play_timeout": "The streaming source took too long to respond. Try again in a few minutes.",
 	"list_add": "Add to list",
@@ -96,5 +96,5 @@
 	"synopsis_heading": "Synopsis",
 	"synopsis_toggle_less": "Read less",
 	"synopsis_toggle_more": "Read more",
-	"unavailable_message": "Not in allmanga's catalogue — playback & download unavailable for this title."
+	"unavailable_message": "Not in anidb.app's catalogue — playback & download unavailable for this title."
 }

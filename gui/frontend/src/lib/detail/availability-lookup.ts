@@ -23,6 +23,7 @@ export interface AvailabilitySubject {
 	altTitles: string[];
 	episodeCount?: number;
 	year?: number;
+	subtype?: string | null;
 	kitsuId: string;
 	status?: string;
 }

@@ -5,7 +5,6 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         stream_url: stream.into(),
         binary: binary.into(),
         referer: None,
-        subtitle_url: None,
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
     }
@@ -191,61 +190,6 @@ fn launch_args_decode_without_referer_for_back_compat() {
     }"#;
     let a: SyncplayLaunchArgs = serde_json::from_str(json).expect("decodes with default referer");
     assert!(a.referer.is_none());
-    assert!(a.subtitle_url.is_none());
-}
-
-#[test]
-fn argv_forwards_subtitle_after_separator() {
-    // Soft-subtitle streams: ani-cli's parser surfaces a sidecar
-    // `.vtt` URL alongside the stream. play_external forwards it
-    // as `--sub-file=`; Syncplay's wrapped mpv needs the same
-    // flag past the `--` separator, or the user sees the video
-    // play but loses subtitles.
-    let mut a = args("https://example.com/master.m3u8", "syncplay");
-    a.subtitle_url = Some("https://example.com/subs.vtt".into());
-    let v = build_argv(&a);
-    assert_eq!(
-        v,
-        vec![
-            "https://example.com/master.m3u8".to_string(),
-            "--".to_string(),
-            "--sub-file=https://example.com/subs.vtt".to_string(),
-        ]
-    );
-}
-
-#[test]
-fn argv_forwards_referer_and_subtitle_together() {
-    // Both flags share one `--` separator. Order matches mpv's
-    // typical argv shape: title-y flags first (none here), then
-    // sub-file, then referrer, then the URL — but here the URL
-    // is the file argument BEFORE `--`, so post-separator order
-    // is what counts: referrer then sub-file (stable across CDN
-    // shapes that supply both).
-    let mut a = args("https://example.com/master.m3u8", "syncplay");
-    a.referer = Some("https://allmanga.to".into());
-    a.subtitle_url = Some("https://example.com/subs.vtt".into());
-    let v = build_argv(&a);
-    assert_eq!(
-        v,
-        vec![
-            "https://example.com/master.m3u8".to_string(),
-            "--".to_string(),
-            "--referrer=https://allmanga.to".to_string(),
-            "--sub-file=https://example.com/subs.vtt".to_string(),
-        ]
-    );
-}
-
-#[test]
-fn argv_drops_empty_subtitle() {
-    // Defensive: an empty `subtitle_url` falls through the same
-    // way an empty `referer` does — emitting `--sub-file=` with
-    // nothing after the equals just makes mpv complain.
-    let mut a = args("https://example.com/v.mp4", "syncplay");
-    a.subtitle_url = Some(String::new());
-    let v = build_argv(&a);
-    assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
 }
 
 #[test]
@@ -259,7 +203,6 @@ fn argv_for_vlc_uses_http_referrer() {
     let mut a = args("https://example.com/v.mp4", "syncplay");
     a.player_kind = ExternalPlayerKind::Vlc;
     a.referer = Some("https://allmanga.to".into());
-    a.subtitle_url = Some("https://example.com/subs.vtt".into());
     let v = build_argv(&a);
     assert_eq!(
         v,
@@ -267,7 +210,6 @@ fn argv_for_vlc_uses_http_referrer() {
             "https://example.com/v.mp4".to_string(),
             "--".to_string(),
             "--http-referrer=https://allmanga.to".to_string(),
-            "--sub-file=https://example.com/subs.vtt".to_string(),
         ]
     );
 }
@@ -281,7 +223,6 @@ fn argv_for_iina_uses_mpv_prefixed_referrer() {
     let mut a = args("https://example.com/v.mp4", "syncplay");
     a.player_kind = ExternalPlayerKind::Iina;
     a.referer = Some("https://allmanga.to".into());
-    a.subtitle_url = Some("https://example.com/subs.vtt".into());
     let v = build_argv(&a);
     assert_eq!(
         v,
@@ -289,7 +230,6 @@ fn argv_for_iina_uses_mpv_prefixed_referrer() {
             "https://example.com/v.mp4".to_string(),
             "--".to_string(),
             "--mpv-referrer=https://allmanga.to".to_string(),
-            "--sub-file=https://example.com/subs.vtt".to_string(),
         ]
     );
 }
@@ -299,12 +239,11 @@ fn argv_for_custom_emits_no_player_specific_flags() {
     // Custom is the escape hatch — we don't know what flag
     // shape the user's player accepts, so passing anything
     // would risk an "unknown option" error. The user is
-    // expected to configure referer / sub-file in their own
-    // player's config (~/.config/mpv/mpv.conf etc.).
+    // expected to configure the referer in their own player's
+    // config (~/.config/mpv/mpv.conf etc.).
     let mut a = args("https://example.com/v.mp4", "syncplay");
     a.player_kind = ExternalPlayerKind::Custom;
     a.referer = Some("https://allmanga.to".into());
-    a.subtitle_url = Some("https://example.com/subs.vtt".into());
     let v = build_argv(&a);
     assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
 }

@@ -247,7 +247,6 @@
 					`episode=${sess.episode}`,
 					`kind=${sess.media_kind}`
 				];
-				if (sess.subtitle_url) parts.push('sub=1');
 				// Carry the session's resolved quality/mode so the player
 				// records the true setting after a PiP re-dock.
 				if (sess.quality) parts.push(`q=${encodeURIComponent(sess.quality)}`);
