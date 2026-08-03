@@ -334,6 +334,7 @@ pub(crate) async fn check_availability_with_base(
         &args.title,
         &args.alt_titles,
         args.episode_count,
+        args.year,
     )
     .await;
     let outcome = match &picked {
