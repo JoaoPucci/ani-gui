@@ -115,6 +115,7 @@ async fn run(
             episode,
             mode: "sub",
             expected_count: expected,
+            year: None,
         },
         &mut |p| events.push(p),
     )
@@ -226,6 +227,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             episode: "2",
             mode: "dub",
             expected_count: Some(3),
+            year: None,
         },
         &mut sink,
     )
