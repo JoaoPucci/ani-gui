@@ -177,6 +177,39 @@ fn resolve_prefers_the_bundled_dir_over_path() {
     assert!(fetch.exe().starts_with(bundled.path()));
 }
 
+// ── the subprocess transport itself ─────────────────────────────────
+
+#[cfg(unix)]
+fn stage_curl_stub(dir: &std::path::Path, script: &str) -> CurlImpersonateFetch {
+    use std::os::unix::fs::PermissionsExt;
+    let p = dir.join("curl_firefox135");
+    std::fs::write(&p, format!("#!/bin/sh\n{script}\n")).expect("write stub");
+    let mut perms = std::fs::metadata(&p).expect("meta").permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&p, perms).expect("chmod");
+    CurlImpersonateFetch::resolve(Some(dir), "").expect("resolve stub")
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn get_splits_the_status_trailer_from_the_body() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf 'hello body\n200'");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert_eq!(resp.status, 200);
+    assert_eq!(resp.body, "hello body");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn get_maps_curls_transfer_failure_marker_to_network() {
+    // curl writes 000 as the status when the transfer itself failed.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '\n000'");
+    let err = fetch.get("https://example.test/x").await.expect_err("000");
+    assert!(matches!(err, AniError::Network));
+}
+
 // ── client flow over a fixture-backed fetch ─────────────────────────
 
 struct FixtureFetch;
