@@ -993,6 +993,25 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "a diagnostic grep cannot shadow the governing relevance pattern" {
+    # The relevance probes have to read the pattern from the
+    # conditional that actually sets relevant=true. A first-match
+    # extraction reads whatever grep happens to come earlier: a
+    # harmless diagnostic matching every path shadows a governing
+    # predicate that quietly dropped tests/arch, and every relevance
+    # probe stays green while the job no-ops.
+    shadowed="$BATS_TEST_TMPDIR/shadowed-bash.yml"
+    {
+        sed '/if grep -qE/i\
+          echo "$changed" | grep -qE '"'"'^(everything)'"'"' || true
+' "$BASH_WORKFLOW"
+    } >"$shadowed"
+    pattern=$(relevance_pattern "$shadowed")
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tests/arch/deferral_record.sh'
+    [ "$status" -eq 0 ]
+}
+
 @test "a commented mention does not shadow the declaration beneath it" {
     # A comment mentioning the key is not a declaration. Selected as
     # one, it shadows the live line beneath it: the comment's tokens
