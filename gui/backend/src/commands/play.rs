@@ -260,16 +260,25 @@ pub(super) async fn stamp_availability_after_native(
 fn anidb_client(
     state: &AppState,
 ) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
+    anidb_client_with_base(state, state.anidb_base.as_deref())
+}
+
+/// [`anidb_client`] with an explicit origin override, shared with the
+/// availability probes' test seam.
+pub(super) fn anidb_client_with_base(
+    state: &AppState,
+    base: Option<&str>,
+) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
         &path_env,
     )
     .ok_or_else(|| {
-        tracing::error!("play: no curl binary found for the anidb transport");
+        tracing::error!("no curl binary found for the anidb transport");
         AniError::Network
     })?;
-    Ok(match &state.anidb_base {
+    Ok(match base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
     })

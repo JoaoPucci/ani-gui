@@ -43,20 +43,34 @@ impl CurlImpersonateFetch {
     /// preference order as the script's `dep_ch_failover`.
     pub fn resolve(extra_dir: Option<&Path>, path_env: &str) -> Option<Self> {
         for name in CURL_FAILOVER {
-            if let Some(dir) = extra_dir {
-                let candidate = dir.join(name);
-                if is_executable(&candidate) {
-                    return Some(Self { exe: candidate });
+            for file in Self::filenames_for(name) {
+                if let Some(dir) = extra_dir {
+                    let candidate = dir.join(&file);
+                    if is_executable(&candidate) {
+                        return Some(Self { exe: candidate });
+                    }
                 }
-            }
-            for dir in std::env::split_paths(path_env) {
-                let candidate = dir.join(name);
-                if is_executable(&candidate) {
-                    return Some(Self { exe: candidate });
+                for dir in std::env::split_paths(path_env) {
+                    let candidate = dir.join(&file);
+                    if is_executable(&candidate) {
+                        return Some(Self { exe: candidate });
+                    }
                 }
             }
         }
         None
+    }
+
+    /// The on-disk filenames a failover name can appear under.
+    /// Windows suffixes its executables, so a plain `curl` in the
+    /// list must also match `curl.exe` — the only name the system
+    /// curl actually ships under there.
+    fn filenames_for(name: &str) -> Vec<String> {
+        if cfg!(windows) {
+            vec![name.to_string(), format!("{name}.exe")]
+        } else {
+            vec![name.to_string()]
+        }
     }
 
     /// The resolved executable, for logging and diagnostics.

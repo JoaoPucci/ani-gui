@@ -181,16 +181,19 @@ pub fn download_dir() -> Option<PathBuf> {
     Some(home.join("Downloads").join("ani-gui"))
 }
 
+/// Serializes tests that mutate process-global env vars so they
+/// don't clobber each other under cargo test's default parallelism.
+/// Shared across test modules (paths, app boot) because the env is
+/// one process-wide resource; the granularity is "any test that
+/// touches env", which is fine for the handful of tests involved.
+#[cfg(test)]
+pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Serializes tests that mutate process-global env vars so they
-    /// don't clobber each other under cargo test's default parallelism.
-    /// Multiple env vars share one lock; the granularity is "any test
-    /// that touches env" rather than per-var, which is fine for the
-    /// handful of tests here.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use super::TEST_ENV_LOCK as ENV_LOCK;
 
     /// The dev-profile policy, tested as a pure function so it's
     /// independent of *this* test binary's own (always-debug) build
