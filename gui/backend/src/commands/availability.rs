@@ -920,7 +920,7 @@ mod tests {
             .and(path("/api/frontend/anime/5/episodes"))
             .respond_with(
                 wiremock::ResponseTemplate::new(200)
-                    .set_body_string(format!("[{}]", eps.join(","))),
+                    .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
             )
             .mount(&server)
             .await;
