@@ -40,35 +40,35 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// The considered head of `hits`, narrowed by Kitsu's year when it
 /// is known: each candidate's detail page names its premiere year,
 /// and a known year more than one off Kitsu's excludes the
-/// candidate. Unknown years (a 404ing detail page, a page without a
-/// season link) never exclude — the year is a soft hint. When every
-/// known year disagrees the data is suspect, so the unfiltered head
-/// comes back and count decides as before; the flag says whether the
-/// filter actually discriminated.
+/// candidate — the identity signal applies even to a lone candidate.
+/// Unknown years (a 404ing detail page, a page without a season
+/// link) never exclude, so a provider markup change degrades to
+/// year-blind picking rather than emptying pools. A pool whose every
+/// candidate carries a known mismatched year contains the show
+/// nowhere — that is a rejection ([`AniError::NoResults`]), so the
+/// walk can try the next alias. Each survivor carries whether its
+/// own year positively matched.
 async fn year_filtered<'a, F: AnidbFetch>(
     client: &AnidbClient<F>,
     hits: &'a [BrowseHit],
     year: Option<u32>,
-) -> (Vec<&'a BrowseHit>, bool) {
-    let head: Vec<&BrowseHit> = hits.iter().take(MAX_PROBED_CANDIDATES).collect();
+) -> Result<Vec<(&'a BrowseHit, bool)>> {
+    let head = hits.iter().take(MAX_PROBED_CANDIDATES);
     let Some(year) = year else {
-        return (head, false);
+        return Ok(head.map(|h| (h, false)).collect());
     };
-    if head.len() < 2 {
-        return (head, false);
-    }
-    let mut kept = Vec::with_capacity(head.len());
-    for h in &head {
-        let got = client.detail_year(&h.slug).await;
-        if got.is_none_or(|y| y.abs_diff(year) <= 1) {
-            kept.push(*h);
+    let mut kept = Vec::new();
+    for h in head {
+        match client.detail_year(&h.slug).await {
+            Some(y) if y.abs_diff(year) <= 1 => kept.push((h, true)),
+            Some(_) => {}
+            None => kept.push((h, false)),
         }
     }
     if kept.is_empty() {
-        return (head, false);
+        return Err(crate::error::AniError::NoResults);
     }
-    let filtered = kept.len() < head.len();
-    (kept, filtered)
+    Ok(kept)
 }
 
 /// Pick the show a query meant from browse `hits`, using Kitsu's
@@ -79,14 +79,16 @@ async fn year_filtered<'a, F: AnidbFetch>(
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
 ///   franchise siblings whose counts tie. Unknown years pass; a
-///   pool whose known years all disagree keeps every candidate.
+///   pool whose known years all disagree is rejected outright —
+///   the show is positively not in it, and the next alias may
+///   carry it.
 /// - With `expected = Some(n)`: best episode-count distance wins,
 ///   rejected when the best distance exceeds [`ep_count_threshold`];
 ///   ties prefer an exact (case-insensitive, trimmed) title match on
-///   `search_title`. When the year filter discriminated and no
-///   survivor sits within the threshold, a survivor with fewer
-///   episodes than expected still wins — an airing part has aired
-///   fewer episodes than the total Kitsu knows is coming.
+///   `search_title`. When no survivor sits within the threshold, a
+///   survivor whose own year positively matched and whose episode
+///   list is shorter than expected still wins — an airing part has
+///   aired fewer episodes than the total Kitsu knows is coming.
 /// - With `expected = None`: an exact title match wins, else the
 ///   first surviving hit — positional order is the provider's own
 ///   ranking.
@@ -109,7 +111,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
         return Err(crate::error::AniError::NoResults);
     }
     let needle = search_title.trim().to_lowercase();
-    let (head, year_discriminated) = year_filtered(client, hits, year).await;
+    let head = year_filtered(client, hits, year).await?;
 
     let Some(expected) = expected else {
         // No count signal: an exact title beats positional order,
@@ -118,9 +120,9 @@ pub async fn pick_candidate<F: AnidbFetch>(
         // list it needs.
         let chosen = head
             .iter()
+            .map(|(h, _)| *h)
             .find(|h| h.title.trim().to_lowercase() == needle)
-            .copied()
-            .or_else(|| head.first().copied())
+            .or_else(|| head.first().map(|(h, _)| *h))
             .ok_or(crate::error::AniError::NoResults)?;
         let episodes = client.episodes(&chosen.slug).await?;
         return Ok(PickedShow {
@@ -130,13 +132,19 @@ pub async fn pick_candidate<F: AnidbFetch>(
     };
 
     // Probe the surviving head; a failing probe removes the
-    // candidate, never the pick.
-    let mut probed_ok: Vec<(&BrowseHit, Vec<crate::scraper::anidb::EpisodeRef>, u32)> = Vec::new();
-    for h in head {
+    // candidate, never the pick. Each survivor keeps whether its
+    // own detail year positively matched Kitsu's.
+    let mut probed_ok: Vec<(
+        &BrowseHit,
+        Vec<crate::scraper::anidb::EpisodeRef>,
+        u32,
+        bool,
+    )> = Vec::new();
+    for (h, year_confirmed) in head {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
                 let count = u32::try_from(eps.len()).unwrap_or(u32::MAX);
-                probed_ok.push((h, eps, count.abs_diff(expected)));
+                probed_ok.push((h, eps, count.abs_diff(expected), year_confirmed));
             }
             Err(e) => {
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
@@ -147,37 +155,36 @@ pub async fn pick_candidate<F: AnidbFetch>(
     // is transient, never the persistable absence.
     let best_dist = probed_ok
         .iter()
-        .map(|(_, _, d)| *d)
+        .map(|(_, _, d, _)| *d)
         .min()
         .ok_or(crate::error::AniError::Network)?;
     if best_dist > ep_count_threshold(expected) {
-        // The airing-part rescue: when the year picked this pool, a
-        // short count is what a currently-airing part looks like —
-        // Kitsu counts the whole season, the provider only what has
-        // aired. Without year evidence a short count stays a miss.
-        if year_discriminated {
-            if let Some(idx) = probed_ok
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, eps, _))| eps.len() < expected as usize)
-                .min_by_key(|(_, (_, _, d))| *d)
-                .map(|(i, _)| i)
-            {
-                let (hit, episodes, _) = probed_ok.swap_remove(idx);
-                return Ok(PickedShow {
-                    hit: hit.clone(),
-                    episodes,
-                });
-            }
+        // The airing-part rescue: a candidate whose own year matched
+        // Kitsu's and whose list is short is what a currently-airing
+        // part looks like — Kitsu counts the whole season, the
+        // provider only what has aired. Without that positive year
+        // evidence a short count stays a miss.
+        if let Some(idx) = probed_ok
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, eps, _, confirmed))| *confirmed && eps.len() < expected as usize)
+            .min_by_key(|(_, (_, _, d, _))| *d)
+            .map(|(i, _)| i)
+        {
+            let (hit, episodes, _, _) = probed_ok.swap_remove(idx);
+            return Ok(PickedShow {
+                hit: hit.clone(),
+                episodes,
+            });
         }
         return Err(crate::error::AniError::NoResults);
     }
     let winner_idx = probed_ok
         .iter()
-        .position(|(h, _, d)| *d == best_dist && h.title.trim().to_lowercase() == needle)
-        .or_else(|| probed_ok.iter().position(|(_, _, d)| *d == best_dist))
+        .position(|(h, _, d, _)| *d == best_dist && h.title.trim().to_lowercase() == needle)
+        .or_else(|| probed_ok.iter().position(|(_, _, d, _)| *d == best_dist))
         .expect("best_dist came from this list");
-    let (hit, episodes, _) = probed_ok.swap_remove(winner_idx);
+    let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
     Ok(PickedShow {
         hit: hit.clone(),
         episodes,
