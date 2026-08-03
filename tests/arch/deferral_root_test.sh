@@ -537,6 +537,15 @@ unconditional() {
     [ -f "$1" ] || return 1
     _trigger=$(sed -nE "/^(\"on\"|'on'|on)[[:space:]]*:/,/^[^[:space:]#]/p" "$1")
     [ -n "$_trigger" ] || return 1
+    # A key spelling inside the block that this reading cannot
+    # resolve — an escape-bearing quoted key, an alias or anchor
+    # token, the explicit form — reads as a filter being hidden, not
+    # as its absence: the block is small and owned by this
+    # repository, and every honest spelling it needs is readable.
+    if printf '%s\n' "$_trigger" |
+        grep -qE "\"[^\"]*\\\\[^\"]*\"[[:space:]]*:|^[[:space:]]*[*&][^:]*:|^[[:space:]]*[?:]([[:space:]]|\$)"; then
+        return 1
+    fi
     ! printf '%s\n' "$_trigger" | grep -q 'paths'
 }
 
@@ -633,7 +642,10 @@ rm -f "$escaped_gate"
 # The regex naming the action, shared by the file-wide count and the
 # job-scoped one so the two can never disagree about what an
 # invocation is.
-lint_action_re="uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker"
+# Anchored to a step-shaped line: `uses:` at the start of its line,
+# optionally behind a list dash. A comment or any other mid-line
+# mention is text about the action, not an invocation of it.
+lint_action_re="^[[:space:]]*(-[[:space:]]+)?uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker"
 
 # How many step lines invoke the sh-checker action. Carrying the
 # required name is not linting: the job has to reach the action for
