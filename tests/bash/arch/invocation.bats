@@ -153,6 +153,17 @@ lint_step_present() {
         [ "$(printf '%s\n' "$_segment" | grep -cE "$EXCLUSION_KEY_RE" || true)" -eq 1 ]
 }
 
+# The relevance pattern is read from the conditional that sets
+# relevant=true — the `if grep` fed by "$changed" — never from the
+# first grep that happens to appear in the file: a diagnostic grep is
+# not the predicate. More than one governing-shaped line is ambiguity
+# and refuses, so the probes fail rather than trust a guess.
+relevance_pattern() {
+    _governing=$(grep -F 'if grep -qE' "$1" | grep -F '<<<"$changed"' || true)
+    [ "$(printf '%s\n' "$_governing" | grep -c .)" -eq 1 ] || return 1
+    printf '%s\n' "$_governing" | sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p"
+}
+
 # The exclusion extraction and its refusal, as functions so a fixture
 # spelling runs through exactly the code the live line runs through.
 #
@@ -635,7 +646,7 @@ scan_workflows() {
     # longer extension is a subject too: a duplicate producer in
     # duplicate.yaml must not land while the case that rejects it is
     # skipped as irrelevant.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'.github/workflows/duplicate.yaml'
     [ "$status" -eq 0 ]
@@ -987,7 +998,7 @@ FLAP
     # ignored, so .gitignore is an input of the ported suite: a PR
     # touching only it must count as relevant, or the case that reads
     # it goes green by never running.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'.gitignore'
     [ "$status" -eq 0 ]
@@ -1178,7 +1189,7 @@ YAML
     # mentions the directory — a comment does that — but that the
     # pattern the step matches changed paths against actually selects
     # one. The pattern is lifted out of the workflow and run.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'tests/arch/boundaries.sh'
     [ "$status" -eq 0 ]
@@ -1187,7 +1198,7 @@ YAML
 @test "the bats job's relevance pattern does not match everything" {
     # A pattern that selects any path at all would satisfy the case
     # above while saying nothing about arch coverage.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     run ! grep -qE "^($pattern)" <<<'gui/frontend/src/routes/+page.svelte'
 }
 
@@ -1213,7 +1224,7 @@ YAML
     # touching only it does not select the bats job, gutting the lint
     # workflow — the exact regression the cases above exist to catch —
     # lands with the suite that catches it never having run.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'.github/workflows/arch-lint.yml'
     [ "$status" -eq 0 ]
@@ -1225,7 +1236,7 @@ YAML
     # duplicate of the arch lint's check name added in rust.yml must
     # not land while the case that rejects it is skipped as
     # irrelevant.
-    pattern=$(sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p" "$BASH_WORKFLOW" | head -1)
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'.github/workflows/rust.yml'
     [ "$status" -eq 0 ]
