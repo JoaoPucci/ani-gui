@@ -59,6 +59,10 @@ pub struct BrowseHit {
     pub slug: String,
     /// Entity-decoded display title from the cover's alt text.
     pub title: String,
+    /// The card's format badge (`TV`, `Movie`, `OVA`, ...) when the
+    /// markup carries one. `None` reads as unknown — a soft signal,
+    /// like an unparseable year.
+    pub kind: Option<String>,
 }
 
 impl BrowseHit {

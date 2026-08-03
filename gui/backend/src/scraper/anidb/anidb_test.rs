@@ -63,11 +63,13 @@ fn cloudflare_interstitial_is_recognized_and_content_is_not() {
 #[test]
 fn numeric_id_is_the_slug_tail() {
     let hit = BrowseHit {
+        kind: None,
         slug: "one-piece-69".into(),
         title: "One Piece".into(),
     };
     assert_eq!(hit.numeric_id(), Some(69));
     let no_tail = BrowseHit {
+        kind: None,
         slug: "no-numeric-tail".into(),
         title: "x".into(),
     };

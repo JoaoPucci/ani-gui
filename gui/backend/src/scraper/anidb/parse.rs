@@ -75,7 +75,16 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
         else {
             continue;
         };
+        let kind = chunk
+            .split("class=\"badge badge-")
+            .skip(1)
+            .filter_map(|b| b.split_once('>').map(|(_, rest)| rest))
+            .filter_map(|rest| rest.split('<').next())
+            .map(str::trim)
+            .find(|t| !t.is_empty())
+            .map(str::to_string);
         hits.push(BrowseHit {
+            kind,
             slug: slug.to_string(),
             title: decode_entities(title),
         });
