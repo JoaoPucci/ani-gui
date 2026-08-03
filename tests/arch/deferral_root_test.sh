@@ -609,23 +609,48 @@ rm -f "$quoted_on_gate"
 #
 # One pattern for selection and count, so the two can never disagree
 # about what a declaration is.
+# The regex naming the action, shared by the file-wide count and the
+# job-scoped one so the two can never disagree about what an
+# invocation is.
+lint_action_re="uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker"
+
 # How many step lines invoke the sh-checker action. Carrying the
 # required name is not linting: the job has to reach the action for
 # anything to be inspected, and the count is a syntactic constraint —
 # a `uses:` line naming the action either exists or does not.
 lint_action_uses() {
-    grep -cE "uses[[:space:]]*:[[:space:]]*['\"]?luizm/action-sh-checker" "$1" || true
+    grep -cE "$lint_action_re" "$1" || true
 }
 
-# Whether the workflow actually lints: exactly one invocation of the
-# action and exactly one exclusion declaration. Zero of either is a
-# workflow that starts, succeeds and inspects nothing — the coverage
-# case would then read an empty token list as "nothing excluded" and
-# certify it. More than one of either is ambiguity the reads above
-# already refuse to resolve.
+# The remainder of the job that carries the required name: the lines
+# from its bare name declaration to the next line at job-id
+# indentation, or the end of the file. The same range family the
+# trigger reading uses — an indentation constraint, not a parse. Two
+# stated bounds: the segment starts at the first line spelling the
+# bare name, so a job declaring its name after its steps reads as
+# empty and refuses; a quoted or otherwise indirect name spelling is
+# not found and refuses the same way. Both directions fail closed —
+# the remedy is spelling the job the way the live workflow spells it.
+required_job_segment() {
+    awk -v name="name: $arch_lint_name" '
+        found && /^  [^ ]/ { exit }
+        found { print }
+        index($0, name) { found = 1 }
+    ' "$1" 2>/dev/null
+}
+
+# Whether the workflow actually lints where branch protection looks:
+# within the job carrying the required name, exactly one invocation
+# of the action and exactly one exclusion declaration. File-wide
+# counts certify a workflow whose name-holding job inspects nothing
+# while a second job lints somewhere branch protection never reads.
+# Zero of either refuses as a job that starts, succeeds and inspects
+# nothing; more than one is ambiguity the reads above already refuse.
 lint_step_present() {
-    [ "$(lint_action_uses "$1")" -eq 1 ] &&
-        [ "$(exclusion_declarations "$1")" -eq 1 ]
+    _segment=$(required_job_segment "$1")
+    [ -n "$_segment" ] || return 1
+    [ "$(printf '%s\n' "$_segment" | grep -cE "$lint_action_re" || true)" -eq 1 ] &&
+        [ "$(printf '%s\n' "$_segment" | grep -cE "$exclusion_key_re" || true)" -eq 1 ]
 }
 
 # The alias/anchor arm selects any line opening with `*` or `&` that
