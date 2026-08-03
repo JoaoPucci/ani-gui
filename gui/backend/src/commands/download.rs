@@ -312,7 +312,20 @@ where
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let mut child = cmd.spawn().map_err(|_| AniError::Network)?;
+    let mut child = loop {
+        match cmd.spawn() {
+            Ok(c) => break c,
+            // ETXTBSY: a concurrent fork briefly holds the tool's
+            // write fd between its fork and exec (fds are CLOEXEC,
+            // so the window is microseconds). Real for freshly
+            // written executables — retry instead of failing the
+            // whole download over it.
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            Err(_) => return Err(AniError::Network),
+        }
+    };
     let stderr = child.stderr.take().ok_or(AniError::Io)?;
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
