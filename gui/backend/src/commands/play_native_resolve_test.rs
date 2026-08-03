@@ -262,7 +262,7 @@ async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
     // raw 42, or the strip unlocks eleven episodes that don't exist.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
     let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
-    let (got, _) = run(&provider, "the sequel", &[], "1", Some(13)).await;
+    let (got, _) = run(&provider, "the sequel", &[], "1", None).await;
     let resolved = got.expect("episode 1 resolves through the offset");
     assert_eq!(resolved.slug, "the-sequel-88");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
@@ -275,7 +275,7 @@ async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
     // listed. The dead-end classification must survive the offset.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
     let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
-    let (got, _) = run(&provider, "the sequel", &[], "3", Some(13)).await;
+    let (got, _) = run(&provider, "the sequel", &[], "3", None).await;
     let err = got.expect_err("episode 3 has not aired");
     assert!(!err.clean_miss);
     assert!(matches!(err.error, AniError::NoResults));

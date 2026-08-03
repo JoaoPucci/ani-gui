@@ -122,7 +122,7 @@ where
                         on_progress(ProgressLine::LinksFetched {
                             provider: "anidb.app".into(),
                         });
-                        let episode_cap = picked.episodes.iter().map(|e| e.number).max();
+                        let episode_cap = kitsu_episode_cap(&picked.episodes);
                         return Ok(NativeResolved {
                             slug: picked.hit.slug,
                             title: picked.hit.title,
@@ -162,10 +162,34 @@ where
     })
 }
 
+/// The shift between the provider's episode numbers and the
+/// per-entry numbers every caller requests. anidb.app keeps a
+/// franchise's cumulative count on continuation cours — TYBW's
+/// fourth part lists episodes 41 and 42 — while Kitsu (and so every
+/// number the UI can send) restarts each entry at 1. An entry whose
+/// first listed number is above 1 is such a continuation; entries
+/// starting at 0 or 1 already number per-entry and shift nothing.
+pub fn numbering_offset(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
+    match episodes.iter().map(|e| e.number).min() {
+        Some(first) if first > 1 => first - 1,
+        _ => 0,
+    }
+}
+
+/// The entry's highest listed episode in per-entry (Kitsu) numbering
+/// — what availability caps and the play response's `episode_cap`
+/// must report, or a continuation cour's raw provider numbers unlock
+/// episodes that don't exist.
+pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Option<u32> {
+    let offset = numbering_offset(episodes);
+    episodes.iter().map(|e| e.number).max().map(|m| m - offset)
+}
+
 /// Resolve the requested episode within a picked show down to the
 /// master URL. Split from the walk for the per-file complexity bar
 /// and because the orchestrator's cache-hit path may someday reuse
-/// it.
+/// it. The request's number is per-entry; the provider's listing may
+/// be cumulative — [`numbering_offset`] bridges the two.
 ///
 /// # Errors
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
@@ -184,6 +208,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .trim()
         .parse()
         .map_err(|_| dead_end(AniError::NoResults))?;
+    let n = n.saturating_add(numbering_offset(&picked.episodes));
     let ep = picked
         .episodes
         .iter()
