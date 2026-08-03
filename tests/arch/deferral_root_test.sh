@@ -602,45 +602,6 @@ else
 fi
 rm -f "$escaped_gate"
 
-# The text readings above are one layer: conservative, fail-closed,
-# and by construction incomplete — YAML's spelling space is unbounded
-# and each reading covers the spellings it names. The authority is
-# resolution: parse every workflow with a real parser and certify the
-# RESOLVED structure, where quoting, escapes, folding, flow, aliases
-# and merge keys have already collapsed to the values GitHub sees. A
-# merge key is the probe because no text arm can see it: the required
-# name arrives in a job through `<<: *defaults` while no line of the
-# job spells a name at all.
-merge_dir="$scratch_dir/merge-key-producer"
-mkdir "$merge_dir"
-cat >"$merge_dir/covert.yml" <<'YAML'
-defs: &d
-  name: Arch Shellcheck + Shfmt
-"on": push
-jobs:
-  stub:
-    <<: *d
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo done
-YAML
-merge_caught=0
-if ! certified_by_resolution "$merge_dir" 2>/dev/null; then
-    merge_caught=1
-fi
-live_certified=0
-if certified_by_resolution "$REPO_ROOT/.github/workflows" 2>/dev/null; then
-    live_certified=1
-fi
-if [ "$merge_caught" -eq 1 ] && [ "$live_certified" -eq 1 ]; then
-    printf '  ok       the resolved workflow structure certifies what the text layer cannot\n'
-else
-    printf '  FAIL     resolution reads merge-key-caught=%s live-certified=%s — a resolved second producer is invisible\n' \
-        "$merge_caught" "$live_certified"
-    failed=1
-fi
-rm -rf "$merge_dir"
-
 # Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
@@ -723,6 +684,127 @@ lint_step_present() {
     [ -n "$_segment" ] || return 1
     [ "$(printf '%s\n' "$_segment" | grep -cE "$lint_action_re" || true)" -eq 1 ] &&
         [ "$(printf '%s\n' "$_segment" | grep -cE "$exclusion_key_re" || true)" -eq 1 ]
+}
+
+# The authority behind every text reading above: parse the workflows
+# with a real parser and certify the RESOLVED structure, where
+# quoting, escapes, folding, flow style, aliases and merge keys have
+# already collapsed to the values GitHub sees. The text arms remain
+# as the conservative belt — each fails closed on the spellings it
+# names — but a spelling none of them names lands here, because
+# resolution does not read spellings at all.
+#
+# Certified: exactly one job across the workflows resolves to the
+# required name; its workflow's trigger carries no paths filter at
+# any depth; the job invokes exactly one step whose action repository
+# is exactly luizm/action-sh-checker; and that step's
+# sh_checker_exclude input is a readable literal whose tokens do not
+# cover tests/arch. Refused rather than certified: unparseable files,
+# expression-valued names or exclusions, and a missing parser — a
+# certification that cannot run must not read as one that passed.
+#
+# Stated boundaries: PyYAML resolves YAML 1.1, where a bare `on` key
+# reads as boolean True — handled explicitly — and GitHub's parser
+# differs at edges; a divergence surfaces as a refusal or a wrong
+# producer count, never as a silent pass, because the certification
+# demands exactly one well-formed producer.
+certified_by_resolution() {
+    python3 - "$1" "$arch_lint_name" <<'PYCERT'
+import glob
+import sys
+
+try:
+    import yaml
+except Exception:
+    print("resolution layer unavailable: PyYAML missing", file=sys.stderr)
+    sys.exit(1)
+
+wfdir, required = sys.argv[1], sys.argv[2]
+SUBJECT = "tests/arch"
+ACTION = "luizm/action-sh-checker"
+producers = []
+problems = []
+
+
+def gated(node):
+    if isinstance(node, dict):
+        return any(
+            key in ("paths", "paths-ignore") or gated(value)
+            for key, value in node.items()
+        )
+    if isinstance(node, list):
+        return any(gated(value) for value in node)
+    return False
+
+
+paths = sorted(glob.glob(wfdir + "/*.yml") + glob.glob(wfdir + "/*.yaml"))
+if not paths:
+    problems.append("no workflows to read")
+for path in paths:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            docs = list(yaml.safe_load_all(handle))
+    except Exception as exc:
+        problems.append(f"{path}: unparseable: {exc}")
+        continue
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        jobs = doc.get("jobs")
+        if jobs is None:
+            continue
+        if not isinstance(jobs, dict):
+            problems.append(f"{path}: jobs is not a mapping")
+            continue
+        for jid, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            name = job.get("name")
+            if isinstance(name, str) and "${{" in name:
+                problems.append(f"{path}: job {jid}: expression-valued name refused")
+                continue
+            if name != required:
+                continue
+            producers.append((path, doc, jid, job))
+
+if len(producers) != 1:
+    problems.append(f"{len(producers)} resolved producers of the required name, not 1")
+for path, doc, jid, job in producers:
+    trigger = doc.get("on", doc.get(True))
+    if trigger is None:
+        problems.append(f"{path}: producer has no trigger")
+    if gated(trigger):
+        problems.append(f"{path}: producer trigger is path-filtered")
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        problems.append(f"{path}: job {jid} has no steps")
+        steps = []
+    lint = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str) and uses.split("@", 1)[0] == ACTION:
+            lint.append(step)
+    if len(lint) != 1:
+        problems.append(f"{path}: job {jid} invokes the lint action {len(lint)} times, not 1")
+        continue
+    inputs = lint[0].get("with")
+    if not isinstance(inputs, dict):
+        problems.append(f"{path}: the lint step declares no inputs")
+        continue
+    excl = inputs.get("sh_checker_exclude", "")
+    if not isinstance(excl, str) or "${{" in excl:
+        problems.append(f"{path}: exclusion is not a readable literal")
+        continue
+    for token in excl.split():
+        if SUBJECT == token or SUBJECT.startswith(token + "/"):
+            problems.append(f"{path}: exclusion covers {SUBJECT} via {token!r}")
+
+for problem in problems:
+    print(problem, file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYCERT
 }
 
 # The alias/anchor arm selects any line opening with `*` or `&` that
@@ -973,6 +1055,45 @@ else
     printf '  FAIL     an escaped exclusion reads as: %s\n' "${escape_probe:-nothing}"
     failed=1
 fi
+
+# The text readings above are one layer: conservative, fail-closed,
+# and by construction incomplete — YAML's spelling space is unbounded
+# and each reading covers the spellings it names. The authority is
+# resolution: parse every workflow with a real parser and certify the
+# RESOLVED structure, where quoting, escapes, folding, flow, aliases
+# and merge keys have already collapsed to the values GitHub sees. A
+# merge key is the probe because no text arm can see it: the required
+# name arrives in a job through `<<: *defaults` while no line of the
+# job spells a name at all.
+merge_dir="$scratch_dir/merge-key-producer"
+mkdir "$merge_dir"
+cat >"$merge_dir/covert.yml" <<'YAML'
+defs: &d
+  name: Arch Shellcheck + Shfmt
+"on": push
+jobs:
+  stub:
+    <<: *d
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+YAML
+merge_caught=0
+if ! certified_by_resolution "$merge_dir" 2>/dev/null; then
+    merge_caught=1
+fi
+live_certified=0
+if certified_by_resolution "$REPO_ROOT/.github/workflows" 2>/dev/null; then
+    live_certified=1
+fi
+if [ "$merge_caught" -eq 1 ] && [ "$live_certified" -eq 1 ]; then
+    printf '  ok       the resolved workflow structure certifies what the text layer cannot\n'
+else
+    printf '  FAIL     resolution reads merge-key-caught=%s live-certified=%s — a resolved second producer is invisible\n' \
+        "$merge_caught" "$live_certified"
+    failed=1
+fi
+rm -rf "$merge_dir"
 
 # Carrying the required name is not linting. A job that keeps the
 # name but drops the sh-checker step satisfies branch protection
