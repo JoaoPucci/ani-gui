@@ -14,6 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install the parser the resolution layer stands on
+        # deferral_root_test.sh certifies the resolved workflow
+        # structure through PyYAML; without it the suite refuses
+        # rather than certifies, so the dependency is provisioned
+        # here and pinned by the suite itself.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml
       - name: Install actionlint
         run: |
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
