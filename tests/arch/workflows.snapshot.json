@@ -1,0 +1,115 @@
+{
+  "arch_lint": [
+    {
+      "True": {
+        "pull_request": null,
+        "push": {
+          "branches": [
+            "master"
+          ]
+        }
+      },
+      "jobs": {
+        "arch-sh-checker": {
+          "name": "Arch Shellcheck + Shfmt",
+          "runs-on": "ubuntu-latest",
+          "steps": [
+            {
+              "uses": "actions/checkout@v4"
+            },
+            {
+              "env": {
+                "SHELLCHECK_OPTS": "-s sh -o all -e 2250",
+                "SHFMT_OPTS": "-i 4 -ci -d"
+              },
+              "name": "Run the sh-checker",
+              "uses": "luizm/action-sh-checker@master",
+              "with": {
+                "sh_checker_exclude": "ani-cli _ani-cli-bash _ani-cli-zsh tests/bash tests/fixtures tests/tools gui"
+              }
+            }
+          ]
+        }
+      },
+      "name": "arch checks",
+      "permissions": {
+        "contents": "read"
+      }
+    }
+  ],
+  "check_names": {
+    "ani-cli.yml": {
+      "check-exec": "Executable Bit",
+      "check-no-awk": "No Awk Allowed",
+      "check-no-wget": "No Wget Allowed",
+      "sh-checker": "Shellcheck + Shfmt"
+    },
+    "arch-lint.yml": {
+      "arch-sh-checker": "Arch Shellcheck + Shfmt"
+    },
+    "arch.yml": {
+      "invariants": "tests/arch + actionlint"
+    },
+    "bash.yml": {
+      "bats": "bats-core suite",
+      "filter": "filter",
+      "lint": "Shellcheck + Shfmt (per-file dialect)"
+    },
+    "botan.yml": {
+      "build": "Windows x64 static build"
+    },
+    "crap.yml": {
+      "crap": "lizard + ratchet",
+      "filter": "filter"
+    },
+    "e2e.yml": {
+      "e2e": "Playwright + _electron",
+      "filter": "filter"
+    },
+    "frontend.yml": {
+      "filter": "filter",
+      "lint-typecheck-test": "lint + typecheck + test"
+    },
+    "inverse-ani.yml": {
+      "check-exec": "Executable Bit",
+      "sh-checker": "Shellcheck + Shfmt",
+      "version-bump": "Version Bump"
+    },
+    "inverse-md.yml": {
+      "dead-links": "Dead Link Checker",
+      "trailing-ws": "Find Trailing Whitespace"
+    },
+    "markdown.yml": {
+      "dead-links": "Dead Link Checker",
+      "trailing-ws": "Find Trailing Whitespace"
+    },
+    "mutation.yml": {
+      "cargo-mutants": "cargo-mutants (Rust)",
+      "stryker": "stryker-js (TS lib only)"
+    },
+    "no-awk-required.yml": {
+      "check-no-awk": "No Awk Allowed"
+    },
+    "required-mirrors.yml": {
+      "dead-links": "Dead Link Checker",
+      "exec-bit": "Executable Bit",
+      "shellcheck-shfmt": "Shellcheck + Shfmt",
+      "trailing-ws": "Find Trailing Whitespace",
+      "version-bump": "Version Bump"
+    },
+    "rust.yml": {
+      "clippy": "cargo clippy (-D warnings)",
+      "coverage": "cargo-llvm-cov + ratchet",
+      "deny": "cargo deny (licenses + advisories)",
+      "filter": "filter",
+      "fmt": "cargo fmt",
+      "test": "cargo test"
+    },
+    "title.yml": {
+      "main": "Validate PR Title"
+    },
+    "version.yml": {
+      "version-bump": "Version Bump"
+    }
+  }
+}
