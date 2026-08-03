@@ -33,21 +33,31 @@
 /// download arm. Scripts at or past this carry it.
 const FAILOVER_RELEASE: (u32, u32) = (4, 15);
 
-/// The 4.15 download arm, line by line, spelled as that release spells
-/// it. The whole arm is the unit of recognition rather than the
-/// failover call alone: "a line that starts with `dep_ch_failover`" is
-/// also what a usage block quoting the arm looks like, and what a
-/// half-finished customization leaves behind. Granting on either would
-/// pass the preflight on a yt-dlp-only host against a script whose
-/// real arm still calls `dep_ch "ffmpeg"`.
+/// Each blessed release's download arm, line by line, spelled as that
+/// release spells it. The whole arm is the unit of recognition rather
+/// than the failover call alone: "a line that starts with
+/// `dep_ch_failover`" is also what a usage block quoting the arm looks
+/// like, and what a half-finished customization leaves behind.
+/// Granting on either would pass the preflight on a yt-dlp-only host
+/// against a script whose real arm still calls `dep_ch "ffmpeg"`.
+///
+/// Two lineages are blessed: 4.15's four-line arm (with its aria2c
+/// check) and 5.0's single line, which dropped aria2c along with the
+/// provider rewrite. Both stay listed because a user's cache can hold
+/// the older script long after the bundle moves on.
 ///
 /// Lines are compared trimmed and in order, so reindentation is
 /// cosmetic and rewording is not.
-const DOWNLOAD_ARM: &[&str] = &[
-    "download)",
-    r#"dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'"#,
-    r#"dep_ch "aria2c""#,
-    ";;",
+const DOWNLOAD_ARMS: &[&[&str]] = &[
+    &[
+        "download)",
+        r#"dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found'"#,
+        r#"dep_ch "aria2c""#,
+        ";;",
+    ],
+    &[
+        r#"download) dep_ch_failover "yt-dlp,ffmpeg" >/dev/null || die 'Neither yt-dlp nor ffmpeg found' ;;"#,
+    ],
 ];
 
 /// Whether the script accepts yt-dlp alone for `-d` downloads.
@@ -61,18 +71,20 @@ pub(crate) fn supports_ytdlp_download(script_contents: &str) -> bool {
     carries_download_arm(script_contents)
 }
 
-/// Whether the release's download arm appears verbatim, as four
+/// Whether any blessed release's download arm appears verbatim, as
 /// consecutive lines.
 ///
 /// What this deliberately does NOT do is decide whether those lines
 /// are reached at runtime — that is the shell grammar this module
-/// exists to avoid. A script that reproduces the arm byte-for-byte
+/// exists to avoid. A script that reproduces an arm byte-for-byte
 /// inside a heredoc *while* editing its real arm to require ffmpeg
 /// would still be granted. Customization does not produce that shape;
 /// quoting an excerpt does, and an excerpt no longer matches.
 fn carries_download_arm(script_contents: &str) -> bool {
     let lines: Vec<&str> = script_contents.lines().map(str::trim).collect();
-    lines.windows(DOWNLOAD_ARM.len()).any(|w| w == DOWNLOAD_ARM)
+    DOWNLOAD_ARMS
+        .iter()
+        .any(|arm| lines.windows(arm.len()).any(|w| &w == arm))
 }
 
 /// The script's own `version_number="X.Y..."` declaration, as
