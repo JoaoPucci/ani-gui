@@ -228,7 +228,6 @@ done
 # finishes, so a shellcheck failure in these load-bearing scripts
 # could still merge. no-awk-required.yml documents the same race and
 # resolves it the same way: a name nothing else answers for.
-arch_lint_workflow="$REPO_ROOT/.github/workflows/arch-lint.yml"
 arch_lint_name='Arch Shellcheck + Shfmt'
 
 # The authority behind every text reading above: parse the workflows
