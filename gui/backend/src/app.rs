@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::account::InternalSecret;
-use crate::anicli::process::{locate_ani_cli, DebugOptions};
+use crate::anicli::process::locate_ani_cli;
 use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
 use crate::commands::account::AccountWriteLocks;
@@ -249,20 +249,6 @@ impl AppState {
         update::read_outcomes(&self.state_dir)
     }
 
-    /// A fresh [`DebugOptions`] for an ani-cli invocation, picking up the
-    /// right script path, bash path, and history dir from this state.
-    #[must_use]
-    pub fn debug_options(&self) -> DebugOptions {
-        let mut opts = DebugOptions::new(self.ani_cli_path.clone());
-        opts.bash_path = self.bash_path.clone();
-        opts.bundled_bin = self.bundled_bin.clone();
-        opts.shim_bin = self.botan_shim_bin.clone();
-        // history_path is `…/ani-cli/ani-hsts`; ANI_CLI_HIST_DIR wants the
-        // directory containing the file.
-        opts.hist_dir = self.history_path.parent().map(std::path::Path::to_path_buf);
-        opts
-    }
-
     /// Configured image-cache size cap, in bytes. Reads from the
     /// user's settings TOML on each call (cheap; sub-millisecond)
     /// so a settings change applies immediately without restarting.
@@ -438,41 +424,6 @@ mod tests {
         assert!(app.sessions.get(&id).is_some());
     }
 
-    #[test]
-    fn debug_options_picks_up_hist_dir_from_state() {
-        let app = fake_state();
-        let opts = app.debug_options();
-        assert_eq!(opts.ani_cli_path, PathBuf::from("/tmp/ani-cli"));
-        assert_eq!(
-            opts.hist_dir.as_deref(),
-            Some(std::path::Path::new("/tmp/ani-cli"))
-        );
-    }
-
-    #[test]
-    fn debug_options_threads_bash_path_from_state() {
-        // Windows-readiness: the AppState's resolved bash path must
-        // flow into every spawn site via DebugOptions. Linux fakes
-        // None; setting a path on the state proves the threading is
-        // wired through.
-        let mut app = fake_state();
-        app.bash_path = Some(PathBuf::from("/opt/git/bin/bash.exe"));
-        let opts = app.debug_options();
-        assert_eq!(
-            opts.bash_path.as_deref(),
-            Some(std::path::Path::new("/opt/git/bin/bash.exe"))
-        );
-    }
-
-    #[test]
-    fn debug_options_carries_none_bash_path_on_unix_default() {
-        // The default fake_state has no bash configured; debug_options
-        // must propagate that None so the spawn helper runs the
-        // script directly via shebang on Unix.
-        let app = fake_state();
-        assert!(app.debug_options().bash_path.is_none());
-    }
-
     #[cfg(not(windows))]
     #[test]
     fn resolve_bash_path_returns_ok_none_on_unix() {
@@ -481,29 +432,6 @@ mod tests {
         // optional-field invariant.
         let got = resolve_bash_path().expect("resolve_bash_path should not error on Unix");
         assert!(got.is_none(), "Unix expects None, got {got:?}");
-    }
-
-    #[test]
-    fn debug_options_threads_bundled_bin_from_state() {
-        // Windows-readiness: AppState::bundled_bin must flow into
-        // every spawn site so `compose_anicli_path` can prepend it
-        // ahead of the inherited PATH. Mirror of the bash_path test.
-        let mut app = fake_state();
-        app.bundled_bin = Some(PathBuf::from("/opt/ani-gui/resources/bin"));
-        let opts = app.debug_options();
-        assert_eq!(
-            opts.bundled_bin.as_deref(),
-            Some(std::path::Path::new("/opt/ani-gui/resources/bin"))
-        );
-    }
-
-    #[test]
-    fn debug_options_carries_none_bundled_bin_by_default() {
-        // Default fake_state has no bundled dir; debug_options must
-        // propagate that None so the spawn helper falls through to
-        // the inherited PATH unchanged. Linux build path always.
-        let app = fake_state();
-        assert!(app.debug_options().bundled_bin.is_none());
     }
 
     #[test]
