@@ -48,8 +48,24 @@ pub struct NativeError {
     pub clean_miss: bool,
 }
 
-/// Search `title` then `alt_titles` in order, pick, and resolve
-/// `episode` for `mode` to a master-playlist URL.
+/// What a native resolution is asked for — the play-relevant slice
+/// of `PlayArgs`, borrowed.
+#[derive(Debug, Clone, Copy)]
+pub struct NativeResolveRequest<'a> {
+    /// Canonical title, searched first.
+    pub title: &'a str,
+    /// Fallback titles, searched in order.
+    pub alt_titles: &'a [String],
+    /// Episode number as the frontend sent it.
+    pub episode: &'a str,
+    /// `"sub"` or `"dub"`.
+    pub mode: &'a str,
+    /// Kitsu's episode count, when known.
+    pub expected_count: Option<u32>,
+}
+
+/// Search the request's title then its fallbacks in order, pick, and
+/// resolve the episode for the mode to a master-playlist URL.
 ///
 /// - Each provider request cluster is admitted through `gate` at
 ///   `priority` when a gate is given; a refused admit is transient.
@@ -66,29 +82,81 @@ pub async fn resolve_native<F, P>(
     client: &AnidbClient<F>,
     gate: Option<&ScraperGate>,
     priority: ScrapePriority,
-    title: &str,
-    alt_titles: &[String],
-    episode: &str,
-    mode: &str,
-    expected_count: Option<u32>,
+    req: NativeResolveRequest<'_>,
     on_progress: &mut P,
 ) -> std::result::Result<NativeResolved, NativeError>
 where
     F: AnidbFetch,
     P: FnMut(ProgressLine) + Send,
 {
-    let _ = (
-        client,
-        gate,
-        priority,
-        title,
-        alt_titles,
-        episode,
-        mode,
-        expected_count,
-        on_progress,
-    );
-    todo!()
+    on_progress(ProgressLine::Banner {
+        text: "Searching anidb.app...".into(),
+    });
+    let mut any_search_succeeded = false;
+    let mut any_search_errored = false;
+    for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
+        if let Some(g) = gate {
+            if g.admit(priority).await.is_err() {
+                return Err(NativeError {
+                    error: AniError::Network,
+                    clean_miss: false,
+                });
+            }
+        }
+        match client.search(t).await {
+            Ok(hits) => {
+                any_search_succeeded = true;
+                if hits.is_empty() {
+                    continue;
+                }
+                match pick_candidate(client, &hits, req.expected_count, t).await {
+                    Ok(picked) => {
+                        on_progress(ProgressLine::Other {
+                            text: format!("Matched {}", picked.hit.title),
+                        });
+                        let master_url =
+                            resolve_episode(client, &picked, req.episode, req.mode).await?;
+                        on_progress(ProgressLine::LinksFetched {
+                            provider: "anidb.app".into(),
+                        });
+                        let episode_cap = picked.episodes.iter().map(|e| e.number).max();
+                        return Ok(NativeResolved {
+                            slug: picked.hit.slug,
+                            title: picked.hit.title,
+                            master_url,
+                            episode_cap,
+                        });
+                    }
+                    // A rejected pool is a clean verdict about THIS
+                    // pool; the next alias may carry the real show.
+                    Err(AniError::NoResults) => {}
+                    Err(_) => {
+                        any_search_errored = true;
+                    }
+                }
+            }
+            Err(AniError::Upstream { status }) => {
+                // Blocked: every further request deepens the hole.
+                return Err(NativeError {
+                    error: AniError::Upstream { status },
+                    clean_miss: false,
+                });
+            }
+            Err(_) => {
+                any_search_errored = true;
+            }
+        }
+    }
+    if !any_search_succeeded || any_search_errored {
+        return Err(NativeError {
+            error: AniError::Network,
+            clean_miss: false,
+        });
+    }
+    Err(NativeError {
+        error: AniError::NoResults,
+        clean_miss: true,
+    })
 }
 
 /// Resolve the requested episode within a picked show down to the
@@ -105,8 +173,23 @@ pub async fn resolve_episode<F: AnidbFetch>(
     episode: &str,
     mode: &str,
 ) -> std::result::Result<String, NativeError> {
-    let _ = (client, picked, episode, mode);
-    todo!()
+    let dead_end = |error: AniError| NativeError {
+        error,
+        clean_miss: false,
+    };
+    let n: u32 = episode
+        .trim()
+        .parse()
+        .map_err(|_| dead_end(AniError::NoResults))?;
+    let ep = picked
+        .episodes
+        .iter()
+        .find(|e| e.number == n)
+        .ok_or_else(|| dead_end(AniError::NoResults))?;
+    client
+        .master_playlist_url(ep.id, mode)
+        .await
+        .map_err(dead_end)
 }
 
 #[cfg(test)]

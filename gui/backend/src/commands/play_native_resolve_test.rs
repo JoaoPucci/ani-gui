@@ -108,11 +108,13 @@ async fn run(
         &client,
         None,
         crate::scraper::gate::ScrapePriority::Interactive,
-        title,
-        alts,
-        episode,
-        "sub",
-        expected,
+        NativeResolveRequest {
+            title,
+            alt_titles: alts,
+            episode,
+            mode: "sub",
+            expected_count: expected,
+        },
         &mut |p| events.push(p),
     )
     .await;
@@ -217,11 +219,13 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
         &client,
         None,
         crate::scraper::gate::ScrapePriority::Interactive,
-        "the show",
-        &[],
-        "2",
-        "dub",
-        Some(3),
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &[],
+            episode: "2",
+            mode: "dub",
+            expected_count: Some(3),
+        },
         &mut sink,
     )
     .await;
