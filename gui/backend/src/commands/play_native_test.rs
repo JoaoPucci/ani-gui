@@ -59,7 +59,7 @@ async fn expected_count_picks_the_closest_probed_candidate() {
         hit("gintama-movie-11", "Gintama: The Movie"),
         hit("gintama-22", "Gintama"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(26), "Gintama", None)
+    let picked = pick_candidate(&client, &hits, Some(26), "Gintama", None, None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "gintama-22");
@@ -72,7 +72,7 @@ async fn best_distance_beyond_threshold_is_rejected_not_guessed() {
     // the Wing-for-1979 shape. A silent pick plays the wrong show.
     let client = AnidbClient::new(EpisodesTable(&[(33, 7)]));
     let hits = [hit("wrong-sibling-33", "Some Sibling")];
-    let err = pick_candidate(&client, &hits, Some(1), "The Real Movie", None)
+    let err = pick_candidate(&client, &hits, Some(1), "The Real Movie", None, None)
         .await
         .expect_err("rejected");
     assert!(matches!(err, AniError::NoResults));
@@ -87,7 +87,7 @@ async fn ties_prefer_the_exact_title_match() {
         hit("other-cut-44", "Other Cut"),
         hit("the-show-55", "The Show"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(12), "the show", None)
+    let picked = pick_candidate(&client, &hits, Some(12), "the show", None, None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-show-55");
@@ -97,12 +97,12 @@ async fn ties_prefer_the_exact_title_match() {
 async fn unknown_expected_count_prefers_exact_title_then_first() {
     let client = AnidbClient::new(EpisodesTable(&[(66, 3), (77, 8)]));
     let hits = [hit("first-66", "First"), hit("wanted-77", "Wanted")];
-    let picked = pick_candidate(&client, &hits, None, "wanted", None)
+    let picked = pick_candidate(&client, &hits, None, "wanted", None, None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "wanted-77");
 
-    let picked = pick_candidate(&client, &hits, None, "no such title", None)
+    let picked = pick_candidate(&client, &hits, None, "no such title", None, None)
         .await
         .expect("falls back to first");
     assert_eq!(picked.hit.slug, "first-66");
@@ -114,7 +114,7 @@ async fn probe_errors_skip_the_candidate_instead_of_aborting() {
     // the second still wins.
     let client = AnidbClient::new(EpisodesTable(&[(88, 13)]));
     let hits = [hit("dead-99", "Dead"), hit("alive-88", "Alive")];
-    let picked = pick_candidate(&client, &hits, Some(13), "Alive", None)
+    let picked = pick_candidate(&client, &hits, Some(13), "Alive", None, None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "alive-88");
@@ -140,7 +140,7 @@ async fn probing_stops_at_the_bound() {
         hit("e-5", "E"),
         hit("f-6", "F"),
     ];
-    let err = pick_candidate(&client, &hits, Some(12), "F", None)
+    let err = pick_candidate(&client, &hits, Some(12), "F", None, None)
         .await
         .expect_err("bounded");
     assert!(matches!(err, AniError::NoResults));
@@ -154,7 +154,7 @@ async fn all_probes_failing_is_transient_not_absence() {
     // clean-miss path and hide a real show behind the negative TTL.
     let client = AnidbClient::new(EpisodesTable(&[]));
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
-    let err = pick_candidate(&client, &hits, Some(12), "A", None)
+    let err = pick_candidate(&client, &hits, Some(12), "A", None, None)
         .await
         .expect_err("transient");
     assert!(matches!(err, AniError::Network));
@@ -163,7 +163,7 @@ async fn all_probes_failing_is_transient_not_absence() {
 #[tokio::test]
 async fn empty_hits_are_no_results() {
     let client = AnidbClient::new(EpisodesTable(&[]));
-    let err = pick_candidate(&client, &[], Some(12), "x", None)
+    let err = pick_candidate(&client, &[], Some(12), "x", None, None)
         .await
         .expect_err("empty");
     assert!(matches!(err, AniError::NoResults));
@@ -227,7 +227,7 @@ async fn a_year_match_beats_count_tied_cour_siblings() {
         hit("tybw-the-separation-677", "TYBW - The Separation"),
         hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026))
+    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
@@ -245,7 +245,7 @@ async fn year_mismatches_are_excluded_before_scoring() {
         hit("mobile-suit-gundam-wing-2", "Mobile Suit Gundam Wing"),
         hit("mobile-suit-gundam-1", "Mobile Suit Gundam"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(44), "kidou senshi gundam", Some(1979))
+    let picked = pick_candidate(&client, &hits, Some(44), "kidou senshi gundam", Some(1979), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "mobile-suit-gundam-1");
@@ -258,7 +258,7 @@ async fn unknown_years_pass_the_identity_filter() {
     // one page must not hide the right show.
     let client = AnidbClient::new(YearTable(&[(2, 12, Some(1990)), (1, 14, None)]));
     let hits = [hit("old-2", "Old"), hit("mystery-1", "Mystery")];
-    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020))
+    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "mystery-1");
@@ -277,7 +277,7 @@ async fn an_all_mismatched_pool_is_rejected_so_the_walk_moves_on() {
     // unknown years never exclude.)
     let client = AnidbClient::new(YearTable(&[(1, 12, Some(2000)), (2, 30, Some(2001))]));
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
-    let err = pick_candidate(&client, &hits, Some(12), "a", Some(2026))
+    let err = pick_candidate(&client, &hits, Some(12), "a", Some(2026), None)
         .await
         .expect_err("pool rejected");
     assert!(matches!(err, AniError::NoResults));
@@ -290,7 +290,7 @@ async fn a_lone_candidate_with_a_mismatched_year_is_rejected() {
     // decade is still the wrong show.
     let client = AnidbClient::new(YearTable(&[(1, 12, Some(2001))]));
     let hits = [hit("old-show-1", "Old Show")];
-    let err = pick_candidate(&client, &hits, Some(12), "new show", Some(2022))
+    let err = pick_candidate(&client, &hits, Some(12), "new show", Some(2022), None)
         .await
         .expect_err("rejected");
     assert!(matches!(err, AniError::NoResults));
@@ -300,7 +300,7 @@ async fn a_lone_candidate_with_a_mismatched_year_is_rejected() {
 async fn a_lone_candidate_with_a_matching_year_wins() {
     let client = AnidbClient::new(YearTable(&[(1, 12, Some(2022))]));
     let hits = [hit("new-show-1", "New Show")];
-    let picked = pick_candidate(&client, &hits, Some(12), "new show", Some(2022))
+    let picked = pick_candidate(&client, &hits, Some(12), "new show", Some(2022), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "new-show-1");
@@ -315,7 +315,7 @@ async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
     // currently-airing show becomes unresolvable through that alias.
     let client = AnidbClient::new(YearTable(&[(6378, 2, Some(2026))]));
     let hits = [hit("tybw-the-calamity-6378", "TYBW - The Calamity")];
-    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026))
+    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
@@ -332,7 +332,7 @@ async fn year_filters_apply_without_an_episode_count() {
         hit("tybw-675", "TYBW"),
         hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
     ];
-    let picked = pick_candidate(&client, &hits, None, "tybw kashin-tan", Some(2026))
+    let picked = pick_candidate(&client, &hits, None, "tybw kashin-tan", Some(2026), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
@@ -352,7 +352,7 @@ async fn a_countless_pick_prefers_the_year_confirmed_candidate() {
         hit("some-movie-1", "Some Movie"),
         hit("the-show-2", "The Show"),
     ];
-    let picked = pick_candidate(&client, &hits, None, "unrelated words", Some(2026))
+    let picked = pick_candidate(&client, &hits, None, "unrelated words", Some(2026), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-show-2");
@@ -379,7 +379,7 @@ async fn a_countless_garbage_pool_with_only_unknown_survivors_is_rejected() {
         hit("old-maids-3", "Old Maids"),
         hit("unknown-movie-4", "Unknown Movie"),
     ];
-    let err = pick_candidate(&client, &hits, None, "the real show", Some(2026))
+    let err = pick_candidate(&client, &hits, None, "the real show", Some(2026), None)
         .await
         .expect_err("pool rejected");
     assert!(matches!(err, AniError::NoResults));
@@ -393,7 +393,7 @@ async fn a_countless_clean_pool_with_an_unknown_year_still_picks_first() {
     // become unresolvable.
     let client = AnidbClient::new(YearTable(&[(1, 12, None)]));
     let hits = [hit("plain-show-1", "Plain Show")];
-    let picked = pick_candidate(&client, &hits, None, "unrelated", Some(2026))
+    let picked = pick_candidate(&client, &hits, None, "unrelated", Some(2026), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "plain-show-1");
@@ -419,7 +419,7 @@ async fn an_off_by_one_year_carries_no_identity_for_the_rescue() {
         hit("old-maids-2", "Old Maids"),
         hit("boundary-movie-3", "Boundary Movie"),
     ];
-    let err = pick_candidate(&client, &hits, Some(12), "the real show", Some(2026))
+    let err = pick_candidate(&client, &hits, Some(12), "the real show", Some(2026), None)
         .await
         .expect_err("no exact-year survivor to rescue");
     assert!(matches!(err, AniError::NoResults));
@@ -432,7 +432,7 @@ async fn an_off_by_one_year_still_competes_on_count() {
     // 2026) whose count agrees must keep winning outright.
     let client = AnidbClient::new(YearTable(&[(1, 12, Some(2026))]));
     let hits = [hit("boundary-show-1", "Boundary Show")];
-    let picked = pick_candidate(&client, &hits, Some(12), "boundary show", Some(2025))
+    let picked = pick_candidate(&client, &hits, Some(12), "boundary show", Some(2025), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "boundary-show-1");
@@ -449,7 +449,7 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
         typed_hit("recap-movie-1", "Recap Movie", "Movie"),
         typed_hit("the-series-2", "The Series", "TV"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", None)
+    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", None, None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-series-2");
@@ -459,7 +459,7 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
 async fn a_pool_of_only_movies_under_a_series_expectation_is_rejected() {
     let client = AnidbClient::new(EpisodesTable(&[(1, 12)]));
     let hits = [typed_hit("recap-movie-1", "Recap Movie", "Movie")];
-    let err = pick_candidate(&client, &hits, Some(12), "the series", None)
+    let err = pick_candidate(&client, &hits, Some(12), "the series", None, None)
         .await
         .expect_err("a movie cannot satisfy a series expectation");
     assert!(matches!(err, AniError::NoResults));
@@ -471,7 +471,45 @@ async fn a_single_video_expectation_keeps_movie_candidates() {
     // disproof. Unknown badges never exclude either way.
     let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
     let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
-    let picked = pick_candidate(&client, &hits, Some(1), "the movie", None)
+    let picked = pick_candidate(&client, &hits, Some(1), "the movie", None, None)
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-movie-1");
+}
+
+#[tokio::test]
+async fn a_movie_badge_is_disproof_against_a_special_subtype() {
+    // The Konoha Gakuen Den shape, live: Kitsu's entry is a 1-episode
+    // SPECIAL the provider doesn't carry, and the pool holds the
+    // franchise's movies — count-tied at 1 and within the year
+    // tolerance. Kitsu's subtype is the signal that disproves them:
+    // a Movie cannot be the clicked Special, whatever its count or
+    // year. With every candidate disproven the pool rejects, the
+    // walk exhausts cleanly, and the frontend gets its "isn't on the
+    // streaming source" overlay instead of the wrong film.
+    let client = AnidbClient::new(YearTable(&[(1, 1, Some(2007)), (2, 500, Some(2007))]));
+    let hits = [
+        typed_hit("franchise-movie-1-1", "Franchise Movie 1", "Movie"),
+        typed_hit("franchise-3687-2", "Franchise", "TV"),
+    ];
+    let err = pick_candidate(
+        &client,
+        &hits,
+        Some(1),
+        "franchise side story",
+        Some(2008),
+        Some("special"),
+    )
+    .await
+    .expect_err("no candidate can be the special");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_movie_subtype_keeps_movie_candidates() {
+    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
+    let picked = pick_candidate(&client, &hits, Some(1), "the movie", None, Some("movie"))
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-movie-1");
