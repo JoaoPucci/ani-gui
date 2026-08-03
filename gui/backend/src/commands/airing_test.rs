@@ -11,6 +11,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<AppState> {
     use std::sync::Arc;
     Arc::new(AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),

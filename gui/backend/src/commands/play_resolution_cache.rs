@@ -74,7 +74,25 @@ use crate::proxy::MediaKind;
 ///   row warmed by the old order-dependent pick (e.g. Part 1's key
 ///   pointing at Part 2's stream) would keep serving the wrong cour on
 ///   a HEAD-passing hit; bumping evicts those so the new tie-break runs.
-const SCHEMA: &str = "v6";
+// v8: the picker gained the year identity filter for cour and
+// franchise siblings. A v7 row resolved without it can hold the
+// wrong part's stream (the TYBW Part-1-for-Part-4 mispick) and a
+// HEAD-passing hit would keep serving it; bumping re-resolves.
+// v7: the provider moved to anidb — upstream URLs, show ids (now
+// slugs) and titles from the allanime era are all unreplayable, so
+// every v6 row becomes an unreachable miss.
+// v10: the countless pick gained the year-evidence gate. A v9 row
+// resolved with a null Kitsu count in a token-garbage pool holds
+// the wrong show's stream (the frontend's Tai-Ari key cached the
+// Ninjaboy movie) and a HEAD-passing hit would keep serving it.
+// v9: the picker was reworked live against the provider: episode
+// numbers map through the continuation-numbering offset, the year
+// filter rejects all-mismatched pools and lone wrong-year
+// candidates, and queries are properly urlencoded. A v8 row
+// resolved by the old picker can hold a different show's stream
+// (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
+// keep serving it instantly; bumping re-resolves.
+const SCHEMA: &str = "v10";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -254,7 +272,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v6:"), "got {k}");
+        assert!(k.starts_with("play:v10:"), "got {k}");
     }
 
     #[test]

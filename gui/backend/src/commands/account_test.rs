@@ -14,6 +14,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
     use std::sync::Arc;
     Arc::new(crate::app::AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -936,6 +937,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::sync::Arc;
     let state = Arc::new(crate::app::AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),

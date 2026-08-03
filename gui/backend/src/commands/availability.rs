@@ -315,6 +315,7 @@ pub(crate) async fn check_availability_with_base(
         quality: None,
         episode_count: args.episode_count,
         year: args.year,
+        subtype: None,
         alt_titles: args.alt_titles.clone(),
         // `prefetch` doubles as the scraper-gate priority: background
         // probes (rail warms, home-loader fills) are paced and refused
@@ -1294,6 +1295,7 @@ mod tests {
         use std::sync::Arc;
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
