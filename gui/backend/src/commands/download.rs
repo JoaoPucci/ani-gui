@@ -114,6 +114,7 @@ where
         episode: &args.episode,
         mode: &args.mode,
         expected_count: args.episode_count,
+        year: args.year,
     };
     let resolve_started_at = tokio::time::Instant::now();
     let mut forward = |p: crate::anicli::parser::ProgressLine| {
