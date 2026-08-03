@@ -834,6 +834,29 @@ YAML
     run ! certified_by_resolution "$look_dir"
 }
 
+@test "a bracket-bearing checkout path enumerates literally" {
+    # A checkout path is data, not pattern syntax: a directory
+    # carrying a glob metacharacter — nothing stops anyone cloning
+    # into ani-[gui] — must enumerate exactly like any other, or the
+    # certification refuses an innocent checkout for a reason that
+    # has nothing to do with its workflows. The same portability
+    # property the apostrophe cases pin for the shell.
+    bracket_dir="$BATS_TEST_TMPDIR/br[a]cket"
+    mkdir "$bracket_dir"
+    cat >"$bracket_dir/producer.yml" <<'YAML'
+"on": push
+jobs:
+  arch-sh-checker:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: luizm/action-sh-checker@master
+        with:
+          sh_checker_exclude: "ani-cli"
+YAML
+    certified_by_resolution "$bracket_dir"
+}
+
 @test "a status-flapping check is flagged, not certified" {
     # A check whose output repeats while its exit status flaps between
     # identical runs passes the reproducibility gate, and the status
