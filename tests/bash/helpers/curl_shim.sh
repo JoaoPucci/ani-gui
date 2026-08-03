@@ -4,27 +4,34 @@
 # combined arguments and returns the appropriate fixture from
 # $CURL_FIXTURE_DIR. See tests/bash/acceptance/*.bats for callers.
 #
-# Routing rules (first match wins):
-#   - body contains "episodeString" → episode_blob.json (a synthesized
-#     allanime API response with a valid encrypted tobeparsed blob)
-#   - GET URL contains both "variables=" and "extensions=" → same as above
-#   - body contains "showId" → episodes_short.json
-#   - body contains '"search"' → search_one_piece.json
-#   - URL under the CDN's entry/app. path → keys_app.js (fetch_keys'
-#     app bundle, which names the chunk file)
-#   - URL under the CDN's chunks/ path → keys_chunk.js (carries the
-#     64-hex key mask fetch_keys XORs against the page's partB)
-#   - GET URL hits "allanime.day/" but not "/api" → embed_simple.json
-#     (the wixmp default embed). Checked before the referrer-page rule:
-#     embed fetches pass `-e` with the referrer host, which would
-#     otherwise swallow them.
-#   - URL hits the referrer host (mkissa.to) → keys_page.html (serves
-#     epoch + partB + the app bundle URL to fetch_keys)
+# ani-cli 5.0 resolves its curl through dep_ch_failover, preferring
+# curl-impersonate binaries (curl_firefox135 first) over plain curl, so
+# callers install this file under BOTH names — otherwise a developer
+# machine with real curl-impersonate would route test traffic to the
+# live site.
+#
+# Routing rules (first match wins), mirroring the anidb.app flow:
+#   - browse?q=nohit      → browse_empty.html (a results page with no
+#     anime anchors, for the "No results found!" path)
+#   - browse?q=cloudflare → browse_cloudflare.html (a "Just a moment"
+#     interstitial, for the blocked-by-cloudflare die)
+#   - browse?q=…          → browse_one_piece.html (three anchors; the
+#     third carries an &#039; entity in its alt title)
+#   - /api/frontend/anime/<id>/episodes  → episodes_one_piece.json
+#   - /api/frontend/episode/<id>/languages → languages_op.json (jpn +
+#     eng embeds, so both --dub and default sub resolve)
+#   - embed.example/…     → embed_op.html (jwplayer setup carrying the
+#     master-playlist URL in `file: '…'`)
+#   - master.m3u8         → master_op.m3u8 (two variants, 1080 + 720)
+#   - anidb.app/anime/…   → detail_one_piece.html (MAL link + Seasons
+#     block, for anidb_desc). Checked after the /api/frontend routes,
+#     which share the host.
+#   - raw.githubusercontent.com → update_remote (update_script tests
+#     write this fixture themselves)
 #   - otherwise → fail loudly to surface unmocked calls
 #
-# fetch_keys fetches the referrer page with `-o <file>`; when -o is
-# present the fixture is written there instead of stdout, as real curl
-# would.
+# When -o <file> is present the fixture is written there instead of
+# stdout, as real curl would.
 
 set -eu
 
@@ -47,33 +54,32 @@ emit() {
 }
 
 case "$args" in
-    *episodeString*)
-        emit "$fixtures/episode_blob.json"
+    *browse?q=nohit*)
+        emit "$fixtures/browse_empty.html"
         ;;
-    *variables=*extensions=*)
-        emit "$fixtures/episode_blob.json"
+    *browse?q=cloudflare*)
+        emit "$fixtures/browse_cloudflare.html"
         ;;
-    *showId*)
-        emit "$fixtures/episodes_short.json"
+    *browse?q=*)
+        emit "$fixtures/browse_one_piece.html"
         ;;
-    *'"search"'*)
-        emit "$fixtures/search_one_piece.json"
+    */api/frontend/anime/*/episodes*)
+        emit "$fixtures/episodes_one_piece.json"
         ;;
-    */entry/app.*)
-        emit "$fixtures/keys_app.js"
+    */api/frontend/episode/*/languages*)
+        emit "$fixtures/languages_op.json"
         ;;
-    */chunks/*)
-        emit "$fixtures/keys_chunk.js"
+    *embed.example*)
+        emit "$fixtures/embed_op.html"
         ;;
-    *allanime.day/*)
-        # Embed page fetch (any provider path) → return the same simple
-        # wixmp embed for every fetch. Provider branches that cannot decode
-        # this response just emit nothing, which is the point — only one
-        # provider needs to return a usable link for select_quality to pick.
-        emit "$fixtures/embed_simple.json"
+    *master.m3u8*)
+        emit "$fixtures/master_op.m3u8"
         ;;
-    *mkissa.to*)
-        emit "$fixtures/keys_page.html"
+    *anidb.app/anime/*)
+        emit "$fixtures/detail_one_piece.html"
+        ;;
+    *raw.githubusercontent.com*)
+        emit "$fixtures/update_remote"
         ;;
     *)
         printf 'curl shim: no fixture for: %s\n' "$args" >&2

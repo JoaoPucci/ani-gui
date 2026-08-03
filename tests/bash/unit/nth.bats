@@ -1,28 +1,30 @@
 #!/usr/bin/env bats
 #
-# Unit tests for ani-cli's `nth` (lines 19-36).
+# Unit tests for ani-cli's `nth` (5.0).
 #
 # Contract:
 #   - Reads all of stdin into a buffer.
 #   - Empty stdin → returns 1 with no output.
 #   - Single-line stdin → outputs `cut -f2,3` of that line, returns 0.
-#   - Multi-line stdin → invokes `launcher` to pick a line; tested with a
-#     mocked launcher.
+#   - Multi-line stdin → pipes "field1 field3" display rows through
+#     `menu`, takes the first word of the pick, and emits `cut -f2,3`
+#     of the matching stdin row.
+#   - A multi-select pick whose first and last rows differ becomes a
+#     sed range over the raw stdin (the episode-range path).
+#   - An empty pick returns 1.
 #
-# `nth`'s contract for multi-line involves calling `launcher`, which in
-# production goes through fzf/rofi/dmenu. We mock launcher inline in each
-# multi-line test.
+# `menu` goes to fzf/rofi/dmenu in production; each multi-line test
+# overrides it inline.
 
 load '../helpers/loader'
 
 setup() {
+    export ANI_CLI_HIST_DIR="$BATS_TEST_TMPDIR/hist"
+    mkdir -p "$ANI_CLI_HIST_DIR"
     source_ani_cli_lib
 }
 
 @test "nth: empty stdin returns 1 with no output" {
-    # nth is defined in our shell via setup. We capture its exit through $?
-    # immediately (the || capture keeps the intentional return 1 from
-    # tripping the restored errexit/ERR trap).
     status=0
     output=$(printf "" | nth "select" 2>&1) || status=$?
     [ "$status" -eq 1 ]
@@ -30,34 +32,34 @@ setup() {
 }
 
 @test "nth: single-line stdin outputs cut -f2,3 of the line" {
-    # Tab-separated: id1<TAB>title1<TAB>extra1
-    output=$(printf 'id1\ttitle1\textra1\n' | nth "select")
-    [ "$?" -eq 0 ]
-    [ "$output" = $'title1\textra1' ]
+    output=$(printf '1\tone-piece-69\tOne Piece\n' | nth "select")
+    [ "$output" = "one-piece-69"$'\t'"One Piece" ]
 }
 
 @test "nth: single-line stdin with only two fields outputs field 2 alone" {
-    # `cut -f2,3` on "id\ttitle" returns "title" (field 3 doesn't exist; cut omits it).
-    output=$(printf 'id\ttitle\n' | nth "select")
-    [ "$?" -eq 0 ]
-    [ "$output" = "title" ]
+    output=$(printf '1\tone-piece-69\n' | nth "select")
+    [ "$output" = "one-piece-69" ]
 }
 
-@test "nth: multi-line stdin with mocked launcher picks the chosen line" {
-    # Mock launcher: always pick the second line (returns its first field after the cut/tr pipeline).
-    launcher() { sed -n '2p' | cut -d' ' -f1; }
-    output=$(printf 'id1\ttitle1\textra1\nid2\ttitle2\textra2\nid3\ttitle3\textra3\n' | nth "select")
-    [ "$?" -eq 0 ]
-    [ "$output" = $'title2\textra2' ]
+@test "nth: multi-line stdin resolves the menu pick back to id and title" {
+    menu() { sed -n '2p'; }
+    output=$(printf '1\ta-1\tAlpha\n2\tb-2\tBeta\n3\tc-3\tGamma\n' | nth "select")
+    [ "$output" = "b-2"$'\t'"Beta" ]
 }
 
-@test "nth: multi-line with launcher returning empty exits 1" {
-    # Mock launcher returning nothing → nth's `[ -n "$line" ] || exit 1` branch.
-    launcher() { :; }
+@test "nth: multi-select over a bare episode list expands to the sed range" {
+    # ep_list input has no tabs: field1 IS the line. A pick spanning
+    # rows 2-4 must come back as the raw lines 2..4.
+    menu() { printf '2\n4\n'; }
+    output=$(printf '1\n2\n3\n4\n5\n' | nth "select" "-m")
+    [ "$output" = $'2\n3\n4' ]
+}
+
+@test "nth: empty menu pick returns 1" {
     run --separate-stderr bash -c '
-        __ANI_CLI_LIB__=1 . "'"$ANI_CLI_PATH"'" 2>/dev/null
-        launcher() { :; }
-        printf "id1\ttitle1\textra1\nid2\ttitle2\textra2\n" | nth "select"
+        __ANI_CLI_LIB__=1 . "$ANI_CLI_PATH" 2>/dev/null
+        menu() { :; }
+        printf "1\ta-1\tAlpha\n2\tb-2\tBeta\n" | nth "select"
     '
     [ "$status" -eq 1 ]
 }

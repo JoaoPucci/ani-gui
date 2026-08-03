@@ -1,0 +1,34 @@
+{
+  "browse_cloudflare.html": {
+    "sha256": "108176ddf99863dda290bcc98652828145cd9f73c3b881e308e2fdbc9e7d24bd",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "browse_empty.html": {
+    "sha256": "139477be17c8215eb013c973b5d2dbbfa333f1123e534e4ac9b933d987ec9478",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "browse_one_piece.html": {
+    "sha256": "8638ed61eabd40c7ce14f8e82ba33da6d02a5bfc72fc71580c44138f5c22e074",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "detail_one_piece.html": {
+    "sha256": "29d2d6d92d01e4a05d3782066e6680ee6a6796e867d24c12668506da1ac95c0f",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "embed_op.html": {
+    "sha256": "4d2202c573a27ce0cea01c5e4be45153cad435fddf87720bf39bd6fa7a438ab9",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "episodes_one_piece.json": {
+    "sha256": "a441a510268f28ad4733143301ab8ab1e070ce849db2c59f3bb562c0d5b3a287",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "languages_op.json": {
+    "sha256": "45ccfa99b8d8623ed793bdca401037ea853958aea8e851f775167e08f8577a12",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  },
+  "master_op.m3u8": {
+    "sha256": "1224c9b6620cb1bef9beb616d87cfc0837dc792467a68c80106d9c4054afed1d",
+    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+  }
+}
