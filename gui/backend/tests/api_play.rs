@@ -49,84 +49,62 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Stage the curl shim under both names 5.0's failover probes, with
-/// CURL_FIXTURE_DIR pinned to the repo's anidb fixtures. Same
-/// construction as `anicli_run_debug.rs` — kept inline rather than
-/// extracted because the two test files have only this one piece in
-/// common and a shared helper would couple them more than they're
-/// already coupled.
-fn stage_anidb_shim(tmp: &std::path::Path) -> PathBuf {
-    let bin = tmp.join("bin");
-    std::fs::create_dir_all(&bin).expect("mkdir bin");
-    let repo = repo_root();
-    let body = format!(
-        "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = repo.join("tests/fixtures/anidb").display(),
-        repo = repo.display(),
-    );
-    for name in ["curl", "curl_firefox135"] {
-        let dst = bin.join(name);
-        std::fs::write(&dst, &body).expect("write wrapper shim");
-        #[allow(unused_mut)]
-        let mut perms = std::fs::metadata(&dst).unwrap().permissions();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            perms.set_mode(0o755);
-        }
-        std::fs::set_permissions(&dst, perms).expect("chmod +x");
-    }
-    bin
-}
-
-/// Stand up a local allanime stub answering the search the play
-/// handler runs before it ever spawns ani-cli.
-///
-/// The candidate is shaped to be picked: one hit, an episode count
-/// that comfortably covers the requested episode, and the `Show`
-/// typename the parser keys on. What matters for hermeticity is only
-/// that the request never leaves the machine.
-async fn stub_allanime() -> wiremock::MockServer {
+/// Stand up a local anidb stub covering the whole native flow:
+/// browse → episodes → languages → embed → master URL. The embed and
+/// master both live on the stub's own origin so every request stays
+/// on the machine. The transport is the production one — the resolved
+/// system curl works fine against localhost; impersonation only
+/// matters at the real cloudflare front.
+async fn stub_anidb() -> wiremock::MockServer {
     let server = wiremock::MockServer::start().await;
-    let body = serde_json::json!({
-        "data": {
-            "shows": {
-                "edges": [
-                    {
-                        "_id": "test-show",
-                        "name": "test",
-                        "availableEpisodes": {"sub": 12, "dub": 12, "raw": 0},
-                        "__typename": "Show"
-                    }
-                ]
-            }
-        }
-    });
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/api"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+    let base = server.uri();
+    let browse = r#"<a href="/anime/test-show-1"><img alt="test"/></a>"#;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/browse"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(browse))
+        .mount(&server)
+        .await;
+    let eps: Vec<String> = (1..=12)
+        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
+        .collect();
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/frontend/anime/1/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(format!("[{}]", eps.join(","))),
+        )
+        .mount(&server)
+        .await;
+    let langs = format!("[{{\"language\":\"jpn\",\"embed_url\":\"{base}/embed/x\"}}]");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path(
+            "/api/frontend/episode/1001/languages",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(langs))
+        .mount(&server)
+        .await;
+    let embed = format!("player.setup({{ file: '{base}/op/master.m3u8' }});");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/embed/x"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
         .mount(&server)
         .await;
     server
 }
 
-/// Build an `AppState` pointed at the real `ani-cli` script and
-/// otherwise pinned to the test's tmp dir. The test process's
-/// `$PATH` should include the staged shim before this runs — the
-/// play handler invokes `run_debug` with `path_override: None`, so
-/// it inherits whatever PATH the test sets.
-///
-/// `allanime_base` points the Rust-side disambiguation search at the
-/// local stub. Production leaves it `None`, which means the real API.
-fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
+/// Build an `AppState` whose provider base points at the local anidb
+/// stub and whose `ani_cli_path` names a file that does not exist —
+/// the native play path must never spawn the script, and a state
+/// that would try dies loudly.
+fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
     AppState {
-        allanime_base: Some(allanime_base.to_string()),
+        allanime_base: None,
+        anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
-        ani_cli_path: repo_root().join("ani-cli"),
+        ani_cli_path: std::path::PathBuf::from("/nonexistent/never-spawned/ani-cli"),
         bash_path: None,
         bundled_bin: None,
         botan_shim_bin: None,
@@ -146,50 +124,38 @@ fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
 }
 
 #[tokio::test]
-async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
+async fn play_endpoint_resolves_natively_and_returns_session() {
     let tmp = TempDir::new().expect("tempdir");
     std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
 
-    let bin = stage_anidb_shim(tmp.path());
-    let allanime = stub_allanime().await;
+    let anidb = stub_anidb().await;
 
-    // Prepend the shim dir to the test process's PATH. The play
-    // handler's `run_debug` call inherits this PATH, so ani-cli's
-    // `curl` invocations resolve to our shim. A previous PATH is
-    // restored at the end of the test for hygiene — even though
-    // each integration-test file runs in its own process, doing
-    // so makes a future shared-test refactor safer.
-    let saved_path = std::env::var("PATH").ok();
-    let new_path = format!("{}:{}", bin.display(), saved_path.as_deref().unwrap_or(""));
-    std::env::set_var("PATH", &new_path);
-
-    let result = run_play_assertion(tmp.path(), &allanime.uri()).await;
-
-    if let Some(p) = saved_path {
-        std::env::set_var("PATH", p);
-    } else {
-        std::env::remove_var("PATH");
-    }
+    let result = run_play_assertion(tmp.path(), &anidb.uri()).await;
     result.expect("play assertion succeeded");
 
-    // The point of the stub: prove the disambiguation search was
-    // served locally. A zero here means the handler reached past the
-    // override to the real API, and this test would be one throttled
-    // IP away from a false red on someone else's diff.
-    let searches = allanime
+    // The whole resolution was served by the stub: browse, episodes,
+    // and languages were each hit at least once — and ani_cli_path
+    // points at a file that does not exist, so a subprocess spawn
+    // could not have produced the session.
+    let requests = anidb
         .received_requests()
         .await
-        .expect("stub recorded its requests")
-        .len();
-    assert!(
-        searches >= 1,
-        "the allanime search must be served by the local stub, saw {searches} requests"
-    );
+        .expect("stub recorded its requests");
+    for needle in ["/browse", "/episodes", "/languages"] {
+        assert!(
+            requests.iter().any(|r| r.url.path().contains(needle)),
+            "the native flow must hit {needle}; saw {:?}",
+            requests
+                .iter()
+                .map(|r| r.url.path().to_string())
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
-async fn run_play_assertion(tmp: &std::path::Path, allanime_base: &str) -> Result<(), String> {
-    let router = build_api_router(Arc::new(build_state(tmp, allanime_base)));
-    let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best"}"#;
+async fn run_play_assertion(tmp: &std::path::Path, anidb_base: &str) -> Result<(), String> {
+    let router = build_api_router(Arc::new(build_state(tmp, anidb_base)));
+    let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best","episode_count":12}"#;
     let response = router
         .oneshot(
             Request::builder()

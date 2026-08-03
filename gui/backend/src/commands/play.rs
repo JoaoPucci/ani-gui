@@ -985,6 +985,7 @@ mod tests {
         use std::sync::Arc;
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
