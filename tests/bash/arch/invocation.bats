@@ -1012,6 +1012,30 @@ SHIM
     PATH="$shim_dir:$PATH" certified_by_resolution "$REPO_ROOT/.github/workflows"
 }
 
+@test "the workflows equal the blessed snapshot" {
+    # Every reading in this file asks whether a workflow could be
+    # spelled so as to defeat it, and that question has no end: YAML
+    # and Actions both have more syntax than any finite reading
+    # covers, so each answered spelling leaves the next one open. The
+    # question that ends is whether the workflows are the ones a
+    # human blessed — equality against a recorded snapshot, where any
+    # change of any spelling is a difference and stops the run.
+    workflows_match_snapshot "$REPO_ROOT/.github/workflows"
+    tampered="$BATS_TEST_TMPDIR/tampered-workflows"
+    mkdir "$tampered"
+    cp "$REPO_ROOT/.github/workflows"/*.yml "$tampered/"
+    cat >"$tampered/zz-second-producer.yml" <<'YAML'
+"on": pull_request
+jobs:
+  stub:
+    name: Arch Shellcheck + Shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+YAML
+    run ! workflows_match_snapshot "$tampered"
+}
+
 @test "a status-flapping check is flagged, not certified" {
     # A check whose output repeats while its exit status flaps between
     # identical runs passes the reproducibility gate, and the status
