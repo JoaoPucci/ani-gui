@@ -256,15 +256,60 @@ async fn unknown_years_pass_the_identity_filter() {
 }
 
 #[tokio::test]
-async fn an_all_mismatched_pool_falls_back_to_count() {
-    // When every known year disagrees with Kitsu's, the year data is
-    // suspect — count keeps deciding rather than emptying the pool.
+async fn an_all_mismatched_pool_is_rejected_so_the_walk_moves_on() {
+    // Token-matching searches surface pools that contain the show
+    // nowhere: the full romaji "Tai-Ari deshita..." returned four
+    // decades-old shows, one of them count-tied, and the old
+    // count-decides fallback opened it. Every candidate carrying a
+    // known year far from Kitsu's is positive evidence the pool is
+    // wrong — reject it and let the walk try the next alias, which
+    // is where the real show turns up. (A provider-side markup
+    // change can't trip this: unparseable years read as unknown and
+    // unknown years never exclude.)
     let client = AnidbClient::new(YearTable(&[(1, 12, Some(2000)), (2, 30, Some(2001))]));
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
-    let picked = pick_candidate(&client, &hits, Some(12), "a", Some(2026))
+    let err = pick_candidate(&client, &hits, Some(12), "a", Some(2026))
+        .await
+        .expect_err("pool rejected");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_lone_candidate_with_a_mismatched_year_is_rejected() {
+    // The identity filter applies even when there is nothing to
+    // discriminate between: one count-tied candidate from the wrong
+    // decade is still the wrong show.
+    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2001))]));
+    let hits = [hit("old-show-1", "Old Show")];
+    let err = pick_candidate(&client, &hits, Some(12), "new show", Some(2022))
+        .await
+        .expect_err("rejected");
+    assert!(matches!(err, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_lone_candidate_with_a_matching_year_wins() {
+    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2022))]));
+    let hits = [hit("new-show-1", "New Show")];
+    let picked = pick_candidate(&client, &hits, Some(12), "new show", Some(2022))
         .await
         .expect("picked");
-    assert_eq!(picked.hit.slug, "a-1");
+    assert_eq!(picked.hit.slug, "new-show-1");
+}
+
+#[tokio::test]
+async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
+    // An alias can return the airing part alone. Its aired count sits
+    // far under Kitsu's whole-season count, but its detail year
+    // matches — the same airing-part evidence that rescues it inside
+    // a sibling pool must rescue it here, or exactly the
+    // currently-airing show becomes unresolvable through that alias.
+    let client = AnidbClient::new(YearTable(&[(6378, 2, Some(2026))]));
+    let hits = [hit("tybw-the-calamity-6378", "TYBW - The Calamity")];
+    let picked = pick_candidate(&client, &hits, Some(13), "tybw kashin-tan", Some(2026))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "tybw-the-calamity-6378");
 }
 
 #[tokio::test]
