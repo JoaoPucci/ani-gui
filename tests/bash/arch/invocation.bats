@@ -206,8 +206,29 @@ relevance_pattern() {
 # as boolean True — handled — and GitHub parses its own dialect at
 # the edges; a divergence surfaces as a refusal or a wrong producer
 # count, never a silent pass.
+# The interpreter that runs the certification: PATH's python3 when it
+# can import yaml — a virtualenv that provides PyYAML is the
+# environment's choice — otherwise /usr/bin/python3, where the Debian
+# package installs it. A shim without the module no longer answers
+# for the provisioned interpreter beside it; when neither can import
+# yaml, the missing-parser refusal stands.
+resolution_python() {
+    _py=""
+    for _py in python3 /usr/bin/python3; do
+        if "$_py" -c 'import yaml' 2>/dev/null; then
+            printf '%s\n' "$_py"
+            return 0
+        fi
+    done
+    return 1
+}
+
 certified_by_resolution() {
-    python3 - "$1" "Arch Shellcheck + Shfmt" <<'PYCERT'
+    _resolution_py=$(resolution_python) || {
+        printf 'resolution layer unavailable: no python3 with PyYAML\n' >&2
+        return 1
+    }
+    "$_resolution_py" - "$1" "Arch Shellcheck + Shfmt" <<'PYCERT'
 import os
 import sys
 
