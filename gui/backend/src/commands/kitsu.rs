@@ -1287,6 +1287,43 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_slug_row_resolves_through_kitsu_without_allanime() {
+        // Post-provider-switch history rows key on the anidb slug
+        // ("one-piece-69"). A slug carries no allanime identity, so
+        // enrichment must derive its search text from the slug words
+        // and walk Kitsu directly. The allanime base points at the
+        // same mock with no GraphQL route mounted: a fetch_show
+        // detour fails and soft-returns None, so Some proves the
+        // slug branch. The mapping persists so the next call
+        // short-circuits through the reverse cache.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("filter[text]", "one piece"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(SEARCH_FIXTURE.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+        let mut state = state_with_kitsu_at(&mock.uri());
+        state.allanime_base = Some(mock.uri());
+
+        let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
+            .await
+            .expect("resolve ok");
+        assert_eq!(got.expect("slug rows must resolve").id, "12");
+        assert_eq!(
+            allmanga_kitsu_get(&state, "one-piece-69")
+                .expect("cache read")
+                .as_deref(),
+            Some("12"),
+            "the slug resolve must persist the reverse mapping",
+        );
+    }
+
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
         // The enrichment alias-walk must skip music-video hits (a YOASOBI
