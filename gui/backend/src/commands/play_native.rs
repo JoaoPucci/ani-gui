@@ -52,23 +52,24 @@ async fn year_filtered<'a, F: AnidbFetch>(
     client: &AnidbClient<F>,
     hits: &'a [BrowseHit],
     year: Option<u32>,
-) -> Result<Vec<(&'a BrowseHit, bool)>> {
+) -> Result<(Vec<(&'a BrowseHit, bool)>, bool)> {
     let head = hits.iter().take(MAX_PROBED_CANDIDATES);
     let Some(year) = year else {
-        return Ok(head.map(|h| (h, false)).collect());
+        return Ok((head.map(|h| (h, false)).collect(), false));
     };
     let mut kept = Vec::new();
+    let mut excluded_any = false;
     for h in head {
         match client.detail_year(&h.slug).await {
             Some(y) if y.abs_diff(year) <= 1 => kept.push((h, true)),
-            Some(_) => {}
+            Some(_) => excluded_any = true,
             None => kept.push((h, false)),
         }
     }
     if kept.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
-    Ok(kept)
+    Ok((kept, excluded_any))
 }
 
 /// Pick the show a query meant from browse `hits`, using Kitsu's
@@ -111,19 +112,36 @@ pub async fn pick_candidate<F: AnidbFetch>(
         return Err(crate::error::AniError::NoResults);
     }
     let needle = search_title.trim().to_lowercase();
-    let head = year_filtered(client, hits, year).await?;
+    let (head, year_excluded_any) = year_filtered(client, hits, year).await?;
 
     let Some(expected) = expected else {
         // No count signal: an exact title beats positional order,
-        // else the provider's own (filtered) ranking stands. The
-        // single probe still runs so the caller gets the episode
-        // list it needs.
-        let chosen = head
+        // then a candidate whose own year matched Kitsu's beats the
+        // rest. When the year disproved part of the pool and no
+        // survivor carries positive identity evidence, the pool is
+        // token-search garbage — reject it so the next alias gets
+        // its chance (the live Tai-Ari mispick: three decades-off
+        // hits excluded, an unknown-year movie left standing). A
+        // pool the year disproved nothing about keeps the
+        // provider's own ranking, so pages without season links
+        // stay resolvable. The single probe still runs so the
+        // caller gets the episode list it needs.
+        let exact = head
             .iter()
             .map(|(h, _)| *h)
-            .find(|h| h.title.trim().to_lowercase() == needle)
-            .or_else(|| head.first().map(|(h, _)| *h))
-            .ok_or(crate::error::AniError::NoResults)?;
+            .find(|h| h.title.trim().to_lowercase() == needle);
+        let confirmed = head.iter().find(|(_, c)| *c).map(|(h, _)| *h);
+        let chosen = match (exact, confirmed) {
+            (Some(h), _) => h,
+            (None, Some(h)) => h,
+            (None, None) if year_excluded_any => {
+                return Err(crate::error::AniError::NoResults);
+            }
+            (None, None) => head
+                .first()
+                .map(|(h, _)| *h)
+                .ok_or(crate::error::AniError::NoResults)?,
+        };
         let episodes = client.episodes(&chosen.slug).await?;
         return Ok(PickedShow {
             hit: chosen.clone(),
