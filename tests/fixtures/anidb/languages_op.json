@@ -1,1 +1,1 @@
-[{"id":501,"language":"jpn","embed_url":"https:\/\/embed.example\/e\/op-jpn"},{"id":502,"language":"eng","embed_url":"https:\/\/embed.example\/e\/op-eng"}]
+{"languages":[{"code":"jpn","name":"Japanese","embed_url":"https:\/\/embed.example\/e\/op-jpn"},{"code":"eng","name":"English","embed_url":"https:\/\/embed.example\/e\/op-eng"}]}
