@@ -30,7 +30,10 @@ setup() {
 @test "anidb_episodes: requests the numeric tail of the slug, not the slug" {
     # The fetch runs inside a command substitution, so the probe
     # records through a file rather than a variable.
-    probe() { printf '%s' "$*" >"$BATS_TEST_TMPDIR/url"; printf '[]'; }
+    probe() {
+        printf '%s' "$*" >"$BATS_TEST_TMPDIR/url"
+        printf '[]'
+    }
     curl_exe=probe
     anidb_episodes "one-piece-69" || true
     url=$(cat "$BATS_TEST_TMPDIR/url")

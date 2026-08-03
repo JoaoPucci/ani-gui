@@ -58,7 +58,10 @@ setup() {
 @test "anidb_search: the query lands in the browse URL via search_api" {
     # The fetch runs inside a command substitution, so the probe
     # records through a file rather than a variable.
-    probe() { printf '%s' "$*" >"$BATS_TEST_TMPDIR/url"; cat "$FIXTURES_DIR/anidb/browse_empty.html"; }
+    probe() {
+        printf '%s' "$*" >"$BATS_TEST_TMPDIR/url"
+        cat "$FIXTURES_DIR/anidb/browse_empty.html"
+    }
     curl_exe=probe
     anidb_search "spy+family" || true
     grep -F "anidb.app/browse?q=spy+family" "$BATS_TEST_TMPDIR/url" >/dev/null

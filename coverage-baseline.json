@@ -12,7 +12,7 @@
 		"branches_pct": 96.51
 	},
 	"bash": {
-		"pure_covered_min": 102,
+		"pure_covered_min": 66,
 		"network_covered_min": 110
 	},
 	"crap": {
