@@ -40,15 +40,6 @@ use http_body_util::BodyExt;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-fn repo_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("manifest is two levels deep from repo root")
-        .to_path_buf()
-}
-
 /// Stand up a local anidb stub covering the whole native flow:
 /// browse → episodes → languages → embed → master URL. The embed and
 /// master both live on the stub's own origin so every request stays
