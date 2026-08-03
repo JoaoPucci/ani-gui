@@ -602,6 +602,45 @@ else
 fi
 rm -f "$escaped_gate"
 
+# The text readings above are one layer: conservative, fail-closed,
+# and by construction incomplete — YAML's spelling space is unbounded
+# and each reading covers the spellings it names. The authority is
+# resolution: parse every workflow with a real parser and certify the
+# RESOLVED structure, where quoting, escapes, folding, flow, aliases
+# and merge keys have already collapsed to the values GitHub sees. A
+# merge key is the probe because no text arm can see it: the required
+# name arrives in a job through `<<: *defaults` while no line of the
+# job spells a name at all.
+merge_dir="$scratch_dir/merge-key-producer"
+mkdir "$merge_dir"
+cat >"$merge_dir/covert.yml" <<'YAML'
+defs: &d
+  name: Arch Shellcheck + Shfmt
+"on": push
+jobs:
+  stub:
+    <<: *d
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+YAML
+merge_caught=0
+if ! certified_by_resolution "$merge_dir" 2>/dev/null; then
+    merge_caught=1
+fi
+live_certified=0
+if certified_by_resolution "$REPO_ROOT/.github/workflows" 2>/dev/null; then
+    live_certified=1
+fi
+if [ "$merge_caught" -eq 1 ] && [ "$live_certified" -eq 1 ]; then
+    printf '  ok       the resolved workflow structure certifies what the text layer cannot\n'
+else
+    printf '  FAIL     resolution reads merge-key-caught=%s live-certified=%s — a resolved second producer is invisible\n' \
+        "$merge_caught" "$live_certified"
+    failed=1
+fi
+rm -rf "$merge_dir"
+
 # Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
