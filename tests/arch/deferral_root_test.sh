@@ -1313,6 +1313,36 @@ else
     failed=1
 fi
 
+# A check whose exit status flaps between identical runs has no
+# stable signal at all: its output repeats, so the reproducibility
+# gate passes, and its status is then compared as though it meant
+# something. The second clean run's status is measured for exactly
+# this — two clean runs disagreeing about their own exit means the
+# check is noise, and noise reads as sensitive so a human looks,
+# rather than as a clean bill built on a coin flip.
+flapping_check="$scratch_dir/flapping-check.sh"
+cat >"$flapping_check" <<'FLAP'
+#!/bin/sh
+marker="$0.marker"
+if [ -e "$marker" ]; then
+    rm -f "$marker"
+    exit 1
+fi
+: >"$marker"
+exit 0
+FLAP
+flap_flagged=0
+if env_sensitive "$flapping_check"; then
+    flap_flagged=1
+fi
+rm -f "$flapping_check" "$flapping_check.marker"
+if [ "$flap_flagged" -eq 1 ]; then
+    printf '  ok       a status-flapping check is flagged, not certified\n'
+else
+    printf '  FAIL     a check whose exit flaps between clean runs reads as insensitive\n'
+    failed=1
+fi
+
 # The stray environment the hunt exists to catch can just as easily be
 # the one this suite itself runs under. A caller that already exports
 # a hostile name hands it to the clean runs too: all three runs are
