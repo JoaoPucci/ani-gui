@@ -710,7 +710,7 @@ lint_step_present() {
 # demands exactly one well-formed producer.
 certified_by_resolution() {
     python3 - "$1" "$arch_lint_name" <<'PYCERT'
-import glob
+import os
 import sys
 
 try:
@@ -737,8 +737,20 @@ def gated(node):
     return False
 
 
-paths = sorted(glob.glob(wfdir + "/*.yml") + glob.glob(wfdir + "/*.yaml"))
-if not paths:
+# The directory is a literal path, never pattern syntax: a checkout
+# under a name carrying a glob metacharacter enumerates like any
+# other.
+try:
+    entries = sorted(os.listdir(wfdir))
+except OSError as exc:
+    entries = []
+    problems.append(f"{wfdir}: unreadable: {exc}")
+paths = [
+    os.path.join(wfdir, entry)
+    for entry in entries
+    if entry.endswith((".yml", ".yaml"))
+]
+if not paths and not problems:
     problems.append("no workflows to read")
 for path in paths:
     try:
