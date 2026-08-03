@@ -835,6 +835,48 @@ mod tests {
         }
     }
 
+    /// Three consecutive clean misses (the show simply isn't in the
+    /// catalogue — a fresh Continue Watching rail full of uncarried
+    /// titles produces exactly this) must not open the breaker: a
+    /// clean miss is the provider answering, not the provider
+    /// failing. Only transport errors, refusals and rate limits are
+    /// distress.
+    #[tokio::test]
+    async fn a_clean_miss_streak_does_not_open_the_breaker() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string("<html>no cards</html>"),
+            )
+            .mount(&server)
+            .await;
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(server.uri());
+        let mk = |title: &str| PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
+            let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
+            assert!(r.is_err(), "an empty catalogue cannot resolve");
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "breaker must stay closed through clean misses"
+        );
+    }
+
     /// Build a CachedResolution with the new show_id/show_title fields
     /// defaulted to empty (so try_serve_cached's history-write skip
     /// branch fires). Tests that want history-write coverage override
