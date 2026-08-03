@@ -36,7 +36,7 @@ jobs:
           # asserts about its path filter. That makes it a subject under
           # test: a change touching only it has to run the suite, or the
           # regression the suite exists to catch lands unexamined.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/fixtures/|ani-cli$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/arch/|tests/fixtures/|ani-cli$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -145,6 +145,7 @@ jobs:
             python3-cryptography \
             bsdmainutils \
             xxd \
+            python3-yaml \
             fzf \
             mpv \
             ffmpeg \

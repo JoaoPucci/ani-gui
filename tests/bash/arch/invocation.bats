@@ -179,6 +179,121 @@ lint_step_present() {
 #
 # One pattern for selection and count, so the two can never disagree
 # about what a declaration is.
+# The authority behind every text reading here: parse the workflows
+# with a real parser and certify the RESOLVED structure, where
+# quoting, escapes, folding, flow style, aliases and merge keys have
+# already collapsed to the values GitHub sees. The text arms remain
+# as the conservative belt; a spelling none of them names lands here,
+# because resolution does not read spellings at all. Certified:
+# exactly one job resolves to the required name, its trigger carries
+# no paths filter at any depth, the job invokes exactly one step
+# whose action repository is exactly luizm/action-sh-checker, and
+# that step declares a literal exclude list whose tokens do not cover
+# tests/arch. Refused rather than certified: unparseable files,
+# expression-valued names or exclusions, a missing parser. Stated
+# boundaries: PyYAML resolves YAML 1.1, where a bare `on` key reads
+# as boolean True — handled — and GitHub parses its own dialect at
+# the edges; a divergence surfaces as a refusal or a wrong producer
+# count, never a silent pass.
+certified_by_resolution() {
+    python3 - "$1" "Arch Shellcheck + Shfmt" <<'PYCERT'
+import glob
+import sys
+
+try:
+    import yaml
+except Exception:
+    print("resolution layer unavailable: PyYAML missing", file=sys.stderr)
+    sys.exit(1)
+
+wfdir, required = sys.argv[1], sys.argv[2]
+SUBJECT = "tests/arch"
+ACTION = "luizm/action-sh-checker"
+producers = []
+problems = []
+
+
+def gated(node):
+    if isinstance(node, dict):
+        return any(
+            key in ("paths", "paths-ignore") or gated(value)
+            for key, value in node.items()
+        )
+    if isinstance(node, list):
+        return any(gated(value) for value in node)
+    return False
+
+
+paths = sorted(glob.glob(wfdir + "/*.yml") + glob.glob(wfdir + "/*.yaml"))
+if not paths:
+    problems.append("no workflows to read")
+for path in paths:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            docs = list(yaml.safe_load_all(handle))
+    except Exception as exc:
+        problems.append(f"{path}: unparseable: {exc}")
+        continue
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        jobs = doc.get("jobs")
+        if jobs is None:
+            continue
+        if not isinstance(jobs, dict):
+            problems.append(f"{path}: jobs is not a mapping")
+            continue
+        for jid, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            name = job.get("name")
+            if isinstance(name, str) and "${{" in name:
+                problems.append(f"{path}: job {jid}: expression-valued name refused")
+                continue
+            if name != required:
+                continue
+            producers.append((path, doc, jid, job))
+
+if len(producers) != 1:
+    problems.append(f"{len(producers)} resolved producers of the required name, not 1")
+for path, doc, jid, job in producers:
+    trigger = doc.get("on", doc.get(True))
+    if trigger is None:
+        problems.append(f"{path}: producer has no trigger")
+    if gated(trigger):
+        problems.append(f"{path}: producer trigger is path-filtered")
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        problems.append(f"{path}: job {jid} has no steps")
+        steps = []
+    lint = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str) and uses.split("@", 1)[0] == ACTION:
+            lint.append(step)
+    if len(lint) != 1:
+        problems.append(f"{path}: job {jid} invokes the lint action {len(lint)} times, not 1")
+        continue
+    inputs = lint[0].get("with")
+    if not isinstance(inputs, dict):
+        problems.append(f"{path}: the lint step declares no inputs")
+        continue
+    excl = inputs.get("sh_checker_exclude", "")
+    if not isinstance(excl, str) or "${{" in excl:
+        problems.append(f"{path}: exclusion is not a readable literal")
+        continue
+    for token in excl.split():
+        if SUBJECT == token or SUBJECT.startswith(token + "/"):
+            problems.append(f"{path}: exclusion covers {SUBJECT} via {token!r}")
+
+for problem in problems:
+    print(problem, file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYCERT
+}
+
 # The alias/anchor arm selects any line opening with `*` or `&` that
 # carries a colon: `*k: "list"` resolves to a key this read cannot
 # name, so it must be seen and then refused, while `&a key: value`
@@ -275,9 +390,13 @@ clean_env() {
 # signal.
 env_sensitive() {
     _first=$(clean_env sh "$1" 2>&1) && _first_status=0 || _first_status=$?
-    _again=$(clean_env sh "$1" 2>&1) || true
+    _again=$(clean_env sh "$1" 2>&1) && _again_status=0 || _again_status=$?
     _dirty=$(hostile_env sh "$1" 2>&1) && _dirty_status=0 || _dirty_status=$?
 
+    # Two clean runs disagreeing about their own exit means the check
+    # has no stable signal at all — noise, reported as sensitive so a
+    # human looks, never as a clean bill built on a coin flip.
+    [ "$_first_status" = "$_again_status" ] || return 0
     [ "$_first_status" = "$_dirty_status" ] || return 0
     if [ "$_first" = "$_again" ] && [ "$_first" != "$_dirty" ]; then
         return 0
