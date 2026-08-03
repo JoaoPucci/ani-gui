@@ -84,3 +84,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     };
     external_player::open_external_player(&launch)
 }
+
+#[cfg(test)]
+#[path = "play_external_command_test.rs"]
+mod tests;
