@@ -1,6 +1,6 @@
 //! `open_external_player` command — escape hatch that launches the
-//! user's chosen external media player (default `mpv`) with the same
-//! `--referer` and `--sub-file` flags `ani-cli` passes today.
+//! user's chosen external media player (default `mpv`) with the
+//! referer flag the stream requires, when it requires one.
 //!
 //! This is never an automatic fallback — it's user-triggered (a button
 //! on the in-window player chrome). Auto-fallback would be confusing.
@@ -30,16 +30,14 @@ pub enum ExternalPlayerKind {
 }
 
 /// Arguments to the command. Frontend supplies the resolved stream URL +
-/// optional referer + optional subtitle. The player command itself comes
-/// from the user's config (default `mpv`).
+/// optional referer. The player command itself comes from the user's
+/// config (default `mpv`).
 #[derive(Debug, Deserialize)]
 pub struct LaunchArgs {
     /// The resolved stream URL (mp4 or m3u8).
     pub stream_url: String,
     /// Optional `Referer:` value the upstream CDN requires.
     pub referer: Option<String>,
-    /// Optional subtitle URL (`.vtt`).
-    pub subtitle_url: Option<String>,
     /// Title shown in the player window's titlebar.
     pub title: Option<String>,
     /// Player command, e.g. `"mpv"`. Caller resolves this from settings.
@@ -49,10 +47,10 @@ pub struct LaunchArgs {
     #[serde(default)]
     pub player_kind: ExternalPlayerKind,
     /// Free-text args template used only when `player_kind` is
-    /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`,
-    /// `{sub}`. A token containing a missing/empty placeholder is
-    /// dropped from argv entirely (so optional flags don't end up
-    /// as `--sub-file=` with nothing after the equals).
+    /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`.
+    /// A token containing a missing/empty placeholder is dropped
+    /// from argv entirely (so optional flags don't end up as
+    /// `--referrer=` with nothing after the equals).
     #[serde(default)]
     pub custom_args_template: Option<String>,
 }
@@ -60,24 +58,19 @@ pub struct LaunchArgs {
 /// Build the argv that would be passed to `Command::new(player).args(...)`.
 /// Pure: no spawn happens here so unit tests can lock the contract.
 ///
-/// Order across all kinds: title, sub, referrer, URL last. Matches
-/// what `ani-cli`'s `play_episode` mpv branch constructs (lines
-/// 394-402 of the script).
+/// Order across all kinds: title, referrer, URL last.
 #[must_use]
 pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
     match args.player_kind {
         ExternalPlayerKind::Mpv => {
-            build_argv_with_template(args, "--force-media-title=", "--sub-file=", "--referrer=")
+            build_argv_with_template(args, "--force-media-title=", "--referrer=")
         }
         ExternalPlayerKind::Vlc => {
-            build_argv_with_template(args, "--meta-title=", "--sub-file=", "--http-referrer=")
+            build_argv_with_template(args, "--meta-title=", "--http-referrer=")
         }
-        ExternalPlayerKind::Iina => build_argv_with_template(
-            args,
-            "--mpv-force-media-title=",
-            "--sub-file=",
-            "--mpv-referrer=",
-        ),
+        ExternalPlayerKind::Iina => {
+            build_argv_with_template(args, "--mpv-force-media-title=", "--mpv-referrer=")
+        }
         ExternalPlayerKind::Custom => build_argv_custom(args),
     }
 }
@@ -87,15 +80,11 @@ pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
 fn build_argv_with_template(
     args: &LaunchArgs,
     title_flag: &str,
-    sub_flag: &str,
     referrer_flag: &str,
 ) -> Vec<String> {
-    let mut argv = Vec::with_capacity(4);
+    let mut argv = Vec::with_capacity(3);
     if let Some(t) = &args.title {
         argv.push(format!("{title_flag}{t}"));
-    }
-    if let Some(s) = &args.subtitle_url {
-        argv.push(format!("{sub_flag}{s}"));
     }
     if let Some(r) = &args.referer {
         argv.push(format!("{referrer_flag}{r}"));
@@ -107,8 +96,8 @@ fn build_argv_with_template(
 /// Build argv for the Custom kind by shlex-splitting the template
 /// and substituting placeholders per token. A token containing a
 /// missing/empty placeholder is dropped from argv entirely so the
-/// user can write `--sub={sub}` without it landing as `--sub=` when
-/// no subtitle is available.
+/// user can write `--referrer={referer}` without it landing as
+/// `--referrer=` when the stream needs no referer.
 ///
 /// Empty/None template falls back to URL only.
 fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
@@ -125,11 +114,10 @@ fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
     };
     let referer = args.referer.as_deref().unwrap_or("");
     let title = args.title.as_deref().unwrap_or("");
-    let sub = args.subtitle_url.as_deref().unwrap_or("");
     let url = args.stream_url.as_str();
     tokens
         .into_iter()
-        .filter_map(|tok| substitute_token(&tok, url, referer, title, sub))
+        .filter_map(|tok| substitute_token(&tok, url, referer, title))
         .collect()
 }
 
@@ -137,7 +125,7 @@ fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
 /// non-empty value, `None` if any placeholder was empty (drop rule).
 /// `{url}` is always present — tokens containing only `{url}` always
 /// render. Unknown `{...}` placeholders pass through verbatim.
-fn substitute_token(tok: &str, url: &str, referer: &str, title: &str, sub: &str) -> Option<String> {
+fn substitute_token(tok: &str, url: &str, referer: &str, title: &str) -> Option<String> {
     let mut out = String::with_capacity(tok.len());
     let mut chars = tok.chars().peekable();
     while let Some(c) = chars.next() {
@@ -165,7 +153,6 @@ fn substitute_token(tok: &str, url: &str, referer: &str, title: &str, sub: &str)
             "url" => url,
             "referer" => referer,
             "title" => title,
-            "sub" => sub,
             // Unknown placeholder — preserve verbatim.
             other => {
                 out.push('{');
@@ -210,11 +197,27 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|_| AniError::PlayerSpawnFailed {
-            binary: args.player_command.clone(),
-        })
+    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
+        binary: args.player_command.clone(),
+    })
+}
+
+/// Spawn with a short retry on ETXTBSY: exec of a freshly written
+/// executable can race a concurrent fork that briefly holds its
+/// write descriptor (the fds are close-on-exec, so the window is
+/// microseconds). Real for just-staged binaries; every other error
+/// surfaces immediately.
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
+    for _ in 0..5 {
+        match cmd.spawn() {
+            Ok(_) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    cmd.spawn().map(|_| ())
 }
 
 #[cfg(test)]

@@ -89,8 +89,7 @@
 		attachGlobalVideoTo,
 		detachGlobalVideo,
 		getGlobalVideo,
-		setCurrentSession,
-		setSubtitleTrack
+		setCurrentSession
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -801,21 +800,6 @@
 		return base ? buildMediaUrl(base, sessionId, mediaKind) : null;
 	});
 
-	/** Subtitle plumbing (F1.11). The play navigation appends `?sub=1`
-	 *  when the backend resolution returned a subtitle URL — see
-	 *  buildPlayQuery. The proxy mounts the .vtt at /s/<session>/sub.vtt
-	 *  with the upstream Referer injected, so the renderer never
-	 *  fetches the upstream URL directly. Most allmanga sources embed
-	 *  subs in the HLS manifest as a TextTrack and don't ship a
-	 *  separate file; ?sub=1 is absent for those, and the <track>
-	 *  isn't rendered. */
-	const hasSubtitles = $derived(page.url.searchParams.get('sub') === '1');
-	const subtitleUrl = $derived.by(() => {
-		if (!sessionId || !hasSubtitles) return null;
-		const base = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
-		return base ? `${base.replace(/\/+$/, '')}/s/${sessionId}/sub.vtt` : null;
-	});
-
 	// Poster shown next to the now-playing title block. Same fallback
 	// chain as the detail-page masthead — small first (cheapest cache),
 	// fall through if Kitsu's posterImage doesn't have that size.
@@ -933,6 +917,7 @@
 				alt_titles: altTitlesFromKitsu(d),
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
+				subtype: d?.subtype ?? undefined,
 				kitsu_id: d.id,
 				status: d.status ?? undefined,
 				background: false,
@@ -1030,6 +1015,7 @@
 					altTitles: altTitlesFromKitsu(d),
 					episodeCount: d.episode_count ?? undefined,
 					year: yearFromKitsuRef(d) ?? undefined,
+					subtype: d?.subtype ?? undefined,
 					kitsuId: d.id,
 					status: d.status ?? undefined
 				},
@@ -1421,11 +1407,6 @@
 		v.controls = !USE_CUSTOM_PLAYER_CONTROLS;
 	});
 
-	// Subtitle track — managed imperatively on the singleton.
-	$effect(() => {
-		setSubtitleTrack(subtitleUrl ?? null);
-	});
-
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
 		// If the singleton is already loaded with this exact
@@ -1442,7 +1423,6 @@
 				session_id: sessionId,
 				media_url: mediaUrl,
 				media_kind: mediaKind,
-				subtitle_url: subtitleUrl,
 				// Record what this session was resolved at (from the URL,
 				// not current settings) so the reuse shortcut re-resolves
 				// after a quality / sub-dub change.
@@ -1542,7 +1522,6 @@
 			session_id: sessionId,
 			media_url: mediaUrl,
 			media_kind: mediaKind,
-			subtitle_url: subtitleUrl,
 			// Record what this session was resolved at (from the URL, not
 			// current settings) so the reuse shortcut re-resolves after a
 			// quality / sub-dub change.
@@ -1765,6 +1744,7 @@
 						quality,
 						episode_count: detail?.episode_count ?? null,
 						year: yearFromKitsuRef(detail),
+						subtype: detail?.subtype ?? undefined,
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
@@ -1826,6 +1806,7 @@
 							quality,
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
+							subtype: detail?.subtype ?? undefined,
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1861,6 +1842,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? undefined,
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -1934,6 +1916,7 @@
 				quality,
 				episode_count: detail.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? undefined,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 		} catch {
@@ -2092,6 +2075,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? undefined,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -2147,6 +2131,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? undefined,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			toastStore.push(

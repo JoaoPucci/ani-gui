@@ -30,9 +30,7 @@
 //!   so any drift on allanime's side breaks ani-cli first and we
 //!   patch the same way upstream does.
 
-pub mod allanime;
+pub mod anidb;
 pub mod gate;
 pub mod outcome;
 mod reservation;
-
-pub use allanime::{pick_by_ep_count, pick_by_ep_count_v2, search, Candidate};

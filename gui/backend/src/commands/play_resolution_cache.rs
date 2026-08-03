@@ -1,7 +1,7 @@
 //! Long-term cache for play resolutions.
 //!
 //! Caches the *result* of running ani-cli (upstream URL, referer,
-//! subtitle URL, media kind) keyed by `(canonical_title, mode, quality,
+//! media kind) keyed by `(canonical_title, mode, quality,
 //! episode)`. A subsequent click on the same episode skips the 30s
 //! ani-cli spawn entirely — we just register a fresh proxy session
 //! around the cached upstream and return immediately.
@@ -74,32 +74,48 @@ use crate::proxy::MediaKind;
 ///   row warmed by the old order-dependent pick (e.g. Part 1's key
 ///   pointing at Part 2's stream) would keep serving the wrong cour on
 ///   a HEAD-passing hit; bumping evicts those so the new tie-break runs.
-const SCHEMA: &str = "v6";
+// v8: the picker gained the year identity filter for cour and
+// franchise siblings. A v7 row resolved without it can hold the
+// wrong part's stream (the TYBW Part-1-for-Part-4 mispick) and a
+// HEAD-passing hit would keep serving it; bumping re-resolves.
+// v7: the provider moved to anidb — upstream URLs, show ids (now
+// slugs) and titles from the allanime era are all unreplayable, so
+// every v6 row becomes an unreachable miss.
+// v10: the countless pick gained the year-evidence gate. A v9 row
+// resolved with a null Kitsu count in a token-garbage pool holds
+// the wrong show's stream (the frontend's Tai-Ari key cached the
+// Ninjaboy movie) and a HEAD-passing hit would keep serving it.
+// v9: the picker was reworked live against the provider: episode
+// numbers map through the continuation-numbering offset, the year
+// filter rejects all-mismatched pools and lone wrong-year
+// candidates, and queries are properly urlencoded. A v8 row
+// resolved by the old picker can hold a different show's stream
+// (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
+// keep serving it instantly; bumping re-resolves.
+const SCHEMA: &str = "v10";
 
-/// What ani-cli's debug output produced, frozen for replay. The session
+/// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
+/// Rows written by earlier schemas may carry extra keys (the retired
+/// `subtitle_url` sidecar) — serde ignores them on read.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedResolution {
-    /// Final upstream URL ani-cli selected (after `select_quality`).
+    /// Final upstream URL the resolve selected.
     pub upstream_url: String,
     /// Referer header to send when fetching upstream. Empty string when
     /// no referer was captured / inferred.
     pub referer: String,
-    /// Subtitle URL when ani-cli surfaced one, else `None`.
-    pub subtitle_url: Option<String>,
     /// Whether the proxy should serve this as HLS (manifest rewrite)
     /// or MP4 (byte-stream pass-through).
     pub media_kind: MediaKind,
-    /// Allanime show id of the chosen candidate. Captured during the
-    /// fresh-fetch path so a subsequent cache-hit can update
-    /// `ani-hsts` (which `ani-cli`'s `update_history` keys on this id).
-    /// Empty string on rows written before this field existed —
-    /// callers fall back to skipping the history write.
+    /// Provider show id (anidb slug) of the chosen candidate. Captured
+    /// during the fresh-fetch path so a subsequent cache-hit can write
+    /// the same history row a fresh resolve would. Empty string on rows
+    /// written before this field existed — callers fall back to
+    /// skipping the history write.
     #[serde(default)]
     pub show_id: String,
-    /// Allanime title of the chosen candidate, including the
-    /// `(N episodes)` parenthetical that `ani-cli`'s `update_history`
-    /// stores in column three. Empty on legacy rows.
+    /// Provider title of the chosen candidate. Empty on legacy rows.
     #[serde(default)]
     pub show_title: String,
 }
@@ -190,7 +206,6 @@ mod tests {
                 "https://video.wixstatic.com/video/3d2d69_c12bd6c53e234420b3ae3d3b4c5b526f/1080p/mp4/file.mp4"
                     .into(),
             referer: "https://allmanga.to".into(),
-            subtitle_url: None,
             media_kind: MediaKind::Mp4,
             show_id: "vDTSJHSpYnrkZnAvG".into(),
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
@@ -254,7 +269,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v6:"), "got {k}");
+        assert!(k.starts_with("play:v10:"), "got {k}");
     }
 
     #[test]

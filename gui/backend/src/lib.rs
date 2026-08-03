@@ -10,7 +10,7 @@
 //!    `<video>` + `hls.js` player can fetch segments without CORS pain,
 //!    and (b) the API the renderer talks to via plain `fetch()`.
 //! 3. Talks to Kitsu (and eventually AniList) for metadata, caches results
-//!    in SQLite + images on disk, and reads the shared ani-cli history file.
+//!    in SQLite + images on disk, and keeps its own watch-history file.
 //!
 //! Every listening socket is bound to `127.0.0.1`. The Electron renderer
 //! discovers the kernel-assigned port from the `ani-gui-backend` binary's

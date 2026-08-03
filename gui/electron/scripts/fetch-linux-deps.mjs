@@ -37,7 +37,10 @@
 //                time rather than embedding it in the .exe.
 //
 // This script is the Linux analog of `fetch-windows-deps.mjs`. Keep
-// the two in lockstep when adding a new bundled dep.
+// the two in lockstep when adding a new bundled dep. Exception:
+// curl-impersonate — the Windows transport story (the backend would
+// have to spawn .exe wrappers, which upstream ships as bash scripts)
+// is tracked separately and not yet staged there.
 
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, rm } from 'node:fs/promises';
@@ -101,6 +104,60 @@ const DEPS = [
 		sha256: 'd2f07382138f4bd882254996502636f5a67a8c5ee5ab8a25807e2784a4878642',
 		binary: 'yt-dlp',
 		directBinary: true,
+	},
+	// curl-impersonate: the transport the native anidb resolution
+	// spawns. The provider's TLS-fingerprinting protection 403s plain
+	// curl, so without this every play / availability / download
+	// attempt dies with a network error on machines that never
+	// hand-installed it. One tarball carries the patched curl binary
+	// plus per-browser wrapper scripts; the backend walks its
+	// failover names (fetch.rs CURL_FAILOVER) through the bundled bin
+	// dir before PATH, so the staged set is the binary plus the three
+	// failover wrappers this release provides. Entries share the
+	// archive — the download is cached by name, so it fetches once.
+	//
+	// Source: github.com/lexiforest/curl-impersonate (the maintained
+	// fork; ani-cli 5.0's own instructions point users at it).
+	{
+		name: 'curl-impersonate',
+		version: '2.0.0',
+		archiveName: 'curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		sha256: '0e2bd63823ea588c0fb829c0aef2e9f9af191039e9e11f7541773c86445bfe77',
+		binary: 'curl-impersonate',
+		// The tarball is flat — every file sits at the archive root.
+		archivePath: 'curl-impersonate',
+		tarFlag: '-xzf',
+	},
+	{
+		name: 'curl-impersonate-firefox135',
+		version: '2.0.0',
+		archiveName: 'curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		sha256: '0e2bd63823ea588c0fb829c0aef2e9f9af191039e9e11f7541773c86445bfe77',
+		binary: 'curl_firefox135',
+		archivePath: 'curl_firefox135',
+		tarFlag: '-xzf',
+	},
+	{
+		name: 'curl-impersonate-chrome136',
+		version: '2.0.0',
+		archiveName: 'curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		sha256: '0e2bd63823ea588c0fb829c0aef2e9f9af191039e9e11f7541773c86445bfe77',
+		binary: 'curl_chrome136',
+		archivePath: 'curl_chrome136',
+		tarFlag: '-xzf',
+	},
+	{
+		name: 'curl-impersonate-chrome116',
+		version: '2.0.0',
+		archiveName: 'curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-linux-gnu.tar.gz',
+		sha256: '0e2bd63823ea588c0fb829c0aef2e9f9af191039e9e11f7541773c86445bfe77',
+		binary: 'curl_chrome116',
+		archivePath: 'curl_chrome116',
+		tarFlag: '-xzf',
 	},
 ];
 

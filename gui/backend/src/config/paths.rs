@@ -132,30 +132,15 @@ pub fn state_dir() -> Option<PathBuf> {
     Some(pd.data_local_dir().to_path_buf())
 }
 
-/// The history file shared with the CLI:
-/// `$XDG_STATE_HOME/ani-cli/ani-hsts` on Linux. On Windows the path
-/// resolves under `%USERPROFILE%\.local\state\ani-cli\ani-hsts`,
-/// which is where ani-cli running under Git Bash actually writes
-/// (Git Bash maps `~/.local/state` literally onto the user's
-/// Windows profile dir). The GUI and CLI thus share one history
-/// file on every supported platform.
+/// The GUI's own watch-history file: `<state_dir>/history`. The
+/// allanime-era GUI shared ani-cli's ani-hsts; the 5.0 CLI re-keyed
+/// its history onto provider slugs and backs the old file up on its
+/// own first run, so a shared file buys no continuity in either
+/// direction anymore. The GUI keeps its own — same line format the
+/// reader and writer always used — and starts it empty.
 #[must_use]
-pub fn ani_cli_history() -> Option<PathBuf> {
-    if let Ok(override_dir) = std::env::var("ANI_CLI_HIST_DIR") {
-        return Some(PathBuf::from(override_dir).join("ani-hsts"));
-    }
-    if let Ok(state) = std::env::var("XDG_STATE_HOME") {
-        if !state.is_empty() {
-            return Some(PathBuf::from(state).join("ani-cli").join("ani-hsts"));
-        }
-    }
-    let home = home_dir_xplat()?;
-    Some(
-        home.join(".local")
-            .join("state")
-            .join("ani-cli")
-            .join("ani-hsts"),
-    )
+pub fn gui_history() -> Option<PathBuf> {
+    Some(state_dir()?.join("history"))
 }
 
 /// Default destination for episode downloads. Honours
@@ -181,16 +166,19 @@ pub fn download_dir() -> Option<PathBuf> {
     Some(home.join("Downloads").join("ani-gui"))
 }
 
+/// Serializes tests that mutate process-global env vars so they
+/// don't clobber each other under cargo test's default parallelism.
+/// Shared across test modules (paths, app boot) because the env is
+/// one process-wide resource; the granularity is "any test that
+/// touches env", which is fine for the handful of tests involved.
+#[cfg(test)]
+pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Serializes tests that mutate process-global env vars so they
-    /// don't clobber each other under cargo test's default parallelism.
-    /// Multiple env vars share one lock; the granularity is "any test
-    /// that touches env" rather than per-var, which is fine for the
-    /// handful of tests here.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use super::TEST_ENV_LOCK as ENV_LOCK;
 
     /// The dev-profile policy, tested as a pure function so it's
     /// independent of *this* test binary's own (always-debug) build
@@ -228,11 +216,12 @@ mod tests {
             let s = p.to_string_lossy();
             assert!(s.contains("ani-gui-dev"), "dev profile relocates: {s}");
         }
-        // The shared CLI history must stay on the real `ani-cli` path.
-        let hist = ani_cli_history().expect("hist");
+        // The GUI's own history rides the profile like every other
+        // state file — a dev run must not touch the real history.
+        let hist = gui_history().expect("hist");
         assert!(
-            !hist.to_string_lossy().contains("ani-gui-dev"),
-            "history is not relocated by dev profile: {}",
+            hist.to_string_lossy().contains("ani-gui-dev"),
+            "history relocates with the dev profile: {}",
             hist.to_string_lossy()
         );
 
@@ -249,18 +238,23 @@ mod tests {
     }
 
     #[test]
-    fn ani_cli_history_honors_override() {
+    fn gui_history_lives_in_the_gui_state_dir_only() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Decoupled from the CLI: no ani-cli path segment, no
+        // ANI_CLI_HIST_DIR override — the 5.0 CLI re-keyed and backs
+        // up its own file, so sharing buys no continuity in either
+        // direction, and the GUI's history starts (and stays) its
+        // own.
         let saved = std::env::var_os("ANI_CLI_HIST_DIR");
         std::env::set_var("ANI_CLI_HIST_DIR", "/tmp/test-ani-hsts-dir");
-        let p = ani_cli_history().expect("history path resolves");
+        let p = gui_history().expect("history path resolves");
         if let Some(s) = saved {
             std::env::set_var("ANI_CLI_HIST_DIR", s);
         } else {
             std::env::remove_var("ANI_CLI_HIST_DIR");
         }
-        assert!(p.ends_with("ani-hsts"));
-        assert!(p.starts_with("/tmp/test-ani-hsts-dir"));
+        assert_eq!(p, state_dir().expect("state").join("history"));
+        assert!(!p.to_string_lossy().contains("ani-cli"));
     }
 
     #[test]
@@ -316,62 +310,6 @@ mod tests {
         if let Some(p) = logs_dir() {
             assert!(p.ends_with("logs"), "got {p:?}");
         }
-    }
-
-    /// `ani_cli_history` honours `XDG_STATE_HOME` when no override is
-    /// set — it composes `<state>/ani-cli/ani-hsts`.
-    #[test]
-    fn ani_cli_history_honors_xdg_state_home() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved_override = std::env::var_os("ANI_CLI_HIST_DIR");
-        let saved_state = std::env::var_os("XDG_STATE_HOME");
-        std::env::remove_var("ANI_CLI_HIST_DIR");
-        std::env::set_var("XDG_STATE_HOME", "/tmp/test-state");
-        let p = ani_cli_history().expect("history path resolves");
-        if let Some(s) = saved_override {
-            std::env::set_var("ANI_CLI_HIST_DIR", s);
-        }
-        if let Some(s) = saved_state {
-            std::env::set_var("XDG_STATE_HOME", s);
-        } else {
-            std::env::remove_var("XDG_STATE_HOME");
-        }
-        assert_eq!(
-            p,
-            PathBuf::from("/tmp/test-state")
-                .join("ani-cli")
-                .join("ani-hsts")
-        );
-    }
-
-    /// `ani_cli_history` falls back to `$HOME/.local/state/ani-cli/`
-    /// when neither env var is set. Pin the layout because the CLI
-    /// reads from the same path — drift would silently split history.
-    #[test]
-    fn ani_cli_history_falls_back_to_home_local_state() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved_override = std::env::var_os("ANI_CLI_HIST_DIR");
-        let saved_state = std::env::var_os("XDG_STATE_HOME");
-        let saved_home = std::env::var_os("HOME");
-        std::env::remove_var("ANI_CLI_HIST_DIR");
-        std::env::remove_var("XDG_STATE_HOME");
-        std::env::set_var("HOME", "/tmp/test-fake-home");
-        let p = ani_cli_history().expect("history path resolves");
-        if let Some(s) = saved_override {
-            std::env::set_var("ANI_CLI_HIST_DIR", s);
-        }
-        if let Some(s) = saved_state {
-            std::env::set_var("XDG_STATE_HOME", s);
-        }
-        if let Some(s) = saved_home {
-            std::env::set_var("HOME", s);
-        } else {
-            std::env::remove_var("HOME");
-        }
-        assert_eq!(
-            p,
-            PathBuf::from("/tmp/test-fake-home/.local/state/ani-cli/ani-hsts")
-        );
     }
 
     /// Empty XDG_DOWNLOAD_DIR is treated as unset — without this

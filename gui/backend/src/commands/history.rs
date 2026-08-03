@@ -96,7 +96,7 @@ mod tests {
 
     fn make_state(history_path: PathBuf) -> AppState {
         AppState {
-            allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -105,7 +105,6 @@ mod tests {
             ani_cli_path: PathBuf::from("/x/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),

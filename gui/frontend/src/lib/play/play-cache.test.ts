@@ -6,8 +6,7 @@ function fakeResp(seed: string): CreateSessionResponse {
 	return {
 		session_id: seed,
 		media_url: `http://x/s/${seed}/master.m3u8`,
-		media_kind: 'hls',
-		subtitle_url: null
+		media_kind: 'hls'
 	};
 }
 

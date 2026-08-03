@@ -2,34 +2,28 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! Both endpoints walk the same chain:
-//!
-//!   1. Spawn `ani-cli -S <title> -e <episode>` via [`run_debug`].
-//!      ani-cli internally searches allanime, picks the first match,
-//!      resolves the chosen quality stream, and prints the result.
-//!   2. Take the parsed [`DebugOutput`] and either
-//!        - wrap the upstream URL in a [`StreamSession`] (embedded),
-//!        - or hand it off to the user's `mpv` (external).
+//! The embedded path resolves natively: the anidb client searches,
+//! disambiguates by episode count, and walks episode → languages →
+//! embed → master-playlist URL, which becomes a [`StreamSession`].
+//! The external and download siblings still spawn the vendored
+//! script; they move to the native resolver with the availability
+//! port.
 //!
 //! No title-match cache yet — every play hits ani-cli fresh. The cache
 //! is task #51 and lands once the spawn cost actually bites the UX.
 
-use std::time::Duration;
-
 use serde::Deserialize;
 
-use crate::anicli::parser::{parse_progress_line, ProgressLine};
-use crate::anicli::process::{run_debug_streaming, DebugOptions};
+use crate::anicli::parser::ProgressLine;
 use crate::app::AppState;
-use crate::commands::availability_refresh::{hold_if_still_ours, with_row_if_ours};
+use crate::commands::availability_refresh::with_row_if_ours;
+use crate::commands::play_native_resolve::NativeResolveRequest;
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
 use crate::error::{AniError, Result};
 use crate::proxy::{upstream, MediaKind};
-use crate::scraper;
-use crate::scraper::Candidate;
 
 /// Frontend → backend payload for both play endpoints.
 #[derive(Debug, Clone, Deserialize)]
@@ -62,6 +56,12 @@ pub struct PlayArgs {
     /// ep-count + threshold.
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
+    /// Format disproof against the provider's card badges — a Movie
+    /// candidate cannot satisfy a special/TV entry. Optional so old
+    /// clients keep working.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Fallback titles to try when the canonical title returns no
     /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
@@ -81,12 +81,10 @@ pub struct PlayArgs {
     pub alt_titles: Vec<String>,
     /// `true` when this call is a background prefetch (warming the
     /// cache for an episode the user hasn't clicked yet). Prefetches
-    /// must NOT touch `ani-hsts` — the page-mount loop fires 12+ play
-    /// calls in parallel and whichever resolves last would overwrite
-    /// the user's actual click. The flag drives both:
-    ///   - skipping our cache-hit history write
-    ///   - redirecting ani-cli's `$ANI_CLI_HIST_DIR` to a tempdir so
-    ///     ani-cli's own `update_history` writes to a throwaway file
+    /// must NOT touch the history file — the page-mount loop fires
+    /// 12+ play calls in parallel and whichever resolves last would
+    /// overwrite the user's actual click. The flag skips both the
+    /// cache-hit and the fresh-resolve history writes.
     ///
     /// Frontend prefetch loops set it; click handlers leave it false.
     #[serde(
@@ -107,70 +105,10 @@ pub struct PlayArgs {
     pub kitsu_id: Option<String>,
 }
 
-// `deserialize_alt_titles`, `deserialize_loose_bool`, and the
-// `select_first_with_hits*` family live in `commands::play_select`
-// so this module's cyclomatic complexity stays manageable. The
-// PlayArgs serde derive uses fully-qualified paths above, and the
-// rest of the play flow imports them via the `use` line at the top
-// of the file.
-pub use crate::commands::play_select::{
-    select_first_with_hits, select_first_with_hits_opt, select_first_with_hits_with_candidate,
-};
-
-/// Spawn timeout for the ani-cli search+resolve step. Real-world
-/// allanime queries take 5-30s; 60s is a comfortable upper bound
-/// before the user is better served by an error than a stuck spinner.
-const RUN_DEBUG_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// Resolve which `(title, 1-based candidate index)` to pass to
-/// `ani-cli -S`. Calls our own allanime search for the canonical
-/// title first; if that returns zero hits, walks `args.alt_titles`
-/// in order until one returns a non-empty list, then runs
-/// `pick_by_ep_count` over the winner. Falls through to
-/// `(args.title, 1)` (legacy behaviour) on every-list-empty or when
-/// `episode_count` is unknown.
-/// Result of [`pick_title_and_index`]. Adds a transient-error
-/// indicator alongside the picker's (title, index, candidate)
-/// triple so callers can tell "we have no safe match" apart from
-/// "we couldn't ask allmanga." A negative-availability cache write
-/// is correct in the first case and wrong in the second — Codex
-/// flagged the difference in P2 #3233589818.
-pub(super) struct PickedTitle {
-    pub title: String,
-    pub index: usize,
-    pub candidate: Option<Candidate>,
-    /// True when at least one `scraper::search` call returned `Ok`
-    /// (with any number of hits — including zero). False only when
-    /// every search call hit a network / upstream / parse error.
-    /// When this is false AND `candidate.is_none()`, callers should
-    /// surface `AniError::Network` rather than `NoResults`.
-    pub any_search_succeeded: bool,
-    /// True when at least one `scraper::search` call returned `Err`.
-    /// Distinct from `any_search_succeeded`: a run can have some
-    /// errors AND some successes, in which case the verdict
-    /// is incomplete — the canonical lookup may have failed while
-    /// only an alt-title returned `Ok` with zero hits. Codex P2
-    /// #3233658501. Callers should suppress availability cache
-    /// writes (no `write_cache(false)`) when this is true even if
-    /// `any_search_succeeded` is also true.
-    pub any_search_errored: bool,
-    /// Set when a search died on allanime's in-band rate limit: the
-    /// first hit's advertised wait (inner `None` = the message had no
-    /// parseable number). The walk stops the moment this is seen —
-    /// every further alt-title search inside the limit window is a
-    /// doomed request that deepens the limit — and callers surface
-    /// the typed 429 ahead of every other miss verdict so the
-    /// frontend and retry layers keep `retry_after_secs`.
-    pub rate_limited: Option<Option<u64>>,
-}
-
-impl PickedTitle {
-    /// The typed rate-limit error carried by this pick, if any.
-    pub(super) fn rate_limit_error(&self) -> Option<AniError> {
-        self.rate_limited
-            .map(|retry_after_secs| AniError::RateLimited { retry_after_secs })
-    }
-}
+// `deserialize_alt_titles` and `deserialize_loose_bool` live in
+// `commands::play_select` so this module's cyclomatic complexity
+// stays manageable. The PlayArgs serde derive uses fully-qualified
+// paths above.
 
 /// Update Continue Watching on a play-cache hit. The cache-miss
 /// path gets history for free via ani-cli's `update_history`; we
@@ -197,187 +135,89 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     }
 }
 
-/// Stamp the availability cache after a successful ani-cli resolve.
-/// One extra GraphQL round-trip (`fetch_show`) gets the truthful
-/// episode cap + recap-extras list so the next detail/play visit
-/// doesn't re-probe; failure falls through to the simple
-/// `write_cache(true)` so the row at least records availability.
-/// No-op when the caller didn't supply a kitsu_id.
-async fn enrich_availability_after_success(
+/// Stamp the availability cache with a native resolution's verdict,
+/// guarded against a refresh that answered while the resolution was
+/// in flight — the generation was captured before the resolve, and a
+/// write over a newer answer would disable (or falsely enable) a show
+/// the user was just told about.
+pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
-    chosen_candidate: Option<&Candidate>,
+    available: bool,
     generation_at_start: u64,
 ) {
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
     };
-    let mode_str = args.mode.as_str();
-    let row = crate::commands::availability::cache_key(id, mode_str);
-    let Some(c) = chosen_candidate else {
-        with_row_if_ours(
-            &state.availability_refreshes,
-            &row,
-            generation_at_start,
-            false,
-            || crate::commands::availability::write_cache(state, id, &args.mode, true),
-        )
-        .await;
-        return;
-    };
-    let detail = if state
-        .scraper_gate
-        .admit(scrape_priority(args))
-        .await
-        .is_ok()
-    {
-        let started_at = tokio::time::Instant::now();
-        let got = crate::scraper::allanime::fetch_show(
-            &state.meta_http,
-            &c.id,
-            state.allanime_base.as_deref(),
-        )
-        .await;
-        state
-            .scraper_gate
-            .record(crate::scraper::gate::outcome_of(&got), started_at);
-        got.ok()
-    } else {
-        // Breaker open — skip the enrichment round-trip; the plain
-        // write below still records availability.
-        None
-    };
-    let (episode_count, extras) = match detail {
-        Some(detail) => {
-            let cap = detail.max_integer_episode(mode_str);
-            let ex: Vec<String> = detail
-                .available_episodes_detail
-                .for_mode(mode_str)
-                .iter()
-                .filter(|t| t.parse::<u32>().is_err())
-                .cloned()
-                .collect();
-            (cap, ex)
-        }
-        None => (None, Vec::new()),
-    };
-    // The show fetch above is an await, so the row can have changed
-    // hands since this resolution started. Held until the write lands.
-    let Some(_writing) = hold_if_still_ours(
+    let row = crate::commands::availability::cache_key(id, args.mode.as_str());
+    with_row_if_ours(
         &state.availability_refreshes,
         &row,
         generation_at_start,
         false,
+        || crate::commands::availability::write_cache(state, id, &args.mode, available),
     )
-    .await
-    else {
-        return;
-    };
-    // Status unknown at this layer (PlayArgs doesn't carry it).
-    // None → write_cache_full uses the conservative ongoing TTL
-    // (24h); the next detail-page probe knows status and will
-    // overwrite with the right TTL.
-    crate::commands::availability::write_cache_full(
-        state,
-        id,
-        mode_str,
-        None,
-        &crate::commands::availability::AvailabilityResponse {
-            available: true,
-            episode_count,
-            extra_episodes: extras,
-            // Exact: this count comes from the play resolution's own
-            // show fetch, not the gate-refused search-hit fallback.
-            episode_count_approximate: false,
-            gate_refused: false,
-        },
-    );
+    .await;
 }
 
-/// Caller-side picker-miss error policy used by the sibling
-/// `play_external` / `play_syncplay` / `download_with_progress`
-/// surfaces. Returns `NoResults` only when every search call
-/// completed (no errors) and still nothing matched — any error in
-/// the mix is treated as transient and surfaced as `Network`.
-/// Same policy as [`classify_picker_miss`] (which additionally
-/// stamps the availability negative-cache on the all-completed
-/// branch); the non-play callers don't touch that cache so this
-/// pure variant is enough for them.
-pub(super) fn picker_miss_caller_error(picked: &PickedTitle) -> AniError {
-    if let Some(e) = picked.rate_limit_error() {
-        return e;
-    }
-    if picked.any_search_succeeded && !picked.any_search_errored {
-        AniError::NoResults
-    } else {
-        AniError::Network
-    }
-}
-
-/// Map a "no chosen candidate" outcome to the right `AniError`,
-/// optionally stamping the availability cache. Three branches —
-/// see the comments inside for the policy. Extracted out of
-/// `play_with_progress` to keep its ccn under the firm CRAP ceiling.
-async fn classify_picker_miss(
+/// The production anidb client: the curl-impersonate transport
+/// resolved through the bundled directory then PATH, pointed at the
+/// provider (or the test override).
+///
+/// # Errors
+/// [`AniError::Network`] when no curl binary resolves at all — the
+/// host cannot reach the provider by any transport.
+pub(super) fn anidb_client(
     state: &AppState,
-    args: &PlayArgs,
-    picked: &PickedTitle,
-    generation_at_start: u64,
-) -> AniError {
-    if let Some(e) = picked.rate_limit_error() {
-        // Rate-limited window: the typed 429 (with the server's own
-        // retry hint) beats every other verdict, and says nothing
-        // about whether the show exists — no cache write.
-        tracing::info!(
-            kitsu_id = ?args.kitsu_id,
-            "play: allanime rate-limited during picking; surfacing 429",
-        );
-        return e;
-    }
-    if !picked.any_search_succeeded {
-        tracing::warn!(
-            kitsu_id = ?args.kitsu_id,
-            "play: every allanime search errored; surfacing transient Network",
-        );
-        return AniError::Network;
-    }
-    if picked.any_search_errored {
-        // Verdict is incomplete: the failed search may have been the
-        // canonical with the right hit, so surface transient Network
-        // (no negative cache write) and let the next attempt retry —
-        // same policy as availability / download / play_external /
-        // play_syncplay. Codex P2 #3236... .
-        tracing::info!(
-            search_title = %picked.title,
-            kitsu_id = ?args.kitsu_id,
-            "play: partial search failure + no safe match; surfacing Network",
-        );
-        return AniError::Network;
-    }
-    tracing::info!(
-        search_title = %picked.title,
-        kitsu_id = ?args.kitsu_id,
-        "play: picker found no safe allmanga match; surfacing NoResults",
-    );
-    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
-        // The picking is where this verdict came from, and a re-ask
-        // can have answered since. A negative written over a refresh
-        // disables a show the user was just told about.
-        let row = crate::commands::availability::cache_key(id, args.mode.as_str());
-        with_row_if_ours(
-            &state.availability_refreshes,
-            &row,
-            generation_at_start,
-            false,
-            || crate::commands::availability::write_cache(state, id, &args.mode, false),
-        )
-        .await;
-    }
-    AniError::NoResults
+) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
+    anidb_client_with_base(state, state.anidb_base.as_deref())
 }
 
-pub(super) async fn pick_title_and_index(state: &AppState, args: &PlayArgs) -> PickedTitle {
-    pick_title_and_index_with_base(state, args, state.allanime_base.as_deref()).await
+/// Map a native resolution outcome onto the breaker's vocabulary.
+/// Shared by every surface that runs the walk: rate limits carry
+/// their retry hint through, everything else is a plain
+/// success/failure signal.
+pub(super) fn native_gate_outcome<T>(
+    res: &std::result::Result<T, crate::commands::play_native_resolve::NativeError>,
+) -> crate::scraper::gate::ScrapeOutcome {
+    match res {
+        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
+        // A clean miss is the provider ANSWERING — every search
+        // completed and nothing matched. Only weather (transport,
+        // refusals, rate limits) is distress; counting misses as
+        // failures let a run of uncarried titles brown out all
+        // background traffic.
+        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
+        Err(ne) => match ne.error {
+            AniError::RateLimited { retry_after_secs } => {
+                crate::scraper::gate::ScrapeOutcome::RateLimited {
+                    retry_after: retry_after_secs.map(std::time::Duration::from_secs),
+                }
+            }
+            _ => crate::scraper::gate::ScrapeOutcome::Failure,
+        },
+    }
+}
+
+/// [`anidb_client`] with an explicit origin override, shared with the
+/// availability probes' test seam.
+pub(super) fn anidb_client_with_base(
+    state: &AppState,
+    base: Option<&str>,
+) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
+        state.bundled_bin.as_deref(),
+        &path_env,
+    )
+    .ok_or_else(|| {
+        tracing::error!("no curl binary found for the anidb transport");
+        AniError::Network
+    })?;
+    Ok(match base {
+        Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
+        None => crate::scraper::anidb::AnidbClient::new(fetch),
+    })
 }
 
 /// Scraper-gate priority for a play-shaped request: prefetches (and
@@ -389,262 +229,6 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
         crate::scraper::gate::ScrapePriority::Background
     } else {
         crate::scraper::gate::ScrapePriority::Interactive
-    }
-}
-
-/// Admit the ani-cli spawn itself through the scraper gate for
-/// prefetches. The picker's searches are admitted per request, but
-/// the subprocess performs its own allanime traffic — background
-/// prefetch spawns must be paced the same way and skipped while the
-/// breaker is open. Interactive plays pass untouched.
-///
-/// # Errors
-/// [`AniError::Network`] when the gate refuses a background admit.
-async fn admit_prefetch_spawn(state: &AppState, args: &PlayArgs) -> Result<()> {
-    if !args.prefetch {
-        return Ok(());
-    }
-    state
-        .scraper_gate
-        .admit(crate::scraper::gate::ScrapePriority::Background)
-        .await
-        .map_err(|_| AniError::Network)
-}
-
-/// Feed a spawn's outcome back to the gate — every spawn, not just
-/// prefetches: interactive plays bypass admission, but the preflight
-/// search just reset the breaker with a success, so when the spawn
-/// itself hits the rate limit background traffic must back off
-/// instead of resuming right after a user-visible failure.
-/// `NoResults` counts as a failure: the spawn only happens after the
-/// picker confirmed the show exists on allanime, so the subprocess
-/// finding nothing moments later is transient/upstream evidence — a
-/// rate-limited ani-cli dies with exactly that message. The typed
-/// "Episode not released" verdict counts as a success — see the
-/// comment in the body. Every other Scraper exit (the catch-all
-/// covers curl transport deaths inside ani-cli) counts as a failure,
-/// while local errors that never reached allanime record nothing.
-/// Side effects of a failed ani-cli spawn: an explicit error log, so
-/// `RUST_LOG=ani_gui=info` surfaces the actual reason instead of
-/// leaving the user staring at an overlay that flashed and
-/// disappeared — the `?` would propagate it but nothing between here
-/// and the SSE serializer prints it.
-///
-/// Deliberately NO availability write: a spawn-level NoResults is
-/// transient evidence (the picker confirmed the show exists moments
-/// earlier — see [`record_spawn_outcome`]), and persisting
-/// available=false from it would hide a real show behind the
-/// negative TTL during exactly the rate-limited window the scraper
-/// gate exists for. Genuine absence is recorded by the picker path
-/// ([`classify_picker_miss`]), whose verdict comes from clean
-/// zero-candidate searches.
-fn note_spawn_failure(args: &PlayArgs, search_title: &str, select_index: usize, e: &AniError) {
-    tracing::error!(
-        search_title = %search_title,
-        episode = %args.episode,
-        select_index = select_index,
-        error = ?e,
-        "play: ani-cli step failed",
-    );
-}
-
-pub(super) fn record_spawn_outcome<T>(
-    state: &AppState,
-    started_at: tokio::time::Instant,
-    result: &Result<T>,
-) {
-    // Only outcomes that prove the subprocess reached allanime move
-    // the gate. The typed "Episode not released" verdict counts as a
-    // SUCCESS: ani-cli only reaches it after completing its search
-    // and episode listing, so it's a content-level answer from a
-    // healthy upstream — recovery evidence that also releases a
-    // half-open trial. NoResults, other Scraper exits (ani-cli ran
-    // and died mid-scrape; the catch-all covers curl transport
-    // deaths), and timeouts (a rate-limited upstream hangs ani-cli in
-    // curl retries until the wall clock kills it) are failures.
-    // Everything else — MissingBinary from a broken install, Io from
-    // a dead pipe — is a local error that says nothing about the
-    // upstream: recording it would let three clicks against a broken
-    // binary cut off unrelated background traffic for a cooldown.
-    let ok = match result {
-        Ok(_) => true,
-        Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-        }) => true,
-        // dep_ch died before ani-cli touched the network — a local
-        // setup problem (missing curl/sed/grep/openssl/fzf), not
-        // upstream evidence. Recording it would let three clicks on
-        // an incomplete installation cut off background traffic.
-        Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_MISSING_DEP,
-        }) => return,
-        // ParseFailed from a zero-exit run means ani-cli reached
-        // allanime and got garbage back — the throttling signature
-        // this gate exists for. Upstream evidence, same as NoResults.
-        Err(
-            AniError::NoResults
-            | AniError::Scraper { .. }
-            | AniError::Timeout
-            | AniError::ParseFailed { .. },
-        ) => false,
-        Err(_) => return,
-    };
-    state.scraper_gate.record_outcome(ok, started_at);
-}
-
-/// [`pick_title_and_index`] with the allanime endpoint override
-/// exposed for tests. Production passes `None` via the wrapper.
-pub(super) async fn pick_title_and_index_with_base(
-    state: &AppState,
-    args: &PlayArgs,
-    allanime_base: Option<&str>,
-) -> PickedTitle {
-    let primary = args.title.clone();
-    let mode = if args.mode == "dub" { "dub" } else { "sub" };
-
-    // Walk the candidate list whether or not we have a Kitsu
-    // episode_count to disambiguate with — alt_titles is also the
-    // recovery path when canonical doesn't appear in allmanga's index
-    // (Stone Ocean Part 6 reproduces this even though its
-    // episode_count is null on Kitsu).
-    //
-    // We interleave fetch + pick: after each non-empty pool lands,
-    // re-run the picker against the accumulated `results`. If it
-    // accepts, we stop and skip the remaining alt-title GraphQL
-    // calls (the common case for unambiguous canonical hits). If
-    // the picker rejects (year mismatch, ep-count over tolerance),
-    // we keep walking — the picker's None on this pool is what
-    // makes "canonical returned only wrong-year siblings, but
-    // romanized alt returned the real show" recoverable. Without
-    // this, the early break on the first non-empty pool would lock
-    // us into the wrong show. Codex P2 #3231391353.
-    let mut results: Vec<(String, Vec<Candidate>)> = Vec::new();
-    let mut chosen_so_far: Option<Candidate> = None;
-    let mut chosen_title_so_far = primary.clone();
-    let mut chosen_pick_so_far = 1usize;
-    let mut any_search_succeeded = false;
-    let mut any_search_errored = false;
-    let prio = scrape_priority(args);
-    let mut rate_limited: Option<Option<u64>> = None;
-    for title in
-        std::iter::once(args.title.as_str()).chain(args.alt_titles.iter().map(String::as_str))
-    {
-        // Background walks stop as soon as the breaker opens — the
-        // remaining alt titles would fail identically and each doomed
-        // request deepens allanime's rate limit.
-        if state.scraper_gate.admit(prio).await.is_err() {
-            tracing::warn!(title, "play: scraper gate open; abandoning candidate walk");
-            any_search_errored = true;
-            break;
-        }
-        let started_at = tokio::time::Instant::now();
-        match scraper::search(&state.meta_http, title, mode, allanime_base).await {
-            Ok(cands) => {
-                state.scraper_gate.record_outcome(true, started_at);
-                tracing::info!(title, hits = cands.len(), "play: allanime search candidate",);
-                results.push((title.to_string(), cands));
-                any_search_succeeded = true;
-            }
-            Err(AniError::RateLimited { retry_after_secs }) => {
-                // The window is refusing everything — walking the
-                // remaining alt titles would burn budget on doomed
-                // requests and extend the limit. Stop and carry the
-                // advertised wait upward, and hand the gate the typed
-                // signal so the advertised-window pause opens instead
-                // of merely bumping the three-failure breaker.
-                state.scraper_gate.record(
-                    crate::scraper::gate::ScrapeOutcome::RateLimited {
-                        retry_after: retry_after_secs.map(std::time::Duration::from_secs),
-                    },
-                    started_at,
-                );
-                tracing::warn!(
-                    title,
-                    retry_after_secs = ?retry_after_secs,
-                    "play: allanime rate limited; abandoning candidate walk",
-                );
-                any_search_errored = true;
-                rate_limited = Some(retry_after_secs);
-                break;
-            }
-            Err(e) => {
-                state.scraper_gate.record_outcome(false, started_at);
-                tracing::warn!(
-                    title,
-                    error = ?e,
-                    "play: allanime search failed; trying next candidate",
-                );
-                results.push((title.to_string(), Vec::new()));
-                any_search_errored = true;
-                continue;
-            }
-        }
-        // Try to pick from what we have. If accepted, stop and skip
-        // any remaining alt-title fetches. If still None, keep
-        // walking — later alt titles may yield a valid candidate.
-        let (t, p, c) = select_first_with_hits_with_candidate(
-            &primary,
-            &results,
-            args.episode_count,
-            args.year,
-            mode,
-        );
-        if c.is_some() {
-            chosen_so_far = c;
-            chosen_title_so_far = t;
-            chosen_pick_so_far = p;
-            break;
-        }
-    }
-
-    let (chosen_title, pick, chosen) = (chosen_title_so_far, chosen_pick_so_far, chosen_so_far);
-    tracing::info!(
-        primary = %primary,
-        alt_count = args.alt_titles.len(),
-        chosen_title = %chosen_title,
-        expected_eps = ?args.episode_count,
-        pick = pick,
-        chosen_show_id = chosen.as_ref().map(|c| c.id.as_str()).unwrap_or(""),
-        any_search_succeeded = any_search_succeeded,
-        "play: chose ani-cli search title",
-    );
-    PickedTitle {
-        title: chosen_title,
-        index: pick,
-        candidate: chosen,
-        any_search_succeeded,
-        any_search_errored,
-        rate_limited,
-    }
-}
-
-/// Build the spawn options for an ani-cli invocation. When
-/// `override_hist_dir` is `Some`, ani-cli writes its `ani-hsts` to that
-/// path instead of the user's real history file — used by the prefetch
-/// path to keep background warming out of Continue Watching.
-pub(super) fn debug_options_for(
-    state: &AppState,
-    override_hist_dir: Option<&std::path::Path>,
-) -> DebugOptions {
-    let hist_dir = override_hist_dir
-        .map(std::path::Path::to_path_buf)
-        .or_else(|| {
-            state
-                .history_path
-                .parent()
-                .map(std::path::Path::to_path_buf)
-        });
-    DebugOptions {
-        ani_cli_path: state.ani_cli_path.clone(),
-        bash_path: state.bash_path.clone(),
-        bundled_bin: state.bundled_bin.clone(),
-        shim_bin: state.botan_shim_bin.clone(),
-        hist_dir,
-        timeout: RUN_DEBUG_TIMEOUT,
-        // None → inherit the backend process's PATH. Tests inject a
-        // shimmed PATH by calling `run_debug` directly with their own
-        // `DebugOptions` rather than going through the play handlers.
-        path_override: None,
     }
 }
 
@@ -680,16 +264,6 @@ pub async fn play_with_progress<F>(
 where
     F: FnMut(ProgressLine) + Send,
 {
-    // Per-call scratch dir for ani-cli's history write when this is a
-    // prefetch — keeps background warming out of the user's real
-    // ani-hsts. Held across the await so the dir lives until ani-cli
-    // exits; auto-cleaned on drop.
-    let prefetch_hist_dir = if args.prefetch {
-        Some(tempfile::tempdir().map_err(|_| AniError::Io)?)
-    } else {
-        None
-    };
-    let opts = debug_options_for(state, prefetch_hist_dir.as_ref().map(|d| d.path()));
     let quality = args.quality.as_deref().unwrap_or("best");
 
     // Long-term cache check. A successful prior resolution under the
@@ -729,90 +303,93 @@ where
         );
     }
 
-    // Pick which (title, candidate index) ani-cli should use. The title
-    // may differ from args.title when alt_titles produced the winning
-    // hit (e.g. romanized fallback for shows whose Kitsu canonicalTitle
-    // is the English form). See pick_title_and_index().
-    // Captured before the picking, not before the write: the answer a
-    // play resolution stamps is the one it got here, and a refresh can
-    // land any time between.
+    // Resolve natively against anidb: alias walk, bounded probing,
+    // episode-to-master resolution. The subprocess never runs on the
+    // play path — the -S index handoff it required is the coupling
+    // the provider change broke.
+    // Captured before the resolving, not before the write: the answer
+    // a play resolution stamps is the one it got here, and a refresh
+    // can land any time between.
     let availability_generation = crate::commands::availability_refresh::generation_at_start(
         &state.availability_refreshes,
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     );
-    let picked = pick_title_and_index(state, args).await;
-    if picked.candidate.is_none() {
-        return Err(classify_picker_miss(state, args, &picked, availability_generation).await);
-    }
-    let search_title = picked.title;
-    let select_index = picked.index;
-    let chosen_candidate = picked.candidate;
-
-    // The subprocess makes its own allanime requests: prefetch spawns
-    // are background traffic and go through the gate (paced, refused
-    // while the breaker is open). User clicks pass untouched.
-    admit_prefetch_spawn(state, args).await?;
-    let spawn_started_at = tokio::time::Instant::now();
-
-    tracing::info!(
-        search_title = %search_title,
-        episode = %args.episode,
-        select_index = select_index,
-        mode = %args.mode,
-        quality = quality,
-        "play: spawning ani-cli",
-    );
-
-    let resolved = run_debug_streaming(
-        &opts,
-        &search_title,
-        &args.episode,
-        quality,
-        &args.mode,
-        select_index,
-        |line| {
-            // Mirror every ani-cli stderr line into our own logs so a
-            // failed play has a paper trail. parse_progress_line still
-            // runs on the same line for the SSE overlay.
-            tracing::info!(line = %line, "anicli.stderr");
-            if let Some(p) = parse_progress_line(line) {
-                on_progress(p);
-            }
-        },
-    )
-    .await
-    .inspect_err(|e| note_spawn_failure(args, &search_title, select_index, e));
-    record_spawn_outcome(state, spawn_started_at, &resolved);
-    let resolved = resolved?;
-    enrich_availability_after_success(
-        state,
-        args,
-        chosen_candidate.as_ref(),
-        availability_generation,
+    let client = anidb_client(state)?;
+    let request = NativeResolveRequest {
+        title: &args.title,
+        alt_titles: &args.alt_titles,
+        episode: &args.episode,
+        mode: &args.mode,
+        expected_count: args.episode_count,
+        year: args.year,
+        subtype: args.subtype.as_deref(),
+    };
+    let resolve_started_at = tokio::time::Instant::now();
+    let native = crate::commands::play_native_resolve::resolve_native(
+        &client,
+        Some(&state.scraper_gate),
+        scrape_priority(args),
+        request,
+        &mut on_progress,
     )
     .await;
+    // Feed the breaker the resolution's outcome so background traffic
+    // backs off after provider-shaped failures.
+    state
+        .scraper_gate
+        .record(native_gate_outcome(&native), resolve_started_at);
+    let native = match native {
+        Ok(n) => n,
+        Err(ne) => {
+            if ne.clean_miss {
+                // The one verdict that proves absence — persist it,
+                // guarded against a refresh that answered meanwhile.
+                stamp_availability_after_native(state, args, false, availability_generation).await;
+            }
+            tracing::info!(
+                title = %args.title,
+                episode = %args.episode,
+                clean_miss = ne.clean_miss,
+                error = ?ne.error,
+                "play: native resolution failed",
+            );
+            return Err(ne.error);
+        }
+    };
+    // A successful resolve is a positive availability fact, same
+    // guard. The episode-cap enrichment joins the availability port
+    // (the native episodes list carries it for free) — plain write
+    // for now, matching the old breaker-open degradation.
+    stamp_availability_after_native(state, args, true, availability_generation).await;
+    // The subprocess used to write ani-hsts itself on a fresh
+    // resolve; natively that write is ours. Prefetches stay out of
+    // the user's history exactly as before.
+    if !args.prefetch {
+        let entry = crate::history::HistoryEntry {
+            ep_no: args.episode.clone(),
+            id: native.slug.clone(),
+            title: native.title.clone(),
+        };
+        if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+            tracing::warn!(
+                title = %args.title,
+                episode = %args.episode,
+                error = ?e,
+                "play: history write failed after native resolve",
+            );
+        }
+    }
 
     // Decide media kind: cheap path-extension first, HEAD fallback
     // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
-    let upstream_url =
-        url::Url::parse(&resolved.selected_url).map_err(|_| AniError::ParseFailed {
-            detail: format!("upstream_url: {} is not a valid URL", resolved.selected_url),
-        })?;
+    let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
+        detail: format!("upstream_url: {} is not a valid URL", native.master_url),
+    })?;
 
-    // Infer Referer when ani-cli's debug output didn't include one.
-    // Mirrors `refr_flag` switch in ani-cli (line ~209): the
-    // tools.fast4speed.rsvp CDN enforces Referer = https://allmanga.to
-    // and 403s requests without it. ani-cli sets the header internally
-    // when invoking the player but doesn't surface it on stdout, so
-    // the parser sees None for these URLs.
-    let referer = match resolved.referer {
-        Some(r) if !r.is_empty() => r,
-        _ => match upstream_url.host_str() {
-            Some(h) if h.ends_with("fast4speed.rsvp") => "https://allmanga.to".to_string(),
-            _ => String::new(),
-        },
-    };
+    // anidb's streams carry no referer requirement — 5.0's own player
+    // invocation dropped the flag with the provider change.
+    let referer = String::new();
 
     let kind = match MediaKind::from_url(&upstream_url) {
         Some(k) => k,
@@ -833,42 +410,26 @@ where
         upstream = upstream_url.as_str(),
         referer = referer.as_str(),
         kind = ?kind,
-        "play: ani-cli resolved upstream",
+        "play: natively resolved upstream",
     );
 
     // Persist the resolution so the next play of the same episode
-    // skips ani-cli entirely (subject to TTL + HEAD validation).
-    // show_id + show_title come from the chosen allanime candidate
-    // (when our search picked one) so a future cache-hit can write to
-    // ani-hsts ourselves — ani-cli's update_history doesn't fire when
-    // we skip the subprocess on a cache hit.
-    let (show_id, show_title) = chosen_candidate
-        .as_ref()
-        .map(|c| {
-            (
-                c.id.clone(),
-                format!(
-                    "{} ({} episodes)",
-                    c.name,
-                    c.available_episodes.for_mode(&args.mode)
-                ),
-            )
-        })
-        .unwrap_or_default();
+    // skips the provider round-trips (subject to TTL + HEAD
+    // validation). show_id is the anidb slug — the id ani-cli 5.0's
+    // own update_history writes — so cache-hit history rows and the
+    // CLI's rows agree.
     let cached_resolution = CachedResolution {
-        upstream_url: resolved.selected_url.clone(),
+        upstream_url: native.master_url.clone(),
         referer: referer.clone(),
-        subtitle_url: resolved.subtitle_url.clone(),
         media_kind: kind,
-        show_id,
-        show_title,
+        show_id: native.slug.clone(),
+        show_title: native.title.clone(),
     };
     play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {
-        upstream_url: resolved.selected_url,
+        upstream_url: native.master_url,
         referer,
-        subtitle_url: resolved.subtitle_url,
     };
     create_session_with_kind(state, &session_args, kind)
 }
@@ -886,7 +447,6 @@ use crate::commands::play_cache::try_serve_cached;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anicli::parser::DebugOutput;
 
     proptest::proptest! {
         // The gate's lane assignment is exactly the prefetch bit:
@@ -910,6 +470,7 @@ mod tests {
                 mode,
                 quality,
                 episode_count,
+                subtype: None,
                 year,
                 alt_titles: vec![],
                 prefetch,
@@ -925,57 +486,6 @@ mod tests {
         }
     }
 
-    // `play()` and `play_external()` are thin wrappers around
-    // `run_debug` + the relevant terminal action; the integration
-    // test in `tests/api_play.rs` exercises the full flow against a
-    // real ani-cli with a curl shim. These unit tests pin the
-    // mapping from `DebugOutput` → `CreateSessionArgs` /
-    // `LaunchArgs` so a future refactor of the field names is loud.
-
-    #[test]
-    fn debug_output_with_referer_and_subtitle_maps_to_session_args() {
-        let debug = DebugOutput {
-            selected_url: "https://wixmp.example/video.mp4".into(),
-            all_links: vec![],
-            referer: Some("https://allmanga.to".into()),
-            subtitle_url: Some("https://wixmp.example/subs.vtt".into()),
-        };
-        // Mirrors the conversion inside `play()`. Kept in sync via
-        // the integration test; this asserts the field-by-field
-        // mapping is intact.
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url.clone(),
-            referer: debug.referer.clone().unwrap_or_default(),
-            subtitle_url: debug.subtitle_url.clone(),
-        };
-        assert_eq!(session_args.upstream_url, "https://wixmp.example/video.mp4");
-        assert_eq!(session_args.referer, "https://allmanga.to");
-        assert_eq!(
-            session_args.subtitle_url.as_deref(),
-            Some("https://wixmp.example/subs.vtt")
-        );
-    }
-
-    #[test]
-    fn debug_output_without_referer_maps_to_empty_referer_string() {
-        // CreateSessionArgs.referer is a required `String` (not
-        // Option). We map None → empty string; the proxy treats that
-        // as "send no Referer header." This test pins that contract.
-        let debug = DebugOutput {
-            selected_url: "https://x/y.mp4".into(),
-            all_links: vec![],
-            referer: None,
-            subtitle_url: None,
-        };
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url,
-            referer: debug.referer.unwrap_or_default(),
-            subtitle_url: debug.subtitle_url,
-        };
-        assert_eq!(session_args.referer, "");
-        assert!(session_args.subtitle_url.is_none());
-    }
-
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
@@ -984,7 +494,12 @@ mod tests {
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
         AppState {
-            allanime_base: None,
+            // Unroutable: the fresh-resolve fallback must fail fast in
+            // tests instead of walking the live provider. Windows
+            // runners ship a system curl.exe, so a None base turns
+            // "the fallback errors" into a real network resolve that
+            // can succeed.
+            anidb_base: Some("http://127.0.0.1:1".into()),
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -993,7 +508,6 @@ mod tests {
             ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
@@ -1009,6 +523,49 @@ mod tests {
         }
     }
 
+    /// Three consecutive clean misses (the show simply isn't in the
+    /// catalogue — a fresh Continue Watching rail full of uncarried
+    /// titles produces exactly this) must not open the breaker: a
+    /// clean miss is the provider answering, not the provider
+    /// failing. Only transport errors, refusals and rate limits are
+    /// distress.
+    #[tokio::test]
+    async fn a_clean_miss_streak_does_not_open_the_breaker() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string("<html>no cards</html>"),
+            )
+            .mount(&server)
+            .await;
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(server.uri());
+        let mk = |title: &str| PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
+            let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
+            assert!(r.is_err(), "an empty catalogue cannot resolve");
+        }
+        assert!(
+            state
+                .scraper_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "breaker must stay closed through clean misses"
+        );
+    }
+
     /// Build a CachedResolution with the new show_id/show_title fields
     /// defaulted to empty (so try_serve_cached's history-write skip
     /// branch fires). Tests that want history-write coverage override
@@ -1017,7 +574,6 @@ mod tests {
         CachedResolution {
             upstream_url,
             referer,
-            subtitle_url: None,
             media_kind: kind,
             show_id: String::new(),
             show_title: String::new(),
@@ -1113,6 +669,7 @@ mod tests {
             episode: episode.into(),
             mode: "sub".into(),
             quality: Some("best".into()),
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
@@ -1143,7 +700,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
@@ -1322,9 +878,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn try_launch_args_from_cache_round_trips_referer_and_subtitle() {
-        // fast4speed.rsvp + signed-URL upstreams need the cached
-        // Referer header forwarded; subtitle URL too (mpv consumes it).
+    async fn try_launch_args_from_cache_round_trips_the_referer() {
+        // Signed-URL upstreams need the cached Referer header
+        // forwarded to the external player.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .and(wiremock::matchers::header("referer", "https://allmanga.to"))
@@ -1345,9 +901,8 @@ mod tests {
             &state.cache_pool,
             &key,
             &CachedResolution {
-                upstream_url: format!("{}/sub/3", server.uri()),
+                upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: Some("https://example/cap.vtt".into()),
                 media_kind: MediaKind::Mp4,
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
@@ -1359,10 +914,6 @@ mod tests {
             .await
             .expect("hit");
         assert_eq!(launch.referer.as_deref(), Some("https://allmanga.to"));
-        assert_eq!(
-            launch.subtitle_url.as_deref(),
-            Some("https://example/cap.vtt")
-        );
     }
 
     #[tokio::test]
@@ -1383,6 +934,7 @@ mod tests {
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
@@ -1519,714 +1071,85 @@ mod tests {
         assert!(!args.prefetch);
     }
 
-    /// Build a Candidate row with the right `availableEpisodes.sub`
-    /// field for the helper-selection tests below. The full struct
-    /// is verbose; this keeps each test focused on the behaviour it's
-    /// asserting (which title wins, which candidate index ani-cli
-    /// gets).
-    fn cand(id: &str, name: &str, sub_eps: u32) -> Candidate {
-        Candidate {
-            id: id.into(),
-            name: name.into(),
-            available_episodes: crate::scraper::allanime::AvailableEpisodes {
-                sub: sub_eps,
-                dub: 0,
+    #[test]
+    fn native_gate_outcome_carries_the_rate_limit_hint_through() {
+        // The breaker's advertised-window pause only opens on the
+        // typed RateLimited outcome — collapsing it to Failure would
+        // discard the wait and leave background traffic firing into
+        // the limit window at the ordinary three-failure pace.
+        use crate::commands::play_native_resolve::NativeError;
+        use crate::scraper::gate::ScrapeOutcome;
+        let limited: std::result::Result<(), _> = Err(NativeError {
+            error: AniError::RateLimited {
+                retry_after_secs: Some(9),
             },
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn select_first_with_hits_walks_alt_titles_when_episode_count_unknown() {
-        // Real-world reproducer: Kitsu returns null `episodeCount` for
-        // some shows even when they're finished (Stone Ocean Part 6 was
-        // observed in the wild). The early `let Some(expected) = …`
-        // guard used to short-circuit the alt_titles loop, which meant
-        // `args.title` was the only thing tried — and for shows whose
-        // canonical doesn't match allmanga's index, that's a guaranteed
-        // miss. The fix: always walk the candidate list, only the
-        // pick_by_ep_count step is gated on episode_count.
-        let results = vec![
-            ("JoJo's Bizarre Adventure: Stone Ocean".into(), vec![]),
-            (
-                "Jojo no Kimyou na Bouken Part 6: Stone Ocean".into(),
-                vec![cand("a1", "Stone Ocean", 12)],
-            ),
-        ];
-        // expected = None signals "no Kitsu episode_count to disambiguate".
-        let (title, idx) = select_first_with_hits_opt(
-            "JoJo's Bizarre Adventure: Stone Ocean",
-            &results,
-            None,
-            None,
-            "sub",
-        );
-        assert_eq!(title, "Jojo no Kimyou na Bouken Part 6: Stone Ocean");
-        assert_eq!(idx, 1, "first hit when no ep_count to compare");
-    }
-
-    #[test]
-    fn select_first_with_hits_returns_primary_when_every_list_is_empty() {
-        // Stone Ocean reproduces this when every candidate title (canonical
-        // English + en_jp + ja_jp) misses allmanga's index. We fall
-        // through to the primary so the play flow's downstream error
-        // surfaces a real "no upstream" rather than silently picking
-        // index 1 of nothing.
-        let results: Vec<(String, Vec<Candidate>)> =
-            vec![("primary".into(), vec![]), ("alt1".into(), vec![])];
-        let (title, idx) = select_first_with_hits("primary", &results, 38, "sub");
-        assert_eq!(title, "primary");
-        assert_eq!(idx, 1);
-    }
-
-    #[test]
-    fn select_first_with_hits_uses_first_non_empty_list() {
-        // Primary has hits — we never even look at the alt titles.
-        let results = vec![
-            ("primary".into(), vec![cand("p1", "Primary Show", 38)]),
-            ("alt1".into(), vec![cand("a1", "Alt Show", 12)]),
-        ];
-        let (title, idx) = select_first_with_hits("primary", &results, 38, "sub");
-        assert_eq!(title, "primary");
-        assert_eq!(idx, 1, "single-candidate list always picks index 1");
-    }
-
-    #[test]
-    fn select_first_with_hits_skips_empty_primary_to_alt_with_hits() {
-        // Stone Ocean Part 6 case: canonical English → 0 hits, en_jp
-        // → multiple hits. We must use en_jp.
-        let results = vec![
-            ("JoJo's Bizarre Adventure: Stone Ocean".into(), vec![]),
-            (
-                "Jojo no Kimyou na Bouken Part 6: Stone Ocean".into(),
-                vec![
-                    cand("a1", "Stone Ocean main", 38),
-                    cand("a2", "side story", 1),
-                ],
-            ),
-        ];
-        let (title, idx) =
-            select_first_with_hits("JoJo's Bizarre Adventure: Stone Ocean", &results, 38, "sub");
-        assert_eq!(title, "Jojo no Kimyou na Bouken Part 6: Stone Ocean");
-        // 38-ep candidate is index 1 (closer to expected 38 than the
-        // 1-ep side story).
-        assert_eq!(idx, 1);
-    }
-
-    fn picked_miss(any_success: bool, any_error: bool) -> PickedTitle {
-        PickedTitle {
-            title: "X".into(),
-            index: 0,
-            candidate: None,
-            any_search_succeeded: any_success,
-            any_search_errored: any_error,
-            rate_limited: None,
-        }
-    }
-
-    #[test]
-    fn picker_miss_caller_error_surfaces_rate_limits_with_their_hint() {
-        // A walk that died on allanime's in-band rate limit must
-        // surface the typed 429 + advertised wait, never the generic
-        // Network verdict — the retry layers and the frontend key off
-        // retry_after_secs, which the Network collapse would discard.
-        let mut picked = picked_miss(false, true);
-        picked.rate_limited = Some(Some(9));
-        let err = picker_miss_caller_error(&picked);
-        assert!(
-            matches!(
-                err,
-                AniError::RateLimited {
-                    retry_after_secs: Some(9)
-                }
-            ),
-            "got {err:?}"
-        );
+            clean_miss: false,
+        });
+        assert!(matches!(
+            native_gate_outcome(&limited),
+            ScrapeOutcome::RateLimited {
+                retry_after: Some(d)
+            } if d.as_secs() == 9
+        ));
+        let network: std::result::Result<(), _> = Err(NativeError {
+            error: AniError::Network,
+            clean_miss: false,
+        });
+        assert!(matches!(
+            native_gate_outcome(&network),
+            ScrapeOutcome::Failure
+        ));
+        assert!(matches!(
+            native_gate_outcome(&Ok(())),
+            ScrapeOutcome::Success
+        ));
     }
 
     #[tokio::test]
-    async fn classify_picker_miss_surfaces_rate_limits_before_other_verdicts() {
-        // Same policy on the embedded-play surface, and crucially: no
-        // negative availability write — a rate-limited window says
-        // nothing about whether the show exists.
-        let state = state_with_proxy_origin();
-        let mut args = external_args("Gate Test", "1");
-        args.kitsu_id = Some("888".into());
-        let mut picked = picked_miss(true, true);
-        picked.rate_limited = Some(None);
-        let err = classify_picker_miss(&state, &args, &picked, 0).await;
-        assert!(
-            matches!(
-                err,
-                AniError::RateLimited {
-                    retry_after_secs: None
-                }
-            ),
-            "got {err:?}"
-        );
-        let cached = crate::commands::availability::batch_cached(
-            &state,
-            &crate::commands::availability::AvailabilityBatchArgs {
-                kitsu_ids: vec!["888".into()],
-                mode: "sub".into(),
-            },
-        );
-        assert!(
-            cached.cached.is_empty(),
-            "rate-limited pick must not poison the availability cache"
-        );
-    }
-
-    #[test]
-    fn picker_miss_caller_error_treats_partial_failure_as_network() {
-        // Mixed: at least one search succeeded but another errored.
-        // Sibling callers (download/syncplay/external) prefer the
-        // transient surface — the failed search may have been the
-        // one with the right match. Codex P2 #3235184271.
-        let err = picker_miss_caller_error(&picked_miss(true, true));
-        assert!(matches!(err, AniError::Network));
-    }
-
-    #[test]
-    fn picker_miss_caller_error_returns_no_results_only_when_all_searches_completed() {
-        let err = picker_miss_caller_error(&picked_miss(true, false));
-        assert!(matches!(err, AniError::NoResults));
-    }
-
-    #[test]
-    fn picker_miss_caller_error_treats_all_errored_as_network() {
-        let err = picker_miss_caller_error(&picked_miss(false, true));
-        assert!(matches!(err, AniError::Network));
-    }
-
-    #[tokio::test]
-    async fn classify_picker_miss_returns_network_on_partial_search_failure() {
-        // Codex P2 #3236... : the embedded play path used to surface
-        // NoResults when one search errored alongside a success that
-        // produced no safe match. The verdict is incomplete in that
-        // case — the failed search may have been the one with the
-        // canonical hit — so the embedded surface should agree with
-        // download / play_external / play_syncplay / availability and
-        // return transient Network instead.
-        let state = state_with_proxy_origin();
+    async fn a_native_stamp_leaves_the_row_alone_when_a_refresh_answered_first() {
+        // The generation is captured before the resolve; the whole
+        // provider round-trip sits between it and the write. A user
+        // re-ask that answers in that window must win — a stale
+        // negative stamped over it disables a show the user was just
+        // told about.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
-            title: "X".into(),
+            title: "Race Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
             quality: None,
+            subtype: None,
             episode_count: None,
             year: None,
             alt_titles: vec![],
             prefetch: false,
-            kitsu_id: None,
+            kitsu_id: Some("race-1".into()),
         };
-        let err = classify_picker_miss(&state, &args, &picked_miss(true, true), 0).await;
-        assert!(
-            matches!(err, AniError::Network),
-            "partial failure should surface Network, got {err:?}",
-        );
-    }
-
-    #[tokio::test]
-    async fn a_play_resolution_leaves_the_row_alone_when_a_refresh_answered_first() {
-        // The availability lookup is not the only writer of this row.
-        // A play resolution stamps it too, from an answer it obtained
-        // before it started writing — and it holds that answer across
-        // its own `fetch_show`, which is long enough for a re-ask to
-        // begin and finish. Landing second, it puts the pre-refresh
-        // reading back for the row's whole TTL.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_delay(std::time::Duration::from_millis(300))
-                    .set_body_json(serde_json::json!({"data": {"show": null}})),
-            )
-            .mount(&server)
-            .await;
-        let mut state = state_with_proxy_origin();
-        state.allanime_base = Some(server.uri());
-        let state = std::sync::Arc::new(state);
-
-        let mut args = external_args("Ordering Test", "1");
-        args.kitsu_id = Some("889".into());
-        args.mode = "sub".into();
-        let row = crate::commands::availability::cache_key("889", "sub");
-        let started_at = crate::commands::availability_refresh::generation_at_start(
+        let row = crate::commands::availability::cache_key("race-1", "sub");
+        let generation = crate::commands::availability_refresh::generation_at_start(
             &state.availability_refreshes,
-            args.kitsu_id.as_deref(),
-            args.mode.as_str(),
-        );
-
-        let candidate = Candidate {
-            id: "show-889".into(),
-            name: "Ordering Test".into(),
-            available_episodes: Default::default(),
-            aired_start: None,
-            show_type: None,
-            episode_count: None,
-            status: None,
-        };
-        let bg = {
-            let state = std::sync::Arc::clone(&state);
-            tokio::spawn(async move {
-                enrich_availability_after_success(&state, &args, Some(&candidate), started_at)
-                    .await;
-            })
-        };
-
-        // The user's re-ask answers while the resolution is still out.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache_full(
-            &state,
-            "889",
+            Some("race-1"),
             "sub",
-            Some("current"),
-            &crate::commands::availability::AvailabilityResponse {
-                available: true,
-                episode_count: Some(7),
-                extra_episodes: Vec::new(),
-                episode_count_approximate: false,
-                gate_refused: false,
-            },
         );
 
-        bg.await.expect("the resolution finishes");
+        // The refresh answers first: bump + a positive write.
+        state.availability_refreshes.bump(&row);
+        crate::commands::availability::write_cache(&state, "race-1", "sub", true);
 
-        let stored = crate::cache::meta_cache_get(&state.cache_pool, &row)
-            .expect("cache read")
-            .expect("the refresh's row is still there");
-        let kept: crate::commands::availability::AvailabilityResponse =
-            serde_json::from_str(&stored).expect("row parses");
-        assert_eq!(
-            kept.episode_count,
-            Some(7),
-            "a play resolution must not replace the refresh's row, got {kept:?}"
-        );
-    }
+        // The stale resolution now tries to stamp a negative.
+        stamp_availability_after_native(&state, &args, false, generation).await;
 
-    #[test]
-    fn select_first_with_hits_picks_by_ep_count_within_chosen_list() {
-        // Naruto: Shippuden case — multiple candidates under one title;
-        // the disambiguator chooses by episode count.
-        let results = vec![(
-            "Naruto: Shippuden".into(),
-            vec![
-                cand("a1", "side story", 1),
-                cand("a2", "main shippuden", 500),
-            ],
-        )];
-        let (title, idx) = select_first_with_hits("Naruto: Shippuden", &results, 500, "sub");
-        assert_eq!(title, "Naruto: Shippuden");
-        // Index 2 = the 500-ep main show.
-        assert_eq!(idx, 2);
-    }
-
-    /// PlayArgs shaped like a background prefetch / interactive click
-    /// for the scraper-gate tests.
-    fn gate_args(prefetch: bool, title: &str, alts: &[&str]) -> PlayArgs {
-        PlayArgs {
-            title: title.into(),
-            episode: "1".into(),
-            mode: "sub".into(),
-            quality: None,
-            episode_count: None,
-            year: None,
-            alt_titles: alts.iter().map(|s| (*s).to_string()).collect(),
-            prefetch,
-            kitsu_id: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn background_pick_stops_probing_after_the_breaker_opens() {
-        // A cold-cache warm walked every alt title of every show even
-        // while allanime was refusing us — hundreds of doomed calls
-        // that deepened the rate limit. Once the gate's breaker opens
-        // the walk must stop.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(500))
-            .mount(&server)
-            .await;
-        let state = state_with_proxy_origin();
-        let args = gate_args(true, "Gate Test", &["a", "b", "c", "d", "e"]);
-        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
-        assert!(picked.candidate.is_none());
-        assert!(picked.any_search_errored);
-        let hits = server.received_requests().await.expect("recorded").len();
-        assert_eq!(
-            hits,
-            crate::scraper::gate::FAILURE_THRESHOLD as usize,
-            "the alt-title walk must stop at the breaker threshold, not visit all six titles"
-        );
-    }
-
-    #[tokio::test]
-    async fn prefetch_spawn_admission_respects_an_open_breaker() {
-        // The subprocess makes its own allanime requests; a prefetch
-        // spawn is background traffic and must be refused while the
-        // breaker is open. Interactive plays pass untouched.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state
-                .scraper_gate
-                .record_outcome(false, tokio::time::Instant::now());
-        }
-        let prefetch = gate_args(true, "Gate Test", &[]);
-        assert!(matches!(
-            admit_prefetch_spawn(&state, &prefetch).await,
-            Err(AniError::Network)
-        ));
-        let interactive = gate_args(false, "Gate Test", &[]);
-        assert!(admit_prefetch_spawn(&state, &interactive).await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn prefetch_spawn_no_results_counts_toward_the_breaker() {
-        use crate::scraper::gate::ScrapePriority;
-        // Timeouts count toward the breaker: a rate-limited allanime
-        // makes ani-cli hang in curl retries until the wall clock
-        // kills it, so a run that spawned fine and then timed out is
-        // upstream evidence (unlike local spawn/read errors)...
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::Timeout),
-            );
-        }
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_err(),
-            "repeated spawn failures must open the breaker"
-        );
-        // ...and so does NoResults: a spawn only happens after the
-        // picker just confirmed the show exists on allanime, so the
-        // subprocess finding nothing moments later is transient or
-        // upstream evidence (a rate-limited ani-cli dies with exactly
-        // this message), not absence.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::NoResults),
-            );
-        }
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_err(),
-            "repeated NoResults spawns must open the breaker"
-        );
-    }
-
-    #[tokio::test]
-    async fn interactive_spawn_failures_feed_the_breaker_too() {
-        use crate::scraper::gate::ScrapePriority;
-        // A user click bypasses admission, but its subprocess outcome
-        // still matters: the preflight search just reset the breaker
-        // with a success, so if the spawn is what hits the rate limit,
-        // background traffic must back off — not resume immediately
-        // after a user-visible failure.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::NoResults),
-            );
-        }
-        assert!(state
-            .scraper_gate
-            .admit(ScrapePriority::Background)
-            .await
-            .is_err());
-    }
-
-    #[test]
-    fn half_open_stale_window_covers_the_gated_spawn_timeout() {
-        // The half-open trial can be a prefetch ani-cli spawn, which
-        // legitimately runs up to RUN_DEBUG_TIMEOUT before reporting.
-        // A shorter stale window would sanction a second trial while
-        // the first is still running — two background probes on a
-        // possibly still-limited upstream during what the gate
-        // documents as one.
-        assert!(crate::scraper::gate::HALF_OPEN_TRIAL_STALE >= RUN_DEBUG_TIMEOUT);
-    }
-
-    #[test]
-    fn no_results_spawn_failure_does_not_write_a_negative_availability_row() {
-        // The gate treats a spawn-level NoResults as transient — the
-        // picker confirmed the show exists moments earlier — so
-        // persisting available=false from the same signal would hide
-        // a real show behind the negative TTL. Genuine absence is
-        // recorded by the picker path (classify_picker_miss), which
-        // reaches its verdict from clean zero-candidate searches.
-        let state = state_with_proxy_origin();
-        let mut args = gate_args(false, "Gate Test", &[]);
-        args.kitsu_id = Some("777".into());
-        note_spawn_failure(&args, "Gate Test", 1, &AniError::NoResults);
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {
-                kitsu_ids: vec!["777".into()],
+                kitsu_ids: vec!["race-1".into()],
                 mode: "sub".into(),
             },
         );
-        assert!(
-            cached.cached.is_empty(),
-            "transient spawn miss must not poison the availability cache"
+        assert_eq!(
+            cached.cached.get("race-1"),
+            Some(&true),
+            "the refresh's answer must survive the stale stamp"
         );
-    }
-
-    #[tokio::test]
-    async fn unreleased_episode_verdicts_leave_the_breaker_alone() {
-        use crate::scraper::gate::ScrapePriority;
-        // "Episode not released" is a content-level answer — an ep+1
-        // prefetch at the season edge gets it routinely. Counting it
-        // as a failure would open the breaker from ordinary
-        // prefetching (it records as a success instead).
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::Scraper {
-                    key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-                }),
-            );
-        }
-        assert!(state
-            .scraper_gate
-            .admit(ScrapePriority::Background)
-            .await
-            .is_ok());
-    }
-
-    #[tokio::test]
-    async fn local_spawn_errors_leave_the_breaker_alone() {
-        use crate::scraper::gate::ScrapePriority;
-        // A broken local install (deleted ani-cli binary, dead stderr
-        // pipe) says nothing about allanime's health — repeated clicks
-        // against a broken binary must not open the breaker and cut
-        // off unrelated background availability/prefetch traffic.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::MissingBinary),
-            );
-            record_spawn_outcome::<()>(&state, tokio::time::Instant::now(), &Err(AniError::Io));
-        }
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_ok(),
-            "local spawn/read errors must not move the breaker"
-        );
-    }
-
-    #[tokio::test]
-    async fn rate_limited_searches_pause_the_gate() {
-        use crate::scraper::gate::ScrapePriority;
-        // allanime's in-band throttle (HTTP 200 + GraphQL errors
-        // payload) is the CLEAREST rate-limit signal there is — one
-        // background walk that hits it must open the advertised-window
-        // pause, or concurrent warm handlers keep firing into the
-        // window at full pace.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "errors": [{
-                        "message": "Too many requests, please try again in 9 seconds.",
-                    }],
-                    "data": null,
-                })),
-            )
-            .mount(&server)
-            .await;
-
-        let state = state_with_proxy_origin();
-        let mut args = external_args("Some Show", "1");
-        args.prefetch = true;
-        let _ = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
-        // The 9 s advertised window is pausing background admits —
-        // pause-and-resume, so the admit neither errors nor completes
-        // within a short real-time budget.
-        let paused = tokio::time::timeout(
-            std::time::Duration::from_millis(150),
-            state.scraper_gate.admit(ScrapePriority::Background),
-        )
-        .await;
-        assert!(
-            paused.is_err(),
-            "one typed rate-limit response must pause background admits"
-        );
-    }
-
-    #[tokio::test]
-    async fn parse_failures_count_toward_the_breaker() {
-        use crate::scraper::gate::ScrapePriority;
-        // ani-cli can exit 0 while printing a malformed debug block
-        // (allanime fed it garbage — the exact throttling signature
-        // this gate exists for); the runners surface that as
-        // ParseFailed. The subprocess demonstrably reached allanime,
-        // so repeated parse failures are upstream evidence and must
-        // open the breaker like NoResults does.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::ParseFailed {
-                    detail: "no 'Selected link:' marker".into(),
-                }),
-            );
-        }
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_err(),
-            "repeated parse failures must open the breaker"
-        );
-    }
-
-    #[tokio::test]
-    async fn missing_dependency_exits_leave_the_breaker_alone() {
-        use crate::scraper::gate::ScrapePriority;
-        // ani-cli dies in dep_ch before touching the network when a
-        // base tool (curl, sed, grep, openssl, fzf) is missing
-        // locally. Those exits say nothing about allanime's health —
-        // three play attempts on an incomplete installation must not
-        // open the breaker and suppress unrelated background traffic
-        // for a full cooldown.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD + 2 {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::Scraper {
-                    key: crate::i18n::keys::SCRAPER_MISSING_DEP,
-                }),
-            );
-        }
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_ok(),
-            "local dependency-check exits must not move the breaker"
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn unreleased_spawn_verdict_counts_as_recovery_evidence() {
-        use crate::scraper::gate::ScrapePriority;
-        // The typed verdict is a completed content-level answer:
-        // ani-cli got through search and episode listing and reported
-        // the episode isn't out. When the half-open trial ends this
-        // way the upstream has provably recovered — recording nothing
-        // would leave the trial dangling and keep refusing all
-        // background traffic for the rest of the stale window after a
-        // routine season-edge ep+1 prefetch.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::NoResults),
-            );
-        }
-        tokio::time::advance(crate::scraper::gate::BREAKER_COOLDOWN).await;
-        let trial_started = tokio::time::Instant::now();
-        state
-            .scraper_gate
-            .admit(ScrapePriority::Background)
-            .await
-            .expect("half-open trial");
-        record_spawn_outcome::<()>(
-            &state,
-            trial_started,
-            &Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_EPISODE_NOT_RELEASED,
-            }),
-        );
-        assert!(
-            state
-                .scraper_gate
-                .admit(ScrapePriority::Background)
-                .await
-                .is_ok(),
-            "an unreleased trial verdict must close the breaker, not wedge it"
-        );
-    }
-
-    #[tokio::test]
-    async fn generic_scraper_exits_count_toward_the_breaker() {
-        use crate::scraper::gate::ScrapePriority;
-        // The catch-all Scraper key covers generic non-zero ani-cli
-        // exits — including curl transport deaths inside the script.
-        // Those are upstream evidence and must feed the breaker; only
-        // the typed unreleased verdict doesn't count as a failure.
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            record_spawn_outcome::<()>(
-                &state,
-                tokio::time::Instant::now(),
-                &Err(AniError::Scraper {
-                    key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-                }),
-            );
-        }
-        assert!(state
-            .scraper_gate
-            .admit(ScrapePriority::Background)
-            .await
-            .is_err());
-    }
-
-    #[tokio::test]
-    async fn interactive_pick_bypasses_an_open_breaker() {
-        // Guard for the other direction: a user's click goes through
-        // even when background traffic tripped the breaker.
-        let server = wiremock::MockServer::start().await;
-        let body = serde_json::json!({
-            "data": { "shows": { "edges": [{
-                "_id": "abc",
-                "name": "Gate Test",
-                "availableEpisodes": {"sub": 12, "dub": 0, "raw": 0},
-                "__typename": "Show"
-            }]}}
-        });
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
-            .mount(&server)
-            .await;
-        let state = state_with_proxy_origin();
-        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state
-                .scraper_gate
-                .record_outcome(false, tokio::time::Instant::now());
-        }
-        let args = gate_args(false, "Gate Test", &[]);
-        let picked = pick_title_and_index_with_base(&state, &args, Some(&server.uri())).await;
-        assert!(picked.any_search_succeeded);
-        assert!(picked.candidate.is_some());
     }
 }

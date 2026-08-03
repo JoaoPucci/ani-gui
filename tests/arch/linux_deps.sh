@@ -70,6 +70,25 @@ for s in dist dist:release; do
     esac
 done
 
+# 5. The impersonating transport must be staged with the other
+#    bundled deps. Native resolution speaks to a provider whose
+#    TLS-fingerprinting protection rejects plain curl, so a package
+#    without curl-impersonate bricks playback, availability, and
+#    downloads on every machine that hasn't hand-installed it — the
+#    exact footgun bundling exists to remove. The backend walks its
+#    failover names (fetch.rs CURL_FAILOVER) through the bundled bin
+#    dir first, so the staged set must carry the patched binary plus
+#    at least the first failover wrapper.
+FETCH=gui/electron/scripts/fetch-linux-deps.mjs
+if [ -f "$FETCH" ]; then
+    for needed in "'curl-impersonate'" "'curl_firefox135'"; do
+        if ! grep -q "binary: $needed" "$FETCH"; then
+            printf 'arch/linux_deps FAIL: %s does not stage %s — the native transport falls back to plain curl, which the provider 403s\n' "$FETCH" "$needed" >&2
+            failed=1
+        fi
+    done
+fi
+
 if [ "$failed" -ne 0 ]; then
     exit 1
 fi

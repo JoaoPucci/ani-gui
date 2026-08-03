@@ -1,86 +1,66 @@
 #!/usr/bin/env bats
 #
-# Tests for ani-cli's `download` (lines 364-382).
+# Tests for ani-cli's `download` (5.0).
 #
 # Contract:
-#   - $1 = stream URL (mp4 or m3u8), $2 = base name (no extension).
-#   - 4.15 does not fetch subtitles here (hardsubs ride the HLS
-#     variant); the aria2c referer comes from $refr_flag.
-#   - Branches on $1:
-#       *m3u8*: yt-dlp if available, else ffmpeg fallback.
-#       *     : aria2c.
+#   - $1 = stream URL, $2 = base name (no extension), $3 = extra flags.
+#   - yt-dlp when available: fragment-retrying, 16-way concurrent,
+#     writing $download_dir/$2.mp4. A yt-dlp SUCCESS returns without
+#     touching ffmpeg.
+#   - ffmpeg otherwise (yt-dlp absent or failed): stream copy of $1
+#     into the same target.
+#   - 5.0 has no aria2c path and no separate subtitle fetch; every URL
+#     kind goes through the same yt-dlp-then-ffmpeg chain.
 
 load '../helpers/loader'
 
 setup() {
+    export ANI_CLI_HIST_DIR="$BATS_TEST_TMPDIR/hist"
+    mkdir -p "$ANI_CLI_HIST_DIR"
     source_ani_cli_lib
     # shellcheck source=/dev/null
     load '../helpers/process_stub'
     stub_setup
-    stub_command yt-dlp ffmpeg aria2c
-    # curl is used to fetch the subtitle; stub it but make it a no-op so the
-    # script continues. The download function does `curl -s "$subtitle" -o ...`
-    # — we don't need to actually create the .vtt file for these tests.
-    curl() { return 0; }
-    export -f curl
+    stub_command yt-dlp ffmpeg
 
     download_dir="$BATS_TEST_TMPDIR/dl"
     mkdir -p "$download_dir"
-    iSH_DownFix=''
-    allanime_refr='https://allmanga.to'
-    subtitle=''
 }
 
-@test "download: mp4 url with aria2c records expected args" {
-    # 4.15: the aria2c referer comes from refr_flag (not allanime_refr).
-    refr_flag='--referrer=https://allmanga.to'
-    download "https://example.com/video.mp4" "Test Anime Episode 1" || true
-    stub_assert_called aria2c '.*--referer=https://allmanga.to.*--continue.*-x 16.*-s 16.*https://example.com/video.mp4'
-    stub_assert_called aria2c ".*--dir=$download_dir.*-o Test Anime Episode 1.mp4.*"
-}
-
-@test "download: m3u8 url with yt-dlp present uses yt-dlp" {
-    m3u8_refr='https://allmanga.to'
-    download "https://example.com/master.m3u8" "Test Anime Episode 1"
-    stub_assert_called yt-dlp '.*--referer https://allmanga.to.*--no-skip-unavailable-fragments.*-N 16.*'
-    stub_assert_called yt-dlp ".*-o $download_dir/Test Anime Episode 1.mp4"
+@test "download: yt-dlp present handles the url and ffmpeg stays untouched" {
+    download "https://cdn.example/op/master.m3u8" "One Piece Episode 1"
+    stub_assert_called yt-dlp '.*https://cdn.example/op/master.m3u8.*--no-skip-unavailable-fragments.*--fragment-retries infinite.*-N 16.*'
+    stub_assert_called yt-dlp ".*-o $download_dir/One Piece Episode 1.mp4"
     stub_assert_not_called ffmpeg
-    stub_assert_not_called aria2c
 }
 
-@test "download: m3u8 url falls back to ffmpeg when yt-dlp is missing" {
-    # Simulate yt-dlp absent by overriding command -v to return 1 for it.
+@test "download: falls back to ffmpeg when yt-dlp is missing" {
     command() {
         if [ "$1" = "-v" ] && [ "$2" = "yt-dlp" ]; then return 1; fi
         builtin command "$@"
     }
     export -f command
-    m3u8_refr='https://allmanga.to'
-    download "https://example.com/master.m3u8" "Test Anime Episode 1"
-    stub_assert_called ffmpeg '.*-referer https://allmanga.to.*-i https://example.com/master.m3u8.*-c copy.*'
-    stub_assert_called ffmpeg ".*$download_dir/Test Anime Episode 1.mp4"
+    download "https://cdn.example/op/master.m3u8" "One Piece Episode 1"
+    stub_assert_called ffmpeg '.*-i https://cdn.example/op/master.m3u8.*-c copy.*'
+    stub_assert_called ffmpeg ".*$download_dir/One Piece Episode 1.mp4"
     stub_assert_not_called yt-dlp
-    stub_assert_not_called aria2c
 }
 
-@test "download: no subtitle fetch happens even when \$subtitle is set (4.15)" {
-    # Pre-4.15 curled \$subtitle into download_dir; 4.15 removed the
-    # separate subtitle track entirely (hardsubs ride the HLS
-    # variant). Pin the removal so a future sync that reintroduces a
-    # fetch is a conscious decision.
-    curl_called=''
-    curl() { curl_called="$*"; }
-    export -f curl
-    subtitle='https://example.com/sub.vtt'
-    download "https://example.com/video.mp4" "Test Anime Episode 1" || true
-    [ -z "$curl_called" ]
+@test "download: a failing yt-dlp run falls through to ffmpeg" {
+    # The && chain returns early only on yt-dlp success; a mid-download
+    # failure retries the whole stream through ffmpeg. Failing variant
+    # of the stub, still logging its argv.
+    yt-dlp() {
+        printf 'yt-dlp %s\n' "$*" >>"$STUB_CALLS"
+        return 1
+    }
+    export -f yt-dlp
+    download "https://cdn.example/op/master.m3u8" "One Piece Episode 1"
+    stub_assert_called yt-dlp '.*master.m3u8.*'
+    stub_assert_called ffmpeg '.*-i https://cdn.example/op/master.m3u8.*'
 }
 
-@test "download: no subtitle env var skips the curl fetch" {
-    curl_called='not-called'
-    curl() { curl_called="$*"; }
-    export -f curl
-    subtitle=''
-    download "https://example.com/video.mp4" "Test Anime Episode 1"
-    [ "$curl_called" = 'not-called' ]
+@test "download: extra flags ride along to yt-dlp" {
+    download "https://cdn.example/op/master.m3u8" "One Piece Episode 1" "--simulate"
+    stub_assert_called yt-dlp '.*--simulate.*'
 }

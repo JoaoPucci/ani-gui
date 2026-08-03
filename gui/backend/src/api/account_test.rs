@@ -94,7 +94,7 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 
 fn test_state(td: &TempDir) -> Arc<AppState> {
     Arc::new(AppState {
-        allanime_base: None,
+        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -103,7 +103,6 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         ani_cli_path: PathBuf::from("/tmp/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
@@ -122,7 +121,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
 /// server, so id-resolution can be driven (e.g. an unmappable show).
 fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
     Arc::new(AppState {
-        allanime_base: None,
+        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -131,7 +130,6 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         ani_cli_path: PathBuf::from("/tmp/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),

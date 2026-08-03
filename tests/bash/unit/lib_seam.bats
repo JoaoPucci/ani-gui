@@ -21,6 +21,11 @@
 
 load '../helpers/loader'
 
+setup() {
+    export ANI_CLI_HIST_DIR="$BATS_TEST_TMPDIR/hist"
+    mkdir -p "$ANI_CLI_HIST_DIR"
+}
+
 @test "sourcing ani-cli with __ANI_CLI_LIB__=1 returns within 3s with no stdout" {
     run timeout 3 bash -c '__ANI_CLI_LIB__=1 . "$ANI_CLI_PATH" 2>/dev/null'
     assert_success

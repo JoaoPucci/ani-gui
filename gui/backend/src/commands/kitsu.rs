@@ -107,10 +107,15 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 /// Bubbles AniList / Kitsu transport failures only when the fallback
 /// also fails. Cache write failures are silently ignored.
 pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
+    // v5: the bridge gained the anilist/anime mapping fallback for
+    //     entries Kitsu hasn't MAL-mapped yet. v4 rows were built
+    //     without it and silently omit exactly the newest seasonal
+    //     shows (TYBW's fourth cour was missing from the strip);
+    //     bumping refreshes them.
     // v4: bridge backfills cover_image from AniList's bannerImage
     //     when Kitsu's is null (new ongoing shows). v3 rows have
     //     null covers for those entries; bumping forces a refresh.
-    const KEY: &str = "kitsu:v4:trending_anilist";
+    const KEY: &str = "kitsu:v5:trending_anilist";
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -153,8 +158,12 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
 /// fail to bridge (rare; a couple per page at most).
 const ANILIST_TRENDING_LIMIT: u8 = 25;
 
-/// Concurrent MAL → Kitsu lookups for a list of AniList refs,
-/// dropping entries with no MAL id and entries Kitsu can't bridge.
+/// Concurrent AniList → Kitsu lookups for a list of AniList refs.
+/// Each entry tries Kitsu's `myanimelist/anime` mapping first, then
+/// its `anilist/anime` mapping — Kitsu's MAL table lags brand-new
+/// seasonal entries by weeks while the AniList row exists from day
+/// one, and a drop here removes exactly the season's hottest shows
+/// from the strip. Entries mapped on neither site are dropped.
 /// Preserves the AniList ranking — order matters because the home
 /// hero takes the first 5–6 entries. `FuturesOrdered` runs the
 /// lookups concurrently and yields results in the input order; the
@@ -172,8 +181,14 @@ pub(super) async fn bridge_anilist_to_kitsu(
         let kitsu = state.kitsu.clone();
         let banner = entry.banner_image.clone();
         futures.push_back(async move {
-            let mal_id = entry.id_mal?;
-            let mut kref = kitsu.lookup_by_mal_id(mal_id).await.ok().flatten()?;
+            let by_mal = match entry.id_mal {
+                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
+                None => None,
+            };
+            let mut kref = match by_mal {
+                Some(k) => k,
+                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
+            };
             // Backfill banner from AniList when Kitsu hasn't
             // catalogued one. New ongoing shows like Slime S4 land
             // on Kitsu before their cataloguers upload a banner;
@@ -429,7 +444,15 @@ pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str)
 ///   re-resolves on miss and writes a fresh row under v2, so all
 ///   pre-fix mappings are replaced inside one cache TTL of normal
 ///   use (or immediately the first time the user opens a card).
-const ALLMANGA_KITSU_VERSION: u32 = 2;
+/// - v3: show ids moved to anidb slugs and the picker was reworked
+///   live against the new provider. A v2 row stamped by an early
+///   mispick binds the wrong slug to a Kitsu entry (Tai-Ari's id
+///   held the Nintama movie's slug), and because every surface —
+///   Continue Watching, the detail page's resume state, mark-watched
+///   fan-out — trusts the mapping, one bad row keeps steering a show
+///   to the wrong page for its whole TTL. Re-keying orphans them;
+///   the next successful play stamps a fresh v3 row.
+const ALLMANGA_KITSU_VERSION: u32 = 3;
 
 fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
@@ -533,32 +556,26 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-/// Bridge a history-recorded allmanga show_id to its Kitsu entry by
-/// walking allmanga's `Show` GraphQL aliases (`englishName`,
-/// `nativeName`, `altNames`) through Kitsu's text search. Returns the
-/// first matching [`KitsuAnimeRef`] and persists the
-/// `(show_id → kitsu_id)` reverse mapping so subsequent calls
-/// short-circuit through `allmanga_kitsu_get`.
-///
-/// Recovers the case where allmanga's primary `name` is a stub the
-/// frontend can't text-match (e.g. `"1P"` for One Piece, `"Nato:
-/// Shippuuden"` for Naruto Shippuuden). The reverse cache normally
-/// hides this, but a Settings → Clear cache wipes it and the bug
-/// re-surfaces; this resolver re-warms the cache on first hit.
+/// Bridge a history-recorded show_id to its Kitsu entry. anidb slug
+/// rows resolve by searching Kitsu with the slug's own words; a match
+/// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
+/// calls short-circuit through `allmanga_kitsu_get`. Legacy allanime
+/// rows resolve only through an already-stamped mapping — their alias
+/// source (allanime's `Show` endpoint) retired with the provider.
 ///
 /// Returns `Ok(None)` when:
 ///   - The reverse cache has no entry AND
-///   - allmanga's `Show` endpoint returns no usable aliases OR
-///   - Every Kitsu text search returned zero hits.
+///   - the id isn't slug-shaped (legacy allanime row) OR
+///   - the slug-derived Kitsu search returned zero usable hits.
 ///
 /// Returns `Ok(Some(_))` on:
 ///   - Reverse-cache hit (fast path, no HTTP).
-///   - Successful enrichment + Kitsu match.
+///   - Successful slug-derived Kitsu match.
 ///
 /// # Errors
 /// Cache I/O errors propagate; HTTP failures fall through to
 /// `Ok(None)` so the caller (Continue Watching) can still render
-/// the bare allmanga title without breaking.
+/// the bare history title without breaking.
 pub async fn resolve_allmanga_show_id(
     state: &AppState,
     show_id: &str,
@@ -573,77 +590,59 @@ pub async fn resolve_allmanga_show_id(
     //    only reaches enrichment after it has already read AND rejected
     //    this reverse row (count/music/title guard). Re-reading it here
     //    would hand back the very id it just rejected, so the caller asks
-    //    us to go straight to the alias walk instead.
+    //    us to go straight to re-resolution instead.
     if !bypass_cache {
         if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
             if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
                 return Ok(Some(detail));
             }
             // Stale id (Kitsu removed it, or the cached row is bad) —
-            // fall through and re-resolve from allmanga.
+            // fall through and re-resolve.
         }
     }
 
-    // 2) Hit allmanga's Show GraphQL to get the alias surface
-    //    (englishName / nativeName / altNames). Network failure is
-    //    soft — Continue Watching can still render the bare
-    //    allmanga title, so we return Ok(None).
-    // Alias enrichment is opportunistic cache filling — the card can
-    // render the bare allmanga title, so the fetch goes through the
-    // scraper gate as background traffic and is skipped while the
-    // breaker is open.
-    if state
-        .scraper_gate
-        .admit(crate::scraper::gate::ScrapePriority::Background)
-        .await
-        .is_err()
-    {
-        tracing::warn!(show_id, "scraper gate open; skipping reverse-resolve fetch");
-        return Ok(None);
+    // 2) anidb slug rows carry their identity in the slug itself —
+    //    the hyphenated words are the show's title. Search Kitsu with
+    //    them directly; a miss stays a soft None.
+    if let Some(term) = crate::scraper::anidb::slug_search_term(show_id) {
+        return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
     }
-    let started_at = tokio::time::Instant::now();
-    let fetched = crate::scraper::allanime::fetch_show(
-        &state.meta_http,
+
+    // 3) Anything else is a legacy allanime row. Its only alias
+    //    source was allanime's Show endpoint, gone with the provider
+    //    — without a stamped mapping the row can't be resolved, so
+    //    fail soft and let Continue Watching render the bare title.
+    tracing::debug!(
         show_id,
-        state.allanime_base.as_deref(),
-    )
-    .await;
-    state
-        .scraper_gate
-        .record(crate::scraper::gate::outcome_of(&fetched), started_at);
-    let show = match fetched {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(
-                show_id = show_id,
-                error = ?e,
-                "allmanga Show fetch failed during reverse-resolve",
-            );
-            return Ok(None);
-        }
-    };
+        "reverse-resolve: unmapped legacy row, no alias source",
+    );
+    Ok(None)
+}
 
-    // 3) Walk aliases through Kitsu text search. First non-empty hit
-    //    wins. We could be cleverer with slug-matching here (the
-    //    pickKitsuMatch heuristic already does that on the frontend
-    //    for cour-suffixed entries), but the cryptic-name case is
-    //    simpler — the alias is usually unambiguous (e.g.
-    //    "One Piece" lands one entry).
-    for term in show.search_terms() {
+/// Walk `terms` through Kitsu text search and return the first
+/// non-music hit, persisting the `(show_id → kitsu_id)` reverse
+/// mapping so subsequent calls short-circuit through the cache.
+/// Shared by the allanime alias walk and the slug-derived path.
+///
+/// A single term's search failure skips to the next term; a cache
+/// write failure is non-fatal — the resolution still succeeds for
+/// this request, the next call just searches again. Music-video hits
+/// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
+/// returned or persisted.
+async fn first_kitsu_match(
+    state: &AppState,
+    show_id: &str,
+    terms: impl IntoIterator<Item = String>,
+) -> Option<KitsuAnimeRef> {
+    for term in terms {
         let hits = match state.kitsu.search(&term, SEARCH_PAGE_LIMIT).await {
             Ok(h) => h,
-            Err(_) => continue, // Single-term failure shouldn't break the walk.
+            Err(_) => continue,
         };
         if let Some(first) = hits
             .into_iter()
             .find(|h| !is_music_subtype(h.subtype.as_deref()))
         {
-            // 4) Persist the mapping so subsequent calls short-circuit
-            //    through step 1. Failure to write the cache is
-            //    non-fatal — the resolution still succeeds for this
-            //    request; the next call just walks aliases again.
-            //    Music-video hits are skipped above so a "music" alias
-            //    (the YOASOBI "Idol" MV) is never returned or persisted.
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
@@ -652,12 +651,11 @@ pub async fn resolve_allmanga_show_id(
                     "reverse-cache write failed during enrichment resolve",
                 );
             }
-            return Ok(Some(first));
+            return Some(first);
         }
     }
-
-    // 5) Walked every alias, nothing matched. Soft-fail.
-    Ok(None)
+    // Walked every term, nothing matched. Soft-fail.
+    None
 }
 
 /// Cache-key prefix for the per-show last-watched timestamp. Stamped
@@ -823,7 +821,7 @@ mod tests {
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
-            allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -832,7 +830,6 @@ mod tests {
             ani_cli_path: PathBuf::from("/x"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: PathBuf::from("/y/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
@@ -1286,6 +1283,39 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_slug_row_resolves_through_kitsu_without_allanime() {
+        // Post-provider-switch history rows key on the anidb slug
+        // ("one-piece-69"). A slug carries its identity in its own
+        // words: the resolver derives the Kitsu search text from
+        // them and walks Kitsu directly. The mapping persists so
+        // the next call short-circuits through the reverse cache.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("filter[text]", "one piece"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(SEARCH_FIXTURE.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+
+        let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
+            .await
+            .expect("resolve ok");
+        assert_eq!(got.expect("slug rows must resolve").id, "12");
+        assert_eq!(
+            allmanga_kitsu_get(&state, "one-piece-69")
+                .expect("cache read")
+                .as_deref(),
+            Some("12"),
+            "the slug resolve must persist the reverse mapping",
+        );
+    }
+
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
         // The enrichment alias-walk must skip music-video hits (a YOASOBI
@@ -1378,19 +1408,19 @@ mod tests {
         }
     }
 
-    /// Build a /mappings response that bridges `mal_id` → kitsu
-    /// anime `kitsu_id` with a synthetic title. Keeps the test
-    /// fixtures self-contained without depending on the real
+    /// Build a /mappings response that bridges `external_id` on
+    /// `site` → kitsu anime `kitsu_id` with a synthetic title. Keeps
+    /// the test fixtures self-contained without depending on the real
     /// Kitsu fixture files (which are sized for One Piece).
-    fn mapping_response(mal_id: u32, kitsu_id: &str, title: &str) -> String {
+    fn site_mapping_response(site: &str, external_id: u32, kitsu_id: &str, title: &str) -> String {
         format!(
             r##"{{
                 "data": [{{
-                    "id": "m-{mal_id}",
+                    "id": "m-{external_id}",
                     "type": "mappings",
                     "attributes": {{
-                        "externalSite": "myanimelist/anime",
-                        "externalId": "{mal_id}"
+                        "externalSite": "{site}",
+                        "externalId": "{external_id}"
                     }},
                     "relationships": {{
                         "item": {{ "data": {{ "type": "anime", "id": "{kitsu_id}" }} }}
@@ -1420,41 +1450,65 @@ mod tests {
         )
     }
 
+    fn mapping_response(mal_id: u32, kitsu_id: &str, title: &str) -> String {
+        site_mapping_response("myanimelist/anime", mal_id, kitsu_id, title)
+    }
+
     fn empty_mapping_response() -> String {
         r#"{"data":[],"included":[]}"#.to_string()
     }
 
     #[tokio::test]
-    async fn bridge_drops_entries_with_no_mal_id() {
+    async fn an_entry_without_a_mal_id_bridges_via_its_anilist_id() {
+        // AniList indexes some shows MAL doesn't. Kitsu's mappings
+        // table carries anilist/anime rows too, so a missing idMal
+        // must fall back to the entry's own AniList id instead of
+        // dropping the show from the strip.
         let server = MockServer::start().await;
-        // Only mal_id=21 is bridgeable; the entry without an idMal
-        // should be skipped before any /mappings call. The mock
-        // responds for /mappings unconditionally so an unexpected
-        // call would still pass — assertion is on the OUTPUT.
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "21"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_string(mapping_response(21, "12", "Show A")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "anilist/anime"))
+            .and(query_param("filter[externalId]", "1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    1,
+                    "31",
+                    "Show B",
+                )),
             )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
         let anilist = vec![
-            anilist_ref(1, None),     // skipped (no mal id)
-            anilist_ref(2, Some(21)), // bridged
+            anilist_ref(1, None),     // bridges via anilist/anime
+            anilist_ref(2, Some(21)), // bridges via myanimelist/anime
         ];
         let out = bridge_anilist_to_kitsu(&state, anilist).await;
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "12");
+        let ids: Vec<_> = out.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["31", "12"]);
     }
 
     #[tokio::test]
-    async fn bridge_drops_entries_kitsu_cant_map() {
+    async fn an_unmapped_mal_id_falls_back_to_the_anilist_id() {
+        // Kitsu's MAL mapping table lags new seasonal entries (TYBW's
+        // fourth cour trended for weeks with no myanimelist/anime
+        // row) while the anilist/anime row exists from day one.
+        // A MAL miss must retry by AniList id before dropping the
+        // season's biggest show from the home strip.
         let server = MockServer::start().await;
-        // 21 maps; 99 returns empty.
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "21"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_string(mapping_response(21, "12", "Show A")),
@@ -1463,15 +1517,43 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", "99"))
             .respond_with(ResponseTemplate::new(200).set_body_string(empty_mapping_response()))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "anilist/anime"))
+            .and(query_param("filter[externalId]", "2"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(site_mapping_response(
+                    "anilist/anime",
+                    2,
+                    "31",
+                    "Show B",
+                )),
+            )
             .mount(&server)
             .await;
         let state = state_with_kitsu_at(&server.uri());
         let anilist = vec![anilist_ref(1, Some(21)), anilist_ref(2, Some(99))];
         let out = bridge_anilist_to_kitsu(&state, anilist).await;
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "12");
+        let ids: Vec<_> = out.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["12", "31"]);
+    }
+
+    #[tokio::test]
+    async fn an_entry_unmapped_on_both_sites_is_dropped() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(empty_mapping_response()))
+            .mount(&server)
+            .await;
+        let state = state_with_kitsu_at(&server.uri());
+        let out = bridge_anilist_to_kitsu(&state, vec![anilist_ref(7, Some(99))]).await;
+        assert!(out.is_empty());
     }
 
     #[tokio::test]

@@ -198,7 +198,6 @@ export interface HistoryEntry {
 export interface CreateSessionArgs {
 	upstream_url: string;
 	referer: string;
-	subtitle_url?: string | null;
 }
 
 /** What kind of media the resolved upstream serves. The renderer uses
@@ -215,7 +214,6 @@ export interface CreateSessionResponse {
 	media_url: string;
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
-	subtitle_url: string | null;
 	/** True when this play resolution came from the long-term cache
 	 *  (no fresh ani-cli spawn). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
@@ -233,7 +231,6 @@ export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 export interface LaunchExternalPlayerArgs {
 	stream_url: string;
 	referer?: string | null;
-	subtitle_url?: string | null;
 	title?: string | null;
 	player_command: string;
 	player_kind?: ExternalPlayerKind;
@@ -473,6 +470,10 @@ export interface PlayArgs {
 	 *  tie-break than ep-count for franchise-overlap cases (Mobile
 	 *  Suit Gundam Wing 1995 vs Mobile Suit Gundam 1979). */
 	year?: number | null;
+	/** Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`). The
+	 *  backend's picker uses it as format disproof: a Movie-badged
+	 *  provider candidate cannot satisfy a non-movie entry. */
+	subtype?: string | null;
 	/** Fallback titles to try when the canonical title returns no
 	 *  allanime hits. Build with {@link altTitlesFromKitsu}. The
 	 *  backend walks them in order and stops at the first non-empty
@@ -580,6 +581,7 @@ export function playStream(
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
+	if (args.subtype) params.set('subtype', args.subtype);
 	// alt_titles is a Vec<String> on the backend. serde_urlencoded can't
 	// decode that from repeated keys, so we join with `\n` and the
 	// backend's custom deserializer splits on the same separator.
@@ -664,6 +666,8 @@ export interface DownloadArgs {
 	quality?: string;
 	episode_count?: number;
 	year?: number;
+	/** Kitsu subtype, for the picker's format disproof. */
+	subtype?: string | null;
 	alt_titles?: string[];
 	kitsu_id?: string;
 	download_dir?: string;
@@ -704,6 +708,7 @@ export function downloadStream(
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
+	if (args.subtype) params.set('subtype', args.subtype);
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
@@ -780,6 +785,8 @@ export interface AvailabilityArgs {
 	alt_titles?: string[];
 	episode_count?: number;
 	year?: number;
+	/** Kitsu subtype, for the picker's format disproof. */
+	subtype?: string | null;
 	kitsu_id?: string;
 	/** Kitsu's airing status — one of "current", "finished",
 	 *  "upcoming", "tba", "unreleased". Branches the positive cache

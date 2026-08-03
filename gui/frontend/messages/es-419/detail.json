@@ -5,11 +5,11 @@
 	"audio_group_label": "Audio",
 	"download_button": "Descargar",
 	"ep_airs": "Se emite el {date}",
-	"ep_disabled_tooltip": "Fuera del catálogo de allmanga.",
-	"ep_recheck_busy": "Consultando allmanga…",
+	"ep_disabled_tooltip": "Fuera del catálogo de anidb.app.",
+	"ep_recheck_busy": "Consultando anidb.app…",
 	"ep_recheck_failed": "No se pudo comprobar ahora: inténtalo de nuevo en un momento.",
-	"ep_recheck_idle": "Aún no está en el catálogo de allmanga: haz clic para volver a comprobar.",
-	"ep_recheck_still_gated": "Aún no está en el catálogo de allmanga.",
+	"ep_recheck_idle": "Aún no está en el catálogo de anidb.app: haz clic para volver a comprobar.",
+	"ep_recheck_still_gated": "Aún no está en el catálogo de anidb.app.",
 	"ep_unaired": "Sin emitir",
 	"ep_unaired_tooltip": "Este episodio aún no se ha emitido.",
 	"episode_frame_num_key": "ep",
@@ -42,7 +42,7 @@
 	"error_play_headline": "No se pudo reproducir el episodio {episode}",
 	"error_play_headline_single": "No se pudo reproducir",
 	"error_play_network": "Problemas de red al conectar con la fuente de streaming. Revisa tu conexión y vuelve a intentarlo.",
-	"error_play_no_results": "Este título no está en el catálogo de streaming. allmanga no lo indexa.",
+	"error_play_no_results": "Este título no está en el catálogo de streaming. anidb.app no lo indexa.",
 	"error_play_scraper": "No se pudo resolver una transmisión válida ahora mismo. La fuente de streaming parece tener problemas — vuelve a intentarlo en unos minutos.",
 	"error_play_timeout": "La fuente de streaming tardó demasiado en responder. Vuelve a intentarlo en unos minutos.",
 	"list_add": "Agregar a la lista",
@@ -96,5 +96,5 @@
 	"synopsis_heading": "Sinopsis",
 	"synopsis_toggle_less": "Leer menos",
 	"synopsis_toggle_more": "Leer más",
-	"unavailable_message": "Fuera del catálogo de allmanga — reproducción y descarga no disponibles para este título."
+	"unavailable_message": "Fuera del catálogo de anidb.app — reproducción y descarga no disponibles para este título."
 }

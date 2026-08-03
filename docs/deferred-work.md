@@ -76,34 +76,34 @@ starting it, and delete it when you find it done.
 
 ## Resolver and provider
 
-- **Replace the bundled `ani-cli` with a native Rust resolver.** Search,
-  episode-count disambiguation and show metadata are already native, and
-  so is everything downstream of a resolved URL — `commands/play.rs` and
-  `proxy/m3u8.rs` handle sessions, manifests and segment signing. What
-  is still script-only is the stream-source resolution in between:
-  the authenticated episode-source request, the key derivation and
-  decryption the provider's change broke, and `generate_link` /
-  `get_links` turning a `sourceUrl` into a playable stream.
+- **Adapt the GUI to ani-cli 5.0's anidb provider.** The 5.0 sync
+  replaced the bundled script (allanime is gone; anidb.app is the
+  provider) but the Rust side still speaks allanime end to end, so
+  playback stays broken until it moves: the disambiguation search and
+  availability probes hit allanime's dead API, and the `-S` index they
+  compute selects from a list the script no longer produces. Known
+  edges beyond the search itself, found during the sync: the driver's
+  `--` separator rides into the browse query, the loading overlay
+  streams stderr while 5.0 writes progress to stdout, history and the
+  play-resolution cache are keyed by allanime ids while the script now
+  writes anidb slugs (and migrates old rows aside to `ani-hsts.v4`),
+  and the botan shim machinery (`anicli/botan_shim.rs`, the PATH
+  provisioning in `app.rs`) is dead weight 5.0 never invokes.
+
+- **Replace the bundled `ani-cli` with a native Rust resolver.**
+  Everything downstream of a resolved URL is already native —
+  `commands/play.rs` and `proxy/m3u8.rs` handle sessions, manifests
+  and segment signing. What is script-only is the resolution in
+  between; against anidb that is browse-page scraping, two JSON
+  endpoints and an embed page, with no encrypted transport, which is
+  a materially smaller job than it was against allanime.
 
   Two separate finish lines, and the gap between them is the thing to
   remember. Native playback means every path that resolves a stream,
   including Syncplay and the external player. *Deleting* the script is
   a much wider job — downloads, app startup, packaging, the updater and
   the bats suites all reach for it, and a search for the binary name is
-  the only honest way to scope that. Retires the carried patch set in
-  `AGENTS.md` §3, but only at the end of the second job, not the first.
-
-- **The provider's crypto flow changed and playback is broken.**
-  Upstream has two competing unmerged fixes. The smaller one
-  identifies the real inputs — a lane parameter, build id, locally
-  generated mask and epoch feeding a bootstrap header — which is a
-  pure function and therefore testable against captured fixtures
-  without a subprocess. That makes it the smallest native slice worth
-  taking first.
-- **Validate the botan wrapper on a packaged Windows build** under Git
-  Bash.
-- **JSON-escape `$1` in `search_anime`** — a carried fork patch that
-  was never written.
+  the only honest way to scope that.
 
 ## Correctness in the app
 

@@ -27,7 +27,6 @@
 #![cfg(target_os = "linux")]
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 
 use ani_gui::api::build_api_router;
@@ -41,136 +40,65 @@ use http_body_util::BodyExt;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-fn repo_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("manifest is two levels deep from repo root")
-        .to_path_buf()
-}
-
-fn build_fixtures(dir: &std::path::Path) {
-    let root = repo_root();
-    let src = root.join("tests/fixtures/allanime");
-    for f in [
-        "search_one_piece.json",
-        "episodes_short.json",
-        "embed_simple.json",
-        // fetch_keys' key-derivation fixtures (page epoch/partB, CDN app
-        // bundle, key-mask chunk) — required since ani-cli 4.15's
-        // encrypted transport.
-        "keys_page.html",
-        "keys_app.js",
-        "keys_chunk.js",
-    ] {
-        std::fs::copy(src.join(f), dir.join(f)).expect("copy fixture");
-    }
-    let status = Command::new("bash")
-        .arg(root.join("tests/bash/helpers/blob_builder.sh"))
-        .arg(dir.join("episode_blob.json"))
-        .status()
-        .expect("blob_builder.sh runs");
-    assert!(status.success(), "blob_builder.sh exited 0");
-}
-
-/// Stage a wrapper `curl` script that re-execs the repo's curl shim
-/// with the right `CURL_FIXTURE_DIR` set. Returns the bin/ dir to
-/// prepend to PATH. Same construction as `anicli_run_debug.rs` —
-/// kept inline rather than extracted because the two test files have
-/// only this one piece in common and a shared helper would couple
-/// them more than they're already coupled.
-fn stage_curl_shim_wrapper(tmp: &std::path::Path, fixtures_dir: &std::path::Path) -> PathBuf {
-    let bin = tmp.join("bin");
-    std::fs::create_dir_all(&bin).expect("mkdir bin");
-    let wrapped = bin.join("curl");
-    let body = format!(
-        "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = fixtures_dir.display(),
-        repo = repo_root().display(),
-    );
-    std::fs::write(&wrapped, body).expect("write wrapper shim");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&wrapped).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&wrapped, perms).expect("chmod +x");
-    stage_fake_botan(&bin);
-    bin
-}
-
-/// Stage the harness's botan stand-in as `botan` next to the curl shim.
-/// ani-cli 4.15 hard-requires one at startup and drives the encrypted
-/// allanime transport through it; the stand-in does real AES-256-GCM via
-/// python3-cryptography (see tests/bash/helpers/fake_botan.sh).
-fn stage_fake_botan(bin: &std::path::Path) {
-    let dst = bin.join("botan");
-    std::fs::copy(repo_root().join("tests/bash/helpers/fake_botan.sh"), &dst)
-        .expect("copy fake botan");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&dst).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
-}
-
-/// Stand up a local allanime stub answering the search the play
-/// handler runs before it ever spawns ani-cli.
-///
-/// The candidate is shaped to be picked: one hit, an episode count
-/// that comfortably covers the requested episode, and the `Show`
-/// typename the parser keys on. What matters for hermeticity is only
-/// that the request never leaves the machine.
-async fn stub_allanime() -> wiremock::MockServer {
+/// Stand up a local anidb stub covering the whole native flow:
+/// browse → episodes → languages → embed → master URL. The embed and
+/// master both live on the stub's own origin so every request stays
+/// on the machine. The transport is the production one — the resolved
+/// system curl works fine against localhost; impersonation only
+/// matters at the real cloudflare front.
+async fn stub_anidb() -> wiremock::MockServer {
     let server = wiremock::MockServer::start().await;
-    let body = serde_json::json!({
-        "data": {
-            "shows": {
-                "edges": [
-                    {
-                        "_id": "test-show",
-                        "name": "test",
-                        "availableEpisodes": {"sub": 12, "dub": 12, "raw": 0},
-                        "__typename": "Show"
-                    }
-                ]
-            }
-        }
-    });
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/api"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+    let base = server.uri();
+    let browse = r#"<a href="/anime/test-show-1"><img alt="test"/></a>"#;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/browse"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(browse))
+        .mount(&server)
+        .await;
+    let eps: Vec<String> = (1..=12)
+        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
+        .collect();
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/frontend/anime/1/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
+        )
+        .mount(&server)
+        .await;
+    let langs =
+        format!("{{\"languages\":[{{\"code\":\"jpn\",\"embed_url\":\"{base}/embed/x\"}}]}}");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path(
+            "/api/frontend/episode/1001/languages",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(langs))
+        .mount(&server)
+        .await;
+    let embed = format!("player.setup({{ file: '{base}/op/master.m3u8' }});");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/embed/x"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
         .mount(&server)
         .await;
     server
 }
 
-/// Build an `AppState` pointed at the real `ani-cli` script and
-/// otherwise pinned to the test's tmp dir. The test process's
-/// `$PATH` should include the staged shim before this runs — the
-/// play handler invokes `run_debug` with `path_override: None`, so
-/// it inherits whatever PATH the test sets.
-///
-/// `allanime_base` points the Rust-side disambiguation search at the
-/// local stub. Production leaves it `None`, which means the real API.
-fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
+/// Build an `AppState` whose provider base points at the local anidb
+/// stub and whose `ani_cli_path` names a file that does not exist —
+/// the native play path must never spawn the script, and a state
+/// that would try dies loudly.
+fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
     AppState {
-        allanime_base: Some(allanime_base.to_string()),
+        anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
-        ani_cli_path: repo_root().join("ani-cli"),
+        ani_cli_path: std::path::PathBuf::from("/nonexistent/never-spawned/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
         scraper_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
@@ -187,53 +115,38 @@ fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
 }
 
 #[tokio::test]
-async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
+async fn play_endpoint_resolves_natively_and_returns_session() {
     let tmp = TempDir::new().expect("tempdir");
-    let fixtures = tmp.path().join("fixtures");
-    std::fs::create_dir_all(&fixtures).expect("mkdir fixtures");
-    build_fixtures(&fixtures);
     std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
 
-    let bin = stage_curl_shim_wrapper(tmp.path(), &fixtures);
-    let allanime = stub_allanime().await;
+    let anidb = stub_anidb().await;
 
-    // Prepend the shim dir to the test process's PATH. The play
-    // handler's `run_debug` call inherits this PATH, so ani-cli's
-    // `curl` invocations resolve to our shim. A previous PATH is
-    // restored at the end of the test for hygiene — even though
-    // each integration-test file runs in its own process, doing
-    // so makes a future shared-test refactor safer.
-    let saved_path = std::env::var("PATH").ok();
-    let new_path = format!("{}:{}", bin.display(), saved_path.as_deref().unwrap_or(""));
-    std::env::set_var("PATH", &new_path);
-
-    let result = run_play_assertion(tmp.path(), &allanime.uri()).await;
-
-    if let Some(p) = saved_path {
-        std::env::set_var("PATH", p);
-    } else {
-        std::env::remove_var("PATH");
-    }
+    let result = run_play_assertion(tmp.path(), &anidb.uri()).await;
     result.expect("play assertion succeeded");
 
-    // The point of the stub: prove the disambiguation search was
-    // served locally. A zero here means the handler reached past the
-    // override to the real API, and this test would be one throttled
-    // IP away from a false red on someone else's diff.
-    let searches = allanime
+    // The whole resolution was served by the stub: browse, episodes,
+    // and languages were each hit at least once — and ani_cli_path
+    // points at a file that does not exist, so a subprocess spawn
+    // could not have produced the session.
+    let requests = anidb
         .received_requests()
         .await
-        .expect("stub recorded its requests")
-        .len();
-    assert!(
-        searches >= 1,
-        "the allanime search must be served by the local stub, saw {searches} requests"
-    );
+        .expect("stub recorded its requests");
+    for needle in ["/browse", "/episodes", "/languages"] {
+        assert!(
+            requests.iter().any(|r| r.url.path().contains(needle)),
+            "the native flow must hit {needle}; saw {:?}",
+            requests
+                .iter()
+                .map(|r| r.url.path().to_string())
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
-async fn run_play_assertion(tmp: &std::path::Path, allanime_base: &str) -> Result<(), String> {
-    let router = build_api_router(Arc::new(build_state(tmp, allanime_base)));
-    let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best"}"#;
+async fn run_play_assertion(tmp: &std::path::Path, anidb_base: &str) -> Result<(), String> {
+    let router = build_api_router(Arc::new(build_state(tmp, anidb_base)));
+    let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best","episode_count":12}"#;
     let response = router
         .oneshot(
             Request::builder()
@@ -274,13 +187,13 @@ async fn run_play_assertion(tmp: &std::path::Path, allanime_base: &str) -> Resul
         .get("media_kind")
         .and_then(|v| v.as_str())
         .ok_or("response missing media_kind")?;
-    // The shim resolves a wixmp MP4 (matching the fixture in
-    // tests/fixtures/allanime/embed_simple.json), so the kind is mp4
-    // and the proxy URL points at /file.mp4.
-    if media_kind != "mp4" {
-        return Err(format!("expected media_kind=mp4, got {media_kind}"));
+    // The shim resolves an HLS variant playlist (see
+    // tests/fixtures/anidb/master_op.m3u8), so the kind is hls and
+    // the proxy URL points at /master.m3u8.
+    if media_kind != "hls" {
+        return Err(format!("expected media_kind=hls, got {media_kind}"));
     }
-    if !media_url.contains("/s/") || !media_url.ends_with("/file.mp4") {
+    if !media_url.contains("/s/") || !media_url.ends_with("/master.m3u8") {
         return Err(format!("unexpected media_url shape: {media_url}"));
     }
     if session_id.is_empty() {
