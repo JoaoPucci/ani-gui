@@ -1294,9 +1294,13 @@ clean_env() {
 # have seen.
 env_sensitive() {
     _first=$(clean_env sh "$1" 2>&1) && _first_status=0 || _first_status=$?
-    _again=$(clean_env sh "$1" 2>&1) || true
+    _again=$(clean_env sh "$1" 2>&1) && _again_status=0 || _again_status=$?
     _dirty=$(hostile_env sh "$1" 2>&1) && _dirty_status=0 || _dirty_status=$?
 
+    # Two clean runs disagreeing about their own exit means the check
+    # has no stable signal at all — noise, reported as sensitive so a
+    # human looks, never as a clean bill built on a coin flip.
+    [ "$_first_status" = "$_again_status" ] || return 0
     [ "$_first_status" = "$_dirty_status" ] || return 0
     if [ "$_first" = "$_again" ] && [ "$_first" != "$_dirty" ]; then
         return 0
