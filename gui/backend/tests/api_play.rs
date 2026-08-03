@@ -61,11 +61,13 @@ async fn stub_anidb() -> wiremock::MockServer {
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/api/frontend/anime/1/episodes"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(format!("[{}]", eps.join(","))),
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
         )
         .mount(&server)
         .await;
-    let langs = format!("[{{\"language\":\"jpn\",\"embed_url\":\"{base}/embed/x\"}}]");
+    let langs =
+        format!("{{\"languages\":[{{\"code\":\"jpn\",\"embed_url\":\"{base}/embed/x\"}}]}}");
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path(
             "/api/frontend/episode/1001/languages",
