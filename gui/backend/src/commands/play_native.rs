@@ -59,6 +59,11 @@ pub async fn pick_candidate<F: AnidbFetch>(
     expected: Option<u32>,
     search_title: &str,
 ) -> Result<PickedShow> {
+    if hits.is_empty() {
+        // Nothing to probe: a clean absence of candidates, distinct
+        // from probes that failed below.
+        return Err(crate::error::AniError::NoResults);
+    }
     let needle = search_title.trim().to_lowercase();
     let probed = hits.iter().take(MAX_PROBED_CANDIDATES);
 
@@ -93,11 +98,13 @@ pub async fn pick_candidate<F: AnidbFetch>(
             }
         }
     }
+    // Every probe failing says nothing about the show — that verdict
+    // is transient, never the persistable absence.
     let best_dist = probed_ok
         .iter()
         .map(|(_, _, d)| *d)
         .min()
-        .ok_or(crate::error::AniError::NoResults)?;
+        .ok_or(crate::error::AniError::Network)?;
     if best_dist > ep_count_threshold(expected) {
         return Err(crate::error::AniError::NoResults);
     }
