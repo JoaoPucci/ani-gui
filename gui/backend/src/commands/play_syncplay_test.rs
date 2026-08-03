@@ -64,7 +64,6 @@ fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::sync::Arc;
     crate::app::AppState {
-        allanime_base: Some(provider_base.to_string()),
         anidb_base: Some(provider_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),

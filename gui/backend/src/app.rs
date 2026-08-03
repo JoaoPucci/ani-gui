@@ -69,13 +69,6 @@ pub struct AppState {
     pub botan_shim_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
-    /// Base URL for allanime scraper calls. `None` in production,
-    /// which means the real API. Tests set it to a local stub so the
-    /// disambiguation search never leaves the machine — a live search
-    /// inside an integration test turns a throttled IP into a red
-    /// `cargo test` on an unrelated diff.
-    pub allanime_base: Option<String>,
-
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).
     pub anidb_base: Option<String>,
@@ -191,7 +184,6 @@ impl AppState {
             bundled_bin,
             botan_shim_bin,
             history_path,
-            allanime_base: None,
             anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
@@ -395,7 +387,6 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            allanime_base: None,
             anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),

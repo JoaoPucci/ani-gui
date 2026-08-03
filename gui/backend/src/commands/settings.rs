@@ -37,7 +37,6 @@ mod tests {
 
     fn state_with_config_at(config_path: PathBuf) -> AppState {
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),

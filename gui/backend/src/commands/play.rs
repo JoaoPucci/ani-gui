@@ -550,7 +550,6 @@ mod tests {
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
         AppState {
-            allanime_base: None,
             // Unroutable: the fresh-resolve fallback must fail fast in
             // tests instead of walking the live provider. Windows
             // runners ship a system curl.exe, so a None base turns

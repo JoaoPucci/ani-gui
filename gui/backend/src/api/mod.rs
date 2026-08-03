@@ -789,7 +789,6 @@ mod tests {
     fn test_app_state(td: &TempDir) -> AppState {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),

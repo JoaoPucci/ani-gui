@@ -20,7 +20,6 @@ use crate::meta::mal_user::{MalProvider, MalRefreshState};
 fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
     use std::path::PathBuf;
     Arc::new(AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),

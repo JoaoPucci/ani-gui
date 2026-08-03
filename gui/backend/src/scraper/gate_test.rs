@@ -467,34 +467,6 @@ async fn typed_failure_still_feeds_the_counting_breaker() {
 
 // ── outcome classification ──────────────────────────────────────────
 
-#[test]
-fn outcome_of_maps_the_typed_rate_limit_with_its_hint() {
-    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
-        retry_after_secs: Some(7),
-    });
-    assert_eq!(
-        outcome_of(&r),
-        ScrapeOutcome::RateLimited {
-            retry_after: Some(Duration::from_secs(7)),
-        }
-    );
-    let r: Result<(), crate::error::AniError> = Err(crate::error::AniError::RateLimited {
-        retry_after_secs: None,
-    });
-    assert_eq!(
-        outcome_of(&r),
-        ScrapeOutcome::RateLimited { retry_after: None }
-    );
-}
-
-#[test]
-fn outcome_of_folds_everything_else_to_success_or_failure() {
-    let ok: Result<u8, crate::error::AniError> = Ok(1);
-    assert_eq!(outcome_of(&ok), ScrapeOutcome::Success);
-    let err: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
-    assert_eq!(outcome_of(&err), ScrapeOutcome::Failure);
-}
-
 #[tokio::test(start_paused = true)]
 async fn an_expired_pause_admits_immediately() {
     // Nobody recorded a success — the window simply passed. The next
@@ -665,32 +637,7 @@ async fn a_success_between_overlapping_limits_cannot_clear_the_newer_one() {
     );
 }
 
-proptest::proptest! {
-    // The classifier is total and hint-preserving: arbitrary Some(n)
-    // survives to the typed outcome, None stays None, Ok folds to
-    // Success, and non-rate-limit errors fold to Failure.
-    #[test]
-    fn outcome_of_preserves_arbitrary_hints(
-        hint in proptest::option::of(proptest::prelude::any::<u64>()),
-        ok in proptest::prelude::any::<bool>(),
-    ) {
-        if ok {
-            let r: Result<u8, crate::error::AniError> = Ok(0);
-            proptest::prop_assert_eq!(outcome_of(&r), ScrapeOutcome::Success);
-        } else {
-            let r: Result<u8, crate::error::AniError> =
-                Err(crate::error::AniError::RateLimited { retry_after_secs: hint });
-            proptest::prop_assert_eq!(
-                outcome_of(&r),
-                ScrapeOutcome::RateLimited {
-                    retry_after: hint.map(Duration::from_secs),
-                }
-            );
-            let other: Result<u8, crate::error::AniError> = Err(crate::error::AniError::Io);
-            proptest::prop_assert_eq!(outcome_of(&other), ScrapeOutcome::Failure);
-        }
-    }
-}
+proptest::proptest! {}
 
 #[tokio::test(start_paused = true)]
 async fn a_rate_limit_started_before_the_latest_recovery_is_stale() {

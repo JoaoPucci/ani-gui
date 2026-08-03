@@ -83,7 +83,6 @@ mod tests {
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
