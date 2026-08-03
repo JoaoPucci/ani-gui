@@ -75,6 +75,10 @@ pub struct AppState {
     /// inside an integration test turns a throttled IP into a red
     /// `cargo test` on an unrelated diff.
     pub allanime_base: Option<String>,
+
+    /// Test override for the anidb provider origin the native play
+    /// resolution scrapes. `None` in production (the real site).
+    pub anidb_base: Option<String>,
     /// Admission gate for allanime scraper traffic: paces background
     /// probes and breaks the circuit on consecutive failures so cold
     /// caches can't rate-limit the IP out from under a user's click.
@@ -188,6 +192,7 @@ impl AppState {
             botan_shim_bin,
             history_path,
             allanime_base: None,
+            anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
@@ -327,6 +332,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
             allanime_base: None,
+            anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

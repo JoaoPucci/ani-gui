@@ -23,6 +23,7 @@ mod tests {
     fn make_state(port: u16) -> AppState {
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
