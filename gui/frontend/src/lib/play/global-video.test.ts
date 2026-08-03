@@ -2,7 +2,7 @@
 //
 // happy-dom gives us a real `document` so we can exercise the
 // imperative DOM bits of global-video (the singleton creation,
-// attach / detach lifecycle, subtitle track swap). The pure
+// attach / detach lifecycle). The pure
 // `canReuseSession` decision below doesn't need DOM but co-locates
 // nicely with its DOM-bound siblings.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,7 +14,6 @@ import {
 	getGlobalVideo,
 	reuseSessionIfMatching,
 	setCurrentSession,
-	setSubtitleTrack,
 	type VideoSession,
 	type VideoStateSnapshot
 } from './global-video';
@@ -25,7 +24,6 @@ const session: VideoSession = {
 	session_id: 'sess-abc',
 	media_url: 'http://localhost:8765/play/sess-abc/master.m3u8',
 	media_kind: 'hls',
-	subtitle_url: null,
 	quality: 'best',
 	mode: 'sub'
 };
@@ -164,7 +162,6 @@ describe('singleton lifecycle (happy-dom)', () => {
 			session_id: 'sess-x',
 			media_url: 'http://localhost/proxy/1',
 			media_kind: 'mp4',
-			subtitle_url: null,
 			quality: 'best',
 			mode: 'sub'
 		};
@@ -185,7 +182,6 @@ describe('singleton lifecycle (happy-dom)', () => {
 			session_id: 'sess-x',
 			media_url: 'http://localhost/proxy/1',
 			media_kind: 'mp4',
-			subtitle_url: null,
 			quality: 'best',
 			mode: 'sub'
 		});
@@ -202,35 +198,5 @@ describe('singleton lifecycle (happy-dom)', () => {
 		// quality re-resolves instead of resuming the old stream.
 		expect(reuseSessionIfMatching('kid-1', 1, 'worst', 'sub')).toBeNull();
 		expect(reuseSessionIfMatching('kid-1', 1, 'best', 'dub')).toBeNull();
-	});
-
-	it('setSubtitleTrack adds a default subtitle <track>', () => {
-		setSubtitleTrack('http://localhost/proxy/x.vtt');
-		const v = getGlobalVideo();
-		const tracks = v.querySelectorAll('track');
-		expect(tracks).toHaveLength(1);
-		const t = tracks[0] as HTMLTrackElement;
-		expect(t.kind).toBe('subtitles');
-		expect(t.srclang).toBe('en');
-		expect(t.default).toBe(true);
-		expect(t.src).toContain('x.vtt');
-	});
-
-	it('setSubtitleTrack replaces an existing track on subsequent calls', () => {
-		setSubtitleTrack('http://localhost/proxy/a.vtt');
-		setSubtitleTrack('http://localhost/proxy/b.vtt');
-		const v = getGlobalVideo();
-		const tracks = v.querySelectorAll('track');
-		// Replacement, not append — same contract the play page's
-		// session-change effect needs to avoid stacking VTT files.
-		expect(tracks).toHaveLength(1);
-		expect((tracks[0] as HTMLTrackElement).src).toContain('b.vtt');
-	});
-
-	it('setSubtitleTrack(null) removes any existing track', () => {
-		setSubtitleTrack('http://localhost/proxy/a.vtt');
-		setSubtitleTrack(null);
-		const v = getGlobalVideo();
-		expect(v.querySelectorAll('track')).toHaveLength(0);
 	});
 });

@@ -1238,7 +1238,6 @@
 				`episode=${cached.episode}`,
 				`kind=${cached.media_kind}`
 			];
-			if (cached.subtitle_url) parts.push('sub=1');
 			// Carry the session's resolved quality/mode so /play records
 			// the true setting (and a later switch re-resolves).
 			if (cached.quality) parts.push(`q=${encodeURIComponent(cached.quality)}`);

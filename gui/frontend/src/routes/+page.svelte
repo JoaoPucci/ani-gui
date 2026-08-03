@@ -714,7 +714,6 @@
 				`episode=${c.episode}`,
 				`kind=${c.media_kind}`
 			];
-			if (c.subtitle_url) parts.push('sub=1');
 			// Carry the session's resolved quality/mode so /play records
 			// the true setting (and a later switch re-resolves).
 			if (c.quality) parts.push(`q=${encodeURIComponent(c.quality)}`);

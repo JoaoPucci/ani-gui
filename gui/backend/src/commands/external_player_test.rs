@@ -8,7 +8,6 @@ fn args(stream: &str) -> LaunchArgs {
     LaunchArgs {
         stream_url: stream.into(),
         referer: None,
-        subtitle_url: None,
         title: None,
         player_command: "mpv".into(),
         player_kind: ExternalPlayerKind::Mpv,
@@ -37,20 +36,16 @@ fn argv_includes_force_media_title_when_present() {
 }
 
 #[test]
-fn argv_emits_sub_file_and_referer_in_the_same_order_as_ani_cli() {
+fn argv_emits_title_then_referer_then_url() {
     let mut a = args("https://example.com/master.m3u8");
     a.title = Some("T".into());
-    a.subtitle_url = Some("https://example.com/sub.vtt".into());
-    a.referer = Some("https://allmanga.to".into());
+    a.referer = Some("https://cdn.example".into());
     let v = build_argv(&a);
-    // Order matches play_episode's construction:
-    //   --force-media-title=... --sub-file=... --referrer=... <url>
     assert_eq!(
         v,
         vec![
             "--force-media-title=T".to_string(),
-            "--sub-file=https://example.com/sub.vtt".to_string(),
-            "--referrer=https://allmanga.to".to_string(),
+            "--referrer=https://cdn.example".to_string(),
             "https://example.com/master.m3u8".to_string(),
         ]
     );
@@ -59,21 +54,18 @@ fn argv_emits_sub_file_and_referer_in_the_same_order_as_ani_cli() {
 #[test]
 fn argv_for_vlc_uses_vlc_flag_syntax() {
     // VLC's flag names differ from mpv: `--meta-title` for the
-    // title, `--http-referrer` for the Referer header, and the
-    // global `--sub-file` for subtitles. Order matches mpv's:
-    // title, sub, referrer, URL last.
+    // title, `--http-referrer` for the Referer header. Order
+    // matches mpv's: title, referrer, URL last.
     let mut a = args("https://example.com/master.m3u8");
     a.player_kind = ExternalPlayerKind::Vlc;
     a.title = Some("T".into());
-    a.subtitle_url = Some("https://example.com/sub.vtt".into());
-    a.referer = Some("https://allmanga.to".into());
+    a.referer = Some("https://cdn.example".into());
     let v = build_argv(&a);
     assert_eq!(
         v,
         vec![
             "--meta-title=T".to_string(),
-            "--sub-file=https://example.com/sub.vtt".to_string(),
-            "--http-referrer=https://allmanga.to".to_string(),
+            "--http-referrer=https://cdn.example".to_string(),
             "https://example.com/master.m3u8".to_string(),
         ]
     );
@@ -81,20 +73,17 @@ fn argv_for_vlc_uses_vlc_flag_syntax() {
 
 #[test]
 fn argv_for_iina_uses_mpv_prefixed_flags() {
-    // IINA wraps mpv on macOS and forwards flags through `--mpv-`,
-    // except `--sub-file` which IINA exposes natively.
+    // IINA wraps mpv on macOS and forwards flags through `--mpv-`.
     let mut a = args("https://example.com/v.mp4");
     a.player_kind = ExternalPlayerKind::Iina;
     a.title = Some("T".into());
-    a.subtitle_url = Some("https://example.com/sub.vtt".into());
-    a.referer = Some("https://allmanga.to".into());
+    a.referer = Some("https://cdn.example".into());
     let v = build_argv(&a);
     assert_eq!(
         v,
         vec![
             "--mpv-force-media-title=T".to_string(),
-            "--sub-file=https://example.com/sub.vtt".to_string(),
-            "--mpv-referrer=https://allmanga.to".to_string(),
+            "--mpv-referrer=https://cdn.example".to_string(),
             "https://example.com/v.mp4".to_string(),
         ]
     );
@@ -103,21 +92,19 @@ fn argv_for_iina_uses_mpv_prefixed_flags() {
 #[test]
 fn argv_for_custom_kind_substitutes_placeholders() {
     // Custom uses a free-text template the user controls. Tokens
-    // are shlex-split, then `{url}`, `{referer}`, `{title}`,
-    // `{sub}` are interpolated per token.
+    // are shlex-split, then `{url}`, `{referer}`, `{title}` are
+    // interpolated per token.
     let mut a = args("https://example.com/v.mp4");
     a.player_kind = ExternalPlayerKind::Custom;
     a.title = Some("My Show".into());
-    a.subtitle_url = Some("https://example.com/sub.vtt".into());
-    a.referer = Some("https://allmanga.to".into());
-    a.custom_args_template = Some("--ref={referer} --title={title} --sub={sub} {url}".into());
+    a.referer = Some("https://cdn.example".into());
+    a.custom_args_template = Some("--ref={referer} --title={title} {url}".into());
     let v = build_argv(&a);
     assert_eq!(
         v,
         vec![
-            "--ref=https://allmanga.to".to_string(),
+            "--ref=https://cdn.example".to_string(),
             "--title=My Show".to_string(),
-            "--sub=https://example.com/sub.vtt".to_string(),
             "https://example.com/v.mp4".to_string(),
         ]
     );
@@ -125,21 +112,19 @@ fn argv_for_custom_kind_substitutes_placeholders() {
 
 #[test]
 fn argv_for_custom_drops_tokens_with_missing_placeholders() {
-    // If the user includes `--sub={sub}` in the template but the
-    // current episode has no subtitle, the entire token is
-    // dropped — better than emitting `--sub=` with empty value.
+    // If the user includes `--title={title}` in the template but
+    // the current stream has no title, the entire token is
+    // dropped — better than emitting `--title=` with empty value.
     let mut a = args("https://example.com/v.mp4");
     a.player_kind = ExternalPlayerKind::Custom;
-    a.referer = Some("https://allmanga.to".into());
-    // No subtitle, no title.
-    a.custom_args_template = Some("--ref={referer} --title={title} --sub={sub} {url}".into());
+    a.referer = Some("https://cdn.example".into());
+    // No title.
+    a.custom_args_template = Some("--ref={referer} --title={title} {url}".into());
     let v = build_argv(&a);
-    // --title= and --sub= tokens are dropped because their
-    // placeholders are missing.
     assert_eq!(
         v,
         vec![
-            "--ref=https://allmanga.to".to_string(),
+            "--ref=https://cdn.example".to_string(),
             "https://example.com/v.mp4".to_string(),
         ]
     );
@@ -163,7 +148,6 @@ fn launch_args_decode_without_player_kind_field_for_back_compat() {
     let json = r#"{
             "stream_url": "https://example.com/v.mp4",
             "referer": null,
-            "subtitle_url": null,
             "title": null,
             "player_command": "mpv"
         }"#;

@@ -421,7 +421,6 @@ where
     let cached_resolution = CachedResolution {
         upstream_url: native.master_url.clone(),
         referer: referer.clone(),
-        subtitle_url: None,
         media_kind: kind,
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
@@ -431,7 +430,6 @@ where
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
         referer,
-        subtitle_url: None,
     };
     create_session_with_kind(state, &session_args, kind)
 }
@@ -449,7 +447,6 @@ use crate::commands::play_cache::try_serve_cached;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anicli::parser::DebugOutput;
 
     proptest::proptest! {
         // The gate's lane assignment is exactly the prefetch bit:
@@ -487,57 +484,6 @@ mod tests {
             };
             proptest::prop_assert_eq!(got, want);
         }
-    }
-
-    // `play()` and `play_external()` are thin wrappers around
-    // `run_debug` + the relevant terminal action; the integration
-    // test in `tests/api_play.rs` exercises the full flow against a
-    // real ani-cli with a curl shim. These unit tests pin the
-    // mapping from `DebugOutput` → `CreateSessionArgs` /
-    // `LaunchArgs` so a future refactor of the field names is loud.
-
-    #[test]
-    fn debug_output_with_referer_and_subtitle_maps_to_session_args() {
-        let debug = DebugOutput {
-            selected_url: "https://wixmp.example/video.mp4".into(),
-            all_links: vec![],
-            referer: Some("https://allmanga.to".into()),
-            subtitle_url: Some("https://wixmp.example/subs.vtt".into()),
-        };
-        // Mirrors the conversion inside `play()`. Kept in sync via
-        // the integration test; this asserts the field-by-field
-        // mapping is intact.
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url.clone(),
-            referer: debug.referer.clone().unwrap_or_default(),
-            subtitle_url: debug.subtitle_url.clone(),
-        };
-        assert_eq!(session_args.upstream_url, "https://wixmp.example/video.mp4");
-        assert_eq!(session_args.referer, "https://allmanga.to");
-        assert_eq!(
-            session_args.subtitle_url.as_deref(),
-            Some("https://wixmp.example/subs.vtt")
-        );
-    }
-
-    #[test]
-    fn debug_output_without_referer_maps_to_empty_referer_string() {
-        // CreateSessionArgs.referer is a required `String` (not
-        // Option). We map None → empty string; the proxy treats that
-        // as "send no Referer header." This test pins that contract.
-        let debug = DebugOutput {
-            selected_url: "https://x/y.mp4".into(),
-            all_links: vec![],
-            referer: None,
-            subtitle_url: None,
-        };
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url,
-            referer: debug.referer.unwrap_or_default(),
-            subtitle_url: debug.subtitle_url,
-        };
-        assert_eq!(session_args.referer, "");
-        assert!(session_args.subtitle_url.is_none());
     }
 
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
@@ -628,7 +574,6 @@ mod tests {
         CachedResolution {
             upstream_url,
             referer,
-            subtitle_url: None,
             media_kind: kind,
             show_id: String::new(),
             show_title: String::new(),
@@ -755,7 +700,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
@@ -934,9 +878,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn try_launch_args_from_cache_round_trips_referer_and_subtitle() {
-        // fast4speed.rsvp + signed-URL upstreams need the cached
-        // Referer header forwarded; subtitle URL too (mpv consumes it).
+    async fn try_launch_args_from_cache_round_trips_the_referer() {
+        // Signed-URL upstreams need the cached Referer header
+        // forwarded to the external player.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .and(wiremock::matchers::header("referer", "https://allmanga.to"))
@@ -957,9 +901,8 @@ mod tests {
             &state.cache_pool,
             &key,
             &CachedResolution {
-                upstream_url: format!("{}/sub/3", server.uri()),
+                upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: Some("https://example/cap.vtt".into()),
                 media_kind: MediaKind::Mp4,
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
@@ -971,10 +914,6 @@ mod tests {
             .await
             .expect("hit");
         assert_eq!(launch.referer.as_deref(), Some("https://allmanga.to"));
-        assert_eq!(
-            launch.subtitle_url.as_deref(),
-            Some("https://example/cap.vtt")
-        );
     }
 
     #[tokio::test]

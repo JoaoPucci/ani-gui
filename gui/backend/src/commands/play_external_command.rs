@@ -44,7 +44,6 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         // anidb's streams carry no referer requirement — 5.0's own
         // player invocation dropped the flag with the provider change.
         referer: None,
-        subtitle_url: None,
         title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player,
         player_kind: cfg.external_player_kind,
