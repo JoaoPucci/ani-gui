@@ -22,6 +22,7 @@ pub mod kitsu_warm;
 pub mod play;
 pub mod play_cache;
 pub mod play_external_command;
+pub mod play_native;
 pub mod play_referer;
 pub mod play_resolution_cache;
 pub mod play_select;
