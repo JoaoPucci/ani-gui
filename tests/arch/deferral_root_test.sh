@@ -572,6 +572,27 @@ else
 fi
 rm -f "$quoted_on_gate"
 
+# The filter key inside the block has spellings too: a double-quoted
+# key carrying an escape resolves to `paths` while spelling none of
+# its letters where a literal search looks. The block is small and
+# owned by this repository, so any key spelling the reading cannot
+# resolve — an escape-bearing quoted key, an alias or anchor, the
+# explicit form — reads as a filter being hidden, not as its absence.
+escaped_gate="$scratch_dir/escaped-paths-gate.yml"
+printf '%s\n' 'on:' '  pull_request:' '    "pa\x74hs":' \
+    '      - "src/**"' 'permissions:' '  contents: read' >"$escaped_gate"
+escaped_gate_hidden=0
+if unconditional "$escaped_gate"; then
+    escaped_gate_hidden=1
+fi
+if [ "$escaped_gate_hidden" -eq 0 ]; then
+    printf '  ok       an escaped filter key cannot hide a path filter\n'
+else
+    printf '  FAIL     a path filter behind an escaped key reads as unconditional\n'
+    failed=1
+fi
+rm -f "$escaped_gate"
+
 # Starting the job is not the same as checking anything. The action
 # takes its own exclude list, and a bare `tests` there skips these
 # scripts after the workflow has started for them — a job that runs
@@ -955,6 +976,31 @@ else
     failed=1
 fi
 rm -f "$split_workflow"
+
+# A mention is not a step. A comment spelling the action satisfies an
+# unanchored match, and an env key can spell the input name without
+# the action ever reading it: together they dress an echo-only job as
+# the lint. The invocation has to be a step-shaped line — `uses:` at
+# the start of its line, optionally behind a list dash — and a
+# comment is then just a comment.
+commented_workflow="$scratch_dir/commented-lint.yml"
+printf '%s\n' 'on: push' 'jobs:' '  arch-sh-checker:' \
+    "    name: $arch_lint_name" '    runs-on: ubuntu-latest' \
+    '    env:' '      sh_checker_exclude: "ani-cli"' \
+    '    steps:' \
+    '      # uses: luizm/action-sh-checker@master' \
+    '      - run: echo done' >"$commented_workflow"
+commented_refused=1
+if lint_step_present "$commented_workflow" 2>/dev/null; then
+    commented_refused=0
+fi
+if [ "$commented_refused" -eq 1 ]; then
+    printf '  ok       a commented action mention does not count as the lint step\n'
+else
+    printf '  FAIL     an echo job certifies on a commented uses line and an env key\n'
+    failed=1
+fi
+rm -f "$commented_workflow"
 
 if [ -f "$arch_lint_workflow" ]; then
     # A workflow that never reaches the action lints nothing, however
