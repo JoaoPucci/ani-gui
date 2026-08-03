@@ -1138,6 +1138,33 @@ else
 fi
 rm -rf "$merge_dir"
 
+# The interpreter on PATH is not always the one the package manager
+# provisioned: a pyenv shim or virtualenv python3 without PyYAML
+# shadows /usr/bin/python3, and a certification that trusts the shim
+# refuses on every such machine for want of a module that is
+# installed. The certification has to find an interpreter that can
+# import yaml before giving up.
+shim_dir="$scratch_dir/python-shim"
+mkdir "$shim_dir"
+cat >"$shim_dir/python3" <<'SHIM'
+#!/bin/sh
+exec /usr/bin/python3 -S -E "$@"
+SHIM
+chmod +x "$shim_dir/python3"
+shim_certified=0
+if PATH="$shim_dir:$PATH" certified_by_resolution "$REPO_ROOT/.github/workflows" 2>/dev/null; then
+    shim_certified=1
+fi
+if [ "$shim_certified" -eq 1 ]; then
+    printf '  ok       a yaml-less python3 shim on PATH does not defeat the certification
+'
+else
+    printf '  FAIL     a PATH shim without PyYAML fails the certification despite the provisioned interpreter
+'
+    failed=1
+fi
+rm -rf "$shim_dir"
+
 # Counting the step is not enough: a step carrying `if: false` never
 # runs, one carrying `continue-on-error: true` cannot fail the job,
 # and a trigger without a bare `pull_request` event never reports on
