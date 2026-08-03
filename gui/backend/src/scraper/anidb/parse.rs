@@ -11,9 +11,11 @@ pub fn is_cloudflare_interstitial(body: &str) -> bool {
     body.contains("Just a moment")
 }
 
-/// Space→`+` and nothing else, mirroring the script's `sed 's| |+|g'`.
+/// Form-urlencode a search query: space→`+`, reserved and non-ASCII
+/// bytes percent-encoded. The script's naive space swap sent `;` and
+/// friends raw and the provider answers those with a 400.
 pub fn encode_query(query: &str) -> String {
-    query.replace(' ', "+")
+    url::form_urlencoded::byte_serialize(query.as_bytes()).collect()
 }
 
 /// The digits after a slug's last hyphen, when there are any.

@@ -82,7 +82,10 @@ fn encode_query_form_urlencodes_the_title() {
     // space→+ shape for plain titles and makes every title sendable.
     assert_eq!(encode_query("one piece"), "one+piece");
     assert_eq!(encode_query("Ch\u{e4}oS;HEAd"), "Ch%C3%A4oS%3BHEAd");
-    assert_eq!(encode_query("D.Gray-man + \u{2606}"), "D.Gray-man+%2B+%E2%98%86");
+    assert_eq!(
+        encode_query("D.Gray-man + \u{2606}"),
+        "D.Gray-man+%2B+%E2%98%86"
+    );
 }
 
 // ── episodes + languages + embed parsing ────────────────────────────
