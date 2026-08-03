@@ -60,14 +60,15 @@ impl AnidbFetch for Provider {
         if url.contains("/api/frontend/anime/77/episodes") {
             return Ok(FetchResponse {
                 status: 200,
-                body: r#"[{"id":701,"number":1},{"id":702,"number":2},{"id":703,"number":3}]"#
+                body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":703,"number":3}]}"#
                     .into(),
             });
         }
         if url.contains("/api/frontend/episode/702/languages") {
             return Ok(FetchResponse {
                 status: 200,
-                body: r#"[{"language":"jpn","embed_url":"https://embed.example/e/x"}]"#.into(),
+                body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
+                    .into(),
             });
         }
         if url.contains("embed.example") {

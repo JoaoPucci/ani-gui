@@ -16,7 +16,7 @@ impl AnidbFetch for EpisodesTable {
                     .collect();
                 return Ok(FetchResponse {
                     status: 200,
-                    body: format!("[{}]", rows.join(",")),
+                    body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
                 });
             }
         }
