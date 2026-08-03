@@ -138,6 +138,20 @@ async fn probing_stops_at_the_bound() {
 }
 
 #[tokio::test]
+async fn all_probes_failing_is_transient_not_absence() {
+    // Every considered candidate's episodes fetch failed: nothing was
+    // learned about the show, so the verdict must be the transient
+    // Network — a NoResults here would flow into the persistable
+    // clean-miss path and hide a real show behind the negative TTL.
+    let client = AnidbClient::new(EpisodesTable(&[]));
+    let hits = [hit("a-1", "A"), hit("b-2", "B")];
+    let err = pick_candidate(&client, &hits, Some(12), "A")
+        .await
+        .expect_err("transient");
+    assert!(matches!(err, AniError::Network));
+}
+
+#[tokio::test]
 async fn empty_hits_are_no_results() {
     let client = AnidbClient::new(EpisodesTable(&[]));
     let err = pick_candidate(&client, &[], Some(12), "x")
