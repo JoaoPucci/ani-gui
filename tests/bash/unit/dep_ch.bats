@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Unit tests for ani-cli's `dep_ch` and `dep_ch_failover` (lines 124-136).
+# Unit tests for ani-cli's `dep_ch` and `dep_ch_failover`.
 #
 # Contract — dep_ch (since 4.15 a single-dependency check):
 #   - Takes ONE dependency name; runs `command -v` on it verbatim.
@@ -13,8 +13,8 @@
 #   - Prints the first candidate that resolves via `command -v` OR exists
 #     as a filesystem path (`-e`), returns 0.
 #   - Returns 1 (no output) when no candidate resolves or the list is
-#     empty. ani-cli uses this for the player fallback chain, the menu
-#     helper (fzf/rofi/dmenu), and the hard botan requirement.
+#     empty. ani-cli uses this for the player fallback chain and the
+#     curl-impersonate preference (curl_firefox135 … curl).
 
 load '../helpers/loader'
 

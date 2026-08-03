@@ -1,18 +1,19 @@
 //! Drift detector for `ani-cli`'s progress lines.
 //!
-//! The SSE loading overlay (M2g) parses ani-cli's stderr line-by-line
-//! and forwards `<provider> Links Fetched` to the renderer so the user
-//! sees what step we're on. The format comes from a single
-//! `printf "\033[1;32m%s\033[0m Links Fetched\n"` inside ani-cli's
-//! `provider_init` (line ~168 of the script). We don't own that
-//! script — `pystardust/ani-cli` does — and they patch its scrape
-//! every few weeks.
+//! The SSE loading overlay (M2g) forwards classified progress lines
+//! to the renderer so the user sees what step we're on. 5.0 emits one
+//! `anidb.app links fetched` info line — and routes it to STDOUT,
+//! where 4.15 sent its per-provider lines to stderr with an explicit
+//! 1>&2. We don't own that script — `pystardust/ani-cli` does — and
+//! they patch its scrape every few weeks.
 //!
 //! This test runs the **real** vendored ani-cli through the curl shim
-//! and asserts the stderr still contains the expected format. If
-//! upstream renames a provider, drops the message, or changes the
-//! suffix, this test fails loudly — long before users see "Loading…"
-//! with no progress text.
+//! and asserts the stdout still carries a line parse_progress_line
+//! classifies as LinksFetched. If upstream rewords the message or
+//! drops it, this fails loudly — long before users see "Loading…"
+//! with no progress text. (The overlay's own switch to reading stdout
+//! is tracked with the rest of the GUI's 5.0 adaptation in
+//! docs/deferred-work.md.)
 //!
 //! Linux-only for the same reason as `anicli_run_debug.rs`.
 
@@ -32,77 +33,36 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn build_fixtures(dir: &std::path::Path) {
-    let root = repo_root();
-    let src = root.join("tests/fixtures/allanime");
-    for f in [
-        "search_one_piece.json",
-        "episodes_short.json",
-        "embed_simple.json",
-        // fetch_keys' key-derivation fixtures (page epoch/partB, CDN app
-        // bundle, key-mask chunk) — required since ani-cli 4.15's
-        // encrypted transport.
-        "keys_page.html",
-        "keys_app.js",
-        "keys_chunk.js",
-    ] {
-        std::fs::copy(src.join(f), dir.join(f)).expect("copy fixture");
-    }
-    let status = Command::new("bash")
-        .arg(root.join("tests/bash/helpers/blob_builder.sh"))
-        .arg(dir.join("episode_blob.json"))
-        .status()
-        .expect("blob_builder.sh runs");
-    assert!(status.success(), "blob_builder.sh exited 0");
-}
-
-fn stage_curl_shim_wrapper(tmp: &std::path::Path, fixtures_dir: &std::path::Path) -> PathBuf {
+/// Stage the curl shim under both names 5.0's failover probes, with
+/// CURL_FIXTURE_DIR pinned to the repo's anidb fixtures.
+fn stage_anidb_shim(tmp: &std::path::Path) -> PathBuf {
     let bin = tmp.join("bin");
     std::fs::create_dir_all(&bin).expect("mkdir bin");
-    let wrapped = bin.join("curl");
+    let repo = repo_root();
     let body = format!(
         "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = fixtures_dir.display(),
-        repo = repo_root().display(),
+        fixtures = repo.join("tests/fixtures/anidb").display(),
+        repo = repo.display(),
     );
-    std::fs::write(&wrapped, body).expect("write wrapper shim");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&wrapped).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
+    for name in ["curl", "curl_firefox135"] {
+        let dst = bin.join(name);
+        std::fs::write(&dst, &body).expect("write wrapper shim");
+        #[allow(unused_mut)]
+        let mut perms = std::fs::metadata(&dst).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+        }
+        std::fs::set_permissions(&dst, perms).expect("chmod +x");
     }
-    std::fs::set_permissions(&wrapped, perms).expect("chmod +x");
-    stage_fake_botan(&bin);
     bin
-}
-
-/// Stage the harness's botan stand-in as `botan` next to the curl shim.
-/// ani-cli 4.15 hard-requires one at startup and drives the encrypted
-/// allanime transport through it; the stand-in does real AES-256-GCM via
-/// python3-cryptography (see tests/bash/helpers/fake_botan.sh).
-fn stage_fake_botan(bin: &std::path::Path) {
-    let dst = bin.join("botan");
-    std::fs::copy(repo_root().join("tests/bash/helpers/fake_botan.sh"), &dst)
-        .expect("copy fake botan");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&dst).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
 }
 
 #[test]
 fn ani_cli_emits_links_fetched_progress_lines() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let fixtures = tmp.path().join("fixtures");
-    std::fs::create_dir_all(&fixtures).expect("mkdir fixtures");
-    build_fixtures(&fixtures);
-    let bin = stage_curl_shim_wrapper(tmp.path(), &fixtures);
+    let bin = stage_anidb_shim(tmp.path());
     let hist = tmp.path().join("hist");
     std::fs::create_dir_all(&hist).expect("mkdir hist");
 
@@ -113,9 +73,7 @@ fn ani_cli_emits_links_fetched_progress_lines() {
     let path = format!("{}:{system_path}", bin.display());
 
     // Use the real script via std::process::Command so we can capture
-    // stderr verbatim. The Rust driver intentionally splits stdout /
-    // stderr, but here we want to assert on stderr directly because
-    // that's where progress messages flow.
+    // its streams verbatim. 5.0 routes progress to stdout.
     let output = Command::new(&ani_cli_path)
         .args(["-S", "1", "-e", "1", "-q", "best", "--", "test"])
         .env_clear()
@@ -135,22 +93,20 @@ fn ani_cli_emits_links_fetched_progress_lines() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = strip_ansi(&output.stderr);
-    let parsed: Vec<ProgressLine> = stderr.lines().filter_map(parse_progress_line).collect();
+    let stdout = strip_ansi(&output.stdout);
+    let parsed: Vec<ProgressLine> = stdout.lines().filter_map(parse_progress_line).collect();
 
-    // Drift contract: at least one `<provider> Links Fetched` line
-    // must show up. Which providers fire depends on the fixture, but
-    // the format itself is the load-bearing assertion. If upstream
-    // renames the suffix or drops it, this fails — and someone needs
-    // to update parse_progress_line() before the SSE overlay regresses
-    // to no-text.
+    // Drift contract: at least one links-fetched line must classify.
+    // The wording is the load-bearing assertion — if upstream renames
+    // it, this fails, and someone updates parse_progress_line()
+    // before the SSE overlay regresses to no-text.
     let has_links_fetched = parsed
         .iter()
         .any(|p| matches!(p, ProgressLine::LinksFetched { .. }));
     assert!(
         has_links_fetched,
-        "ani-cli stderr no longer contains a `<provider> Links Fetched` line. \
-         Either upstream changed the format (update parse_progress_line) or our \
-         fixture stopped triggering provider_init. Captured lines:\n{parsed:#?}"
+        "ani-cli stdout no longer carries a classifiable links-fetched line. \
+         Either upstream changed the wording (update parse_progress_line) or \
+         the fixtures stopped resolving a stream. Captured lines:\n{parsed:#?}"
     );
 }

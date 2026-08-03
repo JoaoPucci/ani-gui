@@ -89,12 +89,16 @@ pub fn parse_progress_line(line: &str) -> Option<ProgressLine> {
             text: trimmed.to_string(),
         });
     }
-    if let Some(provider) = trimmed.strip_suffix(" Links Fetched") {
-        let provider = provider.trim();
-        if !provider.is_empty() {
-            return Some(ProgressLine::LinksFetched {
-                provider: provider.to_string(),
-            });
+    // 4.15 emitted "<provider> Links Fetched" per provider; 5.0 emits
+    // one lowercase "anidb.app links fetched". Both classify.
+    for suffix in [" Links Fetched", " links fetched"] {
+        if let Some(provider) = trimmed.strip_suffix(suffix) {
+            let provider = provider.trim();
+            if !provider.is_empty() {
+                return Some(ProgressLine::LinksFetched {
+                    provider: provider.to_string(),
+                });
+            }
         }
     }
     Some(ProgressLine::Other {
@@ -279,6 +283,19 @@ pub fn parse_debug_output(stdout: &str) -> Result<DebugOutput> {
 #[allow(missing_docs)]
 mod progress_tests {
     use super::*;
+
+    #[test]
+    fn parse_progress_line_classifies_v5_links_fetched() {
+        // ani-cli 5.0 spells the progress line "anidb.app links
+        // fetched" (lowercase); the SSE overlay must classify it or
+        // the loading text regresses to a generic banner.
+        assert_eq!(
+            parse_progress_line("anidb.app links fetched"),
+            Some(ProgressLine::LinksFetched {
+                provider: "anidb.app".into()
+            })
+        );
+    }
 
     #[test]
     fn parse_progress_line_classifies_links_fetched_with_provider_name() {

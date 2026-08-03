@@ -17,6 +17,46 @@ fn script_at(version: &str) -> String {
     format!("#!/bin/sh\nversion_number=\"{version}\"\ncase \"$player_function\" in\n{BLESSED_ARM}esac\n")
 }
 
+/// The download arm as the 5.0 release spells it: one line, no
+/// aria2c. Same discipline as [`BLESSED_ARM`] — fixtures build from
+/// this constant so the recognizer and the fixtures cannot drift
+/// apart.
+const BLESSED_ARM_V5: &str =
+    "    download) dep_ch_failover \"yt-dlp,ffmpeg\" >/dev/null || die 'Neither yt-dlp nor ffmpeg found' ;;\n";
+
+/// A minimal 5.0-shaped script carrying the release's one-line arm.
+fn script_v5_at(version: &str) -> String {
+    format!("#!/bin/sh\nversion_number=\"{version}\"\ncase \"$player_function\" in\n{BLESSED_ARM_V5}esac\n")
+}
+
+/// 5.0 collapsed the download arm to a single line and dropped the
+/// aria2c requirement. The recognizer must accept that spelling —
+/// the bundled script now carries it — while an edited or reworded
+/// variant of it still refuses.
+#[test]
+fn the_v5_one_line_arm_is_recognized() {
+    assert!(supports_ytdlp_download(&script_v5_at("5.0.0")));
+
+    let reworded = BLESSED_ARM_V5.replace("Neither yt-dlp nor ffmpeg found", "no downloader");
+    assert!(
+        !supports_ytdlp_download(&format!(
+            "#!/bin/sh\nversion_number=\"5.0.0\"\ncase \"$player_function\" in\n{reworded}esac\n"
+        )),
+        "a reworded arm is a customization we cannot vouch for"
+    );
+
+    let ffmpeg_only = "#!/bin/sh\nversion_number=\"5.0.0\"\ncase \"$player_function\" in\n    download) dep_ch \"ffmpeg\" ;;\nesac\n";
+    assert!(!supports_ytdlp_download(ffmpeg_only));
+}
+
+/// Both blessed spellings stay recognized: a user's cache can hold a
+/// 4.15 script long after the bundle moves to 5.0.
+#[test]
+fn the_415_arm_stays_recognized_alongside_v5() {
+    assert!(supports_ytdlp_download(&script_at("4.15.0")));
+    assert!(supports_ytdlp_download(&script_v5_at("5.0.0")));
+}
+
 /// The bundled script must be recognized, or the relaxed preflight
 /// silently degrades to ffmpeg-only for every fresh install. This is
 /// the reality pin: it reads the actual file rather than a fixture.
