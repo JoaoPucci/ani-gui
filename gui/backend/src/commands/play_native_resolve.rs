@@ -99,9 +99,55 @@ where
     on_progress(ProgressLine::Banner {
         text: "Searching anidb.app...".into(),
     });
+    let picked = pick_native_walk(
+        client,
+        gate,
+        priority,
+        req.title,
+        req.alt_titles,
+        req.expected_count,
+        req.year,
+        req.subtype,
+    )
+    .await?;
+    on_progress(ProgressLine::Other {
+        text: format!("Matched {}", picked.hit.title),
+    });
+    let master_url = resolve_episode(client, &picked, req.episode, req.mode).await?;
+    on_progress(ProgressLine::LinksFetched {
+        provider: "anidb.app".into(),
+    });
+    let episode_cap = kitsu_episode_cap(&picked.episodes);
+    Ok(NativeResolved {
+        slug: picked.hit.slug,
+        title: picked.hit.title,
+        master_url,
+        episode_cap,
+    })
+}
+
+/// The walk's pick half, shared with the availability probes: search
+/// canonical then fallbacks, pick per pool, and classify the miss.
+/// Same alias-recovery, walk-stopping and clean-miss semantics as
+/// [`resolve_native`], which is a thin composition over this.
+///
+/// # Errors
+/// [`NativeError`] with `clean_miss` set only for the
+/// all-clean-no-match verdict.
+#[allow(clippy::too_many_arguments)]
+pub async fn pick_native_walk<F: AnidbFetch>(
+    client: &AnidbClient<F>,
+    gate: Option<&ScraperGate>,
+    priority: ScrapePriority,
+    title: &str,
+    alt_titles: &[String],
+    expected_count: Option<u32>,
+    year: Option<u32>,
+    subtype: Option<&str>,
+) -> std::result::Result<PickedShow, NativeError> {
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
-    for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
+    for t in std::iter::once(title).chain(alt_titles.iter().map(String::as_str)) {
         if let Some(g) = gate {
             if g.admit(priority).await.is_err() {
                 return Err(NativeError {
@@ -116,26 +162,8 @@ where
                 if hits.is_empty() {
                     continue;
                 }
-                match pick_candidate(client, &hits, req.expected_count, t, req.year, req.subtype)
-                    .await
-                {
-                    Ok(picked) => {
-                        on_progress(ProgressLine::Other {
-                            text: format!("Matched {}", picked.hit.title),
-                        });
-                        let master_url =
-                            resolve_episode(client, &picked, req.episode, req.mode).await?;
-                        on_progress(ProgressLine::LinksFetched {
-                            provider: "anidb.app".into(),
-                        });
-                        let episode_cap = kitsu_episode_cap(&picked.episodes);
-                        return Ok(NativeResolved {
-                            slug: picked.hit.slug,
-                            title: picked.hit.title,
-                            master_url,
-                            episode_cap,
-                        });
-                    }
+                match pick_candidate(client, &hits, expected_count, t, year, subtype).await {
+                    Ok(picked) => return Ok(picked),
                     // A rejected pool is a clean verdict about THIS
                     // pool; the next alias may carry the real show.
                     Err(AniError::NoResults) => {}
