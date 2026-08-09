@@ -26,7 +26,6 @@ Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-
 ## Open findings on the deferral checks
 
 Raised in review and not yet fixed. Recorded here so they survive the
