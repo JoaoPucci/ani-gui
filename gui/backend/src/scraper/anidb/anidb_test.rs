@@ -49,6 +49,23 @@ fn parse_browse_yields_empty_on_a_result_less_page() {
 }
 
 #[test]
+fn parse_browse_skips_anchors_that_are_not_result_cards() {
+    // Real pages carry nav/footer anchors between the cards; each
+    // rejection arm must drop its anchor without derailing the scan.
+    let html = concat!(
+        r##"<a href="/about">About</a>"##, // no anime/ href
+        r#"<a href="https://anidb.app/anime/One-Piece-69">bad</a>"#, // uppercase slug
+        r#"<a href="https://anidb.app/anime/one-piece">no id</a>"#, // no numeric tail
+        r#"<a href="https://anidb.app/anime/one-piece-69">no alt image</a>"#,
+        r#"<a href="https://anidb.app/anime/one-piece-69"><img alt="One Piece"></a>"#,
+    );
+    let hits = parse_browse(html);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].slug, "one-piece-69");
+    assert_eq!(hits[0].title, "One Piece");
+}
+
+#[test]
 fn cloudflare_interstitial_is_recognized_and_content_is_not() {
     assert!(is_cloudflare_interstitial(&fixture(
         "browse_cloudflare.html"
@@ -134,6 +151,11 @@ fn parse_episodes_rejects_non_array_bodies() {
 }
 
 #[test]
+fn parse_languages_rejects_non_array_bodies() {
+    assert!(parse_languages("<html>rate limited</html>").is_err());
+}
+
+#[test]
 fn parse_languages_yields_embeds_and_unescapes_urls() {
     let embeds = parse_languages(&fixture("languages_op.json")).expect("parses");
     assert_eq!(embeds.len(), 2);
@@ -162,6 +184,8 @@ fn extract_master_url_reads_the_jwplayer_file_assignment() {
         Some("https://cdn.example/op/master.m3u8")
     );
     assert!(extract_master_url("<html>no player here</html>").is_none());
+    // A player stanza with an empty source is a miss, not Some("").
+    assert!(extract_master_url("file: ''").is_none());
 }
 
 // ── transport resolution ────────────────────────────────────────────
