@@ -676,6 +676,18 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when the snapshot generator changes" {
+    # workflows_match_snapshot executes tests/tools/workflow-snapshot.py,
+    # which makes the generator a subject under test: a change touching
+    # only it must select the bats job, or a broken projection lands
+    # with the case that runs it skipped as irrelevant — and the
+    # snapshot gate certifies workflows against a generator nobody ran.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tests/tools/workflow-snapshot.py'
+    [ "$status" -eq 0 ]
+}
+
 @test "the bats job runs when any workflow changes" {
     # The producer-uniqueness case scans every file under
     # .github/workflows/, which makes the whole directory a subject: a
