@@ -202,6 +202,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v12: the picker gained the subtype disproof — Kitsu's subtype
+    //      rejects format-mismatched candidates. A v11 verdict reached
+    //      without it can be available:true on a pool whose only
+    //      matches the new picker refuses (movie badges against a
+    //      non-movie subtype), and the cached row short-circuits the
+    //      probe for the whole positive TTL; re-keying re-probes.
     // v11: the cap moved to per-entry (Kitsu) numbering. A v10 row
     //      probed against a continuation cour carries the provider's
     //      cumulative number as its count (TYBW part four: 42 for a
@@ -264,7 +270,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v11:{kitsu_id}:{m}")
+    format!("availability:v12:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
