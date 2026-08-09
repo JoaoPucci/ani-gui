@@ -889,13 +889,16 @@ elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; the
         "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
         "$REPO_ROOT/tests/arch/agents_contract.sh" \
         "$apostrophe_dir/repo/tests/arch/"
-    # The workflow is a subject too, now that cases read its trigger
-    # and exclude list. Without this the nested run judges the
-    # committed copy while the parent judges the tree, and they
-    # disagree exactly when the tree is what changed.
-    mkdir -p "$apostrophe_dir/repo/.github/workflows"
-    cp "$REPO_ROOT/.github/workflows/arch-lint.yml" \
-        "$apostrophe_dir/repo/.github/workflows/"
+    # Every snapshotted workflow is a subject, not just the one the
+    # cases read directly: the snapshot gate walks the whole
+    # directory, so any workflow the tree changed and the clone still
+    # holds committed makes the two runs disagree exactly when the
+    # tree is what changed. Mirror the directory wholesale — removing
+    # the committed copy first so deletions mirror too.
+    rm -rf "$apostrophe_dir/repo/.github/workflows"
+    mkdir -p "$apostrophe_dir/repo/.github"
+    cp -R "$REPO_ROOT/.github/workflows" \
+        "$apostrophe_dir/repo/.github/workflows"
     # The snapshot and the script that projects it are subjects for
     # the same reason: the nested run must judge the tree's pin, not
     # the committed one, or the two disagree exactly when the pin is
