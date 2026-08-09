@@ -353,6 +353,44 @@ swap_scenario() {
     [ -f "$target/keep-me" ] || [ -f "$target.reclaimed.$_pid/keep-me" ]
 }
 
+@test "sandbox writes stay in the bound directory when the symlink is swapped" {
+    # The predictable path is only the visible marker; the sandbox
+    # itself is the directory bound on the descriptor. A same-user
+    # process that replaces the exposed symlink mid-run must not
+    # receive the run's writes: every helper, mirror and record lands
+    # in the bound directory, and the decoy the replacement points at
+    # stays exactly as its owner left it. Cleanup already refuses to
+    # act through the swapped link — this case holds the writes to the
+    # same standard.
+    target="$BATS_TEST_TMPDIR/swap-writes"
+    decoy="$BATS_TEST_TMPDIR/decoy"
+    mkdir -p "$decoy"
+    env ARCH_WIRING_SCRATCH="$target" ARCH_WIRING_PAUSE_AFTER_MKDIR=3 \
+        sh "$CHECK" "$RUNNER" "$SUITES" >/dev/null 2>&1 &
+    _pid=$!
+    _seen=0
+    for _ in $(seq 1 50); do
+        [ -L "$target" ] && {
+            _seen=1
+            break
+        }
+        kill -0 "$_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    [ "$_seen" -eq 1 ]
+    kill -0 "$_pid" 2>/dev/null
+    rm "$target"
+    ln -s "$decoy" "$target"
+    # No signal: the run continues into its real work and must neither
+    # notice nor need the marker it lost.
+    _status=0
+    wait "$_pid" 2>/dev/null || _status=$?
+    [ "$_status" -eq 0 ]
+    [ -z "$(ls -A "$decoy")" ]
+    # The foreign link is not this run's to remove.
+    [ -L "$target" ]
+}
+
 @test "foreign occupants pass cleanup's decision window untouched" {
     # Cleanup holds nothing aside any more: it removes only what the
     # bound descriptor vouches for, so a foreign occupant at the
