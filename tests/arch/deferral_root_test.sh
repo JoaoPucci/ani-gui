@@ -938,6 +938,60 @@ else
     failed=1
 fi
 
+# A working-tree change to any snapshotted workflow must survive the
+# nested run. The snapshot gate walks the whole workflow directory,
+# so a clone that mirrors only some of it judges the tree's snapshot
+# against committed copies of files the tree has moved on from — a
+# legitimate change to any other workflow then passes at the parent
+# level and fails in the clone. Proved with a mutant: a clone whose
+# tree gains a workflow its committed state lacks, plus a snapshot
+# regenerated to match, must still pass its own nested run. The
+# mutant skips this case in turn, or each level would breed the next.
+if [ -n "${ARCH_DEFERRAL_NESTED:-}" ] || [ -n "${ARCH_DEFERRAL_NO_MUTANT:-}" ]; then
+    :
+elif mutant_dir=$(mktemp -d "$scratch_dir/mutant.XXXXXX") &&
+    git clone -q --depth=1 "$REPO_ROOT" "$mutant_dir/repo" 2>/dev/null; then
+    # Same overlay as the apostrophe clone: the mutant must run the
+    # tree's suite, not whatever the committed copy still says.
+    cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
+        "$REPO_ROOT/tests/arch/deferral_record.sh" \
+        "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
+        "$REPO_ROOT/tests/arch/agents_contract.sh" \
+        "$mutant_dir/repo/tests/arch/"
+    mkdir -p "$mutant_dir/repo/tests/tools"
+    cp "$REPO_ROOT/tests/tools/workflow-snapshot.py" \
+        "$mutant_dir/repo/tests/tools/"
+    printf '%s\n' \
+        'name: mutation probe' \
+        'on: workflow_dispatch' \
+        'jobs:' \
+        '  probe:' \
+        '    runs-on: ubuntu-latest' \
+        '    steps:' \
+        '      - run: "true"' \
+        >"$mutant_dir/repo/.github/workflows/mutation-probe.yml"
+    mutant_status=0
+    mutant_out=$(cd "$mutant_dir/repo" &&
+        { _mut_py=$(resolution_python) &&
+            "$_mut_py" tests/tools/workflow-snapshot.py .github/workflows \
+                >tests/arch/workflows.snapshot.json &&
+            ARCH_DEFERRAL_NO_MUTANT=1 ARCH_DEFERRAL_NO_SABOTAGE=1 \
+                sh tests/arch/deferral_root_test.sh; } 2>&1) || mutant_status=$?
+    mutant_ok=$(printf '%s\n' "$mutant_out" | grep -c '^  ok' || true)
+    if [ "$mutant_status" -eq 0 ] && [ "${mutant_ok:-0}" -ge 5 ]; then
+        printf '  ok       a tree-only workflow change survives the nested run (%s cases)\n' "$mutant_ok"
+    else
+        printf '  FAIL     mutant run: status %s, %s assertions (want 0 and >=5)\n' \
+            "$mutant_status" "${mutant_ok:-0}"
+        failed=1
+    fi
+else
+    # Same rule as the apostrophe clone: local path to local path,
+    # nothing benign can fail it.
+    printf '  FAIL     could not clone for the mutant case\n'
+    failed=1
+fi
+
 # A stray REPO_ROOT must not redirect anything. It used to, and the
 # script exited 0 against the wrong tree rather than failing.
 expect_ok "a stray REPO_ROOT does not redirect the record check" \
