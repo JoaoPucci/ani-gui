@@ -55,9 +55,6 @@
       "filter": "filter",
       "lint": "Shellcheck + Shfmt (per-file dialect)"
     },
-    "botan.yml": {
-      "build": "Windows x64 static build"
-    },
     "crap.yml": {
       "crap": "lizard + ratchet",
       "filter": "filter"
