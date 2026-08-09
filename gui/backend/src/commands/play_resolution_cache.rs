@@ -81,6 +81,11 @@ use crate::proxy::MediaKind;
 // v7: the provider moved to anidb — upstream URLs, show ids (now
 // slugs) and titles from the allanime era are all unreplayable, so
 // every v6 row becomes an unreachable miss.
+// v11: the picker gained the subtype disproof — Kitsu's subtype now
+// rejects format-mismatched candidates (a movie badge against a
+// non-movie subtype). A v10 row resolved by the subtype-blind picker
+// can hold such a candidate's stream (the Konoha Gakuen
+// movie-for-special row) and a HEAD-passing hit keeps serving it.
 // v10: the countless pick gained the year-evidence gate. A v9 row
 // resolved with a null Kitsu count in a token-garbage pool holds
 // the wrong show's stream (the frontend's Tai-Ari key cached the
@@ -92,7 +97,7 @@ use crate::proxy::MediaKind;
 // resolved by the old picker can hold a different show's stream
 // (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
 // keep serving it instantly; bumping re-resolves.
-const SCHEMA: &str = "v10";
+const SCHEMA: &str = "v11";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
