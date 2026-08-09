@@ -19,7 +19,7 @@ fi
 # non-zero on the first failing suite; we keep going so the developer sees
 # every failure at once, then exit non-zero at the end if any suite failed.
 overall=0
-for suite in unit network subprocess acceptance property; do
+for suite in unit network subprocess acceptance property arch; do
     dir="$TESTS_BASH_DIR/$suite"
     if [ ! -d "$dir" ]; then
         continue
@@ -29,8 +29,19 @@ for suite in unit network subprocess acceptance property; do
         printf '  (no bats files in %s yet, skipping)\n' "$suite"
         continue
     fi
+    # Filenames reach bats as separate arguments rather than as one
+    # word-split string. Split, a checkout under `~/My Repos/` hands
+    # bats the pieces of every path and runs nothing.
+    set --
+    while IFS= read -r bats_file; do
+        [ -n "$bats_file" ] || continue
+        set -- "$@" "$bats_file"
+    done <<EOF
+$files
+EOF
+
     printf '\n=== suite: %s ===\n' "$suite"
-    if ! "$BATS_BIN" $files; then
+    if ! "$BATS_BIN" "$@"; then
         overall=1
     fi
 done

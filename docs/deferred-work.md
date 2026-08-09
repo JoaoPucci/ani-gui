@@ -26,25 +26,6 @@ Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## Port the arch self-tests to bats
-
-`AGENTS.md` §2 settles where these belong: shell with a separate
-subject under test needs bats, including under `tests/arch/`, while a
-check that inspects the repository and reports what it found stays
-standalone under the architectural runner.
-
-`bash_portability_test.sh`, `deferral_record_test.sh` and
-`deferral_root_test.sh` are the first kind. They build fixtures, drive
-another script through cases and compare results through assertion
-helpers written by hand. The checks they drive stay where they are.
-
-Which branch each file currently sits on is deliberately not recorded
-here. That is the part of an entry which goes stale first, and it is
-the part a reader can establish in a second.
-
-The bats vendor lives under `tests/bash/` behind an installer, so the
-move also changes how `run-all.sh` and the workflows invoke the suite.
-
 ## Open findings on the deferral checks
 
 Raised in review and not yet fixed. Recorded here so they survive the
