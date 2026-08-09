@@ -213,10 +213,20 @@ else
     failed=1
 fi
 
-for script in deferral_record agents_contract deferral_record_test; do
-    expect_ok "$script.sh resolves the repository when invoked by relative path" \
-        from_arch "$script.sh"
-done
+# Skipped under a probe: the record test alone runs for seconds, and
+# a probe child exists to prove one mechanism, not to re-run suites.
+# The fast flag skips the record test's own multi-second signal
+# cases here — this pass asserts invocation shape, and run-all
+# executes that file directly with every case live.
+if [ -z "${ARCH_DEFERRAL_PROBE:-}" ]; then
+    ARCH_DEFERRAL_RECORD_FAST=1
+    export ARCH_DEFERRAL_RECORD_FAST
+    for script in deferral_record agents_contract deferral_record_test; do
+        expect_ok "$script.sh resolves the repository when invoked by relative path" \
+            from_arch "$script.sh"
+    done
+    unset ARCH_DEFERRAL_RECORD_FAST
+fi
 
 # Shell in this repository has to be linted by the shell linter, and
 # the green has to be attributable. `Shellcheck + Shfmt` is reported
@@ -437,6 +447,156 @@ for problem in problems:
 sys.exit(1 if problems else 0)
 PYCERT
 }
+
+# The apostrophe clone case, extracted so the focused `clone` probe
+# and the sabotaged copy can run exactly this and nothing else.
+run_apostrophe_clone_case() {
+    # A checkout path containing an apostrophe. This exists because the
+    # first version of this file built commands as strings and evaluated
+    # them, so the path was re-parsed as shell syntax and the suite broke
+    # on where it had been cloned. Verified by hand at the time; asserted
+    # here so it cannot regress.
+    # Inside the repository and inside the run's own scratch directory,
+    # so the cleanup trap removes it on every exit path — including an
+    # interrupt, which the explicit `rm -rf` at the end of this block
+    # would miss.
+    apostrophe_dir="$scratch_dir/o'brien"
+
+    # Two properties of the scratch this case creates, checked before it
+    # is used. It must live inside the repository — the suite has no
+    # business writing outside the tree it is checking — and it must be
+    # under the cleanup trap, so an interrupt does not leave a clone in
+    # the working tree for the next `git status` to report.
+    case "$apostrophe_dir" in
+        "$REPO_ROOT"/*)
+            printf '  ok       the apostrophe clone is inside the repository\n'
+            ;;
+        *)
+            printf '  FAIL     the apostrophe clone is outside the repository: %s\n' "$apostrophe_dir"
+            failed=1
+            ;;
+    esac
+    case "$apostrophe_dir" in
+        "$scratch_dir"/*)
+            printf '  ok       the apostrophe clone is under the cleanup trap\n'
+            ;;
+        *)
+            printf '  FAIL     the apostrophe clone is not under the cleanup trap\n'
+            failed=1
+            ;;
+    esac
+    mkdir -p "$apostrophe_dir"
+    # Guarded so the nested run does not clone again — but only this
+    # block. Guarding the whole script made the nested run assert nothing
+    # and report success for starting up, which the case above now counts
+    # rather than trusts.
+    if [ -n "${ARCH_DEFERRAL_NESTED:-}" ]; then
+        :
+    elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
+        # The clone carries committed state only, so an uncommitted change
+        # to any of these would go unexercised — the working-tree copies
+        # are what this run is meant to be testing.
+        cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
+            "$REPO_ROOT/tests/arch/deferral_record.sh" \
+            "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
+            "$REPO_ROOT/tests/arch/agents_contract.sh" \
+            "$apostrophe_dir/repo/tests/arch/"
+        # Every snapshotted workflow is a subject, not just the one the
+        # cases read directly: the snapshot gate walks the whole
+        # directory, so any workflow the tree changed and the clone still
+        # holds committed makes the two runs disagree exactly when the
+        # tree is what changed. Mirror the directory wholesale — removing
+        # the committed copy first so deletions mirror too.
+        rm -rf "$apostrophe_dir/repo/.github/workflows"
+        mkdir -p "$apostrophe_dir/repo/.github"
+        cp -R "$REPO_ROOT/.github/workflows" \
+            "$apostrophe_dir/repo/.github/workflows"
+        # The snapshot and the script that projects it are subjects for
+        # the same reason: the nested run must judge the tree's pin, not
+        # the committed one, or the two disagree exactly when the pin is
+        # what changed.
+        mkdir -p "$apostrophe_dir/repo/tests/tools"
+        cp "$REPO_ROOT/tests/arch/workflows.snapshot.json" \
+            "$apostrophe_dir/repo/tests/arch/"
+        cp "$REPO_ROOT/tests/tools/workflow-snapshot.py" \
+            "$apostrophe_dir/repo/tests/tools/"
+        # Count the assertions the nested run makes, rather than trusting
+        # its exit status. A guard that skips the whole script would exit
+        # zero having checked nothing, and this case would report success
+        # for a process that merely started.
+        # Both the exit status and the count. The status alone could pass a
+        # run that skipped everything; the count alone could pass a run
+        # where one case failed while five others succeeded.
+        # `|| nested_status=$?` matters: a bare command substitution that
+        # fails aborts the whole script under `set -e`, so a failing nested
+        # run used to kill the parent silently instead of being reported.
+        # The nested run is the clone-core probe, not the whole suite:
+        # this case exists to prove the machinery survives the path,
+        # and recursing through every case at every level is what
+        # turned a seconds-long file into minutes.
+        nested_status=0
+        nested_out=$(cd "$apostrophe_dir/repo" &&
+            ARCH_DEFERRAL_NESTED=1 ARCH_DEFERRAL_PROBE=clone-core \
+                sh tests/arch/deferral_root_test.sh 2>&1) || nested_status=$?
+        nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
+        if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 2 ]; then
+            printf '  ok       the suite asserts (%s cases) from a path containing an apostrophe\n' "$nested_ok"
+        else
+            printf '  FAIL     nested run: status %s, %s assertions (want 0 and >=2)\n' "$nested_status" "${nested_ok:-0}"
+            failed=1
+        fi
+    else
+        # Not a skip. This clones a local path to a local path inside the
+        # repository, with no network and no remote, so there is no benign
+        # reason for it to fail — a failure means the environment cannot
+        # do something this suite depends on, and reporting ok for that
+        # turns a broken checkout into a green run.
+        printf '  FAIL     could not clone for the apostrophe case\n'
+        failed=1
+    fi
+}
+
+# ── Focused probes ──
+# A child run spawned by one of the clone/prefix/sabotage cases has
+# one mechanism to prove, not the whole suite; recursing through
+# every case at every level multiplied a seconds-long file into
+# minutes. ARCH_DEFERRAL_PROBE names the mechanism and the child
+# exits here, after init — so the scratch-refusal semantics the
+# prefix cases probe have already run, and the helpers the deeper
+# probes call are already defined.
+case "${ARCH_DEFERRAL_PROBE:-}" in
+    '') ;;
+    startup)
+        printf '  ok       probe: scratch allocation and traps\n'
+        exit 0
+        ;;
+    clone-core)
+        # The machinery a hostile checkout path has to survive:
+        # a subject run by relative path and the snapshot gate
+        # (git, python, diff) against this tree.
+        if (expect_ok probe from_arch deferral_record.sh) >/dev/null 2>&1; then
+            printf '  ok       probe: subject runs by relative path\n'
+        else
+            printf '  FAIL     probe: subject run failed\n'
+            failed=1
+        fi
+        if workflows_match_snapshot "$REPO_ROOT/.github/workflows"; then
+            printf '  ok       probe: workflows match the snapshot\n'
+        else
+            printf '  FAIL     probe: workflows diverge from the snapshot\n'
+            failed=1
+        fi
+        exit "$failed"
+        ;;
+    clone)
+        run_apostrophe_clone_case
+        exit "$failed"
+        ;;
+    *)
+        printf '  FAIL     unknown probe %s\n' "$ARCH_DEFERRAL_PROBE"
+        exit 1
+        ;;
+esac
 
 # The text readings above are one layer: conservative, fail-closed,
 # and by construction incomplete — YAML's spelling space is unbounded
@@ -839,107 +999,7 @@ else
     failed=1
 fi
 
-# A checkout path containing an apostrophe. This exists because the
-# first version of this file built commands as strings and evaluated
-# them, so the path was re-parsed as shell syntax and the suite broke
-# on where it had been cloned. Verified by hand at the time; asserted
-# here so it cannot regress.
-# Inside the repository and inside the run's own scratch directory,
-# so the cleanup trap removes it on every exit path — including an
-# interrupt, which the explicit `rm -rf` at the end of this block
-# would miss.
-apostrophe_dir="$scratch_dir/o'brien"
-
-# Two properties of the scratch this case creates, checked before it
-# is used. It must live inside the repository — the suite has no
-# business writing outside the tree it is checking — and it must be
-# under the cleanup trap, so an interrupt does not leave a clone in
-# the working tree for the next `git status` to report.
-case "$apostrophe_dir" in
-    "$REPO_ROOT"/*)
-        printf '  ok       the apostrophe clone is inside the repository\n'
-        ;;
-    *)
-        printf '  FAIL     the apostrophe clone is outside the repository: %s\n' "$apostrophe_dir"
-        failed=1
-        ;;
-esac
-case "$apostrophe_dir" in
-    "$scratch_dir"/*)
-        printf '  ok       the apostrophe clone is under the cleanup trap\n'
-        ;;
-    *)
-        printf '  FAIL     the apostrophe clone is not under the cleanup trap\n'
-        failed=1
-        ;;
-esac
-mkdir -p "$apostrophe_dir"
-# Guarded so the nested run does not clone again — but only this
-# block. Guarding the whole script made the nested run assert nothing
-# and report success for starting up, which the case above now counts
-# rather than trusts.
-if [ -n "${ARCH_DEFERRAL_NESTED:-}" ]; then
-    :
-elif git clone -q --depth=1 "$REPO_ROOT" "$apostrophe_dir/repo" 2>/dev/null; then
-    # The clone carries committed state only, so an uncommitted change
-    # to any of these would go unexercised — the working-tree copies
-    # are what this run is meant to be testing.
-    cp "$REPO_ROOT/tests/arch/deferral_root_test.sh" \
-        "$REPO_ROOT/tests/arch/deferral_record.sh" \
-        "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
-        "$REPO_ROOT/tests/arch/agents_contract.sh" \
-        "$apostrophe_dir/repo/tests/arch/"
-    # Every snapshotted workflow is a subject, not just the one the
-    # cases read directly: the snapshot gate walks the whole
-    # directory, so any workflow the tree changed and the clone still
-    # holds committed makes the two runs disagree exactly when the
-    # tree is what changed. Mirror the directory wholesale — removing
-    # the committed copy first so deletions mirror too.
-    rm -rf "$apostrophe_dir/repo/.github/workflows"
-    mkdir -p "$apostrophe_dir/repo/.github"
-    cp -R "$REPO_ROOT/.github/workflows" \
-        "$apostrophe_dir/repo/.github/workflows"
-    # The snapshot and the script that projects it are subjects for
-    # the same reason: the nested run must judge the tree's pin, not
-    # the committed one, or the two disagree exactly when the pin is
-    # what changed.
-    mkdir -p "$apostrophe_dir/repo/tests/tools"
-    cp "$REPO_ROOT/tests/arch/workflows.snapshot.json" \
-        "$apostrophe_dir/repo/tests/arch/"
-    cp "$REPO_ROOT/tests/tools/workflow-snapshot.py" \
-        "$apostrophe_dir/repo/tests/tools/"
-    # Count the assertions the nested run makes, rather than trusting
-    # its exit status. A guard that skips the whole script would exit
-    # zero having checked nothing, and this case would report success
-    # for a process that merely started.
-    # Both the exit status and the count. The status alone could pass a
-    # run that skipped everything; the count alone could pass a run
-    # where one case failed while five others succeeded.
-    # `|| nested_status=$?` matters: a bare command substitution that
-    # fails aborts the whole script under `set -e`, so a failing nested
-    # run used to kill the parent silently instead of being reported.
-    # The nested run also skips the sabotage case — it exists to prove
-    # the apostrophe path works, not to re-run a sub-suite.
-    nested_status=0
-    nested_out=$(cd "$apostrophe_dir/repo" &&
-        ARCH_DEFERRAL_NESTED=1 ARCH_DEFERRAL_NO_SABOTAGE=1 \
-            sh tests/arch/deferral_root_test.sh 2>&1) || nested_status=$?
-    nested_ok=$(printf '%s\n' "$nested_out" | grep -c '^  ok' || true)
-    if [ "$nested_status" -eq 0 ] && [ "${nested_ok:-0}" -ge 5 ]; then
-        printf '  ok       the suite asserts (%s cases) from a path containing an apostrophe\n' "$nested_ok"
-    else
-        printf '  FAIL     nested run: status %s, %s assertions (want 0 and >=5)\n' "$nested_status" "${nested_ok:-0}"
-        failed=1
-    fi
-else
-    # Not a skip. This clones a local path to a local path inside the
-    # repository, with no network and no remote, so there is no benign
-    # reason for it to fail — a failure means the environment cannot
-    # do something this suite depends on, and reporting ok for that
-    # turns a broken checkout into a green run.
-    printf '  FAIL     could not clone for the apostrophe case\n'
-    failed=1
-fi
+run_apostrophe_clone_case
 
 # A working-tree change to any snapshotted workflow must survive the
 # nested run. The snapshot gate walks the whole workflow directory,
@@ -978,13 +1038,13 @@ elif mutant_dir=$(mktemp -d "$scratch_dir/mutant.XXXXXX") &&
         { _mut_py=$(resolution_python) &&
             "$_mut_py" tests/tools/workflow-snapshot.py .github/workflows \
                 >tests/arch/workflows.snapshot.json &&
-            ARCH_DEFERRAL_NO_MUTANT=1 ARCH_DEFERRAL_NO_SABOTAGE=1 \
+            ARCH_DEFERRAL_PROBE=clone \
                 sh tests/arch/deferral_root_test.sh; } 2>&1) || mutant_status=$?
     mutant_ok=$(printf '%s\n' "$mutant_out" | grep -c '^  ok' || true)
-    if [ "$mutant_status" -eq 0 ] && [ "${mutant_ok:-0}" -ge 5 ]; then
+    if [ "$mutant_status" -eq 0 ] && [ "${mutant_ok:-0}" -ge 3 ]; then
         printf '  ok       a tree-only workflow change survives the nested run (%s cases)\n' "$mutant_ok"
     else
-        printf '  FAIL     mutant run: status %s, %s assertions (want 0 and >=5)\n' \
+        printf '  FAIL     mutant run: status %s, %s assertions (want 0 and >=3)\n' \
             "$mutant_status" "${mutant_ok:-0}"
         failed=1
     fi
@@ -1013,7 +1073,8 @@ elif link_dir=$(mktemp -d "$scratch_dir/dangling-sentinel.XXXXXX") &&
     link_sentinel="$link_dir/repo/tests/arch/.deferral-scratch.sentinel"
     ln -s /definitely/not/here "$link_sentinel"
     link_status=0
-    (cd "$link_dir/repo" && sh tests/arch/deferral_record_test.sh) \
+    (cd "$link_dir/repo" &&
+        ARCH_DEFERRAL_RECORD_FAST=1 sh tests/arch/deferral_record_test.sh) \
         >/dev/null 2>&1 || link_status=$?
     if [ "$link_status" -eq 0 ] && [ -L "$link_sentinel" ] &&
         [ ! -e "$link_sentinel" ]; then
@@ -1261,7 +1322,7 @@ else
         mkdir -p "$occupied"
         printf 'not yours\n' >"$occupied/keep-me"
         occupied_status=0
-        ARCH_DEFERRAL_TMP_PREFIX="$occupied" \
+        ARCH_DEFERRAL_TMP_PREFIX="$occupied" ARCH_DEFERRAL_PROBE=startup \
             sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
             occupied_status=$?
         if [ "$occupied_status" -ne 0 ] && [ -f "$occupied/keep-me" ]; then
@@ -1282,7 +1343,7 @@ else
         shared="$scratch_dir/shared-prefix"
         printf 'not yours\n' >"$shared.probe.999"
         shared_status=0
-        ARCH_DEFERRAL_TMP_PREFIX="$shared" \
+        ARCH_DEFERRAL_TMP_PREFIX="$shared" ARCH_DEFERRAL_PROBE=startup \
             sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
             shared_status=$?
         if [ "$shared_status" -ne 0 ] && [ -f "$shared.probe.999" ]; then
@@ -1302,7 +1363,7 @@ else
         dangling="$scratch_dir/dangling-prefix"
         ln -s /definitely/not/here "$dangling"
         dangling_status=0
-        ARCH_DEFERRAL_TMP_PREFIX="$dangling" \
+        ARCH_DEFERRAL_TMP_PREFIX="$dangling" ARCH_DEFERRAL_PROBE=startup \
             sh "$REPO_ROOT/tests/arch/deferral_root_test.sh" >/dev/null 2>&1 ||
             dangling_status=$?
         if [ "$dangling_status" -ne 0 ] && [ -L "$dangling" ]; then
@@ -1331,7 +1392,7 @@ if [ -z "${ARCH_DEFERRAL_NO_SABOTAGE:-}" ]; then
     # expected to fail, and a bare one would abort this script instead
     # of letting the case report.
     sabotage_status=0
-    sabotage_out=$(ARCH_DEFERRAL_NO_SABOTAGE=1 sh "$sabotaged" 2>&1) ||
+    sabotage_out=$(ARCH_DEFERRAL_PROBE=clone sh "$sabotaged" 2>&1) ||
         sabotage_status=$?
     if [ "$sabotage_status" -ne 0 ] &&
         printf '%s' "$sabotage_out" | grep -q 'could not clone'; then

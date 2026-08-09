@@ -279,48 +279,55 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
         sleep "$ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL"
     fi
 
-    ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \
-        sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
-    gap_pid=$!
-    # The child names its scratch from its own pid, which is the pid
-    # just captured — so the one path this case may touch is known
-    # exactly, and nothing that merely shares the naming scheme is.
-    gap_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$gap_pid"
+    # Held multi-second by design — TERM cannot interrupt a foreground
+    # sleep, so each spawned child runs its pause to completion. The
+    # fast flag skips the spawning cases for callers that re-run this
+    # file as a subject (the root self-test does, twice); run-all still
+    # executes this file directly with every case live.
+    if [ -z "${ARCH_DEFERRAL_RECORD_FAST:-}" ]; then
+        ARCH_DEFERRAL_PAUSE_AFTER_MKDIR=3 \
+            sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
+        gap_pid=$!
+        # The child names its scratch from its own pid, which is the pid
+        # just captured — so the one path this case may touch is known
+        # exactly, and nothing that merely shares the naming scheme is.
+        gap_dir="$REPO_ROOT/tests/arch/.deferral-scratch.$gap_pid"
 
-    # Observed to exist before the signal, or the case has nothing to
-    # measure: a child that dies before allocating leaves no
-    # directory, and "no directory afterwards" would then read as
-    # cleanup having worked.
-    gap_seen=0
-    i=0
-    while [ "$i" -lt 50 ]; do
-        if [ -d "$gap_dir" ]; then
-            gap_seen=1
-            break
+        # Observed to exist before the signal, or the case has nothing to
+        # measure: a child that dies before allocating leaves no
+        # directory, and "no directory afterwards" would then read as
+        # cleanup having worked.
+        gap_seen=0
+        i=0
+        while [ "$i" -lt 50 ]; do
+            if [ -d "$gap_dir" ]; then
+                gap_seen=1
+                break
+            fi
+            sleep 0.1
+            i=$((i + 1))
+        done
+
+        kill -TERM "$gap_pid" 2>/dev/null || true
+        gap_status=0
+        wait "$gap_pid" || gap_status=$?
+
+        if [ "$gap_seen" -eq 0 ]; then
+            printf '  FAIL     the ownership-gap child never reached its scratch (exit %s)\n' \
+                "$gap_status"
+            failed=1
+        elif [ "$gap_status" -ne 143 ]; then
+            printf '  FAIL     the ownership-gap child exited %s, not 143 — it did not die of the signal\n' \
+                "$gap_status"
+            failed=1
+            rm -rf "$gap_dir"
+        elif [ -d "$gap_dir" ]; then
+            printf '  FAIL     a cancelled run left its scratch directory behind\n'
+            failed=1
+            rm -rf "$gap_dir"
+        else
+            printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
         fi
-        sleep 0.1
-        i=$((i + 1))
-    done
-
-    kill -TERM "$gap_pid" 2>/dev/null || true
-    gap_status=0
-    wait "$gap_pid" || gap_status=$?
-
-    if [ "$gap_seen" -eq 0 ]; then
-        printf '  FAIL     the ownership-gap child never reached its scratch (exit %s)\n' \
-            "$gap_status"
-        failed=1
-    elif [ "$gap_status" -ne 143 ]; then
-        printf '  FAIL     the ownership-gap child exited %s, not 143 — it did not die of the signal\n' \
-            "$gap_status"
-        failed=1
-        rm -rf "$gap_dir"
-    elif [ -d "$gap_dir" ]; then
-        printf '  FAIL     a cancelled run left its scratch directory behind\n'
-        failed=1
-        rm -rf "$gap_dir"
-    else
-        printf '  ok       a run cancelled before recording ownership takes its scratch with it\n'
     fi
 
     if [ -z "$gap_sentinel" ]; then
@@ -365,7 +372,8 @@ fi
 # moment this run owns it; the explicit removals at the end of the
 # case are lines a signal never reaches.
 if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL:-}" ] &&
-    [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
+    [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ] &&
+    [ -z "${ARCH_DEFERRAL_RECORD_FAST:-}" ]; then
     ARCH_DEFERRAL_PAUSE_AFTER_SENTINEL=3 \
         sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >/dev/null 2>&1 &
     leak_pid=$!
@@ -544,82 +552,89 @@ else
     printf '  ok       cleanup handles a path containing a space\n'
 fi
 
-# A cancelled run must stop, and must not report success. A handler
-# that cleans up and returns leaves the script running against a
-# directory it just deleted, and can still reach `exit 0` — so a
-# Ctrl-C in CI looks like a pass.
-probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
-# By absolute path. `$0` is whatever the caller typed, and this script
-# has changed directory since — so launched as
-# `sh ./deferral_record_test.sh` from `tests/arch`, the child cannot
-# find itself, dies at once, and the case reports on a process that
-# never received a signal.
-ARCH_DEFERRAL_SIGNAL_PROBE=1 \
-    sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >"$probe_out" 2>&1 &
-probe_pid=$!
-probe_record=''
-i=0
-while [ "$i" -lt 50 ] && [ -z "$probe_record" ]; do
-    probe_record=$(head -n 1 "$probe_out" 2>/dev/null)
-    [ -n "$probe_record" ] || sleep 0.1
-    i=$((i + 1))
-done
-# The record crosses a pipe; the path must not. Serialized whole, a
-# checkout under a directory whose name holds a newline prints one
-# path as two records, the reader keeps the first fragment, and the
-# suite fails despite a cleanup that worked. The record is a name
-# whose spelling this file controls; the path is rebuilt where it is
-# read. An empty record is judged by the three-outcome case below,
-# not here.
-case "$probe_record" in
-    '') ;;
-    */*)
-        printf '  FAIL     the signal probe serialized a path, not a name: %s\n' "$probe_record"
+# Held multi-second by design — TERM cannot interrupt a foreground
+# sleep, so each spawned child runs its pause to completion. The
+# fast flag skips the spawning cases for callers that re-run this
+# file as a subject (the root self-test does, twice); run-all still
+# executes this file directly with every case live.
+if [ -z "${ARCH_DEFERRAL_RECORD_FAST:-}" ]; then
+    # A cancelled run must stop, and must not report success. A handler
+    # that cleans up and returns leaves the script running against a
+    # directory it just deleted, and can still reach `exit 0` — so a
+    # Ctrl-C in CI looks like a pass.
+    probe_out=$(mktemp "$scratch_dir/signal-probe.XXXXXX")
+    # By absolute path. `$0` is whatever the caller typed, and this script
+    # has changed directory since — so launched as
+    # `sh ./deferral_record_test.sh` from `tests/arch`, the child cannot
+    # find itself, dies at once, and the case reports on a process that
+    # never received a signal.
+    ARCH_DEFERRAL_SIGNAL_PROBE=1 \
+        sh "$REPO_ROOT/tests/arch/deferral_record_test.sh" >"$probe_out" 2>&1 &
+    probe_pid=$!
+    probe_record=''
+    i=0
+    while [ "$i" -lt 50 ] && [ -z "$probe_record" ]; do
+        probe_record=$(head -n 1 "$probe_out" 2>/dev/null)
+        [ -n "$probe_record" ] || sleep 0.1
+        i=$((i + 1))
+    done
+    # The record crosses a pipe; the path must not. Serialized whole, a
+    # checkout under a directory whose name holds a newline prints one
+    # path as two records, the reader keeps the first fragment, and the
+    # suite fails despite a cleanup that worked. The record is a name
+    # whose spelling this file controls; the path is rebuilt where it is
+    # read. An empty record is judged by the three-outcome case below,
+    # not here.
+    case "$probe_record" in
+        '') ;;
+        */*)
+            printf '  FAIL     the signal probe serialized a path, not a name: %s\n' "$probe_record"
+            failed=1
+            ;;
+        *) printf '  ok       the signal probe reports a name, not a path\n' ;;
+    esac
+    # The child's scratch lives where this run's does; only the name
+    # travelled. An empty record must not reconstruct to the parent
+    # directory itself, which exists whether or not the probe ever ran.
+    probe_dir=''
+    [ -n "$probe_record" ] && probe_dir="$REPO_ROOT/tests/arch/$probe_record"
+    # Whether the directory was really there before the signal. Read after
+    # the kill, a path that never existed and a path that was cleaned up
+    # are the same observation, and the case cannot tell them apart.
+    probe_seen=0
+    [ -n "$probe_record" ] && [ -d "$probe_dir" ] && probe_seen=1
+
+    kill -TERM "$probe_pid" 2>/dev/null || true
+    # `set -e` would take the nonzero status of `wait` as a failure of
+    # this script, which is precisely the status being measured.
+    probe_status=0
+    wait "$probe_pid" || probe_status=$?
+
+    # Exactly 143, not merely nonzero. A child that dies of anything else —
+    # not finding itself, for instance — also exits nonzero, and the case
+    # then reports that cancellation works having measured a different
+    # failure entirely.
+    if [ "$probe_status" -ne 143 ]; then
+        printf '  FAIL     a TERMed run exited %s, not 143 — it did not die of the signal\n' \
+            "$probe_status"
         failed=1
-        ;;
-    *) printf '  ok       the signal probe reports a name, not a path\n' ;;
-esac
-# The child's scratch lives where this run's does; only the name
-# travelled. An empty record must not reconstruct to the parent
-# directory itself, which exists whether or not the probe ever ran.
-probe_dir=''
-[ -n "$probe_record" ] && probe_dir="$REPO_ROOT/tests/arch/$probe_record"
-# Whether the directory was really there before the signal. Read after
-# the kill, a path that never existed and a path that was cleaned up
-# are the same observation, and the case cannot tell them apart.
-probe_seen=0
-[ -n "$probe_record" ] && [ -d "$probe_dir" ] && probe_seen=1
-
-kill -TERM "$probe_pid" 2>/dev/null || true
-# `set -e` would take the nonzero status of `wait` as a failure of
-# this script, which is precisely the status being measured.
-probe_status=0
-wait "$probe_pid" || probe_status=$?
-
-# Exactly 143, not merely nonzero. A child that dies of anything else —
-# not finding itself, for instance — also exits nonzero, and the case
-# then reports that cancellation works having measured a different
-# failure entirely.
-if [ "$probe_status" -ne 143 ]; then
-    printf '  FAIL     a TERMed run exited %s, not 143 — it did not die of the signal\n' \
-        "$probe_status"
-    failed=1
-else
-    printf '  ok       a TERMed run exits on the signal (%s)\n' "$probe_status"
-fi
-# Three outcomes, not two. A child that printed nothing within the
-# window leaves `probe_dir` empty, and treating that as "nothing left
-# behind" reports that cleanup works having watched no directory at
-# all — the same shape as every other vacuous pass on this branch.
-if [ "$probe_seen" -eq 0 ]; then
-    printf '  FAIL     the signal probe never showed a scratch directory to clean up\n'
-    failed=1
-elif [ -d "$probe_dir" ]; then
-    printf '  FAIL     a TERMed run left its scratch directory behind\n'
-    failed=1
-    rm -rf "$probe_dir"
-else
-    printf '  ok       a TERMed run still cleans up\n'
+    else
+        printf '  ok       a TERMed run exits on the signal (%s)\n' "$probe_status"
+    fi
+    # Three outcomes, not two. A child that printed nothing within the
+    # window leaves `probe_dir` empty, and treating that as "nothing left
+    # behind" reports that cleanup works having watched no directory at
+    # all — the same shape as every other vacuous pass on this branch.
+    if [ "$probe_seen" -eq 0 ]; then
+        printf '  FAIL     the signal probe never showed a scratch directory to clean up\n'
+        failed=1
+    elif [ -d "$probe_dir" ]; then
+        printf '  FAIL     a TERMed run left its scratch directory behind\n'
+        failed=1
+        rm -rf "$probe_dir"
+    else
+        printf '  ok       a TERMed run still cleans up\n'
+    fi
 fi
 
 # The failure message has to name the actual reason. "Ignored" and
