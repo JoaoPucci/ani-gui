@@ -54,6 +54,45 @@ Per layer:
 
 Architectural invariants in `tests/arch/` are load-bearing. Do not weaken them — extend them.
 
+**How an architectural check may establish its invariant.** Reading
+source is allowed — `shellcheck` runs over this repository and is the
+right shape of tool. What is not allowed is inferring behaviour from
+source with ad-hoc pattern matching. A check may:
+
+- **run its subject** and assert on what it does, or
+- **assert a syntactic constraint** — something a `grep` either finds
+  or does not, such as a marker at column zero or exactly one mention
+  of a declared path per file, or
+- **use a real parser**, meaning an existing tool with a grammar, not
+  one assembled here.
+
+It may not decide, from regular expressions, what a piece of source
+*means*: which `$NAME` is a read from the environment, which
+assignment owns it, which text is code at all. Those questions need a
+shell parser, and the attempt to build one out of `grep` and `awk`
+cost this repository ten review rounds — comments, then quoting, then
+heredocs, then heredoc delimiters, then several heredocs per command,
+then line continuations, then command-scoped assignment prefixes —
+seven of them defects introduced by the fix before. Every one of the
+findings was correct, and every fix revealed the next rule of the
+grammar.
+
+The distinction is empirical, not aesthetic. On that same branch the
+constraint-shaped rules each closed their category permanently and
+generated no further findings; the interpretation-shaped ones did not
+terminate.
+
+Where the property is behavioural and cheap to exercise, run the
+subject. `tests/bash/arch/invocation.bats` establishes that no stray
+environment can redirect a check by running each one twice — once
+clean, once under a hostile environment — and comparing output and
+exit status. It replaced an audit that tried to find the same thing by
+reading variable names.
+
+And a check that is deliberately incomplete has to say so. The failure
+worth avoiding is not a gap; it is a green run that implies more than
+the check knows.
+
 Never modify a test to make production code pass. Modify production code, or change the test in its own `test(red)` commit with a written justification in the body.
 
 The full pyramid (unit → acceptance → e2e → property → architectural invariants → mutation) lives in `docs/testing.md`.
@@ -171,7 +210,62 @@ When pausing for approval, explain what the action does, why it's needed, and wh
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
-## 14. Pointers
+## 14. Scope is negotiable, delivery is not
+
+Never drop a piece of work on the grounds that it is too large. "Too
+much for this change" is a statement about where the work goes, not
+about whether it happens.
+
+When a reviewer raises something valid, or you find something valid
+mid-task, exactly one of these is an acceptable outcome:
+
+- **Do it here.** The default. Estimate the work before declining it —
+  an estimate made in order to justify not doing something tends to
+  come out high.
+- **Do it in its own PR.** Open the follow-up PR, land it, then update
+  the original. Say on the thread which PR carries it.
+- **Add an entry to the deferred-work log**, and link it wherever you
+  deferred it. An unwritten deferral is a dropped one, and a deferral
+  written only where you happen to be standing is the same thing: the
+  internal planning directory is ignored by git, so an entry there
+  leaves with your checkout and a thread citing it points at a file
+  nobody else has. Issues are disabled on this repository, so they are
+  not an option either. Keep the internal queue if it helps you — the
+  durable record, the one you cite, is the tracked log.
+
+  Write enough to pick the work back up later and no more: what it is,
+  why it waited, and anything genuinely surprising about it. The log is
+  a set of reminders, not a specification. It does not want a file
+  list, acceptance criteria, or a plan — whoever takes the work scopes
+  it against the code at the time, which is the only scoping worth
+  trusting.
+
+  Reviewing an entry follows from that. An entry that says something
+  false is a defect: it would send a reader to rebuild what already
+  works, or let them believe the job is done when it is not. An entry
+  that leaves things out is not a defect, and asking for the omission
+  to be added is how a reminder turns into a specification. If a `grep`
+  would surface it, leave it out.
+
+  Any path declared below is checked for being readable from a fresh
+  clone, by `tests/arch/deferral_record.sh`.
+
+<!-- record-path: docs/deferred-work.md -->
+- **Ask.** If the tradeoff is genuinely the maintainer's call, put the
+  options to them. Silence is not a way to ask.
+
+What is never acceptable is the fifth outcome: replying that the fix
+is out of scope or too costly and leaving nothing behind. That reads
+as a considered engineering judgement while being, in effect, a
+refusal — and the work is lost, because nothing records it.
+
+The same rule applies to your own estimates. Before invoking cost,
+check the cheap path actually is closed: existing conventions in the
+package, a helper already extracted, a test glob that already covers
+the directory. More than once the "large refactor" turned out to be
+one new file next to two just like it.
+
+## 15. Pointers
 
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
