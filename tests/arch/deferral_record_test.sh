@@ -223,7 +223,10 @@ if [ -z "${ARCH_DEFERRAL_PAUSE_AFTER_MKDIR:-}" ]; then
     # that for every future edit of this block.
     gap_occupied="$REPO_ROOT/tests/arch/.deferral-scratch.sentinel"
     gap_occupied_planted=0
-    if [ ! -e "$gap_occupied" ]; then
+    # `-L` alongside `-e`, like the plant above: `-e` follows a link
+    # and answers about the target, so a dangling symlink is the one
+    # occupant shape it reads as absence.
+    if [ ! -e "$gap_occupied" ] && [ ! -L "$gap_occupied" ]; then
         mkdir "$gap_occupied"
         printf 'keep existing\n' >"$gap_occupied/keep-existing"
         gap_occupied_planted=1
