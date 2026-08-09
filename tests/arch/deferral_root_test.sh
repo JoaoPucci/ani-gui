@@ -995,6 +995,40 @@ else
     failed=1
 fi
 
+# A dangling symlink at the sentinel's fixed spelling is an occupant,
+# not a free path. `test -e` follows the link and answers about the
+# target, so an occupancy check without `-L` reads the link as
+# absence, plants over it, and the failing `mkdir` takes the record
+# suite down under `set -e` — with the foreign link still in place
+# and the run reporting a crash instead of a survivor. Planted in a
+# clone: the spelling is fixed under the repository root, and this
+# tree is not the place to plant foreign state.
+if [ -n "${ARCH_DEFERRAL_NESTED:-}" ]; then
+    :
+elif link_dir=$(mktemp -d "$scratch_dir/dangling-sentinel.XXXXXX") &&
+    git clone -q --depth=1 "$REPO_ROOT" "$link_dir/repo" 2>/dev/null; then
+    cp "$REPO_ROOT/tests/arch/deferral_record.sh" \
+        "$REPO_ROOT/tests/arch/deferral_record_test.sh" \
+        "$link_dir/repo/tests/arch/"
+    link_sentinel="$link_dir/repo/tests/arch/.deferral-scratch.sentinel"
+    ln -s /definitely/not/here "$link_sentinel"
+    link_status=0
+    (cd "$link_dir/repo" && sh tests/arch/deferral_record_test.sh) \
+        >/dev/null 2>&1 || link_status=$?
+    if [ "$link_status" -eq 0 ] && [ -L "$link_sentinel" ] &&
+        [ ! -e "$link_sentinel" ]; then
+        printf '  ok       a dangling sentinel symlink is treated as occupied\n'
+    else
+        printf '  FAIL     dangling sentinel: status %s, link %s\n' \
+            "$link_status" \
+            "$([ -L "$link_sentinel" ] && echo present || echo gone)"
+        failed=1
+    fi
+else
+    printf '  FAIL     could not clone for the dangling-sentinel case\n'
+    failed=1
+fi
+
 # A stray REPO_ROOT must not redirect anything. It used to, and the
 # script exited 0 against the wrong tree rather than failing.
 expect_ok "a stray REPO_ROOT does not redirect the record check" \
