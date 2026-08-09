@@ -101,9 +101,9 @@ fi
 # process able to interpose between adjacent syscalls can equally
 # ptrace this shell and make any check pass.
 scratch="${ARCH_WIRING_SCRATCH:-${TMPDIR:-/tmp}/ani-gui-bats-wiring.$$}"
-record="$scratch/invoked"
 build_suffix=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
 build="$scratch.build.${build_suffix:-$$}"
+record="$build/invoked"
 
 # Removal is gated on this run having created the directory, not on
 # the traps having been installed. The two are not the same instant,
@@ -223,6 +223,11 @@ claim_held=1
 # occupied path rather than replacing or nesting anything, so a
 # squatter at the predictable path produces a refusal — and the
 # cleanup this exit fires removes only the bound build directory.
+#
+# The link is only the advertised marker. Everything below works
+# through `$build`, so replacing the symlink mid-run redirects
+# nothing: a swap moves where the marker points, not where the
+# sandbox is.
 if ! ln -s "$build" "$scratch" 2>/dev/null; then
     printf 'arch/bats_suite_wiring: %s was claimed while this run was starting — refusing to remove a location it did not create\n' \
         "$scratch" >&2
@@ -237,8 +242,8 @@ if [ -n "${ARCH_WIRING_PAUSE_AFTER_MKDIR:-}" ]; then
     sleep "$ARCH_WIRING_PAUSE_AFTER_MKDIR"
 fi
 
-mkdir "$scratch/helpers"
-mkdir -p "$scratch/.bats-vendor/bats-core/bin"
+mkdir "$build/helpers"
+mkdir -p "$build/.bats-vendor/bats-core/bin"
 : >"$record"
 
 # The runner resolves everything from its own location, so a copy
@@ -259,7 +264,7 @@ mkdir -p "$scratch/.bats-vendor/bats-core/bin"
 # A quoted heredoc so nothing here expands, and the name is
 # `ARCH_`-prefixed because the suite audits these scripts for reads
 # from the environment and a generic name would be a real finding.
-stub="$scratch/.bats-vendor/bats-core/bin/bats"
+stub="$build/.bats-vendor/bats-core/bin/bats"
 cat >"$stub" <<'EOF'
 #!/bin/sh
 # Every argument has to be a test file. An option changes what runs —
@@ -283,7 +288,7 @@ chmod +x "$stub"
 export ARCH_WIRING_RECORD="$record"
 
 runner_name=$(basename "$RUNNER")
-cp "$RUNNER" "$scratch/helpers/$runner_name"
+cp "$RUNNER" "$build/helpers/$runner_name"
 
 # Every `.bats` file that really exists, at the path it really sits at.
 # One probe per directory would only establish that each directory was
@@ -293,7 +298,7 @@ cp "$RUNNER" "$scratch/helpers/$runner_name"
 #
 # The stub never opens them, so the contents are immaterial. What
 # matters is the shape of the tree the runner walks.
-expected="$scratch/expected"
+expected="$build/expected"
 : >"$expected"
 suites=0
 files=0
@@ -307,26 +312,26 @@ for dir in "$SUITES_DIR"/*/; do
     mirrored=0
     find "$dir" -type f -name '*.bats' 2>/dev/null | while IFS= read -r real; do
         printf '%s\n' "${real#"$dir"}"
-    done >"$scratch/.relative"
+    done >"$build/.relative"
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
         if [ "$mirrored" -eq 0 ]; then
-            mkdir "$scratch/$name"
+            mkdir "$build/$name"
             mirrored=1
             suites=$((suites + 1))
         fi
         case "$rel" in
-            */*) mkdir -p "$scratch/$name/${rel%/*}" ;;
+            */*) mkdir -p "$build/$name/${rel%/*}" ;;
             *) ;;
         esac
-        : >"$scratch/$name/$rel"
+        : >"$build/$name/$rel"
         printf '%s/%s\n' \
-            "$(cd "$scratch/$name/$(dirname "$rel")" && pwd)" \
+            "$(cd "$build/$name/$(dirname "$rel")" && pwd)" \
             "$(basename "$rel")" >>"$expected"
         files=$((files + 1))
-    done <"$scratch/.relative"
+    done <"$build/.relative"
 done
-rm -f "$scratch/.relative"
+rm -f "$build/.relative"
 
 # With nothing to require, every runner satisfies this check. That is
 # an absence of evidence rather than a pass, and it has to read as one.
@@ -336,8 +341,8 @@ if [ "$suites" -eq 0 ]; then
     exit 1
 fi
 
-runner_out="$scratch/runner.out"
-if ! sh "$scratch/helpers/$runner_name" >"$runner_out" 2>&1; then
+runner_out="$build/runner.out"
+if ! sh "$build/helpers/$runner_name" >"$runner_out" 2>&1; then
     printf 'arch/bats_suite_wiring FAIL: %s exited non-zero against a stub that passes everything — it should have walked every suite and reported success\n' \
         "$RUNNER" >&2
     sed 's/^/    /' "$runner_out" >&2
@@ -359,7 +364,7 @@ while IFS= read -r want <&3; do
     done <"$record"
     if [ "$found" -eq 0 ]; then
         printf 'arch/bats_suite_wiring FAIL: %s never reached the bats binary — the runner does not name its suite, skips it in the loop body, or drops the file from the list it passes on, and in every case those cases do not run\n' \
-            "${want#"$scratch"/}" >&2
+            "${want#"$build"/}" >&2
         failed=1
     fi
 done 3<"$expected"
