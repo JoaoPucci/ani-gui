@@ -479,3 +479,15 @@ async fn a_hung_transport_child_dies_with_the_dropped_deadline() {
         "the timed-out curl child survived its dropped future"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_transport_child_runs_under_the_mandated_environment() {
+    // §5's subprocess rule: TERM=dumb and NO_COLOR=1, so no wrapper
+    // or future curl variant can shape its output by the launch
+    // environment. The stub reports what it actually received.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '%s %s\\n200' \"$TERM\" \"$NO_COLOR\"");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert_eq!(resp.body, "dumb 1");
+}
