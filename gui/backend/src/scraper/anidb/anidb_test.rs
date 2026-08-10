@@ -237,6 +237,43 @@ fn resolve_prefers_the_bundled_dir_over_path() {
     assert!(fetch.exe().starts_with(bundled.path()));
 }
 
+#[test]
+fn candidate_names_expand_the_platform_suffixes_bare_name_first() {
+    assert_eq!(
+        fetch::candidate_names("curl_chrome136", &["", ".exe"]),
+        vec!["curl_chrome136".to_string(), "curl_chrome136.exe".to_string()]
+    );
+    assert_eq!(fetch::candidate_names("curl", &[""]), vec!["curl".to_string()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_finds_the_suffixed_binaries_windows_ships() {
+    // The Windows arm of the suffix table, driven explicitly so the
+    // behavior is provable on every platform: only `.exe`-shaped
+    // files exist, and resolution still names one.
+    let dir = tempfile::tempdir().expect("tmp");
+    stage_exe(dir.path(), "curl_chrome136.exe");
+    let path_env = dir.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve_with_suffixes(None, &path_env, &["", ".exe"])
+        .expect("resolved");
+    assert!(fetch.exe().ends_with("curl_chrome136.exe"));
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_keeps_the_failover_order_above_any_suffix_match() {
+    // Plain `curl` exists bare while a better impersonate name exists
+    // only suffixed — the failover order still decides.
+    let dir = tempfile::tempdir().expect("tmp");
+    stage_exe(dir.path(), "curl");
+    stage_exe(dir.path(), "curl_firefox135.exe");
+    let path_env = dir.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve_with_suffixes(None, &path_env, &["", ".exe"])
+        .expect("resolved");
+    assert!(fetch.exe().ends_with("curl_firefox135.exe"));
+}
+
 // ── the subprocess transport itself ─────────────────────────────────
 
 #[cfg(unix)]
