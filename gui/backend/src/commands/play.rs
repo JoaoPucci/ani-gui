@@ -187,8 +187,11 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
+    // ani-hsts speaks the provider's numbering; the offset was
+    // stamped by the fresh resolve that wrote this cache row.
+    let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
-        ep_no: args.episode.clone(),
+        ep_no: crate::commands::anidb_offset::provider_ep_no(&args.episode, offset),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
     };
@@ -658,12 +661,22 @@ where
         native.episode_cap,
     )
     .await;
+    // Stamp the show's numbering offset while it's known — the
+    // cache-hit and mark-watched writers and the history read
+    // boundary all key on it by slug. Prefetches stamp too: their
+    // resolve is exactly as authoritative.
+    crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset);
     // The subprocess used to write ani-hsts itself on a fresh
     // resolve; natively that write is ours. Prefetches stay out of
-    // the user's history exactly as before.
+    // the user's history exactly as before. ani-hsts speaks the
+    // provider's numbering — ani-cli's reader greps the stored
+    // number in the provider's episode list.
     if !args.prefetch {
         let entry = crate::history::HistoryEntry {
-            ep_no: args.episode.clone(),
+            ep_no: crate::commands::anidb_offset::provider_ep_no(
+                &args.episode,
+                native.numbering_offset,
+            ),
             id: native.slug.clone(),
             title: native.title.clone(),
         };

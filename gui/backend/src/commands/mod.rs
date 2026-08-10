@@ -8,6 +8,7 @@
 pub mod account;
 pub mod account_edit;
 pub mod airing;
+pub mod anidb_offset;
 pub mod anilist_eps_thumbs;
 pub mod aniskip;
 pub mod app_info;

@@ -34,6 +34,12 @@ pub struct NativeResolved {
     /// availability cap stamp. Free — the picker already fetched the
     /// list.
     pub episode_cap: Option<u32>,
+    /// The shift between the provider's episode numbers and the
+    /// per-entry numbers the request used ([`numbering_offset`]).
+    /// The ani-hsts writers add it — the shared history speaks the
+    /// provider's numbering — and the offset store persists it for
+    /// the cache-hit and mark-watched writers and the read boundary.
+    pub numbering_offset: u32,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -134,11 +140,13 @@ where
                             provider: "anidb.app".into(),
                         });
                         let episode_cap = kitsu_episode_cap(&picked.episodes);
+                        let offset = numbering_offset(&picked.episodes);
                         return Ok(NativeResolved {
                             slug: picked.hit.slug,
                             title: picked.hit.title,
                             master_url,
                             episode_cap,
+                            numbering_offset: offset,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

@@ -6,17 +6,33 @@
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
+/// Translate a row's on-disk `ep_no` — the provider's numbering,
+/// which `ani-cli` keys on — back to the per-entry (Kitsu) numbering
+/// every GUI surface counts in, using the offset the resolver
+/// stamped for the row's slug. Rows without a stamp pass through
+/// unchanged: that is the no-shift case, and the pre-stamp behavior
+/// for shows the GUI never resolved.
+fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
+    let offset = crate::commands::anidb_offset::get(state, &entry.id);
+    entry.ep_no = crate::commands::anidb_offset::kitsu_ep_no(&entry.ep_no, offset);
+    entry
+}
+
 /// Returns every history entry as the frontend would render the
 /// "Continue Watching" row. Most-recent-first order is the GUI's choice;
 /// the on-disk order from the CLI is "append-only with in-place updates",
 /// so we return entries in the order they appear on disk and let the
-/// frontend reverse if it wants newest-first.
+/// frontend reverse if it wants newest-first. Episode numbers are
+/// translated to the per-entry (Kitsu) numbering at this boundary.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] if the file exists but cannot
 /// be read.
 pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
-    read_all(&state.history_path)
+    Ok(read_all(&state.history_path)?
+        .into_iter()
+        .map(|e| to_kitsu_numbering(state, e))
+        .collect())
 }
 
 /// Find the history entry (if any) whose allmanga show_id maps to
@@ -50,7 +66,7 @@ pub fn history_by_kitsu(
     for entry in entries {
         if let Ok(Some(mapped)) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id) {
             if mapped == kitsu_id {
-                return Ok(Some(entry));
+                return Ok(Some(to_kitsu_numbering(state, entry)));
             }
         }
     }

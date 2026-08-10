@@ -605,9 +605,11 @@ async fn post_play_mark_watched(
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // History write — same as before the kitsu_id field landed.
+            // ani-hsts speaks the provider's numbering; the offset
+            // was stamped by the resolve that wrote this cache row.
+            let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             let entry = crate::history::HistoryEntry {
-                ep_no: args.episode.clone(),
+                ep_no: crate::commands::anidb_offset::provider_ep_no(&args.episode, offset),
                 id: cached.show_id.clone(),
                 title: cached.show_title.clone(),
             };
