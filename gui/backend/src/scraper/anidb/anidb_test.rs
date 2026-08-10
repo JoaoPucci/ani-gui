@@ -241,9 +241,15 @@ fn resolve_prefers_the_bundled_dir_over_path() {
 fn candidate_names_expand_the_platform_suffixes_bare_name_first() {
     assert_eq!(
         fetch::candidate_names("curl_chrome136", &["", ".exe"]),
-        vec!["curl_chrome136".to_string(), "curl_chrome136.exe".to_string()]
+        vec![
+            "curl_chrome136".to_string(),
+            "curl_chrome136.exe".to_string()
+        ]
     );
-    assert_eq!(fetch::candidate_names("curl", &[""]), vec!["curl".to_string()]);
+    assert_eq!(
+        fetch::candidate_names("curl", &[""]),
+        vec!["curl".to_string()]
+    );
 }
 
 #[cfg(unix)]
@@ -430,4 +436,46 @@ fn fixture_manifest_matches_the_fixtures() {
             "{file} is not in MANIFEST.json"
         );
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_hung_transport_child_dies_with_the_dropped_deadline() {
+    // kill_on_drop is the difference between a timeout and a leak:
+    // the dropped output() future must take the child with it, or
+    // every timed-out request parks a curl for its full hang.
+    let dir = tempfile::tempdir().expect("tmp");
+    let pidfile = dir.path().join("child.pid");
+    let fetch = stage_curl_stub(
+        dir.path(),
+        &format!("echo $$ >'{}'\nsleep 600", pidfile.display()),
+    )
+    .with_deadline(std::time::Duration::from_millis(300));
+    let err = fetch
+        .get("https://example.test/x")
+        .await
+        .expect_err("deadline");
+    assert!(matches!(err, AniError::Timeout));
+    let pid = std::fs::read_to_string(&pidfile)
+        .expect("pidfile")
+        .trim()
+        .to_string();
+    // The kill lands at drop; give the reap a moment, then require
+    // the pid gone.
+    let mut alive = true;
+    for _ in 0..50 {
+        alive = std::process::Command::new("kill")
+            .args(["-0", &pid])
+            .status()
+            .expect("kill -0")
+            .success();
+        if !alive {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        !alive,
+        "the timed-out curl child survived its dropped future"
+    );
 }
