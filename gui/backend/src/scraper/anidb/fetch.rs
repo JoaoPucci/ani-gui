@@ -161,6 +161,12 @@ impl AnidbFetch for CurlImpersonateFetch {
             .await
             .map_err(|_| AniError::Timeout)?
             .map_err(|_| AniError::Network)?;
+        // The -w trailer reports the last HTTP status even when the
+        // transfer then failed, so a nonzero exit means the body is
+        // not to be trusted whatever the trailer parses to.
+        if !output.status.success() {
+            return Err(AniError::Network);
+        }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
         let status: u16 = status_line.trim().parse().map_err(|_| AniError::Network)?;
