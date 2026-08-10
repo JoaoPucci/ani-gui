@@ -24,6 +24,7 @@ pub mod play;
 pub mod play_cache;
 pub mod play_external_command;
 pub mod play_native;
+pub mod play_native_numbering;
 pub mod play_native_outcome;
 pub mod play_native_resolve;
 pub mod play_native_year;
