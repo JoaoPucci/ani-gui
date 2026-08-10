@@ -45,14 +45,15 @@ impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
         if let Some(gate) = self.gate {
             // A refusal only happens for background priority while
-            // the breaker is open; it surfaces as the transient
-            // Network — never as provider weather, which would feed
-            // the breaker its own refusals.
+            // the breaker is open. It keeps its identity: mapped to
+            // Network it would be recorded as an upstream failure,
+            // and every background warmup would refresh the open
+            // breaker's cooldown without contacting the provider.
             let held = *self.sanction.lock().expect("sanction lock");
             let granted = gate
                 .admit_chained(self.priority, held)
                 .await
-                .map_err(|_| crate::error::AniError::Network)?;
+                .map_err(|_| crate::error::AniError::GateRefused)?;
             *self.sanction.lock().expect("sanction lock") = granted;
         }
         self.inner.get(url).await

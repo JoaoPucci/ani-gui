@@ -149,9 +149,10 @@ where
                     // pool; the next alias may carry the real show.
                     Err(AniError::NoResults) => {}
                     // A refusal or rate limit from a probe is the
-                    // provider blocking this client: the walk stops,
-                    // as it does when the search itself is refused.
-                    Err(e) if e.is_provider_block() => {
+                    // provider blocking this client — and a gate
+                    // refusal is the gate's own stop — either way
+                    // the walk ends, identity intact.
+                    Err(e) if e.is_provider_block() || matches!(e, AniError::GateRefused) => {
                         return Err(NativeError {
                             error: e,
                             clean_miss: false,
@@ -173,6 +174,15 @@ where
                 // Blocked: every further request deepens the hole.
                 return Err(NativeError {
                     error: AniError::Upstream { status },
+                    clean_miss: false,
+                });
+            }
+            // The gate refused this chain: every subsequent fetch
+            // would be refused the same way. The identity survives
+            // to the caller, which records no breaker outcome for it.
+            Err(AniError::GateRefused) => {
+                return Err(NativeError {
+                    error: AniError::GateRefused,
                     clean_miss: false,
                 });
             }

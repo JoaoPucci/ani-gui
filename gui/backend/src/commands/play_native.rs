@@ -173,7 +173,9 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 // Not-found-shaped statuses are the candidate itself
                 // dead — a stale slug 404s — and, like transport
                 // failures, only drop the candidate.
-                if e.is_provider_block() {
+                if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) {
+                    // A block or the gate's own refusal: every
+                    // further probe repeats the same answer.
                     return Err(e);
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {

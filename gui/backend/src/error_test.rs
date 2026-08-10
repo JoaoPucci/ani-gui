@@ -63,6 +63,7 @@ fn every_variant_has_a_stable_key() {
         },
         AniError::Upstream { status: 503 },
         AniError::Network,
+        AniError::GateRefused,
         AniError::Cache,
         AniError::Io,
         AniError::Config,

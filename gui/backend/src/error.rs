@@ -84,6 +84,15 @@ pub enum AniError {
     #[error("network error")]
     Network,
 
+    /// The scraper gate refused the request (breaker open, background
+    /// priority). The gate's own answer, not the provider's: outcome
+    /// recording skips it entirely — recording it as failure would
+    /// let background warmups keep extending the open breaker's
+    /// cooldown without a single provider request. Callers surface it
+    /// like a transient network failure.
+    #[error("scraper gate refused")]
+    GateRefused,
+
     /// External-player binary couldn't be spawned (not on PATH, or
     /// the configured path doesn't point at an executable). The
     /// `binary` field carries the configured player name so the UI
@@ -157,6 +166,10 @@ impl AniError {
             Self::Upstream { .. } => "error.network.upstream",
             Self::RateLimited { .. } => "error.network.rate_limited",
             Self::Network => "error.network.unreachable",
+            // The user-facing story is the same transient
+            // couldn't-reach; the variant exists for outcome
+            // recording, not for copy.
+            Self::GateRefused => "error.network.unreachable",
             Self::Cache => "error.cache.generic",
             Self::Io => "error.io.generic",
             Self::Config => "error.config.parse",
@@ -198,6 +211,7 @@ impl AniError {
             Self::RateLimited { .. } => 429,
             Self::Upstream { .. } => 502,
             Self::Network => 503,
+            Self::GateRefused => 503,
             Self::Timeout => 504,
             Self::UnsupportedPkce => 400,
             Self::ParseFailed { .. }
