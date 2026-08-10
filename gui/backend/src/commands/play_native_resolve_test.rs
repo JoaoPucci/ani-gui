@@ -312,6 +312,49 @@ async fn a_clean_all_empty_walk_is_the_only_persistable_miss() {
 }
 
 #[tokio::test]
+async fn a_refused_gate_stops_the_walk_before_any_search() {
+    // Background priority against an open breaker: the pre-flight
+    // admit refuses, and the walk must return the transient Network
+    // without a single provider request — the early stop the
+    // per-fetch GatedFetch admission then backs up request by
+    // request.
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let client = AnidbClient::new(ProviderRef(&provider));
+    let gate = crate::scraper::gate::ScraperGate::new();
+    for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+        gate.record(
+            crate::scraper::gate::ScrapeOutcome::Failure,
+            tokio::time::Instant::now(),
+        );
+    }
+    let mut sink = |_p: ProgressLine| {};
+    let got = resolve_native(
+        &client,
+        Some(&gate),
+        crate::scraper::gate::ScrapePriority::Background,
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &[],
+            episode: "2",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(3),
+            year: None,
+            subtype: None,
+        },
+        &mut sink,
+    )
+    .await;
+    let err = got.expect_err("refused");
+    assert!(!err.clean_miss);
+    assert!(matches!(err.error, AniError::Network));
+    assert!(
+        provider.requests().is_empty(),
+        "no provider request may run while the gate refuses"
+    );
+}
+
+#[tokio::test]
 async fn an_unlisted_episode_is_a_dead_end_not_absence() {
     let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "9", Some(3)).await;
@@ -361,6 +404,23 @@ async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
     assert_eq!(resolved.slug, "the-sequel-88");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(resolved.episode_cap, Some(2));
+}
+
+#[tokio::test]
+async fn a_continuation_resolve_reports_its_numbering_offset() {
+    // ani-hsts speaks the provider's numbering — ani-cli's
+    // process_hist_entry greps the stored ep_no in the provider's
+    // episode list — so the history writers need the shift the
+    // resolver already computed, or a GUI-written continuation row
+    // (Kitsu "1" for provider 41) vanishes from `ani-cli -c`.
+    let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
+    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let (got, _) = run(&provider, "the sequel", &[], "1", None).await;
+    assert_eq!(got.expect("resolved").numbering_offset, 40);
+
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let (got, _) = run(&provider, "the show", &[], "2", Some(3)).await;
+    assert_eq!(got.expect("resolved").numbering_offset, 0);
 }
 
 #[tokio::test]

@@ -131,6 +131,61 @@ mod tests {
     }
 
     #[test]
+    fn list_translates_provider_numbering_back_to_kitsu() {
+        // ani-hsts speaks the provider's numbering (ani-cli greps the
+        // stored ep_no in the provider's episode list), while every
+        // GUI surface counts per-entry like Kitsu. The read boundary
+        // subtracts the offset stamped at resolve time; rows without
+        // a stamp pass through unchanged — that's today's behavior
+        // for shows the GUI has never resolved.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[
+                HistoryEntry {
+                    ep_no: "41".into(),
+                    id: "the-sequel-88".into(),
+                    title: "The Sequel".into(),
+                },
+                HistoryEntry {
+                    ep_no: "5".into(),
+                    id: "plain-1".into(),
+                    title: "Plain Show".into(),
+                },
+            ],
+        )
+        .unwrap();
+        crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+        let listed = history_list(&s).unwrap();
+        assert_eq!(listed[0].ep_no, "1", "provider 41 minus offset 40");
+        assert_eq!(listed[1].ep_no, "5", "no stamp: served raw");
+    }
+
+    #[test]
+    fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[HistoryEntry {
+                ep_no: "42".into(),
+                id: "the-sequel-88".into(),
+                title: "The Sequel".into(),
+            }],
+        )
+        .unwrap();
+        crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "K9").unwrap();
+        crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+        let hit = history_by_kitsu(&s, "K9").unwrap().expect("match");
+        assert_eq!(hit.ep_no, "2");
+    }
+
+    #[test]
     fn by_kitsu_returns_the_matching_entry() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("ani-hsts");

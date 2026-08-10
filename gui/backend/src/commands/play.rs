@@ -933,6 +933,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cache_hit_history_writes_the_providers_numbering() {
+        // ani-hsts speaks the provider's numbering — ani-cli greps
+        // the stored ep_no in the provider's episode list — so a
+        // Kitsu-relative "1" written for a continuation cour (whose
+        // provider list starts at 41) vanishes from `ani-cli -c`.
+        // The writer adds the offset stamped at resolve time.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.history_path = tmp.path().join("ani-hsts");
+        let mut cached = cached_blank(
+            "https://cdn.example/x/master.m3u8".into(),
+            String::new(),
+            MediaKind::Hls,
+        );
+        cached.show_id = "the-sequel-88".into();
+        cached.show_title = "The Sequel".into();
+        crate::commands::anidb_offset::put(&state, "the-sequel-88", 40);
+        let args = PlayArgs {
+            title: "The Sequel".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        write_history_on_cache_hit(&state, &args, &cached);
+        let rows = crate::history::read_all(&state.history_path).expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].ep_no, "41", "provider numbering, not Kitsu's");
+    }
+
     #[tokio::test]
     async fn try_serve_cached_returns_none_when_url_is_unparseable() {
         // A corrupt cache row with garbage in upstream_url shouldn't
