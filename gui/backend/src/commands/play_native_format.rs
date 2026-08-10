@@ -13,27 +13,31 @@ use crate::scraper::anidb::BrowseHit;
 /// an absent subtype keeps single-video pools permissive, and a pool
 /// left empty here is disproven — the next alias may carry the real
 /// show.
-pub(crate) fn format_filtered<'a>(
-    head: Vec<(&'a BrowseHit, bool)>,
+///
+/// Runs over the RAW hit list, before the bounded probe head is
+/// taken: the badge costs nothing to read, and filtered after the
+/// truncation five format-incompatible decoys ranked first would
+/// crowd the real show out of the probe slots entirely.
+pub(crate) fn format_survivors(
+    hits: &[BrowseHit],
     expected: Option<u32>,
     subtype: Option<&str>,
-) -> Vec<(&'a BrowseHit, bool)> {
+) -> Vec<BrowseHit> {
     let expects_movie = subtype.is_some_and(|s| s.eq_ignore_ascii_case("movie"));
     let expects_non_movie = matches!(expected, Some(n) if n > 1)
         || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-    if expects_movie {
-        head.into_iter()
-            .filter(|(h, _)| {
+    hits.iter()
+        .filter(|h| {
+            if expects_movie {
                 h.kind
                     .as_deref()
                     .is_none_or(|k| k.eq_ignore_ascii_case("movie"))
-            })
-            .collect()
-    } else if expects_non_movie {
-        head.into_iter()
-            .filter(|(h, _)| h.kind.as_deref() != Some("Movie"))
-            .collect()
-    } else {
-        head
-    }
+            } else if expects_non_movie {
+                h.kind.as_deref() != Some("Movie")
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect()
 }

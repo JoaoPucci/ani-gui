@@ -15,7 +15,7 @@
 use crate::error::Result;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
 
-use super::play_native_format::format_filtered;
+use super::play_native_format::format_survivors;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -81,10 +81,11 @@ pub async fn pick_candidate<F: AnidbFetch>(
         return Err(crate::error::AniError::NoResults);
     }
     let needle = search_title.trim().to_lowercase();
-    let (head, year_excluded_any) = year_filtered(client, hits, year).await?;
-
-    // Format disproof in both directions — see play_native_format.
-    let head = format_filtered(head, expected, subtype);
+    // Format disproof in both directions, over the RAW list — the
+    // badge is free, so incompatible formats never crowd the bounded
+    // probe head (see play_native_format).
+    let hits = format_survivors(hits, expected, subtype);
+    let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
