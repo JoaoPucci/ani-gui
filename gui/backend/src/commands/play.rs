@@ -577,6 +577,7 @@ where
         alt_titles: &args.alt_titles,
         episode: &args.episode,
         mode: &args.mode,
+        quality,
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),

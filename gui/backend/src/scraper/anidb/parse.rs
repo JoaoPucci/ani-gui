@@ -174,6 +174,68 @@ pub fn preferred_embed<'a>(embeds: &'a [LanguageEmbed], mode: &str) -> Option<&'
     embeds.iter().find(|e| e.language == lang)
 }
 
+/// One variant row of a master playlist: the stream's vertical
+/// resolution and its URI, as the script's `anidb_m3u8` carves them
+/// out of `#EXT-X-STREAM-INF` stanzas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MasterVariant {
+    /// Vertical resolution from the stanza's `RESOLUTION=WxH`.
+    pub height: u32,
+    /// The variant's URI — the stanza's following line, as written.
+    pub url: String,
+}
+
+/// The master playlist's variant rows, highest resolution first —
+/// the order the script's `sort -g -r` produces. Stanzas without a
+/// parseable `RESOLUTION` height, and I-frame stanzas (which carry
+/// their URI inline and no playable stream), contribute nothing.
+pub fn parse_master_variants(m3u8: &str) -> Vec<MasterVariant> {
+    let mut out = Vec::new();
+    let mut lines = m3u8.lines();
+    while let Some(line) = lines.next() {
+        if !line.starts_with("#EXT-X-STREAM-INF") || line.contains("I-FRAME") {
+            continue;
+        }
+        let Some(height) = line
+            .split("RESOLUTION=")
+            .nth(1)
+            .and_then(|rest| rest.split(',').next())
+            .and_then(|res| res.split('x').nth(1))
+            .and_then(|h| h.trim().parse().ok())
+        else {
+            continue;
+        };
+        let Some(url) = lines
+            .by_ref()
+            .find(|l| !l.starts_with('#') && !l.trim().is_empty())
+        else {
+            break;
+        };
+        out.push(MasterVariant {
+            height,
+            url: url.trim().to_string(),
+        });
+    }
+    out.sort_by(|a, b| b.height.cmp(&a.height));
+    out
+}
+
+/// The variant a quality setting selects, mirroring the script's
+/// `select_quality` arms: `best` takes the highest, `worst` the
+/// lowest, anything else the variant whose height matches the
+/// setting exactly. A miss is `None` — the caller keeps the adaptive
+/// master rather than guessing.
+pub fn select_variant<'a>(
+    variants: &'a [MasterVariant],
+    quality: &str,
+) -> Option<&'a MasterVariant> {
+    match quality {
+        "best" => variants.first(),
+        "worst" => variants.last(),
+        q => variants.iter().find(|v| v.height.to_string() == q),
+    }
+}
+
 /// Pull the master-playlist URL out of an embed page's jwplayer
 /// setup (`file: '…'`, first occurrence).
 pub fn extract_master_url(embed_html: &str) -> Option<String> {

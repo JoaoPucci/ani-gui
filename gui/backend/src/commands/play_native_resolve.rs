@@ -60,6 +60,10 @@ pub struct NativeResolveRequest<'a> {
     pub episode: &'a str,
     /// `"sub"` or `"dub"`.
     pub mode: &'a str,
+    /// Quality setting (`best`, `worst`, or a height like `720`).
+    /// `best` keeps the adaptive master; anything else selects a
+    /// variant from it, falling back to the master on a miss.
+    pub quality: &'a str,
     /// Kitsu's episode count, when known.
     pub expected_count: Option<u32>,
     /// The year the show premiered per Kitsu, when known. The
@@ -124,7 +128,8 @@ where
                             text: format!("Matched {}", picked.hit.title),
                         });
                         let master_url =
-                            resolve_episode(client, &picked, req.episode, req.mode).await?;
+                            resolve_episode(client, &picked, req.episode, req.mode, req.quality)
+                                .await?;
                         on_progress(ProgressLine::LinksFetched {
                             provider: "anidb.app".into(),
                         });
@@ -230,6 +235,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
     picked: &PickedShow,
     episode: &str,
     mode: &str,
+    quality: &str,
 ) -> std::result::Result<String, NativeError> {
     let dead_end = |error: AniError| NativeError {
         error,
@@ -245,10 +251,12 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .iter()
         .find(|e| e.number == n)
         .ok_or_else(|| dead_end(AniError::NoResults))?;
-    client
+    let master = client
         .master_playlist_url(ep.id, mode)
         .await
-        .map_err(dead_end)
+        .map_err(dead_end)?;
+    // The quality step is soft: any miss keeps the adaptive master.
+    Ok(client.quality_stream_url(&master, quality).await)
 }
 
 #[cfg(test)]

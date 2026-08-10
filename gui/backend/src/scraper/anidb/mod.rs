@@ -26,7 +26,8 @@ pub mod parse;
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
 pub use parse::{
     encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_detail_year,
-    parse_episodes, parse_languages, preferred_embed,
+    parse_episodes, parse_languages, parse_master_variants, preferred_embed, select_variant,
+    MasterVariant,
 };
 
 use crate::error::{AniError, Result};
@@ -156,6 +157,35 @@ impl<F: AnidbFetch> AnidbClient<F> {
         let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
         let embed_body = self.content(&embed.embed_url).await?;
         extract_master_url(&embed_body).ok_or(AniError::NoResults)
+    }
+
+    /// The stream URL a quality setting selects from a master
+    /// playlist, mirroring the script's `select_quality`. `best`
+    /// keeps the adaptive master untouched (no fetch — hls.js picks
+    /// levels itself); any other setting fetches the master, parses
+    /// its variants and returns the matching height's URI resolved
+    /// against the master's URL. Soft on every miss — an unserved
+    /// height, an unfetchable or unparseable master — the master URL
+    /// comes back and playback stays adaptive rather than failing.
+    pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> String {
+        if quality == "best" {
+            return master_url.to_string();
+        }
+        let Ok(body) = self.content(master_url).await else {
+            return master_url.to_string();
+        };
+        let variants = parse_master_variants(&body);
+        let Some(variant) = select_variant(&variants, quality) else {
+            tracing::debug!(
+                quality,
+                "anidb: quality not served, keeping adaptive master"
+            );
+            return master_url.to_string();
+        };
+        match url::Url::parse(master_url).and_then(|base| base.join(&variant.url)) {
+            Ok(joined) => joined.to_string(),
+            Err(_) => master_url.to_string(),
+        }
     }
 
     /// The premiere year the slug's detail page names, when it names
