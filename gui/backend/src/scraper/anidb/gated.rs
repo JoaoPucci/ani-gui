@@ -19,6 +19,11 @@ pub struct GatedFetch<'g, F> {
     inner: F,
     gate: Option<&'g ScraperGate>,
     priority: ScrapePriority,
+    /// The half-open trial sanction, when this chain's first admit
+    /// took the trial. One GatedFetch is one logical resolve chain,
+    /// so carrying the sanction here lets the chain's remaining
+    /// fetches ride the trial instead of being refused by it.
+    sanction: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl<'g, F> GatedFetch<'g, F> {
@@ -30,6 +35,7 @@ impl<'g, F> GatedFetch<'g, F> {
             inner,
             gate,
             priority,
+            sanction: std::sync::Mutex::new(None),
         }
     }
 }
@@ -40,12 +46,14 @@ impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
         if let Some(gate) = self.gate {
             // A refusal only happens for background priority while
             // the breaker is open; it surfaces as the transient
-            // Network, same as the walk's pre-flight admit maps it —
-            // never as provider weather, which would feed the breaker
-            // its own refusals.
-            gate.admit(self.priority)
+            // Network — never as provider weather, which would feed
+            // the breaker its own refusals.
+            let held = *self.sanction.lock().expect("sanction lock");
+            let granted = gate
+                .admit_chained(self.priority, held)
                 .await
                 .map_err(|_| crate::error::AniError::Network)?;
+            *self.sanction.lock().expect("sanction lock") = granted;
         }
         self.inner.get(url).await
     }

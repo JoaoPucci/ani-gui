@@ -135,8 +135,6 @@ async fn run(
     let mut events = Vec::new();
     let got = resolve_native(
         &client,
-        None,
-        crate::scraper::gate::ScrapePriority::Interactive,
         NativeResolveRequest {
             title,
             alt_titles: alts,
@@ -301,8 +299,6 @@ async fn a_detail_refusal_stops_the_alias_walk() {
     let mut sink = |_p: ProgressLine| {};
     let got = resolve_native(
         &client,
-        None,
-        crate::scraper::gate::ScrapePriority::Interactive,
         NativeResolveRequest {
             title: "the show",
             alt_titles: &["alias one".to_string(), "alias two".to_string()],
@@ -388,14 +384,11 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
 }
 
 #[tokio::test]
-async fn a_refused_gate_stops_the_walk_before_any_search() {
-    // Background priority against an open breaker: the pre-flight
-    // admit refuses, and the walk must return the transient Network
-    // without a single provider request — the early stop the
-    // per-fetch GatedFetch admission then backs up request by
-    // request.
+async fn a_refused_gate_keeps_every_provider_request_from_running() {
+    // Background priority against an open breaker: every per-fetch
+    // admission refuses before the transport, so the walk ends in
+    // the transient Network verdict with zero provider requests.
     let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
-    let client = AnidbClient::new(ProviderRef(&provider));
     let gate = crate::scraper::gate::ScraperGate::new();
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
         gate.record(
@@ -403,11 +396,14 @@ async fn a_refused_gate_stops_the_walk_before_any_search() {
             tokio::time::Instant::now(),
         );
     }
+    let client = AnidbClient::new(crate::scraper::anidb::GatedFetch::new(
+        ProviderRef(&provider),
+        Some(&gate),
+        crate::scraper::gate::ScrapePriority::Background,
+    ));
     let mut sink = |_p: ProgressLine| {};
     let got = resolve_native(
         &client,
-        Some(&gate),
-        crate::scraper::gate::ScrapePriority::Background,
         NativeResolveRequest {
             title: "the show",
             alt_titles: &[],
@@ -446,8 +442,6 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
     let mut sink = |_p: ProgressLine| {};
     let got = resolve_native(
         &client,
-        None,
-        crate::scraper::gate::ScrapePriority::Interactive,
         NativeResolveRequest {
             title: "the show",
             alt_titles: &[],

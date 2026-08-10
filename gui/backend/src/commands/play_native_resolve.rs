@@ -16,7 +16,6 @@
 use crate::anicli::parser::ProgressLine;
 use crate::error::AniError;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch};
-use crate::scraper::gate::{ScrapePriority, ScraperGate};
 
 use super::play_native::{pick_candidate, PickedShow};
 use super::play_native_numbering::{kitsu_episode_cap, numbering_offset};
@@ -85,8 +84,13 @@ pub struct NativeResolveRequest<'a> {
 /// Search the request's title then its fallbacks in order, pick, and
 /// resolve the episode for the mode to a master-playlist URL.
 ///
-/// - Each provider request cluster is admitted through `gate` at
-///   `priority` when a gate is given; a refused admit is transient.
+/// - Gate admission is the transport's job: the production client
+///   wraps its fetch in [`crate::scraper::anidb::GatedFetch`], which
+///   admits every provider request and carries the half-open trial
+///   sanction across the chain. A second admission here would consume
+///   that trial before the fetch's own admit runs — the fetch would
+///   then be refused by its own chain's sanction, and the breaker
+///   would reopen on its own refusal.
 /// - A pool whose pick is rejected keeps the walk going — the next
 ///   alias may carry the real show (the Stone Ocean recovery).
 /// - [`AniError::Upstream`] from a search stops the walk.
@@ -98,8 +102,6 @@ pub struct NativeResolveRequest<'a> {
 /// all-clean-no-match verdict.
 pub async fn resolve_native<F, P>(
     client: &AnidbClient<F>,
-    gate: Option<&ScraperGate>,
-    priority: ScrapePriority,
     req: NativeResolveRequest<'_>,
     on_progress: &mut P,
 ) -> std::result::Result<NativeResolved, NativeError>
@@ -113,14 +115,6 @@ where
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
-        if let Some(g) = gate {
-            if g.admit(priority).await.is_err() {
-                return Err(NativeError {
-                    error: AniError::Network,
-                    clean_miss: false,
-                });
-            }
-        }
         match client.search(t).await {
             Ok(hits) => {
                 any_search_succeeded = true;

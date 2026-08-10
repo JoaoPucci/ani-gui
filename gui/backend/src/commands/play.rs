@@ -616,14 +616,9 @@ where
         subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
-    let native = crate::commands::play_native_resolve::resolve_native(
-        &client,
-        Some(&state.scraper_gate),
-        scrape_priority(args),
-        request,
-        &mut on_progress,
-    )
-    .await;
+    let native =
+        crate::commands::play_native_resolve::resolve_native(&client, request, &mut on_progress)
+            .await;
     // Feed the breaker the resolution's outcome so background traffic
     // backs off after provider-shaped failures — and only those. The
     // mapping lives in play_native_resolve::breaker_outcome: answered
