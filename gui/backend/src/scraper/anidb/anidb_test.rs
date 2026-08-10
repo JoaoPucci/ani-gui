@@ -749,7 +749,8 @@ async fn quality_selection_returns_the_matching_variant() {
     });
     let url = client
         .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
-        .await;
+        .await
+        .expect("served master");
     assert_eq!(url, "https://cdn.example/op/720/index.m3u8");
     assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -762,13 +763,14 @@ async fn best_quality_keeps_the_adaptive_master_without_a_fetch() {
     });
     let url = client
         .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
-        .await;
+        .await
+        .expect("no fetch to fail");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
     assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
-async fn an_unserved_or_unfetchable_quality_falls_back_to_the_master() {
+async fn an_unserved_quality_falls_back_to_the_fetched_master() {
     let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let client = AnidbClient::new(MasterOnly {
         fetches: fetches.clone(),
@@ -776,11 +778,29 @@ async fn an_unserved_or_unfetchable_quality_falls_back_to_the_master() {
     // Served master, unserved height → adaptive master, not a guess.
     let url = client
         .quality_stream_url("https://cdn.example/op/master.m3u8", "480")
-        .await;
+        .await
+        .expect("the playlist itself was served");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
-    // Unfetchable master → the master URL still plays adaptively.
-    let url = client
+}
+
+#[tokio::test]
+async fn a_failed_master_fetch_propagates_instead_of_reporting_success() {
+    // The soft fallback exists for a SERVED playlist that lacks the
+    // requested height. Extending it to a failed fetch returns the
+    // URL that just failed: the resolver then reports success,
+    // stamps availability and history, and caches a session the
+    // player cannot load — and a swallowed 429 records breaker
+    // health instead of opening the rate-limit pause.
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(MasterOnly {
+        fetches: fetches.clone(),
+    });
+    let err = client
         .quality_stream_url("https://cdn.example/op/missing.m3u8", "720")
-        .await;
-    assert_eq!(url, "https://cdn.example/op/missing.m3u8");
+        .await
+        .expect_err("the playlist fetch itself failed");
+    assert!(
+        matches!(err, AniError::Upstream { status: 404 }),
+        "got {err:?}"
+    );
 }
