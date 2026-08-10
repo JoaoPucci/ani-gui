@@ -639,7 +639,9 @@ where
     // weather is distress.
     // None = the gate refused before any provider contact; the
     // breaker only hears about requests that got past it.
-    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(&native) {
+    if let Some(outcome) =
+        crate::commands::play_native_outcome::breaker_outcome(scrape_priority(args), &native)
+    {
         state.scraper_gate.record(outcome, resolve_started_at);
     }
     let native = match native {

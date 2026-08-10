@@ -353,7 +353,10 @@ async fn a_stale_slug_pool_records_health_not_distress() {
         err.error
     );
     assert!(matches!(
-        crate::commands::play_native_outcome::breaker_outcome(&Err(err)),
+        crate::commands::play_native_outcome::breaker_outcome(
+            crate::scraper::gate::ScrapePriority::Background,
+            &Err(err)
+        ),
         Some(crate::scraper::gate::ScrapeOutcome::Success)
     ));
 }

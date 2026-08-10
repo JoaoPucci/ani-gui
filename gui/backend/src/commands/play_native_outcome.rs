@@ -3,7 +3,7 @@
 
 use super::play_native_resolve::{NativeError, NativeResolved};
 use crate::error::AniError;
-use crate::scraper::gate::ScrapeOutcome;
+use crate::scraper::gate::{ScrapeOutcome, ScrapePriority};
 
 /// What a resolution outcome means to the scraper breaker. The
 /// provider ANSWERING is health whatever the answer was: every
@@ -18,6 +18,7 @@ use crate::scraper::gate::ScrapeOutcome;
 /// show with one episode missing is breaker-healthy but proves
 /// nothing about the show's availability.
 pub fn breaker_outcome(
+    priority: ScrapePriority,
     native: &std::result::Result<NativeResolved, NativeError>,
 ) -> Option<ScrapeOutcome> {
     match native {
@@ -25,6 +26,15 @@ pub fn breaker_outcome(
         Err(ne) if ne.clean_miss => Some(ScrapeOutcome::Success),
         Err(ne) => match ne.error {
             AniError::GateRefused => None,
+            // A Timeout here is the whole-resolve deadline (the
+            // walk turns per-fetch stalls into Network). For a paced
+            // background resolve that duration includes the gate's
+            // own queueing — a page warm's dozen prefetch chains can
+            // burn the deadline on pacing alone — so the elapse is
+            // ambiguous evidence and records nothing. Interactive
+            // resolves are never paced: their elapse is a real
+            // stall and falls through to the failure arm.
+            AniError::Timeout if priority == ScrapePriority::Background => None,
             AniError::NoResults => Some(ScrapeOutcome::Success),
             AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
