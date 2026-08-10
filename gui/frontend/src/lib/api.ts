@@ -714,6 +714,7 @@ export function downloadStream(
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
+	if (args.subtype) params.set('subtype', args.subtype);
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
