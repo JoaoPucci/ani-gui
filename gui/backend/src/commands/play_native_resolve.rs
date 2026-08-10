@@ -143,8 +143,8 @@ where
     F: AnidbFetch,
     P: FnMut(ProgressLine) + Send,
 {
-    on_progress(ProgressLine::Banner {
-        text: "Searching anidb.app...".into(),
+    on_progress(ProgressLine::Searching {
+        provider: "anidb.app".into(),
     });
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
@@ -160,8 +160,8 @@ where
                     .await
                 {
                     Ok(picked) => {
-                        on_progress(ProgressLine::Other {
-                            text: format!("Matched {}", picked.hit.title),
+                        on_progress(ProgressLine::Matched {
+                            title: picked.hit.title.clone(),
                         });
                         let master_url =
                             resolve_episode(client, &picked, req.episode, req.mode, req.quality)
