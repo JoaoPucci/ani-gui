@@ -35,13 +35,22 @@ setup() {
 
 @test "a ceiling nothing can satisfy still names the distance" {
     has_upstream || skip "no upstream remote to measure divergence against"
-    # A ceiling of zero, so the check must fail. What matters is that
-    # the failure says how far apart the two are: a reader can then
-    # tell a newly landed patch from a ceiling that was never
-    # satisfiable, which is the distinction the check exists to make.
+    # A ceiling of minus one, which no non-negative divergence can
+    # satisfy — the 5.0 sync brought the script in line with upstream,
+    # so any fixed positive ceiling might legitimately pass. What
+    # matters is that the failure says how far apart the two are: a
+    # reader can then tell a newly landed patch from a ceiling that
+    # was never satisfiable, which is the distinction the check
+    # exists to make. The sed must keep tracking the literal in
+    # bash_portability.sh; it fails closed if that drifts — an
+    # unmatched sed leaves the probe unmodified and passing.
     probe="$BATS_TEST_TMPDIR/portability.sh"
-    sed 's/-gt 50 \]/-gt 0 ]/' "$ARCH_DIR/bash_portability.sh" >"$probe"
+    sed 's/-gt 4 \]/-gt -1 ]/' "$ARCH_DIR/bash_portability.sh" >"$probe"
     run env ARCH_REPO_ROOT="$REPO_ROOT" sh "$probe"
     [ "$status" -ne 0 ]
     [[ "$output" == *"diverges from upstream"* ]]
+    # The distance is only legible against the bar it missed: a
+    # message quoting a ceiling the comparison no longer uses sends
+    # the reader off to justify the wrong number.
+    [[ "$output" == *"(max 4)"* ]]
 }

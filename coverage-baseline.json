@@ -6,14 +6,14 @@
 		"regions_pct": 0
 	},
 	"frontend": {
-		"lines_pct": 99.31,
+		"lines_pct": 99.66,
 		"functions_pct": 100,
-		"statements_pct": 99.13,
-		"branches_pct": 95.39
+		"statements_pct": 99.17,
+		"branches_pct": 96.51
 	},
 	"bash": {
 		"pure_covered_min": 78,
-		"network_covered_min": 95
+		"network_covered_min": 110
 	},
 	"crap": {
 		"_comment": "CRAP = ccn² × (1 − cov)² + ccn, per file. The score floors at ccn (perfect coverage gives CRAP == ccn), so a file with intrinsic ccn > 30 stays in the high-risk bucket no matter how thoroughly tested it is. These three ceilings are firm: a PR that would push a file's CRAP above max_le, or push the count of high-risk files above high_risk_le, must refactor — split files, extract helpers, cover more — instead of raising the ceiling. See the top-level `_comment` for the rationale.",

@@ -1,52 +1,51 @@
 #!/usr/bin/env bats
 #
-# Tests for ani-cli's `play_episode` (lines 384-431).
+# Tests for ani-cli's `play_episode` (5.0).
 #
 # Contract:
-#   - Reads many globals (player_function, episode, ep_no, id, title,
-#     allanime_title, subs_flag, refr_flag, no_detach, exit_after_play,
-#     skip_intro, log_episode, replay, range, use_external_menu).
+#   - Reads globals: player_function, video_link, links, ep_no,
+#     anime_id, anime_title, no_detach, exit_after_play, skip_intro,
+#     log_episode, canon_ep_no, mal_id, player_extra_flags,
+#     menu_program.
 #   - Branches on player_function and invokes the right player.
-#   - Updates history after launching.
+#   - Saves $video_link into $replay, unsets it, and updates history.
 #
-# We stub every external command play_episode might call (nohup, mpv, vlc,
-# am, flatpak, catt, logger, ani-skip) and assert which one was invoked
-# with which args.
+# Every external command a branch might call is stubbed; assertions
+# check which one ran with which args.
 
 load '../helpers/loader'
 
 setup() {
-    # History must be redirected to a tmp dir BEFORE sourcing — the script
-    # initializes $histfile during setup.
+    # History must be redirected to a tmp dir BEFORE sourcing — the
+    # script initializes $histfile during its setup block.
     export ANI_CLI_HIST_DIR="$BATS_TEST_TMPDIR/hist"
     mkdir -p "$ANI_CLI_HIST_DIR"
     source_ani_cli_lib
     # shellcheck source=/dev/null
     load '../helpers/process_stub'
     stub_setup
-    stub_command nohup mpv vlc flatpak am catt logger ani-skip syncplay yt-dlp ffmpeg aria2c
+    stub_command nohup mpv vlc flatpak am catt logger ani-skip syncplay yt-dlp ffmpeg
 
-    # Common state every branch reads.
     ep_no='1'
-    id='showid'
-    title='Test Anime (1 episodes)'
-    allanime_title='Test Anime '
-    episode='https://example.com/video.mp4'
-    subs_flag=''
-    refr_flag=''
+    canon_ep_no='1'
+    anime_id='one-piece-69'
+    anime_title='One Piece'
+    video_link='https://cdn.example/op/1080/index.m3u8'
+    links=$'1080p >https://cdn.example/op/1080/index.m3u8\n720p >https://cdn.example/op/720/index.m3u8'
     skip_intro=0
     log_episode=0
     no_detach=0
     exit_after_play=0
-    use_external_menu=0
-    range=''
+    player_extra_flags=''
+    menu_program='fzf'
+    _range=''
 }
 
 @test "play_episode: mpv default branch invokes nohup mpv with --force-media-title" {
     player_function='mpv'
     play_episode || true
-    wait 2>/dev/null || true # allow backgrounded stubs to flush
-    stub_assert_called nohup '.*mpv.*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
+    wait 2>/dev/null || true
+    stub_assert_called nohup '.*mpv.*--force-media-title=One Piece Episode 1.*https://cdn.example/op/1080/index.m3u8'
 }
 
 @test "play_episode: mpv with no_detach=1 calls mpv synchronously (no nohup)" {
@@ -54,42 +53,37 @@ setup() {
     no_detach=1
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called mpv '.*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
+    stub_assert_called mpv '.*--force-media-title=One Piece Episode 1.*https://cdn.example/op/1080/index.m3u8'
     stub_assert_not_called nohup
 }
 
-@test "play_episode: vlc branch passes --http-referrer from refr_flag" {
+@test "play_episode: vlc branch passes --play-and-exit and the meta title" {
     player_function='vlc'
-    refr_flag='--referrer=https://allmanga.to'
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called nohup '.*vlc.*--http-referrer=https://allmanga.to.*'
-    stub_assert_called nohup '.*--meta-title=Test Anime Episode 1.*'
+    stub_assert_called nohup '.*vlc.*--play-and-exit.*'
+    stub_assert_called nohup '.*--meta-title=One Piece Episode 1.*'
 }
 
-@test "play_episode: flatpak_mpv branch invokes flatpak run io.mpv.Mpv" {
-    player_function='flatpak_mpv'
+@test "play_episode: the flatpak directory branch runs flatpak io.mpv.Mpv" {
+    player_function="$HOME/.local/share/flatpak/app/io.mpv/Mpv/"
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called flatpak '.*run io.mpv.Mpv .*--force-media-title=Test Anime Episode 1.*https://example.com/video.mp4'
+    stub_assert_called flatpak '.*run io.mpv.Mpv.*--force-media-title=One Piece Episode 1.*https://cdn.example/op/1080/index.m3u8'
 }
 
 @test "play_episode: catt branch invokes catt cast" {
-    # 4.15 dropped the -s subtitle argument along with the separate
-    # subtitle track.
     player_function='catt'
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called nohup '.*catt cast https://example.com/video.mp4'
+    stub_assert_called nohup '.*catt cast.*https://cdn.example/op/1080/index.m3u8'
 }
 
 @test "play_episode: android_mpv branch invokes am start with MPVActivity" {
     player_function='android_mpv'
     play_episode || true
     wait 2>/dev/null || true
-    # The branch calls the script's android_mpv function, which execs
-    # am directly (no nohup wrapper).
-    stub_assert_called am '.*is.xyz.mpv/.MPVActivity.*'
+    stub_assert_called nohup '.*am start.*is.xyz.mpv/.MPVActivity.*'
 }
 
 @test "play_episode: android_vlc branch invokes am start with VideoPlayerActivity" {
@@ -99,29 +93,45 @@ setup() {
     stub_assert_called nohup '.*am start.*org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity.*'
 }
 
-@test "play_episode: debug branch prints links and selected URL to stdout (no players invoked)" {
+@test "play_episode: debug branch prints links and selected URL, no players" {
     player_function='debug'
-    links=$'1080 >https://example.com/v1.mp4\n720 >https://example.com/v2.mp4'
     output=$(play_episode 2>/dev/null || true)
     [[ "$output" == *"All links:"* ]]
-    [[ "$output" == *"1080 >https://example.com/v1.mp4"* ]]
+    [[ "$output" == *"1080p >https://cdn.example/op/1080/index.m3u8"* ]]
     [[ "$output" == *"Selected link:"* ]]
-    [[ "$output" == *"https://example.com/video.mp4"* ]]
+    [[ "$output" == *"https://cdn.example/op/1080/index.m3u8"* ]]
     stub_assert_not_called nohup
     stub_assert_not_called mpv
 }
 
-@test "play_episode: updates the history file with ep_no\\tid\\ttitle" {
+@test "play_episode: updates the history file with ep_no/anime_id/title" {
     player_function='mpv'
     play_episode || true
     wait 2>/dev/null || true
-    grep -E "^1"$'\t'"showid"$'\t'"Test Anime" "$histfile" >/dev/null
+    grep -F "1"$'\t'"one-piece-69"$'\t'"One Piece" "$histfile" >/dev/null
 }
 
-@test "play_episode: log_episode=1 invokes logger with allanime_title and ep_no" {
+@test "play_episode: stores the played link for replay and clears video_link" {
+    player_function='mpv'
+    play_episode || true
+    wait 2>/dev/null || true
+    [ "$replay" = "https://cdn.example/op/1080/index.m3u8" ]
+    [ -z "${video_link-}" ]
+}
+
+@test "play_episode: log_episode=1 invokes logger with the title and ep_no" {
     player_function='mpv'
     log_episode=1
     play_episode || true
     wait 2>/dev/null || true
-    stub_assert_called logger '.*-t ani-cli Test Anime 1'
+    stub_assert_called logger '.*-t ani-cli One Piece 1'
+}
+
+@test "play_episode: skip_intro=1 consults ani-skip with the MAL id" {
+    player_function='mpv'
+    skip_intro=1
+    mal_id='21'
+    play_episode || true
+    wait 2>/dev/null || true
+    stub_assert_called ani-skip '.*-i 21.*-e 1.*'
 }

@@ -16,7 +16,6 @@
 #![cfg(target_os = "linux")]
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use ani_gui::anicli::process::{run_debug, run_debug_streaming, DebugOptions};
 
@@ -30,110 +29,46 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build a fixture directory matching the layout the curl shim expects.
-fn build_fixtures(dir: &std::path::Path) {
-    let root = repo_root();
-    let src = root.join("tests/fixtures/allanime");
-    for f in [
-        "search_one_piece.json",
-        "episodes_short.json",
-        "embed_simple.json",
-        // fetch_keys' key-derivation fixtures (page epoch/partB, CDN app
-        // bundle, key-mask chunk) — required since ani-cli 4.15's
-        // encrypted transport.
-        "keys_page.html",
-        "keys_app.js",
-        "keys_chunk.js",
-    ] {
-        std::fs::copy(src.join(f), dir.join(f)).expect("copy fixture");
-    }
-    // Run blob_builder.sh to synthesize the encrypted episode_blob.json.
-    let status = Command::new("bash")
-        .arg(root.join("tests/bash/helpers/blob_builder.sh"))
-        .arg(dir.join("episode_blob.json"))
-        .status()
-        .expect("blob_builder.sh runs");
-    assert!(status.success(), "blob_builder.sh exited 0");
-}
-
-/// Stage the curl shim as a `curl` executable on a fresh tmp dir, return
-/// that dir so it can be prepended to PATH.
-fn stage_curl_shim(tmp: &std::path::Path) -> PathBuf {
+/// Stage the curl shim on a fresh tmp dir and return that dir so it
+/// can be prepended to PATH. The wrapper pins CURL_FIXTURE_DIR to the
+/// repo's anidb fixture set (read-only; nothing is copied) and is
+/// installed under BOTH `curl` and `curl_firefox135` — ani-cli 5.0
+/// prefers curl-impersonate binaries, and the impersonate name comes
+/// first in its failover list, so a machine with the real thing would
+/// otherwise route test traffic to the live site.
+fn stage_anidb_shim(tmp: &std::path::Path) -> PathBuf {
     let bin = tmp.join("bin");
     std::fs::create_dir_all(&bin).expect("mkdir bin");
-    let shim_src = repo_root().join("tests/bash/helpers/curl_shim.sh");
-    let shim_dst = bin.join("curl");
-    std::fs::copy(&shim_src, &shim_dst).expect("copy curl shim");
-    // `mut` is only used in the cfg(unix) arm; allow(unused_mut) keeps
-    // the Windows build clean under -D warnings.
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&shim_dst).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
+    let repo = repo_root();
+    let body = format!(
+        "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
+        fixtures = repo.join("tests/fixtures/anidb").display(),
+        repo = repo.display(),
+    );
+    for name in ["curl", "curl_firefox135"] {
+        let dst = bin.join(name);
+        std::fs::write(&dst, &body).expect("write wrapper shim");
+        // `mut` is only used in the cfg(unix) arm; allow(unused_mut)
+        // keeps the Windows build clean under -D warnings.
+        #[allow(unused_mut)]
+        let mut perms = std::fs::metadata(&dst).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+        }
+        std::fs::set_permissions(&dst, perms).expect("chmod +x");
     }
-    std::fs::set_permissions(&shim_dst, perms).expect("chmod +x");
-    stage_fake_botan(&bin);
     bin
 }
 
-/// Stage the harness's botan stand-in as `botan` next to the curl shim.
-/// ani-cli 4.15 hard-requires one at startup and drives the encrypted
-/// allanime transport through it; the stand-in does real AES-256-GCM via
-/// python3-cryptography (see tests/bash/helpers/fake_botan.sh).
-fn stage_fake_botan(bin: &std::path::Path) {
-    let dst = bin.join("botan");
-    std::fs::copy(repo_root().join("tests/bash/helpers/fake_botan.sh"), &dst)
-        .expect("copy fake botan");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&dst).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
-}
-
 #[tokio::test]
-async fn run_debug_resolves_wixmp_url_via_curl_shim() {
+async fn run_debug_resolves_stream_url_via_curl_shim() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let fixtures = tmp.path().join("fixtures");
-    std::fs::create_dir_all(&fixtures).expect("mkdir fixtures");
-    build_fixtures(&fixtures);
-
-    let bin = stage_curl_shim(tmp.path());
+    let bin = stage_anidb_shim(tmp.path());
 
     let hist = tmp.path().join("hist");
     std::fs::create_dir_all(&hist).expect("mkdir hist");
-
-    // The curl shim reads CURL_FIXTURE_DIR. tokio::process::Command env
-    // propagates everything we set via .env(), so we set it from the
-    // test process and rely on env inheritance for ani-cli's curl
-    // invocations. (run_debug does env_clear() but propagates PATH and
-    // HOME explicitly; the curl shim's CURL_FIXTURE_DIR needs to be
-    // explicitly threaded — set via std::env so ani-cli inherits it
-    // through the dispatcher's normal env chain... but env_clear()
-    // breaks that. Instead, the shim falls back to a default if
-    // CURL_FIXTURE_DIR is unset.)
-    //
-    // Workaround: write a tiny wrapper shim that sets the env for us.
-    let wrapped_shim = bin.join("curl");
-    let shim_body = format!(
-        "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = fixtures.display(),
-        repo = repo_root().display(),
-    );
-    std::fs::write(&wrapped_shim, shim_body).expect("write wrapped shim");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&wrapped_shim).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&wrapped_shim, perms).expect("chmod +x");
 
     // Locate ani-cli at the repo root.
     let ani_cli_path = repo_root().join("ani-cli");
@@ -158,11 +93,11 @@ async fn run_debug_resolves_wixmp_url_via_curl_shim() {
         .await
         .expect("run_debug succeeds");
 
-    assert_eq!(out.selected_url, "https://wixmp.example/video.mp4");
+    assert_eq!(out.selected_url, "https://cdn.example/op/1080/index.m3u8");
     assert!(out
         .all_links
         .iter()
-        .any(|l| l == "720 >https://wixmp.example/video.mp4"));
+        .any(|l| l == "720p >https://cdn.example/op/720/index.m3u8"));
 }
 
 /// `run_search` is intentionally a stub today (see
@@ -183,28 +118,9 @@ async fn run_search_returns_empty_until_unblocked() {
 #[tokio::test]
 async fn run_debug_streaming_forwards_stderr_lines_in_order() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let fixtures = tmp.path().join("fixtures");
-    std::fs::create_dir_all(&fixtures).expect("mkdir fixtures");
-    build_fixtures(&fixtures);
-    let bin = stage_curl_shim(tmp.path());
+    let bin = stage_anidb_shim(tmp.path());
     let hist = tmp.path().join("hist");
     std::fs::create_dir_all(&hist).expect("mkdir hist");
-
-    let wrapped_shim = bin.join("curl");
-    let shim_body = format!(
-        "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = fixtures.display(),
-        repo = repo_root().display(),
-    );
-    std::fs::write(&wrapped_shim, shim_body).expect("write wrapped shim");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&wrapped_shim).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&wrapped_shim, perms).expect("chmod +x");
 
     let ani_cli_path = repo_root().join("ani-cli");
     let system_path = std::env::var("PATH").unwrap_or_default();
@@ -235,17 +151,61 @@ async fn run_debug_streaming_forwards_stderr_lines_in_order() {
     .expect("run_debug_streaming succeeds");
 
     // Same DebugOutput contract as the non-streaming variant.
-    assert_eq!(out.selected_url, "https://wixmp.example/video.mp4");
+    assert_eq!(out.selected_url, "https://cdn.example/op/1080/index.m3u8");
 
-    // Callback should have fired for at least one `<provider> Links
-    // Fetched` line. Drift here is independently caught by the
-    // anicli_progress_format integration test; assertion here is
-    // strictly that the streaming machinery passes the line through.
+    // 5.0 routes its info lines to STDOUT (4.15 sent them to stderr
+    // with an explicit 1>&2), so the stderr callback sees nothing on
+    // the happy path. Pinned as observed; the loading overlay's
+    // stdout adaptation is tracked with the rest of the GUI's 5.0
+    // work in docs/deferred-work.md.
     let lines = captured.lock().expect("mutex").clone();
     assert!(
-        lines
-            .iter()
-            .any(|l| l.contains("Links Fetched") || l.contains("Checking dependencies")),
-        "expected at least one progress line in callback; got: {lines:#?}"
+        lines.is_empty(),
+        "5.0's happy path emits no stderr; got: {lines:#?}"
+    );
+}
+
+/// The stderr pass-through itself, pinned where 5.0 still writes to
+/// stderr: `die` lines. A no-results query makes ani-cli die with
+/// "No results found!" — the callback must see it even though the run
+/// fails.
+#[tokio::test]
+async fn run_debug_streaming_forwards_die_lines_from_stderr() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let bin = stage_anidb_shim(tmp.path());
+    let hist = tmp.path().join("hist");
+    std::fs::create_dir_all(&hist).expect("mkdir hist");
+
+    let opts = DebugOptions {
+        ani_cli_path: repo_root().join("ani-cli"),
+        bash_path: None,
+        hist_dir: Some(hist),
+        timeout: std::time::Duration::from_secs(60),
+        path_override: Some(format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        )),
+        bundled_bin: None,
+        shim_bin: None,
+    };
+
+    let captured: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured_for_cb = captured.clone();
+
+    let result = run_debug_streaming(&opts, "nohit", "1", "best", "sub", 1, move |line| {
+        captured_for_cb
+            .lock()
+            .expect("mutex")
+            .push(line.to_string());
+    })
+    .await;
+
+    assert!(result.is_err(), "a no-results query fails the run");
+    let lines = captured.lock().expect("mutex").clone();
+    assert!(
+        lines.iter().any(|l| l.contains("No results found")),
+        "die line reached the stderr callback: {lines:#?}"
     );
 }

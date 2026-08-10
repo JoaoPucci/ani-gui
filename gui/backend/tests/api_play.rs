@@ -27,7 +27,6 @@
 #![cfg(target_os = "linux")]
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 
 use ani_gui::api::build_api_router;
@@ -50,74 +49,34 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn build_fixtures(dir: &std::path::Path) {
-    let root = repo_root();
-    let src = root.join("tests/fixtures/allanime");
-    for f in [
-        "search_one_piece.json",
-        "episodes_short.json",
-        "embed_simple.json",
-        // fetch_keys' key-derivation fixtures (page epoch/partB, CDN app
-        // bundle, key-mask chunk) — required since ani-cli 4.15's
-        // encrypted transport.
-        "keys_page.html",
-        "keys_app.js",
-        "keys_chunk.js",
-    ] {
-        std::fs::copy(src.join(f), dir.join(f)).expect("copy fixture");
-    }
-    let status = Command::new("bash")
-        .arg(root.join("tests/bash/helpers/blob_builder.sh"))
-        .arg(dir.join("episode_blob.json"))
-        .status()
-        .expect("blob_builder.sh runs");
-    assert!(status.success(), "blob_builder.sh exited 0");
-}
-
-/// Stage a wrapper `curl` script that re-execs the repo's curl shim
-/// with the right `CURL_FIXTURE_DIR` set. Returns the bin/ dir to
-/// prepend to PATH. Same construction as `anicli_run_debug.rs` —
-/// kept inline rather than extracted because the two test files have
-/// only this one piece in common and a shared helper would couple
-/// them more than they're already coupled.
-fn stage_curl_shim_wrapper(tmp: &std::path::Path, fixtures_dir: &std::path::Path) -> PathBuf {
+/// Stage the curl shim under both names 5.0's failover probes, with
+/// CURL_FIXTURE_DIR pinned to the repo's anidb fixtures. Same
+/// construction as `anicli_run_debug.rs` — kept inline rather than
+/// extracted because the two test files have only this one piece in
+/// common and a shared helper would couple them more than they're
+/// already coupled.
+fn stage_anidb_shim(tmp: &std::path::Path) -> PathBuf {
     let bin = tmp.join("bin");
     std::fs::create_dir_all(&bin).expect("mkdir bin");
-    let wrapped = bin.join("curl");
+    let repo = repo_root();
     let body = format!(
         "#!/bin/sh\nexport CURL_FIXTURE_DIR={fixtures}\nexec sh {repo}/tests/bash/helpers/curl_shim.sh \"$@\"\n",
-        fixtures = fixtures_dir.display(),
-        repo = repo_root().display(),
+        fixtures = repo.join("tests/fixtures/anidb").display(),
+        repo = repo.display(),
     );
-    std::fs::write(&wrapped, body).expect("write wrapper shim");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&wrapped).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
+    for name in ["curl", "curl_firefox135"] {
+        let dst = bin.join(name);
+        std::fs::write(&dst, &body).expect("write wrapper shim");
+        #[allow(unused_mut)]
+        let mut perms = std::fs::metadata(&dst).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+        }
+        std::fs::set_permissions(&dst, perms).expect("chmod +x");
     }
-    std::fs::set_permissions(&wrapped, perms).expect("chmod +x");
-    stage_fake_botan(&bin);
     bin
-}
-
-/// Stage the harness's botan stand-in as `botan` next to the curl shim.
-/// ani-cli 4.15 hard-requires one at startup and drives the encrypted
-/// allanime transport through it; the stand-in does real AES-256-GCM via
-/// python3-cryptography (see tests/bash/helpers/fake_botan.sh).
-fn stage_fake_botan(bin: &std::path::Path) {
-    let dst = bin.join("botan");
-    std::fs::copy(repo_root().join("tests/bash/helpers/fake_botan.sh"), &dst)
-        .expect("copy fake botan");
-    #[allow(unused_mut)]
-    let mut perms = std::fs::metadata(&dst).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&dst, perms).expect("chmod +x botan");
 }
 
 /// Stand up a local allanime stub answering the search the play
@@ -189,12 +148,9 @@ fn build_state(tmp: &std::path::Path, allanime_base: &str) -> AppState {
 #[tokio::test]
 async fn play_endpoint_resolves_through_curl_shim_and_returns_session() {
     let tmp = TempDir::new().expect("tempdir");
-    let fixtures = tmp.path().join("fixtures");
-    std::fs::create_dir_all(&fixtures).expect("mkdir fixtures");
-    build_fixtures(&fixtures);
     std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
 
-    let bin = stage_curl_shim_wrapper(tmp.path(), &fixtures);
+    let bin = stage_anidb_shim(tmp.path());
     let allanime = stub_allanime().await;
 
     // Prepend the shim dir to the test process's PATH. The play
@@ -274,13 +230,13 @@ async fn run_play_assertion(tmp: &std::path::Path, allanime_base: &str) -> Resul
         .get("media_kind")
         .and_then(|v| v.as_str())
         .ok_or("response missing media_kind")?;
-    // The shim resolves a wixmp MP4 (matching the fixture in
-    // tests/fixtures/allanime/embed_simple.json), so the kind is mp4
-    // and the proxy URL points at /file.mp4.
-    if media_kind != "mp4" {
-        return Err(format!("expected media_kind=mp4, got {media_kind}"));
+    // The shim resolves an HLS variant playlist (see
+    // tests/fixtures/anidb/master_op.m3u8), so the kind is hls and
+    // the proxy URL points at /master.m3u8.
+    if media_kind != "hls" {
+        return Err(format!("expected media_kind=hls, got {media_kind}"));
     }
-    if !media_url.contains("/s/") || !media_url.ends_with("/file.mp4") {
+    if !media_url.contains("/s/") || !media_url.ends_with("/master.m3u8") {
         return Err(format!("unexpected media_url shape: {media_url}"));
     }
     if session_id.is_empty() {
