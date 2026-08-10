@@ -147,6 +147,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
         u32,
         bool,
     )> = Vec::new();
+    let mut any_transport_failure = false;
     for (h, year_confirmed) in head {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
@@ -164,17 +165,29 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 if e.is_provider_block() {
                     return Err(e);
                 }
+                if !matches!(e, crate::error::AniError::Upstream { .. }) {
+                    any_transport_failure = true;
+                }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
             }
         }
     }
-    // Every probe failing says nothing about the show — that verdict
-    // is transient, never the persistable absence.
-    let best_dist = probed_ok
-        .iter()
-        .map(|(_, _, d, _)| *d)
-        .min()
-        .ok_or(crate::error::AniError::Network)?;
+    // An empty pool splits by what killed the probes: any transport
+    // death means nothing was learned (the transient Network), while
+    // all-answered not-found means the pool is dead but the provider
+    // is healthy — the not-found-shaped verdict, so the breaker never
+    // opens on a provider that answered every request. Neither is
+    // ever the persistable absence.
+    let best_dist =
+        probed_ok
+            .iter()
+            .map(|(_, _, d, _)| *d)
+            .min()
+            .ok_or(if any_transport_failure {
+                crate::error::AniError::Network
+            } else {
+                crate::error::AniError::Upstream { status: 404 }
+            })?;
     if best_dist > ep_count_threshold(expected) {
         // The airing-part rescue: a candidate whose own year matched
         // Kitsu's and whose list is short is what a currently-airing

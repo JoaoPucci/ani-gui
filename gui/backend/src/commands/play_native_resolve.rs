@@ -114,6 +114,7 @@ where
     });
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    let mut any_answered_dead_end = false;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
             Ok(hits) => {
@@ -156,6 +157,13 @@ where
                             clean_miss: false,
                         });
                     }
+                    // An all-answered-not-found pool: dead candidates
+                    // on a healthy provider. The walk moves on, and
+                    // the verdict stays answered — the breaker must
+                    // not open on a provider that answered.
+                    Err(AniError::Upstream { .. }) => {
+                        any_answered_dead_end = true;
+                    }
                     Err(_) => {
                         any_search_errored = true;
                     }
@@ -176,6 +184,15 @@ where
     if !any_search_succeeded || any_search_errored {
         return Err(NativeError {
             error: AniError::Network,
+            clean_miss: false,
+        });
+    }
+    if any_answered_dead_end {
+        // Answered dead ends prove nothing about the show — never
+        // the persistable clean miss — but the provider answering is
+        // health to the breaker (NoResults records success).
+        return Err(NativeError {
+            error: AniError::NoResults,
             clean_miss: false,
         });
     }
