@@ -173,31 +173,6 @@ where
     })
 }
 
-/// What a resolution outcome means to the scraper breaker. The
-/// provider ANSWERING is health whatever the answer was: every
-/// `NoResults` arises from an answered verdict — a rejected pool, an
-/// absent episode, a sub-only show asked for dub — while weather
-/// (transport, refusals, rate limits) is distress. Distinct from
-/// `clean_miss`, which additionally decides whether the verdict is
-/// persistable absence: a matched show with one episode missing is
-/// breaker-healthy but proves nothing about the show's availability.
-pub fn breaker_outcome(
-    native: &std::result::Result<NativeResolved, NativeError>,
-) -> crate::scraper::gate::ScrapeOutcome {
-    use crate::scraper::gate::ScrapeOutcome;
-    match native {
-        Ok(_) => ScrapeOutcome::Success,
-        Err(ne) if ne.clean_miss => ScrapeOutcome::Success,
-        Err(ne) => match ne.error {
-            AniError::NoResults => ScrapeOutcome::Success,
-            AniError::RateLimited { retry_after_secs } => ScrapeOutcome::RateLimited {
-                retry_after: retry_after_secs.map(std::time::Duration::from_secs),
-            },
-            _ => ScrapeOutcome::Failure,
-        },
-    }
-}
-
 /// The shift between the provider's episode numbers and the
 /// per-entry numbers every caller requests. anidb.app keeps a
 /// franchise's cumulative count on continuation cours — TYBW's

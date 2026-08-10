@@ -596,7 +596,7 @@ where
     // mapping lives in play_native_resolve::breaker_outcome: answered
     // verdicts (clean misses, absent episodes or audio) are health,
     // weather is distress.
-    let outcome = crate::commands::play_native_resolve::breaker_outcome(&native);
+    let outcome = crate::commands::play_native_outcome::breaker_outcome(&native);
     state.scraper_gate.record(outcome, resolve_started_at);
     let native = match native {
         Ok(n) => n,
