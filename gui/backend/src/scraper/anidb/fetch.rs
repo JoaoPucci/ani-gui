@@ -55,11 +55,13 @@ pub(crate) fn candidate_names(name: &str, suffixes: &[&str]) -> Vec<String> {
 }
 
 impl CurlImpersonateFetch {
-    /// Walk [`CURL_FAILOVER`] across `extra_dir` (the bundled-binary
-    /// directory, when packaging ships one) and then the given PATH
-    /// string, returning the first executable found — the same
-    /// preference order as the script's `dep_ch_failover`, widened by
-    /// the platform's executable suffixes.
+    /// Resolve the transport binary: the whole [`CURL_FAILOVER`] list
+    /// is exhausted in `extra_dir` (the bundled-binary directory,
+    /// when packaging ships one) before PATH is consulted at all —
+    /// any bundled name outranks every system install, since the
+    /// bundle is the transport the package validated. Within each
+    /// location the script's `dep_ch_failover` name order decides,
+    /// widened by the platform's executable suffixes.
     pub fn resolve(extra_dir: Option<&Path>, path_env: &str) -> Option<Self> {
         Self::resolve_with_suffixes(extra_dir, path_env, EXE_SUFFIXES)
     }
@@ -71,9 +73,9 @@ impl CurlImpersonateFetch {
         path_env: &str,
         suffixes: &[&str],
     ) -> Option<Self> {
-        for name in CURL_FAILOVER {
-            for file in candidate_names(name, suffixes) {
-                if let Some(dir) = extra_dir {
+        if let Some(dir) = extra_dir {
+            for name in CURL_FAILOVER {
+                for file in candidate_names(name, suffixes) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
                         return Some(Self {
@@ -82,6 +84,10 @@ impl CurlImpersonateFetch {
                         });
                     }
                 }
+            }
+        }
+        for name in CURL_FAILOVER {
+            for file in candidate_names(name, suffixes) {
                 for dir in std::env::split_paths(path_env) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
