@@ -34,6 +34,7 @@ pub trait AnidbFetch: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct CurlImpersonateFetch {
     exe: PathBuf,
+    deadline: std::time::Duration,
 }
 
 /// Executable-name suffixes the platform's binaries carry. Windows
@@ -75,13 +76,19 @@ impl CurlImpersonateFetch {
                 if let Some(dir) = extra_dir {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
-                        return Some(Self { exe: candidate });
+                        return Some(Self {
+                            exe: candidate,
+                            deadline: FETCH_TIMEOUT,
+                        });
                     }
                 }
                 for dir in std::env::split_paths(path_env) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
-                        return Some(Self { exe: candidate });
+                        return Some(Self {
+                            exe: candidate,
+                            deadline: FETCH_TIMEOUT,
+                        });
                     }
                 }
             }
@@ -92,6 +99,14 @@ impl CurlImpersonateFetch {
     /// The resolved executable, for logging and diagnostics.
     pub fn exe(&self) -> &Path {
         &self.exe
+    }
+
+    /// Replace the outer deadline — the seam the hang test drives;
+    /// production keeps [`FETCH_TIMEOUT`] from resolution.
+    #[cfg(test)]
+    pub(crate) fn with_deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.deadline = deadline;
+        self
     }
 }
 
@@ -130,8 +145,12 @@ impl AnidbFetch for CurlImpersonateFetch {
             .arg(url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
-        let output = tokio::time::timeout(FETCH_TIMEOUT, cmd.output())
+            .stderr(std::process::Stdio::null())
+            // §5's subprocess rule: when the deadline drops the
+            // output() future, the child goes with it instead of
+            // surviving as an orphan for its full hang.
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(self.deadline, cmd.output())
             .await
             .map_err(|_| AniError::Timeout)?
             .map_err(|_| AniError::Network)?;
