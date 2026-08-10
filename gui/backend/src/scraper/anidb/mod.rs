@@ -22,8 +22,10 @@
 //! different shows.
 
 pub mod fetch;
+pub mod gated;
 pub mod parse;
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
+pub use gated::GatedFetch;
 pub use parse::{
     encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_detail_year,
     parse_episodes, parse_languages, parse_master_variants, preferred_embed, select_variant,
