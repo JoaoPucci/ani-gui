@@ -28,6 +28,8 @@ Every change starts red:
 
 A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red): '` reconstructs the spec.
 
+The contract binds the fork's own commits. A sync PR imports upstream's history verbatim through a merge (§3), so upstream `feat` commits arrive with no red of ours preceding them — and cannot acquire one without rewriting the vendored history the merge exists to preserve. Whether a commit is upstream's is a provenance question with a mechanical answer: it is reachable from the sync merge's second parent (`git merge-base --is-ancestor <sha> <merge>^2`). The fork's obligation on a sync is the suite rewrite that re-covers upstream's changed behavior, and that is a `test:` commit, not a `test(red):` one — the behavior it pins already ships, so there is no failing state to commit.
+
 **Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
 
 ```sh
