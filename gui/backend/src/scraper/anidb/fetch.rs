@@ -132,6 +132,21 @@ fn is_executable(path: &Path) -> bool {
 /// script's own `--max-time 10` so curl reports its timeout first.
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// The script's Darwin cipher pinning (its `ciphers`/`tls13_ciphers`
+/// globals, applied by the Darwin arm of its platform case): macOS
+/// curl builds negotiate default suites the provider's TLS
+/// fingerprinting rejects. Everywhere else the impersonate build's
+/// own defaults ARE the fingerprint, so no flags are added.
+#[cfg(target_os = "macos")]
+const CIPHER_ARGS: &[&str] = &[
+    "--ciphers",
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
+    "--tls13-ciphers",
+    "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256",
+];
+#[cfg(not(target_os = "macos"))]
+const CIPHER_ARGS: &[&str] = &[];
+
 #[async_trait::async_trait]
 impl AnidbFetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
@@ -147,6 +162,7 @@ impl AnidbFetch for CurlImpersonateFetch {
             .arg(IMPERSONATE_AGENT)
             .arg("--max-time")
             .arg("10")
+            .args(CIPHER_ARGS)
             .arg("-w")
             .arg("\n%{http_code}")
             .arg(url)
