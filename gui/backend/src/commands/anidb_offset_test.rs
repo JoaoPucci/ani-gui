@@ -1,6 +1,6 @@
 use super::*;
 
-fn make_state() -> crate::app::AppState {
+fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
     crate::app::AppState {
         allanime_base: None,
         anidb_base: None,
@@ -13,7 +13,7 @@ fn make_state() -> crate::app::AppState {
         bash_path: None,
         bundled_bin: None,
         botan_shim_bin: None,
-        history_path: std::path::PathBuf::from("/tmp/ani-gui-test-hsts"),
+        history_path,
         scraper_gate: std::sync::Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -25,6 +25,32 @@ fn make_state() -> crate::app::AppState {
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
     }
+}
+
+fn make_state() -> crate::app::AppState {
+    let tmp = tempfile::tempdir().expect("tmp");
+    // Leak the tempdir so the per-test history path stays alive; the
+    // OS reclaims it after the test process exits.
+    let dir = Box::leak(Box::new(tmp));
+    make_state_at(dir.path().join("ani-hsts"))
+}
+
+#[test]
+fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
+    // config/paths.rs gives debug and packaged builds separate cache
+    // databases while ani-hsts stays shared. An offset persisted in
+    // the profile-local cache is invisible to the other profile: the
+    // packaged app writes provider episode 41 with offset 40, the
+    // source-built GUI reads the same shared history row, finds no
+    // stamp, and shows episode 41 — and deleting the XDG cache has
+    // the same effect. The translation lives beside the history file
+    // it makes readable.
+    let tmp = tempfile::tempdir().expect("tmp");
+    let history = tmp.path().join("ani-hsts");
+    let packaged = make_state_at(history.clone());
+    let dev = make_state_at(history);
+    put(&packaged, "the-sequel-88", 40);
+    assert_eq!(get(&dev, "the-sequel-88"), 40);
 }
 
 #[test]
