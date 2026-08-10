@@ -539,3 +539,52 @@ async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
     assert!(!err.clean_miss);
     assert!(matches!(err.error, AniError::NoResults));
 }
+
+/// A transport whose every request hangs forever — the provider
+/// accepting connections but never answering.
+struct StallingProvider;
+
+#[async_trait::async_trait]
+impl AnidbFetch for StallingProvider {
+    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stalled_provider_cannot_outlive_the_resolve_deadline() {
+    // Per-request timeouts bound one fetch, not the resolution: five
+    // candidate probes per alias times the alias walk can stall for
+    // minutes while the gate's half-open trial goes stale at 90
+    // seconds and a second trial starts behind the still-running
+    // first. The whole resolution gets one deadline; elapsing it is
+    // the stall's own identity — weather, never a persistable miss.
+    let client = AnidbClient::with_base(StallingProvider, "http://stub");
+    let err = resolve_native_bounded(
+        &client,
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &[],
+            episode: "1",
+            mode: "sub",
+            quality: "best",
+            expected_count: None,
+            year: None,
+            subtype: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect_err("a stalled provider must hit the deadline");
+    assert!(matches!(err.error, AniError::Timeout));
+    assert!(!err.clean_miss);
+}
+
+#[test]
+fn the_resolve_deadline_stays_inside_the_half_open_trial_window() {
+    // The deadline exists to keep one resolve inside its own
+    // half-open trial sanction; at or past the stale window a second
+    // trial can start behind a live first one, which is exactly the
+    // overlap the sanction chain forbids.
+    assert!(RESOLVE_DEADLINE < crate::scraper::gate::HALF_OPEN_TRIAL_STALE);
+}
