@@ -326,6 +326,23 @@ fn resolve_keeps_the_failover_order_above_any_suffix_match() {
     assert!(fetch.exe().ends_with("curl_firefox135.exe"));
 }
 
+#[cfg(unix)]
+#[test]
+fn resolve_exhausts_the_bundled_dir_before_path() {
+    // The bundled directory is the packaged, known-compatible
+    // transport: ANY bundled failover name outranks every PATH
+    // binary, or a system install silently bypasses the transport
+    // the package validated and shipped.
+    let bundled = tempfile::tempdir().expect("tmp");
+    let on_path = tempfile::tempdir().expect("tmp");
+    stage_exe(bundled.path(), "curl_chrome136");
+    stage_exe(on_path.path(), "curl_firefox135");
+    let path_env = on_path.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve(Some(bundled.path()), &path_env).expect("resolved");
+    assert!(fetch.exe().starts_with(bundled.path()));
+    assert!(fetch.exe().ends_with("curl_chrome136"));
+}
+
 // ── the subprocess transport itself ─────────────────────────────────
 
 #[cfg(unix)]
