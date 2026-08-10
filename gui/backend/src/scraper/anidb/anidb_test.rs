@@ -774,7 +774,15 @@ async fn quality_selection_returns_the_matching_variant() {
 }
 
 #[tokio::test]
-async fn best_quality_keeps_the_adaptive_master_without_a_fetch() {
+async fn best_quality_keeps_the_adaptive_master_it_validated() {
+    // The default path returned the extracted URL without ever
+    // requesting it: a dead master still recorded breaker success,
+    // stamped availability and history, and cached a session that
+    // fails the moment the proxy loads it — the non-best qualities
+    // were fixed, the DEFAULT was not. best now fetches the master
+    // once like every other quality and keeps the adaptive URL only
+    // when the playlist was actually served. This flips the old
+    // no-fetch pin, which asserted the gap itself.
     let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let client = AnidbClient::new(MasterOnly {
         fetches: fetches.clone(),
@@ -782,9 +790,14 @@ async fn best_quality_keeps_the_adaptive_master_without_a_fetch() {
     let url = client
         .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
         .await
-        .expect("no fetch to fail");
+        .expect("served master");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
-    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let err = client
+        .quality_stream_url("https://cdn.example/op/missing.m3u8", "best")
+        .await
+        .expect_err("a dead master cannot report success");
+    assert!(matches!(err, AniError::Upstream { status: 404 }));
 }
 
 #[tokio::test]
