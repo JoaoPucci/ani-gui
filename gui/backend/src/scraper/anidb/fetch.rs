@@ -183,10 +183,25 @@ impl AnidbFetch for CurlImpersonateFetch {
             // output() future, the child goes with it instead of
             // surviving as an orphan for its full hang.
             .kill_on_drop(true);
-        let output = tokio::time::timeout(self.deadline, cmd.output())
-            .await
-            .map_err(|_| AniError::Timeout)?
-            .map_err(|_| AniError::Network)?;
+        // ETXTBSY is transient by construction — a fork elsewhere in
+        // the process still holds the executable's write fd (the auto
+        // -updater re-staging a binary; the test suite staging stubs)
+        // — so a bounded retry outlives the writer where an immediate
+        // Network error would report weather as a typed failure.
+        let mut busy_retries = 0u32;
+        let output = loop {
+            match tokio::time::timeout(self.deadline, cmd.output()).await {
+                Err(_) => return Err(AniError::Timeout),
+                Ok(Ok(out)) => break out,
+                Ok(Err(e))
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy && busy_retries < 10 =>
+                {
+                    busy_retries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                }
+                Ok(Err(_)) => return Err(AniError::Network),
+            }
+        };
         // The -w trailer reports the last HTTP status even when the
         // transfer then failed, so a nonzero exit means the body is
         // not to be trusted whatever the trailer parses to.
