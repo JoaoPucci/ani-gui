@@ -81,6 +81,10 @@ use crate::proxy::MediaKind;
 // v7: the provider moved to anidb — upstream URLs, show ids (now
 // slugs) and titles from the allanime era are all unreplayable, so
 // every v6 row becomes an unreachable miss.
+// v12: subtype joined the key axes. v11 rows were keyed subtype-blind
+// while the picker consumed it, so two one-video entries differing
+// only by Kitsu format shared a row and the second served the first's
+// stream with no disproof run.
 // v11: the picker gained the subtype disproof — Kitsu's subtype now
 // rejects format-mismatched candidates (a movie badge against a
 // non-movie subtype). A v10 row resolved by the subtype-blind picker
@@ -97,7 +101,7 @@ use crate::proxy::MediaKind;
 // resolved by the old picker can hold a different show's stream
 // (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
 // keep serving it instantly; bumping re-resolves.
-const SCHEMA: &str = "v11";
+const SCHEMA: &str = "v12";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -148,16 +152,20 @@ pub fn cache_key(
     episode: &str,
     year: Option<u32>,
     episode_count: Option<u32>,
+    subtype: Option<&str>,
 ) -> String {
     // `:` is the table convention. The fields don't contain it
-    // (mode/quality are enums, episode is digits), so no escaping
-    // needed for them. Title can contain `:` (Stone Ocean Part 2
-    // canonical has one). It's still unambiguous given the field
-    // count, and serde_json never tries to parse this — it's only a
-    // SQLite text key.
+    // (mode/quality are enums, episode is digits, subtype is Kitsu's
+    // enum). Title can contain `:` (Stone Ocean Part 2 canonical has
+    // one). It's still unambiguous given the field count, and
+    // serde_json never tries to parse this — it's only a SQLite text
+    // key. Subtype is an axis for the same reason year and count are:
+    // the picker consumes it, so entries differing by it must not
+    // share a row.
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}")
+    let s = subtype.unwrap_or("-");
+    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
 }
 
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.
@@ -235,22 +243,58 @@ mod tests {
         // share a row, or the second request serves the first entry's
         // HEAD-valid stream without the disproof ever running.
         assert_ne!(
-            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("special")),
-            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("movie")),
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("special")
+            ),
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("movie")
+            ),
         );
         assert_ne!(
-            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("special")),
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("special")
+            ),
             cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), None),
         );
     }
 
     #[test]
     fn cache_key_differs_across_each_axis() {
-        let base = cache_key("One Piece", "sub", "best", "1", None, None);
-        assert_ne!(cache_key("Naruto", "sub", "best", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "dub", "best", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "sub", "1080", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "sub", "best", "2", None, None), base);
+        let base = cache_key("One Piece", "sub", "best", "1", None, None, None);
+        assert_ne!(
+            cache_key("Naruto", "sub", "best", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "dub", "best", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "sub", "1080", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "sub", "best", "2", None, None, None),
+            base
+        );
         // Year + ep-count axes — different Kitsu entries sharing a
         // title must map to different keys so the first resolve
         // doesn't poison the row for the other entry.
@@ -261,7 +305,8 @@ mod tests {
                 "best",
                 "1",
                 Some(1979),
-                Some(43)
+                Some(43),
+                None
             ),
             cache_key(
                 "Mobile Suit Gundam",
@@ -269,7 +314,8 @@ mod tests {
                 "best",
                 "1",
                 Some(1995),
-                Some(49)
+                Some(49),
+                None
             ),
         );
         // Just-year-different is enough — Codex's concern was two
@@ -277,12 +323,12 @@ mod tests {
         // count is the secondary discriminator; pin both axes
         // independently so a regression on either drops a test.
         assert_ne!(
-            cache_key("Show", "sub", "best", "1", Some(2020), None),
-            cache_key("Show", "sub", "best", "1", Some(2021), None),
+            cache_key("Show", "sub", "best", "1", Some(2020), None, None),
+            cache_key("Show", "sub", "best", "1", Some(2021), None, None),
         );
         assert_ne!(
-            cache_key("Show", "sub", "best", "1", None, Some(12)),
-            cache_key("Show", "sub", "best", "1", None, Some(13)),
+            cache_key("Show", "sub", "best", "1", None, Some(12), None),
+            cache_key("Show", "sub", "best", "1", None, Some(13), None),
         );
     }
 
@@ -293,8 +339,8 @@ mod tests {
         // become misses on first access. This test pins the prefix
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
-        let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v11:"), "got {k}");
+        let k = cache_key("X", "sub", "best", "1", None, None, None);
+        assert!(k.starts_with("play:v12:"), "got {k}");
     }
 
     #[test]
@@ -303,14 +349,14 @@ mod tests {
         // episode_count=None. The key must stay well-formed (no
         // adjacent colons) so the SQLite text doesn't drift across
         // None/Some shapes — `-` is the chosen placeholder.
-        let k = cache_key("Show", "sub", "best", "1", None, None);
+        let k = cache_key("Show", "sub", "best", "1", None, None, None);
         assert!(k.ends_with(":-:-"), "got {k}");
     }
 
     #[test]
     fn put_then_get_round_trips_the_resolution() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
         put(&pool, &key, &sample_resolution());
         let got = get(&pool, &key).expect("ok").expect("hit");
         assert_eq!(got, sample_resolution());
@@ -326,7 +372,7 @@ mod tests {
     #[test]
     fn evict_removes_a_row_so_subsequent_get_misses() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
         put(&pool, &key, &sample_resolution());
         assert!(get(&pool, &key).expect("ok").is_some());
         evict(&pool, &key);

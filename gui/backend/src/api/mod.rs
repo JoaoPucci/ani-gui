@@ -601,6 +601,7 @@ async fn post_play_mark_watched(
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
@@ -738,6 +739,7 @@ async fn post_play_cache_evict(
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
@@ -1392,7 +1394,7 @@ mod tests {
         let history_path = state.history_path.clone();
         // Seed a v2 cache row with the show_id explicitly empty —
         // the on-disk shape a legacy v1 row would deserialize into.
-        let key = cache_key("Legacy Show", "sub", "best", "3", None, None);
+        let key = cache_key("Legacy Show", "sub", "best", "3", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1436,7 +1438,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1488,7 +1490,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1551,7 +1553,15 @@ mod tests {
         // Cached resolution: allmanga's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
-        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        let key = cache_key(
+            "Stone Ocean",
+            "sub",
+            "best",
+            "1",
+            Some(2021),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1638,7 +1648,15 @@ mod tests {
         let state = test_app_state(&td);
 
         // show_title has no Part/Cour/Season suffix → cour_from_title=None.
-        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        let key = cache_key(
+            "Some Sequel",
+            "sub",
+            "best",
+            "1",
+            Some(2024),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1713,7 +1731,15 @@ mod tests {
         let state = test_app_state(&td);
 
         // allmanga title carries Part 2 → cour_from_title=Some(2).
-        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        let key = cache_key(
+            "Some Sequel",
+            "sub",
+            "best",
+            "1",
+            Some(2024),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1798,7 +1824,15 @@ mod tests {
         // unreachable port), so `kitsu_anime_detail` returns Err.
         // Per the guard's docstring, that should be treated as
         // "agree" and the reverse-mapping write must still happen.
-        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        let key = cache_key(
+            "Stone Ocean",
+            "sub",
+            "best",
+            "1",
+            Some(2021),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1897,7 +1931,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2024,7 +2058,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Some Show", "sub", "best", "5", None, None);
+        let key = cache_key("Some Show", "sub", "best", "5", None, None, None);
         put(
             &state.cache_pool,
             &key,

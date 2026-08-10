@@ -92,6 +92,7 @@ pub(crate) async fn try_launch_args_from_cache(
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     let parsed = url::Url::parse(&cached.upstream_url).ok()?;
