@@ -615,3 +615,103 @@ async fn the_transport_disables_curlrc_first() {
     let resp = fetch.get("https://example.test/x").await.expect("get");
     assert_eq!(resp.body.lines().next(), Some("-q"));
 }
+
+// ── master-playlist quality selection ───────────────────────────────
+
+#[test]
+fn master_variants_parse_sorted_by_height() {
+    let variants = parse_master_variants(&fixture("master_op.m3u8"));
+    assert_eq!(variants.len(), 2);
+    assert_eq!(variants[0].height, 1080);
+    assert_eq!(variants[0].url, "https://cdn.example/op/1080/index.m3u8");
+    assert_eq!(variants[1].height, 720);
+    assert_eq!(variants[1].url, "https://cdn.example/op/720/index.m3u8");
+}
+
+#[test]
+fn variant_selection_mirrors_the_scripts_quality_arms() {
+    let variants = parse_master_variants(&fixture("master_op.m3u8"));
+    assert_eq!(
+        select_variant(&variants, "best").map(|v| v.height),
+        Some(1080)
+    );
+    assert_eq!(
+        select_variant(&variants, "worst").map(|v| v.height),
+        Some(720)
+    );
+    assert_eq!(
+        select_variant(&variants, "720").map(|v| v.height),
+        Some(720)
+    );
+    // A height nobody serves is a miss, not a guess — the caller
+    // falls back to the adaptive master.
+    assert!(select_variant(&variants, "480").is_none());
+    assert!(select_variant(&[], "best").is_none());
+}
+
+/// A fetch serving only the master playlist, counting its fetches.
+struct MasterOnly {
+    fetches: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for MasterOnly {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url == "https://cdn.example/op/master.m3u8" {
+            self.fetches
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(FetchResponse {
+                status: 200,
+                body: fixture("master_op.m3u8"),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn quality_selection_returns_the_matching_variant() {
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(MasterOnly {
+        fetches: fetches.clone(),
+    });
+    let url = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .await;
+    assert_eq!(url, "https://cdn.example/op/720/index.m3u8");
+    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn best_quality_keeps_the_adaptive_master_without_a_fetch() {
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(MasterOnly {
+        fetches: fetches.clone(),
+    });
+    let url = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
+        .await;
+    assert_eq!(url, "https://cdn.example/op/master.m3u8");
+    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn an_unserved_or_unfetchable_quality_falls_back_to_the_master() {
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(MasterOnly {
+        fetches: fetches.clone(),
+    });
+    // Served master, unserved height → adaptive master, not a guess.
+    let url = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "480")
+        .await;
+    assert_eq!(url, "https://cdn.example/op/master.m3u8");
+    // Unfetchable master → the master URL still plays adaptively.
+    let url = client
+        .quality_stream_url("https://cdn.example/op/missing.m3u8", "720")
+        .await;
+    assert_eq!(url, "https://cdn.example/op/missing.m3u8");
+}
