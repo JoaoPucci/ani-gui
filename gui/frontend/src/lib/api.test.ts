@@ -1591,6 +1591,22 @@ describe('downloadStream', () => {
 		await promise;
 	});
 
+	it('appends subtype when provided, mirroring playStream', async () => {
+		// The backend projects DownloadArgs onto the play picker's
+		// args; a query builder that drops subtype starves that
+		// projection on the download path alone.
+		const promise = downloadStream(
+			{ title: 'X', episode: '1', mode: 'sub', subtype: 'movie' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('subtype=movie');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it('forwards SSE progress events to onProgress, parsing the JSON payload', async () => {
 		const onProgress = vi.fn<(p: DownloadProgress) => void>();
 		const promise = downloadStream({ title: 'X', episode: '1', mode: 'sub' }, onProgress);

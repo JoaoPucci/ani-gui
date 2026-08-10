@@ -671,6 +671,9 @@ export interface DownloadArgs {
 	quality?: string;
 	episode_count?: number;
 	year?: number;
+	/** Kitsu's subtype — same format-disproof signal
+	 *  {@link PlayArgs.subtype} carries on the play path. */
+	subtype?: string | null;
 	alt_titles?: string[];
 	kitsu_id?: string;
 	download_dir?: string;
