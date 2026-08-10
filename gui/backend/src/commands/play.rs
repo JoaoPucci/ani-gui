@@ -1749,6 +1749,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_dub_success_stamp_keeps_the_cap_out_of_the_row() {
+        // picked.episodes is the provider-wide list: a dub resolve
+        // only proves the REQUESTED episode has an English embed.
+        // Persisting the total-list cap as an exact (kitsu_id, dub)
+        // count makes undubbed later episodes look playable for the
+        // row's whole TTL. The dub stamp stays boolean-only; the
+        // count self-heals via the next mode-aware probe.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Dub Show".into(),
+            episode: "1".into(),
+            mode: "dub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("dub-1".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("dub-1"),
+            "dub",
+        );
+        stamp_availability_after_native(&state, &args, true, generation, Some(12)).await;
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["dub-1".into()],
+                mode: "dub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("dub-1"), Some(&true));
+        assert!(
+            !cached.playable_episode_counts.contains_key("dub-1"),
+            "the provider-wide cap must not become an exact dub count"
+        );
+    }
+
+    #[tokio::test]
     async fn background_pick_stops_probing_after_the_breaker_opens() {
         // A cold-cache warm walked every alt title of every show even
         // while allanime was refusing us — hundreds of doomed calls
