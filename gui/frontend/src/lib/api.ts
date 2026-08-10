@@ -587,6 +587,7 @@ export function playStream(
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
 	if (args.subtype) params.set('subtype', args.subtype);
+	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	// alt_titles is a Vec<String> on the backend. serde_urlencoded can't
 	// decode that from repeated keys, so we join with `\n` and the
 	// backend's custom deserializer splits on the same separator.
