@@ -102,8 +102,11 @@ impl CurlImpersonateFetch {
     }
 
     /// Replace the outer deadline — the seam the hang test drives;
-    /// production keeps [`FETCH_TIMEOUT`] from resolution.
-    #[cfg(test)]
+    /// production keeps [`FETCH_TIMEOUT`] from resolution. Gated to
+    /// the platform that drives it: the hang test stages a shell
+    /// stub, so on Windows the seam would be dead code under
+    /// -D warnings.
+    #[cfg(all(test, unix))]
     pub(crate) fn with_deadline(mut self, deadline: std::time::Duration) -> Self {
         self.deadline = deadline;
         self
