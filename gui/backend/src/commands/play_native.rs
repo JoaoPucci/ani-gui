@@ -195,6 +195,13 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 episodes,
             });
         }
+        // A rejection is only a clean verdict when every candidate
+        // got to answer: a transiently dead probe may have hidden
+        // the right show, and NoResults rides the walk into a
+        // persistable clean miss. Weather stays weather.
+        if any_transport_failure {
+            return Err(crate::error::AniError::Network);
+        }
         return Err(crate::error::AniError::NoResults);
     }
     let winner_idx = probed_ok
