@@ -491,3 +491,17 @@ async fn the_transport_child_runs_under_the_mandated_environment() {
     let resp = fetch.get("https://example.test/x").await.expect("get");
     assert_eq!(resp.body, "dumb 1");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_transfer_with_a_parsed_trailer_is_refused() {
+    // curl's -w trailer reports the last HTTP status even when the
+    // transfer itself then fails — exit 28 is the operation-timeout
+    // arm — so a truncated body arrives with a plausible 200 trailer.
+    // The exit status is the only signal separating that from a
+    // complete response.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf 'partial body\n200'\nexit 28");
+    let err = fetch.get("https://example.test/x").await.expect_err("28");
+    assert!(matches!(err, AniError::Network));
+}
