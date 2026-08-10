@@ -467,6 +467,7 @@ pub(super) async fn pick_title_and_index_with_base(
             args.episode_count,
             args.year,
             mode,
+            args.subtype.as_deref(),
         );
         if c.is_some() {
             chosen_so_far = c;

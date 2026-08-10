@@ -23,25 +23,31 @@ pub(crate) fn format_survivors(
     expected: Option<u32>,
     subtype: Option<&str>,
 ) -> Vec<BrowseHit> {
+    hits.iter()
+        .filter(|h| format_compatible(h.kind.as_deref(), expected, subtype))
+        .cloned()
+        .collect()
+}
+
+/// Whether one format tag is compatible with the caller's
+/// expectation — the single predicate behind [`format_survivors`]
+/// and the subprocess picker's pool filter, so the native and
+/// script-driven paths disprove formats identically.
+pub(crate) fn format_compatible(
+    kind: Option<&str>,
+    expected: Option<u32>,
+    subtype: Option<&str>,
+) -> bool {
     let expects_movie = subtype.is_some_and(|s| s.eq_ignore_ascii_case("movie"));
     let expects_non_movie = matches!(expected, Some(n) if n > 1)
         || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-    hits.iter()
-        .filter(|h| {
-            if expects_movie {
-                h.kind
-                    .as_deref()
-                    .is_none_or(|k| k.eq_ignore_ascii_case("movie"))
-            } else if expects_non_movie {
-                !h.kind
-                    .as_deref()
-                    .is_some_and(|k| k.eq_ignore_ascii_case("movie"))
-            } else {
-                true
-            }
-        })
-        .cloned()
-        .collect()
+    if expects_movie {
+        kind.is_none_or(|k| k.eq_ignore_ascii_case("movie"))
+    } else if expects_non_movie {
+        !kind.is_some_and(|k| k.eq_ignore_ascii_case("movie"))
+    } else {
+        true
+    }
 }
 
 #[cfg(test)]
