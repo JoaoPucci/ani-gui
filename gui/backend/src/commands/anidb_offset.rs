@@ -41,12 +41,26 @@ fn parse(body: &str) -> Vec<(String, u32)> {
         .collect()
 }
 
+/// Serializes every put's read-merge-write sequence: concurrent
+/// prefetch resolves would otherwise read the same old file,
+/// independently merge their row, and overwrite one another (or
+/// consume each other's temp file) — a lost stamp exposes provider
+/// numbering on the home rail.
+static PUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
 /// Last write wins, so a re-resolve can correct a stale stamp.
 pub fn put(state: &AppState, slug: &str, offset: u32) {
     let path = store_path(&state.history_path);
+    let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
+        // A fresh profile reaches this write before anything has
+        // created $XDG_STATE_HOME/ani-cli — the history writer only
+        // runs afterwards.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let body = std::fs::read_to_string(&path).unwrap_or_default();
         let mut rows = parse(&body);
         match rows.iter_mut().find(|(s, _)| s == slug) {
