@@ -38,6 +38,14 @@ pub fn breaker_outcome(
             AniError::Upstream { status: 429 } => {
                 Some(ScrapeOutcome::RateLimited { retry_after: None })
             }
+            // Any other non-block status: the provider answered, the
+            // answer was "not here" — a dead source at the episode
+            // step, the twin of the picker's stale-slug 404. Health.
+            // Block-shaped statuses (403, 5xx) fail the guard and
+            // fall through to distress.
+            AniError::Upstream { .. } if !ne.error.is_provider_block() => {
+                Some(ScrapeOutcome::Success)
+            }
             _ => Some(ScrapeOutcome::Failure),
         },
     }
