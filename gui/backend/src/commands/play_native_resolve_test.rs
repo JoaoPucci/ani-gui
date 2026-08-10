@@ -64,6 +64,18 @@ impl AnidbFetch for Provider {
                     .into(),
             });
         }
+        if url.contains("/api/frontend/anime/99/episodes") {
+            // Seven listed episodes against the tests' expected 3:
+            // past the distance threshold, so the pick REJECTS this
+            // pool — the answered NoResults verdict — rather than
+            // failing its probe. The walk-keeps-going test exercises
+            // the rejection arm through this route.
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"episodes":[{"id":9901,"number":1},{"id":9902,"number":2},{"id":9903,"number":3},{"id":9904,"number":4},{"id":9905,"number":5},{"id":9906,"number":6},{"id":9907,"number":7}]}"#
+                    .into(),
+            });
+        }
         if url.contains("/api/frontend/anime/88/episodes") {
             // A continuation entry: the provider keeps the franchise's
             // cumulative numbering, so this two-episode cour lists 41
@@ -184,6 +196,23 @@ async fn a_rejected_pool_keeps_the_walk_going() {
     let wrong = Box::leak(browse_page(&[("wrong-99", "Wrong")]).into_boxed_str());
     let provider = Provider::new(Box::leak(Box::new([
         ("english", &*wrong),
+        ("romanized", the_show_browse()),
+    ])));
+    let alts = vec!["romanized".to_string()];
+    let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
+    assert_eq!(got.expect("resolved").slug, "the-show-77");
+}
+
+#[tokio::test]
+async fn a_transient_pick_failure_keeps_the_walk_going() {
+    // Canonical returns a candidate whose every probe dies (no
+    // episodes route → the pick's all-probes-failed Network verdict);
+    // the alt carries the real show. Transport weather on one pool
+    // must not end the walk — and the final verdict stays transient
+    // if nothing recovers.
+    let broken = Box::leak(browse_page(&[("broken-55", "Broken")]).into_boxed_str());
+    let provider = Provider::new(Box::leak(Box::new([
+        ("english", &*broken),
         ("romanized", the_show_browse()),
     ])));
     let alts = vec!["romanized".to_string()];
