@@ -5,9 +5,9 @@
 //! with every later addition to the same file.
 
 use crate::scraper::anidb::parse::{
-    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, parse_episodes,
-    parse_languages, preferred_embed,
+    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year,
 };
+use crate::scraper::anidb::parse_api::{parse_episodes, parse_languages, preferred_embed};
 use crate::scraper::anidb::LanguageEmbed;
 
 use super::slug_numeric_id;
@@ -119,7 +119,7 @@ proptest::proptest! {
         proptest::prop_assume!(!prefix.contains("file: '"));
         let html = format!("{prefix}file: '{url}'{suffix}");
         let expected = if url.is_empty() { None } else { Some(url) };
-        proptest::prop_assert_eq!(crate::scraper::anidb::parse::extract_master_url(&html), expected);
+        proptest::prop_assert_eq!(crate::scraper::anidb::parse_api::extract_master_url(&html), expected);
     }
 
     /// A page without the marker yields nothing, whatever else it
@@ -127,7 +127,7 @@ proptest::proptest! {
     #[test]
     fn a_page_without_a_file_stanza_yields_nothing(page in ".*") {
         proptest::prop_assume!(!page.contains("file: '"));
-        proptest::prop_assert_eq!(crate::scraper::anidb::parse::extract_master_url(&page), None);
+        proptest::prop_assert_eq!(crate::scraper::anidb::parse_api::extract_master_url(&page), None);
     }
 }
 

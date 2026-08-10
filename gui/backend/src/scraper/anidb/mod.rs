@@ -24,12 +24,13 @@
 pub mod fetch;
 pub mod gated;
 pub mod parse;
+pub mod parse_api;
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
 pub use gated::GatedFetch;
-pub use parse::{
-    encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_detail_year,
-    parse_episodes, parse_languages, parse_master_variants, preferred_embed, select_variant,
-    MasterVariant,
+pub use parse::{encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year};
+pub use parse_api::{
+    extract_master_url, parse_episodes, parse_languages, parse_master_variants, preferred_embed,
+    select_variant, MasterVariant,
 };
 
 use crate::error::{AniError, Result};
