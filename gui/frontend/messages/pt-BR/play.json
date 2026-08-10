@@ -99,5 +99,7 @@
 	"play_failure_network": "Problema de rede ao acessar a fonte de streaming. Verifique sua conexão e tente de novo.",
 	"play_failure_rate_limited": "A fonte de streaming está ocupada agora. Aguarde alguns segundos e tente de novo.",
 	"play_failure_rate_limited_wait": "A fonte de streaming está ocupada agora. Tente de novo em uns {seconds} segundos.",
-	"play_failure_generic": "Não foi possível iniciar este episódio agora. Tente de novo em alguns minutos."
+	"play_failure_generic": "Não foi possível iniciar este episódio agora. Tente de novo em alguns minutos.",
+	"progress_searching": "Buscando em {provider}…",
+	"progress_matched": "Encontrado: {title}"
 }

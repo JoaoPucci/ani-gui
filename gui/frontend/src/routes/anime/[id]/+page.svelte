@@ -38,6 +38,7 @@
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
 	import { describeRateLimit } from '$lib/play/error-copy';
+	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
 	import {
@@ -675,20 +676,6 @@
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
 	let actionProgress = $state<string | null>(null);
-
-	/** Format a single ProgressLine into the one-liner the overlay
-	 *  shows under the Lottie. Keeps copy short — the band is
-	 *  intentionally minimal. */
-	function progressLabel(p: import('$lib/api').PlayProgress): string {
-		switch (p.kind) {
-			case 'banner':
-				return p.text;
-			case 'links_fetched':
-				return `${p.provider} ✓`;
-			case 'other':
-				return p.text;
-		}
-	}
 
 	// The show's live list entry, folded from EVERY connected tracker so the
 	// editor opens on the real status/progress (the deviation safety) and the

@@ -554,7 +554,9 @@ export function markWatched(args: PlayArgs): Promise<void> {
 export type PlayProgress =
 	| { kind: 'banner'; text: string }
 	| { kind: 'links_fetched'; provider: string }
-	| { kind: 'other'; text: string };
+	| { kind: 'other'; text: string }
+	| { kind: 'searching'; provider: string }
+	| { kind: 'matched'; title: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
  *  caller hears `<provider> Links Fetched` events as ani-cli emits
