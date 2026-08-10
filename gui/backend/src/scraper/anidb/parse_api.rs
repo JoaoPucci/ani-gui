@@ -136,11 +136,17 @@ pub fn select_variant<'a>(
 }
 
 /// Pull the master-playlist URL out of an embed page's jwplayer
-/// setup (`file: '…'`, first occurrence).
+/// setup (`file: '…'`, first occurrence). Only an absolute http(s)
+/// URL counts: a malformed value that left here as "resolved" let
+/// the orchestrator record success, stamp availability, and write
+/// history before its own URL parse failed — a playback error on a
+/// show marked available and watched. Anything unusable is the same
+/// miss as an empty value.
 pub fn extract_master_url(embed_html: &str) -> Option<String> {
     let (_, rest) = embed_html.split_once("file: '")?;
     let url = rest.split('\'').next()?;
-    if url.is_empty() {
+    let parsed = url::Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
         return None;
     }
     Some(url.to_string())

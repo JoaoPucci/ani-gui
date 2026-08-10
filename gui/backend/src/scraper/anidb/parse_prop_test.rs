@@ -107,9 +107,9 @@ proptest::proptest! {
 
 proptest::proptest! {
     /// Over arbitrary surroundings: the FIRST `file: '…'` value is
-    /// extracted exactly — an empty value is a miss, not Some("") —
-    /// and whatever follows, including further stanzas, changes
-    /// nothing.
+    /// extracted exactly when it is an absolute http(s) URL — an
+    /// empty or unusable value is a miss, not Some(garbage) — and
+    /// whatever follows, including further stanzas, changes nothing.
     #[test]
     fn master_url_is_the_first_file_stanzas_value(
         prefix in ".*",
@@ -118,7 +118,9 @@ proptest::proptest! {
     ) {
         proptest::prop_assume!(!prefix.contains("file: '"));
         let html = format!("{prefix}file: '{url}'{suffix}");
-        let expected = if url.is_empty() { None } else { Some(url) };
+        let usable = url::Url::parse(&url)
+            .is_ok_and(|u| matches!(u.scheme(), "http" | "https"));
+        let expected = if usable { Some(url) } else { None };
         proptest::prop_assert_eq!(crate::scraper::anidb::parse_api::extract_master_url(&html), expected);
     }
 
