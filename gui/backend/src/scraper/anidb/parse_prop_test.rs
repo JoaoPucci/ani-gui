@@ -101,3 +101,29 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_detail_year(&html), Some(year));
     }
 }
+
+proptest::proptest! {
+    /// Over arbitrary surroundings: the FIRST `file: '…'` value is
+    /// extracted exactly — an empty value is a miss, not Some("") —
+    /// and whatever follows, including further stanzas, changes
+    /// nothing.
+    #[test]
+    fn master_url_is_the_first_file_stanzas_value(
+        prefix in ".*",
+        url in "[^']*",
+        suffix in ".*",
+    ) {
+        proptest::prop_assume!(!prefix.contains("file: '"));
+        let html = format!("{prefix}file: '{url}'{suffix}");
+        let expected = if url.is_empty() { None } else { Some(url) };
+        proptest::prop_assert_eq!(crate::scraper::anidb::parse::extract_master_url(&html), expected);
+    }
+
+    /// A page without the marker yields nothing, whatever else it
+    /// holds.
+    #[test]
+    fn a_page_without_a_file_stanza_yields_nothing(page in ".*") {
+        proptest::prop_assume!(!page.contains("file: '"));
+        proptest::prop_assert_eq!(crate::scraper::anidb::parse::extract_master_url(&page), None);
+    }
+}
