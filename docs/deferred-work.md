@@ -1,4 +1,62 @@
+# Deferred work
 
+Valid work that was found during a change and deliberately not done in
+that change. An entry says what the work is and why it waited, plus
+anything genuinely surprising about it — enough for someone who was
+not in the conversation to pick it back up.
+
+These are reminders, not specifications. An entry does not have to
+enumerate the files that will change, state acceptance criteria, or
+define what "done" looks like; whoever takes the work scopes it
+against the code as it is then, which is the only scoping worth
+trusting. So an entry that states something false is a defect, and an
+entry that leaves things out is not.
+
+This file is tracked, so an entry survives leaving the checkout it was
+written in and a pull request thread can cite it. That is the whole
+point: the internal planning directory is git-ignored and this
+repository has issues disabled, so neither can hold a record anyone
+else is able to read.
+
+Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
+it third of four options, after doing it here and doing it in its own
+pull request.
+
+Remove an entry when the work lands, in the change that lands it.
+
+---
+
+## Open findings on the deferral checks
+
+Raised in review and not yet fixed. Recorded here so they survive the
+thread.
+
+**Intent-to-add detected by porcelain, not by index metadata.**
+`record_is_recoverable` rejects `git add -N` entries by matching `" A"`
+in `git status --porcelain`. If the file is then deleted from the
+working tree the porcelain line changes, and the check stops
+recognising it. Reading the intent-to-add bit from index metadata is
+the robust form.
+
+There is a deleted-file variant of the same state worth checking at the
+same time.
+
+The failure message is wrong for this case too. `why_unrecoverable`
+sees that `ls-files` succeeds and reports "tracked as a symlink or
+submodule rather than a file", which is neither true nor actionable —
+the fix is `git add` on a path that is already, in a sense, added.
+Reporting the wrong reason has already been a defect on this branch
+once, for symlinks; the same argument applies. Fix it in the same
+change as the detection.
+
+**Setext H2 does not end the section.** The body scan recognises
+`^ {0,3}## `. A heading written as text followed by a line of `-` is
+also an H2, so the section runs past it into the next one.
+
+This belongs to the Markdown-interpretation layer described above, and
+the same argument applies: it is the eighth rule of an open set. The
+recommendation remains to stop parsing document structure rather than
+to add setext handling.
 
 ---
 
@@ -8,18 +66,6 @@ Work that is known, wanted and not scheduled. Kept here rather than in
 an agent's session state, which nobody else can read and which
 disappears when the session does. An item leaves this list by being
 done or by being decided against in writing.
-
-**These are reminders, not specifications.** An entry has to be true
-and has to be enough to pick the work back up; it does not have to
-enumerate every file that will change, list acceptance criteria, or
-survive as a plan. Whoever does the work scopes it against the code at
-the time, which is the only scoping that can be trusted anyway.
-
-So when reviewing this file: an entry that states something false is a
-defect, and an entry that leaves things out is not. If reading it
-would send someone to rebuild what already works, or let them think
-the job is finished when it is not, say so. If it merely omits a
-detail a `grep` would surface, that is the intended level of detail.
 
 **Treat every entry as a lead, not a fact.** These were carried across
 from session state and reviewing them turned up more than a dozen
@@ -75,16 +121,6 @@ starting it, and delete it when you find it done.
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
   -m` — verified with a probe hook. So the gate has to move to
   `commit-msg` and skip only for a `test(red):` subject.
-
-- **Port the arch self-tests to bats.** `AGENTS.md` §2 says shell with a
-  subject under test belongs in bats. Three qualify —
-  `tests/arch/bash_portability_test.sh` (on `master`) plus
-  `deferral_record_test.sh` and `deferral_root_test.sh` (still on a
-  branch) — each builds fixtures, drives another script and asserts
-  through hand-written helpers. The checks they drive stay standalone.
-
-  The bats vendor lives under `tests/bash/` behind an installer, so the
-  port also changes how `run-all.sh` and `arch.yml` invoke the suite.
 
 ## Interface
 

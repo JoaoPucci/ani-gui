@@ -6,9 +6,10 @@ use super::{BrowseHit, EpisodeRef, LanguageEmbed};
 use crate::error::{AniError, Result};
 
 /// Whether a response body is cloudflare's challenge interstitial
-/// rather than provider content.
+/// rather than provider content. Case-insensitive, like the script's
+/// `grep -qi`: challenge pages have varied the title's spelling.
 pub fn is_cloudflare_interstitial(body: &str) -> bool {
-    body.contains("Just a moment")
+    body.to_ascii_lowercase().contains("just a moment")
 }
 
 /// Form-urlencode a search query: space→`+`, reserved and non-ASCII
@@ -54,11 +55,24 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
     // must come from the href and the title from the same anchor's
     // image alt, or a page-level scan pairs values across cards.
     for chunk in html.split("<a href").skip(1) {
-        let Some(slug) = chunk
-            .split_once("anime/")
+        // Bounded at the card's closing anchor: markup between </a>
+        // and the next anchor belongs to no card, and reading it
+        // would title an altless card with a stray image or hand it a
+        // stray badge's kind. A chunk without </a> is scanned whole,
+        // as before.
+        let chunk = chunk.split("</a>").next().unwrap_or(chunk);
+        // The chunk begins right after `<a href`, so the first quoted
+        // value IS the href. The slug comes from it alone: an anime/
+        // path in nested markup — an image src, say — is not where
+        // the anchor points.
+        let Some(href) = chunk
+            .split_once('"')
             .map(|(_, rest)| rest)
             .and_then(|rest| rest.split('"').next())
         else {
+            continue;
+        };
+        let Some(slug) = href.split_once("anime/").map(|(_, rest)| rest) else {
             continue;
         };
         if slug_numeric_id(slug).is_none()
@@ -170,3 +184,7 @@ pub fn extract_master_url(embed_html: &str) -> Option<String> {
     }
     Some(url.to_string())
 }
+
+#[cfg(test)]
+#[path = "parse_prop_test.rs"]
+mod parse_prop_tests;

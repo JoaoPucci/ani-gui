@@ -10,7 +10,9 @@
 
 set -eu
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# Overridable so a test can point the check at a scratch tree, the
+# same way the sibling checks in this directory take it.
+REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
 if [ ! -f ani-cli ]; then
@@ -62,7 +64,7 @@ if git remote get-url upstream >/dev/null 2>&1; then
         # for five patches; carrying that forward against a one-line
         # reality would let a 45-line stray edit ride under it.
         if [ "$diff_lines" -gt 4 ]; then
-            printf 'arch/bash_portability FAIL: ani-cli diverges from upstream by %d lines (max 50) — a patch beyond the set in AGENTS.md §3 has landed, or one grew\n' "$diff_lines" >&2
+            printf 'arch/bash_portability FAIL: ani-cli diverges from upstream by %d lines (max 4) — a patch beyond the set in AGENTS.md §3 has landed, or one grew\n' "$diff_lines" >&2
             failed=1
         fi
     fi

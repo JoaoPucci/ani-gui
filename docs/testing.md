@@ -75,7 +75,8 @@ cd gui/backend && cargo test --test proptests
 cd gui/frontend && pnpm test
 cd gui/frontend && pnpm test:acceptance
 
-# Architectural invariants (always fast)
+# Architectural invariants (always fast; the workflow-certification
+# self-test parses CI config with PyYAML — python3-yaml on Debian/Ubuntu)
 bash tests/arch/run-all.sh
 ```
 
