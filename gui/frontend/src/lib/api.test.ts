@@ -560,6 +560,36 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('appends subtype to the SSE query when provided', async () => {
+		// The backend keys its play-resolution cache on subtype (a
+		// franchise's movie and TV entry can otherwise share every other
+		// axis), and the native picker uses it as format disproof. A
+		// query builder that drops it makes every renderer call arrive
+		// subtype-less, so those backend features never see the value.
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', subtype: 'movie' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('subtype=movie');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
+	it('omits subtype when null or absent', async () => {
+		// Kitsu can return subtype: null; the wire treats absence and
+		// null identically, so a null must not serialize as "null".
+		const promise = playStream({ title: 'X', episode: '1', mode: 'sub', subtype: null }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).not.toContain('subtype');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it('forwards parsed progress events to onProgress in arrival order', async () => {
 		const seen: PlayProgress[] = [];
 		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, (p) => seen.push(p));

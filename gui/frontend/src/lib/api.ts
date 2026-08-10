@@ -494,6 +494,12 @@ export interface PlayArgs {
 	 *  allmanga title. Optional; missing on legacy click sites that
 	 *  haven't been updated yet. */
 	kitsu_id?: string;
+	/** Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
+	 *  The backend keys its play-resolution cache on it — a
+	 *  franchise's movie and TV entry can share every other axis —
+	 *  and the native picker uses it as format disproof against the
+	 *  provider's browse-card badges. Kitsu can return null. */
+	subtype?: string | null;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
