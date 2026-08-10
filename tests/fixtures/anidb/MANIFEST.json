@@ -8,11 +8,11 @@
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "browse_one_piece.html": {
-    "sha256": "8638ed61eabd40c7ce14f8e82ba33da6d02a5bfc72fc71580c44138f5c22e074",
+    "sha256": "f7f8afd67967caef00f208965beafe7be8bff148073dc77ccb7e085a37c7e6e0",
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "detail_one_piece.html": {
-    "sha256": "29d2d6d92d01e4a05d3782066e6680ee6a6796e867d24c12668506da1ac95c0f",
+    "sha256": "e5f0b139b46da2fc5e8703ec716aa1b0442ac5429cf45a1733f5701c9a87852a",
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "embed_op.html": {
@@ -20,11 +20,11 @@
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "episodes_one_piece.json": {
-    "sha256": "a441a510268f28ad4733143301ab8ab1e070ce849db2c59f3bb562c0d5b3a287",
+    "sha256": "bcdb5d161819cc9acaaf49d04e51dac1eedefa7334b874d6b2c56c00d07ccfba",
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "languages_op.json": {
-    "sha256": "45ccfa99b8d8623ed793bdca401037ea853958aea8e851f775167e08f8577a12",
+    "sha256": "0f63ebde8e7b953df9805e8f6c12f9f0850b69427c079f093d71ec0bb3f41c77",
     "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
   },
   "master_op.m3u8": {
