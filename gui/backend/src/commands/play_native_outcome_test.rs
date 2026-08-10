@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::play_native_resolve::NativeError;
 use crate::error::AniError;
+use crate::scraper::gate::ScrapePriority;
 
 #[test]
 fn breaker_outcome_treats_answered_verdicts_as_health() {
@@ -15,7 +16,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         clean_miss: false,
     };
     assert!(matches!(
-        breaker_outcome(&Err(absent_episode)),
+        breaker_outcome(ScrapePriority::Interactive, &Err(absent_episode)),
         Some(ScrapeOutcome::Success)
     ));
     // Weather stays distress.
@@ -24,7 +25,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         clean_miss: false,
     };
     assert!(matches!(
-        breaker_outcome(&Err(refusal)),
+        breaker_outcome(ScrapePriority::Interactive, &Err(refusal)),
         Some(ScrapeOutcome::Failure)
     ));
     let limited = NativeError {
@@ -34,7 +35,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         clean_miss: false,
     };
     assert!(matches!(
-        breaker_outcome(&Err(limited)),
+        breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
         Some(ScrapeOutcome::RateLimited { .. })
     ));
     let transport = NativeError {
@@ -42,7 +43,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         clean_miss: false,
     };
     assert!(matches!(
-        breaker_outcome(&Err(transport)),
+        breaker_outcome(ScrapePriority::Interactive, &Err(transport)),
         Some(ScrapeOutcome::Failure)
     ));
 }
@@ -59,7 +60,7 @@ fn a_gate_refusal_is_no_evidence_at_all() {
         error: AniError::GateRefused,
         clean_miss: false,
     };
-    assert!(breaker_outcome(&Err(refused)).is_none());
+    assert!(breaker_outcome(ScrapePriority::Interactive, &Err(refused)).is_none());
 }
 
 #[test]
@@ -76,7 +77,7 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
         clean_miss: false,
     };
     assert!(matches!(
-        breaker_outcome(&Err(limited)),
+        breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
         Some(ScrapeOutcome::RateLimited { retry_after: None })
     ));
 }
@@ -97,7 +98,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
         };
         assert!(
             matches!(
-                breaker_outcome(&Err(dead_source)),
+                breaker_outcome(ScrapePriority::Interactive, &Err(dead_source)),
                 Some(ScrapeOutcome::Success)
             ),
             "status {status} answered; it must be recorded as health"
@@ -109,8 +110,45 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
             clean_miss: false,
         };
         assert!(
-            matches!(breaker_outcome(&Err(block)), Some(ScrapeOutcome::Failure)),
+            matches!(
+                breaker_outcome(ScrapePriority::Interactive, &Err(block)),
+                Some(ScrapeOutcome::Failure)
+            ),
             "status {status} is block-shaped distress"
         );
     }
+}
+
+#[test]
+fn a_background_deadline_elapse_is_no_evidence() {
+    // The resolve deadline includes time deliberately spent waiting
+    // in the gate's paced background queue: a page warm launches a
+    // dozen prefetch resolves whose chained requests can burn the
+    // whole 60 seconds on pacing alone, upstream perfectly healthy.
+    // A Timeout at the outcome level uniquely identifies the
+    // whole-resolve deadline (per-fetch stalls become Network in the
+    // walk), so for a paced background resolve it is ambiguous —
+    // pacing or weather — and ambiguity records nothing. Interactive
+    // resolves are never paced: their elapse is a real stall and
+    // stays distress, as do background transport failures.
+    let elapsed = || NativeError {
+        error: AniError::Timeout,
+        clean_miss: false,
+    };
+    assert_eq!(
+        breaker_outcome(ScrapePriority::Background, &Err(elapsed())),
+        None
+    );
+    assert!(matches!(
+        breaker_outcome(ScrapePriority::Interactive, &Err(elapsed())),
+        Some(ScrapeOutcome::Failure)
+    ));
+    let transport = NativeError {
+        error: AniError::Network,
+        clean_miss: false,
+    };
+    assert!(matches!(
+        breaker_outcome(ScrapePriority::Background, &Err(transport)),
+        Some(ScrapeOutcome::Failure)
+    ));
 }
