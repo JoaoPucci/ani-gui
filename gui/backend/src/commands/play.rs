@@ -251,23 +251,30 @@ pub(super) async fn stamp_availability_after_native(
         false,
         || match episode_cap {
             // The resolve already paid for the provider's episode
-            // list — the cap is exact, and dropping it here would
+            // list — the cap is exact FOR SUB, and dropping it would
             // evict an exact row into episode_count: null for the
-            // whole TTL. Status is unknown at this call site, so the
-            // row takes the ongoing TTL like the boolean write.
-            Some(cap) if available => crate::commands::availability::write_cache_full(
-                state,
-                id,
-                &args.mode,
-                None,
-                &crate::commands::availability::AvailabilityResponse {
-                    available: true,
-                    episode_count: Some(cap),
-                    extra_episodes: Vec::new(),
-                    episode_count_approximate: false,
-                    gate_refused: false,
-                },
-            ),
+            // whole TTL. A dub resolve only proves the requested
+            // episode has an English embed, so the provider-wide
+            // list must not become an exact (kitsu_id, dub) count —
+            // the dub row stays boolean and self-heals via the next
+            // mode-aware probe. Status is unknown at this call site,
+            // so the row takes the ongoing TTL like the boolean
+            // write.
+            Some(cap) if available && args.mode != "dub" => {
+                crate::commands::availability::write_cache_full(
+                    state,
+                    id,
+                    &args.mode,
+                    None,
+                    &crate::commands::availability::AvailabilityResponse {
+                        available: true,
+                        episode_count: Some(cap),
+                        extra_episodes: Vec::new(),
+                        episode_count_approximate: false,
+                        gate_refused: false,
+                    },
+                );
+            }
             _ => crate::commands::availability::write_cache(state, id, &args.mode, available),
         },
     )
