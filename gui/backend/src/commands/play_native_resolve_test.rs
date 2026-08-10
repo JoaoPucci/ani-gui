@@ -327,6 +327,34 @@ async fn a_detail_refusal_stops_the_alias_walk() {
 }
 
 #[tokio::test]
+async fn a_stale_slug_pool_records_health_not_distress() {
+    // Browse answers with a candidate whose episodes route 404s (a
+    // stale slug): every probe was ANSWERED, so the walk's verdict
+    // must be the answered dead end — NoResults without clean_miss —
+    // and the breaker must record health. Classifying it as Network
+    // let three such background resolves open the breaker against a
+    // healthy provider. And it stays non-persistable: dead candidates
+    // prove nothing about the show.
+    let stale = Box::leak(browse_page(&[("stale-44", "Stale")]).into_boxed_str());
+    let provider = Provider::new(Box::leak(Box::new([("english", &*stale)])));
+    let (got, _) = run(&provider, "english", &[], "2", Some(3)).await;
+    let err = got.expect_err("dead pool");
+    assert!(
+        !err.clean_miss,
+        "an all-404 pool must never persist absence"
+    );
+    assert!(
+        matches!(err.error, AniError::NoResults),
+        "got {:?}",
+        err.error
+    );
+    assert!(matches!(
+        crate::commands::play_native_outcome::breaker_outcome(&Err(err)),
+        crate::scraper::gate::ScrapeOutcome::Success
+    ));
+}
+
+#[tokio::test]
 async fn a_clean_all_empty_walk_is_the_only_persistable_miss() {
     let provider = Provider::new(Box::leak(Box::new([])));
     let alts = vec!["other".to_string()];

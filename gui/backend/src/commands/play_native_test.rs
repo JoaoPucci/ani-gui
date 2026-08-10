@@ -147,17 +147,56 @@ async fn probing_stops_at_the_bound() {
 }
 
 #[tokio::test]
-async fn all_probes_failing_is_transient_not_absence() {
-    // Every considered candidate's episodes fetch failed: nothing was
-    // learned about the show, so the verdict must be the transient
-    // Network — a NoResults here would flow into the persistable
-    // clean-miss path and hide a real show behind the negative TTL.
+async fn an_all_not_found_pool_is_an_answered_dead_end() {
+    // Every considered candidate's episodes probe was ANSWERED
+    // not-found (stale slugs): the pool is dead but the provider is
+    // healthy. Classifying this as Network let three such resolves
+    // open the global breaker on a provider that answered every
+    // request. The verdict is the not-found-shaped upstream status —
+    // still never the persistable clean miss, which the resolve walk
+    // keeps guarding.
+    //
+    // This replaces all_probes_failing_is_transient_not_absence: its
+    // fake answered 404s, so it was pinning the answered case to the
+    // transport verdict. The transport case keeps its own pin below.
     let client = AnidbClient::new(EpisodesTable(&[]));
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
     let err = pick_candidate(&client, &hits, Some(12), "A", None, None)
         .await
+        .expect_err("dead pool");
+    assert!(
+        matches!(err, AniError::Upstream { status: 404 }),
+        "got {err:?}"
+    );
+}
+
+/// A fetch whose probes die on transport — no answer at all.
+struct TransportDeadEpisodes;
+
+#[async_trait::async_trait]
+impl AnidbFetch for TransportDeadEpisodes {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/episodes") {
+            return Err(AniError::Network);
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn all_probes_dying_on_transport_stays_transient() {
+    // Nothing was learned about the show when the probes never got
+    // an answer: the verdict must be the transient Network so the
+    // caller records distress and never persists absence.
+    let client = AnidbClient::new(TransportDeadEpisodes);
+    let hits = [hit("a-1", "A"), hit("b-2", "B")];
+    let err = pick_candidate(&client, &hits, Some(12), "A", None, None)
+        .await
         .expect_err("transient");
-    assert!(matches!(err, AniError::Network));
+    assert!(matches!(err, AniError::Network), "got {err:?}");
 }
 
 #[tokio::test]
