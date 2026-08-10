@@ -54,6 +54,51 @@ fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
 }
 
 #[test]
+fn puts_create_the_store_directory_on_a_fresh_profile() {
+    // On a fresh profile $XDG_STATE_HOME/ani-cli does not exist yet:
+    // the first continuation-cour resolve reaches the offset write
+    // BEFORE the history writer creates the directory, so a put that
+    // assumes the parent silently loses the stamp — and the cached
+    // resolution keeps the loss alive for the row's whole TTL.
+    let tmp = tempfile::tempdir().expect("tmp");
+    let state = make_state_at(tmp.path().join("ani-cli").join("ani-hsts"));
+    put(&state, "the-sequel-88", 40);
+    assert_eq!(get(&state, "the-sequel-88"), 40);
+}
+
+#[test]
+fn concurrent_puts_keep_every_stamp() {
+    // Page prefetches resolve several shows at once; unserialized
+    // read-merge-write lets one put overwrite another's row (or
+    // consume its temp file), and the lost show's history starts
+    // exposing provider numbering. The whole sequence holds a lock.
+    let tmp = tempfile::tempdir().expect("tmp");
+    let history = tmp.path().join("ani-hsts");
+    let state = std::sync::Arc::new(make_state_at(history));
+    let mut handles = Vec::new();
+    for t in 0..16u32 {
+        let state = state.clone();
+        handles.push(std::thread::spawn(move || {
+            for i in 0..4u32 {
+                put(&state, &format!("show-{t}-{i}"), t * 10 + i);
+            }
+        }));
+    }
+    for h in handles {
+        h.join().expect("writer thread");
+    }
+    for t in 0..16u32 {
+        for i in 0..4u32 {
+            assert_eq!(
+                get(&state, &format!("show-{t}-{i}")),
+                t * 10 + i,
+                "a concurrent put lost show-{t}-{i}"
+            );
+        }
+    }
+}
+
+#[test]
 fn offsets_survive_the_metadata_cache_clear() {
     // History rows live indefinitely, while meta_cache rows expire
     // and the diagnostics clear wipes them all at once. An offset
