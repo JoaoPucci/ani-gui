@@ -623,9 +623,15 @@ where
         subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
-    let native =
-        crate::commands::play_native_resolve::resolve_native(&client, request, &mut on_progress)
-            .await;
+    // Bounded: a provider that accepts connections but stalls every
+    // request must not keep the play pending past the gate's
+    // half-open trial window (see RESOLVE_DEADLINE).
+    let native = crate::commands::play_native_resolve::resolve_native_bounded(
+        &client,
+        request,
+        &mut on_progress,
+    )
+    .await;
     // Feed the breaker the resolution's outcome so background traffic
     // backs off after provider-shaped failures — and only those. The
     // mapping lives in play_native_resolve::breaker_outcome: answered

@@ -81,6 +81,40 @@ pub struct NativeResolveRequest<'a> {
     pub subtype: Option<&'a str>,
 }
 
+/// Ceiling on one complete native resolution — every search, probe
+/// and embed fetch together. Strictly below
+/// [`crate::scraper::gate::HALF_OPEN_TRIAL_STALE`]: a resolve that
+/// outlived the trial window would let a second half-open trial
+/// start behind the still-running first, the overlap the sanction
+/// chain forbids. 60s also matches the ceiling the subprocess path
+/// enforced with its run timeout.
+pub const RESOLVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// [`resolve_native`] under [`RESOLVE_DEADLINE`]. Elapsing is the
+/// stall's own identity: [`AniError::Timeout`], never a clean miss —
+/// a provider that accepts connections but answers nothing is
+/// weather, and the breaker hears it as such.
+///
+/// # Errors
+/// As [`resolve_native`], plus `Timeout` at the deadline.
+pub async fn resolve_native_bounded<F, P>(
+    client: &AnidbClient<F>,
+    req: NativeResolveRequest<'_>,
+    on_progress: &mut P,
+) -> std::result::Result<NativeResolved, NativeError>
+where
+    F: AnidbFetch,
+    P: FnMut(ProgressLine) + Send,
+{
+    match tokio::time::timeout(RESOLVE_DEADLINE, resolve_native(client, req, on_progress)).await {
+        Ok(resolved) => resolved,
+        Err(_elapsed) => Err(NativeError {
+            error: AniError::Timeout,
+            clean_miss: false,
+        }),
+    }
+}
+
 /// Search the request's title then its fallbacks in order, pick, and
 /// resolve the episode for the mode to a master-playlist URL.
 ///
