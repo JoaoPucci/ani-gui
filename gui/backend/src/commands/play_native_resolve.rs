@@ -280,8 +280,12 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .master_playlist_url(ep.id, mode)
         .await
         .map_err(dead_end)?;
-    // The quality step is soft: any miss keeps the adaptive master.
-    Ok(client.quality_stream_url(&master, quality).await)
+    // The quality step is soft only on a served playlist that lacks
+    // the height; a failed master fetch is the episode failing.
+    client
+        .quality_stream_url(&master, quality)
+        .await
+        .map_err(dead_end)
 }
 
 #[cfg(test)]

@@ -170,28 +170,36 @@ impl<F: AnidbFetch> AnidbClient<F> {
     /// keeps the adaptive master untouched (no fetch — hls.js picks
     /// levels itself); any other setting fetches the master, parses
     /// its variants and returns the matching height's URI resolved
-    /// against the master's URL. Soft on every miss — an unserved
-    /// height, an unfetchable or unparseable master — the master URL
-    /// comes back and playback stays adaptive rather than failing.
-    pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> String {
+    /// against the master's URL. Soft only on a SERVED playlist that
+    /// misses — an unserved height, an unparseable body or variant
+    /// URI — where the master URL comes back and playback stays
+    /// adaptive.
+    ///
+    /// # Errors
+    /// The fetch's own failure: returning the master URL that just
+    /// failed would report success upstream — stamping availability,
+    /// caching a session the player cannot load — and a swallowed
+    /// 429 would record breaker health instead of the rate-limit
+    /// pause.
+    pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> Result<String> {
         if quality == "best" {
-            return master_url.to_string();
+            return Ok(master_url.to_string());
         }
-        let Ok(body) = self.content(master_url).await else {
-            return master_url.to_string();
-        };
+        let body = self.content(master_url).await?;
         let variants = parse_master_variants(&body);
         let Some(variant) = select_variant(&variants, quality) else {
             tracing::debug!(
                 quality,
                 "anidb: quality not served, keeping adaptive master"
             );
-            return master_url.to_string();
+            return Ok(master_url.to_string());
         };
-        match url::Url::parse(master_url).and_then(|base| base.join(&variant.url)) {
-            Ok(joined) => joined.to_string(),
-            Err(_) => master_url.to_string(),
-        }
+        Ok(
+            match url::Url::parse(master_url).and_then(|base| base.join(&variant.url)) {
+                Ok(joined) => joined.to_string(),
+                Err(_) => master_url.to_string(),
+            },
+        )
     }
 
     /// The premiere year the slug's detail page names, when it names
