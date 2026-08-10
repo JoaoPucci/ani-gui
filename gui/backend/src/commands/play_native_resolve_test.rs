@@ -175,9 +175,19 @@ async fn canonical_title_resolves_to_the_master_url() {
     assert_eq!(resolved.title, "The Show");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(resolved.episode_cap, Some(3));
-    // Progress trail: a search banner, then the links-fetched marker
-    // the overlay renders as the provider step.
-    assert!(matches!(events.first(), Some(ProgressLine::Banner { .. })));
+    // Progress trail: structured kinds with interpolation data, so
+    // Paraglide owns the user-facing copy. The subprocess path
+    // relayed the script's own output verbatim; the native walk
+    // FABRICATES its lines, and fabricated English in a Banner is
+    // the backend returning localized strings — the contract says
+    // stable keys only. The test change is this red's spec: the old
+    // pin asserted the Banner shape itself.
+    assert!(
+        matches!(events.first(), Some(ProgressLine::Searching { provider }) if provider == "anidb.app")
+    );
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, ProgressLine::Matched { title } if title == "The Show")));
     assert!(events
         .iter()
         .any(|e| matches!(e, ProgressLine::LinksFetched { provider } if provider == "anidb.app")));
