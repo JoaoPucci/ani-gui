@@ -605,6 +605,31 @@ async fn the_transport_leaves_ciphers_to_curl_off_darwin() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn the_transport_outlives_a_briefly_busy_executable() {
+    // The suite stages executable stubs from many threads, and a
+    // fork elsewhere in the process can still hold a stub's write fd
+    // when this transport execs it — the kernel answers ETXTBSY and
+    // the whole run flakes on transient weather. Holding the file
+    // open for writing reproduces that race deterministically: the
+    // spawn must wait out the writer instead of reporting Network.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '\\n200'");
+    let writer = std::fs::OpenOptions::new()
+        .append(true)
+        .open(dir.path().join("curl_firefox135"))
+        .expect("hold the stub open for writing");
+    let handle = tokio::spawn(async move { fetch.get("https://example.test/x").await });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    drop(writer);
+    let resp = handle
+        .await
+        .expect("join")
+        .expect("get retries past ETXTBSY");
+    assert_eq!(resp.status, 200);
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn the_transport_disables_curlrc_first() {
     // A user's ~/.curlrc can redirect output or append transfers,
     // corrupting the body this code parses. curl only honors
