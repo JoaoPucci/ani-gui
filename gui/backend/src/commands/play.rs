@@ -533,6 +533,7 @@ where
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
         if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -590,24 +591,11 @@ where
     )
     .await;
     // Feed the breaker the resolution's outcome so background traffic
-    // backs off after provider-shaped failures.
-    let outcome = match &native {
-        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
-        // A clean miss is the provider ANSWERING — every search
-        // completed and nothing matched. Only weather (transport,
-        // refusals, rate limits) is distress; counting misses as
-        // failures let a run of uncarried titles brown out all
-        // background traffic.
-        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
-        Err(ne) => match ne.error {
-            AniError::RateLimited { retry_after_secs } => {
-                crate::scraper::gate::ScrapeOutcome::RateLimited {
-                    retry_after: retry_after_secs.map(std::time::Duration::from_secs),
-                }
-            }
-            _ => crate::scraper::gate::ScrapeOutcome::Failure,
-        },
-    };
+    // backs off after provider-shaped failures — and only those. The
+    // mapping lives in play_native_resolve::breaker_outcome: answered
+    // verdicts (clean misses, absent episodes or audio) are health,
+    // weather is distress.
+    let outcome = crate::commands::play_native_resolve::breaker_outcome(&native);
     state.scraper_gate.record(outcome, resolve_started_at);
     let native = match native {
         Ok(n) => n,
@@ -1020,6 +1008,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            args.subtype.as_deref(),
         );
         play_resolution_cache::put(
             &state.cache_pool,
@@ -1121,6 +1110,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
@@ -1195,6 +1185,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
@@ -1224,6 +1215,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         play_resolution_cache::put(
             &state.cache_pool,
