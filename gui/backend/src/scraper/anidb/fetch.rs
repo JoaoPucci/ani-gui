@@ -196,3 +196,7 @@ impl AnidbFetch for CurlImpersonateFetch {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "fetch_prop_test.rs"]
+mod fetch_prop_tests;
