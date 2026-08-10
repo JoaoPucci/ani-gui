@@ -170,3 +170,7 @@ pub fn extract_master_url(embed_html: &str) -> Option<String> {
     }
     Some(url.to_string())
 }
+
+#[cfg(test)]
+#[path = "parse_prop_test.rs"]
+mod parse_prop_tests;
