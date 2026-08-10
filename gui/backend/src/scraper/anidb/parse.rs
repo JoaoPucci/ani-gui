@@ -61,11 +61,18 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
         // stray badge's kind. A chunk without </a> is scanned whole,
         // as before.
         let chunk = chunk.split("</a>").next().unwrap_or(chunk);
-        let Some(slug) = chunk
-            .split_once("anime/")
+        // The chunk begins right after `<a href`, so the first quoted
+        // value IS the href. The slug comes from it alone: an anime/
+        // path in nested markup — an image src, say — is not where
+        // the anchor points.
+        let Some(href) = chunk
+            .split_once('"')
             .map(|(_, rest)| rest)
             .and_then(|rest| rest.split('"').next())
         else {
+            continue;
+        };
+        let Some(slug) = href.split_once("anime/").map(|(_, rest)| rest) else {
             continue;
         };
         if slug_numeric_id(slug).is_none()
