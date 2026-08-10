@@ -37,6 +37,16 @@ impl<'g, F> GatedFetch<'g, F> {
 #[async_trait::async_trait]
 impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
+        if let Some(gate) = self.gate {
+            // A refusal only happens for background priority while
+            // the breaker is open; it surfaces as the transient
+            // Network, same as the walk's pre-flight admit maps it —
+            // never as provider weather, which would feed the breaker
+            // its own refusals.
+            gate.admit(self.priority)
+                .await
+                .map_err(|_| crate::error::AniError::Network)?;
+        }
         self.inner.get(url).await
     }
 }

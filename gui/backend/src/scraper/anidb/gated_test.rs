@@ -34,7 +34,7 @@ fn counting() -> (Counting, Arc<AtomicUsize>) {
 fn open_gate() -> ScraperGate {
     let gate = ScraperGate::new();
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-        gate.record(ScrapeOutcome::Failure, tokio::time::Instant::now().into());
+        gate.record(ScrapeOutcome::Failure, tokio::time::Instant::now());
     }
     gate
 }

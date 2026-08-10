@@ -252,14 +252,22 @@ pub(super) async fn stamp_availability_after_native(
 
 /// The production anidb client: the curl-impersonate transport
 /// resolved through the bundled directory then PATH, pointed at the
-/// provider (or the test override).
+/// provider (or the test override), with every request admitted
+/// through the scraper gate at `priority` — the walk fans out into
+/// candidate probes and the episode chain, and each of those is a
+/// provider request the pacing contract covers, not just the search.
 ///
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach the provider by any transport.
-fn anidb_client(
-    state: &AppState,
-) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
+fn anidb_client<'a>(
+    state: &'a AppState,
+    priority: crate::scraper::gate::ScrapePriority,
+) -> Result<
+    crate::scraper::anidb::AnidbClient<
+        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+    >,
+> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
@@ -269,6 +277,7 @@ fn anidb_client(
         tracing::error!("play: no curl binary found for the anidb transport");
         AniError::Network
     })?;
+    let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.scraper_gate), priority);
     Ok(match &state.anidb_base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
@@ -571,7 +580,7 @@ where
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     );
-    let client = anidb_client(state)?;
+    let client = anidb_client(state, scrape_priority(args))?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
