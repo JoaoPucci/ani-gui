@@ -80,3 +80,37 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
         Some(ScrapeOutcome::RateLimited { retry_after: None })
     ));
 }
+
+#[test]
+fn an_answered_not_found_at_the_episode_step_is_health() {
+    // The picker already treats a stale candidate slug's 404 as an
+    // answered verdict, but a 404 from the SELECTED episode's
+    // languages or embed request rides resolve_episode's error
+    // straight here — and three dead-source plays would open the
+    // global breaker although the provider answered every request.
+    // Not-found-shaped statuses are answered verdicts wherever they
+    // arise; only block-shaped ones (403, 429, 5xx) are distress.
+    for status in [400, 404, 410] {
+        let dead_source = NativeError {
+            error: AniError::Upstream { status },
+            clean_miss: false,
+        };
+        assert!(
+            matches!(
+                breaker_outcome(&Err(dead_source)),
+                Some(ScrapeOutcome::Success)
+            ),
+            "status {status} answered; it must be recorded as health"
+        );
+    }
+    for status in [500, 502, 503] {
+        let block = NativeError {
+            error: AniError::Upstream { status },
+            clean_miss: false,
+        };
+        assert!(
+            matches!(breaker_outcome(&Err(block)), Some(ScrapeOutcome::Failure)),
+            "status {status} is block-shaped distress"
+        );
+    }
+}
