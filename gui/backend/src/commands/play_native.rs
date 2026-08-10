@@ -15,6 +15,7 @@
 use crate::error::Result;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
 
+use super::play_native_format::format_filtered;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -82,34 +83,8 @@ pub async fn pick_candidate<F: AnidbFetch>(
     let needle = search_title.trim().to_lowercase();
     let (head, year_excluded_any) = year_filtered(client, hits, year).await?;
 
-    // Format disproof, the layer the allanime picker carried as its
-    // type filter, applied in BOTH directions: a card badged `Movie`
-    // cannot be the multi-episode series the caller expects — nor
-    // the clicked entry when Kitsu says it is anything but a movie
-    // (the special-vs-movie shape: both are single videos,
-    // count-tied, and only the format tells them apart) — and a card
-    // with any OTHER known badge cannot be the entry Kitsu says IS a
-    // movie. Unknown badges never exclude, an absent subtype keeps
-    // single-video pools permissive, and a pool left empty here is
-    // disproven — the next alias may carry the real show.
-    let expects_movie = subtype.is_some_and(|s| s.eq_ignore_ascii_case("movie"));
-    let expects_non_movie = matches!(expected, Some(n) if n > 1)
-        || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-    let head: Vec<_> = if expects_movie {
-        head.into_iter()
-            .filter(|(h, _)| {
-                h.kind
-                    .as_deref()
-                    .is_none_or(|k| k.eq_ignore_ascii_case("movie"))
-            })
-            .collect()
-    } else if expects_non_movie {
-        head.into_iter()
-            .filter(|(h, _)| h.kind.as_deref() != Some("Movie"))
-            .collect()
-    } else {
-        head
-    };
+    // Format disproof in both directions — see play_native_format.
+    let head = format_filtered(head, expected, subtype);
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
