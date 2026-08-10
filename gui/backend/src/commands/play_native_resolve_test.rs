@@ -52,9 +52,13 @@ impl AnidbFetch for Provider {
                     });
                 }
             }
+            // The genuine no-results shape: an unmatched query is
+            // the provider ANSWERING absence, and the zero-hit
+            // contract only reads absence off a page that shows the
+            // browse shape.
             return Ok(FetchResponse {
                 status: 200,
-                body: String::new(),
+                body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
             });
         }
         if url.contains("/api/frontend/anime/77/episodes") {

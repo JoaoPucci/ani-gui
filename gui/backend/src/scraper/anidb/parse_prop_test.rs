@@ -195,7 +195,17 @@ proptest::proptest! {
             html.push_str("</a>");
             html.push_str(&junk);
         }
-        let hits = parse_browse(&html);
+        let parsed = parse_browse(&html);
+        // Zero cards renders a page of bare junk: under the
+        // zero-hit contract that is absence only when the page
+        // shows the browse shape. The junk alphabet can spell the
+        // no-results copy (it has letters and spaces) but never
+        // the grid attribute (no quote character).
+        if cards.is_empty() && !html.to_ascii_lowercase().contains("no results") {
+            proptest::prop_assert!(parsed.is_err());
+            return Ok(());
+        }
+        let hits = parsed.expect("pages with cards or the no-results copy parse");
         proptest::prop_assert_eq!(hits.len(), cards.len());
         for (hit, (word, id, title, kind)) in hits.iter().zip(&cards) {
             proptest::prop_assert_eq!(&hit.slug, &format!("{word}-{id}"));

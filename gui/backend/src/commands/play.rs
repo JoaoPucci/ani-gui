@@ -910,7 +910,8 @@ mod tests {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string("<html>no cards</html>"),
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
             )
             .mount(&server)
             .await;

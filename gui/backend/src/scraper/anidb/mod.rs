@@ -121,15 +121,18 @@ impl<F: AnidbFetch> AnidbClient<F> {
     }
 
     /// Search the browse page. An interstitial or non-success status
-    /// is a typed upstream error; a result-less page is `Ok(vec![])`.
+    /// is a typed upstream error; a result-less page is `Ok(vec![])`
+    /// only when it shows the browse shape — an unrecognized zero-hit
+    /// body is a parse failure, never absence.
     ///
     /// # Errors
     /// [`AniError::Upstream`] when cloudflare or the site refuses,
+    /// [`AniError::ParseFailed`] on an unrecognized zero-hit body,
     /// plus the transport errors of [`AnidbFetch::get`].
     pub async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
         let url = format!("{}/browse?q={}", self.base, encode_query(query));
         let body = self.content(&url).await?;
-        Ok(parse_browse(&body))
+        parse_browse(&body)
     }
 
     /// List a show's episodes by slug.

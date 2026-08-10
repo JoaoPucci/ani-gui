@@ -45,11 +45,32 @@ pub fn parse_detail_year(html: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+/// Whether zero-hit browse HTML actually shows the browse page —
+/// its results grid or its no-results copy — rather than an
+/// unrecognized maintenance/WAF body. The fixtures this pins are
+/// synthesized from the ani-cli 5.0 pipeline's shapes (the live
+/// page refuses uninstrumented capture), so the accepted set is
+/// deliberately narrow and the unrecognized direction fails loud:
+/// a marker drift breaks no-result searches visibly and
+/// transiently, while a page wrongly read as absence is cached for
+/// the negative TTL.
+fn shows_browse_shape(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    lower.contains("no results") || lower.contains("class=\"grid")
+}
+
 /// Extract browse hits from the search page HTML. Titles are
 /// entity-decoded (`&#039;`, `&quot;`, `&amp;`). A page without
 /// matching anchors yields an empty list — "no results" is the
-/// caller's verdict, not a parse failure.
-pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
+/// caller's verdict — but only when the page shows the browse
+/// shape ([`shows_browse_shape`]).
+///
+/// # Errors
+/// [`AniError::ParseFailed`] on zero-hit HTML that shows neither
+/// the results grid nor the no-results copy: a maintenance or WAF
+/// body must never read as absence, because the walk persists a
+/// clean miss as a negative availability row.
+pub fn parse_browse(html: &str) -> Result<Vec<BrowseHit>> {
     let mut hits = Vec::new();
     // Anchor-scoped scan, like the script's `<a href` split: the slug
     // must come from the href and the title from the same anchor's
@@ -103,7 +124,12 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
             title: decode_entities(title),
         });
     }
-    hits
+    if hits.is_empty() && !shows_browse_shape(html) {
+        return Err(AniError::ParseFailed {
+            detail: "anidb browse: zero hits in an unrecognized page shape".into(),
+        });
+    }
+    Ok(hits)
 }
 
 /// Parse the episodes endpoint's response into id/number pairs,

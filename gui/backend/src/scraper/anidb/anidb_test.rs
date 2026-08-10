@@ -14,7 +14,7 @@ fn fixture(name: &str) -> String {
 
 #[test]
 fn parse_browse_extracts_slug_and_title_pairs_in_order() {
-    let hits = parse_browse(&fixture("browse_one_piece.html"));
+    let hits = parse_browse(&fixture("browse_one_piece.html")).expect("parses");
     assert_eq!(hits.len(), 3);
     assert_eq!(hits[0].slug, "one-piece-69");
     assert_eq!(hits[0].title, "One Piece");
@@ -24,7 +24,7 @@ fn parse_browse_extracts_slug_and_title_pairs_in_order() {
 
 #[test]
 fn parse_browse_decodes_html_entities_in_titles() {
-    let hits = parse_browse(&fixture("browse_one_piece.html"));
+    let hits = parse_browse(&fixture("browse_one_piece.html")).expect("parses");
     assert_eq!(hits[2].slug, "gintama-the-movie-4425");
     assert_eq!(hits[2].title, "Gintama': The Movie");
 }
@@ -37,7 +37,7 @@ fn parse_browse_reads_the_type_badge_when_the_card_carries_one() {
     // so the parse must surface it — and a card without a badge
     // (the fixture's third entry) must read as unknown, never
     // excluded.
-    let hits = parse_browse(&fixture("browse_one_piece.html"));
+    let hits = parse_browse(&fixture("browse_one_piece.html")).expect("parses");
     assert_eq!(hits[0].kind.as_deref(), Some("TV"));
     assert_eq!(hits[1].kind.as_deref(), Some("Movie"));
     assert_eq!(hits[2].kind, None);
@@ -79,7 +79,7 @@ fn parse_browse_skips_anchors_that_are_not_result_cards() {
         r#"<a href="https://anidb.app/anime/one-piece-69">no alt image</a>"#,
         r#"<a href="https://anidb.app/anime/one-piece-69"><img alt="One Piece"></a>"#,
     );
-    let hits = parse_browse(html);
+    let hits = parse_browse(html).expect("parses");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].slug, "one-piece-69");
     assert_eq!(hits[0].title, "One Piece");
@@ -106,7 +106,7 @@ fn parse_browse_reads_the_slug_from_the_href_alone() {
         r#"<img alt="Foo" src="https://cdn.anidb.app/anime/one-piece-69"></a>"#,
         r#"<a href="https://anidb.app/anime/gintama-4425"><img alt="Gintama"></a>"#,
     );
-    let hits = parse_browse(html);
+    let hits = parse_browse(html).expect("parses");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].slug, "gintama-4425");
 }
@@ -123,7 +123,7 @@ fn parse_browse_reads_nothing_past_a_cards_closing_anchor() {
         r#"<a href="https://anidb.app/anime/gintama-4425"><img alt="Gintama"></a>"#,
         r#"<span class="badge badge-orange">OVA</span>"#,
     );
-    let hits = parse_browse(html);
+    let hits = parse_browse(html).expect("parses");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].slug, "gintama-4425");
     assert_eq!(hits[0].title, "Gintama");
