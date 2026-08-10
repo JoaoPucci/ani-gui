@@ -122,3 +122,29 @@ async fn no_gate_is_a_passthrough() {
     fetch.get("https://provider.test/x").await.expect("through");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_stamp_is_the_post_admission_attempt_start() {
+    // The orchestrator records breaker outcomes with the resolve
+    // chain's start time, but the gate's stale filters read the
+    // timestamp as when the request that PRODUCED the outcome began:
+    // a long chain that observes a fresh 429 after another resolve
+    // recorded recovery gets its evidence discarded as pre-recovery.
+    // The transport therefore stamps each attempt's own start —
+    // taken after admission, so time spent queueing in the paced
+    // background slot never backdates the evidence.
+    let (inner, _calls) = counting();
+    let gate = ScraperGate::new();
+    let fetch = GatedFetch::new(inner, Some(&gate), ScrapePriority::Background);
+    assert!(fetch.last_attempt_at().is_none());
+    fetch.get("http://s/one").await.expect("first");
+    let first = fetch.last_attempt_at().expect("first attempt stamped");
+    let before_second = tokio::time::Instant::now();
+    fetch.get("http://s/two").await.expect("second");
+    let second = fetch.last_attempt_at().expect("second attempt stamped");
+    assert!(second > first, "each attempt re-stamps");
+    assert!(
+        second >= before_second + crate::scraper::gate::BACKGROUND_INTERVAL,
+        "the stamp postdates the paced admission wait, not the call"
+    );
+}
