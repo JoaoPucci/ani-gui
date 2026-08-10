@@ -762,3 +762,19 @@ async fn format_incompatible_hits_do_not_crowd_the_probe_head() {
         .expect("the sixth-ranked series is the only compatible hit");
     assert_eq!(picked.hit.slug, "the-series-66");
 }
+
+#[tokio::test]
+async fn a_lowercase_movie_badge_cannot_carry_a_series_expectation() {
+    // The movie direction of the disproof compares badges
+    // case-insensitively; the series direction compared the exact
+    // "Movie" string, so a provider restyling its badges to
+    // lowercase would silently re-admit movies into series pools —
+    // exactly where the count can tie (a recap movie beside a short
+    // season). Both directions read the badge the same way.
+    let client = AnidbClient::new(EpisodesTable(&[(11, 3)]));
+    let hits = [typed_hit("the-film-11", "The Film", "movie")];
+    let err = pick_candidate(&client, &hits, Some(3), "the film", None, None)
+        .await
+        .expect_err("a movie-badged pool cannot carry a series expectation");
+    assert!(matches!(err, AniError::NoResults), "got {err:?}");
+}
