@@ -222,9 +222,26 @@ mod tests {
 
     #[test]
     fn cache_key_is_deterministic_for_the_same_inputs() {
-        let a = cache_key("One Piece", "sub", "best", "1", None, None);
-        let b = cache_key("One Piece", "sub", "best", "1", None, None);
+        let a = cache_key("One Piece", "sub", "best", "1", None, None, None);
+        let b = cache_key("One Piece", "sub", "best", "1", None, None, None);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn cache_key_separates_subtypes() {
+        // Subtype changes candidate selection (the movie-vs-special
+        // disproof), so it is a key axis: two one-video entries with
+        // identical other axes but different Kitsu formats must not
+        // share a row, or the second request serves the first entry's
+        // HEAD-valid stream without the disproof ever running.
+        assert_ne!(
+            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("special")),
+            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("movie")),
+        );
+        assert_ne!(
+            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), Some("special")),
+            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), None),
+        );
     }
 
     #[test]
