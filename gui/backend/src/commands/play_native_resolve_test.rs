@@ -109,6 +109,14 @@ impl AnidbFetch for Provider {
                 body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
             });
         }
+        if url.ends_with("master.m3u8") {
+            // The quality step validates the master on every path
+            // now, best included — the stub serves it like the CDN.
+            return Ok(FetchResponse {
+                status: 200,
+                body: "#EXTM3U\n".into(),
+            });
+        }
         Ok(FetchResponse {
             status: 404,
             body: String::new(),

@@ -174,8 +174,8 @@ impl<F: AnidbFetch> AnidbClient<F> {
 
     /// The stream URL a quality setting selects from a master
     /// playlist, mirroring the script's `select_quality`. `best`
-    /// keeps the adaptive master untouched (no fetch — hls.js picks
-    /// levels itself); any other setting fetches the master, parses
+    /// keeps the adaptive master URL (hls.js picks levels itself)
+    /// after one validating fetch; any other setting parses
     /// its variants and returns the matching height's URI resolved
     /// against the master's URL. Soft only on a SERVED playlist that
     /// misses — an unserved height, an unparseable body or variant
@@ -189,10 +189,15 @@ impl<F: AnidbFetch> AnidbClient<F> {
     /// 429 would record breaker health instead of the rate-limit
     /// pause.
     pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> Result<String> {
+        // One validating fetch on EVERY path, best included: the
+        // extracted URL is only a claim until the playlist answers,
+        // and an unvalidated claim rides into breaker success,
+        // availability, history, and a cached session the proxy
+        // cannot load.
+        let body = self.content(master_url).await?;
         if quality == "best" {
             return Ok(master_url.to_string());
         }
-        let body = self.content(master_url).await?;
         let variants = parse_master_variants(&body);
         let Some(variant) = select_variant(&variants, quality) else {
             tracing::debug!(
