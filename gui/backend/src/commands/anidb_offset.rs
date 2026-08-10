@@ -13,27 +13,27 @@
 //! which is exactly today's behavior.
 
 use crate::app::AppState;
-use crate::cache::{meta_cache_get, meta_cache_put};
 
-const OFFSET_PREFIX: &str = "anidb-offset:v1:";
-
-/// Offsets are as stable as the provider's numbering itself; re-puts
-/// on every resolve keep the row fresh.
-const OFFSET_TTL_SECS: u64 = 60 * 60 * 24 * 30;
-
-fn key(slug: &str) -> String {
-    format!("{OFFSET_PREFIX}{slug}")
-}
-
-/// Persist the slug's numbering offset. Best-effort — a failed write
-/// degrades to the unstamped (offset 0) read, never breaks a play.
+/// Persist the slug's numbering offset in the dedicated table —
+/// NOT meta_cache: history rows live indefinitely, so the offset
+/// must survive TTL expiry and the diagnostics cache clear.
+/// Best-effort — a failed write degrades to the unstamped (offset 0)
+/// read, never breaks a play. Last write wins, so a re-resolve can
+/// correct a stale stamp.
 pub fn put(state: &AppState, slug: &str, offset: u32) {
-    if let Err(e) = meta_cache_put(
-        &state.cache_pool,
-        &key(slug),
-        &offset.to_string(),
-        OFFSET_TTL_SECS,
-    ) {
+    let write = || -> Result<(), rusqlite::Error> {
+        let conn = state
+            .cache_pool
+            .get()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO anidb_offsets (slug, ep_offset) VALUES (?1, ?2)
+             ON CONFLICT(slug) DO UPDATE SET ep_offset = excluded.ep_offset",
+            rusqlite::params![slug, offset],
+        )?;
+        Ok(())
+    };
+    if let Err(e) = write() {
         tracing::warn!(slug, offset, error = ?e, "anidb offset write failed");
     }
 }
@@ -41,11 +41,15 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
 /// The slug's stamped numbering offset; 0 on a missing or unreadable
 /// row — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
-    meta_cache_get(&state.cache_pool, &key(slug))
-        .ok()
-        .flatten()
-        .and_then(|body| body.trim().parse().ok())
-        .unwrap_or(0)
+    let Ok(conn) = state.cache_pool.get() else {
+        return 0;
+    };
+    conn.query_row(
+        "SELECT ep_offset FROM anidb_offsets WHERE slug = ?1",
+        rusqlite::params![slug],
+        |row| row.get::<_, u32>(0),
+    )
+    .unwrap_or(0)
 }
 
 /// Kitsu-relative episode → the provider's number, for ani-hsts
