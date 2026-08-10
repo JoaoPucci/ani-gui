@@ -166,6 +166,21 @@ impl AniError {
         }
     }
 
+    /// Whether this error is the provider blocking THIS CLIENT rather
+    /// than answering about one resource: a rate limit, or a
+    /// refusal-shaped upstream status (403 interstitial, 429, 5xx).
+    /// Probe loops stop on these — one block turns every further
+    /// request into hole-deepening — while not-found-shaped statuses
+    /// and transport failures speak only about the single request.
+    #[must_use]
+    pub fn is_provider_block(&self) -> bool {
+        match self {
+            Self::RateLimited { .. } => true,
+            Self::Upstream { status } => *status == 403 || *status == 429 || *status >= 500,
+            _ => false,
+        }
+    }
+
     /// HTTP status code the route layer surfaces for this variant.
     /// Lives here (next to the variant declarations) instead of on the
     /// `IntoResponse` impl in `api/mod.rs` because that file is already
@@ -235,6 +250,33 @@ impl From<toml::de::Error> for AniError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    proptest::proptest! {
+        // The block predicate is a shared contract between the
+        // episode-probe walk, the detail-year probe, and the resolve
+        // walk's stop condition: exactly the refusal shapes, nothing
+        // not-found-shaped.
+        #[test]
+        fn provider_block_is_exactly_the_refusal_shaped_statuses(
+            status in proptest::num::u16::ANY,
+        ) {
+            let want = status == 403 || status == 429 || status >= 500;
+            proptest::prop_assert_eq!(
+                AniError::Upstream { status }.is_provider_block(),
+                want
+            );
+        }
+    }
+
+    #[test]
+    fn rate_limits_block_and_verdicts_do_not() {
+        assert!(AniError::RateLimited {
+            retry_after_secs: None
+        }
+        .is_provider_block());
+        assert!(!AniError::NoResults.is_provider_block());
+        assert!(!AniError::Network.is_provider_block());
+    }
 
     #[test]
     fn rate_limited_maps_to_429_and_a_dedicated_key() {

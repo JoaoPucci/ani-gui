@@ -189,13 +189,28 @@ impl<F: AnidbFetch> AnidbClient<F> {
     }
 
     /// The premiere year the slug's detail page names, when it names
-    /// one. Soft: a fetch or parse miss is `None`, never an error —
-    /// the year is an identity hint for the picker, and resolution
-    /// must not die on a missing hint.
-    pub async fn detail_year(&self, slug: &str) -> Option<u32> {
+    /// one. A missing page (not-found-shaped status) or a page
+    /// without a season link is the soft `Ok(None)` — the year is an
+    /// identity hint, and resolution must not die on a missing hint.
+    /// A refusal, rate limit, or transport failure is NOT a missing
+    /// hint: it is the provider blocking this client, and swallowing
+    /// it would let the picker keep probing detail pages and select
+    /// year-blind through the block.
+    ///
+    /// # Errors
+    /// [`AniError::RateLimited`], refusal-shaped [`AniError::Upstream`]
+    /// statuses, and transport errors, verbatim from the fetch.
+    pub async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         let url = format!("{}/anime/{slug}", self.base);
-        let body = self.content(&url).await.ok()?;
-        parse_detail_year(&body)
+        match self.content(&url).await {
+            Ok(body) => Ok(parse_detail_year(&body)),
+            Err(AniError::Upstream { status })
+                if !AniError::Upstream { status }.is_provider_block() =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Fetch `url` and hand back content, refusing challenge pages

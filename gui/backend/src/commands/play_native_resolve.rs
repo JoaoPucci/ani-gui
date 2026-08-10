@@ -144,6 +144,15 @@ where
                     // A rejected pool is a clean verdict about THIS
                     // pool; the next alias may carry the real show.
                     Err(AniError::NoResults) => {}
+                    // A refusal or rate limit from a probe is the
+                    // provider blocking this client: the walk stops,
+                    // as it does when the search itself is refused.
+                    Err(e) if e.is_provider_block() => {
+                        return Err(NativeError {
+                            error: e,
+                            clean_miss: false,
+                        });
+                    }
                     Err(_) => {
                         any_search_errored = true;
                     }

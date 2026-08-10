@@ -32,7 +32,10 @@ pub(crate) async fn year_filtered<'a, F: AnidbFetch>(
     let mut kept = Vec::new();
     let mut excluded_any = false;
     for h in head {
-        match client.detail_year(&h.slug).await {
+        // `?`: a refusal, rate limit, or transport failure on a
+        // detail page is the provider blocking this client — probing
+        // the rest of the pool would turn one block into a burst.
+        match client.detail_year(&h.slug).await? {
             // Exact match is positive identity; one year off is the
             // December-premiere allowance — enough to stay in the
             // pool and compete on count, never enough to vouch for
