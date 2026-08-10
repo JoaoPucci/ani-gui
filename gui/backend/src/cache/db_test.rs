@@ -8,9 +8,8 @@ use super::*;
 fn open_in_memory_runs_migrations_and_creates_tables() {
     let pool = open_in_memory().expect("pool opens");
     let conn = pool.get().expect("checkout");
-    // Migrations should have created every table (V001 the first
-    // three; V002 user_list_cache for account integration; V003
-    // anidb_offsets for the shared-history numbering translation).
+    // Migrations should have created all four tables (V001 created the
+    // first three; V002 added user_list_cache for account integration).
     let tables: Vec<String> = conn
         .prepare(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'refinery%' \
@@ -24,7 +23,6 @@ fn open_in_memory_runs_migrations_and_creates_tables() {
     assert_eq!(
         tables,
         vec![
-            "anidb_offsets",
             "image_index",
             "meta_cache",
             "title_match",

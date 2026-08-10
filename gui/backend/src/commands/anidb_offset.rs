@@ -11,45 +11,74 @@
 //! boundary can subtract it — for GUI- and CLI-written rows alike.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
+//!
+//! The store is a TSV file BESIDE the history file, not a cache row:
+//! debug and packaged builds keep separate cache databases while
+//! `ani-hsts` stays shared, and the diagnostics clear (or a deleted
+//! XDG cache dir) wipes the database outright — the translation must
+//! live exactly as long, and exactly as shared, as the rows it makes
+//! readable.
+
+use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
-/// Persist the slug's numbering offset in the dedicated table —
-/// NOT meta_cache: history rows live indefinitely, so the offset
-/// must survive TTL expiry and the diagnostics cache clear.
-/// Best-effort — a failed write degrades to the unstamped (offset 0)
-/// read, never breaks a play. Last write wins, so a re-resolve can
-/// correct a stale stamp.
+/// The offsets file: a sibling of `ani-hsts`, one `slug\toffset` row
+/// per stamped show.
+fn store_path(history_path: &Path) -> PathBuf {
+    history_path.with_file_name("ani-gui-offsets")
+}
+
+fn parse(body: &str) -> Vec<(String, u32)> {
+    body.lines()
+        .filter_map(|line| {
+            let (slug, offset) = line.split_once('\t')?;
+            if slug.is_empty() {
+                return None;
+            }
+            Some((slug.to_string(), offset.trim().parse().ok()?))
+        })
+        .collect()
+}
+
+/// Persist the slug's numbering offset. Best-effort — a failed write
+/// degrades to the unstamped (offset 0) read, never breaks a play.
+/// Last write wins, so a re-resolve can correct a stale stamp.
 pub fn put(state: &AppState, slug: &str, offset: u32) {
-    let write = || -> Result<(), rusqlite::Error> {
-        let conn = state
-            .cache_pool
-            .get()
-            .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute(
-            "INSERT INTO anidb_offsets (slug, ep_offset) VALUES (?1, ?2)
-             ON CONFLICT(slug) DO UPDATE SET ep_offset = excluded.ep_offset",
-            rusqlite::params![slug, offset],
-        )?;
-        Ok(())
+    let path = store_path(&state.history_path);
+    let write = || -> std::io::Result<()> {
+        let body = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut rows = parse(&body);
+        match rows.iter_mut().find(|(s, _)| s == slug) {
+            Some(row) => row.1 = offset,
+            None => rows.push((slug.to_string(), offset)),
+        }
+        let mut out = String::new();
+        for (s, o) in &rows {
+            out.push_str(s);
+            out.push('\t');
+            out.push_str(&o.to_string());
+            out.push('\n');
+        }
+        // Atomic like the history writer: a concurrent reader sees
+        // the full pre- or post-state, never a half-written file.
+        let tmp = path.with_extension("new");
+        std::fs::write(&tmp, out)?;
+        std::fs::rename(&tmp, &path)
     };
     if let Err(e) = write() {
         tracing::warn!(slug, offset, error = ?e, "anidb offset write failed");
     }
 }
 
-/// The slug's stamped numbering offset; 0 on a missing or unreadable
-/// row — the no-shift case.
+/// The slug's stamped numbering offset; 0 on a missing row or an
+/// unreadable file — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
-    let Ok(conn) = state.cache_pool.get() else {
-        return 0;
-    };
-    conn.query_row(
-        "SELECT ep_offset FROM anidb_offsets WHERE slug = ?1",
-        rusqlite::params![slug],
-        |row| row.get::<_, u32>(0),
-    )
-    .unwrap_or(0)
+    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
+    parse(&body)
+        .into_iter()
+        .find(|(s, _)| s == slug)
+        .map_or(0, |(_, o)| o)
 }
 
 /// Kitsu-relative episode → the provider's number, for ani-hsts
