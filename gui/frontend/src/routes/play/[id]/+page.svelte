@@ -1765,6 +1765,7 @@
 						quality,
 						episode_count: detail?.episode_count ?? null,
 						year: yearFromKitsuRef(detail),
+						subtype: detail?.subtype ?? null,
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
@@ -1826,6 +1827,7 @@
 							quality,
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
+							subtype: detail?.subtype ?? null,
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1861,6 +1863,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -1934,6 +1937,7 @@
 				quality,
 				episode_count: detail.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 		} catch {
@@ -2092,6 +2096,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -2147,6 +2152,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			toastStore.push(

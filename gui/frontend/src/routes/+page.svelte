@@ -653,6 +653,7 @@
 		quality: a.quality,
 		episode_count: a.match.episode_count ?? null,
 		year: yearFromKitsuRef(a.match),
+		subtype: a.match.subtype ?? null,
 		alt_titles: altTitlesFromKitsu(a.match),
 		kitsu_id: a.match.id
 	});
