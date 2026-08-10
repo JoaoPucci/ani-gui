@@ -235,6 +235,7 @@ pub(super) async fn stamp_availability_after_native(
     args: &PlayArgs,
     available: bool,
     generation_at_start: u64,
+    episode_cap: Option<u32>,
 ) {
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
@@ -245,7 +246,27 @@ pub(super) async fn stamp_availability_after_native(
         &row,
         generation_at_start,
         false,
-        || crate::commands::availability::write_cache(state, id, &args.mode, available),
+        || match episode_cap {
+            // The resolve already paid for the provider's episode
+            // list — the cap is exact, and dropping it here would
+            // evict an exact row into episode_count: null for the
+            // whole TTL. Status is unknown at this call site, so the
+            // row takes the ongoing TTL like the boolean write.
+            Some(cap) if available => crate::commands::availability::write_cache_full(
+                state,
+                id,
+                &args.mode,
+                None,
+                &crate::commands::availability::AvailabilityResponse {
+                    available: true,
+                    episode_count: Some(cap),
+                    extra_episodes: Vec::new(),
+                    episode_count_approximate: false,
+                    gate_refused: false,
+                },
+            ),
+            _ => crate::commands::availability::write_cache(state, id, &args.mode, available),
+        },
     )
     .await;
 }
@@ -613,7 +634,8 @@ where
             if ne.clean_miss {
                 // The one verdict that proves absence — persist it,
                 // guarded against a refresh that answered meanwhile.
-                stamp_availability_after_native(state, args, false, availability_generation).await;
+                stamp_availability_after_native(state, args, false, availability_generation, None)
+                    .await;
             }
             tracing::info!(
                 title = %args.title,
@@ -626,10 +648,16 @@ where
         }
     };
     // A successful resolve is a positive availability fact, same
-    // guard. The episode-cap enrichment joins the availability port
-    // (the native episodes list carries it for free) — plain write
-    // for now, matching the old breaker-open degradation.
-    stamp_availability_after_native(state, args, true, availability_generation).await;
+    // guard — carrying the episode cap the native episodes list
+    // already paid for.
+    stamp_availability_after_native(
+        state,
+        args,
+        true,
+        availability_generation,
+        native.episode_cap,
+    )
+    .await;
     // The subprocess used to write ani-hsts itself on a fresh
     // resolve; natively that write is ours. Prefetches stay out of
     // the user's history exactly as before.
@@ -1619,7 +1647,7 @@ mod tests {
         crate::commands::availability::write_cache(&state, "race-1", "sub", true);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, generation).await;
+        stamp_availability_after_native(&state, &args, false, generation, None).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
