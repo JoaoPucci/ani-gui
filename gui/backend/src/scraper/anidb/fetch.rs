@@ -36,23 +36,53 @@ pub struct CurlImpersonateFetch {
     exe: PathBuf,
 }
 
+/// Executable-name suffixes the platform's binaries carry. Windows
+/// ships `curl.exe` and `curl_chrome136.exe`; the bare name stays
+/// first everywhere so a suffixless shim wins where both exist.
+/// Deliberately narrower than `PATHEXT`: the resolver hunts real curl
+/// executables, and a `.bat`/`.cmd` entry resolved through the wider
+/// table would name something the spawn cannot treat as curl.
+#[cfg(windows)]
+const EXE_SUFFIXES: &[&str] = &["", ".exe"];
+#[cfg(not(windows))]
+const EXE_SUFFIXES: &[&str] = &[""];
+
+/// Every filename `name` may carry given the platform's suffix table,
+/// bare name first.
+pub(crate) fn candidate_names(name: &str, suffixes: &[&str]) -> Vec<String> {
+    suffixes.iter().map(|s| format!("{name}{s}")).collect()
+}
+
 impl CurlImpersonateFetch {
     /// Walk [`CURL_FAILOVER`] across `extra_dir` (the bundled-binary
     /// directory, when packaging ships one) and then the given PATH
     /// string, returning the first executable found — the same
-    /// preference order as the script's `dep_ch_failover`.
+    /// preference order as the script's `dep_ch_failover`, widened by
+    /// the platform's executable suffixes.
     pub fn resolve(extra_dir: Option<&Path>, path_env: &str) -> Option<Self> {
+        Self::resolve_with_suffixes(extra_dir, path_env, EXE_SUFFIXES)
+    }
+
+    /// [`Self::resolve`] with the suffix table explicit, so the
+    /// Windows arm is exercisable from any platform's tests.
+    pub(crate) fn resolve_with_suffixes(
+        extra_dir: Option<&Path>,
+        path_env: &str,
+        suffixes: &[&str],
+    ) -> Option<Self> {
         for name in CURL_FAILOVER {
-            if let Some(dir) = extra_dir {
-                let candidate = dir.join(name);
-                if is_executable(&candidate) {
-                    return Some(Self { exe: candidate });
+            for file in candidate_names(name, suffixes) {
+                if let Some(dir) = extra_dir {
+                    let candidate = dir.join(&file);
+                    if is_executable(&candidate) {
+                        return Some(Self { exe: candidate });
+                    }
                 }
-            }
-            for dir in std::env::split_paths(path_env) {
-                let candidate = dir.join(name);
-                if is_executable(&candidate) {
-                    return Some(Self { exe: candidate });
+                for dir in std::env::split_paths(path_env) {
+                    let candidate = dir.join(&file);
+                    if is_executable(&candidate) {
+                        return Some(Self { exe: candidate });
+                    }
                 }
             }
         }
