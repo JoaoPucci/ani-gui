@@ -199,6 +199,49 @@ async fn all_probes_dying_on_transport_stays_transient() {
     assert!(matches!(err, AniError::Network), "got {err:?}");
 }
 
+/// One candidate's probe dies on transport while the other answers —
+/// with a count far outside tolerance.
+struct MixedEpisodes;
+
+#[async_trait::async_trait]
+impl AnidbFetch for MixedEpisodes {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/api/frontend/anime/11/episodes") {
+            return Err(AniError::Network);
+        }
+        if url.contains("/api/frontend/anime/22/episodes") {
+            let rows: Vec<String> = (1..=7u32)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 22_000 + n, n))
+                .collect();
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_rejected_pool_with_failed_probes_stays_transient() {
+    // Candidate 11's probe died on transport; candidate 22 answered
+    // seven episodes against an expected 24 — outside tolerance, so
+    // the pool is rejected. But the dead candidate may have been the
+    // right show: the rejection is only a clean verdict when every
+    // candidate got to answer, and a NoResults here rides the walk
+    // into a persistable clean miss that hides the show for the
+    // negative TTL. Weather stays weather.
+    let client = AnidbClient::new(MixedEpisodes);
+    let hits = [hit("the-show-11", "The Show"), hit("the-spinoff-22", "S")];
+    let err = pick_candidate(&client, &hits, Some(24), "the show", None, None)
+        .await
+        .expect_err("an out-of-tolerance survivor beside a dead probe");
+    assert!(matches!(err, AniError::Network), "got {err:?}");
+}
+
 #[tokio::test]
 async fn empty_hits_are_no_results() {
     let client = AnidbClient::new(EpisodesTable(&[]));
