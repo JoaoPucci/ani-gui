@@ -43,3 +43,7 @@ pub(crate) fn format_survivors(
         .cloned()
         .collect()
 }
+
+#[cfg(test)]
+#[path = "play_native_format_test.rs"]
+mod tests;
