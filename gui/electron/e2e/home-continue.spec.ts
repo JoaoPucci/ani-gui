@@ -20,7 +20,14 @@
  * kitsu-anime-detail it points to is enough to drive a deterministic
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
-import { _electron as electron, expect, test, type Page } from '@playwright/test';
+import {
+	_electron as electron,
+	expect,
+	test,
+	type ElectronApplication,
+	type Page
+} from '@playwright/test';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -94,7 +101,10 @@ interface StubOptions {
 	playRateLimited?: boolean;
 }
 
-async function launchAppWithContinueStubs(opts: StubOptions) {
+async function launchAppWithContinueStubsOnce(
+	opts: StubOptions,
+	onLaunch: (app: ElectronApplication) => void
+) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-continue-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
 	const cleanEnv = {
@@ -110,6 +120,7 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 		args: ['--no-sandbox'],
 		env: cleanEnv
 	});
+	onLaunch(app);
 	const context = app.context();
 	const page = await app.firstWindow();
 
@@ -247,6 +258,30 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 	await page.goto('about:blank');
 	await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
 	return { app, page, context };
+}
+
+async function launchAppWithContinueStubs(opts: StubOptions) {
+	// A cold launch can lose its first window underneath the bounce —
+	// the closed-target flake — before any assertion runs. The harness
+	// relaunches once, closing the dead app in between; every other
+	// failure propagates untouched. See lib/cold-launch.cjs.
+	let pending: ElectronApplication | null = null;
+	return withColdLaunchRetry(
+		async () => {
+			const launched = await launchAppWithContinueStubsOnce(opts, (app) => {
+				pending = app;
+			});
+			pending = null;
+			return launched;
+		},
+		{
+			cleanup: async () => {
+				const dead = pending;
+				pending = null;
+				if (dead) await dead.close();
+			}
+		}
+	);
 }
 
 async function waitForStripVisible(page: Page) {
