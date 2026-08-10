@@ -505,3 +505,37 @@ async fn a_failed_transfer_with_a_parsed_trailer_is_refused() {
     let err = fetch.get("https://example.test/x").await.expect_err("28");
     assert!(matches!(err, AniError::Network));
 }
+
+#[cfg(all(unix, target_os = "macos"))]
+#[tokio::test]
+async fn the_transport_pins_darwins_cipher_suites() {
+    // The provider's TLS fingerprinting reads the cipher list as much
+    // as the user agent; the script pins both suites on Darwin
+    // (ani-cli's cipher_flag) because macOS curl builds negotiate
+    // defaults the provider rejects. The stub reports the arguments
+    // it was launched with.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '%s\\n' \"$@\"\nprintf '\\n200'");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert!(resp.body.contains("--ciphers"));
+    assert!(resp
+        .body
+        .contains("ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"));
+    assert!(resp.body.contains("--tls13-ciphers"));
+    assert!(resp
+        .body
+        .contains("TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"));
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+#[tokio::test]
+async fn the_transport_leaves_ciphers_to_curl_off_darwin() {
+    // Everywhere else the impersonate build's own defaults ARE the
+    // fingerprint — the script only pins ciphers inside its Darwin
+    // case, and adding them elsewhere would change the fingerprint
+    // the impersonation exists to present.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '%s\\n' \"$@\"\nprintf '\\n200'");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert!(!resp.body.contains("--ciphers"));
+}
