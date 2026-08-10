@@ -76,6 +76,25 @@ fn cloudflare_interstitial_is_recognized_and_content_is_not() {
 }
 
 #[test]
+fn parse_browse_reads_nothing_past_a_cards_closing_anchor() {
+    // Markup between one card's </a> and the next anchor belongs to
+    // no card: an anchor without its own alt must be skipped, not
+    // titled by a stray image, and a stray badge is nobody's kind —
+    // a wrong kind feeds the type-based disambiguation directly.
+    let html = concat!(
+        r#"<a href="https://anidb.app/anime/one-piece-69"></a>"#,
+        r#"<img alt="Stray Title"><span class="badge badge-orange">Movie</span>"#,
+        r#"<a href="https://anidb.app/anime/gintama-4425"><img alt="Gintama"></a>"#,
+        r#"<span class="badge badge-orange">OVA</span>"#,
+    );
+    let hits = parse_browse(html);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].slug, "gintama-4425");
+    assert_eq!(hits[0].title, "Gintama");
+    assert_eq!(hits[0].kind, None);
+}
+
+#[test]
 fn cloudflare_interstitial_matches_case_insensitively() {
     // The script greps -qi: challenge pages have varied the title's
     // capitalization, and a missed marker reads as an empty result
