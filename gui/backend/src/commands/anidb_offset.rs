@@ -29,6 +29,14 @@ fn store_path(history_path: &Path) -> PathBuf {
     history_path.with_file_name("ani-gui-offsets")
 }
 
+/// The cross-process lock beside the store. A dedicated file rather
+/// than the store itself because the atomic rename replaces the
+/// store's inode — a lock held on the old inode would exclude nobody
+/// writing the new one.
+fn lock_path(store: &Path) -> PathBuf {
+    store.with_file_name("ani-gui-offsets.lock")
+}
+
 fn parse(body: &str) -> Vec<(String, u32)> {
     body.lines()
         .filter_map(|line| {
@@ -41,11 +49,14 @@ fn parse(body: &str) -> Vec<(String, u32)> {
         .collect()
 }
 
-/// Serializes every put's read-merge-write sequence: concurrent
-/// prefetch resolves would otherwise read the same old file,
-/// independently merge their row, and overwrite one another (or
-/// consume each other's temp file) — a lost stamp exposes provider
-/// numbering on the home rail.
+/// Serializes every put's read-merge-write sequence within this
+/// process: concurrent prefetch resolves would otherwise read the
+/// same old file, independently merge their row, and overwrite one
+/// another (or consume each other's temp file) — a lost stamp
+/// exposes provider numbering on the home rail. Cross-process
+/// exclusion — the store is shared by the packaged and dev profiles,
+/// which can run at once — is the OS file lock taken inside `put`;
+/// this mutex keeps the process's own threads from contending it.
 static PUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
@@ -61,6 +72,17 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        // The other app instance's put: an OS lock held across the
+        // whole read-merge-rename, released on drop — and by the
+        // kernel if this process dies holding it. Taken after the
+        // in-process mutex so threads here queue on the cheap lock
+        // and only one of them contends the file.
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(lock_path(&path))?;
+        fs4::FileExt::lock(&lock_file)?;
         let body = std::fs::read_to_string(&path).unwrap_or_default();
         let mut rows = parse(&body);
         match rows.iter_mut().find(|(s, _)| s == slug) {
