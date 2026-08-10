@@ -75,6 +75,17 @@ fn cloudflare_interstitial_is_recognized_and_content_is_not() {
     )));
 }
 
+#[test]
+fn cloudflare_interstitial_matches_case_insensitively() {
+    // The script greps -qi: challenge pages have varied the title's
+    // capitalization, and a missed marker reads as an empty result
+    // list instead of the typed upstream error.
+    assert!(is_cloudflare_interstitial(
+        "<title>JUST A MOMENT...</title>"
+    ));
+    assert!(is_cloudflare_interstitial("<title>just a moment</title>"));
+}
+
 // ── slug + query plumbing ───────────────────────────────────────────
 
 #[test]
