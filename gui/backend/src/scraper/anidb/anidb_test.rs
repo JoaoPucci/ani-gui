@@ -350,3 +350,47 @@ async fn client_resolves_the_master_playlist_for_sub_and_dies_clean_without_embe
     // Episode 9002 has no languages fixture route → 404 body → no embeds.
     assert!(client.master_playlist_url(9002, "sub").await.is_err());
 }
+
+// ── fixture manifest ────────────────────────────────────────────────
+
+/// The manifest pins every fixture byte-for-byte, in both directions:
+/// each listed digest matches its file, and each file is listed. A
+/// fixture edited without its digest is invisible in review — the
+/// diff shows new response shapes while the manifest still vouches
+/// for the old ones.
+#[test]
+fn fixture_manifest_matches_the_fixtures() {
+    use sha2::Digest as _;
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("repo root")
+        .join("tests/fixtures/anidb");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("MANIFEST.json")).expect("read manifest"),
+    )
+    .expect("parse manifest");
+    let entries = manifest.as_object().expect("manifest is an object");
+    let mut listed = std::collections::BTreeSet::new();
+    for (name, entry) in entries {
+        listed.insert(name.clone());
+        let want = entry["sha256"].as_str().expect("sha256 entry");
+        let bytes = std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"));
+        let have = format!("{:x}", sha2::Sha256::digest(&bytes));
+        assert_eq!(
+            have, *want,
+            "{name}: fixture bytes do not match the manifest digest"
+        );
+    }
+    for file in std::fs::read_dir(&dir).expect("list fixtures") {
+        let file = file.expect("dir entry").file_name();
+        let file = file.to_string_lossy();
+        if file == "MANIFEST.json" {
+            continue;
+        }
+        assert!(
+            listed.contains(file.as_ref()),
+            "{file} is not in MANIFEST.json"
+        );
+    }
+}
