@@ -49,4 +49,8 @@ setup() {
     run env ARCH_REPO_ROOT="$REPO_ROOT" sh "$probe"
     [ "$status" -ne 0 ]
     [[ "$output" == *"diverges from upstream"* ]]
+    # The distance is only legible against the bar it missed: a
+    # message quoting a ceiling the comparison no longer uses sends
+    # the reader off to justify the wrong number.
+    [[ "$output" == *"(max 4)"* ]]
 }
