@@ -6,9 +6,10 @@ use super::{BrowseHit, EpisodeRef, LanguageEmbed};
 use crate::error::{AniError, Result};
 
 /// Whether a response body is cloudflare's challenge interstitial
-/// rather than provider content.
+/// rather than provider content. Case-insensitive, like the script's
+/// `grep -qi`: challenge pages have varied the title's spelling.
 pub fn is_cloudflare_interstitial(body: &str) -> bool {
-    body.contains("Just a moment")
+    body.to_ascii_lowercase().contains("just a moment")
 }
 
 /// Form-urlencode a search query: space→`+`, reserved and non-ASCII
