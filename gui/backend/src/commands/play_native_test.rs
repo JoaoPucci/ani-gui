@@ -566,6 +566,37 @@ async fn a_movie_badge_is_disproof_against_a_special_subtype() {
 }
 
 #[tokio::test]
+async fn a_non_movie_badge_is_disproof_against_a_movie_subtype() {
+    // The inverse of the special-vs-movie shape: Kitsu says the
+    // clicked entry IS a movie, and a one-episode Special/TV/OVA
+    // card with the same title and year ties on every remaining
+    // signal. A known non-movie badge cannot be the movie; unknown
+    // badges stay soft.
+    let client = AnidbClient::new(EpisodesTable(&[(1, 1), (2, 1)]));
+    let hits = [
+        typed_hit("franchise-special-1", "The Title", "Special"),
+        typed_hit("the-movie-2", "The Title", "Movie"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(1), "unrelated", None, Some("movie"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-movie-2");
+}
+
+#[tokio::test]
+async fn an_unknown_badge_survives_a_movie_subtype() {
+    // A card without a format badge stays eligible — the filter
+    // works on positive disproof only, so a provider markup change
+    // degrades to badge-blind picking instead of emptying pools.
+    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let hits = [hit("plain-1", "Plain")];
+    let picked = pick_candidate(&client, &hits, Some(1), "plain", None, Some("movie"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "plain-1");
+}
+
+#[tokio::test]
 async fn a_movie_subtype_keeps_movie_candidates() {
     let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
     let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
