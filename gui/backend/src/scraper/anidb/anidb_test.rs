@@ -602,3 +602,16 @@ async fn the_transport_leaves_ciphers_to_curl_off_darwin() {
     let resp = fetch.get("https://example.test/x").await.expect("get");
     assert!(!resp.body.contains("--ciphers"));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_transport_disables_curlrc_first() {
+    // A user's ~/.curlrc can redirect output or append transfers,
+    // corrupting the body this code parses. curl only honors
+    // -q/--disable as the FIRST argument, so that position is the
+    // contract.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf '%s\\n' \"$1\"\nprintf '\\n200'");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert_eq!(resp.body.lines().next(), Some("-q"));
+}
