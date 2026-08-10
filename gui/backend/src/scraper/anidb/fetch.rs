@@ -163,6 +163,10 @@ impl AnidbFetch for CurlImpersonateFetch {
         // depend on the terminal that launched the backend.
         cmd.env("TERM", "dumb")
             .env("NO_COLOR", "1")
+            // First, where curl honors it: a user's ~/.curlrc can
+            // redirect the output or append transfers, and this code
+            // parses the body.
+            .arg("-q")
             .arg("-sL")
             .arg("-A")
             .arg(IMPERSONATE_AGENT)
