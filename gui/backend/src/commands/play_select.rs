@@ -223,6 +223,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_movie_candidate_cannot_carry_a_special_expectation() {
+        // The single-video collision: count and year cannot separate
+        // a Movie from the Special the user clicked — both are one
+        // video — and only the format tag tells them apart. The
+        // subprocess paths (download, external player, Syncplay) all
+        // pick through here, with the subtype the frontend now
+        // supplies on every payload; ignoring it selects the wrong
+        // format exactly where the native picker already refuses to.
+        let movie = Candidate {
+            show_type: Some("Movie".into()),
+            ..cand("the-film", 1)
+        };
+        let results = vec![("Primary".to_string(), vec![movie])];
+        let (_, _, chosen) = select_first_with_hits_with_candidate(
+            "Primary",
+            &results,
+            Some(1),
+            None,
+            "sub",
+            Some("special"),
+        );
+        assert!(
+            chosen.is_none(),
+            "a Movie cannot satisfy a Special expectation"
+        );
+    }
+
     fn cand_with_year_local(id: &str, sub: u32, year: Option<u32>) -> Candidate {
         Candidate {
             id: id.into(),
