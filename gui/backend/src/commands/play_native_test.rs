@@ -557,6 +557,53 @@ impl AnidbFetch for RefusingEpisodes {
     }
 }
 
+/// A fetch whose detail pages answer a refusal while the episodes
+/// endpoint stays healthy, counting the detail requests it receives.
+struct RefusingDetails {
+    details: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for RefusingDetails {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/episodes") {
+            let rows: Vec<String> = (1..=12)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
+                .collect();
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        self.details
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err(AniError::Upstream { status: 403 })
+    }
+}
+
+#[tokio::test]
+async fn a_detail_probe_refusal_stops_the_pick() {
+    // A refusal on a detail page is the provider blocking this
+    // client, not a page without a season link: reading it as an
+    // unknown year keeps requesting the rest of the pool's detail
+    // pages and then selects year-blind through the block. The
+    // refusal must surface typed after exactly one detail request.
+    let details = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(RefusingDetails {
+        details: details.clone(),
+    });
+    let hits = [hit("show-a-1", "Show A"), hit("show-b-2", "Show B")];
+    let err = pick_candidate(&client, &hits, Some(12), "Show A", Some(2026), None)
+        .await
+        .expect_err("refused");
+    assert!(matches!(err, AniError::Upstream { .. }), "got {err:?}");
+    assert_eq!(
+        details.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the pick kept probing detail pages past the refusal"
+    );
+}
+
 #[tokio::test]
 async fn an_upstream_refusal_stops_the_probe_walk() {
     // A refusal mid-probe is the provider blocking, not a candidate

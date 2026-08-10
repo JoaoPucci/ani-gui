@@ -393,6 +393,10 @@ impl AnidbFetch for FixtureFetch {
             fixture("episodes_one_piece.json")
         } else if url.ends_with("/anime/one-piece-69") {
             fixture("detail_one_piece.html")
+        } else if url.ends_with("/anime/cloudflare-1") {
+            // A detail page behind the interstitial — the refusal
+            // shape, distinct from the 404 soft miss below.
+            fixture("browse_cloudflare.html")
         } else if url.contains("/api/frontend/episode/9001/languages") {
             fixture("languages_op.json")
         } else if url.contains("embed.example") {
@@ -439,10 +443,30 @@ async fn client_episodes_keys_the_request_on_the_numeric_tail() {
 #[tokio::test]
 async fn client_detail_year_reads_the_fixture_and_soft_misses() {
     let client = AnidbClient::new(FixtureFetch);
-    assert_eq!(client.detail_year("one-piece-69").await, Some(1999));
-    // A slug with no detail route 404s; the year is a hint, so the
-    // miss is a soft None rather than an error.
-    assert_eq!(client.detail_year("no-such-show-1").await, None);
+    assert_eq!(
+        client.detail_year("one-piece-69").await.expect("fetched"),
+        Some(1999)
+    );
+    // A slug with no detail route 404s: the page is genuinely
+    // missing, so the year stays a soft None rather than an error.
+    assert_eq!(
+        client.detail_year("no-such-show-1").await.expect("soft"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn client_detail_year_propagates_refusals() {
+    // A cloudflare interstitial on a detail page is the provider
+    // refusing this client, not a page without a year: reading it as
+    // an unknown year lets the picker keep requesting the rest of
+    // the pool's detail pages and select year-blind through a block.
+    let client = AnidbClient::new(FixtureFetch);
+    let err = client
+        .detail_year("cloudflare-1")
+        .await
+        .expect_err("refused");
+    assert!(matches!(err, AniError::Upstream { status: 403 }));
 }
 
 #[tokio::test]

@@ -211,6 +211,96 @@ async fn an_upstream_block_stops_the_walk_as_transient() {
     assert_eq!(browses, 1);
 }
 
+/// Browse and the episode chain answer normally; every detail page
+/// answers the interstitial. Counts browse requests so the test can
+/// see whether the walk moved on to further aliases.
+struct DetailRefusingProvider {
+    browses: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for DetailRefusingProvider {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("browse?q=") {
+            self.browses
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(FetchResponse {
+                status: 200,
+                body: browse_page(&[("the-show-77", "The Show")]),
+            });
+        }
+        if url.contains("/api/frontend/anime/77/episodes") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":703,"number":3}]}"#
+                    .into(),
+            });
+        }
+        if url.contains("/api/frontend/episode/702/languages") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
+                    .into(),
+            });
+        }
+        if url.contains("embed.example") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
+            });
+        }
+        // Detail pages: the interstitial — the provider refusing this
+        // client, not a page without a season link.
+        Ok(FetchResponse {
+            status: 403,
+            body: "Just a moment".into(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_detail_refusal_stops_the_alias_walk() {
+    // The year probe runs before episode scoring, so a blocked client
+    // hits the refusal on the very first candidate's detail page.
+    // Continuing the walk would repeat the burst per alias — the walk
+    // must stop at one browse, and the verdict stays transient.
+    let browses = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let provider = DetailRefusingProvider {
+        browses: browses.clone(),
+    };
+    let client = AnidbClient::new(provider);
+    let mut sink = |_p: ProgressLine| {};
+    let got = resolve_native(
+        &client,
+        None,
+        crate::scraper::gate::ScrapePriority::Interactive,
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &["alias one".to_string(), "alias two".to_string()],
+            episode: "2",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(3),
+            year: Some(2026),
+            subtype: None,
+        },
+        &mut sink,
+    )
+    .await;
+    let err = got.expect_err("blocked");
+    assert!(!err.clean_miss);
+    assert!(
+        matches!(err.error, AniError::Upstream { .. }),
+        "got {:?}",
+        err.error
+    );
+    assert_eq!(
+        browses.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the walk kept searching aliases past the refusal"
+    );
+}
+
 #[tokio::test]
 async fn a_clean_all_empty_walk_is_the_only_persistable_miss() {
     let provider = Provider::new(Box::leak(Box::new([])));
