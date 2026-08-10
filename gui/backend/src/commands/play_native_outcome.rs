@@ -22,6 +22,13 @@ pub fn breaker_outcome(native: &std::result::Result<NativeResolved, NativeError>
             AniError::RateLimited { retry_after_secs } => ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
             },
+            // anidb rate-limits with the HTTP status, not the
+            // in-band payload the typed variant carries: the
+            // provider explicitly asked clients to stop, so the
+            // hintless rate-limit outcome opens the advertised
+            // pause immediately instead of burning the failure
+            // threshold on queued background resolutions.
+            AniError::Upstream { status: 429 } => ScrapeOutcome::RateLimited { retry_after: None },
             _ => ScrapeOutcome::Failure,
         },
     }
