@@ -739,3 +739,26 @@ async fn an_upstream_refusal_stops_the_probe_walk() {
         "the walk kept probing past the refusal"
     );
 }
+
+#[tokio::test]
+async fn format_incompatible_hits_do_not_crowd_the_probe_head() {
+    // Five franchise movies ranked ahead of the series: the badge
+    // filter costs nothing, so it must run before the bounded probe
+    // head is taken. Filtered after, the movies fill all five probe
+    // slots, the series at rank six is never considered, and the
+    // alias is rejected — ultimately reported absent despite a
+    // perfectly valid result.
+    let client = AnidbClient::new(EpisodesTable(&[(66, 26)]));
+    let hits = [
+        typed_hit("film-1-11", "Film 1", "Movie"),
+        typed_hit("film-2-22", "Film 2", "Movie"),
+        typed_hit("film-3-33", "Film 3", "Movie"),
+        typed_hit("film-4-44", "Film 4", "Movie"),
+        typed_hit("film-5-55", "Film 5", "Movie"),
+        hit("the-series-66", "The Series"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(26), "the series", None, None)
+        .await
+        .expect("the sixth-ranked series is the only compatible hit");
+    assert_eq!(picked.hit.slug, "the-series-66");
+}
