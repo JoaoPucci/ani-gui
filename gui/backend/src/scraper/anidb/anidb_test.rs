@@ -45,7 +45,27 @@ fn parse_browse_reads_the_type_badge_when_the_card_carries_one() {
 
 #[test]
 fn parse_browse_yields_empty_on_a_result_less_page() {
-    assert!(parse_browse(&fixture("browse_empty.html")).is_empty());
+    assert!(parse_browse(&fixture("browse_empty.html"))
+        .expect("a genuine no-results page is absence, not failure")
+        .is_empty());
+}
+
+#[test]
+fn zero_hit_html_without_a_browse_marker_is_a_parse_failure() {
+    // A 200 maintenance or WAF page that is not cloudflare's
+    // interstitial parses to the same zero hits as the genuine empty
+    // grid; if every alias answers that way the walk calls it a
+    // clean miss, records breaker success, and writes a negative
+    // availability row that hides the show for the TTL. Absence has
+    // to come from a page that shows the browse shape — its results
+    // grid or its no-results copy; zero-hit HTML with neither is a
+    // parse failure, loud and transient, never cached.
+    let maintenance = "<html><head><title>Maintenance</title></head>\
+         <body><h1>Service temporarily unavailable</h1></body></html>";
+    assert!(matches!(
+        parse_browse(maintenance),
+        Err(AniError::ParseFailed { .. })
+    ));
 }
 
 #[test]
