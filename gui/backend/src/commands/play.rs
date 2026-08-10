@@ -1636,6 +1636,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_native_success_stamp_persists_the_resolved_cap() {
+        // The resolve already paid for the provider's episode list;
+        // a boolean-only stamp evicts an exact availability row into
+        // episode_count: null, so home resume and episode prefetch
+        // fall back to Kitsu's announced total for the row's whole
+        // TTL and target episodes the provider has not listed.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Cap Show".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("cap-1".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("cap-1"),
+            "sub",
+        );
+        stamp_availability_after_native(&state, &args, true, generation, Some(2)).await;
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["cap-1".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("cap-1"), Some(&true));
+        assert_eq!(
+            cached.playable_episode_counts.get("cap-1"),
+            Some(&2),
+            "the resolved cap must survive the stamp"
+        );
+    }
+
+    #[tokio::test]
     async fn background_pick_stops_probing_after_the_breaker_opens() {
         // A cold-cache warm walked every alt title of every show even
         // while allanime was refusing us — hundreds of doomed calls
