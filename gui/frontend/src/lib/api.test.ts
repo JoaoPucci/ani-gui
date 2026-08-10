@@ -578,6 +578,21 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('appends kitsu_id to the SSE query when provided', async () => {
+		// The backend persists the native resolver's exact episode cap
+		// (and the show_id reverse mapping) only when the play carries
+		// the Kitsu id. The SSE branch is the normal renderer path —
+		// dropping the id there means neither click nor prefetch ever
+		// stamps availability; only the POST fallback would.
+		const promise = playStream({ title: 'X', episode: '1', mode: 'sub', kitsu_id: '42' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('kitsu_id=42');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it('omits subtype when null or absent', async () => {
 		// Kitsu can return subtype: null; the wire treats absence and
 		// null identically, so a null must not serialize as "null".
