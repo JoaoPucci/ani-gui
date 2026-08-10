@@ -99,6 +99,46 @@ fn concurrent_puts_keep_every_stamp() {
 }
 
 #[test]
+fn puts_exclude_each_other_across_processes_via_the_file_lock() {
+    // The store is shared by the packaged and dev profiles by design
+    // (the cross-profile test above) — two app INSTANCES, not two
+    // threads, can resolve different shows at once. The in-process
+    // mutex cannot serialize those: both processes read the same old
+    // rows, write through the same temp path, and one instance's
+    // stamp vanishes in the other's rename. The writer therefore
+    // holds an OS file lock — released by the kernel even if its
+    // holder crashes — across the whole read-merge-rename. This test
+    // plays the second process by taking that lock on its own
+    // handle: the put must wait for it.
+    let tmp = tempfile::tempdir().expect("tmp");
+    let history = tmp.path().join("ani-hsts");
+    let state = make_state_at(history.clone());
+    let lock_path = history.with_file_name("ani-gui-offsets.lock");
+    let foreign = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("lock file");
+    fs4::FileExt::lock(&foreign).expect("foreign lock");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let writer = std::thread::spawn(move || {
+        put(&state, "the-sequel-88", 40);
+        tx.send(()).ok();
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(300))
+            .is_err(),
+        "put finished while the offsets file lock was held elsewhere"
+    );
+    fs4::FileExt::unlock(&foreign).expect("unlock");
+    rx.recv_timeout(std::time::Duration::from_secs(5))
+        .expect("put never finished after the lock was released");
+    writer.join().expect("writer thread");
+    assert_eq!(get(&make_state_at(history), "the-sequel-88"), 40);
+}
+
+#[test]
 fn offsets_survive_the_metadata_cache_clear() {
     // History rows live indefinitely, while meta_cache rows expire
     // and the diagnostics clear wipes them all at once. An offset
