@@ -24,6 +24,14 @@ pub struct GatedFetch<'g, F> {
     /// so carrying the sanction here lets the chain's remaining
     /// fetches ride the trial instead of being refused by it.
     sanction: std::sync::Mutex<Option<tokio::time::Instant>>,
+    /// When the chain's latest attempt started, taken after
+    /// admission. The breaker's stale filters compare an outcome's
+    /// timestamp against the last recovery, so evidence stamped with
+    /// the chain's START is discarded whenever a concurrent resolve
+    /// recorded recovery mid-chain; the latest attempt is the fetch
+    /// that actually observed the outcome. Post-admission, so paced
+    /// queueing never backdates it.
+    last_attempt_at: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl<'g, F> GatedFetch<'g, F> {
@@ -36,7 +44,15 @@ impl<'g, F> GatedFetch<'g, F> {
             gate,
             priority,
             sanction: std::sync::Mutex::new(None),
+            last_attempt_at: std::sync::Mutex::new(None),
         }
+    }
+
+    /// The post-admission start of the chain's latest attempt —
+    /// what a breaker outcome produced by this chain should be
+    /// timestamped with. `None` before the first attempt.
+    pub fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        *self.last_attempt_at.lock().expect("attempt stamp lock")
     }
 }
 
@@ -56,6 +72,8 @@ impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
                 .map_err(|_| crate::error::AniError::GateRefused)?;
             *self.sanction.lock().expect("sanction lock") = granted;
         }
+        *self.last_attempt_at.lock().expect("attempt stamp lock") =
+            Some(tokio::time::Instant::now());
         self.inner.get(url).await
     }
 }

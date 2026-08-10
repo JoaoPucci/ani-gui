@@ -642,7 +642,18 @@ where
     if let Some(outcome) =
         crate::commands::play_native_outcome::breaker_outcome(scrape_priority(args), &native)
     {
-        state.scraper_gate.record(outcome, resolve_started_at);
+        // Timestamped with the attempt that OBSERVED the outcome,
+        // not the chain's start: the gate's stale filters discard
+        // evidence predating the last recovery, and a long resolve
+        // would otherwise have its fresh 429 thrown away whenever a
+        // concurrent resolve recorded recovery mid-chain. The chain
+        // start remains the fallback for a resolve refused before
+        // any fetch ran.
+        let observed_at = client
+            .transport()
+            .last_attempt_at()
+            .unwrap_or(resolve_started_at);
+        state.scraper_gate.record(outcome, observed_at);
     }
     let native = match native {
         Ok(n) => n,

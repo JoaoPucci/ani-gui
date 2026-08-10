@@ -121,6 +121,13 @@ impl<F: AnidbFetch> AnidbClient<F> {
         }
     }
 
+    /// The transport this client fetches through. The orchestrator
+    /// reads the gated transport's per-attempt stamp off it when
+    /// recording breaker outcomes ([`GatedFetch::last_attempt_at`]).
+    pub fn transport(&self) -> &F {
+        &self.fetch
+    }
+
     /// Search the browse page. An interstitial or non-success status
     /// is a typed upstream error; a result-less page is `Ok(vec![])`
     /// only when it shows the browse shape — an unrecognized zero-hit
