@@ -55,6 +55,12 @@ pub fn parse_browse(html: &str) -> Vec<BrowseHit> {
     // must come from the href and the title from the same anchor's
     // image alt, or a page-level scan pairs values across cards.
     for chunk in html.split("<a href").skip(1) {
+        // Bounded at the card's closing anchor: markup between </a>
+        // and the next anchor belongs to no card, and reading it
+        // would title an altless card with a stray image or hand it a
+        // stray badge's kind. A chunk without </a> is scanned whole,
+        // as before.
+        let chunk = chunk.split("</a>").next().unwrap_or(chunk);
         let Some(slug) = chunk
             .split_once("anime/")
             .map(|(_, rest)| rest)
