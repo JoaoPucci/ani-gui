@@ -88,6 +88,29 @@ async fn a_healthy_gate_admits_each_background_fetch() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_recovered_breaker_lets_a_background_chain_run() {
+    // The half-open trial admits the chain's first fetch; without
+    // the sanction carried to the next fetch, the same resolve's
+    // second request saw an outstanding trial, was refused before
+    // the transport, and the chain died mid-walk — recording a
+    // failure that re-opened the breaker on its own refusal.
+    let (inner, calls) = counting();
+    let gate = open_gate();
+    tokio::time::sleep(crate::scraper::gate::BREAKER_COOLDOWN + std::time::Duration::from_secs(1))
+        .await;
+    let fetch = GatedFetch::new(inner, Some(&gate), ScrapePriority::Background);
+    fetch
+        .get("https://provider.test/search")
+        .await
+        .expect("the trial fetch runs");
+    fetch
+        .get("https://provider.test/episodes")
+        .await
+        .expect("the chained fetch rides the sanction");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
 #[tokio::test]
 async fn no_gate_is_a_passthrough() {
     let (inner, calls) = counting();

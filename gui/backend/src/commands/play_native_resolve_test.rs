@@ -340,6 +340,53 @@ async fn a_clean_all_empty_walk_is_the_only_persistable_miss() {
     assert!(matches!(err.error, AniError::NoResults));
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
+    // The walk's own pre-flight admit consumed the sole half-open
+    // trial, so the search's per-fetch admission saw an outstanding
+    // trial and returned Network without contacting the provider —
+    // and recording that failure re-opened the breaker, locking
+    // background resolution out of recovery entirely. Admission
+    // belongs to the fetch alone; a recovered background chain must
+    // reach the provider end to end.
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let gate = crate::scraper::gate::ScraperGate::new();
+    for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+        gate.record(
+            crate::scraper::gate::ScrapeOutcome::Failure,
+            tokio::time::Instant::now(),
+        );
+    }
+    tokio::time::sleep(crate::scraper::gate::BREAKER_COOLDOWN + std::time::Duration::from_secs(1))
+        .await;
+    let client = AnidbClient::new(crate::scraper::anidb::GatedFetch::new(
+        ProviderRef(&provider),
+        Some(&gate),
+        crate::scraper::gate::ScrapePriority::Background,
+    ));
+    let mut sink = |_p: ProgressLine| {};
+    let got = resolve_native(
+        &client,
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &[],
+            episode: "2",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(3),
+            year: None,
+            subtype: None,
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(got.is_ok(), "the recovered chain must resolve");
+    assert!(
+        provider.requests().len() >= 3,
+        "the whole chain reached the provider, not just the trial"
+    );
+}
+
 #[tokio::test]
 async fn a_refused_gate_stops_the_walk_before_any_search() {
     // Background priority against an open breaker: the pre-flight
