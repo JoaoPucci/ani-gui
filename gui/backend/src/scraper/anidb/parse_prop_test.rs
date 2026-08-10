@@ -282,3 +282,61 @@ proptest::proptest! {
         }
     }
 }
+
+proptest::proptest! {
+    /// Over arbitrary variant lists: `best` is the first row,
+    /// `worst` the last, a numeric height the FIRST row carrying
+    /// exactly that height, and an unserved height selects nothing —
+    /// the caller keeps the adaptive master rather than guessing.
+    #[test]
+    fn variant_selection_holds_over_arbitrary_lists(
+        heights in proptest::collection::vec(0u32..5000, 0..12),
+        pick in proptest::num::usize::ANY,
+    ) {
+        use crate::scraper::anidb::parse_api::{select_variant, MasterVariant};
+        let variants: Vec<MasterVariant> = heights
+            .iter()
+            .enumerate()
+            .map(|(i, h)| MasterVariant { height: *h, url: format!("v{i}") })
+            .collect();
+        proptest::prop_assert_eq!(select_variant(&variants, "best"), variants.first());
+        proptest::prop_assert_eq!(select_variant(&variants, "worst"), variants.last());
+        if !heights.is_empty() {
+            let h = heights[pick % heights.len()];
+            let expected = variants.iter().find(|v| v.height == h);
+            proptest::prop_assert_eq!(select_variant(&variants, &h.to_string()), expected);
+        }
+        // The generator caps heights below 5000, so 5000 is never
+        // served — and a numeric miss is None, never a guess.
+        proptest::prop_assert_eq!(select_variant(&variants, "5000"), None);
+    }
+
+    /// A rendered master with arbitrary variant stanzas parses to
+    /// the same rows ordered by descending height, ties keeping
+    /// their input order — the script's `sort -g -r` shape.
+    #[test]
+    fn master_variants_round_trip_sorted(
+        rows in proptest::collection::vec(
+            (100u32..4320, "[a-z0-9/._-]{1,20}"),
+            0..8,
+        ),
+    ) {
+        use crate::scraper::anidb::parse_api::{parse_master_variants, MasterVariant};
+        let mut m3u8 = String::from("#EXTM3U\n");
+        for (h, path) in &rows {
+            m3u8.push_str(&format!(
+                "#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION={}x{}\n{}\n",
+                h * 16 / 9,
+                h,
+                path
+            ));
+        }
+        let parsed = parse_master_variants(&m3u8);
+        let mut expected: Vec<MasterVariant> = rows
+            .iter()
+            .map(|(h, p)| MasterVariant { height: *h, url: p.clone() })
+            .collect();
+        expected.sort_by(|a, b| b.height.cmp(&a.height));
+        proptest::prop_assert_eq!(parsed, expected);
+    }
+}
