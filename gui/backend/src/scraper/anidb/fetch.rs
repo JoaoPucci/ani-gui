@@ -138,7 +138,11 @@ impl AnidbFetch for CurlImpersonateFetch {
         // `-w` appends the status after the body; the last line is
         // split back off. Mirrors the script's anidb_curl flags.
         let mut cmd = tokio::process::Command::new(&self.exe);
-        cmd.arg("-sL")
+        // §5's subprocess environment: nothing the child prints may
+        // depend on the terminal that launched the backend.
+        cmd.env("TERM", "dumb")
+            .env("NO_COLOR", "1")
+            .arg("-sL")
             .arg("-A")
             .arg(IMPERSONATE_AGENT)
             .arg("--max-time")
