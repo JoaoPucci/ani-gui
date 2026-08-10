@@ -33,7 +33,9 @@ pub(crate) fn format_survivors(
                     .as_deref()
                     .is_none_or(|k| k.eq_ignore_ascii_case("movie"))
             } else if expects_non_movie {
-                h.kind.as_deref() != Some("Movie")
+                !h.kind
+                    .as_deref()
+                    .is_some_and(|k| k.eq_ignore_ascii_case("movie"))
             } else {
                 true
             }
