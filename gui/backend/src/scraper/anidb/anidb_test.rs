@@ -254,6 +254,24 @@ fn extract_master_url_reads_the_jwplayer_file_assignment() {
     assert!(extract_master_url("file: ''").is_none());
 }
 
+#[test]
+fn a_malformed_file_value_is_no_master_url() {
+    // A nonempty but malformed file value rode out of here as a
+    // "resolved" master URL: the orchestrator records breaker
+    // success, stamps availability, and writes the episode to
+    // history before its own Url::parse fails — the user sees a
+    // playback error on a show now marked available and watched.
+    // Only an absolute http(s) URL is something every consumer can
+    // actually use; anything else is the same miss as an empty one.
+    assert!(extract_master_url("file: 'not a url'").is_none());
+    assert!(extract_master_url("file: '/relative/master.m3u8'").is_none());
+    assert!(extract_master_url("file: 'javascript:alert(1)'").is_none());
+    assert_eq!(
+        extract_master_url("file: 'https://cdn.example/op/master.m3u8'").as_deref(),
+        Some("https://cdn.example/op/master.m3u8")
+    );
+}
+
 // ── transport resolution ────────────────────────────────────────────
 
 #[cfg(unix)]
