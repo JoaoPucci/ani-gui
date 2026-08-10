@@ -52,7 +52,11 @@ async fn an_open_breaker_refuses_a_background_fetch_before_the_transport() {
         .get("https://provider.test/x")
         .await
         .expect_err("refused");
-    assert!(matches!(err, AniError::Network), "got {err:?}");
+    // The refusal keeps its identity: mapped to Network it would be
+    // recorded as an upstream failure, and each background warmup
+    // would refresh the open breaker's cooldown without ever
+    // contacting the provider — half-open recovery never arrives.
+    assert!(matches!(err, AniError::GateRefused), "got {err:?}");
     assert_eq!(
         calls.load(Ordering::SeqCst),
         0,

@@ -16,7 +16,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     };
     assert!(matches!(
         breaker_outcome(&Err(absent_episode)),
-        ScrapeOutcome::Success
+        Some(ScrapeOutcome::Success)
     ));
     // Weather stays distress.
     let refusal = NativeError {
@@ -25,7 +25,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     };
     assert!(matches!(
         breaker_outcome(&Err(refusal)),
-        ScrapeOutcome::Failure
+        Some(ScrapeOutcome::Failure)
     ));
     let limited = NativeError {
         error: AniError::RateLimited {
@@ -35,7 +35,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     };
     assert!(matches!(
         breaker_outcome(&Err(limited)),
-        ScrapeOutcome::RateLimited { .. }
+        Some(ScrapeOutcome::RateLimited { .. })
     ));
     let transport = NativeError {
         error: AniError::Network,
@@ -43,8 +43,23 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     };
     assert!(matches!(
         breaker_outcome(&Err(transport)),
-        ScrapeOutcome::Failure
+        Some(ScrapeOutcome::Failure)
     ));
+}
+
+#[test]
+fn a_gate_refusal_is_no_evidence_at_all() {
+    // A refusal is the gate's own answer, not the provider's:
+    // recording it as failure lets every background warmup refresh
+    // the open breaker's cooldown without a single provider request,
+    // so half-open recovery never arrives. The refusal produces NO
+    // outcome — the breaker only ever hears about requests that got
+    // past the gate.
+    let refused = NativeError {
+        error: AniError::GateRefused,
+        clean_miss: false,
+    };
+    assert!(breaker_outcome(&Err(refused)).is_none());
 }
 
 #[test]
@@ -62,6 +77,6 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
     };
     assert!(matches!(
         breaker_outcome(&Err(limited)),
-        ScrapeOutcome::RateLimited { retry_after: None }
+        Some(ScrapeOutcome::RateLimited { retry_after: None })
     ));
 }

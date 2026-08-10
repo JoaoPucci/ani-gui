@@ -447,7 +447,14 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
     .await;
     let err = got.expect_err("refused");
     assert!(!err.clean_miss);
-    assert!(matches!(err.error, AniError::Network));
+    // The refusal identity survives the walk: reported as Network it
+    // would be recorded as an upstream failure and keep extending
+    // the open breaker's cooldown.
+    assert!(
+        matches!(err.error, AniError::GateRefused),
+        "got {:?}",
+        err.error
+    );
     assert!(
         provider.requests().is_empty(),
         "no provider request may run while the gate refuses"
