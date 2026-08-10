@@ -197,6 +197,23 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 probed_ok.push((h, eps, count.abs_diff(expected), year_confirmed));
             }
             Err(e) => {
+                // A refusal or rate limit is the provider blocking,
+                // not this candidate missing: continuing the walk
+                // turns one block into a burst of further probes, and
+                // the alias walk would repeat the burst per alias.
+                // Not-found-shaped statuses are the candidate itself
+                // dead — a stale slug 404s — and, like transport
+                // failures, only drop the candidate.
+                let provider_block = match &e {
+                    crate::error::AniError::RateLimited { .. } => true,
+                    crate::error::AniError::Upstream { status } => {
+                        *status == 403 || *status == 429 || *status >= 500
+                    }
+                    _ => false,
+                };
+                if provider_block {
+                    return Err(e);
+                }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
             }
         }
