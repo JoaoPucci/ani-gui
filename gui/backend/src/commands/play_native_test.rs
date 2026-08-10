@@ -535,3 +535,47 @@ async fn a_movie_subtype_keeps_movie_candidates() {
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-movie-1");
 }
+
+/// A fetch whose first episodes probe answers a Cloudflare-shaped
+/// refusal and which counts every episodes request it receives.
+struct RefusingEpisodes {
+    probes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for RefusingEpisodes {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/episodes") {
+            self.probes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Err(AniError::Upstream { status: 403 });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_upstream_refusal_stops_the_probe_walk() {
+    // A refusal mid-probe is the provider blocking, not a candidate
+    // missing: continuing to probe the rest of the pool turns one
+    // block into a burst of further requests, and the alias walk can
+    // then repeat the burst per alias. The refusal must surface
+    // immediately, typed, after exactly one probe.
+    let probes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(RefusingEpisodes {
+        probes: probes.clone(),
+    });
+    let hits = [hit("show-a-1", "Show A"), hit("show-b-2", "Show B")];
+    let err = pick_candidate(&client, &hits, Some(12), "Show A", None, None)
+        .await
+        .expect_err("refused");
+    assert!(matches!(err, AniError::Upstream { .. }), "got {err:?}");
+    assert_eq!(
+        probes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the walk kept probing past the refusal"
+    );
+}
