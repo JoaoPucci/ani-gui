@@ -14,7 +14,13 @@
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
-import { _electron as electron, expect, test } from "@playwright/test";
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+} from "@playwright/test";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,7 +47,9 @@ test.beforeAll(() => {
  * visible to the page. Setting them on `context.route()` (visible to
  * any page in the context) avoids the race.
  */
-async function launchAppWithStubs() {
+async function launchAppWithStubsOnce(
+  onLaunch: (app: ElectronApplication) => void,
+) {
   // Pinning XDG dirs to fresh tmp paths makes the backend's history,
   // settings, and cache files start empty regardless of the dev
   // machine's actual state. Without this, the Rust backend reads
@@ -71,6 +79,7 @@ async function launchAppWithStubs() {
     args: ["--no-sandbox"],
     env: cleanEnv,
   });
+  onLaunch(app);
 
   const context = app.context();
   await context.route("**/api/app-info", (r) =>
@@ -106,6 +115,30 @@ async function launchAppWithStubs() {
 
   const page = await app.firstWindow();
   return { app, page, context };
+}
+
+async function launchAppWithStubs() {
+  // A cold launch can lose its first window before any assertion
+  // runs — the closed-target flake. The harness relaunches once,
+  // closing the dead app in between; every other failure propagates
+  // untouched. See lib/cold-launch.cjs.
+  let pending: ElectronApplication | null = null;
+  return withColdLaunchRetry(
+    async () => {
+      const launched = await launchAppWithStubsOnce((app) => {
+        pending = app;
+      });
+      pending = null;
+      return launched;
+    },
+    {
+      cleanup: async () => {
+        const dead = pending;
+        pending = null;
+        if (dead) await dead.close();
+      },
+    },
+  );
 }
 
 test("app launches, hero renders, no unexpected console errors", async () => {
