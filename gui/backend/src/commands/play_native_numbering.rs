@@ -24,3 +24,7 @@ pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Opti
     let offset = numbering_offset(episodes);
     episodes.iter().map(|e| e.number).max().map(|m| m - offset)
 }
+
+#[cfg(test)]
+#[path = "play_native_numbering_test.rs"]
+mod tests;
