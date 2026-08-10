@@ -76,6 +76,22 @@ fn cloudflare_interstitial_is_recognized_and_content_is_not() {
 }
 
 #[test]
+fn parse_browse_reads_the_slug_from_the_href_alone() {
+    // An anime/ path in nested markup — an image src here — is not
+    // where the anchor points: the href names /news, and emitting the
+    // image's slug fabricates a candidate the disambiguation can then
+    // pick over the real show.
+    let html = concat!(
+        r#"<a href="https://anidb.app/news">"#,
+        r#"<img alt="Foo" src="https://cdn.anidb.app/anime/one-piece-69"></a>"#,
+        r#"<a href="https://anidb.app/anime/gintama-4425"><img alt="Gintama"></a>"#,
+    );
+    let hits = parse_browse(html);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].slug, "gintama-4425");
+}
+
+#[test]
 fn parse_browse_reads_nothing_past_a_cards_closing_anchor() {
     // Markup between one card's </a> and the next anchor belongs to
     // no card: an anchor without its own alt must be skipped, not
