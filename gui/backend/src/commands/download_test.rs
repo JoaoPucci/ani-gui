@@ -267,12 +267,22 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
     }))
     .expect("args");
     let path_env = bin.path().display().to_string();
-    download_with_tools(&state, &args, &path_env, |_p| {})
+    let mut progress: Vec<String> = Vec::new();
+    download_with_tools(&state, &args, &path_env, |p| progress.push(p.line))
         .await
         .expect("the range downloads episode by episode");
     let calls = std::fs::read_to_string(&log).expect("the tool ran");
     let lines: Vec<&str> = calls.lines().collect();
     assert_eq!(lines.len(), 2, "one tool run per episode: {calls}");
+    assert!(
+        progress.iter().any(|l| l.starts_with("Playing episode 1")),
+        "the range loop announces each episode in the shape the dock's \
+         progress parser consumes (`Playing episode N`): {progress:?}"
+    );
+    assert!(
+        progress.iter().any(|l| l.starts_with("Playing episode 2")),
+        "both iterations announce: {progress:?}"
+    );
     assert!(
         lines[0].contains("Range Show Episode 1.mp4"),
         "first run targets episode 1: {}",
