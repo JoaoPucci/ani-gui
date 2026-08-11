@@ -636,6 +636,24 @@ async fn a_lone_candidate_with_a_matching_year_wins() {
 }
 
 #[tokio::test]
+async fn the_airing_rescue_prefers_the_exact_title_on_a_distance_tie() {
+    // Two year-confirmed candidates both look like airing parts —
+    // short equal listings against the whole-season expectation —
+    // and the provider ranks the sibling first. Normal winner
+    // selection ranks the user's own words above provider order;
+    // the rescue must not drop that evidence at the door.
+    let client = AnidbClient::new(YearTable(&[(21, 2, Some(2026)), (22, 2, Some(2026))]));
+    let hits = [
+        hit("the-show-part-2-21", "The Show Part 2"),
+        hit("the-show-22", "The Show"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(26), "the show", Some(2026), None)
+        .await
+        .expect("the exact-title airing part wins the tie");
+    assert_eq!(picked.hit.slug, "the-show-22");
+}
+
+#[tokio::test]
 async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
     // An alias can return the airing part alone. Its aired count sits
     // far under Kitsu's whole-season count, but its detail year
