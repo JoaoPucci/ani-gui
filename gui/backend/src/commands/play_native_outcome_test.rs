@@ -152,3 +152,64 @@ fn a_background_deadline_elapse_is_no_evidence() {
         Some(ScrapeOutcome::Failure)
     ));
 }
+
+fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
+    use proptest::strategy::Strategy as _;
+    proptest::prop_oneof![
+        (0u8..4).prop_map(|k| match k {
+            0 => AniError::Network,
+            1 => AniError::Timeout,
+            2 => AniError::NoResults,
+            _ => AniError::GateRefused,
+        }),
+        (0u16..1000).prop_map(|status| AniError::Upstream { status }),
+        proptest::option::of(0u64..100_000)
+            .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+    ]
+}
+
+proptest::proptest! {
+    /// The complete classification over arbitrary errors, priorities
+    /// and clean-miss flags: clean misses and answered verdicts are
+    /// health; refusals record nothing; a background deadline elapse
+    /// records nothing; rate limits map with their hint; and the
+    /// upstream split follows is_provider_block exactly — 429 is the
+    /// rate limit, other block shapes are distress, the rest are
+    /// answered health.
+    #[test]
+    fn classification_holds_over_arbitrary_outcomes(
+        error in arb_error(),
+        clean_miss in proptest::bool::ANY,
+        background in proptest::bool::ANY,
+    ) {
+        let priority = if background {
+            ScrapePriority::Background
+        } else {
+            ScrapePriority::Interactive
+        };
+        let expected = if clean_miss {
+            Some(ScrapeOutcome::Success)
+        } else {
+            match &error {
+                AniError::GateRefused => None,
+                AniError::NoResults => Some(ScrapeOutcome::Success),
+                AniError::Timeout if background => None,
+                AniError::RateLimited { retry_after_secs } => {
+                    Some(ScrapeOutcome::RateLimited {
+                        retry_after: retry_after_secs
+                            .map(std::time::Duration::from_secs),
+                    })
+                }
+                AniError::Upstream { status: 429 } => {
+                    Some(ScrapeOutcome::RateLimited { retry_after: None })
+                }
+                AniError::Upstream { .. } if !error.is_provider_block() => {
+                    Some(ScrapeOutcome::Success)
+                }
+                _ => Some(ScrapeOutcome::Failure),
+            }
+        };
+        let got = breaker_outcome(priority, &Err(NativeError { error, clean_miss }));
+        proptest::prop_assert_eq!(got, expected);
+    }
+}

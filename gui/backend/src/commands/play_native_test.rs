@@ -778,3 +778,21 @@ async fn a_lowercase_movie_badge_cannot_carry_a_series_expectation() {
         .expect_err("a movie-badged pool cannot carry a series expectation");
     assert!(matches!(err, AniError::NoResults), "got {err:?}");
 }
+
+proptest::proptest! {
+    /// Over arbitrary expected counts: the tolerance is never below
+    /// the floor of 3, is exactly the proportional tenth once that
+    /// tenth clears the floor, and never exceeds the count itself
+    /// past the floor region — the max(3, n/10) contract.
+    #[test]
+    fn threshold_holds_over_arbitrary_counts(expected in proptest::num::u32::ANY) {
+        let t = ep_count_threshold(expected);
+        proptest::prop_assert!(t >= 3);
+        proptest::prop_assert_eq!(t, (expected / 10).max(3));
+        if expected >= 30 {
+            proptest::prop_assert_eq!(t, expected / 10);
+        } else {
+            proptest::prop_assert_eq!(t, 3);
+        }
+    }
+}
