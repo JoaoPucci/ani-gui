@@ -108,6 +108,34 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// The classification contract over arbitrary spellings: leading
+    /// zeros and any number of ".0" tail zeros name the same integer
+    /// (exact — every u32 is far inside f64's integer range), a
+    /// nonzero fractional part never classifies as integer, values
+    /// past u32's range are refused, and nonnumeric or non-finite
+    /// tags stay extras.
+    #[test]
+    fn integer_tag_classification_holds_over_spellings(
+        n in 0u32..=u32::MAX,
+        lead in 0usize..3,
+        zeros in 0usize..3,
+        frac in 1u32..10,
+    ) {
+        let plain = format!("{}{}", "0".repeat(lead), n);
+        proptest::prop_assert_eq!(integer_tag_value(&plain), Some(n));
+        let whole = format!("{}.{}", plain, "0".repeat(zeros + 1));
+        proptest::prop_assert_eq!(integer_tag_value(&whole), Some(n));
+        let fractional = format!("{n}.{frac}");
+        proptest::prop_assert_eq!(integer_tag_value(&fractional), None);
+        proptest::prop_assert_eq!(integer_tag_value("SP"), None);
+        proptest::prop_assert_eq!(integer_tag_value("inf"), None);
+        proptest::prop_assert_eq!(integer_tag_value("NaN"), None);
+        let over = (u64::from(u32::MAX) + 1).to_string();
+        proptest::prop_assert_eq!(integer_tag_value(&over), None);
+    }
+}
+
 #[test]
 fn whole_number_tags_classify_by_value() {
     // The provider can file integer identities as "41.0": tag
