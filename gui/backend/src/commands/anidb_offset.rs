@@ -124,7 +124,9 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
 pub fn provider_ep_no(episode: &str, offset: u32) -> String {
     match episode.trim().parse::<u32>() {
         Ok(n) => n.saturating_add(offset).to_string(),
-        Err(_) => episode.to_string(),
+        // Fractional tags ride the same translation the resolve
+        // uses; non-numeric strings pass through.
+        Err(_) => super::play_native_numbering::provider_fraction(episode.trim(), offset),
     }
 }
 
@@ -136,7 +138,10 @@ pub fn provider_ep_no(episode: &str, offset: u32) -> String {
 pub fn kitsu_ep_no(ep_no: &str, offset: u32) -> String {
     match ep_no.trim().parse::<u32>() {
         Ok(n) if n > offset => (n - offset).to_string(),
-        _ => ep_no.to_string(),
+        Ok(_) => ep_no.to_string(),
+        // per_entry_fraction keeps its own at-or-below-offset
+        // pass-through, mirroring the integer rule.
+        Err(_) => super::play_native_numbering::per_entry_fraction(ep_no.trim(), offset),
     }
 }
 
