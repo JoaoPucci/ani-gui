@@ -26,6 +26,9 @@ pub mod kitsu_warm;
 pub mod play;
 pub mod play_cache;
 pub mod play_external_command;
+#[cfg(test)]
+#[path = "play_handoff_test.rs"]
+mod play_handoff_test;
 pub mod play_native;
 mod play_native_choice;
 pub mod play_native_episode;
