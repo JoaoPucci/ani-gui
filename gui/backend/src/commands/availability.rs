@@ -619,10 +619,6 @@ fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
         .next_airing_at
 }
 
-/// Same as [`write_cache`] but lets the caller supply the episode
-/// count + extras when it knows. Used by `check_availability` after
-/// running the play picker; everything else stays on the simpler
-/// entry point.
 /// The extras a cached row already carries, for writers that
 /// re-derive the count but not the fractional list — the native
 /// resolver's listing is integer-only, so overwriting with an empty
@@ -637,6 +633,10 @@ pub fn cached_extras(state: &AppState, kitsu_id: &str, mode: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+/// Same as [`write_cache`] but lets the caller supply the episode
+/// count + extras when it knows. Used by `check_availability` after
+/// running the play picker; everything else stays on the simpler
+/// entry point.
 pub fn write_cache_full(
     state: &AppState,
     kitsu_id: &str,
