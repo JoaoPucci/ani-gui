@@ -81,6 +81,13 @@ async fn stub_anidb() -> wiremock::MockServer {
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
         .mount(&server)
         .await;
+    // The quality step validates the master on every path now, best
+    // included — the stub serves it like the CDN would.
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/op/master.m3u8"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+        .mount(&server)
+        .await;
     server
 }
 
