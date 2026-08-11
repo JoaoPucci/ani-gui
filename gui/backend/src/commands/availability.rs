@@ -59,6 +59,12 @@ pub struct AvailabilityArgs {
     /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`),
+    /// when the caller has it — the same format disproof the play
+    /// and download pickers apply, so availability cannot cache a
+    /// different candidate than they would select.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
     /// check still runs but its result isn't persisted.
     #[serde(default)]
@@ -315,7 +321,7 @@ pub(crate) async fn check_availability_with_base(
         quality: None,
         episode_count: args.episode_count,
         year: args.year,
-        subtype: None,
+        subtype: args.subtype.clone(),
         alt_titles: args.alt_titles.clone(),
         // `prefetch` doubles as the scraper-gate priority: background
         // probes (rail warms, home-loader fills) are paced and refused
