@@ -13,6 +13,36 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
         .collect()
 }
 
+proptest::proptest! {
+    /// Every row is exactly one of regular or extra: the two views
+    /// partition any listing.
+    #[test]
+    fn regular_and_extra_rows_partition_the_listing(
+        slots in proptest::collection::vec(
+            proptest::prop_oneof![
+                proptest::strategy::Just(None),
+                proptest::strategy::Strategy::prop_map("[0-9]{1,4}", Some),
+                proptest::strategy::Strategy::prop_map("[0-9]{1,4}\\.[0-9]", Some),
+            ],
+            0..24,
+        ),
+    ) {
+        let eps: Vec<EpisodeRef> = slots
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| EpisodeRef {
+                id: i as u64,
+                number: u32::try_from(i).expect("small index") + 1,
+                number2: slot.clone(),
+            })
+            .collect();
+        proptest::prop_assert_eq!(
+            regular_episode_count(&eps) as usize + extra_episode_tags(&eps).len(),
+            eps.len()
+        );
+    }
+}
+
 #[test]
 fn the_cap_counts_display_identities_not_integer_slots() {
     // The recap in slot 3 displays "2.5": the show has two real

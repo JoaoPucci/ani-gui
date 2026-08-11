@@ -50,6 +50,52 @@ fn threshold_is_a_floor_of_three_with_proportional_slack() {
     assert_eq!(ep_count_threshold(1100), 110);
 }
 
+/// Twelve regular rows plus four recaps under decimal tags — the
+/// One Piece shape at small scale.
+struct TaggedEpisodes;
+
+#[async_trait::async_trait]
+impl AnidbFetch for TaggedEpisodes {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/api/frontend/anime/7/episodes") {
+            let mut rows: Vec<String> = (1..=12)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 700 + n, n))
+                .collect();
+            for (i, tag) in ["3.5", "6.5", "9.5", "11.5"].iter().enumerate() {
+                rows.push(format!(
+                    "{{\"id\":{},\"number\":{},\"number2\":{}}}",
+                    900 + i,
+                    13 + i,
+                    tag
+                ));
+            }
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn fractional_extras_do_not_inflate_the_candidate_count() {
+    // Kitsu counts 12 episodes; the raw listing carries 16 rows
+    // because four recaps ride decimal tags. Scoring the row count
+    // puts the one correct candidate 4 past the threshold of 3 and
+    // rejects it on its own extras — the distance must come from
+    // regular display episodes.
+    let client = AnidbClient::new(TaggedEpisodes);
+    let hits = [hit("the-show-7", "The Show")];
+    let picked = pick_candidate(&client, &hits, Some(12), "the show", None, None)
+        .await
+        .expect("the 12-regular-episode candidate matches");
+    assert_eq!(picked.hit.slug, "the-show-7");
+}
+
 #[tokio::test]
 async fn expected_count_picks_the_closest_probed_candidate() {
     // Movie (1 ep) vs series (26 eps): expected 26 must pick the
