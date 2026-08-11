@@ -216,14 +216,26 @@ impl<F: AnidbFetch> AnidbClient<F> {
         };
         // The rendition gets its own validating fetch: a dead
         // rendition behind a healthy master must not report success
-        // — and must not fail a play the served adaptive master can
-        // carry either, so the miss falls back soft.
+        // — and an ANSWERED miss must not fail a play the served
+        // adaptive master can carry, so that one falls back soft. A
+        // refusal, rate limit, or transport failure is not a miss:
+        // hls.js would request renditions through the same blocked
+        // upstream, and masking it records breaker success and
+        // stamps availability, history, and a cached session on a
+        // blocked play.
         match self.content(&rendition).await {
             Ok(_) => Ok(rendition),
-            Err(e) => {
-                tracing::debug!(quality, error = ?e, "anidb: rendition unfetchable, keeping adaptive master");
+            Err(AniError::Upstream { status })
+                if !AniError::Upstream { status }.is_provider_block() =>
+            {
+                tracing::debug!(
+                    quality,
+                    status,
+                    "anidb: rendition not served, keeping adaptive master"
+                );
                 Ok(master_url.to_string())
             }
+            Err(e) => Err(e),
         }
     }
 
