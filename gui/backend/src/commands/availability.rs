@@ -1003,6 +1003,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
+        // The walk's search and episode listing are mode-independent;
+        // only a languages row says whether the requested audio
+        // exists. A sub-only show asked for dub must not cache
+        // available: the dub CTA it would enable fails at playback.
+        // The provider ANSWERED absence for this mode, so the
+        // negative verdict is cacheable — like the clean search miss.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Sub Only Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/sub-only-71"><img alt="Sub Only Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/71/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":711,"number":1},{"id":712,"number":2}]}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/711/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Sub Only Show",
+            "mode": "dub",
+            "kitsu_id": "557"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("the provider answered; the verdict is a verdict");
+        assert!(!got.available, "no eng row means no dub to enable");
+        assert_eq!(got.episode_count, None);
+        // The answered absence round-trips through the dub cache row.
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["557".into()],
+                mode: "dub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("557"), Some(&false));
+    }
+
+    #[tokio::test]
     async fn a_continuation_entry_caps_in_per_entry_numbering() {
         // The provider numbers continuation cours cumulatively (TYBW's
         // fourth part lists 41 and 42). The cap the frontend gates the
