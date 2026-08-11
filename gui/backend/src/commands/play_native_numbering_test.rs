@@ -209,15 +209,20 @@ proptest::proptest! {
             0..24,
         ),
     ) {
-        let eps: Vec<EpisodeRef> = slots
-            .iter()
-            .enumerate()
-            .map(|(i, slot)| EpisodeRef {
-                id: i as u64,
-                number: u32::try_from(i).expect("small index") + 1,
-                number2: slot.as_ref().map(|(_, s)| s.clone()),
-            })
-            .collect();
+        // Anchor an untagged first episode so the listing reads as
+        // per-entry (offset 0) and the tags advertise verbatim; the
+        // continuation translation has its own pins and round-trip
+        // property.
+        let mut eps: Vec<EpisodeRef> = vec![EpisodeRef {
+            id: 999,
+            number: 1,
+            number2: None,
+        }];
+        eps.extend(slots.iter().enumerate().map(|(i, slot)| EpisodeRef {
+            id: i as u64,
+            number: u32::try_from(i).expect("small index") + 2,
+            number2: slot.as_ref().map(|(_, s)| s.clone()),
+        }));
         let expected: Vec<String> = slots
             .iter()
             .flatten()

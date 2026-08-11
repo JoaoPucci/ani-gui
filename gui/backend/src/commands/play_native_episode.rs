@@ -8,7 +8,7 @@ use crate::error::AniError;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch};
 
 use super::play_native::PickedShow;
-use super::play_native_numbering::numbering_offset;
+use super::play_native_numbering::{numbering_offset, provider_fraction};
 use super::play_native_resolve::NativeError;
 
 /// What one failed episode chain means for the surrounding alias
@@ -64,11 +64,13 @@ pub async fn resolve_episode<F: AnidbFetch>(
     // the continuation offset into the same display space the tags
     // live in; fractional requests carry the provider's tag
     // verbatim, so the offset never applies to them.
+    let offset = numbering_offset(&picked.episodes);
     let target = match episode.trim().parse::<u32>() {
-        Ok(n) => n
-            .saturating_add(numbering_offset(&picked.episodes))
-            .to_string(),
-        Err(_) => episode.trim().to_string(),
+        Ok(n) => n.saturating_add(offset).to_string(),
+        // Fractional requests arrive in the same per-entry numbering
+        // the advertisement translated into; the click translates
+        // back ([`provider_fraction`]).
+        Err(_) => provider_fraction(episode.trim(), offset),
     };
     let ep = picked
         .episodes
