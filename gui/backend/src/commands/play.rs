@@ -81,12 +81,10 @@ pub struct PlayArgs {
     pub alt_titles: Vec<String>,
     /// `true` when this call is a background prefetch (warming the
     /// cache for an episode the user hasn't clicked yet). Prefetches
-    /// must NOT touch `ani-hsts` — the page-mount loop fires 12+ play
-    /// calls in parallel and whichever resolves last would overwrite
-    /// the user's actual click. The flag drives both:
-    ///   - skipping our cache-hit history write
-    ///   - redirecting ani-cli's `$ANI_CLI_HIST_DIR` to a tempdir so
-    ///     ani-cli's own `update_history` writes to a throwaway file
+    /// must NOT touch the history file — the page-mount loop fires
+    /// 12+ play calls in parallel and whichever resolves last would
+    /// overwrite the user's actual click. The flag skips both the
+    /// cache-hit and the fresh-resolve history writes.
     ///
     /// Frontend prefetch loops set it; click handlers leave it false.
     #[serde(
