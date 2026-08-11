@@ -1139,6 +1139,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_partially_dubbed_show_caps_at_the_dubbed_prefix() {
+        // Dubs trail subs: a show four episodes in may carry eng rows
+        // for the first two only. A first-row probe alone would cache
+        // the full mode-independent cap under the dub key and enable
+        // episodes that fail at playback — the cap must describe the
+        // rows the requested mode actually has.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Partial Dub Show"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/partial-dub-81"><img alt="Partial Dub Show"/></a>"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/81/episodes"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"episodes":[{"id":811,"number":1},{"id":812,"number":2},{"id":813,"number":3},{"id":814,"number":4}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        for (ep, langs) in [
+            (
+                811,
+                r#"[{"code":"jpn","embed_url":"https://e/1"},{"code":"eng","embed_url":"https://e/1d"}]"#,
+            ),
+            (
+                812,
+                r#"[{"code":"jpn","embed_url":"https://e/2"},{"code":"eng","embed_url":"https://e/2d"}]"#,
+            ),
+            (813, r#"[{"code":"jpn","embed_url":"https://e/3"}]"#),
+            (814, r#"[{"code":"jpn","embed_url":"https://e/4"}]"#),
+        ] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200)
+                        .set_body_string(format!(r#"{{"languages":{langs}}}"#)),
+                )
+                .mount(&server)
+                .await;
+        }
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Partial Dub Show",
+            "mode": "dub",
+            "kitsu_id": "559"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available, "two dubbed episodes exist");
+        assert_eq!(
+            got.episode_count,
+            Some(2),
+            "the dub cap stops where the eng rows stop"
+        );
+
+        // And the same show under sub keeps the full cap.
+        let sub_args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Partial Dub Show",
+            "mode": "sub",
+            "kitsu_id": "559"
+        }))
+        .expect("args");
+        let sub = check_availability_with_base(&state, &sub_args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(sub.available);
+        assert_eq!(sub.episode_count, Some(4));
+    }
+
+    #[tokio::test]
     async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
         // The walk's search and episode listing are mode-independent;
         // only a languages row says whether the requested audio
