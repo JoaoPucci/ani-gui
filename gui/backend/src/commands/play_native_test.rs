@@ -283,6 +283,48 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
     assert_eq!(picked.hit.slug, "also-unrelated-88");
 }
 
+/// Two same-title candidates: the first's episodes endpoint answers
+/// 404 (a stale slug), the second serves a listing.
+struct FirstSlugStale;
+
+#[async_trait::async_trait]
+impl AnidbFetch for FirstSlugStale {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/api/frontend/anime/88/episodes") {
+            let rows: Vec<String> = (1..=12)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
+                .collect();
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_countless_pick_walks_past_a_stale_candidate() {
+    // With no episode-count signal the pick chose one candidate and
+    // died on its answered 404, never considering the same-title
+    // sibling with a live listing — with no alternate title, that
+    // alias's playback failed outright. Answered dead ends move to
+    // the next eligible candidate; blocks and transport failures
+    // still stop the pick.
+    let client = AnidbClient::new(FirstSlugStale);
+    let hits = [
+        hit("the-show-99", "The Show"),
+        hit("the-show-88", "The Show"),
+    ];
+    let picked = pick_candidate(&client, &hits, None, "the show", None, None)
+        .await
+        .expect("the live same-title sibling carries the pick");
+    assert_eq!(picked.hit.slug, "the-show-88");
+}
+
 #[tokio::test]
 async fn expected_count_picks_the_closest_probed_candidate() {
     // Movie (1 ep) vs series (26 eps): expected 26 must pick the
