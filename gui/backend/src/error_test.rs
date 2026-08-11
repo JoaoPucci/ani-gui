@@ -53,7 +53,6 @@ fn every_variant_has_a_stable_key() {
         AniError::NoResults,
         AniError::ParseFailed { detail: "x".into() },
         AniError::MissingBinary,
-        AniError::BashMissing,
         AniError::FfmpegMissing,
         AniError::PlayerSpawnFailed {
             binary: "vlc".into(),
@@ -103,23 +102,6 @@ fn ffmpeg_missing_serializes_with_a_dedicated_kind_and_key() {
         "snake_case kind: {s}"
     );
     assert_eq!(err.key(), "error.download.ffmpeg_missing");
-}
-
-#[test]
-fn bash_missing_serializes_with_a_dedicated_kind_and_key() {
-    // Windows-readiness: the GUI needs bash.exe (Git for Windows)
-    // to drive the POSIX ani-cli script. When the locator returns
-    // None at startup, the frontend renders an install-Git-for-
-    // Windows pointer; that branch keys off this dedicated
-    // variant rather than collapsing into MissingBinary (which is
-    // the ani-cli-not-found error and would mislead the message).
-    let err = AniError::BashMissing;
-    let s = serde_json::to_string(&err).expect("serializes");
-    assert!(
-        s.contains("\"kind\":\"bash_missing\""),
-        "snake_case kind: {s}"
-    );
-    assert_eq!(err.key(), "error.bash.missing");
 }
 
 #[test]

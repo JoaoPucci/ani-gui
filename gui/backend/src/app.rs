@@ -406,12 +406,21 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn resolve_bash_path_returns_ok_none_on_unix() {
-        // On Unix, no bash lookup happens — the script runs via
-        // shebang. The helper must return Ok(None) to keep the
-        // optional-field invariant.
-        let got = resolve_bash_path().expect("resolve_bash_path should not error on Unix");
+    fn a_missing_bash_is_not_a_boot_failure() {
+        // Bash is reachable from one place now: the updater's spawn.
+        // Nothing in the play, download or availability paths shells
+        // out, so a host without Git for Windows must still boot —
+        // it gets a working app and a failed entry in the update
+        // log, not a backend that refuses to start. The helper
+        // therefore has no error path at all, on any platform.
+        //
+        // On Unix it answers None regardless, because the spawn
+        // invokes bash off PATH rather than by absolute path.
+        let got: Option<PathBuf> = bash_for_updates();
+        #[cfg(not(windows))]
         assert!(got.is_none(), "Unix expects None, got {got:?}");
+        #[cfg(windows)]
+        let _ = got;
     }
 
     #[test]
