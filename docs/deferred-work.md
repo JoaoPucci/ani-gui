@@ -134,6 +134,15 @@ starting it, and delete it when you find it done.
   `README.md` and `docs/architecture.md`.
 - **Illustrated brand assets** — post-1.0.
 
+- **Windows curl-impersonate transport.** The native anidb client
+  needs an impersonating curl to get past the provider's
+  TLS-fingerprint front. The Linux packages bundle one; on Windows
+  the resolver still falls through to plain curl, which the front
+  answers with the interstitial. Waited because the Windows story is
+  its own packaging problem — which impersonate build runs under Git
+  Bash and how it ships — not a resolver change. Surprising: ani-cli
+  5.0 itself has the same gap on Windows.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
