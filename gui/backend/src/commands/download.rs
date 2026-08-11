@@ -380,6 +380,31 @@ mod tests {
         std::fs::set_permissions(&p, perms).expect("chmod");
     }
 
+    #[test]
+    fn find_tool_widens_names_with_the_platform_suffix_table() {
+        // Windows installs name the tools yt-dlp.exe / ffmpeg.exe.
+        // The scan builds and tests each full path itself — Windows
+        // command resolution never runs, so PATHEXT cannot widen the
+        // name for us. The suffix table is explicit, like the curl
+        // transport's resolver.
+        let bin = tempfile::tempdir().expect("bin");
+        std::fs::write(bin.path().join("yt-dlp.exe"), b"").expect("stage");
+        let path_env = bin.path().display().to_string();
+        assert_eq!(
+            find_tool(&path_env, "yt-dlp", &["", ".exe"]),
+            Some(bin.path().join("yt-dlp.exe"))
+        );
+        // The bare name still wins where both exist.
+        std::fs::write(bin.path().join("ffmpeg.exe"), b"").expect("stage");
+        std::fs::write(bin.path().join("ffmpeg"), b"").expect("stage");
+        assert_eq!(
+            find_tool(&path_env, "ffmpeg", &["", ".exe"]),
+            Some(bin.path().join("ffmpeg"))
+        );
+        // A name on no suffix stays a miss.
+        assert_eq!(find_tool(&path_env, "aria2c", &["", ".exe"]), None);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
