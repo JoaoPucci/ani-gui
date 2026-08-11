@@ -841,9 +841,12 @@ mod tests {
     async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
+        // The native play admits through the anidb gate since the
+        // provider split; priming the allanime gate no longer
+        // refuses anything on this path.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .scraper_gate
+                .anidb_gate
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let router = build_api_router(Arc::new(state));
