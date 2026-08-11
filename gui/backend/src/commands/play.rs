@@ -554,7 +554,6 @@ use crate::commands::play_cache::try_serve_cached;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anicli::parser::DebugOutput;
 
     proptest::proptest! {
         // The gate's lane assignment is exactly the prefetch bit:
@@ -594,57 +593,6 @@ mod tests {
         }
     }
 
-    // `play()` and `play_external()` are thin wrappers around
-    // `run_debug` + the relevant terminal action; the integration
-    // test in `tests/api_play.rs` exercises the full flow against a
-    // real ani-cli with a curl shim. These unit tests pin the
-    // mapping from `DebugOutput` → `CreateSessionArgs` /
-    // `LaunchArgs` so a future refactor of the field names is loud.
-
-    #[test]
-    fn debug_output_with_referer_and_subtitle_maps_to_session_args() {
-        let debug = DebugOutput {
-            selected_url: "https://wixmp.example/video.mp4".into(),
-            all_links: vec![],
-            referer: Some("https://allmanga.to".into()),
-            subtitle_url: Some("https://wixmp.example/subs.vtt".into()),
-        };
-        // Mirrors the conversion inside `play()`. Kept in sync via
-        // the integration test; this asserts the field-by-field
-        // mapping is intact.
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url.clone(),
-            referer: debug.referer.clone().unwrap_or_default(),
-            subtitle_url: debug.subtitle_url.clone(),
-        };
-        assert_eq!(session_args.upstream_url, "https://wixmp.example/video.mp4");
-        assert_eq!(session_args.referer, "https://allmanga.to");
-        assert_eq!(
-            session_args.subtitle_url.as_deref(),
-            Some("https://wixmp.example/subs.vtt")
-        );
-    }
-
-    #[test]
-    fn debug_output_without_referer_maps_to_empty_referer_string() {
-        // CreateSessionArgs.referer is a required `String` (not
-        // Option). We map None → empty string; the proxy treats that
-        // as "send no Referer header." This test pins that contract.
-        let debug = DebugOutput {
-            selected_url: "https://x/y.mp4".into(),
-            all_links: vec![],
-            referer: None,
-            subtitle_url: None,
-        };
-        let session_args = CreateSessionArgs {
-            upstream_url: debug.selected_url,
-            referer: debug.referer.unwrap_or_default(),
-            subtitle_url: debug.subtitle_url,
-        };
-        assert_eq!(session_args.referer, "");
-        assert!(session_args.subtitle_url.is_none());
-    }
-
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
@@ -667,7 +615,6 @@ mod tests {
             ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),

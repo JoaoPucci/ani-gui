@@ -18,7 +18,6 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
         ani_cli_path: std::path::PathBuf::from("/nonexistent/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),

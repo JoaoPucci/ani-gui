@@ -11,7 +11,6 @@ fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
         ani_cli_path: std::path::PathBuf::from("/x/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path,
         anidb_gate: std::sync::Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),

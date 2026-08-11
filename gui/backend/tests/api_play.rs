@@ -1,28 +1,23 @@
-//! End-to-end integration test for the M2 play endpoints.
+//! End-to-end integration test for the play endpoints.
 //!
-//! Mirrors the curl-shim staging from `anicli_run_debug.rs` — stages
-//! the vendored shim ahead of the system PATH, copies the canned
-//! allanime fixtures into a tmp dir, then drives `POST /api/play`
-//! through the full axum router. Verifies the chain
+//! Drives `POST /api/play` through the full axum router and verifies
+//! the chain
 //!
-//!   POST /api/play  →  run_debug spawns ani-cli (which calls our shim)
-//!                  →  parse `Selected link:` from stdout
+//!   POST /api/play  →  native walk against the provider
+//!                  →  episode → languages → embed → master URL
 //!                  →  create_session wraps the upstream URL
 //!                  →  return CreateSessionResponse
 //!
 //! works end-to-end. The unit tests in `api/mod.rs` cover the route's
-//! body validation; this file covers the actual subprocess path.
+//! body validation; this file covers the resolution path behind it.
 //!
-//! Linux-only for the same reason as `anicli_run_debug.rs` — `ani-cli`
-//! depends on a POSIX shell + GNU userland.
+//! Hermetic: every hop answers from a local stub, pointed at through
+//! `AppState::anidb_base`. It has to be — a live resolve inside an
+//! integration test turns a throttled IP into a network 503 that
+//! reads exactly like a regression in the diff under review.
 //!
-//! Hermetic in both directions. The shell half has always been: the
-//! curl shim answers ani-cli's requests from canned fixtures. The Rust
-//! half was not — the play handler runs its own allanime search to
-//! disambiguate the title, and that call went to the live API, so a
-//! throttled IP failed this test with a network 503 that read exactly
-//! like a regression in the diff under review. The search now goes to
-//! a local stub too, via `AppState::allanime_base`.
+//! Linux-only: the proxy half of the assertion depends on a POSIX
+//! temp-dir layout the Windows runner doesn't reproduce.
 
 #![cfg(target_os = "linux")]
 
@@ -106,7 +101,6 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
         ani_cli_path: std::path::PathBuf::from("/nonexistent/never-spawned/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
         anidb_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
@@ -259,9 +253,8 @@ async fn run_play_assertion(tmp: &std::path::Path, anidb_base: &str) -> Result<(
         .get("media_kind")
         .and_then(|v| v.as_str())
         .ok_or("response missing media_kind")?;
-    // The shim resolves an HLS variant playlist (see
-    // tests/fixtures/anidb/master_op.m3u8), so the kind is hls and
-    // the proxy URL points at /master.m3u8.
+    // The stub's embed resolves to a master playlist, so the kind is
+    // hls and the proxy URL points at /master.m3u8.
     if media_kind != "hls" {
         return Err(format!("expected media_kind=hls, got {media_kind}"));
     }
