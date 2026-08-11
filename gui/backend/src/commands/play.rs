@@ -191,7 +191,12 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     // stamped by the fresh resolve that wrote this cache row.
     let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
-        ep_no: crate::commands::anidb_offset::provider_ep_no(&args.episode, offset),
+        ep_no: crate::commands::anidb_offset::write_ep_no(
+            state,
+            &cached.show_id,
+            &args.episode,
+            offset,
+        ),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
     };
@@ -705,7 +710,26 @@ where
     // cache-hit and mark-watched writers and the history read
     // boundary all key on it by slug. Prefetches stamp too: their
     // resolve is exactly as authoritative.
-    crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset);
+    match &native.resolved_tag {
+        // The matched row's display differs from its slot: stamp the
+        // pair so the read boundary and the listing-less writers can
+        // translate between the CLI's slot and the GUI's display.
+        Some(tag)
+            if !crate::commands::play_native_episode::tag_matches(
+                tag,
+                &native.resolved_slot.to_string(),
+            ) =>
+        {
+            crate::commands::anidb_offset::put_display(
+                state,
+                &native.slug,
+                native.numbering_offset,
+                native.resolved_slot,
+                tag,
+            );
+        }
+        _ => crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset),
+    }
     // The subprocess used to write ani-hsts itself on a fresh
     // resolve; natively that write is ours. Prefetches stay out of
     // the user's history exactly as before. ani-hsts speaks the
@@ -713,10 +737,9 @@ where
     // number in the provider's episode list.
     if !args.prefetch {
         let entry = crate::history::HistoryEntry {
-            ep_no: crate::commands::anidb_offset::provider_ep_no(
-                &args.episode,
-                native.numbering_offset,
-            ),
+            // The matched row's own slot — exactly what the CLI's
+            // reader greps, whatever space the display tags live in.
+            ep_no: native.resolved_slot.to_string(),
             id: native.slug.clone(),
             title: native.title.clone(),
         };

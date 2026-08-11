@@ -51,7 +51,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
     episode: &str,
     mode: &str,
     quality: &str,
-) -> std::result::Result<String, NativeError> {
+) -> std::result::Result<ResolvedEpisode, NativeError> {
     let dead_end = |error: AniError| NativeError {
         error,
         clean_miss: false,
@@ -86,10 +86,28 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .map_err(dead_end)?;
     // The quality step is soft only on a served playlist that lacks
     // the height; a failed master fetch is the episode failing.
-    client
+    let master_url = client
         .quality_stream_url(&master, quality)
         .await
-        .map_err(dead_end)
+        .map_err(dead_end)?;
+    Ok(ResolvedEpisode {
+        master_url,
+        slot: ep.number,
+        tag: ep.number2.clone(),
+    })
+}
+
+/// A resolved episode: the playable URL plus the matched row's slot
+/// and display tag — the slot is what ani-cli's history reader
+/// greps, the tag what the GUI displays.
+#[derive(Debug)]
+pub struct ResolvedEpisode {
+    /// The validated master-playlist URL.
+    pub master_url: String,
+    /// The row's integer `number` — the CLI's episode identity.
+    pub slot: u32,
+    /// The row's display tag, when it carries one.
+    pub tag: Option<String>,
 }
 
 /// Whether two episode tags name the same episode. The provider can
@@ -98,7 +116,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
 /// match the same identity. Two parses of numerically identical
 /// decimal strings round to the same f64, so equality is exact
 /// here; genuinely nonnumeric tags keep byte equality.
-fn tag_matches(tag: &str, target: &str) -> bool {
+pub(super) fn tag_matches(tag: &str, target: &str) -> bool {
     if tag == target {
         return true;
     }

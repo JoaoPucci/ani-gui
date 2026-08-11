@@ -13,8 +13,7 @@ use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 /// unchanged: that is the no-shift case, and the pre-stamp behavior
 /// for shows the GUI never resolved.
 fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
-    let offset = crate::commands::anidb_offset::get(state, &entry.id);
-    entry.ep_no = crate::commands::anidb_offset::kitsu_ep_no(&entry.ep_no, offset);
+    entry.ep_no = crate::commands::anidb_offset::read_ep_no(state, &entry.id, &entry.ep_no);
     entry
 }
 

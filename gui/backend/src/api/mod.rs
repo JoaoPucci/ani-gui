@@ -609,7 +609,12 @@ async fn post_play_mark_watched(
             // was stamped by the resolve that wrote this cache row.
             let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             let entry = crate::history::HistoryEntry {
-                ep_no: crate::commands::anidb_offset::provider_ep_no(&args.episode, offset),
+                ep_no: crate::commands::anidb_offset::write_ep_no(
+                    &state,
+                    &cached.show_id,
+                    &args.episode,
+                    offset,
+                ),
                 id: cached.show_id.clone(),
                 title: cached.show_title.clone(),
             };

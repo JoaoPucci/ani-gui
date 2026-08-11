@@ -62,7 +62,8 @@ async fn a_tagged_continuation_maps_per_entry_numbers() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
     let url = resolve_episode(&client, &picked, "1", "sub", "best")
         .await
-        .expect("per-entry 1 is display 41");
+        .expect("per-entry 1 is display 41")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -79,7 +80,8 @@ async fn a_fractional_request_maps_through_the_offset_too() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
     let url = resolve_episode(&client, &picked, "1.5", "sub", "best")
         .await
-        .expect("per-entry 1.5 is display 41.5");
+        .expect("per-entry 1.5 is display 41.5")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -93,7 +95,8 @@ async fn a_zero_padded_integer_tag_still_answers_its_episode() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
     let url = resolve_episode(&client, &picked, "1", "sub", "best")
         .await
-        .expect("per-entry 1 is display 041 = 41");
+        .expect("per-entry 1 is display 041 = 41")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -112,7 +115,8 @@ async fn a_trailing_zero_fraction_matches_the_normalized_click() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(4));
     let url = resolve_episode(&client, &picked, "3.5", "sub", "best")
         .await
-        .expect("the normalized click finds the padded tag");
+        .expect("the normalized click finds the padded tag")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -161,7 +165,8 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(5));
     let url = resolve_episode(&client, &picked, "4", "sub", "best")
         .await
-        .expect("the tag-4 row carries episode 4");
+        .expect("the tag-4 row carries episode 4")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -197,7 +202,8 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
     let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(11));
     let url = resolve_episode(&client, &picked, "2", "sub", "best")
         .await
-        .expect("per-entry 2 is display 42");
+        .expect("per-entry 2 is display 42")
+        .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 

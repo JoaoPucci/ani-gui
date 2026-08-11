@@ -46,6 +46,12 @@ pub struct NativeResolved {
     /// ([`extra_episode_tags`]) — the availability stamp's
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
+    /// The matched row's slot — the integer the CLI's history
+    /// reader greps, and what the fresh-resolve writer stores.
+    pub resolved_slot: u32,
+    /// The matched row's display tag, stamped beside the offset when
+    /// it differs from the slot so the read boundary can translate.
+    pub resolved_tag: Option<String>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -179,7 +185,7 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let master_url = match resolve_episode(
+                        let resolved = match resolve_episode(
                             client,
                             &picked,
                             req.episode,
@@ -188,7 +194,7 @@ where
                         )
                         .await
                         {
-                            Ok(url) => url,
+                            Ok(resolved) => resolved,
                             Err(ne) => match classify_chain_failure(ne) {
                                 ChainOutcome::Stop(ne) => return Err(ne),
                                 ChainOutcome::DeadEnd => {
@@ -216,10 +222,12 @@ where
                         return Ok(NativeResolved {
                             slug: picked.hit.slug,
                             title: picked.hit.title,
-                            master_url,
+                            master_url: resolved.master_url,
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,
+                            resolved_slot: resolved.slot,
+                            resolved_tag: resolved.tag,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
