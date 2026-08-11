@@ -63,6 +63,60 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// Winner selection over arbitrary pools: the winner sits at the
+    /// best distance, no best-distance rival carries a strictly
+    /// better (title, confirmed) key, equal keys keep provider
+    /// order, and the reported rank is the winner's own.
+    #[test]
+    fn winner_selection_holds_over_arbitrary_pools(
+        pool in proptest::collection::vec(
+            (proptest::bool::ANY, proptest::bool::ANY, 0u32..6),
+            1..8,
+        ),
+    ) {
+        let needle = "the show";
+        let hits: Vec<BrowseHit> = pool
+            .iter()
+            .enumerate()
+            .map(|(i, (title_match, _, _))| BrowseHit {
+                slug: format!("s-{i}"),
+                title: if *title_match {
+                    "The Show".to_string()
+                } else {
+                    format!("Other {i}")
+                },
+                kind: None,
+            })
+            .collect();
+        let probed: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = hits
+            .iter()
+            .zip(&pool)
+            .map(|(h, (_, confirmed, d))| (h, Vec::new(), *d, *confirmed))
+            .collect();
+        let best = probed.iter().map(|(_, _, d, _)| *d).min().expect("non-empty");
+        let (idx, rank) = select_winner(&probed, best, needle);
+        let key = |i: usize| {
+            let (h, _, _, c) = &probed[i];
+            (h.title.trim().to_lowercase() != needle, !*c)
+        };
+        proptest::prop_assert_eq!(probed[idx].2, best);
+        for (i, row) in probed.iter().enumerate() {
+            if row.2 == best {
+                proptest::prop_assert!(key(idx) <= key(i));
+                if key(i) == key(idx) {
+                    proptest::prop_assert!(idx <= i, "equal keys keep provider order");
+                }
+            }
+        }
+        let (h, _, _, c) = &probed[idx];
+        proptest::prop_assert_eq!(
+            rank,
+            identity_rank(h.title.trim().to_lowercase() == needle, *c)
+        );
+    }
+}
+
 #[test]
 fn threshold_is_a_floor_of_three_with_proportional_slack() {
     assert_eq!(ep_count_threshold(1), 3);
