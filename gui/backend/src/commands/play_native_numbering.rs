@@ -25,6 +25,21 @@ pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Opti
     episodes.iter().map(|e| e.number).max().map(|m| m - offset)
 }
 
+/// The provider's fractional display tags, in listing order — what
+/// availability advertises as `extra_episodes`. An integer `number2`
+/// is a continuation's cumulative re-display, not an extra; every
+/// non-integer tag is playable verbatim through the resolve's
+/// `number2` match, which is exactly why the listing outranks any
+/// cached row as a source for them.
+pub fn extra_episode_tags(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Vec<String> {
+    episodes
+        .iter()
+        .filter_map(|e| e.number2.as_deref())
+        .filter(|tag| tag.parse::<u32>().is_err())
+        .map(str::to_string)
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "play_native_numbering_test.rs"]
 mod tests;

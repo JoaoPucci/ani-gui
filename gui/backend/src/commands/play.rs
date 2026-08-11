@@ -239,6 +239,7 @@ pub(super) async fn stamp_availability_after_native(
     available: bool,
     generation_at_start: u64,
     episode_cap: Option<u32>,
+    extra_tags: &[String],
 ) {
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
@@ -269,13 +270,11 @@ pub(super) async fn stamp_availability_after_native(
                     &crate::commands::availability::AvailabilityResponse {
                         available: true,
                         episode_count: Some(cap),
-                        // The native listing is integer-only; the
-                        // fractional extras a prior probe stored are
-                        // knowledge this stamp did not re-derive and
-                        // must not destroy.
-                        extra_episodes: crate::commands::availability::cached_extras(
-                            state, id, &args.mode,
-                        ),
+                        // Derived from the listing the resolve paid
+                        // for — the same tags a fractional play
+                        // matches against number2, so they outrank
+                        // whatever an older probe stored.
+                        extra_episodes: extra_tags.to_vec(),
                         episode_count_approximate: false,
                         gate_refused: false,
                     },
@@ -668,8 +667,15 @@ where
             if ne.clean_miss {
                 // The one verdict that proves absence — persist it,
                 // guarded against a refresh that answered meanwhile.
-                stamp_availability_after_native(state, args, false, availability_generation, None)
-                    .await;
+                stamp_availability_after_native(
+                    state,
+                    args,
+                    false,
+                    availability_generation,
+                    None,
+                    &[],
+                )
+                .await;
             }
             tracing::info!(
                 title = %args.title,
@@ -690,6 +696,7 @@ where
         true,
         availability_generation,
         native.episode_cap,
+        &native.extra_tags,
     )
     .await;
     // Stamp the show's numbering offset while it's known — the

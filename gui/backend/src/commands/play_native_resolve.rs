@@ -18,7 +18,7 @@ use crate::error::AniError;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch};
 
 use super::play_native::{pick_candidate, PickedShow};
-use super::play_native_numbering::{kitsu_episode_cap, numbering_offset};
+use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 
 /// A fully resolved native play: what the orchestrator needs to open
 /// a session, stamp caches, and write history.
@@ -40,6 +40,10 @@ pub struct NativeResolved {
     /// provider's numbering — and the offset store persists it for
     /// the cache-hit and mark-watched writers and the read boundary.
     pub numbering_offset: u32,
+    /// The listing's fractional display tags
+    /// ([`extra_episode_tags`]) — the availability stamp's
+    /// `extra_episodes`, also already paid for.
+    pub extra_tags: Vec<String>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -205,12 +209,14 @@ where
                         });
                         let episode_cap = kitsu_episode_cap(&picked.episodes);
                         let offset = numbering_offset(&picked.episodes);
+                        let extra_tags = extra_episode_tags(&picked.episodes);
                         return Ok(NativeResolved {
                             slug: picked.hit.slug,
                             title: picked.hit.title,
                             master_url,
                             episode_cap,
                             numbering_offset: offset,
+                            extra_tags,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
