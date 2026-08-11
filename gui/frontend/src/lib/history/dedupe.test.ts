@@ -57,6 +57,19 @@ describe('dedupeHistoryByKitsuId', () => {
 		expect(dedupeHistoryByKitsuId([hi, lo], matches)).toEqual([hi]);
 	});
 
+	it('ranks a fractional row above its integer floor', () => {
+		// Watching the "12.5" recap is more progress than "12"; the
+		// integer-only parse tied them and let the older row win.
+		const int = entry('all-int', '12');
+		const frac = entry('all-frac', '12.5');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-int': kitsu('k-shared'),
+			'all-frac': kitsu('k-shared')
+		};
+		expect(dedupeHistoryByKitsuId([int, frac], matches)).toEqual([frac]);
+		expect(dedupeHistoryByKitsuId([frac, int], matches)).toEqual([frac]);
+	});
+
 	it('preserves CLI progress over an older GUI-stamped row when ep_no is higher', () => {
 		// Codex P2 #3367725631 — the regression my first cut hit. User
 		// watched via GUI at ep 5 long ago (stamped, sorted to the
