@@ -172,9 +172,14 @@ export function resolveHistoryEntry(
 	entry: HistoryEntry,
 	kitsuMatch: KitsuAnimeRef | null
 ): ResumeTarget {
-	// ep_no is sometimes a range like "1-12"; take the head.
-	const epHead = (entry.ep_no.split(/[^0-9]+/)[0] ?? entry.ep_no) || entry.ep_no;
-	const displayEpisode = parseInt(epHead, 10) || 1;
+	// ep_no is sometimes a range like "1-12"; take the head — but a
+	// decimal head ("1.5", a native fractional play) is one episode
+	// identity, not a range, and truncating it would display and
+	// replay the watched integer episode.
+	const epHead =
+		entry.ep_no.match(/^\d+(?:\.\d+)?/)?.[0] ??
+		((entry.ep_no.split(/[^0-9]+/)[0] ?? entry.ep_no) || entry.ep_no);
+	const displayEpisode = parseFloat(epHead) || 1;
 
 	const tailMatch = entry.title.match(EPISODE_TAIL_RE);
 	const courSize = tailMatch ? parseInt(tailMatch[1], 10) : null;
