@@ -22,7 +22,7 @@ proptest::proptest! {
             proptest::prop_oneof![
                 proptest::strategy::Just(None),
                 proptest::strategy::Strategy::prop_map("[0-9]{1,4}", Some),
-                proptest::strategy::Strategy::prop_map("[0-9]{1,4}\\.[0-9]", Some),
+                proptest::strategy::Strategy::prop_map("[0-9]{1,4}\\.[1-9]", Some),
             ],
             0..24,
         ),
@@ -109,6 +109,31 @@ proptest::proptest! {
 }
 
 #[test]
+fn whole_number_tags_classify_by_value() {
+    // The provider can file integer identities as "41.0": tag
+    // matching already recognizes them numerically, but syntactic
+    // classification called them fractional extras — offset zero,
+    // no integer cap, zero regular episodes, and a request for
+    // per-entry episode 1 matching nothing.
+    let eps = vec![
+        EpisodeRef {
+            id: 10,
+            number: 1,
+            number2: Some("41.0".into()),
+        },
+        EpisodeRef {
+            id: 11,
+            number: 2,
+            number2: Some("42.0".into()),
+        },
+    ];
+    assert_eq!(numbering_offset(&eps), 40);
+    assert_eq!(kitsu_episode_cap(&eps), Some(2));
+    assert_eq!(regular_episode_count(&eps), 2);
+    assert!(extra_episode_tags(&eps).is_empty());
+}
+
+#[test]
 fn the_cap_counts_display_identities_not_integer_slots() {
     // The recap in slot 3 displays "2.5": the show has two real
     // episodes plus a fractional extra, and a cap of 3 would
@@ -140,7 +165,7 @@ proptest::proptest! {
     #[test]
     fn fractional_rows_never_move_the_cap(
         numbers in proptest::collection::vec(1u32..500, 1..12),
-        tags in proptest::collection::vec("[0-9]{1,3}\\.[0-9]", 0..6),
+        tags in proptest::collection::vec("[0-9]{1,3}\\.[1-9]", 0..6),
     ) {
         let mut eps = refs(&numbers);
         let base = kitsu_episode_cap(&eps);
@@ -203,7 +228,7 @@ proptest::proptest! {
                     "[0-9]{1,4}", |s| Some((false, s))
                 ),
                 proptest::strategy::Strategy::prop_map(
-                    "[0-9]{1,4}\\.[0-9]", |s| Some((true, s))
+                    "[0-9]{1,4}\\.[1-9]", |s| Some((true, s))
                 ),
             ],
             0..24,
