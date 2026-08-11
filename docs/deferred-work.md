@@ -23,13 +23,17 @@ it third of four options, after doing it here and doing it in its own
 pull request.
 
 Write an entry about the code, not about the work in flight. A commit
-sha, a pull-request number, a branch name, a commit count, or a
-sentence like "the PR for this is open" is accurate for about a week
-and misleading forever after — and a rotted entry is worse than no
+sha and a merged pull-request number resolve forever, so rot is not
+the objection to them: the objection is that they name a change rather
+than a defect, and a reader who follows one is reading history when
+what they need to know is whether the behaviour is still wrong. What
+does rot is the state that travels with them — a branch name, a commit
+count, "the PR for this is open" — and a rotted entry is worse than no
 entry, because it sends the next reader to rebuild finished work or to
-reason from a state that no longer exists. Name the behaviour that is
-wrong and where it lives; that stays checkable. References that do not
-rot — an upstream issue, a specification — are fine.
+reason from a state that no longer exists. So keep both out: name the
+behaviour that is wrong and where it lives; that stays checkable.
+References that do not rot — an upstream issue, a specification — are
+fine.
 
 Remove an entry when the work lands, in the change that lands it.
 
