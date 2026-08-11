@@ -76,7 +76,7 @@ async fn a_fully_covered_listing_costs_one_request() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("the provider answered");
-    assert_eq!(covered, 12);
+    assert_eq!(covered, Some(12));
     assert_eq!(
         provider.asked(),
         vec![12],
@@ -94,7 +94,7 @@ async fn an_absent_mode_costs_two_requests_and_reports_zero() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("the provider answered");
-    assert_eq!(covered, 0);
+    assert_eq!(covered, Some(0));
     assert_eq!(provider.asked(), vec![12, 1]);
 }
 
@@ -108,7 +108,7 @@ async fn a_partial_dub_reports_its_prefix_by_bisection() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("the provider answered");
-    assert_eq!(covered, 7);
+    assert_eq!(covered, Some(7));
     let asked = provider.asked();
     assert!(
         asked.len() < eps.len(),
@@ -129,7 +129,7 @@ async fn every_boundary_of_a_listing_is_reported_exactly() {
             .expect("the provider answered");
         assert_eq!(
             covered,
-            usize::try_from(dubbed).expect("small"),
+            Some(usize::try_from(dubbed).expect("small")),
             "boundary at {dubbed} misreported"
         );
     }
@@ -142,7 +142,7 @@ async fn an_empty_listing_covers_nothing() {
     let covered = mode_prefix_len(&client, &[], "sub")
         .await
         .expect("nothing to ask");
-    assert_eq!(covered, 0);
+    assert_eq!(covered, Some(0));
     assert!(provider.asked().is_empty());
 }
 
@@ -161,7 +161,67 @@ async fn a_dead_row_does_not_truncate_the_prefix() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("an answered row is not weather");
-    assert_eq!(covered, 12);
+    assert_eq!(covered, Some(12));
+}
+
+#[tokio::test]
+async fn a_dead_first_row_does_not_manufacture_coverage() {
+    // The mode is absent and the first row's languages endpoint is
+    // gone. Reading that missing row as affirmative coverage caches
+    // available: true and advertises an episode that cannot resolve.
+    // A missing row is unknown, not a yes: the search must reach a
+    // LIVE row before deciding.
+    let provider = Dubbed {
+        dubbed: 0,
+        asked: Mutex::new(Vec::new()),
+        dead: &[1],
+    };
+    let client = AnidbClient::new(&provider);
+    let eps = listing(12);
+    let covered = mode_prefix_len(&client, &eps, "dub")
+        .await
+        .expect("the provider answered");
+    assert_eq!(
+        covered,
+        Some(0),
+        "no live row carries the mode, so nothing is covered"
+    );
+}
+
+#[tokio::test]
+async fn a_listing_of_dead_rows_yields_no_verdict() {
+    // Every row answers not-found: the provider said nothing about
+    // the mode at all. That is not absence, and availability must
+    // not persist it as one.
+    let provider = Dubbed {
+        dubbed: 0,
+        asked: Mutex::new(Vec::new()),
+        dead: &[1, 2, 3, 4],
+    };
+    let client = AnidbClient::new(&provider);
+    let eps = listing(4);
+    let verdict = mode_prefix_len(&client, &eps, "dub")
+        .await
+        .expect("dead rows are answers, not weather");
+    assert_eq!(verdict, None, "no decisive row means no verdict");
+}
+
+#[tokio::test]
+async fn a_dead_row_at_the_boundary_counts_only_what_a_live_row_proved() {
+    // Rows 1-4 dubbed, 5 dead, 6-8 sub-only. The dead row cannot
+    // decide either way, so the cap stops at the last row a live
+    // answer proved.
+    let provider = Dubbed {
+        dubbed: 4,
+        asked: Mutex::new(Vec::new()),
+        dead: &[5],
+    };
+    let client = AnidbClient::new(&provider);
+    let eps = listing(8);
+    let covered = mode_prefix_len(&client, &eps, "dub")
+        .await
+        .expect("the provider answered");
+    assert_eq!(covered, Some(4));
 }
 
 /// Every languages fetch dies on transport.
