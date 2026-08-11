@@ -542,6 +542,42 @@ async fn an_off_by_one_year_still_competes_on_count() {
 }
 
 #[tokio::test]
+async fn an_exact_year_breaks_a_count_tie_against_a_tolerated_neighbor() {
+    // A remake filed one year off sits inside the December-premiere
+    // tolerance, probes to the same count as the original, and the
+    // provider ranks it first; neither display title matches the
+    // search term. Count and title then leave the tie to provider
+    // order — but the original's detail year matched Kitsu's
+    // exactly, and that stored confirmation is positive identity the
+    // tie-break must spend before falling back to ranking.
+    let client = AnidbClient::new(YearTable(&[(11, 12, Some(2019)), (12, 12, Some(2020))]));
+    let hits = [
+        hit("the-show-remake-11", "The Show Remake"),
+        hit("the-show-original-12", "The Show Original"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(12), "needle title", Some(2020), None)
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-show-original-12");
+}
+
+#[tokio::test]
+async fn an_exact_title_match_still_beats_a_year_confirmed_rival() {
+    // The year is a tie-break below the title, not above it: when
+    // the user's own search term names one candidate verbatim, an
+    // exact-year sibling must not override that stronger signal.
+    let client = AnidbClient::new(YearTable(&[(11, 12, Some(2019)), (12, 12, Some(2020))]));
+    let hits = [
+        hit("the-show-11", "The Show"),
+        hit("the-show-original-12", "The Show Original"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(12), "the show", Some(2020), None)
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "the-show-11");
+}
+
+#[tokio::test]
 async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
     // The browse card names its format. A Movie cannot be the
     // 12-episode series the caller expects, however well its count
