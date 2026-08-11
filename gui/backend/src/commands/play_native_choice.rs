@@ -40,24 +40,40 @@ pub(super) async fn pick_without_count<F: AnidbFetch>(
     let exact = head
         .iter()
         .map(|(h, _)| *h)
-        .find(|h| h.title.trim().to_lowercase() == needle);
-    let confirmed = head.iter().find(|(_, c)| *c).map(|(h, _)| *h);
-    let chosen = match (exact, confirmed) {
-        (Some(h), _) => h,
-        (None, Some(h)) => h,
-        (None, None) if year_excluded_any => {
-            return Err(crate::error::AniError::NoResults);
-        }
-        (None, None) => head
-            .first()
-            .map(|(h, _)| *h)
-            .ok_or(crate::error::AniError::NoResults)?,
+        .filter(|h| h.title.trim().to_lowercase() == needle);
+    let confirmed = head.iter().filter(|(_, c)| *c).map(|(h, _)| *h);
+    let positional: Box<dyn Iterator<Item = &BrowseHit> + Send> = if year_excluded_any {
+        // No survivor carries positive identity and the year
+        // disproved part of the pool: token-search garbage, no
+        // positional fallback.
+        Box::new(std::iter::empty())
+    } else {
+        Box::new(head.iter().map(|(h, _)| *h))
     };
-    let episodes = client.episodes(&chosen.slug).await?;
-    Ok(PickedShow {
-        hit: chosen.clone(),
-        episodes,
-    })
+    // Preference order, deduplicated by walking: a candidate whose
+    // listing answers 404 is a stale slug, not the pool's verdict —
+    // the next eligible candidate may carry the live listing.
+    let mut seen: Vec<&str> = Vec::new();
+    for chosen in exact.chain(confirmed).chain(positional) {
+        if seen.contains(&chosen.slug.as_str()) {
+            continue;
+        }
+        seen.push(&chosen.slug);
+        match client.episodes(&chosen.slug).await {
+            Ok(episodes) => {
+                return Ok(PickedShow {
+                    hit: chosen.clone(),
+                    episodes,
+                });
+            }
+            Err(e) if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) => {
+                return Err(e);
+            }
+            Err(crate::error::AniError::Upstream { .. }) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Err(crate::error::AniError::NoResults)
 }
 
 /// The winner among best-distance candidates, plus its identity
