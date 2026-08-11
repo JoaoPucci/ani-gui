@@ -396,6 +396,52 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn the_download_tool_runs_in_a_normalized_environment() {
+    // §5's subprocess contract: nothing the child prints may depend
+    // on the terminal that launched the backend. yt-dlp and ffmpeg
+    // both colorize when the inherited environment says to, and
+    // every stderr line goes straight to the dock — whose
+    // DownloadProgress promises ANSI-stripped text. The spawn sets
+    // TERM=dumb and NO_COLOR=1, and the relay strips escapes anyway.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        // Report the inherited environment, then emit a colored line.
+        "echo \"TERM=$TERM NO_COLOR=$NO_COLOR\" >&2; printf '\\033[1;31mred progress\\033[0m\\n' >&2; exit 0",
+    );
+    let mut lines: Vec<String> = Vec::new();
+    // The parent's own environment is left alone — mutating it would
+    // race every other test in the process. The assertion holds
+    // whatever it says, because the spawn sets these explicitly.
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the stub succeeds");
+    assert!(
+        lines.iter().any(|l| l.contains("TERM=dumb")),
+        "the child must see TERM=dumb: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("NO_COLOR=1")),
+        "the child must see NO_COLOR=1: {lines:?}"
+    );
+    assert!(
+        lines.iter().all(|l| !l.contains('\u{1b}')),
+        "no escape sequence may reach the dock: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
     // Without ffmpeg, yt-dlp can exit 0 after leaving raw MPEG-TS
     // under the requested .mp4 name, reporting it only through a
