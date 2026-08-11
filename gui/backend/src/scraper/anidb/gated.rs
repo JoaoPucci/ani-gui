@@ -58,6 +58,10 @@ impl<'g, F> GatedFetch<'g, F> {
 
 #[async_trait::async_trait]
 impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        GatedFetch::last_attempt_at(self)
+    }
+
     async fn get(&self, url: &str) -> Result<FetchResponse> {
         if let Some(gate) = self.gate {
             // A refusal only happens for background priority while

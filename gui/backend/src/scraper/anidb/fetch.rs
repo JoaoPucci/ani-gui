@@ -27,6 +27,15 @@ pub trait AnidbFetch: Send + Sync {
     /// [`AniError::Network`] on spawn/transport failure,
     /// [`AniError::Timeout`] when the request exceeds its deadline.
     async fn get(&self, url: &str) -> Result<FetchResponse>;
+
+    /// The post-admission start of this transport's most recent
+    /// attempt, when the transport tracks one (the gated production
+    /// transport does). The walk stamps aggregate failure verdicts
+    /// with it so a fetch that began before a concurrent recovery
+    /// never reads as post-recovery evidence.
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
 }
 
 /// Production transport: a curl-impersonate binary spawned per

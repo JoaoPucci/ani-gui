@@ -197,7 +197,12 @@ where
                                 }
                                 ChainOutcome::Transient => {
                                     any_search_errored = true;
-                                    last_failure_at = Some(tokio::time::Instant::now());
+                                    last_failure_at = Some(
+                                        client
+                                            .transport()
+                                            .last_attempt_at()
+                                            .unwrap_or_else(tokio::time::Instant::now),
+                                    );
                                     continue;
                                 }
                             },
@@ -240,7 +245,12 @@ where
                     }
                     Err(_) => {
                         any_search_errored = true;
-                        last_failure_at = Some(tokio::time::Instant::now());
+                        last_failure_at = Some(
+                            client
+                                .transport()
+                                .last_attempt_at()
+                                .unwrap_or_else(tokio::time::Instant::now),
+                        );
                     }
                 }
             }
@@ -264,7 +274,12 @@ where
             }
             Err(_) => {
                 any_search_errored = true;
-                last_failure_at = Some(tokio::time::Instant::now());
+                last_failure_at = Some(
+                    client
+                        .transport()
+                        .last_attempt_at()
+                        .unwrap_or_else(tokio::time::Instant::now),
+                );
             }
         }
     }

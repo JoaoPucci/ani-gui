@@ -758,6 +758,10 @@ impl AnidbFetch for &FirstAliasDies {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         (*self).get(url).await
     }
+
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        (*self).last_attempt_at()
+    }
 }
 
 /// A pool whose every episodes probe dies mid-fetch — the pick's
