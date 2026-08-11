@@ -1141,6 +1141,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn one_probe_leaves_the_breaker_one_outcome() {
+        // The walk succeeds and the mode probe then dies on the
+        // provider. Recording the walk's success first resets the
+        // failure run, so every such request leaves the counter at
+        // one and the breaker never opens — background warmers keep
+        // hammering a failing endpoint forever. One request must
+        // contribute one final outcome.
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/breaker-show-3"><img alt="Breaker Show"/></a>"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/3/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"episodes":[{"id":31,"number":1},{"id":32,"number":2}]}"#),
+            )
+            .mount(&server)
+            .await;
+        // The languages endpoint — reached only by the mode probe —
+        // answers with a block-shaped status.
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/32/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        // One short of open, so a single recorded failure opens it
+        // and a success-then-failure pair does not.
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD - 1 {
+            state
+                .anidb_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Breaker Show",
+            "mode": "sub",
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(got.is_err(), "the mode probe's failure surfaces");
+        assert!(
+            state
+                .anidb_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_err(),
+            "the failure counted, so the breaker is open"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_whole_probe_stops_at_the_resolution_deadline() {
+        // Searches and candidate listings answer near their own
+        // per-request timeout. With several aliases the walk alone
+        // can outrun the resolver's ceiling before the mode probe
+        // starts, so the ceiling has to cover the whole probe.
+        use wiremock::matchers::method;
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_secs(19))
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Slow Show",
+            "mode": "sub",
+            "alt_titles": "a\nb\nc\nd\ne\nf",
+        }))
+        .expect("args");
+        let started = tokio::time::Instant::now();
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::Timeout)),
+            "a stalled probe ends as a timeout: {got:?}"
+        );
+        assert!(
+            started.elapsed()
+                <= crate::commands::play_native_resolve::RESOLVE_DEADLINE
+                    + std::time::Duration::from_secs(1),
+            "and it ends at the ceiling, not after every alias"
+        );
+    }
+
+    #[tokio::test]
     async fn a_partially_dubbed_show_caps_at_the_dubbed_prefix() {
         // Dubs trail subs: a show four episodes in may carry eng rows
         // for the first two only. A first-row probe alone would cache
