@@ -861,6 +861,23 @@ async fn a_transport_death_in_the_episode_chain_stays_transient() {
 }
 
 #[tokio::test]
+async fn the_resolve_names_the_matched_rows_slot_and_tag() {
+    // ani-cli's history reader greps slot numbers — the integer
+    // `number` field its episode list is built from — so the history
+    // writer needs the matched row's slot, and the sidecar stamp
+    // needs its display tag.
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
+    let resolved = got.expect("resolved");
+    assert_eq!(resolved.resolved_slot, 3);
+    assert_eq!(resolved.resolved_tag.as_deref(), Some("2.5"));
+    let (got, _) = run(&provider, "the show", &[], "2", Some(3)).await;
+    let resolved = got.expect("resolved");
+    assert_eq!(resolved.resolved_slot, 2);
+    assert_eq!(resolved.resolved_tag, None);
+}
+
+#[tokio::test]
 async fn the_resolve_carries_the_listings_fractional_tags() {
     // The availability stamp after a successful play writes from
     // what the resolve already paid for. The listing's decimal

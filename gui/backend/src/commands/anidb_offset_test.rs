@@ -37,6 +37,61 @@ fn make_state() -> crate::app::AppState {
 }
 
 #[test]
+fn display_stamps_round_trip_and_survive_offset_puts() {
+    // The stamp maps the CLI-visible slot to the row's display tag.
+    // An offset-only re-stamp (every fresh resolve writes one) must
+    // not erase it — the last fractional watch stays translatable.
+    let state = make_state();
+    put_display(&state, "the-show-77", 0, 4, "3.5");
+    assert_eq!(get(&state, "the-show-77"), 0);
+    assert_eq!(
+        display_stamp(&state, "the-show-77"),
+        Some((4, "3.5".to_string()))
+    );
+    put(&state, "the-show-77", 0);
+    assert_eq!(
+        display_stamp(&state, "the-show-77"),
+        Some((4, "3.5".to_string())),
+        "an offset put must preserve the display stamp"
+    );
+    assert_eq!(display_stamp(&state, "unstamped"), None);
+}
+
+#[test]
+fn writes_map_a_stamped_display_back_to_its_slot() {
+    // The mark-watched and cache-hit writers have no listing at
+    // hand: when the requested episode names the stamped display
+    // tag — by numeric identity, since the frontend normalizes
+    // "3.50" to "3.5" — the shared file gets the slot the CLI can
+    // grep. Everything else keeps the offset translation.
+    let state = make_state();
+    put_display(&state, "the-show-77", 0, 4, "3.50");
+    assert_eq!(write_ep_no(&state, "the-show-77", "3.5", 0), "4");
+    assert_eq!(write_ep_no(&state, "the-show-77", "2", 0), "2");
+    let cont = make_state();
+    put_display(&cont, "the-sequel-88", 40, 2, "41.5");
+    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1.5", 40), "2");
+    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1", 40), "41");
+}
+
+#[test]
+fn reads_present_the_stamped_display_per_entry() {
+    // The read boundary turns the CLI-visible slot back into the
+    // per-entry display the GUI counts in: "4" with stamp (4, "3.5")
+    // reads as 3.5; a tagged continuation's slot 2 under (2, "41.5")
+    // at offset 40 reads as 1.5; rows not matching the stamp keep
+    // the plain offset translation.
+    let state = make_state();
+    put_display(&state, "the-show-77", 0, 4, "3.5");
+    assert_eq!(read_ep_no(&state, "the-show-77", "4"), "3.5");
+    assert_eq!(read_ep_no(&state, "the-show-77", "2"), "2");
+    let cont = make_state();
+    put_display(&cont, "the-sequel-88", 40, 2, "41.5");
+    assert_eq!(read_ep_no(&cont, "the-sequel-88", "2"), "1.5");
+    assert_eq!(read_ep_no(&cont, "the-sequel-88", "41"), "1");
+}
+
+#[test]
 fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
     // config/paths.rs gives debug and packaged builds separate cache
     // databases while ani-hsts stays shared. An offset persisted in
