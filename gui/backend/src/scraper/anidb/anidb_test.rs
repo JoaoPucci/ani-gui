@@ -861,6 +861,71 @@ async fn a_blocked_rendition_propagates_instead_of_masking() {
     );
 }
 
+/// Answers every URL with HTTP 200 and an HTML error page — the
+/// shape a CDN serves when the playlist path is wrong or expired.
+struct HtmlAnswers;
+
+#[async_trait::async_trait]
+impl AnidbFetch for HtmlAnswers {
+    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+        Ok(FetchResponse {
+            status: 200,
+            body: "<html><body>Not here.</body></html>".into(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_masters_html_answer_is_not_a_playlist() {
+    // 200 with an HTML body passes the status check and the
+    // interstitial check, so best-quality reported success for a
+    // stream hls.js cannot load — recording breaker health and
+    // stamping availability, history, and a cached session. A
+    // master must actually be an HLS playlist.
+    let client = AnidbClient::new(HtmlAnswers);
+    let err = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
+        .await
+        .expect_err("an HTML page is not a playlist");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "expected the parse verdict, got {err:?}"
+    );
+}
+
+/// A served, valid master whose selected rendition answers 200 with
+/// HTML instead of a playlist.
+struct HtmlRendition;
+
+#[async_trait::async_trait]
+impl AnidbFetch for HtmlRendition {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url == "https://cdn.example/op/master.m3u8" {
+            return Ok(FetchResponse {
+                status: 200,
+                body: fixture("master_op.m3u8"),
+            });
+        }
+        Ok(FetchResponse {
+            status: 200,
+            body: "<html><body>Not here.</body></html>".into(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_renditions_html_answer_falls_back_to_the_served_master() {
+    // The rendition answered, but with a page, not a playlist — an
+    // answered miss like a 404: the validated adaptive master
+    // carries the play.
+    let client = AnidbClient::new(HtmlRendition);
+    let url = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .await
+        .expect("the served master carries the play");
+    assert_eq!(url, "https://cdn.example/op/master.m3u8");
+}
+
 #[tokio::test]
 async fn best_quality_keeps_the_adaptive_master_it_validated() {
     // The default path returned the extracted URL without ever
