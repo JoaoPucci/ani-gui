@@ -429,7 +429,16 @@ pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str)
 ///   re-resolves on miss and writes a fresh row under v2, so all
 ///   pre-fix mappings are replaced inside one cache TTL of normal
 ///   use (or immediately the first time the user opens a card).
-const ALLMANGA_KITSU_VERSION: u32 = 2;
+/// - v3: show ids moved to anidb slugs and the picker was reworked
+///   live against the new provider, gaining the subtype disproof
+///   along the way. A v2 row stamped by one of those early builds
+///   binds the wrong slug to a Kitsu entry — a movie's slug to a
+///   non-movie entry, or one show's id to a sibling's slug — and
+///   every surface that resolves a history row trusts the mapping,
+///   so one bad row keeps steering a show to the wrong page for its
+///   whole TTL. Re-keying orphans them; the next successful resolve
+///   stamps a fresh v3 row.
+const ALLMANGA_KITSU_VERSION: u32 = 3;
 
 fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
