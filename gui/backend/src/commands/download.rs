@@ -398,7 +398,11 @@ fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path:
         crate::scraper::anidb::candidate_names(name, suffixes)
             .into_iter()
             .map(|file| d.join(file))
-            .find(|p| p.is_file())
+            // Executability, not mere existence: a regular file the
+            // platform cannot exec (an extraction that missed
+            // chmod +x) must not hide a usable tool further along
+            // the search.
+            .find(|p| crate::scraper::anidb::is_executable(p))
     })
 }
 

@@ -33,6 +33,7 @@ fn find_tool_scans_past_a_non_executable_file() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn find_tool_widens_names_with_the_platform_suffix_table() {
     // Windows installs name the tools yt-dlp.exe / ffmpeg.exe.
@@ -41,15 +42,15 @@ fn find_tool_widens_names_with_the_platform_suffix_table() {
     // name for us. The suffix table is explicit, like the curl
     // transport's resolver.
     let bin = tempfile::tempdir().expect("bin");
-    std::fs::write(bin.path().join("yt-dlp.exe"), b"").expect("stage");
+    stage_tool(bin.path(), "yt-dlp.exe", "exit 0");
     let path_env = bin.path().display().to_string();
     assert_eq!(
         find_tool(&path_env, "yt-dlp", &["", ".exe"]),
         Some(bin.path().join("yt-dlp.exe"))
     );
     // The bare name still wins where both exist.
-    std::fs::write(bin.path().join("ffmpeg.exe"), b"").expect("stage");
-    std::fs::write(bin.path().join("ffmpeg"), b"").expect("stage");
+    stage_tool(bin.path(), "ffmpeg.exe", "exit 0");
+    stage_tool(bin.path(), "ffmpeg", "exit 0");
     assert_eq!(
         find_tool(&path_env, "ffmpeg", &["", ".exe"]),
         Some(bin.path().join("ffmpeg"))

@@ -129,7 +129,7 @@ impl CurlImpersonateFetch {
 }
 
 /// Whether `path` names an executable regular file.
-fn is_executable(path: &Path) -> bool {
+pub(crate) fn is_executable(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
