@@ -970,7 +970,7 @@ where
 /// No announcement means no deletion. That is the right way to fail
 /// here — a mislabeled file left behind is recoverable, someone
 /// else's deleted mid-transfer is not.
-fn discard_mislabeled(dir: &Path, announced: &[PathBuf]) {
+pub(crate) fn discard_mislabeled(dir: &Path, announced: &[PathBuf]) {
     for path in announced {
         if path.parent() != Some(dir) {
             continue;
@@ -1007,7 +1007,7 @@ fn discard_mislabeled(dir: &Path, announced: &[PathBuf]) {
 /// id and the trailing advice are respectively arbitrary and
 /// reworded across releases, and pinning either would turn a future
 /// yt-dlp into a silent regression.
-fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
+pub(crate) fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
     stderr.lines().any(|line| {
         let line = line.trim_start();
         line.starts_with("WARNING:") && line.contains("Possible MPEG-TS in MP4 container")

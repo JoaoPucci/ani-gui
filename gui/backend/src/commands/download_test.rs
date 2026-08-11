@@ -389,7 +389,7 @@ async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '\\x47TSDATA' > '{target}'\n\
+            "printf '\\107TSDATA' > '{target}'\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
             target = target.display()

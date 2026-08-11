@@ -331,9 +331,19 @@ where
             }
             _ => {}
         }
-        match run_tool(cmd, timeout, on_line).await {
+        let mut repackage_failed = false;
+        match run_tool(cmd, timeout, on_line, &mut repackage_failed).await {
             Ok(()) => return Ok(()),
             Err(e) => {
+                if repackage_failed {
+                    // yt-dlp's own report: the fragments live under
+                    // the .mp4 name as raw MPEG-TS. Discard the
+                    // mislabeled file and surface the install
+                    // modal's error — the ffmpeg retry would need
+                    // the very tool whose absence caused this.
+                    crate::anicli::process::discard_mislabeled(dest, &[target.clone()]);
+                    return Err(AniError::FfmpegMissing);
+                }
                 // v5's && chain: a failing yt-dlp run retries the
                 // whole stream through ffmpeg when one exists.
                 if ffmpeg.is_none() {
@@ -358,7 +368,8 @@ where
         .arg("-c")
         .arg("copy")
         .arg(&target);
-    run_tool(cmd, timeout, on_line).await
+    // The warning is yt-dlp's; ffmpeg cannot set the flag.
+    run_tool(cmd, timeout, on_line, &mut false).await
 }
 
 /// The downloader's tool-search path: the bundled-binary directory
@@ -400,6 +411,7 @@ async fn run_tool<F>(
     mut cmd: tokio::process::Command,
     timeout: std::time::Duration,
     on_line: &mut F,
+    repackage_failed: &mut bool,
 ) -> Result<()>
 where
     F: FnMut(&str) + Send,
@@ -436,6 +448,15 @@ where
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            // The run is condemned the moment yt-dlp reports it left
+            // MPEG-TS under the .mp4 name: how it ends stops
+            // mattering (exit 0 included), and stopping now spares
+            // the rest of a transfer whose output is already wrong.
+            // The armed guard takes the tool down on return.
+            if crate::anicli::process::yt_dlp_could_not_repackage(&line) {
+                *repackage_failed = true;
+                return Err(AniError::FfmpegMissing);
+            }
             on_line(&line);
         }
         child.child_mut().wait().await.map_err(|_| AniError::Io)
