@@ -586,6 +586,30 @@ async fn a_decimal_episode_tag_resolves_through_number2() {
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
 }
 
+#[tokio::test]
+async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
+    // The canonical pool picks a count-compatible but stale
+    // candidate whose requested episode's languages 404 — an
+    // ANSWERED dead end. Exiting the whole resolution there means a
+    // later fallback title can never reach the correct candidate,
+    // although the surrounding loop exists precisely to walk those
+    // aliases. Blocks and refusals still stop the walk; transport
+    // failures stay transient.
+    let provider = Provider::new(Box::leak(Box::new([
+        ("first", the_show_browse()),
+        (
+            "second",
+            Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str()) as &str,
+        ),
+    ])));
+    // Episode 1 on the-show-77 maps to id 701, whose languages
+    // route the stub does not serve (404); the sequel's provider
+    // number 41 (kitsu 1 + offset 40) resolves via 8841.
+    let (got, _) = run(&provider, "first", &["second".to_string()], "1", None).await;
+    let resolved = got.expect("the alias walk must reach the sequel");
+    assert_eq!(resolved.slug, "the-sequel-88");
+}
+
 /// A transport whose every request hangs forever — the provider
 /// accepting connections but never answering.
 struct StallingProvider;
