@@ -32,6 +32,6 @@
 	"clear_confirm_eyebrow": "Borrar todo",
 	"clear_confirm_title_one": "¿Quitar 1 entrada del historial?",
 	"clear_confirm_title_other": "¿Quitar {count} entradas del historial?",
-	"clear_confirm_body": "Esto borra el archivo de historial compartido con ani-cli. No se puede deshacer.",
+	"clear_confirm_body": "Esto borra el historial de reproducción de ani-gui. No se puede deshacer.",
 	"clear_confirm_button": "Borrar todo"
 }

@@ -7,7 +7,7 @@
 	"refresh_button": "Refresh",
 	"clear_history_button": "Clear history",
 	"section_metadata_cache": "Metadata cache",
-	"metadata_cache_description": "Wipes the SQLite cache that holds Kitsu search results, anime details, episode lists, and title→id mappings. The ani-cli history file and your settings are not affected.",
+	"metadata_cache_description": "Wipes the SQLite cache that holds Kitsu search results, anime details, episode lists, and title→id mappings. Your watch history and your settings are not affected.",
 	"clear_metadata_cache_button": "Clear metadata cache",
 	"section_search_kitsu": "Search Kitsu",
 	"open_search_link_text": "Open Kitsu search",

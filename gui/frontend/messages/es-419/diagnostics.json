@@ -7,7 +7,7 @@
 	"refresh_button": "Actualizar",
 	"clear_history_button": "Borrar historial",
 	"section_metadata_cache": "Caché de metadatos",
-	"metadata_cache_description": "Borra la caché SQLite que guarda resultados de búsqueda de Kitsu, detalles de anime, listas de episodios y mapeos título→id. El archivo de historial de ani-cli y tus ajustes no se ven afectados.",
+	"metadata_cache_description": "Borra la caché SQLite que guarda resultados de búsqueda de Kitsu, detalles de anime, listas de episodios y mapeos título→id. Tu historial de reproducción y tus ajustes no se ven afectados.",
 	"clear_metadata_cache_button": "Borrar caché de metadatos",
 	"section_search_kitsu": "Buscar en Kitsu",
 	"open_search_link_text": "Abrir búsqueda en Kitsu",

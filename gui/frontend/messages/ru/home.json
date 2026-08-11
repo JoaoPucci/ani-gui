@@ -32,6 +32,6 @@
 	"clear_confirm_eyebrow": "Очистить всё",
 	"clear_confirm_title_one": "Удалить 1 запись из истории?",
 	"clear_confirm_title_other": "Удалить {count} записей из истории?",
-	"clear_confirm_body": "Это очистит общий с ani-cli файл истории. Действие необратимо.",
+	"clear_confirm_body": "Это очистит историю просмотров ani-gui. Действие необратимо.",
 	"clear_confirm_button": "Очистить всё"
 }

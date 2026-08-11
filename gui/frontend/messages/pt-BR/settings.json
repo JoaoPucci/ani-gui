@@ -56,7 +56,7 @@
 	"field_custom_controls_hint": "Substitui a barra nativa do Chromium pela nossa, com tema. A linha do tempo com cor de destaque combina com cada título e o botão Pular OP/Outro continua visível em tela cheia. Desligado usa a barra do Chromium (melhor para PiP e o menu de legendas nativo).",
 	"custom_controls_aria_label": "Controles de player personalizados",
 	"field_auto_update_anicli_key": "Manter ani-cli atualizado",
-	"field_auto_update_anicli_hint": "Ao iniciar, executa a auto-atualização do script ani-cli incluído quando a cópia local tem mais de um dia. Isso mantém a ferramenta de linha de comando atualizada; o ani-gui resolve os streams por conta própria, então desligar isso não muda nada na reprodução dentro do app.",
+	"field_auto_update_anicli_hint": "Ao iniciar, atualiza a cópia própria do ani-gui do script ani-cli incluído quando ela tem mais de um dia. Não mexe em um ani-cli que você tenha instalado por conta própria, e o ani-gui resolve os streams sem ele, então a reprodução não muda.",
 	"auto_update_anicli_aria_label": "Manter ani-cli atualizado",
 	"field_update_include_prereleases_key": "Incluir pré-versões na busca de atualização",
 	"field_update_include_prereleases_hint": "Quando ativo, o aviso de atualização aparece tanto para versões estáveis quanto para pré-versões (release candidates, betas). Todas as versões do ani-gui lançadas até agora são pré-versões — desligar isto mantém o aviso silencioso até a primeira versão estável.",

@@ -32,6 +32,6 @@
 	"clear_confirm_eyebrow": "Limpar tudo",
 	"clear_confirm_title_one": "Remover 1 entrada do histórico?",
 	"clear_confirm_title_other": "Remover {count} entradas do histórico?",
-	"clear_confirm_body": "Isso apaga o arquivo de histórico compartilhado com o ani-cli. Não pode ser desfeito.",
+	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
 	"clear_confirm_button": "Limpar tudo"
 }
