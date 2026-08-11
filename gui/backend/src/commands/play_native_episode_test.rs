@@ -138,7 +138,8 @@ proptest::proptest! {
         proptest::prop_assert!(tag_matches(&canonical, &padded));
         proptest::prop_assert!(tag_matches("SP", "SP"));
         proptest::prop_assert!(!tag_matches("SP", "sp"));
-        proptest::prop_assert!(!tag_matches(&canonical, &format!("{}.{}", n + 1, frac)));
+        let different = format!("{}.{frac}", n + 1);
+        proptest::prop_assert!(!tag_matches(&canonical, &different));
     }
 }
 

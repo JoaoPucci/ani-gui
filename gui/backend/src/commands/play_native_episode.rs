@@ -76,8 +76,8 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .episodes
         .iter()
         .find(|e| match e.number2.as_deref() {
-            Some(tag) => tag == target,
-            None => e.number.to_string() == target,
+            Some(tag) => tag_matches(tag, &target),
+            None => tag_matches(&e.number.to_string(), &target),
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
     let master = client
@@ -90,6 +90,22 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .quality_stream_url(&master, quality)
         .await
         .map_err(dead_end)
+}
+
+/// Whether two episode tags name the same episode. The provider can
+/// file a tag in a non-canonical string form ("041", "3.50") that
+/// the offset, cap, and extras all read numerically — the click must
+/// match the same identity. Two parses of numerically identical
+/// decimal strings round to the same f64, so equality is exact
+/// here; genuinely nonnumeric tags keep byte equality.
+fn tag_matches(tag: &str, target: &str) -> bool {
+    if tag == target {
+        return true;
+    }
+    match (tag.parse::<f64>(), target.parse::<f64>()) {
+        (Ok(a), Ok(b)) => a.total_cmp(&b) == std::cmp::Ordering::Equal,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
