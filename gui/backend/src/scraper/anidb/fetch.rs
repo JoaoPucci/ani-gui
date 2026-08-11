@@ -53,9 +53,9 @@ pub struct CurlImpersonateFetch {
 /// executables, and a `.bat`/`.cmd` entry resolved through the wider
 /// table would name something the spawn cannot treat as curl.
 #[cfg(windows)]
-const EXE_SUFFIXES: &[&str] = &["", ".exe"];
+pub(crate) const EXE_SUFFIXES: &[&str] = &["", ".exe"];
 #[cfg(not(windows))]
-const EXE_SUFFIXES: &[&str] = &[""];
+pub(crate) const EXE_SUFFIXES: &[&str] = &[""];
 
 /// Every filename `name` may carry given the platform's suffix table,
 /// bare name first.

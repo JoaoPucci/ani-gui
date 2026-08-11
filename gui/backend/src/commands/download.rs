@@ -254,14 +254,10 @@ pub(crate) async fn spawn_download_tool<F>(
 where
     F: FnMut(&str) + Send,
 {
-    let find = |name: &str| -> Option<std::path::PathBuf> {
-        std::env::split_paths(path_env)
-            .map(|d| d.join(name))
-            .find(|p| p.is_file())
-    };
     let target = dest.join(format!("{file_stem}.mp4"));
-    let ytdlp = find("yt-dlp");
-    let ffmpeg = find("ffmpeg");
+    let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
+    let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
+    let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
     if ytdlp.is_none() && ffmpeg.is_none() {
         // The typed error the frontend's install modal renders.
         return Err(AniError::FfmpegMissing);
@@ -312,6 +308,21 @@ where
         .arg("copy")
         .arg(&target);
     run_tool(cmd, timeout, on_line).await
+}
+
+/// First on-PATH hit for a tool name, widened by the platform's
+/// executable suffix table: the scan builds and tests each full path
+/// itself, so Windows command resolution (and its PATHEXT widening)
+/// never runs — without the explicit table, an installed
+/// `yt-dlp.exe` reads as missing. Bare name first within each
+/// directory, like the curl transport's resolver.
+fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path_env).find_map(|d| {
+        crate::scraper::anidb::candidate_names(name, suffixes)
+            .into_iter()
+            .map(|file| d.join(file))
+            .find(|p| p.is_file())
+    })
 }
 
 /// Run one download tool to completion, streaming stderr lines.

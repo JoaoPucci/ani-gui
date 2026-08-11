@@ -25,6 +25,7 @@ pub mod fetch;
 pub mod gated;
 pub mod parse;
 pub mod parse_api;
+pub(crate) use fetch::{candidate_names, EXE_SUFFIXES};
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
 pub use gated::GatedFetch;
 pub use parse::{
