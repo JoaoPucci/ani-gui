@@ -166,18 +166,24 @@ starting it, and delete it when you find it done.
 - **Per-episode audio-mode caps.** Availability answers whether a
   show carries the requested mode, not which of its episodes do, so
   a partly dubbed show advertises its whole listing under the dub
-  key and an undubbed episode fails when clicked — as it did under
-  every earlier provider.
+  key and an undubbed episode fails when clicked.
 
-  Deriving the real prefix was attempted and withdrawn. The provider
-  exposes audio per episode and nowhere else, so proving a cap costs
-  one request per episode; a sub-linear search cannot vouch for rows
-  it never fetched, and three review rounds each found the next
-  place where an unfetched row got counted (the tail, the front,
-  then anywhere below a bisected boundary). Whoever picks this up
-  needs a cheaper source of per-episode audio data, or a budget for
-  the full scan on listings small enough to afford it — not a
-  smarter search over the same requests.
+  This is a regression the anidb switch introduced, not longstanding
+  behaviour. allanime returned `availableEpisodesDetail` with
+  separate `sub` and `dub` arrays, so a single show fetch gave the
+  exact per-mode cap and the per-mode extras for free. anidb's
+  episode listing carries no audio at all — it lives on each
+  episode's languages row — so the same answer now costs one request
+  per episode.
+
+  Deriving the prefix anyway was attempted and withdrawn: a
+  sub-linear search cannot vouch for rows it never fetched, and
+  three review rounds each found the next place where an unfetched
+  row got counted (the tail, the front, then anywhere below a
+  bisected boundary). Whoever picks this up needs a cheaper source
+  of per-episode audio, or a budget for the full scan on listings
+  small enough to afford it — not a smarter search over the same
+  requests.
 
 ## Housekeeping
 

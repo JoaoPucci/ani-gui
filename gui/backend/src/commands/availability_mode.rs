@@ -22,9 +22,14 @@
 //!
 //! So the claim is cut to match the evidence: this says whether the
 //! show has the mode, the cap keeps coming from the listing, and a
-//! dubless episode inside a partly-dubbed show surfaces at playback
-//! as it did under every earlier provider. `docs/deferred-work.md`
-//! carries the per-episode refinement and what it would cost.
+//! dubless episode inside a partly-dubbed show surfaces at playback.
+//!
+//! That last part is a step back from allanime, which returned
+//! per-mode episode arrays in the show payload and so capped each
+//! mode exactly for one fetch. anidb publishes no audio on the
+//! listing at all, which is what makes the same answer cost a
+//! request per episode. `docs/deferred-work.md` carries the
+//! refinement and what a real fix would need.
 
 use crate::error::{AniError, Result};
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, EpisodeRef};
