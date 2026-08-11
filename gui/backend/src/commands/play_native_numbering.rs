@@ -16,16 +16,28 @@ pub fn numbering_offset(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
     }
 }
 
-/// A row's integer display identity: the integer tag when the row
-/// carries one, the slot number when untagged, `None` for a
+/// A row's integer display identity: the integer-valued tag when
+/// the row carries one, the slot number when untagged, `None` for a
 /// fractional extra. The continuation numbering can live in either
 /// place — TYBW's fourth part lists slots 41..42 bare, while other
 /// continuations restart slots at 1 and put 41..42 in the tags.
 fn integer_display(e: &crate::scraper::anidb::EpisodeRef) -> Option<u32> {
     match e.number2.as_deref() {
-        Some(tag) => tag.parse::<u32>().ok(),
+        Some(tag) => integer_tag_value(tag),
         None => Some(e.number),
     }
+}
+
+/// The integer a tag names, by numeric value — "41" and "41.0" are
+/// the same identity, exactly as [tag matching] already treats
+/// them. `None` for genuinely fractional or nonnumeric tags.
+fn integer_tag_value(tag: &str) -> Option<u32> {
+    if let Ok(n) = tag.parse::<u32>() {
+        return Some(n);
+    }
+    let v = tag.parse::<f64>().ok()?;
+    (v.is_finite() && v.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(&v))
+        .then_some(v as u32)
 }
 
 /// The entry's highest listed episode in per-entry (Kitsu) numbering
@@ -51,7 +63,7 @@ pub fn regular_episode_count(episodes: &[crate::scraper::anidb::EpisodeRef]) -> 
     let regular = episodes
         .iter()
         .filter(|e| match e.number2.as_deref() {
-            Some(tag) => tag.parse::<u32>().is_ok(),
+            Some(tag) => integer_tag_value(tag).is_some(),
             None => true,
         })
         .count();
@@ -69,7 +81,7 @@ pub fn extra_episode_tags(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Vec
     episodes
         .iter()
         .filter_map(|e| e.number2.as_deref())
-        .filter(|tag| tag.parse::<u32>().is_err())
+        .filter(|tag| integer_tag_value(tag).is_none())
         .map(|tag| per_entry_fraction(tag, offset))
         .collect()
 }
