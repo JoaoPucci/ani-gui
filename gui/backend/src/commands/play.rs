@@ -920,15 +920,62 @@ mod tests {
         }
     }
 
-    /// A sub availability row can carry fractional extras ("1061.5"
-    /// — recaps and specials the provider streams under decimal
-    /// tags). The exact-cap stamp after an ordinary integer play
-    /// replaced the whole row with extra_episodes: [], so the strip
-    /// dropped every fractional episode for the row's TTL after any
-    /// normal play. The stamp must preserve the extras it did not
-    /// re-derive.
+    /// The Codex-flagged gap: when no availability row exists — the
+    /// mount-time probe failed, or the show was never probed — a
+    /// successful play stamped extra_episodes: [], hiding every
+    /// decimal episode for the row's whole TTL. The resolve already
+    /// paid for the provider's full listing, and its fractional
+    /// display tags are exactly what the strip needs to advertise.
     #[tokio::test]
-    async fn the_exact_cap_stamp_preserves_fractional_extras() {
+    async fn the_exact_cap_stamp_derives_extras_with_no_prior_row() {
+        let state = state_with_proxy_origin();
+        let args = PlayArgs {
+            title: "x".into(),
+            episode: "3".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("42".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            args.kitsu_id.as_deref(),
+            args.mode.as_str(),
+        );
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            generation,
+            Some(1061),
+            &["1061.5".to_string()],
+        )
+        .await;
+        let key = crate::commands::availability::cache_key("42", "sub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.extra_episodes,
+            vec!["1061.5".to_string()],
+            "the stamp must advertise the listing's own fractional tags"
+        );
+        assert_eq!(row.episode_count, Some(1061));
+    }
+
+    /// The listing the stamp derives from is the same one fractional
+    /// plays resolve against, so its tags outrank whatever an older
+    /// probe stored: a stale extra the provider no longer lists is a
+    /// dead tile at play time, and preserving it would keep the
+    /// corpse alive for the row's TTL.
+    #[tokio::test]
+    async fn the_exact_cap_stamp_replaces_stale_extras_with_the_listings() {
         let state = state_with_proxy_origin();
         crate::commands::availability::write_cache_full(
             &state,
@@ -937,8 +984,8 @@ mod tests {
             None,
             &crate::commands::availability::AvailabilityResponse {
                 available: true,
-                episode_count: Some(1061),
-                extra_episodes: vec!["1061.5".into()],
+                episode_count: Some(1060),
+                extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
             },
@@ -960,7 +1007,15 @@ mod tests {
             args.kitsu_id.as_deref(),
             args.mode.as_str(),
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(1061)).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            generation,
+            Some(1061),
+            &["1061.5".to_string()],
+        )
+        .await;
         let key = crate::commands::availability::cache_key("42", "sub");
         let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
             .expect("cache read")
@@ -970,7 +1025,7 @@ mod tests {
         assert_eq!(
             row.extra_episodes,
             vec!["1061.5".to_string()],
-            "the stamp must not clobber fractional extras"
+            "the freshly derived tags replace the stale cached ones"
         );
         assert_eq!(row.episode_count, Some(1061));
     }
@@ -1817,7 +1872,7 @@ mod tests {
         crate::commands::availability::write_cache(&state, "race-1", "sub", true);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, generation, None).await;
+        stamp_availability_after_native(&state, &args, false, generation, None, &[]).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -1858,7 +1913,7 @@ mod tests {
             Some("cap-1"),
             "sub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(2)).await;
+        stamp_availability_after_native(&state, &args, true, generation, Some(2), &[]).await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {
@@ -1900,7 +1955,7 @@ mod tests {
             Some("dub-1"),
             "dub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(12)).await;
+        stamp_availability_after_native(&state, &args, true, generation, Some(12), &[]).await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {

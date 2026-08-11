@@ -587,6 +587,19 @@ async fn a_decimal_episode_tag_resolves_through_number2() {
 }
 
 #[tokio::test]
+async fn the_resolve_carries_the_listings_fractional_tags() {
+    // The availability stamp after a successful play writes from
+    // what the resolve already paid for. The listing's decimal
+    // display tags are the extras that stamp must advertise — and
+    // they are the very tags a later fractional play will match
+    // against number2, so no other source can be more authoritative.
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let (got, _) = run(&provider, "the show", &[], "2", Some(3)).await;
+    let resolved = got.expect("resolved");
+    assert_eq!(resolved.extra_tags, vec!["2.5".to_string()]);
+}
+
+#[tokio::test]
 async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
     // The canonical pool picks a count-compatible but stale
     // candidate whose requested episode's languages 404 — an

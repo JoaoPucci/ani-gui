@@ -13,7 +13,77 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
         .collect()
 }
 
+#[test]
+fn extras_are_the_non_integer_display_tags_in_listing_order() {
+    // An integer number2 is a continuation's cumulative re-display,
+    // not an extra; every non-integer tag is playable verbatim
+    // through the resolve's number2 match and must be advertised.
+    let eps = vec![
+        EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        },
+        EpisodeRef {
+            id: 2,
+            number: 2,
+            number2: Some("42".into()),
+        },
+        EpisodeRef {
+            id: 3,
+            number: 3,
+            number2: Some("2.5".into()),
+        },
+        EpisodeRef {
+            id: 4,
+            number: 4,
+            number2: Some("1061.5".into()),
+        },
+    ];
+    assert_eq!(
+        extra_episode_tags(&eps),
+        vec!["2.5".to_string(), "1061.5".to_string()]
+    );
+}
+
 proptest::proptest! {
+    /// Interleave integer re-displays, fractional tags, and untagged
+    /// rows in any order: the extras are exactly the fractional tags,
+    /// in listing order, built here by construction rather than by
+    /// re-running the filter under test.
+    #[test]
+    fn extras_are_exactly_the_fractional_tags(
+        slots in proptest::collection::vec(
+            proptest::prop_oneof![
+                proptest::strategy::Just(None),
+                proptest::strategy::Strategy::prop_map(
+                    "[0-9]{1,4}", |s| Some((false, s))
+                ),
+                proptest::strategy::Strategy::prop_map(
+                    "[0-9]{1,4}\\.[0-9]", |s| Some((true, s))
+                ),
+            ],
+            0..24,
+        ),
+    ) {
+        let eps: Vec<EpisodeRef> = slots
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| EpisodeRef {
+                id: i as u64,
+                number: u32::try_from(i).expect("small index") + 1,
+                number2: slot.as_ref().map(|(_, s)| s.clone()),
+            })
+            .collect();
+        let expected: Vec<String> = slots
+            .iter()
+            .flatten()
+            .filter(|(fractional, _)| *fractional)
+            .map(|(_, s)| s.clone())
+            .collect();
+        proptest::prop_assert_eq!(extra_episode_tags(&eps), expected);
+    }
+
     /// Over arbitrary episode vectors — any order, duplicates, gaps,
     /// extremes: an entry whose first listed number is above 1 is a
     /// continuation and shifts by first-1; per-entry listings (a 0
