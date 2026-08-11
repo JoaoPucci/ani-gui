@@ -1416,6 +1416,7 @@ mod tests {
                 media_kind: MediaKind::Hls,
                 show_id: String::new(),
                 show_title: String::new(),
+                resolved_slot: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1460,6 +1461,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1512,6 +1514,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1584,6 +1587,7 @@ mod tests {
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
+                resolved_slot: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1678,6 +1682,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "seq-show".into(),
                 show_title: "Some Sequel (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -1761,6 +1766,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "seq2-show".into(),
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -1855,6 +1861,7 @@ mod tests {
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
+                resolved_slot: None,
             },
         );
 
@@ -1953,6 +1960,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2080,6 +2088,7 @@ mod tests {
                 media_kind: MediaKind::Hls,
                 show_id: "abc".into(),
                 show_title: "Some Show (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();

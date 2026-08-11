@@ -129,6 +129,13 @@ pub struct CachedResolution {
     /// stores in column three. Empty on legacy rows.
     #[serde(default)]
     pub show_title: String,
+    /// The resolved row's provider slot — what the cache-hit history
+    /// writer stores so a replay never depends on the sidecar's
+    /// single display stamp still describing this episode. `None` on
+    /// rows written before the field existed; those fall back to the
+    /// stamp-aware translation.
+    #[serde(default)]
+    pub resolved_slot: Option<u32>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -290,6 +297,7 @@ mod tests {
             media_kind: MediaKind::Mp4,
             show_id: "vDTSJHSpYnrkZnAvG".into(),
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
+            resolved_slot: None,
         }
     }
 

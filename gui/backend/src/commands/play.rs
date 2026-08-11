@@ -191,11 +191,18 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     // stamped by the fresh resolve that wrote this cache row.
     let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
-        ep_no: crate::commands::anidb_offset::write_ep_no(
-            state,
-            &cached.show_id,
-            &args.episode,
-            offset,
+        // The row's own slot when it carries one; older rows fall
+        // back to the stamp-aware translation.
+        ep_no: cached.resolved_slot.map_or_else(
+            || {
+                crate::commands::anidb_offset::write_ep_no(
+                    state,
+                    &cached.show_id,
+                    &args.episode,
+                    offset,
+                )
+            },
+            |slot| slot.to_string(),
         ),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
@@ -789,6 +796,7 @@ where
         media_kind: kind,
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
+        resolved_slot: Some(native.resolved_slot),
     };
     play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
 
@@ -1143,6 +1151,7 @@ mod tests {
             media_kind: kind,
             show_id: String::new(),
             show_title: String::new(),
+            resolved_slot: None,
         }
     }
 
@@ -1307,6 +1316,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
     }
@@ -1343,7 +1353,7 @@ mod tests {
     /// 2.5 replaces the stamp, and the 1.5 replay would fall back
     /// to the display tag ani-cli cannot grep. The cache row itself
     /// carries the resolved slot, so the replay writes it directly.
-    #[tokio::test]
+    #[test]
     fn cache_hit_history_writes_the_cached_slot() {
         let state = state_with_proxy_origin();
         let td = tempfile::tempdir().expect("tempdir");
@@ -1557,6 +1567,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let cfg = external_cfg();
