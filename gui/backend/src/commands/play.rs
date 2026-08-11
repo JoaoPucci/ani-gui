@@ -914,6 +914,61 @@ mod tests {
         }
     }
 
+    /// A sub availability row can carry fractional extras ("1061.5"
+    /// — recaps and specials the provider streams under decimal
+    /// tags). The exact-cap stamp after an ordinary integer play
+    /// replaced the whole row with extra_episodes: [], so the strip
+    /// dropped every fractional episode for the row's TTL after any
+    /// normal play. The stamp must preserve the extras it did not
+    /// re-derive.
+    #[tokio::test]
+    async fn the_exact_cap_stamp_preserves_fractional_extras() {
+        let state = state_with_proxy_origin();
+        crate::commands::availability::write_cache_full(
+            &state,
+            "42",
+            "sub",
+            None,
+            &crate::commands::availability::AvailabilityResponse {
+                available: true,
+                episode_count: Some(1061),
+                extra_episodes: vec!["1061.5".into()],
+                episode_count_approximate: false,
+                gate_refused: false,
+            },
+        );
+        let args = PlayArgs {
+            title: "x".into(),
+            episode: "3".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("42".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            args.kitsu_id.as_deref(),
+            args.mode.as_str(),
+        );
+        stamp_availability_after_native(&state, &args, true, generation, Some(1061)).await;
+        let key = crate::commands::availability::cache_key("42", "sub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.extra_episodes,
+            vec!["1061.5".to_string()],
+            "the stamp must not clobber fractional extras"
+        );
+        assert_eq!(row.episode_count, Some(1061));
+    }
+
     /// anidb distress must not refuse allanime work, nor allanime
     /// health clear an anidb pause: the two providers share no
     /// upstream, so a shared gate lets one manufacture or cancel the
