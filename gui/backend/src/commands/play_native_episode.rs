@@ -31,21 +31,27 @@ pub async fn resolve_episode<F: AnidbFetch>(
         error,
         clean_miss: false,
     };
-    let ep = match episode.trim().parse::<u32>() {
-        Ok(n) => {
-            let n = n.saturating_add(numbering_offset(&picked.episodes));
-            picked.episodes.iter().find(|e| e.number == n)
-        }
-        // Not an integer: the fractional tags availability
-        // advertises ("1061.5" recaps) match the provider's own
-        // display tag verbatim — decimal tags are absolute, so the
-        // continuation offset never applies to them.
-        Err(_) => picked
-            .episodes
-            .iter()
-            .find(|e| e.number2.as_deref() == Some(episode.trim())),
-    }
-    .ok_or_else(|| dead_end(AniError::NoResults))?;
+    // A row's identity is its effective display tag — number2 when
+    // present, the integer slot otherwise. A recap occupying slot 4
+    // under tag "3.5" is not episode 4, and the true episode 4 may
+    // sit a slot later under tag "4". Integer requests map through
+    // the continuation offset into the same display space the tags
+    // live in; fractional requests carry the provider's tag
+    // verbatim, so the offset never applies to them.
+    let target = match episode.trim().parse::<u32>() {
+        Ok(n) => n
+            .saturating_add(numbering_offset(&picked.episodes))
+            .to_string(),
+        Err(_) => episode.trim().to_string(),
+    };
+    let ep = picked
+        .episodes
+        .iter()
+        .find(|e| match e.number2.as_deref() {
+            Some(tag) => tag == target,
+            None => e.number.to_string() == target,
+        })
+        .ok_or_else(|| dead_end(AniError::NoResults))?;
     let master = client
         .master_playlist_url(ep.id, mode)
         .await

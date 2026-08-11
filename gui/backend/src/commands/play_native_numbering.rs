@@ -22,7 +22,18 @@ pub fn numbering_offset(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
 /// episodes that don't exist.
 pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Option<u32> {
     let offset = numbering_offset(episodes);
-    episodes.iter().map(|e| e.number).max().map(|m| m - offset)
+    episodes
+        .iter()
+        .filter_map(|e| match e.number2.as_deref() {
+            // The display tag is the row's identity: integer tags
+            // count toward the cap, fractional ones are extras and
+            // must not let a recap's slot advertise an episode no
+            // request can resolve.
+            Some(tag) => tag.parse::<u32>().ok(),
+            None => Some(e.number),
+        })
+        .max()
+        .map(|m| m.saturating_sub(offset))
 }
 
 /// The provider's fractional display tags, in listing order — what
