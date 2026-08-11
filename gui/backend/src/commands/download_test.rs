@@ -396,6 +396,52 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_busy_executable_is_retried_rather_than_failed() {
+    // exec of a file another process still holds open for WRITING
+    // fails with ETXTBSY. It is transient by construction — the
+    // writer closes microseconds later (an auto-update re-staging a
+    // binary, the suite staging stubs) — so the spawn retries
+    // instead of reporting the transient network verdict over a tool
+    // that is about to be perfectly usable.
+    //
+    // A held write handle reproduces it exactly: the spawn cannot
+    // exec while it lives, and must succeed once it is dropped.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let marker = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("touch '{}'; exit 0", marker.display()),
+    );
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(bin.path().join("yt-dlp"))
+        .expect("hold the tool open for writing");
+    let releaser = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        drop(held);
+    });
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(20),
+        &mut |_l: &str| {},
+    )
+    .await;
+    releaser.await.expect("releaser");
+    assert!(
+        got.is_ok(),
+        "a busy executable must be waited out, not reported as a failure: {got:?}"
+    );
+    assert!(marker.exists(), "the retried spawn actually ran the tool");
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn the_download_tool_runs_in_a_normalized_environment() {
     // §5's subprocess contract: nothing the child prints may depend
     // on the terminal that launched the backend. yt-dlp and ffmpeg
