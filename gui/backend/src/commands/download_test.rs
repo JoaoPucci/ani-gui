@@ -462,7 +462,13 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     );
 }
 
-#[cfg(unix)]
+// Linux only, deliberately: ETXTBSY on exec of a file another
+// process holds open for writing is a Linux guarantee. macOS does not
+// report it — the spawn there simply succeeds — so the retry these
+// two tests drive is unreachable on that platform and asserting it
+// would be asserting the harness, not the code. The retry itself is
+// platform-independent; only this way of provoking it is not.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
     // The busy retry sits before the child exists, so the transfer
@@ -496,7 +502,7 @@ async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn a_busy_executable_is_retried_rather_than_failed() {
     // exec of a file another process still holds open for WRITING
