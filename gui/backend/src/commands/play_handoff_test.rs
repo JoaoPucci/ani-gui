@@ -42,8 +42,9 @@ async fn stub_provider() -> wiremock::MockServer {
     wiremock::Mock::given(method("GET"))
         .and(path("/browse"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/handoff-show-7"><img alt="Handoff Show"/></a>"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/handoff-show-7"><img alt="Handoff Show"/></a>"#,
+            ),
         )
         .mount(&server)
         .await;
@@ -57,18 +58,22 @@ async fn stub_provider() -> wiremock::MockServer {
         .await;
     wiremock::Mock::given(method("GET"))
         .and(path("/api/frontend/episode/71/languages"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(format!(
-            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/embed/71"}}]}}"#,
-            server.uri()
-        )))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/embed/71"}}]}}"#,
+                server.uri()
+            )),
+        )
         .mount(&server)
         .await;
     wiremock::Mock::given(method("GET"))
         .and(path("/embed/71"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(format!(
-            "player.setup({{ file: '{}/m/master.m3u8' }});",
-            server.uri()
-        )))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                "player.setup({{ file: '{}/m/master.m3u8' }});",
+                server.uri()
+            )),
+        )
         .mount(&server)
         .await;
     wiremock::Mock::given(method("GET"))
@@ -107,7 +112,7 @@ async fn the_handoff_resolves_through_the_native_walk() {
         launch.stream_url
     );
     assert_eq!(
-        launch.referer, "",
+        launch.referer, None,
         "anidb streams carry no referer requirement, as the embedded path already records"
     );
     assert_eq!(

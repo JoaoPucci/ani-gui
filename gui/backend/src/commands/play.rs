@@ -308,6 +308,17 @@ pub(super) async fn stamp_availability_after_native(
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach the provider by any transport.
+pub(crate) fn anidb_client_for<'a>(
+    state: &'a AppState,
+    priority: crate::scraper::gate::ScrapePriority,
+) -> Result<
+    crate::scraper::anidb::AnidbClient<
+        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+    >,
+> {
+    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
+}
+
 fn anidb_client<'a>(
     state: &'a AppState,
     priority: crate::scraper::gate::ScrapePriority,
