@@ -664,6 +664,86 @@ impl AnidbFetch for ChainRef<'_> {
     }
 }
 
+/// First alias dies on transport; the second answers a clean
+/// no-results page — and stamps when it was asked.
+struct FirstAliasDies {
+    second_search_at: Mutex<Option<tokio::time::Instant>>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for FirstAliasDies {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("browse?q=") {
+            if url.contains("dead+alias") {
+                return Err(crate::error::AniError::Network);
+            }
+            *self.second_search_at.lock().expect("stamp") = Some(tokio::time::Instant::now());
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn the_transient_verdict_carries_the_failing_attempts_instant() {
+    // The aggregate Network verdict is evidence about the attempt
+    // that FAILED, not about whatever the chain fetched last: a
+    // recovery recorded between the failing alias and a later clean
+    // one must be able to discard the stale failure, and it keys on
+    // the instant the record carries. The error therefore names the
+    // failing attempt's own moment.
+    let fetch = FirstAliasDies {
+        second_search_at: Mutex::new(None),
+    };
+    let client = AnidbClient::new(&fetch);
+    let ne = resolve_native(
+        &client,
+        NativeResolveRequest {
+            title: "dead alias",
+            alt_titles: &["clean alias".to_string()],
+            episode: "1",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: None,
+            subtype: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect_err("nothing resolved");
+    assert!(matches!(ne.error, crate::error::AniError::Network));
+    let failed_at = ne
+        .failed_at
+        .expect("the aggregate verdict names its failing attempt");
+    let second = self::second_stamp(&fetch);
+    assert!(
+        failed_at <= second,
+        "the stamp must be the failing attempt, not the chain's tail"
+    );
+}
+
+fn second_stamp(fetch: &FirstAliasDies) -> tokio::time::Instant {
+    fetch
+        .second_search_at
+        .lock()
+        .expect("stamp")
+        .expect("the walk reached the second alias")
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for &FirstAliasDies {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        (*self).get(url).await
+    }
+}
+
 /// A pool whose every episodes probe dies mid-fetch — the pick's
 /// own transport verdict, distinct from the answered 404s the
 /// stale-slug test drives.
