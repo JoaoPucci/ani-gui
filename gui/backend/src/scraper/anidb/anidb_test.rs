@@ -770,6 +770,14 @@ impl AnidbFetch for MasterOnly {
                 body: fixture("master_op.m3u8"),
             });
         }
+        if url == "https://cdn.example/op/720/index.m3u8" {
+            self.fetches
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(FetchResponse {
+                status: 200,
+                body: "#EXTM3U\n".into(),
+            });
+        }
         Ok(FetchResponse {
             status: 404,
             body: String::new(),
@@ -788,7 +796,29 @@ async fn quality_selection_returns_the_matching_variant() {
         .await
         .expect("served master");
     assert_eq!(url, "https://cdn.example/op/720/index.m3u8");
-    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // Master and the selected rendition each validated once: a
+    // rendition returned unfetched can be dead while the master is
+    // healthy, and the resolver would record success and cache a
+    // session the proxy cannot load.
+    assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_dead_rendition_falls_back_to_the_served_master() {
+    // 1080 is listed in the master but the stub serves only the 720
+    // rendition: the selected 1080 URL 404s. The master itself was
+    // served, so playback stays adaptive on the master instead of
+    // reporting success with a dead rendition — or failing a play
+    // the adaptive stream could carry.
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let client = AnidbClient::new(MasterOnly {
+        fetches: fetches.clone(),
+    });
+    let url = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "1080")
+        .await
+        .expect("the served master carries the play");
+    assert_eq!(url, "https://cdn.example/op/master.m3u8");
 }
 
 #[tokio::test]
