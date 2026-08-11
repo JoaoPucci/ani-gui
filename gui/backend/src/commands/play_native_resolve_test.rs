@@ -586,6 +586,178 @@ async fn a_decimal_episode_tag_resolves_through_number2() {
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
 }
 
+/// One matched show whose episode chain answers as configured: the
+/// browse and episodes routes serve a healthy pick, the languages
+/// route answers with `chain` — a status for an HTTP answer, `None`
+/// for a transport death. The query log tells the walk-continuation
+/// story.
+struct ChainFate {
+    chain: Option<u16>,
+    log: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl AnidbFetch for ChainFate {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        self.log.lock().expect("log").push(url.to_string());
+        if url.contains("browse?q=") {
+            if url.contains("the+show") {
+                return Ok(FetchResponse {
+                    status: 200,
+                    body: browse_page(&[("the-show-77", "The Show")]),
+                });
+            }
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
+            });
+        }
+        if url.contains("/api/frontend/anime/77/episodes") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2}]}"#.into(),
+            });
+        }
+        if url.contains("/api/frontend/episode/702/languages") {
+            return match self.chain {
+                Some(status) => Ok(FetchResponse {
+                    status,
+                    body: String::new(),
+                }),
+                None => Err(crate::error::AniError::Network),
+            };
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+async fn run_chain(fate: &ChainFate) -> std::result::Result<NativeResolved, NativeError> {
+    let client = AnidbClient::new(ChainRef(fate));
+    resolve_native(
+        &client,
+        NativeResolveRequest {
+            title: "the show",
+            alt_titles: &["fallback name".to_string()],
+            episode: "2",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: None,
+            subtype: None,
+        },
+        &mut |_| {},
+    )
+    .await
+}
+
+struct ChainRef<'a>(&'a ChainFate);
+
+#[async_trait::async_trait]
+impl AnidbFetch for ChainRef<'_> {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        self.0.get(url).await
+    }
+}
+
+/// A pool whose every episodes probe dies mid-fetch — the pick's
+/// own transport verdict, distinct from the answered 404s the
+/// stale-slug test drives.
+struct DeadProbes;
+
+#[async_trait::async_trait]
+impl AnidbFetch for DeadProbes {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("browse?q=") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: browse_page(&[("dead-66", "Dead Pool")]),
+            });
+        }
+        Err(crate::error::AniError::Network)
+    }
+}
+
+#[tokio::test]
+async fn a_transport_dead_pick_leaves_a_transient_verdict() {
+    // The walk hears the pick's transport death as weather, not as
+    // an answer: the exhausted walk reports the transient Network
+    // verdict, never the persistable miss.
+    let client = AnidbClient::new(DeadProbes);
+    let ne = resolve_native(
+        &client,
+        NativeResolveRequest {
+            title: "dead pool",
+            alt_titles: &[],
+            episode: "1",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: None,
+            subtype: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, crate::error::AniError::Network),
+        "expected the transient verdict, got {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+}
+
+#[tokio::test]
+async fn a_blocked_episode_chain_stops_the_walk() {
+    // A 429 on the languages fetch is the provider blocking this
+    // client, and each further alias would repeat the burst. The
+    // walk must end with the refusal's identity — never a clean
+    // miss — and the fallback title must never be searched.
+    let fate = ChainFate {
+        chain: Some(429),
+        log: std::sync::Mutex::new(Vec::new()),
+    };
+    let ne = run_chain(&fate).await.expect_err("the block surfaces");
+    assert!(
+        matches!(ne.error, crate::error::AniError::Upstream { status: 429 }),
+        "expected the refusal verbatim, got {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    let log = fate.log.lock().expect("log");
+    assert!(
+        !log.iter().any(|u| u.contains("fallback")),
+        "a blocked chain must not walk on to the next alias: {log:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_transport_death_in_the_episode_chain_stays_transient() {
+    // A connection dying mid-chain proves nothing about the show:
+    // the walk moves to the next alias, and an exhausted walk with
+    // a transport death in it reports the transient Network verdict
+    // the caller must never persist.
+    let fate = ChainFate {
+        chain: None,
+        log: std::sync::Mutex::new(Vec::new()),
+    };
+    let ne = run_chain(&fate).await.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, crate::error::AniError::Network),
+        "expected the transient verdict, got {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    let log = fate.log.lock().expect("log");
+    assert!(
+        log.iter().any(|u| u.contains("fallback")),
+        "a transport death keeps the walk going: {log:?}"
+    );
+}
+
 #[tokio::test]
 async fn the_resolve_carries_the_listings_fractional_tags() {
     // The availability stamp after a successful play writes from
