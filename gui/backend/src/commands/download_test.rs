@@ -332,6 +332,44 @@ async fn a_range_download_stops_at_the_first_failing_episode() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_finds_the_bundled_tools_without_a_system_install() {
+    // Packaged builds place yt-dlp (and on Windows ffmpeg) under
+    // resources/bin — state.bundled_bin. A user with no global
+    // install must not see FfmpegMissing: the bundle joins the tool
+    // search ahead of PATH, exactly as the subprocess path prepended
+    // it through its options and the curl resolver ranks its
+    // bundled directory first.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &server.uri());
+    let bundle = tempfile::tempdir().expect("bundle");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bundle.path(),
+        "yt-dlp",
+        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+    );
+    state.bundled_bin = Some(bundle.path().to_path_buf());
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, "", |_p| {})
+        .await
+        .expect("the bundled tool downloads");
+    let calls = std::fs::read_to_string(&log).expect("the bundled tool ran");
+    assert!(
+        calls.contains("Range Show Episode 1.mp4"),
+        "the bundled yt-dlp carried the transfer: {calls}"
+    );
+}
+
 #[tokio::test]
 async fn a_range_download_surfaces_the_walks_clean_miss() {
     // The walk's own verdicts pass through untranslated: an
