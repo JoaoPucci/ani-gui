@@ -86,6 +86,10 @@ pub struct EpisodeRef {
     pub id: u64,
     /// 1-based episode number as shown to users.
     pub number: u32,
+    /// The provider's display tag when it differs from `number` —
+    /// recaps and specials stream under decimal tags ("1061.5"),
+    /// and a decimal play request matches this field verbatim.
+    pub number2: Option<String>,
 }
 
 /// One playable embed for an episode, by audio language.

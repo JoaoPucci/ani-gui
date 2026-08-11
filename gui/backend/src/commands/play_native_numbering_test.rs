@@ -8,6 +8,7 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
         .map(|(i, n)| EpisodeRef {
             id: i as u64,
             number: *n,
+            number2: None,
         })
         .collect()
 }

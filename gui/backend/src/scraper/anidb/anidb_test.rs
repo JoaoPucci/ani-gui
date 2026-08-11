@@ -212,15 +212,18 @@ fn parse_episodes_yields_id_number_pairs_in_order() {
         vec![
             EpisodeRef {
                 id: 9001,
-                number: 1
+                number: 1,
+                number2: None,
             },
             EpisodeRef {
                 id: 9002,
-                number: 2
+                number: 2,
+                number2: None,
             },
             EpisodeRef {
                 id: 9003,
-                number: 3
+                number: 3,
+                number2: None,
             },
         ]
     );

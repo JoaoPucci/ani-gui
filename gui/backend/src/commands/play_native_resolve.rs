@@ -266,16 +266,21 @@ pub async fn resolve_episode<F: AnidbFetch>(
         error,
         clean_miss: false,
     };
-    let n: u32 = episode
-        .trim()
-        .parse()
-        .map_err(|_| dead_end(AniError::NoResults))?;
-    let n = n.saturating_add(numbering_offset(&picked.episodes));
-    let ep = picked
-        .episodes
-        .iter()
-        .find(|e| e.number == n)
-        .ok_or_else(|| dead_end(AniError::NoResults))?;
+    let ep = match episode.trim().parse::<u32>() {
+        Ok(n) => {
+            let n = n.saturating_add(numbering_offset(&picked.episodes));
+            picked.episodes.iter().find(|e| e.number == n)
+        }
+        // Not an integer: the fractional tags availability
+        // advertises ("1061.5" recaps) match the provider's own
+        // display tag verbatim — decimal tags are absolute, so the
+        // continuation offset never applies to them.
+        Err(_) => picked
+            .episodes
+            .iter()
+            .find(|e| e.number2.as_deref() == Some(episode.trim())),
+    }
+    .ok_or_else(|| dead_end(AniError::NoResults))?;
     let master = client
         .master_playlist_url(ep.id, mode)
         .await

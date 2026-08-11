@@ -96,6 +96,13 @@ impl AnidbFetch for Provider {
                     .into(),
             });
         }
+        if url.contains("/api/frontend/episode/725/languages") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
+                    .into(),
+            });
+        }
         if url.contains("/api/frontend/episode/702/languages") {
             return Ok(FetchResponse {
                 status: 200,

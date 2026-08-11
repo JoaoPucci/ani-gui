@@ -18,6 +18,15 @@ pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
     struct Row {
         id: u64,
         number: u32,
+        #[serde(default)]
+        number2: Option<serde_json::Value>,
+    }
+    fn tag(v: serde_json::Value) -> Option<String> {
+        match v {
+            serde_json::Value::Null => None,
+            serde_json::Value::String(s) => Some(s),
+            other => Some(other.to_string()),
+        }
     }
     #[derive(serde::Deserialize)]
     struct Envelope {
@@ -32,6 +41,7 @@ pub fn parse_episodes(json: &str) -> Result<Vec<EpisodeRef>> {
         .map(|r| EpisodeRef {
             id: r.id,
             number: r.number,
+            number2: r.number2.and_then(tag),
         })
         .collect())
 }
