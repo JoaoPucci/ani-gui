@@ -15,8 +15,12 @@ use crate::error::Result;
 /// Resolve `args` through the native walk and describe the launch.
 ///
 /// A handoff is always a click, never a prefetch, so the walk runs at
-/// interactive priority. The breaker hears the resolution's outcome
-/// under the same mapping the embedded path uses.
+/// interactive priority, the breaker hears the resolution's outcome
+/// under the same mapping the embedded path uses, and the watch is
+/// recorded: sending an episode to mpv or Syncplay is as much a watch
+/// as playing it in the window, and Continue Watching should show it
+/// either way. A failed history write is logged and swallowed — the
+/// stream is resolved and the user is waiting on their player.
 ///
 /// # Errors
 /// The walk's typed verdicts — `NoResults` for a clean miss, the
@@ -48,6 +52,19 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
         state.anidb_gate.record(outcome, observed_at);
     }
     let native = native.map_err(|ne| ne.error)?;
+    let entry = crate::history::HistoryEntry {
+        ep_no: args.episode.clone(),
+        id: native.slug.clone(),
+        title: native.title.clone(),
+    };
+    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+        tracing::warn!(
+            title = %args.title,
+            episode = %args.episode,
+            error = ?e,
+            "handoff: history write failed after native resolve",
+        );
+    }
     Ok(LaunchArgs {
         stream_url: native.master_url,
         // anidb's streams carry no referer requirement — the
