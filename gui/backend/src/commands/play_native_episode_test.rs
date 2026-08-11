@@ -55,6 +55,35 @@ fn show(episodes: Vec<EpisodeRef>) -> PickedShow {
 }
 
 #[tokio::test]
+async fn a_tagged_continuation_maps_per_entry_numbers() {
+    // The cumulative numbering lives in the tags while slots restart
+    // at 1: per-entry request 1 is display 41.
+    let picked = show(vec![ep(10, 1, Some("41")), ep(11, 2, Some("42"))]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
+    let url = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect("per-entry 1 is display 41");
+    assert_eq!(url, "https://cdn.example/x/master.m3u8");
+}
+
+#[tokio::test]
+async fn a_fractional_request_maps_through_the_offset_too() {
+    // The strip advertises per-entry "1.5" for the provider's
+    // "41.5" recap; the click must translate back the same way the
+    // advertisement translated forward.
+    let picked = show(vec![
+        ep(10, 1, Some("41")),
+        ep(12, 2, Some("41.5")),
+        ep(11, 3, Some("42")),
+    ]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
+    let url = resolve_episode(&client, &picked, "1.5", "sub", "best")
+        .await
+        .expect("per-entry 1.5 is display 41.5");
+    assert_eq!(url, "https://cdn.example/x/master.m3u8");
+}
+
+#[tokio::test]
 async fn an_integer_request_skips_the_recap_in_its_slot() {
     // The captured provider shape: a recap occupies integer slot 4
     // (number: 4) while its displayed identity is "3.5" (number2),

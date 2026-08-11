@@ -44,6 +44,71 @@ proptest::proptest! {
 }
 
 #[test]
+fn offsets_derive_from_display_identities() {
+    // A continuation can carry its cumulative numbering in the tags
+    // while the integer slots restart at 1: {number: 1, number2:
+    // "41"} is display episode 41. An offset of zero would make the
+    // whole cour unplayable — request 1 searches for tag "1" and
+    // the cap reads 41.
+    let eps = vec![
+        EpisodeRef {
+            id: 10,
+            number: 1,
+            number2: Some("41".into()),
+        },
+        EpisodeRef {
+            id: 11,
+            number: 2,
+            number2: Some("42".into()),
+        },
+    ];
+    assert_eq!(numbering_offset(&eps), 40);
+    assert_eq!(kitsu_episode_cap(&eps), Some(2));
+}
+
+#[test]
+fn fractional_extras_are_advertised_in_per_entry_numbering() {
+    // Offset 40: the provider's "41.5" recap is per-entry "1.5" —
+    // the numbering every advertised episode uses. Verbatim, the
+    // extra falls outside the two-episode cour's page and vanishes.
+    let eps = vec![
+        EpisodeRef {
+            id: 10,
+            number: 1,
+            number2: Some("41".into()),
+        },
+        EpisodeRef {
+            id: 12,
+            number: 2,
+            number2: Some("41.5".into()),
+        },
+        EpisodeRef {
+            id: 11,
+            number: 3,
+            number2: Some("42".into()),
+        },
+    ];
+    assert_eq!(extra_episode_tags(&eps), vec!["1.5".to_string()]);
+}
+
+proptest::proptest! {
+    /// Advertising and resolving are inverses: a provider fraction
+    /// whose integer part sits above the offset translates to
+    /// per-entry form and back to exactly itself.
+    #[test]
+    fn fraction_translation_round_trips(
+        n in 1u32..50_000,
+        frac in 0u32..10,
+        offset in 0u32..40_000,
+    ) {
+        let provider = format!("{}.{frac}", n + offset);
+        let advertised = per_entry_fraction(&provider, offset);
+        proptest::prop_assert_eq!(&advertised, &format!("{n}.{frac}"));
+        proptest::prop_assert_eq!(provider_fraction(&advertised, offset), provider);
+    }
+}
+
+#[test]
 fn the_cap_counts_display_identities_not_integer_slots() {
     // The recap in slot 3 displays "2.5": the show has two real
     // episodes plus a fractional extra, and a cap of 3 would
