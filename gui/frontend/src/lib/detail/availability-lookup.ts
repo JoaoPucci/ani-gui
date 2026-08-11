@@ -25,6 +25,7 @@ export interface AvailabilitySubject {
 	year?: number;
 	kitsuId: string;
 	status?: string;
+	subtype?: string;
 }
 
 export interface AvailabilityLookupDeps {
@@ -60,7 +61,8 @@ export function startAvailabilityLookup(
 			episode_count: subject.episodeCount,
 			year: subject.year,
 			kitsu_id: subject.kitsuId,
-			status: subject.status
+			status: subject.status,
+			subtype: subject.subtype
 		})
 		.then((r) => {
 			if (cancelled) return;

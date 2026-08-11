@@ -1032,7 +1032,8 @@
 					episodeCount: d.episode_count ?? undefined,
 					year: yearFromKitsuRef(d) ?? undefined,
 					kitsuId: d.id,
-					status: d.status ?? undefined
+					status: d.status ?? undefined,
+					subtype: d.subtype ?? undefined
 				},
 				mode,
 				{
