@@ -79,9 +79,12 @@ starting it, and delete it when you find it done.
   anidb resolver.** Embedded playback already resolves natively —
   browse search, direct candidate pick, episode-to-master resolution,
   the numbering-offset bridge into `ani-hsts` — and the `-S` index
-  handoff is gone from the play path. Still on the script: the
-  availability probes, downloads, the external player and Syncplay
-  launch paths, and the auto-updater's reasons for existing. The
+  handoff is gone from the play path. Still on the script: downloads,
+  the external player and Syncplay launch paths, and the
+  auto-updater's reasons for existing. Availability never spawns the
+  script — it runs the Rust picker — but that picker still queries
+  allanime, so its remaining work is the provider migration to the
+  native anidb client, not a script removal. The
   botan shim machinery (`anicli/botan_shim.rs`, the PATH provisioning
   in `app.rs`) is dead weight 5.0 never invokes.
 
