@@ -3,7 +3,6 @@
 //! CCN — per `project_crap_inline_test_gotcha`.
 
 use super::*;
-
 /// Serializes tests that mutate process-global env (PATH) with
 /// tests that fork subprocesses (whose runtime resolves PATH at
 /// spawn time on some kernels). Without this lock the suite flaked
@@ -173,42 +172,6 @@ fn debug_opts_dl(stub_ani_cli: PathBuf) -> DebugOptions {
     opts
 }
 
-#[test]
-fn tree_kill_args_unix_addresses_the_process_group() {
-    let (prog, args) = tree_kill_args(1234, false).expect("unix tree kill");
-    assert_eq!(prog, "kill");
-    assert_eq!(args, vec!["-9", "--", "-1234"]);
-}
-
-#[test]
-fn tree_kill_args_windows_kills_the_tree_by_parent_pid() {
-    // Windows is a shipped target (package:win) and kill_on_drop
-    // only terminates the Git Bash parent there — cancelling a
-    // download must take aria2c / ffmpeg / yt-dlp down with it.
-    // taskkill /T walks the child tree by parent pid; /F because
-    // the transfer tools ignore the graceful signal mid-write.
-    let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");
-    assert_eq!(prog, "taskkill");
-    assert_eq!(args, vec!["/PID", "1234", "/T", "/F"]);
-}
-
-proptest::proptest! {
-    // Contract for any pid on both platforms: the command always
-    // names the pid (negated group on unix, bare tree root on
-    // windows) and never comes back empty — every supported
-    // platform has a tree kill.
-    #[test]
-    fn tree_kill_args_always_names_the_pid(
-        pid in proptest::num::u32::ANY,
-        windows in proptest::bool::ANY,
-    ) {
-        let (prog, args) = tree_kill_args(pid, windows).expect("tree kill exists");
-        let want = if windows { pid.to_string() } else { format!("-{pid}") };
-        let named = args.iter().any(|a| a == &want);
-        proptest::prop_assert!(named, "{} args {:?} missing {}", prog, args, want);
-    }
-}
-
 /// Stub ani-cli that mirrors the download path's process shape:
 /// it launches a long-sleeping descendant (the "yt-dlp"), reports
 /// that descendant's pid via a file, and waits on it — like
@@ -235,75 +198,6 @@ fn stub_ani_cli_with_descendant(pidfile: &std::path::Path) -> (tempfile::TempDir
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn tree_kill_fires_while_the_parent_is_still_alive() {
-    let _guard = ENV_LOCK.lock().await;
-    let _probe_scope = TREE_KILL_PROBE_SCOPE.lock().await;
-    // The Windows contract: taskkill /T discovers descendants by
-    // a LIVE parent pid, so the teardown must run before
-    // kill_on_drop reaps the shell. Only observable through the
-    // probe seam — it stands in for the tree-kill command and
-    // records the parent's state (running vs zombie/reaped) at
-    // the exact moment the teardown fires.
-    let probe_td = tempfile::tempdir().expect("probe tempdir");
-    let out = probe_td.path().join("probe.out");
-    let probe = probe_td.path().join("probe.sh");
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::write(
-            &probe,
-            format!(
-                "#!/bin/sh\nsleep 0.1\nSTATE=$(ps -o state= -p \"$1\" 2>/dev/null | tr -d ' ')\ncase \"$STATE\" in\n  ''|Z*) echo dead > '{out}' ;;\n  *) echo alive > '{out}' ;;\nesac\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
-                out = out.display()
-            ),
-        )
-        .expect("write probe");
-        std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod probe");
-    }
-    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
-
-    let pid_td = tempfile::tempdir().expect("pid tempdir");
-    let pidfile = pid_td.path().join("descendant.pid");
-    let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
-    let opts = debug_opts(stub);
-    let task = tokio::spawn(async move {
-        let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
-    });
-
-    // Wait for the run to be mid-flight, then abort it.
-    {
-        let mut waited_ms = 0u32;
-        while !pidfile.exists() {
-            assert!(waited_ms < 5_000, "descendant never reported its pid");
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            waited_ms += 50;
-        }
-    }
-    task.abort();
-    let _ = task.await;
-
-    let verdict = {
-        let mut waited_ms = 0u32;
-        loop {
-            if let Ok(s) = std::fs::read_to_string(&out) {
-                if !s.trim().is_empty() {
-                    break s.trim().to_string();
-                }
-            }
-            assert!(waited_ms < 5_000, "probe never ran");
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            waited_ms += 50;
-        }
-    };
-    *TREE_KILL_PROBE.lock().expect("probe lock") = None;
-    assert_eq!(
-        verdict, "alive",
-        "the tree kill must fire while the parent is still alive — a reaped parent \
-         hides its descendants from taskkill /T on Windows"
-    );
-}
-
 #[cfg(unix)]
 #[tokio::test]
 async fn aborting_a_play_resolution_kills_the_whole_process_tree() {
@@ -1113,7 +1007,7 @@ proptest::proptest! {
              malformed AAC timestamps. Install ffmpeg to fix this automatically"
         );
         let stderr = format!("{}\n{line}\n{}", before.join("\n"), after.join("\n"));
-        proptest::prop_assert!(yt_dlp_could_not_repackage(&stderr));
+        proptest::prop_assert!(crate::commands::download_tool::yt_dlp_could_not_repackage(&stderr));
     }
 
     /// Removal is the other half: ordinary download chatter never
@@ -1124,7 +1018,7 @@ proptest::proptest! {
     fn ordinary_download_chatter_never_classifies(
         lines in proptest::collection::vec(r"[a-z0-9 .%/:\[\]-]{0,40}", 0..8),
     ) {
-        proptest::prop_assert!(!yt_dlp_could_not_repackage(&lines.join("\n")));
+        proptest::prop_assert!(!crate::commands::download_tool::yt_dlp_could_not_repackage(&lines.join("\n")));
     }
 
     /// The trailing advice is NOT part of the match. yt-dlp has
@@ -1135,7 +1029,7 @@ proptest::proptest! {
     #[test]
     fn a_reworded_tail_still_classifies(tail in "[a-zA-Z0-9 .,'-]{0,60}") {
         let line = format!("WARNING: Show: Possible MPEG-TS in MP4 container {tail}");
-        proptest::prop_assert!(yt_dlp_could_not_repackage(&line));
+        proptest::prop_assert!(crate::commands::download_tool::yt_dlp_could_not_repackage(&line));
     }
 
     /// The marker only means anything on the line yt-dlp reports it
@@ -1151,7 +1045,7 @@ proptest::proptest! {
     ) {
         let line = format!("{prefix}Possible MPEG-TS in MP4 container{suffix}");
         proptest::prop_assert!(
-            !yt_dlp_could_not_repackage(&line),
+            !crate::commands::download_tool::yt_dlp_could_not_repackage(&line),
             "classified a non-warning line: {line}"
         );
     }
@@ -1168,7 +1062,7 @@ fn a_title_echoed_into_progress_output_is_not_a_fixup_warning() {
         "[download] 100% of 58.20KiB in 00:00:01 at 41.02KiB/s\n"
     );
     assert!(
-        !yt_dlp_could_not_repackage(stderr),
+        !crate::commands::download_tool::yt_dlp_could_not_repackage(stderr),
         "a successful download must not be re-read as a failed repackage"
     );
 }
@@ -1394,10 +1288,114 @@ async fn a_repackage_warning_stops_the_rest_of_the_range() {
 /// point either way — ffmpeg was missing, and saying "timed out"
 /// sends the user to look at their connection.
 #[cfg(unix)]
+/// The prefix is matched whole, space included. yt-dlp has printed it
+/// this way for as long as the download path has existed, and an
+/// approximate match is the wrong trade here: parsing a line that is
+/// not a destination hands cleanup a path to delete.
+#[test]
+fn a_near_miss_prefix_is_not_a_destination() {
+    // No space after the colon.
+    assert_eq!(
+        yt_dlp_destination("[download] Destination:/d/Show.mp4"),
+        None
+    );
+    // Different tag.
+    assert_eq!(yt_dlp_destination("[info] Destination: /d/Show.mp4"), None);
+    // The word alone, mid-sentence.
+    assert_eq!(
+        yt_dlp_destination("[download] Writing to Destination: /d/Show.mp4"),
+        None
+    );
+}
+
+/// A destination whose own name contains the marker still resolves to
+/// itself — the same class of input as the show titled after yt-dlp's
+/// fixup warning, and the reason the prefix is stripped once rather
+/// than searched for.
+#[test]
+fn a_path_containing_the_marker_resolves_to_itself() {
+    let line = "[download] Destination: /d/[download] Destination: weird.mp4";
+    assert_eq!(
+        yt_dlp_destination(line),
+        Some(std::path::PathBuf::from(
+            "/d/[download] Destination: weird.mp4"
+        ))
+    );
+}
+
+#[tokio::test]
+async fn tree_kill_fires_while_the_parent_is_still_alive() {
+    let _guard = ENV_LOCK.lock().await;
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
+    // The Windows contract: taskkill /T discovers descendants by
+    // a LIVE parent pid, so the teardown must run before
+    // kill_on_drop reaps the shell. Only observable through the
+    // probe seam — it stands in for the tree-kill command and
+    // records the parent's state (running vs zombie/reaped) at
+    // the exact moment the teardown fires.
+    let probe_td = tempfile::tempdir().expect("probe tempdir");
+    let out = probe_td.path().join("probe.out");
+    let probe = probe_td.path().join("probe.sh");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(
+            &probe,
+            format!(
+                "#!/bin/sh\nsleep 0.1\nSTATE=$(ps -o state= -p \"$1\" 2>/dev/null | tr -d ' ')\ncase \"$STATE\" in\n  ''|Z*) echo dead > '{out}' ;;\n  *) echo alive > '{out}' ;;\nesac\nkill -9 -- \"-$1\" 2>/dev/null || true\nexit 0\n",
+                out = out.display()
+            ),
+        )
+        .expect("write probe");
+        std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod probe");
+    }
+    *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+
+    let pid_td = tempfile::tempdir().expect("pid tempdir");
+    let pidfile = pid_td.path().join("descendant.pid");
+    let (_td, stub) = stub_ani_cli_with_descendant(&pidfile);
+    let opts = debug_opts(stub);
+    let task = tokio::spawn(async move {
+        let _ = run_debug_streaming(&opts, "any", "1", "best", "sub", 1, |_| {}).await;
+    });
+
+    // Wait for the run to be mid-flight, then abort it.
+    {
+        let mut waited_ms = 0u32;
+        while !pidfile.exists() {
+            assert!(waited_ms < 5_000, "descendant never reported its pid");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            waited_ms += 50;
+        }
+    }
+    task.abort();
+    let _ = task.await;
+
+    let verdict = {
+        let mut waited_ms = 0u32;
+        loop {
+            if let Ok(s) = std::fs::read_to_string(&out) {
+                if !s.trim().is_empty() {
+                    break s.trim().to_string();
+                }
+            }
+            assert!(waited_ms < 5_000, "probe never ran");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            waited_ms += 50;
+        }
+    };
+    *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    assert_eq!(
+        verdict, "alive",
+        "the tree kill must fire while the parent is still alive — a reaped parent \
+         hides its descendants from taskkill /T on Windows"
+    );
+}
+
 #[tokio::test]
 async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
     let _guard = ENV_LOCK.lock().await;
-    let _probe_scope = TREE_KILL_PROBE_SCOPE.lock().await;
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
     let probe_td = tempfile::tempdir().expect("probe tempdir");
     let probe = probe_td.path().join("noop-kill.sh");
     {
@@ -1405,7 +1403,7 @@ async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
         std::fs::write(&probe, b"#!/bin/sh\nexit 0\n").expect("write probe");
         std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     }
-    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+    *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
 
     let (_td, mut opts) = stub_ani_cli_with_tools(true, &["yt-dlp"]);
     opts.timeout = std::time::Duration::from_millis(1_500);
@@ -1430,7 +1428,7 @@ async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
         |_line| {},
     )
     .await;
-    *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = None;
 
     assert!(
         matches!(r, Err(AniError::FfmpegMissing)),
@@ -1513,39 +1511,4 @@ proptest::proptest! {
         let line = format!("{tag} Destination: {path}");
         proptest::prop_assert_eq!(yt_dlp_destination(&line), None, "parsed {}", line);
     }
-}
-
-/// The prefix is matched whole, space included. yt-dlp has printed it
-/// this way for as long as the download path has existed, and an
-/// approximate match is the wrong trade here: parsing a line that is
-/// not a destination hands cleanup a path to delete.
-#[test]
-fn a_near_miss_prefix_is_not_a_destination() {
-    // No space after the colon.
-    assert_eq!(
-        yt_dlp_destination("[download] Destination:/d/Show.mp4"),
-        None
-    );
-    // Different tag.
-    assert_eq!(yt_dlp_destination("[info] Destination: /d/Show.mp4"), None);
-    // The word alone, mid-sentence.
-    assert_eq!(
-        yt_dlp_destination("[download] Writing to Destination: /d/Show.mp4"),
-        None
-    );
-}
-
-/// A destination whose own name contains the marker still resolves to
-/// itself — the same class of input as the show titled after yt-dlp's
-/// fixup warning, and the reason the prefix is stripped once rather
-/// than searched for.
-#[test]
-fn a_path_containing_the_marker_resolves_to_itself() {
-    let line = "[download] Destination: /d/[download] Destination: weird.mp4";
-    assert_eq!(
-        yt_dlp_destination(line),
-        Some(std::path::PathBuf::from(
-            "/d/[download] Destination: weird.mp4"
-        ))
-    );
 }

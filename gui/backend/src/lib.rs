@@ -32,6 +32,7 @@ pub mod i18n;
 pub mod meta;
 pub mod proxy;
 pub mod scraper;
+pub mod spawn;
 
 pub use error::{AniError, Result};
 

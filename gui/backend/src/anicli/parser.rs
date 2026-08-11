@@ -135,13 +135,6 @@ pub struct DebugOutput {
     pub subtitle_url: Option<String>,
 }
 
-/// Strip ANSI escape sequences from a byte slice and decode lossy UTF-8.
-#[must_use]
-pub fn strip_ansi(bytes: &[u8]) -> String {
-    let cleaned = strip_ansi_escapes::strip(bytes);
-    String::from_utf8_lossy(&cleaned).into_owned()
-}
-
 /// Parse search-results lines into `SearchResult`s. The expected line
 /// format is `id<TAB>title (N episodes)`, with a ` (YYYY)` release-year
 /// tail appended since ani-cli 4.14.5. Lines that don't match the

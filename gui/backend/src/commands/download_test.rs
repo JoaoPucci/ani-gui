@@ -683,7 +683,7 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
     // The teardown must be the REAL one: a concurrently held
     // no-op probe would swallow the kill this test exists to
     // observe.
-    let _probe_scope = crate::anicli::process::TREE_KILL_PROBE_SCOPE.lock().await;
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let pidfile = dest.path().join("helper.pid");

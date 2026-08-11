@@ -18,6 +18,7 @@ pub mod availability_refresh;
 pub mod cour;
 pub mod download;
 mod download_range;
+pub(crate) mod download_tool;
 pub mod external_player;
 pub mod history;
 pub mod kitsu;

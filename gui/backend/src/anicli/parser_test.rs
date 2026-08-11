@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn strip_ansi_removes_escape_codes() {
     let raw = b"\x1b[1;31mred\x1b[0m text";
-    let out = strip_ansi(raw);
+    let out = crate::spawn::strip_ansi(raw);
     assert_eq!(out, "red text");
 }
 

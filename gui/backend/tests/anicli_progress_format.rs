@@ -22,7 +22,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use ani_gui::anicli::parser::{parse_progress_line, strip_ansi, ProgressLine};
+use ani_gui::anicli::parser::{parse_progress_line, ProgressLine};
+use ani_gui::spawn::strip_ansi;
 
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

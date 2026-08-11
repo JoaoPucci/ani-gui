@@ -228,7 +228,8 @@ pub async fn run_debug(
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
+    let mut child =
+        crate::spawn::TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
     let stdout_reader = child.child.stdout.take().expect("stdout piped");
     let stderr_reader = child.child.stderr.take().expect("stderr piped");
@@ -248,8 +249,8 @@ pub async fn run_debug(
     let (stdout_bytes, stderr_bytes, exit) = collected;
 
     if !exit.success() {
-        let stderr_text = super::parser::strip_ansi(&stderr_bytes);
-        let stdout_text = super::parser::strip_ansi(&stdout_bytes);
+        let stderr_text = crate::spawn::strip_ansi(&stderr_bytes);
+        let stdout_text = crate::spawn::strip_ansi(&stdout_bytes);
         tracing::error!(
             exit = ?exit.code(),
             stderr = %stderr_text,
@@ -259,7 +260,7 @@ pub async fn run_debug(
         return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
-    let stdout_text = super::parser::strip_ansi(&stdout_bytes);
+    let stdout_text = crate::spawn::strip_ansi(&stdout_bytes);
     super::parser::parse_debug_output(&stdout_text)
 }
 
@@ -360,7 +361,8 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
+    let mut child =
+        crate::spawn::TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
 
     let stdout_reader = child.child.stdout.take().expect("stdout piped");
     let stderr_reader = child.child.stderr.take().expect("stderr piped");
@@ -387,7 +389,7 @@ where
                 let mut lock = collected_for_reader.lock().expect("mutex");
                 lock.extend_from_slice(buf.as_bytes());
             }
-            let stripped = super::parser::strip_ansi(buf.as_bytes());
+            let stripped = crate::spawn::strip_ansi(buf.as_bytes());
             for line in stripped.lines() {
                 on_stderr_line(line);
             }
@@ -411,8 +413,8 @@ where
     let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
 
     if !exit.success() {
-        let stderr_text = super::parser::strip_ansi(&stderr_bytes);
-        let stdout_text = super::parser::strip_ansi(&stdout_bytes);
+        let stderr_text = crate::spawn::strip_ansi(&stderr_bytes);
+        let stdout_text = crate::spawn::strip_ansi(&stdout_bytes);
         tracing::error!(
             exit = ?exit.code(),
             stderr = %stderr_text,
@@ -422,7 +424,7 @@ where
         return Err(super::parser::classify_failure_stderr(&stderr_text));
     }
 
-    let stdout_text = super::parser::strip_ansi(&stdout_bytes);
+    let stdout_text = crate::spawn::strip_ansi(&stdout_bytes);
     super::parser::parse_debug_output(&stdout_text)
 }
 
@@ -459,110 +461,6 @@ pub struct DownloadRequest<'a> {
     /// the title is ambiguous. The disambiguator upstream of the
     /// download path ensures this lands on the right show.
     pub select_index: usize,
-}
-
-/// Owns the spawned ani-cli child and kills its whole process tree
-/// when dropped mid-run. Ownership is the point: a struct's `Drop`
-/// body runs BEFORE its fields drop, so the tree walk / group signal
-/// fires while the shell is still alive — on Windows `taskkill /T`
-/// can only discover curl / yt-dlp / ffmpeg descendants by a live
-/// parent pid, and `kill_on_drop`'s SIGKILL (the `Child` field's own
-/// drop) must come second under every cancellation mode: task abort,
-/// timeout, panic. Disarmed once the child has been waited: past the
-/// reap the pid may be recycled and must not be signalled. The signal
-/// goes through `kill(1)` / `taskkill(1)` rather than a syscall —
-/// the crate forbids unsafe code, and both binaries ship with any
-/// host that can run ani-cli. `.status()` (not `.spawn()`) so the
-/// helper can't linger as a zombie; it exits in microseconds.
-pub(crate) struct TreeKillChild {
-    child: tokio::process::Child,
-    armed: bool,
-}
-
-impl TreeKillChild {
-    pub(crate) fn new(child: tokio::process::Child) -> Self {
-        Self { child, armed: true }
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-
-    /// The guarded child, for the caller's own I/O and wait. A child
-    /// the caller has waited to completion is reaped, so the drop
-    /// guard reads `id() == None` and stands down by itself.
-    pub(crate) fn child_mut(&mut self) -> &mut tokio::process::Child {
-        &mut self.child
-    }
-}
-
-impl Drop for TreeKillChild {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        // `id()` is None once the child has been reaped — nothing to
-        // walk in that case even if disarm was missed.
-        let Some(pid) = self.child.id() else { return };
-        kill_process_tree(pid);
-    }
-}
-
-/// Take down a spawned downloader's whole process tree.
-///
-/// Shared by the drop guard and by the in-flight stop below, so both
-/// paths use the same platform command and the same test seam.
-fn kill_process_tree(pid: u32) {
-    #[cfg(test)]
-    if let Some(probe) = tree_kill_probe() {
-        let _ = std::process::Command::new(probe)
-            .arg(pid.to_string())
-            .status();
-        return;
-    }
-    if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
-        let _ = std::process::Command::new(prog).args(&args).status();
-    }
-}
-
-/// Test seam: when a probe is registered, the teardown runs it (child
-/// pid as its argument) INSTEAD of the real tree-kill command. The
-/// Windows contract — `taskkill /T` can only discover descendants
-/// while the parent is still alive — is unobservable on the platforms
-/// the suite runs on, so a probe standing in for the kill command is
-/// the only way a test can record WHEN the teardown fires relative to
-/// the parent's reap. The probe takes over the cleanup duty too.
-#[cfg(test)]
-static TREE_KILL_PROBE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-
-/// Serializes the probe's scope: a test that REGISTERS a probe (and
-/// so redirects every teardown in the process) and a test that needs
-/// the REAL teardown to run must not overlap — a no-op probe held by
-/// one would silently swallow the other's kill. Held for the whole
-/// test either way.
-#[cfg(all(test, unix))]
-pub(crate) static TREE_KILL_PROBE_SCOPE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-#[cfg(test)]
-fn tree_kill_probe() -> Option<PathBuf> {
-    TREE_KILL_PROBE.lock().expect("probe lock").clone()
-}
-
-/// Platform command that takes down a spawned downloader's whole
-/// process tree. Unix: `kill -9 -- -PID` — the negative pid addresses
-/// the process group created at spawn (`process_group(0)`, pgid ==
-/// child pid). Windows: `taskkill /PID <pid> /T /F` — no process
-/// group there; /T walks the child tree by parent pid (which is why
-/// the guard must fire while the shell is still alive), /F because
-/// the transfer tools ignore the graceful signal mid-write.
-fn tree_kill_args(pid: u32, windows: bool) -> Option<(&'static str, Vec<String>)> {
-    if windows {
-        return Some((
-            "taskkill",
-            vec!["/PID".into(), pid.to_string(), "/T".into(), "/F".into()],
-        ));
-    }
-    Some(("kill", vec!["-9".into(), "--".into(), format!("-{pid}")]))
 }
 
 /// Write the classified script bytes to a private temp file, immune
@@ -815,7 +713,8 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let mut child = TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
+    let mut child =
+        crate::spawn::TreeKillChild::new(cmd.spawn().map_err(|_| AniError::MissingBinary)?);
     let stderr_reader = child.child.stderr.take().expect("stderr piped");
 
     // Stream stderr line-by-line. aria2c / yt-dlp / ffmpeg all write
@@ -848,18 +747,18 @@ where
                 let mut lock = collected_for_reader.lock().expect("mutex");
                 lock.extend_from_slice(buf.as_bytes());
             }
-            let stripped = super::parser::strip_ansi(buf.as_bytes());
+            let stripped = crate::spawn::strip_ansi(buf.as_bytes());
             for line in stripped.lines() {
                 on_stderr_line(line);
             }
             if !failed_for_reader.load(std::sync::atomic::Ordering::Relaxed)
-                && yt_dlp_could_not_repackage(&stripped)
+                && crate::commands::download_tool::yt_dlp_could_not_repackage(&stripped)
             {
                 failed_for_reader.store(true, std::sync::atomic::Ordering::Relaxed);
                 // Stop the tree, not just the shell: the transfer tool
                 // is a child of it and would keep writing.
                 if let Some(pid) = child_pid {
-                    kill_process_tree(pid);
+                    crate::spawn::kill_process_tree(pid);
                 }
             }
         }
@@ -883,7 +782,7 @@ where
             if reader.read_line(&mut sink).await? == 0 {
                 break;
             }
-            let stripped = super::parser::strip_ansi(sink.as_bytes());
+            let stripped = crate::spawn::strip_ansi(sink.as_bytes());
             for path in stripped.lines().filter_map(yt_dlp_destination) {
                 announced_for_reader.lock().expect("mutex").push(path);
             }
@@ -924,7 +823,7 @@ where
         // the download and leaving it there is the worst of both: told
         // it failed, still finds something that looks like the episode.
         let announced = announced.lock().expect("mutex").clone();
-        discard_mislabeled(download_dir, &announced);
+        crate::commands::download_tool::discard_mislabeled(download_dir, &announced);
         return Err(AniError::FfmpegMissing);
     }
 
@@ -935,7 +834,7 @@ where
 
     if !collected.success() {
         let stderr_bytes = stderr_collected.lock().expect("mutex").clone();
-        let stderr_text = super::parser::strip_ansi(&stderr_bytes);
+        let stderr_text = crate::spawn::strip_ansi(&stderr_bytes);
         if stderr_text.contains("No results found") {
             return Err(AniError::NoResults);
         }
@@ -954,64 +853,6 @@ where
         });
     }
     Ok(())
-}
-
-/// Remove the files this download announced that are not, in fact,
-/// MP4s.
-///
-/// Two independent bounds, so a good file cannot be eaten by either
-/// alone: the path must be one yt-dlp named as its own output for
-/// this run *and* sit directly in the directory we handed it, and its
-/// own first byte must be the MPEG-TS sync byte `0x47`. A real MP4
-/// opens with a length-prefixed `ftyp` box and fails the second test
-/// even when it is ours; a concurrent download's file was never
-/// announced and fails the first, whatever state its bytes are in.
-///
-/// No announcement means no deletion. That is the right way to fail
-/// here — a mislabeled file left behind is recoverable, someone
-/// else's deleted mid-transfer is not.
-pub(crate) fn discard_mislabeled(dir: &Path, announced: &[PathBuf]) {
-    for path in announced {
-        if path.parent() != Some(dir) {
-            continue;
-        }
-        let mut buf = [0u8; 1];
-        let is_ts = std::fs::File::open(path)
-            .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf))
-            .is_ok_and(|()| buf[0] == 0x47);
-        if is_ts {
-            // Best effort: a file we cannot remove is not worth
-            // failing the already-failing download over.
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
-/// yt-dlp's own report that it left MPEG-TS inside an `.mp4`.
-///
-/// Anchored to the warning line, not to the stream. yt-dlp emits it
-/// through `report_warning`, which prefixes `WARNING:` — measured
-/// against 2025.08.11 the line reads:
-///
-/// ```text
-/// WARNING: out: Possible MPEG-TS in MP4 container or malformed
-/// AAC timestamps. Install ffmpeg to fix this automatically
-/// ```
-///
-/// Everywhere else in the output the same words would be someone's
-/// show title, echoed back by the destination and progress lines. A
-/// title is whatever the provider called the entry, so searching the
-/// whole stream lets a name decide whether downloads succeed.
-///
-/// Within the line the match stays on the stable middle: the leading
-/// id and the trailing advice are respectively arbitrary and
-/// reworded across releases, and pinning either would turn a future
-/// yt-dlp into a silent regression.
-pub(crate) fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
-    stderr.lines().any(|line| {
-        let line = line.trim_start();
-        line.starts_with("WARNING:") && line.contains("Possible MPEG-TS in MP4 container")
-    })
 }
 
 /// The path yt-dlp announces for the file it is about to write, e.g.
