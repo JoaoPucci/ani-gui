@@ -181,3 +181,55 @@ fn open_external_player_with_unknown_command_carries_binary_name() {
         other => panic!("expected PlayerSpawnFailed, got {other:?}"),
     }
 }
+
+/// Linux only: ETXTBSY on exec of a write-open file is a Linux
+/// guarantee. macOS permits the exec, so there is no race to wait
+/// out and the assertion below would describe nothing.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_busy_executable_is_waited_out_rather_than_failed() {
+    // exec of a file another process still holds open for WRITING
+    // fails with ETXTBSY. It is transient by construction — the
+    // writer closes microseconds later — so the player and Syncplay
+    // spawns, which both go through this helper, retry instead of
+    // telling the user their player is broken.
+    use std::io::Write as _;
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let player = dir.path().join("player");
+    std::fs::write(&player, "#!/bin/sh\nexit 0\n").expect("write player");
+    std::fs::set_permissions(&player, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let mut held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&player)
+        .expect("hold the player open for writing");
+
+    // Self-evidencing: prove the race is live on this host before
+    // asserting it gets waited out. Without this a kernel that never
+    // reports ETXTBSY would pass the test having exercised nothing.
+    let plain = std::process::Command::new(&player).spawn();
+    assert!(
+        matches!(
+            plain.as_ref().err().map(std::io::Error::kind),
+            Some(std::io::ErrorKind::ExecutableFileBusy)
+        ),
+        "a write-open executable must be busy for this test to mean anything: {plain:?}"
+    );
+
+    let releaser = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        let _ = held.flush();
+        drop(held);
+    });
+    let got = spawn_detached(&mut std::process::Command::new(&player));
+    releaser.join().expect("releaser");
+    assert!(
+        got.is_ok(),
+        "a briefly busy executable must be waited out, not reported as a spawn failure: {got:?}"
+    );
+    // The spawn is detached, so the child execs after this returns —
+    // give it that moment before the tempdir (and the script it is
+    // about to open) goes away.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
