@@ -536,6 +536,77 @@ mod tests {
         assert!(matches!(got, Err(AniError::FfmpegMissing)));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelling_a_download_kills_the_tools_descendants() {
+        // yt-dlp spawns its own helpers (ffmpeg for merges); aborting
+        // the SSE task drops the Child, and kill_on_drop takes down
+        // only the direct process. The teardown must address the
+        // whole tree, like the subprocess downloader's group-kill
+        // guard did — otherwise Cancel leaves an orphaned transfer
+        // writing the file after the UI removed the row.
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let pidfile = dest.path().join("helper.pid");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+        );
+        let path_env = bin.path().display().to_string();
+        let dest_dir = dest.path().to_path_buf();
+        let task = tokio::spawn(async move {
+            let _ = spawn_download_tool(
+                "https://cdn.example/x/master.m3u8",
+                &dest_dir,
+                "Show Episode 1",
+                None,
+                &path_env,
+                std::time::Duration::from_secs(60),
+                &mut |_l: &str| {},
+            )
+            .await;
+        });
+        let mut waited_ms = 0u32;
+        while !pidfile.exists() {
+            assert!(waited_ms < 5_000, "helper never reported its pid");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            waited_ms += 50;
+        }
+        task.abort();
+        let _ = task.await;
+        let pid = std::fs::read_to_string(&pidfile)
+            .expect("pidfile")
+            .trim()
+            .to_string();
+        // The helper must die with the cancellation, not linger for
+        // its full sleep. kill -0 probes liveness portably.
+        let mut waited_ms = 0u32;
+        let died = loop {
+            let alive = std::process::Command::new("kill")
+                .arg("-0")
+                .arg(&pid)
+                .status()
+                .expect("probe")
+                .success();
+            if !alive {
+                break true;
+            }
+            if waited_ms >= 5_000 {
+                break false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            waited_ms += 100;
+        };
+        if !died {
+            let _ = std::process::Command::new("kill")
+                .arg("-9")
+                .arg(&pid)
+                .status();
+        }
+        assert!(died, "the tool's descendant outlived the cancellation");
+    }
+
     #[test]
     fn download_args_round_trips_through_json_with_optional_fields() {
         // Wire shape mirror — same fields the renderer sends. Quality,
