@@ -5,11 +5,11 @@
 	"audio_group_label": "Аудио",
 	"download_button": "Скачать",
 	"ep_airs": "Выйдет {date}",
-	"ep_disabled_tooltip": "Нет в каталоге allmanga.",
-	"ep_recheck_busy": "Запрос к allmanga…",
+	"ep_disabled_tooltip": "Нет в каталоге anidb.app.",
+	"ep_recheck_busy": "Запрос к anidb.app…",
 	"ep_recheck_failed": "Не удалось проверить сейчас — попробуйте ещё раз чуть позже.",
-	"ep_recheck_idle": "Пока нет в каталоге allmanga — нажмите, чтобы проверить снова.",
-	"ep_recheck_still_gated": "Пока нет в каталоге allmanga.",
+	"ep_recheck_idle": "Пока нет в каталоге anidb.app — нажмите, чтобы проверить снова.",
+	"ep_recheck_still_gated": "Пока нет в каталоге anidb.app.",
 	"ep_unaired": "Ещё не вышла",
 	"ep_unaired_tooltip": "Этот эпизод ещё не вышел.",
 	"episode_frame_num_key": "эп",
@@ -42,7 +42,7 @@
 	"error_play_headline": "Не удалось включить эпизод {episode}",
 	"error_play_headline_single": "Не удалось воспроизвести",
 	"error_play_network": "Проблемы с сетью при подключении к источнику. Проверьте соединение и попробуйте снова.",
-	"error_play_no_results": "Этого тайтла нет в стриминговом каталоге. allmanga его не индексирует.",
+	"error_play_no_results": "Этого тайтла нет в стриминговом каталоге. anidb.app его не индексирует.",
 	"error_play_scraper": "Сейчас не удаётся получить рабочий поток. Источник стриминга барахлит — попробуйте через пару минут.",
 	"error_play_timeout": "Источник стриминга слишком долго отвечает. Попробуйте через пару минут.",
 	"list_add": "Добавить в список",
@@ -96,5 +96,5 @@
 	"synopsis_heading": "Описание",
 	"synopsis_toggle_less": "Свернуть",
 	"synopsis_toggle_more": "Читать дальше",
-	"unavailable_message": "Тайтла нет в каталоге allmanga — воспроизведение и загрузка недоступны."
+	"unavailable_message": "Тайтла нет в каталоге anidb.app — воспроизведение и загрузка недоступны."
 }

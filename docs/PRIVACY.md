@@ -25,9 +25,8 @@ ani-gui keeps the following on your computer only:
 - **Metadata cache** — anime details, episode lists, thumbnails, and
   similar information fetched from public APIs. Stored in a local
   SQLite database under your OS's cache directory.
-- **Watch history** — the same `ani-cli` history file the underlying
-  CLI uses (`$XDG_STATE_HOME/ani-cli/ani-hsts`). Lists what you've
-  watched and where you left off.
+- **Watch history** — a plain-text file in the app's own state
+  directory. Lists what you've watched and where you left off.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
@@ -54,8 +53,8 @@ requires it; the exceptions are the two automatic checks that run on
 launch (the update checks below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the underlying allmanga / allanime catalogue
-  used by `ani-cli`. These requests carry the search terms you typed
+  only if connected), and the anidb.app streaming catalogue playback
+  resolves against. These requests carry the search terms you typed
   or the anime IDs you're browsing; they do not carry any account
   identifier unless you've connected one.
 - **Video playback** — the chosen episode URL is fetched directly

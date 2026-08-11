@@ -7,7 +7,7 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 `ani-gui` is a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that adds a desktop GUI on top of the existing CLI. The repo holds **two peer artifacts**:
 
 - `ani-cli` (root) — the original 666-line POSIX-shell anime scraper, vendored from upstream and intentionally kept untouched.
-- `gui/` — the desktop app. Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that drives `ani-cli` strictly as a subprocess.
+- `gui/` — the desktop app. Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively. It touches the script only to keep the bundled copy updated, through `gui/backend/src/anicli/`.
 
 Read first:
 
@@ -15,7 +15,7 @@ Read first:
 - `docs/testing.md` — test pyramid and how to run each layer
 - `docs/development.md` — dev environment, build, debug
 - `docs/i18n.md` — adding a locale
-- `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ allmanga ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
+- `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ the streaming provider ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
 - `docs/proposals/` — future-feature proposals (Cast/multi-viewer, etc.)
 
 ## 2. Test discipline (non-negotiable, TDD)
@@ -121,13 +121,13 @@ Known test debt (extract + unit-test next time you touch them):
   - `shfmt -i 4 -ci -d`
 - Never reformat the script. Never add lint rules to it.
 
-Carried fork patches are the exception, not the rule. Every patch beyond the `__ANI_CLI_LIB__` source-guard line (which lets tests `source` the script as a library) must be marked in-file with an `# ani-gui patch:` comment explaining why it exists. Patches are carried for as long as the bundled script lives — we do not submit them upstream and do not plan around upstream acceptance; the exit strategy is the native Rust resolver replacing the ani-cli subprocess entirely, at which point the whole carried set retires with the script. Current set beyond the guard: none. The 5.0 sync retired the whole 4.15 set — the greedy name capture and the portable base64 lived in allanime functions 5.0 deleted, upstream absorbed the flatpak directory acceptance, and 5.0's `process_hist_entry` dropped the fallback the history guard existed to guard.
+Carried fork patches are the exception, not the rule. Every patch beyond the `__ANI_CLI_LIB__` source-guard line (which lets tests `source` the script as a library) must be marked in-file with an `# ani-gui patch:` comment explaining why it exists. Patches are carried for as long as the bundled script lives — we do not submit them upstream and do not plan around upstream acceptance. The native resolver has since replaced the subprocess, so the script ships only for people who want the terminal flow; the whole carried set retires whenever it stops shipping. Current set beyond the guard: none. The 5.0 sync retired the whole 4.15 set — the greedy name capture and the portable base64 lived in allanime functions 5.0 deleted, upstream absorbed the flatpak directory acceptance, and 5.0's `process_hist_entry` dropped the fallback the history guard existed to guard.
 
 ## 4. Layer boundaries
 
 Mechanical rules enforced by `tests/arch/boundaries.sh` and `tests/arch/i18n.sh`:
 
-- `gui/**` may invoke `ani-cli` only through `gui/backend/src/anicli/` (subprocess). No sourcing, no path references elsewhere.
+- `gui/**` may reference `ani-cli` only through `gui/backend/src/anicli/`, which exists solely to locate and auto-update the bundled script. No sourcing, no path references elsewhere, and nothing there resolves a stream.
 - The frontend never fetches an upstream URL directly. All stream traffic flows through the local proxy at `http://127.0.0.1:<port>/s/<token>/...`.
 - SQLite holds metadata only. Image bytes live on the filesystem under `$XDG_CACHE_HOME/ani-gui/images/`.
 - The backend never returns localized strings. It returns stable error keys (`error.search.no_results`); the frontend resolves them via Paraglide.
