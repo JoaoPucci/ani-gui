@@ -192,7 +192,11 @@ pub async fn pick_candidate<F: AnidbFetch>(
             .filter(|(_, (_, eps, _, confirmed))| {
                 *confirmed && regular_episode_count(eps) < expected
             })
-            .min_by_key(|(_, (_, _, d, _))| *d)
+            // Distance first, then the user's own words — the same
+            // dominance winner selection keeps — with provider order
+            // as the final tie (min_by_key keeps the first of
+            // equals).
+            .min_by_key(|(_, (h, _, d, _))| (*d, h.title.trim().to_lowercase() != needle))
             .map(|(i, _)| i)
         {
             let (h, _, _, c) = &probed_ok[idx];
