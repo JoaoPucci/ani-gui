@@ -57,6 +57,14 @@ pub struct NativeError {
     /// survived — the one shape that proves absence rather than
     /// weather.
     pub clean_miss: bool,
+    /// The instant the failure behind an AGGREGATED transient
+    /// verdict was observed. The walk can fail one alias and finish
+    /// a later one cleanly; the breaker record for the resulting
+    /// `Network` must carry the failing attempt's moment, or the
+    /// gate's staleness filter cannot discard it after a recovery
+    /// recorded in between. `None` when the error IS the chain's
+    /// last attempt — the transport's own stamp is then correct.
+    pub failed_at: Option<tokio::time::Instant>,
 }
 
 /// What a native resolution is asked for — the play-relevant slice
@@ -116,6 +124,7 @@ where
         Err(_elapsed) => Err(NativeError {
             error: AniError::Timeout,
             clean_miss: false,
+            failed_at: None,
         }),
     }
 }
@@ -154,6 +163,7 @@ where
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
     let mut any_answered_dead_end = false;
+    let mut last_failure_at: Option<tokio::time::Instant> = None;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
             Ok(hits) => {
@@ -202,6 +212,7 @@ where
                             }
                             Err(_) => {
                                 any_search_errored = true;
+                                last_failure_at = Some(tokio::time::Instant::now());
                                 continue;
                             }
                         };
@@ -231,6 +242,7 @@ where
                         return Err(NativeError {
                             error: e,
                             clean_miss: false,
+                            failed_at: None,
                         });
                     }
                     // An all-answered-not-found pool: dead candidates
@@ -242,6 +254,7 @@ where
                     }
                     Err(_) => {
                         any_search_errored = true;
+                        last_failure_at = Some(tokio::time::Instant::now());
                     }
                 }
             }
@@ -250,6 +263,7 @@ where
                 return Err(NativeError {
                     error: AniError::Upstream { status },
                     clean_miss: false,
+                    failed_at: None,
                 });
             }
             // The gate refused this chain: every subsequent fetch
@@ -259,10 +273,12 @@ where
                 return Err(NativeError {
                     error: AniError::GateRefused,
                     clean_miss: false,
+                    failed_at: None,
                 });
             }
             Err(_) => {
                 any_search_errored = true;
+                last_failure_at = Some(tokio::time::Instant::now());
             }
         }
     }
@@ -270,6 +286,7 @@ where
         return Err(NativeError {
             error: AniError::Network,
             clean_miss: false,
+            failed_at: last_failure_at,
         });
     }
     if any_answered_dead_end {
@@ -279,11 +296,13 @@ where
         return Err(NativeError {
             error: AniError::NoResults,
             clean_miss: false,
+            failed_at: None,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
+        failed_at: None,
     })
 }
 

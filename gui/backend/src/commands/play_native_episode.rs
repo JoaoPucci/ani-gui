@@ -30,6 +30,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
     let dead_end = |error: AniError| NativeError {
         error,
         clean_miss: false,
+        failed_at: None,
     };
     // A row's identity is its effective display tag — number2 when
     // present, the integer slot otherwise. A recap occupying slot 4

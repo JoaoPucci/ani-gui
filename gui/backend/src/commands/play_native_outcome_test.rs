@@ -14,6 +14,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     let absent_episode = NativeError {
         error: AniError::NoResults,
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Interactive, &Err(absent_episode)),
@@ -23,6 +24,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     let refusal = NativeError {
         error: AniError::Upstream { status: 403 },
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Interactive, &Err(refusal)),
@@ -33,6 +35,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
             retry_after_secs: Some(30),
         },
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
@@ -41,6 +44,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     let transport = NativeError {
         error: AniError::Network,
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Interactive, &Err(transport)),
@@ -59,6 +63,7 @@ fn a_gate_refusal_is_no_evidence_at_all() {
     let refused = NativeError {
         error: AniError::GateRefused,
         clean_miss: false,
+        failed_at: None,
     };
     assert!(breaker_outcome(ScrapePriority::Interactive, &Err(refused)).is_none());
 }
@@ -75,6 +80,7 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
     let limited = NativeError {
         error: AniError::Upstream { status: 429 },
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
@@ -95,6 +101,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
         let dead_source = NativeError {
             error: AniError::Upstream { status },
             clean_miss: false,
+            failed_at: None,
         };
         assert!(
             matches!(
@@ -108,6 +115,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
         let block = NativeError {
             error: AniError::Upstream { status },
             clean_miss: false,
+            failed_at: None,
         };
         assert!(
             matches!(
@@ -134,6 +142,7 @@ fn a_background_deadline_elapse_is_no_evidence() {
     let elapsed = || NativeError {
         error: AniError::Timeout,
         clean_miss: false,
+        failed_at: None,
     };
     assert_eq!(
         breaker_outcome(ScrapePriority::Background, &Err(elapsed())),
@@ -146,6 +155,7 @@ fn a_background_deadline_elapse_is_no_evidence() {
     let transport = NativeError {
         error: AniError::Network,
         clean_miss: false,
+        failed_at: None,
     };
     assert!(matches!(
         breaker_outcome(ScrapePriority::Background, &Err(transport)),
@@ -209,7 +219,7 @@ proptest::proptest! {
                 _ => Some(ScrapeOutcome::Failure),
             }
         };
-        let got = breaker_outcome(priority, &Err(NativeError { error, clean_miss }));
+        let got = breaker_outcome(priority, &Err(NativeError { error, clean_miss, failed_at: None }));
         proptest::prop_assert_eq!(got, expected);
     }
 }

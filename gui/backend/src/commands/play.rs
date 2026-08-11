@@ -655,9 +655,11 @@ where
         // concurrent resolve recorded recovery mid-chain. The chain
         // start remains the fallback for a resolve refused before
         // any fetch ran.
-        let observed_at = client
-            .transport()
-            .last_attempt_at()
+        let observed_at = native
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
             .unwrap_or(resolve_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
