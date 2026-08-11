@@ -22,6 +22,15 @@ Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
 pull request.
 
+Write an entry about the code, not about the work in flight. A commit
+sha, a pull-request number, a branch name, a commit count, or a
+sentence like "the PR for this is open" is accurate for about a week
+and misleading forever after — and a rotted entry is worse than no
+entry, because it sends the next reader to rebuild finished work or to
+reason from a state that no longer exists. Name the behaviour that is
+wrong and where it lives; that stays checkable. References that do not
+rot — an upstream issue, a specification — are fine.
+
 Remove an entry when the work lands, in the change that lands it.
 
 ---
@@ -73,28 +82,6 @@ errors — mostly work that had already shipped, a couple of problems
 that never existed as described. Check an item against the code before
 starting it, and delete it when you find it done.
 
-## Resolver and provider
-
-- **Finish moving the script-driven resolution paths to the native
-  anidb resolver.** Embedded playback already resolves natively —
-  browse search, direct candidate pick, episode-to-master resolution,
-  the numbering-offset bridge into `ani-hsts` — and the `-S` index
-  handoff is gone from the play path. Still on the script: downloads,
-  the external player and Syncplay launch paths, and the
-  auto-updater's reasons for existing. Availability never spawns the
-  script — it runs the Rust picker — but that picker still queries
-  allanime, so its remaining work is the provider migration to the
-  native anidb client, not a script removal. The
-  botan shim machinery (`anicli/botan_shim.rs`, the PATH provisioning
-  in `app.rs`) is dead weight 5.0 never invokes.
-
-  Two separate finish lines, and the gap between them is the thing to
-  remember. Native resolution everywhere means every path that
-  resolves a stream, including Syncplay and the external player.
-  *Deleting* the script is a much wider job — downloads, app startup,
-  packaging, the updater and the bats suites all reach for it, and a
-  search for the binary name is the only honest way to scope that.
-
 ## Correctness in the app
 
 
@@ -144,23 +131,20 @@ starting it, and delete it when you find it done.
   problem, not a resolver change. Surprising: ani-cli 5.0 itself has
   the same gap on Windows.
 
-- **Four fixes on the anidb-availability branch have no `test(red)`
-  predecessor.** `ca6a94ea` (busy-executable retry), `953063bb`
-  (Windows curl resolution — its test sits inside the same commit),
-  `0a6540c5` (year threading) and `a79b5ba8` (subtype threading) all
-  landed as `fix:` commits without the paired red the contract in
-  §2 asks for. The behaviors are covered by tests today, so this is
-  about commit ordering, not a coverage hole.
+- **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
+  requires a `test(red):` predecessor for every `feat`/`fix(green):`
+  and spells the verification out as a mechanical procedure, but
+  nothing runs it. Unpaired fixes have reached master; each was caught
+  by a reviewer reading the log by hand, or missed.
 
-  Not fixed in place because the ordering cannot be repaired on that
-  branch: the earliest of the four sits 245 commits back, and the
-  range between it and the head absorbs eight of master's own merge
-  commits (including master's merges of #140, #141 and #142). Any
-  reorder replays those, forking the branch off master's real
-  ancestry and turning the PR into a whole-tree diff. Rebuilding the
-  work on a fresh branch is the only mechanism that produces the
-  ordering, and that is a maintainer call about the review trail,
-  not a code change.
+  The subtlety that makes a naive check worse than none: asking
+  whether a branch contains *any* red passes a green whose red landed
+  on a separately-merged branch, and asking
+  `--is-ancestor <green> <red>` tests the negation. The question is
+  whether each green has a red **ancestor**.
+
+  Related to the pre-commit and TDD tension above — both are about
+  giving the contract teeth instead of restating it.
 
 - **Per-episode audio-mode caps.** Availability answers whether a
   show carries the requested mode, not which of its episodes do, so
