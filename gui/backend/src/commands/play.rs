@@ -1338,6 +1338,49 @@ mod tests {
         assert_eq!(resp.media_kind, MediaKind::Mp4);
     }
 
+    /// A still-valid cache row for a fractional extra can outlive
+    /// the sidecar's single (slot, tag) stamp — resolving 1.5 then
+    /// 2.5 replaces the stamp, and the 1.5 replay would fall back
+    /// to the display tag ani-cli cannot grep. The cache row itself
+    /// carries the resolved slot, so the replay writes it directly.
+    #[tokio::test]
+    fn cache_hit_history_writes_the_cached_slot() {
+        let state = state_with_proxy_origin();
+        let td = tempfile::tempdir().expect("tempdir");
+        let mut state = state;
+        state.history_path = td.path().join("ani-hsts");
+        let args = PlayArgs {
+            title: "Recap Show".into(),
+            episode: "3.5".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        let mut cached = cached_blank(
+            "https://u.example/x.mp4".into(),
+            String::new(),
+            MediaKind::Mp4,
+        );
+        cached.show_id = "recap-show-7".into();
+        cached.show_title = "Recap Show".into();
+        cached.resolved_slot = Some(4);
+        write_history_on_cache_hit(&state, &args, &cached);
+        let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
+        assert!(
+            body.contains("\t4\t") || body.starts_with("4\t"),
+            "the replay must write the cached slot, not the display tag; got {body:?}"
+        );
+        assert!(
+            !body.contains("3.5"),
+            "the display tag must not reach the shared file; got {body:?}"
+        );
+    }
+
     /// Same shape, but with a non-empty referer + show_id — exercises
     /// the cache-hit history-write branch (lines 266-282 in the file
     /// before this test landed). Without this the upsert-on-cache-hit
