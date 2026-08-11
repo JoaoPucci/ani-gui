@@ -148,7 +148,11 @@ starting it, and delete it when you find it done.
   - **Any-red is not the question.** Asking whether the branch
     contains *a* red passes a green whose red landed on a
     separately-merged branch. Ask whether each green has a red
-    **ancestor**; `--is-ancestor <green> <red>` tests the negation.
+    **ancestor**, and ask it in that direction. The reverse,
+    `--is-ancestor <green> <red>`, is not the same question negated:
+    it exits nonzero for the separately-merged case exactly as it
+    does for correct ordering, so it cannot tell those apart. All it
+    detects is a red committed after its green.
   - **Upstream commits are exempt** (§2). A sync merge imports
     upstream history verbatim, so its `feat` commits have no red of
     ours and cannot acquire one. Provenance is mechanical: reachable
