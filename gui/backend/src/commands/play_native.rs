@@ -35,6 +35,20 @@ pub struct PickedShow {
     pub episodes: Vec<crate::scraper::anidb::EpisodeRef>,
 }
 
+/// Whether a transport-dead candidate outranks the winner: a
+/// strictly stronger identity always does, and an equal
+/// identity-bearing rank does when the dead candidate came first —
+/// provider order would have decided the tie for it. Plain
+/// no-identity failures never block; provider order among garbage
+/// hits is weak evidence, and the probe-skip behavior exists for
+/// exactly that pool.
+fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: usize) -> bool {
+    let Some((rank, pos)) = best_failed else {
+        return false;
+    };
+    rank < winner_rank || (rank == winner_rank && rank <= 1 && pos < winner_pos)
+}
+
 /// Distance tolerance: long-running shows get proportional slack,
 /// short shows a hard floor of 3 — the same rule the allanime picker
 /// converged on after the sibling-mispick rounds.
@@ -107,11 +121,15 @@ pub async fn pick_candidate<F: AnidbFetch>(
     )> = Vec::new();
     let mut any_transport_failure = false;
     // Identity carried by transport-DEAD candidates
-    // ([`identity_rank`]): a dead candidate that outranks the
-    // eventual winner makes the whole pick transient — the sibling
-    // must not win on the strength of weather.
-    let mut best_failed_rank: u8 = u8::MAX;
-    for (h, year_confirmed) in head {
+    // ([`identity_rank`]), with their provider position: a dead
+    // candidate that outranks the eventual winner — or ties an
+    // identity-bearing rank from an earlier position, where provider
+    // order would have decided for it — makes the whole pick
+    // transient. The sibling must not win on the strength of
+    // weather.
+    let mut best_failed: Option<(u8, usize)> = None;
+    let mut positions: Vec<usize> = Vec::new();
+    for (pos, (h, year_confirmed)) in head.into_iter().enumerate() {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
                 // Kitsu's expected count excludes recaps; so must
@@ -119,6 +137,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 // fractional extras.
                 let count = regular_episode_count(&eps);
                 probed_ok.push((h, eps, count.abs_diff(expected), year_confirmed));
+                positions.push(pos);
             }
             Err(e) => {
                 // A refusal or rate limit is the provider blocking,
@@ -137,7 +156,9 @@ pub async fn pick_candidate<F: AnidbFetch>(
                     any_transport_failure = true;
                     let failed =
                         identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
-                    best_failed_rank = best_failed_rank.min(failed);
+                    if best_failed.is_none_or(|best| (failed, pos) < best) {
+                        best_failed = Some((failed, pos));
+                    }
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
             }
@@ -174,9 +195,11 @@ pub async fn pick_candidate<F: AnidbFetch>(
             .min_by_key(|(_, (_, _, d, _))| *d)
             .map(|(i, _)| i)
         {
-            if best_failed_rank < 1 {
-                // An exact-title candidate died unheard; the rescue
-                // must not outrank it on weather.
+            let (h, _, _, c) = &probed_ok[idx];
+            let rescue_rank = identity_rank(h.title.trim().to_lowercase() == needle, *c);
+            if dead_outranks(best_failed, rescue_rank, positions[idx]) {
+                // An identity-bearing candidate died unheard; the
+                // rescue must not outrank it on weather.
                 return Err(crate::error::AniError::Network);
             }
             let (hit, episodes, _, _) = probed_ok.swap_remove(idx);
@@ -195,7 +218,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
         return Err(crate::error::AniError::NoResults);
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
-    if best_failed_rank < winner_rank {
+    if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
         return Err(crate::error::AniError::Network);
     }
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
