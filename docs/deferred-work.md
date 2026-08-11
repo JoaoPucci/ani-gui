@@ -145,6 +145,24 @@ starting it, and delete it when you find it done.
   not a resolver change. Surprising: ani-cli 5.0 itself has the same
   gap on Windows.
 
+- **Four fixes on the anidb-availability branch have no `test(red)`
+  predecessor.** `ca6a94ea` (busy-executable retry), `953063bb`
+  (Windows curl resolution — its test sits inside the same commit),
+  `0a6540c5` (year threading) and `a79b5ba8` (subtype threading) all
+  landed as `fix:` commits without the paired red the contract in
+  §2 asks for. The behaviors are covered by tests today, so this is
+  about commit ordering, not a coverage hole.
+
+  Not fixed in place because the ordering cannot be repaired on that
+  branch: the earliest of the four sits 245 commits back, and the
+  range between it and the head absorbs eight of master's own merge
+  commits (including master's merges of #140, #141 and #142). Any
+  reorder replays those, forking the branch off master's real
+  ancestry and turning the PR into a whole-tree diff. Rebuilding the
+  work on a fresh branch is the only mechanism that produces the
+  ordering, and that is a maintainer call about the review trail,
+  not a code change.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
