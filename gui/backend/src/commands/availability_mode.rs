@@ -17,7 +17,9 @@ use crate::scraper::anidb::{AnidbClient, AnidbFetch, EpisodeRef};
 /// `Some(0)` means a live row said the mode is absent — the answered
 /// negative availability may cache. `None` means every row the
 /// search touched was missing, which says nothing about the mode and
-/// must not be persisted as absence.
+/// must not be persisted as absence. The count never reaches past
+/// the highest row that answered: an unproven row is not coverage,
+/// whether it sits at the front of the listing or above its tail.
 ///
 /// The listing's order is the provider's own, and a provider dubs in
 /// that order, so the covered rows are a prefix: the boundary is
@@ -53,10 +55,13 @@ pub(crate) async fn mode_prefix_len<F: AnidbFetch>(
         return Ok(None);
     };
     if hi_covered {
-        // A live row at the tail carries the mode, so the whole
-        // listing does — a dead row above it cannot subtract from
-        // what that answer proved.
-        return Ok(Some(episodes.len()));
+        // The highest ANSWERING row carries the mode, so everything
+        // up to it does. Rows above it, if any, answered nothing —
+        // and an unproven row must not be advertised, exactly as a
+        // dead row at the front must not be counted. When that row
+        // is the last one (the common case) this is the whole
+        // listing, still in a single request.
+        return Ok(Some(hi + 1));
     }
     let Some((lo, lo_covered)) = decisive(client, episodes, mode, 0..hi).await? else {
         return Ok(None);
