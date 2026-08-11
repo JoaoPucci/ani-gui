@@ -145,14 +145,20 @@ starting it, and delete it when you find it done.
     `feat` and `fix`, so a gate keyed on `feat(green):`/`fix(green):`
     misses a bare `fix:` — which is the form every unpaired commit
     took.
-  - **Any-red is not the question.** Asking whether the branch
-    contains *a* red passes a green whose red landed on a
-    separately-merged branch. Ask whether each green has a red
-    **ancestor**, and ask it in that direction. The reverse,
-    `--is-ancestor <green> <red>`, is not the same question negated:
-    it exits nonzero for the separately-merged case exactly as it
-    does for correct ordering, so it cannot tell those apart. All it
-    detects is a red committed after its green.
+  - **Ancestry is not pairing.** Asking whether the branch contains
+    *a* red passes a green whose red landed on a separately-merged
+    branch. Narrowing that to "this green has a red **ancestor**" is
+    still too weak: once one honest pair lands, its red is an
+    ancestor of everything after it, so the next unpaired green
+    inherits it and passes. The gate has to attribute a specific red
+    to a specific green — §2 reads that off adjacency, each green's
+    parent being its red — not merely find one somewhere behind it.
+
+    Direction matters too, wherever an ancestry test does get used:
+    `--is-ancestor <green> <red>` is not the ancestry question
+    negated. It exits nonzero for the separately-merged case exactly
+    as it does for a correct pair, so all it detects on its own is a
+    red committed after its green.
   - **Upstream commits are exempt** (§2). A sync merge imports
     upstream history verbatim, so its `feat` commits have no red of
     ours and cannot acquire one. Provenance is mechanical: reachable
