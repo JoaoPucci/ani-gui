@@ -26,7 +26,7 @@ use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
 use crate::error::{AniError, Result};
-use crate::proxy::{upstream, MediaKind};
+use crate::proxy::MediaKind;
 use crate::scraper;
 use crate::scraper::Candidate;
 
@@ -730,8 +730,6 @@ where
         }
     }
 
-    // Decide media kind: cheap path-extension first, HEAD fallback
-    // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
         detail: format!("upstream_url: {} is not a valid URL", native.master_url),
     })?;
@@ -740,19 +738,13 @@ where
     // invocation dropped the flag with the provider change.
     let referer = String::new();
 
-    let kind = match MediaKind::from_url(&upstream_url) {
-        Some(k) => k,
-        None => {
-            // HEAD failures fall back to MP4 — that's the safe default
-            // (binary streams, unknown CDNs). The proxy then serves
-            // /file.mp4 with byte-range support; if the upstream truly
-            // is an HLS manifest mislabelled, hls.js never enters the
-            // picture and the renderer surfaces a real error.
-            upstream::classify_via_head(&state.meta_http, &upstream_url, &referer)
-                .await
-                .unwrap_or(MediaKind::Mp4)
-        }
-    };
+    // The resolve already fetched this URL and accepted it only
+    // because its body opens as #EXTM3U — it is definitively HLS,
+    // whatever shape the URL takes and however the CDN answers HEAD.
+    // Re-deriving the kind here misclassified opaque playlist URLs
+    // as MP4 and probed the stream upstream through the metadata
+    // client.
+    let kind = MediaKind::Hls;
     tracing::info!(
         title = %args.title,
         episode = %args.episode,
