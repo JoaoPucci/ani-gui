@@ -296,6 +296,10 @@ where
     F: FnMut(&str) + Send,
 {
     let target = dest.join(format!("{file_stem}.mp4"));
+    // The ceiling belongs to the transfer, not to each tool inside
+    // it: one absolute instant, and every step below runs against
+    // what is left of it.
+    let deadline = tokio::time::Instant::now() + timeout;
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
     let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
@@ -332,7 +336,7 @@ where
             _ => {}
         }
         let mut repackage_failed = false;
-        match run_tool(cmd, timeout, on_line, &mut repackage_failed).await {
+        match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 if repackage_failed {
@@ -369,7 +373,7 @@ where
         .arg("copy")
         .arg(&target);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    run_tool(cmd, timeout, on_line, &mut false).await
+    run_tool(cmd, deadline, on_line, &mut false).await
 }
 
 /// The downloader's tool-search path: the bundled-binary directory
@@ -413,7 +417,7 @@ fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path:
 /// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 async fn run_tool<F>(
     mut cmd: tokio::process::Command,
-    timeout: std::time::Duration,
+    deadline: tokio::time::Instant,
     on_line: &mut F,
     repackage_failed: &mut bool,
 ) -> Result<()>
@@ -436,6 +440,12 @@ where
     #[cfg(unix)]
     cmd.process_group(0);
     let child = loop {
+        // The retry lives before the child exists, so the wait below
+        // cannot cover it — the deadline has to, or a tool that
+        // never becomes runnable spins here forever.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(AniError::Timeout);
+        }
         match cmd.spawn() {
             Ok(c) => break c,
             // ETXTBSY: a concurrent fork briefly holds the tool's
@@ -475,7 +485,7 @@ where
         }
         child.child_mut().wait().await.map_err(|_| AniError::Io)
     };
-    let status = tokio::time::timeout(timeout, drive)
+    let status = tokio::time::timeout_at(deadline, drive)
         .await
         .map_err(|_| AniError::Timeout)??;
     if status.success() {
