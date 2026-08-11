@@ -124,6 +124,70 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
     }
 }
 
+/// The same provider, but the embed hands out an opaque playlist URL
+/// — no `.m3u8` tail, the fast4speed shape — and the CDN answers no
+/// HEAD at all.
+async fn stub_anidb_opaque() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    let base = server.uri();
+    let browse = r#"<a href="/anime/test-show-1"><img alt="test"/></a>"#;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/browse"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(browse))
+        .mount(&server)
+        .await;
+    let eps: Vec<String> = (1..=12)
+        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
+        .collect();
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/frontend/anime/1/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
+        )
+        .mount(&server)
+        .await;
+    let langs =
+        format!("{{\"languages\":[{{\"code\":\"jpn\",\"embed_url\":\"{base}/embed/x\"}}]}}");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path(
+            "/api/frontend/episode/1001/languages",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(langs))
+        .mount(&server)
+        .await;
+    let embed = format!("player.setup({{ file: '{base}/op/stream/sub/1' }});");
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/embed/x"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/op/stream/sub/1"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+        .mount(&server)
+        .await;
+    // No HEAD route at all: wiremock answers 404, the shape of a CDN
+    // that rejects the method.
+    server
+}
+
+#[tokio::test]
+async fn an_opaque_validated_playlist_stays_hls() {
+    // The resolve fetched this URL and accepted it only because its
+    // body opens as #EXTM3U — it is definitively HLS. Re-deriving
+    // the kind from the URL's shape and a HEAD probe classified it
+    // MP4 when the CDN rejects HEAD, routing the renderer through
+    // <video> and /file.mp4 instead of hls.js and manifest
+    // rewriting: a playback break on a stream the resolve just
+    // validated.
+    let tmp = TempDir::new().expect("tempdir");
+    std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
+    let anidb = stub_anidb_opaque().await;
+    let result = run_play_assertion(tmp.path(), &anidb.uri()).await;
+    result.expect("the validated playlist plays as HLS");
+}
+
 #[tokio::test]
 async fn play_endpoint_resolves_natively_and_returns_session() {
     let tmp = TempDir::new().expect("tempdir");
