@@ -821,6 +821,46 @@ async fn a_dead_rendition_falls_back_to_the_served_master() {
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
 }
 
+/// A healthy master whose selected rendition the provider refuses:
+/// the block must keep its identity instead of dissolving into the
+/// adaptive fallback.
+struct BlockedRendition;
+
+#[async_trait::async_trait]
+impl AnidbFetch for BlockedRendition {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url == "https://cdn.example/op/master.m3u8" {
+            return Ok(FetchResponse {
+                status: 200,
+                body: fixture("master_op.m3u8"),
+            });
+        }
+        Ok(FetchResponse {
+            status: 429,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_blocked_rendition_propagates_instead_of_masking() {
+    // The soft fallback exists for an answered miss — a rendition
+    // the CDN says isn't there. A 429 (or any refusal) on the
+    // rendition is the upstream blocking this client, and falling
+    // back to the master would record breaker success and stamp
+    // availability, history, and a cached session while hls.js is
+    // about to request renditions through the same blocked front.
+    let client = AnidbClient::new(BlockedRendition);
+    let err = client
+        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .await
+        .expect_err("a blocked rendition must keep its identity");
+    assert!(
+        matches!(err, crate::error::AniError::Upstream { status: 429 }),
+        "expected the refusal verbatim, got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn best_quality_keeps_the_adaptive_master_it_validated() {
     // The default path returned the extracted URL without ever
