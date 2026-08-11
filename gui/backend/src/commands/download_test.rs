@@ -370,6 +370,52 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
+    // Without ffmpeg, yt-dlp can exit 0 after leaving raw MPEG-TS
+    // under the requested .mp4 name, reporting it only through a
+    // stderr warning. The subprocess runner detected that report,
+    // deleted the mislabeled file and surfaced FfmpegMissing; the
+    // direct runner must not launder the same run into a success
+    // that leaves a corrupt download in the dock as completed.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '\\x47TSDATA' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let err = download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect_err("a mislabeled file is not a success");
+    assert!(
+        matches!(err, AniError::FfmpegMissing),
+        "the tool's own report says ffmpeg was needed and absent: {err:?}"
+    );
+    assert!(
+        !target.exists(),
+        "the mislabeled file must not survive under the .mp4 name"
+    );
+}
+
 #[tokio::test]
 async fn a_range_download_surfaces_the_walks_clean_miss() {
     // The walk's own verdicts pass through untranslated: an
