@@ -1,37 +1,32 @@
 //! Running an external tool and reading what it prints.
 //!
 //! Process-group lifecycle and output cleaning for the binaries this
-//! backend spawns — the downloader's yt-dlp and ffmpeg, and (once the
-//! script retires) the external player and Syncplay. None of it is
-//! ani-cli's: it lived under `anicli/` only because that is where the
-//! first subprocess driver was written, and the native paths reached
-//! across the module boundary to reuse it.
+//! backend spawns: the downloader's yt-dlp and ffmpeg, the external
+//! player, and Syncplay. It lived under `anicli/` only because the
+//! first subprocess driver was written there, and the native paths
+//! reached across the module boundary to reuse it.
 
-/// Owns the spawned ani-cli child and kills its whole process tree
-/// when dropped mid-run. Ownership is the point: a struct's `Drop`
-/// body runs BEFORE its fields drop, so the tree walk / group signal
-/// fires while the shell is still alive — on Windows `taskkill /T`
-/// can only discover curl / yt-dlp / ffmpeg descendants by a live
-/// parent pid, and `kill_on_drop`'s SIGKILL (the `Child` field's own
-/// drop) must come second under every cancellation mode: task abort,
-/// timeout, panic. Disarmed once the child has been waited: past the
-/// reap the pid may be recycled and must not be signalled. The signal
-/// goes through `kill(1)` / `taskkill(1)` rather than a syscall —
-/// the crate forbids unsafe code, and both binaries ship with any
-/// host that can run ani-cli. `.status()` (not `.spawn()`) so the
-/// helper can't linger as a zombie; it exits in microseconds.
+/// Owns a spawned child and kills its whole process tree when dropped
+/// mid-run. Ownership is the point: a struct's `Drop` body runs BEFORE
+/// its fields drop, so the tree walk / group signal fires while the
+/// child is still alive — on Windows `taskkill /T` can only discover
+/// descendants by a live parent pid, and `kill_on_drop`'s SIGKILL (the
+/// `Child` field's own drop) must come second under every cancellation
+/// mode: task abort, timeout, panic. A child that has been waited to
+/// completion is already reaped, so `id()` reads `None` and the guard
+/// stands down by itself — past the reap the pid may be recycled and
+/// must not be signalled. The signal goes through `kill(1)` /
+/// `taskkill(1)` rather than a syscall — the crate forbids unsafe
+/// code, and both binaries ship with any host this app runs on.
+/// `.status()` (not `.spawn()`) so the helper can't linger as a
+/// zombie; it exits in microseconds.
 pub(crate) struct TreeKillChild {
     pub(crate) child: tokio::process::Child,
-    armed: bool,
 }
 
 impl TreeKillChild {
     pub(crate) fn new(child: tokio::process::Child) -> Self {
-        Self { child, armed: true }
-    }
-
-    pub(crate) fn disarm(&mut self) {
-        self.armed = false;
+        Self { child }
     }
 
     /// The guarded child, for the caller's own I/O and wait. A child
@@ -44,11 +39,8 @@ impl TreeKillChild {
 
 impl Drop for TreeKillChild {
     fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        // `id()` is None once the child has been reaped — nothing to
-        // walk in that case even if disarm was missed.
+        // `id()` is None once the child has been reaped — a child the
+        // caller waited on is already gone.
         let Some(pid) = self.child.id() else { return };
         kill_process_tree(pid);
     }
