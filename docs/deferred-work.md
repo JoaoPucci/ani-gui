@@ -163,6 +163,22 @@ starting it, and delete it when you find it done.
   ordering, and that is a maintainer call about the review trail,
   not a code change.
 
+- **Per-episode audio-mode caps.** Availability answers whether a
+  show carries the requested mode, not which of its episodes do, so
+  a partly dubbed show advertises its whole listing under the dub
+  key and an undubbed episode fails when clicked — as it did under
+  every earlier provider.
+
+  Deriving the real prefix was attempted and withdrawn. The provider
+  exposes audio per episode and nowhere else, so proving a cap costs
+  one request per episode; a sub-linear search cannot vouch for rows
+  it never fetched, and three review rounds each found the next
+  place where an unfetched row got counted (the tail, the front,
+  then anywhere below a bisected boundary). Whoever picks this up
+  needs a cheaper source of per-episode audio data, or a budget for
+  the full scan on listings small enough to afford it — not a
+  smarter search over the same requests.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
