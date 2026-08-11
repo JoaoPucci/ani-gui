@@ -51,15 +51,6 @@ pub struct SyncplayLaunchArgs {
     /// Old payloads without this field decode as `None`.
     #[serde(default)]
     pub referer: Option<String>,
-    /// Optional sidecar subtitle URL (`.vtt`) when ani-cli surfaces a
-    /// soft-subtitle track separately from the stream. Forwarded to
-    /// the wrapped player via the kind-appropriate `--sub-file=` /
-    /// equivalent flag. Without this, Syncplay's wrapped player
-    /// opens the video but drops the subtitles even though the
-    /// embedded and external-player paths show them. Old payloads
-    /// without this field decode as `None`.
-    #[serde(default)]
-    pub subtitle_url: Option<String>,
     /// Which media player Syncplay wraps. Drives the flag syntax
     /// emitted past `--`: mpv takes `--referrer=`, VLC takes
     /// `--http-referrer=`, IINA takes `--mpv-referrer=` (the
@@ -94,11 +85,9 @@ pub struct SyncplayLaunchArgs {
 /// options]`. The `--` separator forwards everything after it to the
 /// wrapped player. We pick the referer flag based on `player_kind`
 /// so Syncplay→VLC gets VLC's `--http-referrer=` instead of mpv's
-/// `--referrer=`. `--sub-file=` is the same flag on mpv, VLC, and
-/// IINA, so no branching needed for subtitle. Custom kind emits no
-/// player-specific flags — the wrapped player's own config carries
-/// referer / sub-file, same escape hatch the external-player path's
-/// Custom kind uses.
+/// `--referrer=`. Custom kind emits no player-specific flags — the
+/// wrapped player's own config carries the referer, same escape
+/// hatch the external-player path's Custom kind uses.
 #[must_use]
 pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     let mut argv = Vec::new();
@@ -130,16 +119,9 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
         // matches!() above, so keep the explicit arm.
         ExternalPlayerKind::Custom => "--referrer=",
     };
-    let referer = args.referer.as_deref().filter(|s| !s.is_empty());
-    let subtitle = args.subtitle_url.as_deref().filter(|s| !s.is_empty());
-    if referer.is_some() || subtitle.is_some() {
+    if let Some(r) = args.referer.as_deref().filter(|s| !s.is_empty()) {
         argv.push("--".to_string());
-        if let Some(r) = referer {
-            argv.push(format!("{referrer_flag}{r}"));
-        }
-        if let Some(s) = subtitle {
-            argv.push(format!("--sub-file={s}"));
-        }
+        argv.push(format!("{referrer_flag}{r}"));
     }
     argv
 }

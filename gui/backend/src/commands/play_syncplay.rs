@@ -37,21 +37,20 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // Syncplay wraps whichever player the user already configured
     // for "Open in external" — most users have one media player
     // installed, and routing both flows through the same kind keeps
-    // the per-stream flag shapes (referer, sub-file) consistent
-    // between the two surfaces.
+    // the per-stream flag shapes (referer) consistent between the
+    // two surfaces.
     let player_kind = cfg.external_player_kind;
 
+    // Reuse the long-term cache the same way play_external does — the
+    // embedded player likely just resolved this exact (title, mode,
+    // quality, episode) tuple. The cached referer rides along so
+    // Syncplay's wrapped player gets the same flags it would have
+    // under play_external.
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        // Reuse the cached referer + subtitle —
-        // try_launch_args_from_cache already pulls both from the
-        // cache row (same shape play_external receives), so
-        // Syncplay's wrapped player gets the same Referer + sub-file
-        // it would have under play_external.
         return open_syncplay(&SyncplayLaunchArgs {
             stream_url: launch.stream_url,
             binary: cfg.syncplay_binary,
             referer: launch.referer,
-            subtitle_url: launch.subtitle_url,
             player_kind,
             player_binary: cfg.external_player.clone(),
         });
@@ -63,7 +62,6 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         stream_url: launch.stream_url,
         binary: cfg.syncplay_binary,
         referer: launch.referer,
-        subtitle_url: launch.subtitle_url,
         player_kind,
         player_binary: cfg.external_player,
     })

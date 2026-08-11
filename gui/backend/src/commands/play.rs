@@ -523,7 +523,6 @@ where
     let cached_resolution = CachedResolution {
         upstream_url: native.master_url.clone(),
         referer: referer.clone(),
-        subtitle_url: None,
         media_kind: kind,
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
@@ -534,7 +533,6 @@ where
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
         referer,
-        subtitle_url: None,
     };
     create_session_with_kind(state, &session_args, kind)
 }
@@ -790,7 +788,6 @@ mod tests {
         CachedResolution {
             upstream_url,
             referer,
-            subtitle_url: None,
             media_kind: kind,
             show_id: String::new(),
             show_title: String::new(),
@@ -955,7 +952,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
@@ -1180,9 +1176,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn try_launch_args_from_cache_round_trips_referer_and_subtitle() {
-        // fast4speed.rsvp + signed-URL upstreams need the cached
-        // Referer header forwarded; subtitle URL too (mpv consumes it).
+    async fn try_launch_args_from_cache_round_trips_the_referer() {
+        // Signed-URL upstreams need the cached Referer header
+        // forwarded to the external player.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .and(wiremock::matchers::header("referer", "https://allmanga.to"))
@@ -1204,9 +1200,8 @@ mod tests {
             &state.cache_pool,
             &key,
             &CachedResolution {
-                upstream_url: format!("{}/sub/3", server.uri()),
+                upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: Some("https://example/cap.vtt".into()),
                 media_kind: MediaKind::Mp4,
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
@@ -1219,10 +1214,6 @@ mod tests {
             .await
             .expect("hit");
         assert_eq!(launch.referer.as_deref(), Some("https://allmanga.to"));
-        assert_eq!(
-            launch.subtitle_url.as_deref(),
-            Some("https://example/cap.vtt")
-        );
     }
 
     #[tokio::test]

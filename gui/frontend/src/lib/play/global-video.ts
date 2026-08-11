@@ -38,7 +38,6 @@ export interface VideoSession {
 	session_id: string;
 	media_url: string;
 	media_kind: MediaKind;
-	subtitle_url: string | null;
 	/** The quality + mode this session was resolved at. The reuse
 	 *  shortcut compares these against the requested ones so a quality
 	 *  or sub/dub change re-resolves instead of resuming the stale
@@ -176,22 +175,4 @@ export function reuseSessionIfMatching(
 			}
 		: null;
 	return canReuseSession(currentSession, state, kitsuId, episode, quality, mode);
-}
-
-/** Replace the subtitle track on the singleton. Removes any
- *  existing `<track>` children and adds a fresh one when `url` is
- *  non-null. The play page's effect calls this when the session's
- *  subtitle URL changes. */
-export function setSubtitleTrack(url: string | null): void {
-	const v = ensureCreated();
-	for (const t of Array.from(v.querySelectorAll('track'))) t.remove();
-	if (url) {
-		const track = document.createElement('track');
-		track.kind = 'subtitles';
-		track.label = 'Subtitles';
-		track.srclang = 'en';
-		track.src = url;
-		track.default = true;
-		v.appendChild(track);
-	}
 }

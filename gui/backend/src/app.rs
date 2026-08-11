@@ -400,7 +400,6 @@ mod tests {
         let id = proxy.sessions.insert(crate::proxy::StreamSession::new(
             url::Url::parse("https://example.com/m.m3u8").unwrap(),
             "https://allmanga.to",
-            None,
         ));
         assert!(app.sessions.get(&id).is_some());
     }

@@ -5,7 +5,6 @@
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>` — proxy a segment.
-//! - `GET /s/<session>/sub.vtt` — proxy the subtitle file.
 //!
 //! Every fetch upstream uses the [`StreamSession`]'s stored `Referer:`
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
@@ -58,7 +57,6 @@ pub fn build_router(state: ProxyState) -> Router {
         .route("/s/:session/master.m3u8", get(handle_master))
         .route("/s/:session/file.mp4", get(handle_mp4))
         .route("/s/:session/seg", get(handle_seg))
-        .route("/s/:session/sub.vtt", get(handle_sub))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -332,37 +330,6 @@ async fn handle_seg(
         Body::from_stream(stream),
     )
         .into_response()
-}
-
-async fn handle_sub(
-    State(state): State<Arc<ProxyState>>,
-    Path(session_str): Path<String>,
-) -> Response {
-    let session = match SessionId::parse(&session_str) {
-        Ok(s) => s,
-        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid session id"),
-    };
-    let Some(sess) = state.sessions.get(&session) else {
-        return error_response(StatusCode::NOT_FOUND, "session not found");
-    };
-    let Some(sub_url) = sess.subtitle_url.clone() else {
-        return error_response(StatusCode::NOT_FOUND, "no subtitle for this session");
-    };
-
-    let body = match upstream::fetch_text(&state.client, &sub_url, &sess.referer).await {
-        Ok((b, _ct)) => b,
-        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream subtitle fetch"),
-    };
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        HeaderName::from_static("content-type"),
-        HeaderValue::from_static("text/vtt; charset=utf-8"),
-    );
-    headers.insert(
-        HeaderName::from_static("cache-control"),
-        HeaderValue::from_static("public, max-age=3600"),
-    );
-    (StatusCode::OK, headers, body).into_response()
 }
 
 fn decode_seg_url(b64: &str) -> crate::Result<Url> {

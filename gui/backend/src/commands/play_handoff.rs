@@ -53,7 +53,6 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
         // anidb's streams carry no referer requirement — the
         // embedded path records the same where it sets this empty.
         referer: None,
-        subtitle_url: None,
         title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player,
         player_kind: cfg.external_player_kind,

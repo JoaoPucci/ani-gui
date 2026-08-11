@@ -1409,7 +1409,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://example/x.m3u8".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Hls,
                 show_id: String::new(),
                 show_title: String::new(),
@@ -1454,7 +1453,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: "https://allmanga.to".into(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -1507,7 +1505,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -1579,7 +1576,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
@@ -1675,7 +1671,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "seq-show".into(),
                 show_title: "Some Sequel (12 episodes)".into(),
@@ -1759,7 +1754,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "seq2-show".into(),
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
@@ -1853,7 +1847,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/file.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
@@ -1953,7 +1946,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://video.example/720p.mp4".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
@@ -2081,7 +2073,6 @@ mod tests {
             &CachedResolution {
                 upstream_url: "https://example/m.m3u8".into(),
                 referer: String::new(),
-                subtitle_url: None,
                 media_kind: MediaKind::Hls,
                 show_id: "abc".into(),
                 show_title: "Some Show (12 episodes)".into(),
@@ -2204,7 +2195,6 @@ mod tests {
             "command": "/nonexistent/no-such-player-binary",
             "url": "https://example.com/test.m3u8",
             "referer": null,
-            "subtitle_url": null,
             "media_kind": "hls"
         });
         let response = router
