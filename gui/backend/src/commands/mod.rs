@@ -37,6 +37,7 @@ pub mod play_native_episode;
 pub mod play_native_format;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
+mod play_native_record;
 pub mod play_native_resolve;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;

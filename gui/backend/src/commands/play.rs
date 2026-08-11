@@ -444,51 +444,10 @@ where
         &native.extra_tags,
     )
     .await;
-    // Stamp the show's numbering offset while it's known — the
-    // cache-hit and mark-watched writers and the history read
-    // boundary all key on it by slug. Prefetches stamp too: their
-    // resolve is exactly as authoritative.
-    match &native.resolved_tag {
-        // The matched row's display differs from its slot: stamp the
-        // pair so the read boundary and the listing-less writers can
-        // translate between the CLI's slot and the GUI's display.
-        Some(tag)
-            if !crate::commands::play_native_episode::tag_matches(
-                tag,
-                &native.resolved_slot.to_string(),
-            ) =>
-        {
-            crate::commands::anidb_offset::put_display(
-                state,
-                &native.slug,
-                native.numbering_offset,
-                native.resolved_slot,
-                tag,
-            );
-        }
-        _ => crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset),
-    }
-    // The subprocess used to write ani-hsts itself on a fresh
-    // resolve; natively that write is ours. Prefetches stay out of
-    // the user's history exactly as before. ani-hsts speaks the
-    // provider's numbering — ani-cli's reader greps the stored
-    // number in the provider's episode list.
+    crate::commands::play_native_record::stamp_numbering(state, &native);
+    // Prefetches stay out of the user's history exactly as before.
     if !args.prefetch {
-        let entry = crate::history::HistoryEntry {
-            // The matched row's own slot — exactly what the CLI's
-            // reader greps, whatever space the display tags live in.
-            ep_no: native.resolved_slot.to_string(),
-            id: native.slug.clone(),
-            title: native.title.clone(),
-        };
-        if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-            tracing::warn!(
-                title = %args.title,
-                episode = %args.episode,
-                error = ?e,
-                "play: history write failed after native resolve",
-            );
-        }
+        crate::commands::play_native_record::write_history(state, &native, &args.episode);
     }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {

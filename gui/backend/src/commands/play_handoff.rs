@@ -16,11 +16,12 @@ use crate::error::Result;
 ///
 /// A handoff is always a click, never a prefetch, so the walk runs at
 /// interactive priority, the breaker hears the resolution's outcome
-/// under the same mapping the embedded path uses, and the watch is
-/// recorded: sending an episode to mpv or Syncplay is as much a watch
-/// as playing it in the window, and Continue Watching should show it
-/// either way. A failed history write is logged and swallowed — the
-/// stream is resolved and the user is waiting on their player.
+/// under the same mapping the embedded path uses, and the resolve
+/// leaves the same two records behind — the numbering stamp and the
+/// history row. Sending an episode to mpv or Syncplay is as much a
+/// watch as playing it in the window, and both go through
+/// [`crate::commands::play_native_record`] so the two paths cannot
+/// disagree about what a row's number means.
 ///
 /// # Errors
 /// The walk's typed verdicts — `NoResults` for a clean miss, the
@@ -52,19 +53,8 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
         state.anidb_gate.record(outcome, observed_at);
     }
     let native = native.map_err(|ne| ne.error)?;
-    let entry = crate::history::HistoryEntry {
-        ep_no: args.episode.clone(),
-        id: native.slug.clone(),
-        title: native.title.clone(),
-    };
-    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-        tracing::warn!(
-            title = %args.title,
-            episode = %args.episode,
-            error = ?e,
-            "handoff: history write failed after native resolve",
-        );
-    }
+    crate::commands::play_native_record::stamp_numbering(state, &native);
+    crate::commands::play_native_record::write_history(state, &native, &args.episode);
     Ok(LaunchArgs {
         stream_url: native.master_url,
         // anidb's streams carry no referer requirement — the
