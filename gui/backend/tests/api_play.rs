@@ -110,6 +110,7 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
         botan_shim_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
         scraper_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
+        anidb_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

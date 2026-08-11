@@ -308,7 +308,7 @@ fn anidb_client<'a>(
         tracing::error!("play: no curl binary found for the anidb transport");
         AniError::Network
     })?;
-    let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.scraper_gate), priority);
+    let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
     Ok(match &state.anidb_base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
@@ -654,7 +654,7 @@ where
             .transport()
             .last_attempt_at()
             .unwrap_or(resolve_started_at);
-        state.scraper_gate.record(outcome, observed_at);
+        state.anidb_gate.record(outcome, observed_at);
     }
     let native = match native {
         Ok(n) => n,
@@ -900,6 +900,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -982,7 +983,7 @@ mod tests {
         }
         assert!(
             state
-                .scraper_gate
+                .anidb_gate
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
