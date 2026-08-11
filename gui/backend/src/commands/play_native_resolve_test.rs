@@ -665,8 +665,10 @@ impl AnidbFetch for ChainRef<'_> {
 }
 
 /// First alias dies on transport; the second answers a clean
-/// no-results page — and stamps when it was asked.
+/// no-results page — and stamps when it was asked. Reports a fixed
+/// per-attempt start the way the gated transport does.
 struct FirstAliasDies {
+    attempt_started_at: tokio::time::Instant,
     second_search_at: Mutex<Option<tokio::time::Instant>>,
 }
 
@@ -688,6 +690,10 @@ impl AnidbFetch for FirstAliasDies {
             body: String::new(),
         })
     }
+
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        Some(self.attempt_started_at)
+    }
 }
 
 #[tokio::test]
@@ -698,7 +704,9 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
     // one must be able to discard the stale failure, and it keys on
     // the instant the record carries. The error therefore names the
     // failing attempt's own moment.
+    let started = tokio::time::Instant::now();
     let fetch = FirstAliasDies {
+        attempt_started_at: started,
         second_search_at: Mutex::new(None),
     };
     let client = AnidbClient::new(&fetch);
@@ -726,6 +734,14 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
     assert!(
         failed_at <= second,
         "the stamp must be the failing attempt, not the chain's tail"
+    );
+    // And it must be the attempt's post-admission START — the gated
+    // transport's own stamp — not the moment the failure was
+    // observed: a fetch that began before a concurrent recovery but
+    // failed after it must still read as pre-recovery.
+    assert_eq!(
+        failed_at, started,
+        "the stamp must be the transport's per-attempt start"
     );
 }
 
