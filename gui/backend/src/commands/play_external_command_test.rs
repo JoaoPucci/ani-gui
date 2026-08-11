@@ -49,6 +49,58 @@ async fn stub_provider(mock: &MockServer, query: &str) {
         .await;
 }
 
+/// Mount a listing whose provider slots and display tags diverge:
+/// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
+/// slot 5. Requesting display episode 4 must resolve slot 5, and the
+/// history row has to carry the slot — ani-cli's reader greps the
+/// stored number against the provider's own listing, where 4 is the
+/// recap.
+async fn stub_provider_with_a_recap(mock: &MockServer, query: &str) {
+    Mock::given(method("GET"))
+        .and(path("/browse"))
+        .and(query_param("q", query))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
+        )
+        .mount(mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/frontend/anime/77/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"episodes":[
+                {"id":701,"number":1,"number2":null},
+                {"id":702,"number":2,"number2":null},
+                {"id":703,"number":3,"number2":null},
+                {"id":704,"number":4,"number2":3.5},
+                {"id":705,"number":5,"number2":4}
+            ]}"#,
+        ))
+        .mount(mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/frontend/episode/705/languages"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
+            mock.uri()
+        )))
+        .mount(mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/e/x"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            "player.setup({{ file: '{}/x/master.m3u8' }});",
+            mock.uri()
+        )))
+        .mount(mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/x/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+        .mount(mock)
+        .await;
+}
+
 /// A player binary that records its argv and exits — the observable
 /// end of the spawn-and-detach launch.
 fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -179,5 +231,37 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
     assert!(
         hsts.contains("the-show-77"),
         "history row must key on the provider slug; got: {hsts}"
+    );
+}
+
+#[tokio::test]
+async fn an_external_play_records_the_provider_slot_not_the_display_number() {
+    // The history file speaks the provider's numbering: ani-cli's
+    // reader greps the stored number against the show's own listing.
+    // On a show with a recap, display episode 4 is slot 5 — storing
+    // the display number points the row at the recap instead, and
+    // the rail then offers to resume "3.5".
+    let mock = MockServer::start().await;
+    stub_provider_with_a_recap(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &mock.uri());
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("write config");
+
+    let mut args = play_args();
+    args.episode = "4".into();
+    args.episode_count = Some(4);
+    play_external(&state, &args).await.expect("plays");
+    wait_for(&argv_file).await;
+
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    let ep_no = hsts.split_whitespace().next().expect("a history row");
+    assert_eq!(
+        ep_no, "5",
+        "the row must carry the resolved provider slot, not the display tag: {hsts}"
     );
 }
