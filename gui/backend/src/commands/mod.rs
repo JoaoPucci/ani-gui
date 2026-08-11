@@ -30,6 +30,9 @@ pub mod play_native_format;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
 pub mod play_native_resolve;
+#[cfg(test)]
+pub(crate) mod play_native_test_provider;
+pub mod play_native_walk;
 pub mod play_native_year;
 pub mod play_referer;
 pub mod play_resolution_cache;

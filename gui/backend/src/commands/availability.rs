@@ -16,7 +16,7 @@ use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
 use crate::commands::play::anidb_client_with_base;
-use crate::commands::play_native_resolve::pick_native_walk;
+use crate::commands::play_native_walk::pick_native_walk;
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
