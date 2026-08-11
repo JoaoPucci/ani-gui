@@ -325,6 +325,84 @@ fn resolve_bundled_bin(resource_dir: Option<&std::path::Path>) -> Option<PathBuf
 mod tests {
     use super::*;
 
+    /// Boot the real `build` path against a staged environment: a
+    /// tempdir plays HOME + every XDG root, and the resource dir
+    /// carries a stub ani-cli the locator can seed the cache copy
+    /// from. Unix-only: the Windows arm additionally needs a Git
+    /// Bash install, and the coverage gate this protects runs on
+    /// Linux.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn build_assembles_state_from_a_staged_environment() {
+        use std::os::unix::fs::PermissionsExt;
+        let _guard = crate::config::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let td = tempfile::tempdir().expect("tempdir");
+        let resource = td.path().join("resources");
+        std::fs::create_dir_all(resource.join("bin")).expect("mkdir resources/bin");
+        let script = resource.join("ani-cli");
+        std::fs::write(&script, "#!/bin/sh\nexit 0\n").expect("write stub script");
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).expect("chmod stub");
+
+        let saved: Vec<(String, Option<String>)> = [
+            "HOME",
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_STATE_HOME",
+            "XDG_DATA_HOME",
+        ]
+        .into_iter()
+        .map(|k| (k.to_string(), std::env::var(k).ok()))
+        .collect();
+        std::env::set_var("HOME", td.path());
+        std::env::set_var("XDG_CACHE_HOME", td.path().join("cache"));
+        std::env::set_var("XDG_CONFIG_HOME", td.path().join("config"));
+        std::env::set_var("XDG_STATE_HOME", td.path().join("state"));
+        std::env::set_var("XDG_DATA_HOME", td.path().join("data"));
+
+        let built = AppState::build(
+            reqwest::Client::new(),
+            ProxyOrigin::new("127.0.0.1", 1),
+            Some(resource),
+        );
+
+        // Restore before asserting so a failure can't leak the fake
+        // env into whichever env-locked test runs next.
+        for (k, v) in saved {
+            match v {
+                Some(v) => std::env::set_var(&k, v),
+                None => std::env::remove_var(&k),
+            }
+        }
+
+        let state = built.expect("build succeeds against the staged env");
+        let root = td.path().to_path_buf();
+        assert!(
+            state.ani_cli_path.exists(),
+            "cache copy of the script exists"
+        );
+        assert!(state.ani_cli_path.starts_with(&root));
+        assert!(state.history_path.starts_with(&root));
+        assert!(state.image_cache_dir.starts_with(&root));
+        assert!(state.config_path.starts_with(&root));
+        assert!(state.state_dir.starts_with(&root));
+        assert!(state.image_cache_dir.is_dir(), "image cache dir created");
+        assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
+
+        // The update log starts empty, and the update spawn is a
+        // no-op while the settings toggle is off — config.toml was
+        // never written, but an explicit off pin keeps this stable
+        // if the default ever flips.
+        std::fs::create_dir_all(state.config_path.parent().unwrap()).expect("config dir");
+        std::fs::write(&state.config_path, "auto_update_anicli = false\n").expect("write config");
+        let arc = Arc::new(state);
+        arc.maybe_spawn_anicli_update();
+        assert_eq!(arc.anicli_update_log().expect("readable log").len(), 0);
+    }
+
     fn fake_state() -> AppState {
         AppState {
             secret: AppSecret::random(),

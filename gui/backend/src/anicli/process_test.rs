@@ -238,6 +238,7 @@ fn stub_ani_cli_with_descendant(pidfile: &std::path::Path) -> (tempfile::TempDir
 #[tokio::test]
 async fn tree_kill_fires_while_the_parent_is_still_alive() {
     let _guard = ENV_LOCK.lock().await;
+    let _probe_scope = TREE_KILL_PROBE_SCOPE.lock().await;
     // The Windows contract: taskkill /T discovers descendants by
     // a LIVE parent pid, so the teardown must run before
     // kill_on_drop reaps the shell. Only observable through the
@@ -1396,6 +1397,7 @@ async fn a_repackage_warning_stops_the_rest_of_the_range() {
 #[tokio::test]
 async fn a_timed_out_run_still_discards_what_the_warning_condemned() {
     let _guard = ENV_LOCK.lock().await;
+    let _probe_scope = TREE_KILL_PROBE_SCOPE.lock().await;
     let probe_td = tempfile::tempdir().expect("probe tempdir");
     let probe = probe_td.path().join("noop-kill.sh");
     {

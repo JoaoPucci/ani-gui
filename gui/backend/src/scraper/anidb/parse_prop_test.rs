@@ -10,9 +10,60 @@ use crate::scraper::anidb::parse::{
 use crate::scraper::anidb::parse_api::{parse_episodes, parse_languages, preferred_embed};
 use crate::scraper::anidb::LanguageEmbed;
 
-use super::slug_numeric_id;
+use super::{slug_numeric_id, slug_search_term};
 
 proptest::proptest! {
+    /// Every slug-shaped id round-trips to its own words: the
+    /// trailing numeric id is dropped, every separator becomes a
+    /// space, and nothing else moves. The word list is generated
+    /// rather than tabulated because the failures live in the
+    /// shapes a table does not think to write — a word that is
+    /// itself numeric, a single word, a long tail.
+    #[test]
+    fn a_slug_yields_its_words_without_the_id(
+        words in proptest::collection::vec("[a-z0-9]{1,8}", 1..6),
+        id in 0u64..1_000_000,
+    ) {
+        let slug = format!("{}-{id}", words.join("-"));
+        let expected = words.join(" ");
+        proptest::prop_assert_eq!(slug_search_term(&slug), Some(expected));
+    }
+
+    /// The search text never carries a separator: the whole point is
+    /// handing Kitsu words, and a surviving hyphen would search for
+    /// a title nobody wrote.
+    #[test]
+    fn the_search_text_carries_no_separators(
+        words in proptest::collection::vec("[a-z0-9]{1,8}", 1..6),
+        id in 0u64..1_000_000,
+    ) {
+        let slug = format!("{}-{id}", words.join("-"));
+        let term = slug_search_term(&slug).expect("slug-shaped");
+        proptest::prop_assert!(!term.contains('-'));
+        proptest::prop_assert_eq!(term.split(' ').count(), words.len());
+    }
+
+    /// A tail that is not a number is not a slug. Legacy allanime
+    /// ids arrive here and must fall through to their own resolve
+    /// path rather than being searched as words.
+    #[test]
+    fn a_non_numeric_tail_is_not_slug_shaped(
+        words in proptest::collection::vec("[a-z]{1,8}", 1..6),
+        tail in "[a-zA-Z]{1,8}",
+    ) {
+        let slug = format!("{}-{tail}", words.join("-"));
+        proptest::prop_assert_eq!(slug_search_term(&slug), None);
+    }
+
+    /// An id with no words in front of it names nothing to search
+    /// for, however long the number is.
+    #[test]
+    fn a_bare_id_yields_no_search_text(id in 0u64..u64::MAX) {
+        proptest::prop_assert_eq!(slug_search_term(&id.to_string()), None);
+        proptest::prop_assert_eq!(slug_search_term(&format!("-{id}")), None);
+    }
+
+
     /// Form-decoding the encoded output recovers the input exactly,
     /// over arbitrary unicode. The naive space swap this function
     /// replaced broke on `;` and friends — a failure class a

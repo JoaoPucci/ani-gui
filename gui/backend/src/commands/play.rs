@@ -316,17 +316,31 @@ fn anidb_client<'a>(
         crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
     >,
 > {
+    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
+}
+
+/// [`anidb_client`] with an explicit origin override, shared with the
+/// availability and download paths (and their test seams).
+pub(super) fn anidb_client_with_base<'a>(
+    state: &'a AppState,
+    base: Option<&str>,
+    priority: crate::scraper::gate::ScrapePriority,
+) -> Result<
+    crate::scraper::anidb::AnidbClient<
+        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+    >,
+> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
         &path_env,
     )
     .ok_or_else(|| {
-        tracing::error!("play: no curl binary found for the anidb transport");
+        tracing::error!("no curl binary found for the anidb transport");
         AniError::Network
     })?;
     let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
-    Ok(match &state.anidb_base {
+    Ok(match base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
     })

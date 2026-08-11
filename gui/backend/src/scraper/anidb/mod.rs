@@ -25,9 +25,12 @@ pub mod fetch;
 pub mod gated;
 pub mod parse;
 pub mod parse_api;
+pub(crate) use fetch::{candidate_names, is_executable, EXE_SUFFIXES};
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
 pub use gated::GatedFetch;
-pub use parse::{encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year};
+pub use parse::{
+    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, slug_search_term,
+};
 pub use parse_api::{
     extract_master_url, parse_episodes, parse_languages, parse_master_variants, preferred_embed,
     select_variant, MasterVariant,
@@ -159,6 +162,20 @@ impl<F: AnidbFetch> AnidbClient<F> {
         let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
         let body = self.content(&url).await?;
         parse_episodes(&body)
+    }
+
+    /// Whether an episode's languages carry the requested mode's
+    /// embed — the availability probes' one-request mode check. Only
+    /// the languages row is fetched; no embed page.
+    ///
+    /// # Errors
+    /// Upstream/transport errors as in [`Self::search`],
+    /// [`AniError::ParseFailed`] on an unrecognized body.
+    pub async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
+        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
+        let body = self.content(&url).await?;
+        let embeds = parse_languages(&body)?;
+        Ok(preferred_embed(&embeds, mode).is_some())
     }
 
     /// Resolve an episode's master-playlist URL for `sub`/`dub`:

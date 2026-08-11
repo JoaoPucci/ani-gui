@@ -17,7 +17,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(absent_episode)),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(absent_episode)),
         Some(ScrapeOutcome::Success)
     ));
     // Weather stays distress.
@@ -27,7 +27,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(refusal)),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(refusal)),
         Some(ScrapeOutcome::Failure)
     ));
     let limited = NativeError {
@@ -38,7 +38,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(limited)),
         Some(ScrapeOutcome::RateLimited { .. })
     ));
     let transport = NativeError {
@@ -47,7 +47,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(transport)),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(transport)),
         Some(ScrapeOutcome::Failure)
     ));
 }
@@ -65,7 +65,7 @@ fn a_gate_refusal_is_no_evidence_at_all() {
         clean_miss: false,
         failed_at: None,
     };
-    assert!(breaker_outcome(ScrapePriority::Interactive, &Err(refused)).is_none());
+    assert!(breaker_outcome::<()>(ScrapePriority::Interactive, &Err(refused)).is_none());
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(limited)),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(limited)),
         Some(ScrapeOutcome::RateLimited { retry_after: None })
     ));
 }
@@ -105,7 +105,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
         };
         assert!(
             matches!(
-                breaker_outcome(ScrapePriority::Interactive, &Err(dead_source)),
+                breaker_outcome::<()>(ScrapePriority::Interactive, &Err(dead_source)),
                 Some(ScrapeOutcome::Success)
             ),
             "status {status} answered; it must be recorded as health"
@@ -119,7 +119,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
         };
         assert!(
             matches!(
-                breaker_outcome(ScrapePriority::Interactive, &Err(block)),
+                breaker_outcome::<()>(ScrapePriority::Interactive, &Err(block)),
                 Some(ScrapeOutcome::Failure)
             ),
             "status {status} is block-shaped distress"
@@ -145,11 +145,11 @@ fn a_background_deadline_elapse_is_no_evidence() {
         failed_at: None,
     };
     assert_eq!(
-        breaker_outcome(ScrapePriority::Background, &Err(elapsed())),
+        breaker_outcome::<()>(ScrapePriority::Background, &Err(elapsed())),
         None
     );
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Interactive, &Err(elapsed())),
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(elapsed())),
         Some(ScrapeOutcome::Failure)
     ));
     let transport = NativeError {
@@ -158,7 +158,7 @@ fn a_background_deadline_elapse_is_no_evidence() {
         failed_at: None,
     };
     assert!(matches!(
-        breaker_outcome(ScrapePriority::Background, &Err(transport)),
+        breaker_outcome::<()>(ScrapePriority::Background, &Err(transport)),
         Some(ScrapeOutcome::Failure)
     ));
 }
@@ -219,7 +219,7 @@ proptest::proptest! {
                 _ => Some(ScrapeOutcome::Failure),
             }
         };
-        let got = breaker_outcome(priority, &Err(NativeError { error, clean_miss, failed_at: None }));
+        let got = breaker_outcome::<()>(priority, &Err(NativeError { error, clean_miss, failed_at: None }));
         proptest::prop_assert_eq!(got, expected);
     }
 }

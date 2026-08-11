@@ -11,11 +11,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::anicli::process::{spawn_download, DownloadRequest};
 use crate::app::AppState;
-use crate::commands::play::{
-    debug_options_for, pick_title_and_index, picker_miss_caller_error, PlayArgs,
-};
+use crate::commands::play::anidb_client_with_base;
+use crate::commands::play_native_resolve::{resolve_native_bounded, NativeResolveRequest};
 use crate::error::{AniError, Result};
 
 /// Wire payload for the download endpoint. A near-clone of [`PlayArgs`]
@@ -99,6 +97,21 @@ pub struct DownloadResponse {
 pub async fn download_with_progress<F>(
     state: &AppState,
     args: &DownloadArgs,
+    on_progress: F,
+) -> Result<DownloadResponse>
+where
+    F: FnMut(DownloadProgress) + Send,
+{
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    download_with_tools(state, args, &path_env, on_progress).await
+}
+
+/// [`download_with_progress`] with the tool-search PATH explicit —
+/// the seam the stub-tool tests drive.
+pub(crate) async fn download_with_tools<F>(
+    state: &AppState,
+    args: &DownloadArgs,
+    path_env: &str,
     mut on_progress: F,
 ) -> Result<DownloadResponse>
 where
@@ -107,96 +120,119 @@ where
     let dest = resolve_dest(args)?;
     std::fs::create_dir_all(&dest).map_err(|_| AniError::Io)?;
 
-    // Downloads run aria2c / yt-dlp / ffmpeg, which take minutes —
-    // the play path's 60s wall-clock timeout would kill the download
-    // mid-stream right after ani-cli finished link discovery (the
-    // tools also keep stderr quiet during transfer, so we'd see no
-    // progress to inform a longer timeout). Cap at one hour; user
-    // can abort via the dock's Cancel button anyway.
-    let mut opts = debug_options_for(state, None);
-    opts.timeout = std::time::Duration::from_secs(60 * 60);
-    let quality = args.quality.as_deref().unwrap_or("best");
+    // The bundled-binary directory joins the search ahead of PATH —
+    // packaged builds ship their own yt-dlp (Windows: ffmpeg too),
+    // and the bundle is the tool the package validated, exactly as
+    // the curl resolver ranks its bundled directory first.
+    let path_env = tool_search_path(state, path_env);
+    let path_env = path_env.as_str();
 
-    // Reuse play's disambiguator so a download started from the player
-    // grabs the same allanime show ani-cli would have streamed.
-    let play_view = play_args_view(args);
-    let picked = pick_title_and_index(state, &play_view).await;
-    if picked.candidate.is_none() {
-        // Partial-failure case (some search errored alongside a
-        // completed one with no chosen candidate) is treated as
-        // transient/non-authoritative — same policy as availability.
-        // Returning NoResults here would tell the user "not in
-        // catalog" when the canonical lookup never actually
-        // completed. Codex P2 #3235184271.
-        return Err(picker_miss_caller_error(&picked));
+    // A "1-12"-shaped episode is the Download All/Range UI: the
+    // script's own -e loop, one pick then one transfer per episode.
+    if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
+        let quality = args.quality.as_deref().unwrap_or("best");
+        super::download_range::download_range(
+            state,
+            args,
+            first,
+            last,
+            quality,
+            &dest,
+            path_env,
+            &mut on_progress,
+        )
+        .await?;
+        return Ok(DownloadResponse {
+            dest_dir: dest.to_string_lossy().into_owned(),
+        });
     }
-    let search_title = picked.title;
-    let select_index = picked.index;
+
+    // Resolve the stream natively — the same walk, disambiguation
+    // and episode mapping as the play path — then hand the master URL
+    // to the download tool directly, exactly as 5.0's own download()
+    // would. The one-hour transfer deadline stays: yt-dlp / ffmpeg
+    // keep stderr quiet mid-transfer, so no shorter timeout can be
+    // informed by progress.
+    let quality = args.quality.as_deref().unwrap_or("best");
+    // Downloads are always a user waiting at the dock — interactive
+    // priority, like the play path's non-prefetch requests.
+    let prio = crate::scraper::gate::ScrapePriority::Interactive;
+    let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
+    let request = NativeResolveRequest {
+        title: &args.title,
+        alt_titles: &args.alt_titles,
+        episode: &args.episode,
+        mode: &args.mode,
+        quality,
+        expected_count: args.episode_count,
+        year: args.year,
+        subtype: args.subtype.as_deref(),
+    };
+    let resolve_started_at = tokio::time::Instant::now();
+    let mut forward = |p: crate::anicli::parser::ProgressLine| {
+        let text = match p {
+            crate::anicli::parser::ProgressLine::Banner { text }
+            | crate::anicli::parser::ProgressLine::Other { text } => text,
+            crate::anicli::parser::ProgressLine::LinksFetched { provider } => {
+                format!("{provider} links fetched")
+            }
+            crate::anicli::parser::ProgressLine::Searching { provider } => {
+                format!("Searching {provider}...")
+            }
+            crate::anicli::parser::ProgressLine::Matched { title } => {
+                format!("Matched {title}")
+            }
+        };
+        on_progress(DownloadProgress { line: text });
+    };
+    // Bounded like the play path: a provider that accepts connections
+    // but stalls must not pin the resolve past the gate's half-open
+    // trial window. The hour-long deadline below covers the transfer
+    // alone.
+    let resolved = resolve_native_bounded(&client, request, &mut forward).await;
+    // Resolution and transfer are separate stages now, so the breaker
+    // learns from the fresh resolution outcome alone — the stale
+    // whole-run signal the subprocess forced is gone. Same mapping
+    // as play: answered verdicts are health, weather is distress, a
+    // gate refusal records nothing.
+    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &resolved) {
+        let observed_at = resolved
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
+            .unwrap_or(resolve_started_at);
+        state.anidb_gate.record(outcome, observed_at);
+    }
+    let resolved = resolved.map_err(|ne| ne.error)?;
 
     tracing::info!(
-        search_title = %search_title,
+        slug = %resolved.slug,
         episode = %args.episode,
-        select_index = select_index,
         mode = %args.mode,
-        quality = quality,
         dest = %dest.display(),
-        "download: spawning ani-cli -d",
+        "download: spawning tool on natively resolved stream",
     );
-
-    let spawn_started_at = tokio::time::Instant::now();
-    let spawned = spawn_download(
-        &opts,
-        &DownloadRequest {
-            query: &search_title,
-            episode: &args.episode,
-            quality,
-            mode: &args.mode,
-            select_index,
-        },
+    let file_stem = format!("{} Episode {}", resolved.title, args.episode);
+    spawn_download_tool(
+        &resolved.master_url,
         &dest,
-        |line| {
-            tracing::info!(line = %line, "anicli.dl.stderr");
+        &file_stem,
+        Some(quality),
+        path_env,
+        std::time::Duration::from_secs(60 * 60),
+        &mut |line| {
+            tracing::info!(line = %line, "download.tool.stderr");
             on_progress(DownloadProgress {
                 line: line.to_string(),
             });
         },
     )
-    .await;
-    // The subprocess makes its own allanime requests, but unlike the
-    // play paths this run also spans the transfer stage — only feed
-    // the gate the signals that speak to allanime's health.
-    if let Some(ok) = download_gate_signal(&spawned) {
-        state.scraper_gate.record_outcome(ok, spawn_started_at);
-    }
-    spawned?;
+    .await?;
 
     Ok(DownloadResponse {
         dest_dir: dest.to_string_lossy().into_owned(),
     })
-}
-
-/// Classify a full [`spawn_download`] run for the scraper gate. The
-/// play paths record every upstream-proving outcome because their
-/// subprocess ends at resolution, but `ani-cli -d` spans resolution
-/// plus up to an hour of aria2c / yt-dlp / ffmpeg transfer. Its
-/// success signal is stale by construction: `started_at` predates the
-/// allmanga lookup by the whole transfer, and the gate's staleness
-/// guard only rejects stale successes while the breaker is already
-/// open — recording one here would reset a failure run building up
-/// mid-download and let the breaker need more than three current
-/// failures to open. Only `NoResults` feeds the gate: ani-cli dies
-/// with it at the search stage, before any transfer, so it's still
-/// fresh when reported — and the picker just confirmed the show
-/// exists, making it the rate-limit signature. Everything else (the
-/// pre-spawn ffmpeg check, a missing binary, the transfer timeout,
-/// the generic `Scraper` catch-all any non-zero tool exit maps to)
-/// is local or transfer-stage noise and records nothing.
-fn download_gate_signal<T>(result: &Result<T>) -> Option<bool> {
-    match result {
-        Ok(_) => None,
-        Err(AniError::NoResults) => Some(false),
-        Err(_) => None,
-    }
 }
 
 /// Resolve the destination directory from args + paths::download_dir.
@@ -208,25 +244,6 @@ fn resolve_dest(args: &DownloadArgs) -> Result<PathBuf> {
         return Ok(PathBuf::from(s));
     }
     crate::config::paths::download_dir().ok_or(AniError::Config)
-}
-
-/// Project the download-only fields onto a synthetic [`PlayArgs`] so
-/// the existing `pick_title_and_index` helper works unchanged. The
-/// download path doesn't need the `prefetch` field — ani-cli's
-/// download mode never touches `ani-hsts` (line 385 of upstream).
-fn play_args_view(args: &DownloadArgs) -> PlayArgs {
-    PlayArgs {
-        title: args.title.clone(),
-        episode: args.episode.clone(),
-        mode: args.mode.clone(),
-        quality: args.quality.clone(),
-        episode_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.clone(),
-        alt_titles: args.alt_titles.clone(),
-        prefetch: false,
-        kitsu_id: args.kitsu_id.clone(),
-    }
 }
 
 fn deserialize_alt_titles<'de, D>(d: D) -> std::result::Result<Vec<String>, D::Error>
@@ -250,133 +267,236 @@ where
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn download_args_round_trips_through_json_with_optional_fields() {
-        // Wire shape mirror — same fields the renderer sends. Quality,
-        // episode_count, alt_titles, kitsu_id, download_dir are all
-        // optional; the modal only requires title + episode + mode.
-        let body = serde_json::json!({
-            "title": "Naruto Shippuuden",
-            "episode": "5",
-            "mode": "sub",
-            "quality": "1080",
-            "alt_titles": ["NARUTO -ナルト- 疾風伝"],
-            "download_dir": "/tmp/dl",
-        });
-        let parsed: DownloadArgs = serde_json::from_value(body).expect("parse");
-        assert_eq!(parsed.title, "Naruto Shippuuden");
-        assert_eq!(parsed.episode, "5");
-        assert_eq!(parsed.mode, "sub");
-        assert_eq!(parsed.quality.as_deref(), Some("1080"));
-        assert_eq!(
-            parsed.alt_titles,
-            vec!["NARUTO -ナルト- 疾風伝".to_string()]
-        );
-        assert_eq!(parsed.download_dir.as_deref(), Some("/tmp/dl"));
+/// Spawn the download tool directly on a resolved stream URL —
+/// yt-dlp when present (v5's own arguments: fragment-retrying,
+/// 16-way concurrent), falling back to ffmpeg stream-copy when
+/// yt-dlp is missing or fails, exactly as ani-cli 5.0's download()
+/// chains them. Streams each stderr line into `on_line`; the child
+/// dies with a dropped future (kill_on_drop), which is what the
+/// dock's Cancel rides.
+///
+/// `path_env` is the PATH searched for the tools — the caller passes
+/// the process environment; tests stage stub executables.
+///
+/// # Errors
+/// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
+/// (the typed error the install modal renders);
+/// [`AniError::Scraper`] when the chosen tool exits non-zero;
+/// [`AniError::Timeout`] past the transfer deadline.
+pub(crate) async fn spawn_download_tool<F>(
+    master_url: &str,
+    dest: &std::path::Path,
+    file_stem: &str,
+    quality: Option<&str>,
+    path_env: &str,
+    timeout: std::time::Duration,
+    on_line: &mut F,
+) -> Result<()>
+where
+    F: FnMut(&str) + Send,
+{
+    let target = dest.join(format!("{file_stem}.mp4"));
+    // The ceiling belongs to the transfer, not to each tool inside
+    // it: one absolute instant, and every step below runs against
+    // what is left of it.
+    let deadline = tokio::time::Instant::now() + timeout;
+    let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
+    let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
+    let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
+    if ytdlp.is_none() && ffmpeg.is_none() {
+        // The typed error the frontend's install modal renders.
+        return Err(AniError::FfmpegMissing);
     }
-
-    #[test]
-    fn download_args_alt_titles_accepts_newline_joined_string_for_sse_query_path() {
-        // serde_urlencoded (the SSE GET path) can't decode repeated
-        // ?alt_titles=a&alt_titles=b as a Vec, so the renderer joins
-        // with \n. Same trick PlayArgs uses.
-        let body = serde_json::json!({
-            "title": "x",
-            "episode": "1",
-            "mode": "sub",
-            "alt_titles": "a\nb\nc",
-        });
-        let parsed: DownloadArgs = serde_json::from_value(body).expect("parse");
-        assert_eq!(
-            parsed.alt_titles,
-            vec!["a".to_string(), "b".to_string(), "c".to_string()]
-        );
+    let child_path = std::env::join_paths(std::env::split_paths(path_env).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .ok();
+    if let Some(exe) = ytdlp {
+        let mut cmd = tokio::process::Command::new(exe);
+        if let Some(p) = &child_path {
+            cmd.env("PATH", p);
+        }
+        cmd.arg(master_url)
+            .arg("--no-skip-unavailable-fragments")
+            .arg("--fragment-retries")
+            .arg("infinite")
+            .arg("-N")
+            .arg("16")
+            .arg("-o")
+            .arg(&target);
+        // v5 downloads the variant select_quality chose; the same
+        // preference expressed through yt-dlp's format sort.
+        match quality {
+            Some("worst") => {
+                cmd.arg("-S").arg("+res");
+            }
+            Some(q) if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() => {
+                cmd.arg("-S").arg(format!("res:{q}"));
+            }
+            _ => {}
+        }
+        let mut repackage_failed = false;
+        match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if repackage_failed {
+                    // yt-dlp's own report: the fragments live under
+                    // the .mp4 name as raw MPEG-TS. Discard the
+                    // mislabeled file and surface the install
+                    // modal's error — the ffmpeg retry would need
+                    // the very tool whose absence caused this.
+                    crate::anicli::process::discard_mislabeled(dest, &[target.clone()]);
+                    return Err(AniError::FfmpegMissing);
+                }
+                // v5's && chain: a failing yt-dlp run retries the
+                // whole stream through ffmpeg when one exists.
+                if ffmpeg.is_none() {
+                    return Err(e);
+                }
+                on_line("yt-dlp failed; retrying with ffmpeg");
+            }
+        }
     }
-
-    #[test]
-    fn play_args_view_carries_subtype_to_the_picker() {
-        // The projection feeds pick_title_and_index — the same picker
-        // the play path hands its subtype to. A projection that drops
-        // the field re-opens the movie-vs-TV mispick on the download
-        // path alone.
-        let args = DownloadArgs {
-            title: "x".into(),
-            episode: "1".into(),
-            mode: "sub".into(),
-            quality: None,
-            episode_count: None,
-            year: None,
-            subtype: Some("movie".into()),
-            alt_titles: vec![],
-            kitsu_id: None,
-            download_dir: None,
-        };
-        assert_eq!(play_args_view(&args).subtype.as_deref(), Some("movie"));
+    let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
+    let mut cmd = tokio::process::Command::new(exe);
+    if let Some(p) = &child_path {
+        cmd.env("PATH", p);
     }
+    cmd.arg("-extension_picky")
+        .arg("0")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-stats")
+        .arg("-i")
+        .arg(master_url)
+        .arg("-c")
+        .arg("copy")
+        .arg(&target);
+    // The warning is yt-dlp's; ffmpeg cannot set the flag.
+    run_tool(cmd, deadline, on_line, &mut false).await
+}
 
-    #[test]
-    fn download_gate_signal_counts_only_no_results() {
-        // NoResults after the picker confirmed the show exists is
-        // the rate-limit signature, and ani-cli dies with it at the
-        // search stage — before any transfer — so it's still fresh
-        // when reported. A full-run success is NOT gate evidence:
-        // it lands after minutes of transfer, so its resolution
-        // proof is stale by construction and recording it would
-        // reset a failure run that built up during the download.
-        assert_eq!(download_gate_signal::<()>(&Ok(())), None);
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::NoResults)),
-            Some(false)
-        );
+/// The downloader's tool-search path: the bundled-binary directory
+/// (when packaging ships one) ahead of the caller's PATH. Also what
+/// the spawned tool itself sees as PATH, so a bundled yt-dlp finds
+/// the bundled ffmpeg for its own repackaging.
+fn tool_search_path(state: &AppState, path_env: &str) -> String {
+    match &state.bundled_bin {
+        Some(dir) => std::env::join_paths(
+            std::iter::once(dir.clone()).chain(std::env::split_paths(path_env)),
+        )
+        .map(|joined| joined.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path_env.to_string()),
+        None => path_env.to_string(),
     }
+}
 
-    #[test]
-    fn download_gate_signal_ignores_local_and_transfer_stage_failures() {
-        // ffmpeg missing is a pre-spawn local check; MissingBinary
-        // never reached the network; the 1 h timeout and the generic
-        // Scraper catch-all are dominated by aria2c / yt-dlp / ffmpeg
-        // transfer deaths on this path. None of them says anything
-        // about allanime's health, so none may move the breaker.
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::FfmpegMissing)),
-            None
-        );
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::MissingBinary)),
-            None
-        );
-        assert_eq!(download_gate_signal::<()>(&Err(AniError::Timeout)), None);
-        assert_eq!(
-            download_gate_signal::<()>(&Err(AniError::Scraper {
-                key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
-            })),
-            None
-        );
-    }
+/// First on-PATH hit for a tool name, widened by the platform's
+/// executable suffix table: the scan builds and tests each full path
+/// itself, so Windows command resolution (and its PATHEXT widening)
+/// never runs — without the explicit table, an installed
+/// `yt-dlp.exe` reads as missing. Bare name first within each
+/// directory, like the curl transport's resolver.
+fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path_env).find_map(|d| {
+        crate::scraper::anidb::candidate_names(name, suffixes)
+            .into_iter()
+            .map(|file| d.join(file))
+            // Executability, not mere existence: a regular file the
+            // platform cannot exec (an extraction that missed
+            // chmod +x) must not hide a usable tool further along
+            // the search.
+            .find(|p| crate::scraper::anidb::is_executable(p))
+    })
+}
 
-    #[test]
-    fn resolve_dest_prefers_explicit_args_over_paths_helper() {
-        let a = DownloadArgs {
-            title: "x".into(),
-            episode: "1".into(),
-            mode: "sub".into(),
-            quality: None,
-            episode_count: None,
-            year: None,
-            subtype: None,
-            alt_titles: vec![],
-            kitsu_id: None,
-            download_dir: Some("/tmp/explicit".into()),
-        };
-        let p = resolve_dest(&a).expect("ok");
-        assert_eq!(p, PathBuf::from("/tmp/explicit"));
+/// Run one download tool to completion, streaming stderr lines.
+///
+/// # Errors
+/// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
+/// spawn failure, [`AniError::Scraper`] on a non-zero exit.
+async fn run_tool<F>(
+    mut cmd: tokio::process::Command,
+    deadline: tokio::time::Instant,
+    on_line: &mut F,
+    repackage_failed: &mut bool,
+) -> Result<()>
+where
+    F: FnMut(&str) + Send,
+{
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    // §5's subprocess environment: nothing the child prints may
+    // depend on the terminal that launched the backend. Both tools
+    // colorize when the inherited environment says to, and every
+    // line here goes straight to the dock.
+    cmd.env("TERM", "dumb")
+        .env("NO_COLOR", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    // Own process group, so cancellation can address the tool's
+    // whole tree: yt-dlp spawns helpers kill_on_drop cannot reach.
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let child = loop {
+        // The retry lives before the child exists, so the wait below
+        // cannot cover it — the deadline has to, or a tool that
+        // never becomes runnable spins here forever.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(AniError::Timeout);
+        }
+        match cmd.spawn() {
+            Ok(c) => break c,
+            // ETXTBSY: a concurrent fork briefly holds the tool's
+            // write fd between its fork and exec (fds are CLOEXEC,
+            // so the window is microseconds). Real for freshly
+            // written executables — retry instead of failing the
+            // whole download over it.
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            Err(_) => return Err(AniError::Network),
+        }
+    };
+    // Dropped unreaped — the dock's Cancel aborting the SSE task, or
+    // the transfer deadline elapsing — the guard takes the process
+    // group down; a waited child is already reaped and the guard
+    // stands down by itself.
+    let mut child = crate::anicli::process::TreeKillChild::new(child);
+    let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
+    let drive = async {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(raw)) = lines.next_line().await {
+            // Defense in depth behind the environment above: the
+            // dock's DownloadProgress promises stripped text, and a
+            // tool that colorizes anyway must not reach it.
+            let line = crate::anicli::parser::strip_ansi(raw.as_bytes());
+            // The run is condemned the moment yt-dlp reports it left
+            // MPEG-TS under the .mp4 name: how it ends stops
+            // mattering (exit 0 included), and stopping now spares
+            // the rest of a transfer whose output is already wrong.
+            // The armed guard takes the tool down on return.
+            if crate::anicli::process::yt_dlp_could_not_repackage(&line) {
+                *repackage_failed = true;
+                return Err(AniError::FfmpegMissing);
+            }
+            on_line(&line);
+        }
+        child.child_mut().wait().await.map_err(|_| AniError::Io)
+    };
+    let status = tokio::time::timeout_at(deadline, drive)
+        .await
+        .map_err(|_| AniError::Timeout)??;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AniError::Scraper {
+            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+        })
     }
 }
 
 #[cfg(test)]
 #[path = "download_test.rs"]
-mod proptests;
+mod tests;

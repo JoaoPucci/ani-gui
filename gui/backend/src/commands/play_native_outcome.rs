@@ -1,7 +1,7 @@
 //! The resolution → breaker mapping — split from `play_native_resolve`
 //! so each file stays inside the complexity ratchet's per-file bar.
 
-use super::play_native_resolve::{NativeError, NativeResolved};
+use super::play_native_resolve::NativeError;
 use crate::error::AniError;
 use crate::scraper::gate::{ScrapeOutcome, ScrapePriority};
 
@@ -17,9 +17,9 @@ use crate::scraper::gate::{ScrapeOutcome, ScrapePriority};
 /// decides whether the verdict is persistable absence: a matched
 /// show with one episode missing is breaker-healthy but proves
 /// nothing about the show's availability.
-pub fn breaker_outcome(
+pub fn breaker_outcome<T>(
     priority: ScrapePriority,
-    native: &std::result::Result<NativeResolved, NativeError>,
+    native: &std::result::Result<T, NativeError>,
 ) -> Option<ScrapeOutcome> {
     match native {
         Ok(_) => Some(ScrapeOutcome::Success),

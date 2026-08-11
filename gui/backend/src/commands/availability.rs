@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
-use crate::commands::play::{pick_title_and_index_with_base, PlayArgs};
+use crate::commands::play::anidb_client_with_base;
+use crate::commands::play_native_walk::pick_native_walk;
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
@@ -203,6 +204,25 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v12: the picker gained the subtype disproof — Kitsu's subtype
+    //      rejects format-mismatched candidates. A v11 verdict reached
+    //      without it can be available:true on a pool whose only
+    //      matches the new picker refuses (movie badges against a
+    //      non-movie subtype), and the cached row short-circuits the
+    //      probe for the whole positive TTL; re-keying re-probes.
+    // v11: the cap moved to per-entry (Kitsu) numbering. A v10 row
+    //      probed against a continuation cour carries the provider's
+    //      cumulative number as its count (TYBW part four: 42 for a
+    //      2-episode entry) and would keep unlocking phantom strip
+    //      tiles for the whole positive TTL; re-keying re-probes.
+    // v10: the provider changed (allanime → anidb.app). A verdict
+    //      answers "is this on the provider", so every row probed
+    //      against the old catalogue is about a question nobody asks
+    //      anymore: it can say yes for shows anidb.app doesn't carry
+    //      (the click then errors) and no for shows it does (the
+    //      title stays hidden), for up to the 30-day positive TTL.
+    //      Re-keying orphans them all; the stale rows age out of
+    //      SQLite by TTL as usual.
     // v9: gate-refused probes now mark their count approximate so it
     //     re-probes instead of being served as exact. v8 rows written
     //     by that path carry the degraded count with no flag, and
@@ -252,7 +272,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v9:{kitsu_id}:{m}")
+    format!("availability:v12:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -270,15 +290,16 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
-    check_availability_with_base(state, args, state.allanime_base.as_deref()).await
+    check_availability_with_base(state, args, state.anidb_base.as_deref()).await
 }
 
-/// [`check_availability`] with the allanime endpoint override exposed
-/// for tests. Production passes `None` via the public wrapper.
+/// [`check_availability`] with the anidb origin override exposed for
+/// tests. Production passes `None` via the public wrapper, which
+/// falls back to `state.anidb_base` and then the real site.
 pub(crate) async fn check_availability_with_base(
     state: &AppState,
     args: &AvailabilityArgs,
-    allanime_base: Option<&str>,
+    anidb_base: Option<&str>,
 ) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
     // Captured before any network work, compared again before the
@@ -310,104 +331,68 @@ pub(crate) async fn check_availability_with_base(
         }
     }
 
-    // Funnel through the play picker so availability honours the
-    // same disambiguation play uses. Synthesise a PlayArgs view —
-    // episode + quality + prefetch are unused by pick_title_and_index
-    // but the type needs them.
-    let play_view = PlayArgs {
-        title: args.title.clone(),
-        episode: "1".into(),
-        mode: mode.into(),
-        quality: None,
-        episode_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.clone(),
-        alt_titles: args.alt_titles.clone(),
-        // `prefetch` doubles as the scraper-gate priority: background
-        // probes (rail warms, home-loader fills) are paced and refused
-        // while the breaker is open; interactive checks (detail-page
-        // CTA) always go through.
-        prefetch: args.background,
-        kitsu_id: args.kitsu_id.clone(),
+    // Funnel through the native walk so availability honours the
+    // same alias recovery and disambiguation play uses. The pick's
+    // episodes probe already pays for the full list, so the cap comes
+    // back exact and free — the second detail fetch, its gate-refused
+    // fallback and the approximate-count provenance all retire with
+    // the provider.
+    let prio = if args.background {
+        crate::scraper::gate::ScrapePriority::Background
+    } else {
+        crate::scraper::gate::ScrapePriority::Interactive
     };
-    let picked = pick_title_and_index_with_base(state, &play_view, allanime_base).await;
-    // Rate-limited window: surface the typed 429 with the server's
-    // retry hint instead of the generic Network below — retry layers
-    // key off it, and the row stays unwritten either way.
-    if picked.candidate.is_none() {
-        if let Some(e) = picked.rate_limit_error() {
-            return Err(e);
+    let client = anidb_client_with_base(state, anidb_base, prio)?;
+    let walk_started_at = tokio::time::Instant::now();
+    let probed = probe_show(&client, args, mode).await;
+    // One request, one outcome. The pick and the mode check are two
+    // stages of a single probe, so the breaker hears their combined
+    // verdict once — recording the pick's success first would reset
+    // the failure run every time a show's languages endpoint is
+    // down, and the breaker would never open. Same mapping the play
+    // path uses: answered verdicts (the clean miss included) are
+    // health, weather is distress, a gate refusal records nothing.
+    // Timestamped with the attempt that observed the outcome, so a
+    // probe that began before a concurrent recovery never reads as
+    // post-recovery evidence.
+    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &probed) {
+        let observed_at = probed
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
+            .unwrap_or(walk_started_at);
+        state.anidb_gate.record(outcome, observed_at);
+    }
+    let (available, episode_count, extra_episodes) = match probed {
+        Ok((p, present)) => {
+            let Some(present) = present else {
+                // Every row the mode search touched was missing. The
+                // provider said nothing about this mode, which is
+                // not absence — surface it and persist nothing.
+                return Err(crate::error::AniError::NoResults);
+            };
+            if present {
+                (
+                    true,
+                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
+                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
+                )
+            } else {
+                // The provider ANSWERED absence for this mode.
+                // Cacheable, like the clean search miss.
+                (false, None, Vec::new())
+            }
         }
-    }
-    let chosen_candidate = picked.candidate;
-    // Transient: every allanime preflight search errored. Don't
-    // poison the availability row with `available=false` — the show
-    // may well be there, we just couldn't ask. Surface a Network
-    // error so the API handler returns a non-200; the frontend's
-    // probe logic already keeps unset entries unset on error.
-    // Codex P2 #3233589818.
-    if chosen_candidate.is_none() && !picked.any_search_succeeded {
-        return Err(crate::error::AniError::Network);
-    }
-    // Partial failure: at least one search errored alongside the
-    // ones that returned Ok. The verdict is incomplete (the failed
-    // canonical may actually have a hit), so surface Network too
-    // and let the next probe re-attempt — same handling as the
-    // all-errored case for cache hygiene. Codex P2 #3233658501.
-    if chosen_candidate.is_none() && picked.any_search_errored {
-        return Err(crate::error::AniError::Network);
-    }
-    let available = chosen_candidate.is_some();
-
-    // For the cap we need the actual episode-tag list (allmanga's
-    // `availableEpisodes` is a COUNT that includes half-episodes,
-    // which makes it +1 too high for shows with recaps like One
-    // Piece). Fetch the show's `availableEpisodesDetail` and split
-    // into max-integer + non-integer extras. Failures fall back to
-    // the count, which is wrong by ±1 in rare cases but better
-    // than blocking the cache write.
-    let mut episode_count: Option<u32> = None;
-    let mut extra_episodes: Vec<String> = Vec::new();
-    // Set only on the gate-refused path, where the count comes from
-    // the search hit instead of the detail fetch.
-    let mut episode_count_approximate = false;
-    // Set only where the pacer refuses; a failed fetch is approximate
-    // but not refused.
-    let mut gate_refused = false;
-    if let Some(c) = chosen_candidate.as_ref() {
-        let prio = if args.background {
-            crate::scraper::gate::ScrapePriority::Background
-        } else {
-            crate::scraper::gate::ScrapePriority::Interactive
-        };
-        if state.scraper_gate.admit(prio).await.is_ok() {
-            let started_at = tokio::time::Instant::now();
-            let outcome =
-                crate::scraper::allanime::fetch_show(&state.meta_http, &c.id, allanime_base).await;
-            state
-                .scraper_gate
-                .record(crate::scraper::gate::outcome_of(&outcome), started_at);
-            // RateLimited propagates typed (no cache write); other
-            // fetch failures fall back to the search hit's count
-            // inside the enricher.
-            let (count, extras, approximate) = enrich_from_show_fetch(outcome, c, mode)?;
-            episode_count = count;
-            extra_episodes = extras;
-            episode_count_approximate = approximate;
-        } else {
-            // Gate refused the background fetch — fall back to the
-            // count from the search hit. That number counts halves as
-            // whole episodes, so it runs one high for shows carrying
-            // them. Marked approximate so it is never served back from
-            // cache as if the detail fetch had confirmed it: the next
-            // read re-probes, and an interactive caller (which the
-            // gate does not refuse) gets the exact count.
-            let (count, approximate) = enrich_from_search_hit(c, mode);
-            episode_count = count;
-            episode_count_approximate = approximate;
-            gate_refused = true;
-        }
-    }
+        // Clean miss: the only verdict that proves absence — flows
+        // into the cache write below.
+        Err(ne) if ne.clean_miss => (false, None, Vec::new()),
+        // Weather (transport failures, upstream refusals, a refused
+        // background admit): surface typed, persist nothing.
+        Err(ne) => return Err(ne.error),
+    };
+    let episode_count_approximate = false;
+    let gate_refused = false;
 
     if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
         // A refresh that answered while this was out has already put a
@@ -463,7 +448,64 @@ pub(crate) async fn check_availability_with_base(
     })
 }
 
-/// Persist a known availability result. Public so the play and
+/// The probe's provider half, under one ceiling: pick the show, then
+/// measure how far the requested mode reaches.
+///
+/// Both stages are the same request as far as the caller and the
+/// breaker are concerned, so they share [`RESOLVE_DEADLINE`] — the
+/// walk alone can spend tens of seconds per alias against a slow
+/// provider, and a probe that outlives the gate's half-open trial
+/// window is the overlap the sanction chain forbids — and they
+/// produce a single outcome.
+///
+/// # Errors
+/// The walk's own verdicts, the mode probe's transport failures, and
+/// [`AniError::Timeout`] at the deadline. `clean_miss` survives from
+/// the walk, so a persistable absence is still persistable.
+async fn probe_show<F: crate::scraper::anidb::AnidbFetch>(
+    client: &crate::scraper::anidb::AnidbClient<F>,
+    args: &AvailabilityArgs,
+    mode: &str,
+) -> std::result::Result<
+    (crate::commands::play_native::PickedShow, Option<bool>),
+    crate::commands::play_native_resolve::NativeError,
+> {
+    let probe = async {
+        let picked = pick_native_walk(
+            client,
+            &args.title,
+            &args.alt_titles,
+            args.episode_count,
+            args.year,
+            args.subtype.as_deref(),
+        )
+        .await?;
+        let present =
+            crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
+                .await
+                .map_err(|error| crate::commands::play_native_resolve::NativeError {
+                    error,
+                    clean_miss: false,
+                    failed_at: None,
+                })?;
+        Ok((picked, present))
+    };
+    match tokio::time::timeout(
+        crate::commands::play_native_resolve::RESOLVE_DEADLINE,
+        probe,
+    )
+    .await
+    {
+        Ok(verdict) => verdict,
+        Err(_elapsed) => Err(crate::commands::play_native_resolve::NativeError {
+            error: crate::error::AniError::Timeout,
+            clean_miss: false,
+            failed_at: None,
+        }),
+    }
+}
+
+/// Persist a known availability result./// Persist a known availability result. Public so the play and
 /// download paths can update the cache from their own success /
 /// NoResults outcomes — clicks from any tile end up populating the
 /// cache without an extra network round-trip. Episode count is
@@ -539,43 +581,6 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
         scheduled
     } else {
         scheduled.min(AVAILABILITY_TTL_ONGOING_SECS)
-    }
-}
-
-/// Seed the airing cache before a pre-premiere negative write. The
-/// premiere-aware TTL in [`negative_ttl_for`] reads the airing:v2
-/// row, but only the detail/play pages write it — the first negative
-/// probe for an upcoming title from the list-view warmer (or one that
-/// races detail's airing fetch) would otherwise decide on a missing
-/// schedule and cache a 24h row that outlives a premiere hours away
-/// (Codex P2 #3566017944). Scoped to exactly the rows where the
-/// schedule changes the decision: pre-premiere statuses on negative
-/// results — current/unknown shows cap at the ongoing window with or
-/// without a schedule, and `airing_get` itself is cache-first, so a
-/// row already seeded by the detail page costs no network.
-/// The cap when the pacer refused the detail fetch: allmanga's own
-/// search-hit count.
-///
-/// That number counts half episodes as whole ones, so it runs one
-/// high for a show carrying them — and by more for a show carrying
-/// several. Approximate, therefore, and never served back from cache
-/// as though the detail fetch had confirmed it.
-///
-/// Zero hits means the search hit carried no count at all, which is
-/// not the same as a confirmed zero: leave it unset so the row reads
-/// as unknown rather than as a show with nothing in it.
-///
-/// The sibling of [`enrich_from_show_fetch`], for the branch where
-/// there was no fetch to enrich from.
-fn enrich_from_search_hit(
-    c: &crate::scraper::allanime::Candidate,
-    mode: &str,
-) -> (Option<u32>, bool) {
-    let n = c.available_episodes.for_mode(mode);
-    if n > 0 {
-        (Some(n), true)
-    } else {
-        (None, false)
     }
 }
 
@@ -744,44 +749,6 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
     }
 }
 
-/// Fold the show-metadata fetch outcome into `(episode_count,
-/// extras)`. `RateLimited` propagates: the throttle window must
-/// reach the caller — and through it the warm loop's backoff —
-/// instead of being silently downgraded, and the cache row is
-/// better left unwritten than written from degraded data
-/// mid-window (the next probe re-attempts). Every other failure
-/// keeps the count fallback from the search hit: off by one for
-/// shows with half-episodes, but better than blocking the write.
-fn enrich_from_show_fetch(
-    outcome: Result<crate::scraper::allanime::ShowMetadata>,
-    candidate: &crate::scraper::Candidate,
-    mode: &str,
-) -> Result<(Option<u32>, Vec<String>, bool)> {
-    match outcome {
-        Ok(detail) => {
-            let extras = detail
-                .available_episodes_detail
-                .for_mode(mode)
-                .iter()
-                .filter(|t| t.parse::<u32>().is_err())
-                .cloned()
-                .collect();
-            // The detail fetch is authoritative: exact.
-            Ok((detail.max_integer_episode(mode), extras, false))
-        }
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            Err(crate::error::AniError::RateLimited { retry_after_secs })
-        }
-        Err(_) => {
-            // Same search-hit count the gate-refused path falls back
-            // to, and approximate for the same reason: it counts half
-            // episodes as whole ones.
-            let n = candidate.available_episodes.for_mode(mode);
-            Ok((if n > 0 { Some(n) } else { None }, Vec::new(), true))
-        }
-    }
-}
-
 /// How long the warm loop sleeps after one probe, given its outcome.
 /// A rate-limited probe waits out the upstream's advertised window
 /// (floored at 1 s so a "0 seconds" answer can't become a hot loop;
@@ -813,259 +780,6 @@ pub struct AvailabilityWarmArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn candidate_with(sub: u32) -> crate::scraper::allanime::Candidate {
-        crate::scraper::allanime::Candidate {
-            id: "s1".into(),
-            name: "Gate Test".into(),
-            available_episodes: serde_json::from_value(serde_json::json!({"sub": sub, "dub": 0}))
-                .expect("episodes"),
-            aired_start: None,
-            show_type: None,
-            episode_count: None,
-            status: None,
-        }
-    }
-
-    proptest::proptest! {
-        // The rule the two examples pin at 0 and 5, stated over every
-        // count and both catalogues: a positive hit is a usable cap and
-        // is always rough, a zero hit is no cap at all and claims
-        // nothing. There is no third shape, and in particular no count
-        // that arrives already confirmed — a search hit never is.
-        #[test]
-        fn a_search_hit_is_a_rough_cap_when_it_has_one_and_silent_when_it_does_not(
-            n in 0u32..5000,
-            dub in proptest::bool::ANY,
-        ) {
-            let mode = if dub { "dub" } else { "sub" };
-            let c = crate::scraper::allanime::Candidate {
-                id: "s".into(),
-                name: "S".into(),
-                available_episodes: serde_json::from_value(if dub {
-                    serde_json::json!({"sub": 0, "dub": n})
-                } else {
-                    serde_json::json!({"sub": n, "dub": 0})
-                })
-                .expect("episodes"),
-                aired_start: None,
-                show_type: None,
-                episode_count: None,
-                status: None,
-            };
-
-            proptest::prop_assert_eq!(
-                enrich_from_search_hit(&c, mode),
-                if n > 0 { (Some(n), true) } else { (None, false) }
-            );
-        }
-    }
-
-    #[test]
-    fn a_refused_fetch_falls_back_to_the_search_hit_and_admits_it_is_rough() {
-        // The search hit counts half episodes as whole ones, so it
-        // runs high — one episode for a show carrying a single recap,
-        // more for a show carrying several. Usable as a cap, never
-        // presentable as confirmed.
-        assert_eq!(
-            enrich_from_search_hit(&candidate_with(5), "sub"),
-            (Some(5), true)
-        );
-    }
-
-    #[test]
-    fn a_search_hit_with_no_count_leaves_the_cap_unknown() {
-        // Zero is what the field reads when allmanga sent no count for
-        // this mode — not a show with nothing in it. Publishing zero
-        // would cap every episode away; unknown lets the next probe
-        // answer.
-        assert_eq!(
-            enrich_from_search_hit(&candidate_with(0), "dub"),
-            (None, false)
-        );
-    }
-
-    #[tokio::test]
-    async fn an_answered_probe_does_not_claim_it_was_refused() {
-        // The wiring in the direction that is reachable from here. The
-        // refusal itself is not: the pacer refuses the detail fetch
-        // only while its breaker is open, and a successful search
-        // closes the breaker on its way past — so within one probe the
-        // fetch that follows a successful search is always admitted.
-        // Production hits it because the home route's own warmers are
-        // competing callers and trip the breaker in that window; that
-        // interleaving is a schedule, not a state, and no test holds
-        // it open reliably. Hence the branch itself is a function with
-        // its own cases above, and this pins the flag's default.
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"data": {"shows": {"edges": [{
-                    "_id": "s1",
-                    "name": "Gate Test",
-                    "availableEpisodes": {"sub": 5, "dub": 0}
-                }]}}}),
-            ))
-            .mount(&server)
-            .await;
-        let td = tempfile::tempdir().expect("td");
-        let state = cache_only_state(&td);
-
-        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
-            "title": "Gate Test",
-            "mode": "sub",
-            "kitsu_id": "901"
-        }))
-        .expect("args");
-        let answered = check_availability_with_base(&state, &args, Some(&server.uri()))
-            .await
-            .expect("probe answers");
-
-        assert!(
-            !answered.gate_refused,
-            "nothing refused this one, got {answered:?}"
-        );
-    }
-
-    fn enrich_candidate(sub: u32) -> crate::scraper::Candidate {
-        serde_json::from_value(serde_json::json!({
-            "_id": "abc",
-            "name": "X",
-            "availableEpisodes": {"sub": sub, "dub": 0, "raw": 0},
-            "__typename": "Show"
-        }))
-        .expect("candidate")
-    }
-
-    #[test]
-    fn enrich_from_show_fetch_propagates_rate_limits() {
-        // A throttled show-metadata fetch must NOT be downgraded to
-        // the count fallback: the caller (and the warm loop's
-        // backoff) needs the typed 429 + hint, and the cache row is
-        // better left unwritten than written mid-window.
-        let out = enrich_from_show_fetch(
-            Err(crate::error::AniError::RateLimited {
-                retry_after_secs: Some(9),
-            }),
-            &enrich_candidate(12),
-            "sub",
-        );
-        assert!(
-            matches!(
-                out,
-                Err(crate::error::AniError::RateLimited {
-                    retry_after_secs: Some(9)
-                })
-            ),
-            "got {out:?}"
-        );
-    }
-
-    #[test]
-    fn enrich_from_show_fetch_keeps_the_count_fallback_for_other_failures() {
-        let out = enrich_from_show_fetch(
-            Err(crate::error::AniError::Network),
-            &enrich_candidate(12),
-            "sub",
-        )
-        .expect("fallback is Ok");
-        assert_eq!(out.0, Some(12));
-        assert!(out.1.is_empty());
-    }
-
-    fn enrich_detail(tags: &[String]) -> crate::scraper::allanime::ShowMetadata {
-        serde_json::from_value(serde_json::json!({
-            "_id": "abc",
-            "name": "X",
-            "availableEpisodesDetail": {"sub": tags, "dub": [], "raw": []},
-        }))
-        .expect("detail")
-    }
-
-    proptest::proptest! {
-        /// Provenance follows the OUTCOME KIND and nothing else. A
-        /// detail fetch that answered is exact whatever it answered;
-        /// a failure falls back to the search-hit count and is
-        /// approximate whatever that count is. Position, size and
-        /// mode do not enter into it — which is the invariant a
-        /// later edit is most likely to blur, since the two branches
-        /// return the same shape.
-        #[test]
-        fn provenance_follows_the_outcome_kind(
-            ok in proptest::bool::ANY,
-            sub in 0u32..2000,
-            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..6),
-        ) {
-            let out = enrich_from_show_fetch(
-                if ok { Ok(enrich_detail(&tags)) } else { Err(crate::error::AniError::Network) },
-                &enrich_candidate(sub),
-                "sub",
-            ).expect("not rate limited");
-            proptest::prop_assert_eq!(out.2, !ok);
-        }
-
-        /// A rate limit is never downgraded into the count fallback,
-        /// whatever hint it carries. The caller needs the typed 429 —
-        /// the warm loop backs off on it, and the cache row is better
-        /// left unwritten than written mid-window.
-        #[test]
-        fn a_rate_limit_always_propagates(
-            hint in proptest::option::of(0u64..600),
-            sub in 0u32..2000,
-        ) {
-            let out = enrich_from_show_fetch(
-                Err(crate::error::AniError::RateLimited { retry_after_secs: hint }),
-                &enrich_candidate(sub),
-                "sub",
-            );
-            // Bound outside the macro: `prop_assert!` stringifies its
-            // argument as a format string, and the pattern's braces
-            // would be read as placeholders.
-            let propagated = matches!(
-                out,
-                Err(crate::error::AniError::RateLimited { retry_after_secs }) if retry_after_secs == hint
-            );
-            proptest::prop_assert!(propagated);
-        }
-
-        /// The fallback reports the candidate's own count for the
-        /// mode, and reports "no count" rather than a zero — a cached
-        /// `Some(0)` would read as a real cap of nothing and pin the
-        /// card at episode zero. It never carries extras, because a
-        /// failed fetch learned no tags.
-        #[test]
-        fn the_fallback_reports_the_candidate_count_or_nothing(sub in 0u32..2000) {
-            let out = enrich_from_show_fetch(
-                Err(crate::error::AniError::Network),
-                &enrich_candidate(sub),
-                "sub",
-            ).expect("fallback is Ok");
-            proptest::prop_assert_eq!(out.0, if sub > 0 { Some(sub) } else { None });
-            proptest::prop_assert!(out.1.is_empty());
-        }
-
-        /// A successful fetch splits the mode's tags: whole numbers
-        /// set the cap, everything else becomes an extra. No tag is
-        /// dropped and none appears on both sides.
-        #[test]
-        fn a_successful_fetch_splits_tags_into_cap_and_extras(
-            tags in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..8),
-        ) {
-            let out = enrich_from_show_fetch(
-                Ok(enrich_detail(&tags)),
-                &enrich_candidate(1),
-                "sub",
-            ).expect("ok");
-            let (whole, fractional): (Vec<&String>, Vec<&String>) =
-                tags.iter().partition(|t| t.parse::<u32>().is_ok());
-            proptest::prop_assert_eq!(out.1.len(), fractional.len());
-            proptest::prop_assert!(out.1.iter().all(|e| e.parse::<u32>().is_err()));
-            proptest::prop_assert_eq!(
-                out.0,
-                whole.iter().filter_map(|t| t.parse::<u32>().ok()).max()
-            );
-        }
-    }
 
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
@@ -1262,17 +976,13 @@ mod tests {
     #[tokio::test]
     async fn check_availability_honours_the_state_level_override() {
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "data": {"shows": {"edges": []}}
-                })),
-            )
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = cache_only_state(&td);
-        state.allanime_base = Some(server.uri());
+        state.anidb_base = Some(server.uri());
 
         let args = AvailabilityArgs {
             title: "Anything".into(),
@@ -1292,6 +1002,463 @@ mod tests {
         assert!(
             hits >= 1,
             "the search must reach the state's stub, saw {hits} requests"
+        );
+    }
+
+    /// One-show anidb stub: browse answers with a single slug whose
+    /// episodes endpoint lists `count` episodes.
+    async fn stub_one_show(count: u32) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        let eps: Vec<String> = (1..=count)
+            .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
+            .collect();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/5/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
+            )
+            .mount(&server)
+            .await;
+        // The mode probe asks the last episode's languages: a
+        // covered last row means the whole listing is covered.
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!(
+                "/api/frontend/episode/{}/languages",
+                5000 + count
+            )))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
+        // The pick already paid for the episodes list, so the cap is
+        // exact and free: no approximate flag, no gate-refused
+        // degradation — the mechanisms those flags existed for are
+        // gone from this path.
+        let server = stub_one_show(7).await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Probe Show",
+            "mode": "sub",
+            "kitsu_id": "555",
+            "episode_count": 7
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(got.episode_count, Some(7));
+        assert!(got.extra_episodes.is_empty());
+        assert!(!got.episode_count_approximate);
+        assert!(!got.gate_refused);
+
+        // And the verdict round-trips through the cache.
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["555".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("555"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn a_native_probe_reports_the_listings_fractional_extras() {
+        // The picked listing already names the playable fractional
+        // rows (a recap under "2.5"); discarding them loses the
+        // episode-strip entries the play path can launch, until some
+        // other writer happens to overwrite the row. The listing is
+        // paid for — the extras ride the same response and cache row
+        // as the cap.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Recap Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/recap-show-31"><img alt="Recap Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/31/episodes"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"episodes":[{"id":311,"number":1},{"id":312,"number":2},{"id":313,"number":3,"number2":2.5},{"id":314,"number":4,"number2":3}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/314/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/r1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Recap Show",
+            "mode": "sub",
+            "kitsu_id": "558"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(
+            got.extra_episodes,
+            vec!["2.5".to_string()],
+            "the fractional tag rides the response; the integer number2 is a re-display, not an extra"
+        );
+        // And the extras survive the cache round-trip.
+        let row = cache_key("558", "sub");
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("row written");
+        let parsed: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert_eq!(parsed.extra_episodes, vec!["2.5".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn one_probe_leaves_the_breaker_one_outcome() {
+        // The walk succeeds and the mode probe then dies on the
+        // provider. Recording the walk's success first resets the
+        // failure run, so every such request leaves the counter at
+        // one and the breaker never opens — background warmers keep
+        // hammering a failing endpoint forever. One request must
+        // contribute one final outcome.
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/breaker-show-3"><img alt="Breaker Show"/></a>"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/3/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"episodes":[{"id":31,"number":1},{"id":32,"number":2}]}"#),
+            )
+            .mount(&server)
+            .await;
+        // The languages endpoint — reached only by the mode probe —
+        // answers with a block-shaped status.
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/32/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        // One short of open, so a single recorded failure opens it
+        // and a success-then-failure pair does not.
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD - 1 {
+            state
+                .anidb_gate
+                .record_outcome(false, tokio::time::Instant::now());
+        }
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Breaker Show",
+            "mode": "sub",
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(got.is_err(), "the mode probe's failure surfaces");
+        assert!(
+            state
+                .anidb_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_err(),
+            "the failure counted, so the breaker is open"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_whole_probe_stops_at_the_resolution_deadline() {
+        // Searches and candidate listings answer near their own
+        // per-request timeout. With several aliases the walk alone
+        // can outrun the resolver's ceiling before the mode probe
+        // starts, so the ceiling has to cover the whole probe.
+        use wiremock::matchers::method;
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_secs(19))
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+            )
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Slow Show",
+            "mode": "sub",
+            "alt_titles": ["a", "b", "c", "d", "e", "f"],
+        }))
+        .expect("args");
+        let started = tokio::time::Instant::now();
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::Timeout)),
+            "a stalled probe ends as a timeout: {got:?}"
+        );
+        assert!(
+            started.elapsed()
+                <= crate::commands::play_native_resolve::RESOLVE_DEADLINE
+                    + std::time::Duration::from_secs(1),
+            "and it ends at the ceiling, not after every alias"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_partially_dubbed_show_reports_the_mode_as_present() {
+        // Dubs trail subs: a show four episodes in may carry eng rows
+        // for the first two only. A first-row probe alone would cache
+        // the full mode-independent cap under the dub key and enable
+        // episodes that fail at playback — the cap must describe the
+        // rows the requested mode actually has.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Partial Dub Show"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/partial-dub-81"><img alt="Partial Dub Show"/></a>"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/81/episodes"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"episodes":[{"id":811,"number":1},{"id":812,"number":2},{"id":813,"number":3},{"id":814,"number":4}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        for (ep, langs) in [
+            (
+                811,
+                r#"[{"code":"jpn","embed_url":"https://e/1"},{"code":"eng","embed_url":"https://e/1d"}]"#,
+            ),
+            (
+                812,
+                r#"[{"code":"jpn","embed_url":"https://e/2"},{"code":"eng","embed_url":"https://e/2d"}]"#,
+            ),
+            (813, r#"[{"code":"jpn","embed_url":"https://e/3"}]"#),
+            (814, r#"[{"code":"jpn","embed_url":"https://e/4"}]"#),
+        ] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200)
+                        .set_body_string(format!(r#"{{"languages":{langs}}}"#)),
+                )
+                .mount(&server)
+                .await;
+        }
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Partial Dub Show",
+            "mode": "dub",
+            "kitsu_id": "559"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available, "two dubbed episodes exist");
+        assert_eq!(
+            got.episode_count,
+            Some(4),
+            "the cap is the listing's; which episodes carry the dub is \
+             per-episode data availability does not claim"
+        );
+
+        // And the same show under sub keeps the full cap.
+        let sub_args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Partial Dub Show",
+            "mode": "sub",
+            "kitsu_id": "559"
+        }))
+        .expect("args");
+        let sub = check_availability_with_base(&state, &sub_args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(sub.available);
+        assert_eq!(sub.episode_count, Some(4));
+    }
+
+    #[tokio::test]
+    async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
+        // The walk's search and episode listing are mode-independent;
+        // only a languages row says whether the requested audio
+        // exists. A sub-only show asked for dub must not cache
+        // available: the dub CTA it would enable fails at playback.
+        // The provider ANSWERED absence for this mode, so the
+        // negative verdict is cacheable — like the clean search miss.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Sub Only Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/sub-only-71"><img alt="Sub Only Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/71/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":711,"number":1},{"id":712,"number":2}]}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        // Both rows are sub-only: the mode probe asks the last row
+        // first (a covered last row means a covered listing), then
+        // the first.
+        for ep in [711, 712] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
+                ))
+                .mount(&server)
+                .await;
+        }
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Sub Only Show",
+            "mode": "dub",
+            "kitsu_id": "557"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("the provider answered; the verdict is a verdict");
+        assert!(!got.available, "no eng row means no dub to enable");
+        assert_eq!(got.episode_count, None);
+        // The answered absence round-trips through the dub cache row.
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["557".into()],
+                mode: "dub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("557"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn a_continuation_entry_caps_in_per_entry_numbering() {
+        // The provider numbers continuation cours cumulatively (TYBW's
+        // fourth part lists 41 and 42). The cap the frontend gates the
+        // strip with must speak Kitsu's per-entry numbering: 2 aired,
+        // not a raw 42 that unlocks episodes that don't exist.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Sequel Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/sequel-show-9"><img alt="Sequel Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/9/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/942/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/q1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Sequel Show",
+            "mode": "sub",
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(got.episode_count, Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
+        use wiremock::matchers::method;
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Down Show",
+            "mode": "sub",
+            "kitsu_id": "556"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+        assert!(matches!(
+            got,
+            Err(crate::error::AniError::Network | crate::error::AniError::Upstream { .. })
+        ));
+        let cached = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["556".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            !cached.cached.contains_key("556"),
+            "weather must not be persisted"
         );
     }
 
@@ -1578,8 +1745,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v9:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v9:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v12:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v12:kid-1:dub");
     }
 
     #[test]
@@ -1751,7 +1918,7 @@ mod tests {
                 .await
                 .expect("recorded")
                 .is_empty(),
-            "bypass_cache must reach allanime rather than replay the stored count"
+            "bypass_cache must reach the provider rather than replay the stored count"
         );
     }
 
@@ -1763,13 +1930,11 @@ mod tests {
         // to land while this one is still out for the guard to mean
         // anything.
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .respond_with(
                 wiremock::ResponseTemplate::new(200)
                     .set_delay(std::time::Duration::from_millis(300))
-                    .set_body_json(serde_json::json!({
-                        "data": {"shows": {"edges": []}}
-                    })),
+                    .set_body_string("<p>no results</p>"),
             )
             .mount(&server)
             .await;
@@ -1831,12 +1996,8 @@ mod tests {
         // that is what this pins: while the row is held, a lookup that
         // has already got its answer must still be waiting.
         let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "data": {"shows": {"edges": []}}
-                })),
-            )
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("td");
@@ -1906,14 +2067,15 @@ mod tests {
     #[tokio::test]
     async fn background_probe_skips_the_network_while_the_breaker_is_open() {
         // Once the breaker is open, a background probe must not touch
-        // allanime at all — it surfaces the same transient Network
-        // error as an all-errored search, and the row stays unwritten.
+        // the provider at all — the gated transport refuses before
+        // any request, the typed refusal surfaces, and the row stays
+        // unwritten.
         let server = wiremock::MockServer::start().await;
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .scraper_gate
+                .anidb_gate
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1924,14 +2086,14 @@ mod tests {
         }))
         .expect("args");
         let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
-        assert!(matches!(got, Err(crate::error::AniError::Network)));
+        assert!(matches!(got, Err(crate::error::AniError::GateRefused)));
         assert!(
             server
                 .received_requests()
                 .await
                 .expect("recorded")
                 .is_empty(),
-            "an open breaker must produce zero allanime requests"
+            "an open breaker must produce zero provider requests"
         );
     }
 
@@ -2080,40 +2242,6 @@ mod tests {
             serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
         assert!(!parsed.episode_count_approximate);
         assert!(cache_hit_is_usable(&parsed));
-    }
-
-    /// The search-count fallback happens on TWO paths: the gate
-    /// refusing the detail fetch, and the detail fetch itself
-    /// failing. Both yield the same number with the same half-episode
-    /// overcount, so both have to be marked approximate — otherwise
-    /// the failed-fetch row is cached as exact and the click's
-    /// confirmation reads it straight back.
-    #[test]
-    fn a_failed_detail_fetch_reports_its_count_as_approximate() {
-        let candidate = enrich_candidate(13);
-        let (count, extras, approximate) = enrich_from_show_fetch(
-            Err(crate::error::AniError::Scraper { key: "boom" }),
-            &candidate,
-            "sub",
-        )
-        .expect("non-rate-limit errors fall back rather than propagate");
-        assert_eq!(count, Some(13));
-        assert!(extras.is_empty());
-        assert!(
-            approximate,
-            "a search-count fallback is approximate however it was reached"
-        );
-    }
-
-    /// A completed detail fetch is the authoritative count and must
-    /// NOT be marked approximate, or every row would re-probe forever.
-    #[test]
-    fn a_successful_detail_fetch_reports_its_count_as_exact() {
-        let candidate = enrich_candidate(13);
-        let detail = crate::scraper::allanime::ShowMetadata::default();
-        let (_, _, approximate) =
-            enrich_from_show_fetch(Ok(detail), &candidate, "sub").expect("ok");
-        assert!(!approximate, "the detail fetch is authoritative");
     }
 }
 

@@ -584,6 +584,15 @@ pub async fn resolve_allmanga_show_id(
         }
     }
 
+    // 1b) anidb slug rows carry their identity in the slug itself —
+    //     there is no allanime record to enrich from. Search Kitsu
+    //     with the slug words directly; a miss stays a soft None
+    //     rather than falling through to the allanime fetch, where
+    //     the slug means nothing.
+    if let Some(term) = crate::scraper::anidb::slug_search_term(show_id) {
+        return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
+    }
+
     // 2) Hit allmanga's Show GraphQL to get the alias surface
     //    (englishName / nativeName / altNames). Network failure is
     //    soft — Continue Watching can still render the bare
@@ -629,21 +638,33 @@ pub async fn resolve_allmanga_show_id(
     //    for cour-suffixed entries), but the cryptic-name case is
     //    simpler — the alias is usually unambiguous (e.g.
     //    "One Piece" lands one entry).
-    for term in show.search_terms() {
+    Ok(first_kitsu_match(state, show_id, show.search_terms()).await)
+}
+
+/// Walk `terms` through Kitsu text search and return the first
+/// non-music hit, persisting the `(show_id → kitsu_id)` reverse
+/// mapping so subsequent calls short-circuit through the cache.
+/// Shared by the allanime alias walk and the slug-derived path.
+///
+/// A single term's search failure skips to the next term; a cache
+/// write failure is non-fatal — the resolution still succeeds for
+/// this request, the next call just searches again. Music-video hits
+/// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
+/// returned or persisted.
+async fn first_kitsu_match(
+    state: &AppState,
+    show_id: &str,
+    terms: impl IntoIterator<Item = String>,
+) -> Option<KitsuAnimeRef> {
+    for term in terms {
         let hits = match state.kitsu.search(&term, SEARCH_PAGE_LIMIT).await {
             Ok(h) => h,
-            Err(_) => continue, // Single-term failure shouldn't break the walk.
+            Err(_) => continue,
         };
         if let Some(first) = hits
             .into_iter()
             .find(|h| !is_music_subtype(h.subtype.as_deref()))
         {
-            // 4) Persist the mapping so subsequent calls short-circuit
-            //    through step 1. Failure to write the cache is
-            //    non-fatal — the resolution still succeeds for this
-            //    request; the next call just walks aliases again.
-            //    Music-video hits are skipped above so a "music" alias
-            //    (the YOASOBI "Idol" MV) is never returned or persisted.
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
@@ -652,12 +673,11 @@ pub async fn resolve_allmanga_show_id(
                     "reverse-cache write failed during enrichment resolve",
                 );
             }
-            return Ok(Some(first));
+            return Some(first);
         }
     }
-
-    // 5) Walked every alias, nothing matched. Soft-fail.
-    Ok(None)
+    // Walked every term, nothing matched. Soft-fail.
+    None
 }
 
 /// Cache-key prefix for the per-show last-watched timestamp. Stamped
@@ -1285,6 +1305,43 @@ mod tests {
         assert!(
             got.is_none(),
             "bypass must skip the reverse cache; got {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_slug_row_resolves_through_kitsu_without_allanime() {
+        // Post-provider-switch history rows key on the anidb slug
+        // ("one-piece-69"). A slug carries no allanime identity, so
+        // enrichment must derive its search text from the slug words
+        // and walk Kitsu directly. The allanime base points at the
+        // same mock with no GraphQL route mounted: a fetch_show
+        // detour fails and soft-returns None, so Some proves the
+        // slug branch. The mapping persists so the next call
+        // short-circuits through the reverse cache.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("filter[text]", "one piece"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(SEARCH_FIXTURE.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+        let mut state = state_with_kitsu_at(&mock.uri());
+        state.allanime_base = Some(mock.uri());
+
+        let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
+            .await
+            .expect("resolve ok");
+        assert_eq!(got.expect("slug rows must resolve").id, "12");
+        assert_eq!(
+            allmanga_kitsu_get(&state, "one-piece-69")
+                .expect("cache read")
+                .as_deref(),
+            Some("12"),
+            "the slug resolve must persist the reverse mapping",
         );
     }
 
