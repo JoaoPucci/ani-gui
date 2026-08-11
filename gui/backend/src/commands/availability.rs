@@ -623,6 +623,20 @@ fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
 /// count + extras when it knows. Used by `check_availability` after
 /// running the play picker; everything else stays on the simpler
 /// entry point.
+/// The extras a cached row already carries, for writers that
+/// re-derive the count but not the fractional list — the native
+/// resolver's listing is integer-only, so overwriting with an empty
+/// list silently drops every decimal episode for the row's TTL.
+pub fn cached_extras(state: &AppState, kitsu_id: &str, mode: &str) -> Vec<String> {
+    let key = cache_key(kitsu_id, mode);
+    meta_cache_get(&state.cache_pool, &key)
+        .ok()
+        .flatten()
+        .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
+        .map(|row| row.extra_episodes)
+        .unwrap_or_default()
+}
+
 pub fn write_cache_full(
     state: &AppState,
     kitsu_id: &str,

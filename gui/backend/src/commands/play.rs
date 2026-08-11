@@ -269,7 +269,13 @@ pub(super) async fn stamp_availability_after_native(
                     &crate::commands::availability::AvailabilityResponse {
                         available: true,
                         episode_count: Some(cap),
-                        extra_episodes: Vec::new(),
+                        // The native listing is integer-only; the
+                        // fractional extras a prior probe stored are
+                        // knowledge this stamp did not re-derive and
+                        // must not destroy.
+                        extra_episodes: crate::commands::availability::cached_extras(
+                            state, id, &args.mode,
+                        ),
                         episode_count_approximate: false,
                         gate_refused: false,
                     },
