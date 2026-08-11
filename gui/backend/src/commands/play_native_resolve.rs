@@ -19,6 +19,7 @@ use crate::scraper::anidb::{AnidbClient, AnidbFetch};
 
 use super::play_native::pick_candidate;
 pub use super::play_native_episode::resolve_episode;
+use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 
 /// A fully resolved native play: what the orchestrator needs to open
@@ -188,33 +189,18 @@ where
                         .await
                         {
                             Ok(url) => url,
-                            // Blocks and refusals stop the walk as
-                            // everywhere else; an ANSWERED dead end —
-                            // missing episode, language, embed or
-                            // playlist on a stale candidate — moves
-                            // to the next alias, which is what the
-                            // surrounding loop exists for. Transport
-                            // failures stay transient.
-                            Err(ne)
-                                if ne.error.is_provider_block()
-                                    || matches!(ne.error, AniError::GateRefused) =>
-                            {
-                                return Err(ne);
-                            }
-                            Err(ne)
-                                if matches!(
-                                    ne.error,
-                                    AniError::NoResults | AniError::Upstream { .. }
-                                ) =>
-                            {
-                                any_answered_dead_end = true;
-                                continue;
-                            }
-                            Err(_) => {
-                                any_search_errored = true;
-                                last_failure_at = Some(tokio::time::Instant::now());
-                                continue;
-                            }
+                            Err(ne) => match classify_chain_failure(ne) {
+                                ChainOutcome::Stop(ne) => return Err(ne),
+                                ChainOutcome::DeadEnd => {
+                                    any_answered_dead_end = true;
+                                    continue;
+                                }
+                                ChainOutcome::Transient => {
+                                    any_search_errored = true;
+                                    last_failure_at = Some(tokio::time::Instant::now());
+                                    continue;
+                                }
+                            },
                         };
                         on_progress(ProgressLine::LinksFetched {
                             provider: "anidb.app".into(),

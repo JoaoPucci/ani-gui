@@ -11,6 +11,31 @@ use super::play_native::PickedShow;
 use super::play_native_numbering::numbering_offset;
 use super::play_native_resolve::NativeError;
 
+/// What one failed episode chain means for the surrounding alias
+/// walk. Classified here so the walk stays a loop over verdicts.
+pub(super) enum ChainOutcome {
+    /// Blocks and gate refusals: every further request repeats the
+    /// same answer, so the walk ends with the error's identity.
+    Stop(NativeError),
+    /// Answered dead ends — missing episode, language, embed or
+    /// playlist on a stale candidate: the next alias may carry the
+    /// real show.
+    DeadEnd,
+    /// Transport weather: proves nothing, stays transient.
+    Transient,
+}
+
+/// Classify a failed [`resolve_episode`] for the walk.
+pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
+    if ne.error.is_provider_block() || matches!(ne.error, AniError::GateRefused) {
+        ChainOutcome::Stop(ne)
+    } else if matches!(ne.error, AniError::NoResults | AniError::Upstream { .. }) {
+        ChainOutcome::DeadEnd
+    } else {
+        ChainOutcome::Transient
+    }
+}
+
 /// Resolve the requested episode within a picked show down to the
 /// master URL. Split from the walk for the per-file complexity bar
 /// and because the orchestrator's cache-hit path may someday reuse
