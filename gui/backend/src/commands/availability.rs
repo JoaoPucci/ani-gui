@@ -365,29 +365,23 @@ pub(crate) async fn check_availability_with_base(
         state.anidb_gate.record(outcome, observed_at);
     }
     let (available, episode_count, extra_episodes) = match probed {
-        Ok((p, covered)) => {
-            let Some(covered) = covered else {
+        Ok((p, present)) => {
+            let Some(present) = present else {
                 // Every row the mode search touched was missing. The
                 // provider said nothing about this mode, which is
                 // not absence — surface it and persist nothing.
                 return Err(crate::error::AniError::NoResults);
             };
-            // The cap and the extras describe the rows the requested
-            // mode HAS. Truncating from the end keeps the listing's
-            // minimum display, so the continuation offset both
-            // helpers derive is the same one the full listing gives.
-            let rows = &p.episodes[..covered];
-            if rows.is_empty() {
-                // The provider ANSWERED absence for this mode: no
-                // row carries a matching embed. Cacheable, like the
-                // clean search miss.
-                (false, None, Vec::new())
-            } else {
+            if present {
                 (
                     true,
-                    crate::commands::play_native_numbering::kitsu_episode_cap(rows),
-                    crate::commands::play_native_numbering::extra_episode_tags(rows),
+                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
+                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                 )
+            } else {
+                // The provider ANSWERED absence for this mode.
+                // Cacheable, like the clean search miss.
+                (false, None, Vec::new())
             }
         }
         // Clean miss: the only verdict that proves absence — flows
@@ -473,7 +467,7 @@ async fn probe_show<F: crate::scraper::anidb::AnidbFetch>(
     args: &AvailabilityArgs,
     mode: &str,
 ) -> std::result::Result<
-    (crate::commands::play_native::PickedShow, Option<usize>),
+    (crate::commands::play_native::PickedShow, Option<bool>),
     crate::commands::play_native_resolve::NativeError,
 > {
     let probe = async {
@@ -486,15 +480,15 @@ async fn probe_show<F: crate::scraper::anidb::AnidbFetch>(
             args.subtype.as_deref(),
         )
         .await?;
-        let covered =
-            crate::commands::availability_mode::mode_prefix_len(client, &picked.episodes, mode)
+        let present =
+            crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
                 .await
                 .map_err(|error| crate::commands::play_native_resolve::NativeError {
                     error,
                     clean_miss: false,
                     failed_at: None,
                 })?;
-        Ok((picked, covered))
+        Ok((picked, present))
     };
     match tokio::time::timeout(
         crate::commands::play_native_resolve::RESOLVE_DEADLINE,
@@ -1244,7 +1238,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_partially_dubbed_show_caps_at_the_dubbed_prefix() {
+    async fn a_partially_dubbed_show_reports_the_mode_as_present() {
         // Dubs trail subs: a show four episodes in may carry eng rows
         // for the first two only. A first-row probe alone would cache
         // the full mode-independent cap under the dub key and enable
@@ -1302,8 +1296,9 @@ mod tests {
         assert!(got.available, "two dubbed episodes exist");
         assert_eq!(
             got.episode_count,
-            Some(2),
-            "the dub cap stops where the eng rows stop"
+            Some(4),
+            "the cap is the listing's; which episodes carry the dub is \
+             per-episode data availability does not claim"
         );
 
         // And the same show under sub keeps the full cap.
