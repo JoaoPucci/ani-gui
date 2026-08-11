@@ -84,6 +84,65 @@ async fn a_fractional_request_maps_through_the_offset_too() {
 }
 
 #[tokio::test]
+async fn a_zero_padded_integer_tag_still_answers_its_episode() {
+    // The provider can file the tag in a non-canonical string form:
+    // "041" is display episode 41 to the offset and the cap, which
+    // parse it numerically — the matcher's byte comparison against
+    // the constructed "41" is the one place it dies.
+    let picked = show(vec![ep(10, 1, Some("041")), ep(11, 2, Some("042"))]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
+    let url = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect("per-entry 1 is display 041 = 41");
+    assert_eq!(url, "https://cdn.example/x/master.m3u8");
+}
+
+#[tokio::test]
+async fn a_trailing_zero_fraction_matches_the_normalized_click() {
+    // Availability advertises "3.50" verbatim; the frontend parses
+    // extras numerically and the click comes back as "3.5". The
+    // same row answered numerically for the cap and the extras —
+    // it must answer the click too.
+    let picked = show(vec![
+        ep(1, 1, None),
+        ep(2, 2, None),
+        ep(3, 3, None),
+        ep(4, 4, Some("3.50")),
+    ]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(4));
+    let url = resolve_episode(&client, &picked, "3.5", "sub", "best")
+        .await
+        .expect("the normalized click finds the padded tag");
+    assert_eq!(url, "https://cdn.example/x/master.m3u8");
+}
+
+proptest::proptest! {
+    /// Numeric identity over padded forms: leading zeros on the
+    /// integer part and trailing zeros after the fraction never
+    /// change what a tag matches, in either direction; genuinely
+    /// nonnumeric tags keep exact equality.
+    #[test]
+    fn tag_matching_ignores_numeric_padding(
+        n in 0u32..100_000,
+        frac in 0u32..10,
+        lead in 0usize..3,
+        tail in 0usize..3,
+    ) {
+        let canonical_int = format!("{n}");
+        let padded_int = format!("{}{n}", "0".repeat(lead));
+        proptest::prop_assert!(tag_matches(&padded_int, &canonical_int));
+        proptest::prop_assert!(tag_matches(&canonical_int, &padded_int));
+        let canonical = format!("{n}.{frac}");
+        let padded = format!("{}{n}.{frac}{}", "0".repeat(lead), "0".repeat(tail));
+        proptest::prop_assert!(tag_matches(&padded, &canonical));
+        proptest::prop_assert!(tag_matches(&canonical, &padded));
+        proptest::prop_assert!(tag_matches("SP", "SP"));
+        proptest::prop_assert!(!tag_matches("SP", "sp"));
+        proptest::prop_assert!(!tag_matches(&canonical, &format!("{}.{}", n + 1, frac)));
+    }
+}
+
+#[tokio::test]
 async fn an_integer_request_skips_the_recap_in_its_slot() {
     // The captured provider shape: a recap occupies integer slot 4
     // (number: 4) while its displayed identity is "3.5" (number2),
