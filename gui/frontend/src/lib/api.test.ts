@@ -611,13 +611,13 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('progress', JSON.stringify({ kind: 'links_fetched', provider: 'youtube' }));
-		es.dispatch('progress', JSON.stringify({ kind: 'banner', text: 'hi' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'anidb.app' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'matched', title: 'The Show' }));
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 		expect(seen).toEqual([
-			{ kind: 'links_fetched', provider: 'youtube' },
-			{ kind: 'banner', text: 'hi' }
+			{ kind: 'searching', provider: 'anidb.app' },
+			{ kind: 'matched', title: 'The Show' }
 		]);
 	});
 

@@ -169,17 +169,15 @@ where
         subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
-    let mut forward = |p: crate::anicli::parser::ProgressLine| {
+    let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
-            crate::anicli::parser::ProgressLine::Banner { text }
-            | crate::anicli::parser::ProgressLine::Other { text } => text,
-            crate::anicli::parser::ProgressLine::LinksFetched { provider } => {
+            crate::commands::progress::ProgressLine::LinksFetched { provider } => {
                 format!("{provider} links fetched")
             }
-            crate::anicli::parser::ProgressLine::Searching { provider } => {
+            crate::commands::progress::ProgressLine::Searching { provider } => {
                 format!("Searching {provider}...")
             }
-            crate::anicli::parser::ProgressLine::Matched { title } => {
+            crate::commands::progress::ProgressLine::Matched { title } => {
                 format!("Matched {title}")
             }
         };

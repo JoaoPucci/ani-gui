@@ -14,11 +14,11 @@
 
 use serde::Deserialize;
 
-use crate::anicli::parser::ProgressLine;
 use crate::app::AppState;
 use crate::commands::availability_refresh::with_row_if_ours;
 use crate::commands::play_native_resolve::NativeResolveRequest;
 use crate::commands::play_resolution_cache::{self, CachedResolution};
+use crate::commands::progress::ProgressLine;
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };

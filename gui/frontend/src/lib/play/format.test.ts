@@ -3,29 +3,16 @@ import { formatTime, progressLabel, skipLabel } from './format';
 import { m } from '$lib/paraglide/messages';
 
 describe('progressLabel', () => {
-	it('returns the banner text for banner events (used as the loading-overlay headline)', () => {
-		expect(progressLabel({ kind: 'banner', text: 'Searching allmanga…' })).toBe(
-			'Searching allmanga…'
-		);
-	});
-
 	it('annotates the provider name with a checkmark for links_fetched', () => {
-		// `links_fetched` fires once per provider as the scraper
-		// makes progress; the ✓ tells the user "this provider
-		// answered, moving on."
-		expect(progressLabel({ kind: 'links_fetched', provider: 'wixmp' })).toBe('wixmp ✓');
+		// `links_fetched` fires once the episode's embeds are in hand;
+		// the ✓ tells the user "the provider answered, moving on."
+		expect(progressLabel({ kind: 'links_fetched', provider: 'anidb.app' })).toBe('anidb.app ✓');
 	});
 
-	it('passes through "other" event text verbatim', () => {
-		expect(progressLabel({ kind: 'other', text: 'whatever' })).toBe('whatever');
-	});
-
-	it('renders the native searching and matched kinds through Paraglide', () => {
-		// The native resolver fabricates its progress lines, so unlike
-		// the subprocess path (whose banner/other text is the script's
-		// own output, relayed verbatim) these arrive as structured
-		// kinds with interpolation data — the backend must not ship
-		// English copy, and every locale renders its own message.
+	it('renders the searching and matched kinds through Paraglide', () => {
+		// The resolver runs in the backend, which never returns
+		// localized strings: these arrive as a kind plus interpolation
+		// data, and every locale renders its own message.
 		expect(progressLabel({ kind: 'searching', provider: 'anidb.app' })).toBe(
 			m.play_progress_searching({ provider: 'anidb.app' })
 		);

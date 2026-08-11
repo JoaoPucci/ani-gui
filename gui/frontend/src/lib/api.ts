@@ -550,13 +550,12 @@ export function markWatched(args: PlayArgs): Promise<void> {
 }
 
 /** One incremental progress event surfaced by `playStream`. Mirrors the
- *  Rust `ProgressLine` enum's tagged JSON shape. */
+ *  Rust `ProgressLine` enum's tagged JSON shape. Every variant names a
+ *  provider or a title rather than carrying prose — the copy is ours. */
 export type PlayProgress =
-	| { kind: 'banner'; text: string }
-	| { kind: 'links_fetched'; provider: string }
-	| { kind: 'other'; text: string }
 	| { kind: 'searching'; provider: string }
-	| { kind: 'matched'; title: string };
+	| { kind: 'matched'; title: string }
+	| { kind: 'links_fetched'; provider: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
  *  caller hears `<provider> Links Fetched` events as ani-cli emits
