@@ -545,6 +545,137 @@ mod tests {
         assert!(matches!(got, Err(AniError::FfmpegMissing)));
     }
 
+    fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::AppState {
+        use crate::meta::kitsu::KitsuClient;
+        use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
+        use std::sync::Arc;
+        crate::app::AppState {
+            allanime_base: None,
+            anidb_base: Some(anidb_base.to_string()),
+            secret: AppSecret::random(),
+            sessions: SessionTable::new(),
+            proxy_http: reqwest::Client::new(),
+            meta_http: reqwest::Client::new(),
+            proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
+            ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
+            bash_path: None,
+            bundled_bin: None,
+            botan_shim_bin: None,
+            history_path: td.path().join("ani-hsts"),
+            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            image_cache_dir: td.path().join("images"),
+            cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
+            kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
+            config_path: td.path().join("config.toml"),
+            state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+            internal_secret: crate::account::InternalSecret::random(),
+            mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+            account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+            availability_refreshes:
+                crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        }
+    }
+
+    /// Provider fixture for the range tests: one show, two episodes,
+    /// jpn embeds, validating masters.
+    async fn stub_range_show() -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/range-show-21"><img alt="Range Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/21/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":2101,"number":1},{"id":2102,"number":2}]}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        for ep in [2101u64, 2102] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                        r#"{{"languages":[{{"code":"jpn","embed_url":"{}/embed/{ep}"}}]}}"#,
+                        server.uri()
+                    )),
+                )
+                .mount(&server)
+                .await;
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/embed/{ep}")))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                        "player.setup({{ file: '{}/m/{ep}/master.m3u8' }});",
+                        server.uri()
+                    )),
+                )
+                .mount(&server)
+                .await;
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/m/{ep}/master.m3u8")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+                .mount(&server)
+                .await;
+        }
+        server
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_range_download_resolves_and_spawns_per_episode() {
+        // The Download All/Range UI sends "1-12"-shaped episode
+        // values; ani-cli's own `-e 1-12` looped over episodes. The
+        // native path must do the same: one pick, then per-episode
+        // resolution and one tool run per episode — not hand the
+        // whole range to the episode resolver, which matches a single
+        // tag and dies with NoResults before any transfer starts.
+        let server = stub_range_show().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = native_test_state(&td, &server.uri());
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let log = dest.path().join("calls.log");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        );
+        let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+            "title": "Range Show",
+            "episode": "1-2",
+            "mode": "sub",
+            "download_dir": dest.path().to_string_lossy(),
+        }))
+        .expect("args");
+        let path_env = bin.path().display().to_string();
+        download_with_tools(&state, &args, &path_env, |_p| {})
+            .await
+            .expect("the range downloads episode by episode");
+        let calls = std::fs::read_to_string(&log).expect("the tool ran");
+        let lines: Vec<&str> = calls.lines().collect();
+        assert_eq!(lines.len(), 2, "one tool run per episode: {calls}");
+        assert!(
+            lines[0].contains("Range Show Episode 1.mp4"),
+            "first run targets episode 1: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("Range Show Episode 2.mp4"),
+            "second run targets episode 2: {}",
+            lines[1]
+        );
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn cancelling_a_download_kills_the_tools_descendants() {
