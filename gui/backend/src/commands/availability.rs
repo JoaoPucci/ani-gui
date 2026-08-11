@@ -1076,6 +1076,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_native_probe_reports_the_listings_fractional_extras() {
+        // The picked listing already names the playable fractional
+        // rows (a recap under "2.5"); discarding them loses the
+        // episode-strip entries the play path can launch, until some
+        // other writer happens to overwrite the row. The listing is
+        // paid for — the extras ride the same response and cache row
+        // as the cap.
+        use wiremock::matchers::{method, path, query_param};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", "Recap Show"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"<a href="/anime/recap-show-31"><img alt="Recap Show"/></a>"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/31/episodes"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"episodes":[{"id":311,"number":1},{"id":312,"number":2},{"id":313,"number":3,"number2":2.5},{"id":314,"number":4,"number2":3}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/311/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/r1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Recap Show",
+            "mode": "sub",
+            "kitsu_id": "558"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert!(got.available);
+        assert_eq!(
+            got.extra_episodes,
+            vec!["2.5".to_string()],
+            "the fractional tag rides the response; the integer number2 is a re-display, not an extra"
+        );
+        // And the extras survive the cache round-trip.
+        let row = cache_key("558", "sub");
+        let stored = meta_cache_get(&state.cache_pool, &row)
+            .expect("cache read")
+            .expect("row written");
+        let parsed: AvailabilityResponse = serde_json::from_str(&stored).expect("row parses");
+        assert_eq!(parsed.extra_episodes, vec!["2.5".to_string()]);
+    }
+
+    #[tokio::test]
     async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
         // The walk's search and episode listing are mode-independent;
         // only a languages row says whether the requested audio
