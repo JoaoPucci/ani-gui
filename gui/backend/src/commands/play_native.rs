@@ -136,6 +136,20 @@ pub async fn pick_candidate<F: AnidbFetch>(
         bool,
     )> = Vec::new();
     let mut any_transport_failure = false;
+    // Identity carried by transport-DEAD candidates: 0 = exact
+    // title, 1 = year-confirmed, 2 = neither. A dead candidate that
+    // outranks the eventual winner makes the whole pick transient —
+    // the sibling must not win on the strength of weather.
+    let rank = |title_matches: bool, confirmed: bool| -> u8 {
+        if title_matches {
+            0
+        } else if confirmed {
+            1
+        } else {
+            2
+        }
+    };
+    let mut best_failed_rank: u8 = u8::MAX;
     for (h, year_confirmed) in head {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
@@ -160,6 +174,8 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
+                    let failed = rank(h.title.trim().to_lowercase() == needle, year_confirmed);
+                    best_failed_rank = best_failed_rank.min(failed);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
             }
@@ -196,6 +212,11 @@ pub async fn pick_candidate<F: AnidbFetch>(
             .min_by_key(|(_, (_, _, d, _))| *d)
             .map(|(i, _)| i)
         {
+            if best_failed_rank < 1 {
+                // An exact-title candidate died unheard; the rescue
+                // must not outrank it on weather.
+                return Err(crate::error::AniError::Network);
+            }
             let (hit, episodes, _, _) = probed_ok.swap_remove(idx);
             return Ok(PickedShow {
                 hit: hit.clone(),
@@ -225,6 +246,13 @@ pub async fn pick_candidate<F: AnidbFetch>(
         })
         .map(|(i, _)| i)
         .expect("best_dist came from this list");
+    let (winner_title_matches, winner_confirmed) = {
+        let (h, _, _, c) = &probed_ok[winner_idx];
+        (h.title.trim().to_lowercase() == needle, *c)
+    };
+    if best_failed_rank < rank(winner_title_matches, winner_confirmed) {
+        return Err(crate::error::AniError::Network);
+    }
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
     Ok(PickedShow {
         hit: hit.clone(),
