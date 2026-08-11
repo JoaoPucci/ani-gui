@@ -24,6 +24,7 @@ pub mod play;
 pub mod play_cache;
 pub mod play_external_command;
 pub mod play_native;
+mod play_native_choice;
 pub mod play_native_episode;
 pub mod play_native_format;
 pub mod play_native_numbering;

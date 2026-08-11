@@ -15,6 +15,7 @@
 use crate::error::Result;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
 
+use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_year::year_filtered;
@@ -92,38 +93,7 @@ pub async fn pick_candidate<F: AnidbFetch>(
     }
 
     let Some(expected) = expected else {
-        // No count signal: an exact title beats positional order,
-        // then a candidate whose own year matched Kitsu's beats the
-        // rest. When the year disproved part of the pool and no
-        // survivor carries positive identity evidence, the pool is
-        // token-search garbage — reject it so the next alias gets
-        // its chance (the live Tai-Ari mispick: three decades-off
-        // hits excluded, an unknown-year movie left standing). A
-        // pool the year disproved nothing about keeps the
-        // provider's own ranking, so pages without season links
-        // stay resolvable. The single probe still runs so the
-        // caller gets the episode list it needs.
-        let exact = head
-            .iter()
-            .map(|(h, _)| *h)
-            .find(|h| h.title.trim().to_lowercase() == needle);
-        let confirmed = head.iter().find(|(_, c)| *c).map(|(h, _)| *h);
-        let chosen = match (exact, confirmed) {
-            (Some(h), _) => h,
-            (None, Some(h)) => h,
-            (None, None) if year_excluded_any => {
-                return Err(crate::error::AniError::NoResults);
-            }
-            (None, None) => head
-                .first()
-                .map(|(h, _)| *h)
-                .ok_or(crate::error::AniError::NoResults)?,
-        };
-        let episodes = client.episodes(&chosen.slug).await?;
-        return Ok(PickedShow {
-            hit: chosen.clone(),
-            episodes,
-        });
+        return pick_without_count(client, &head, &needle, year_excluded_any).await;
     };
 
     // Probe the surviving head; a failing probe removes the
@@ -136,19 +106,10 @@ pub async fn pick_candidate<F: AnidbFetch>(
         bool,
     )> = Vec::new();
     let mut any_transport_failure = false;
-    // Identity carried by transport-DEAD candidates: 0 = exact
-    // title, 1 = year-confirmed, 2 = neither. A dead candidate that
-    // outranks the eventual winner makes the whole pick transient —
-    // the sibling must not win on the strength of weather.
-    let rank = |title_matches: bool, confirmed: bool| -> u8 {
-        if title_matches {
-            0
-        } else if confirmed {
-            1
-        } else {
-            2
-        }
-    };
+    // Identity carried by transport-DEAD candidates
+    // ([`identity_rank`]): a dead candidate that outranks the
+    // eventual winner makes the whole pick transient — the sibling
+    // must not win on the strength of weather.
     let mut best_failed_rank: u8 = u8::MAX;
     for (h, year_confirmed) in head {
         match client.episodes(&h.slug).await {
@@ -174,7 +135,8 @@ pub async fn pick_candidate<F: AnidbFetch>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
-                    let failed = rank(h.title.trim().to_lowercase() == needle, year_confirmed);
+                    let failed =
+                        identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
                     best_failed_rank = best_failed_rank.min(failed);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
@@ -232,25 +194,8 @@ pub async fn pick_candidate<F: AnidbFetch>(
         }
         return Err(crate::error::AniError::NoResults);
     }
-    // Among the best-distance candidates: an exact title match is
-    // the user's own words and stays dominant; below it, a detail
-    // year that matched Kitsu's exactly outranks a merely tolerated
-    // neighbor; only a full tie falls to provider order (min_by_key
-    // keeps the first of equals).
-    let winner_idx = probed_ok
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, _, d, _))| *d == best_dist)
-        .min_by_key(|(_, (h, _, _, confirmed))| {
-            (h.title.trim().to_lowercase() != needle, !*confirmed)
-        })
-        .map(|(i, _)| i)
-        .expect("best_dist came from this list");
-    let (winner_title_matches, winner_confirmed) = {
-        let (h, _, _, c) = &probed_ok[winner_idx];
-        (h.title.trim().to_lowercase() == needle, *c)
-    };
-    if best_failed_rank < rank(winner_title_matches, winner_confirmed) {
+    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
+    if best_failed_rank < winner_rank {
         return Err(crate::error::AniError::Network);
     }
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
