@@ -1,25 +1,15 @@
-//! `ani-cli` subprocess driver.
+//! Plumbing around the vendored `ani-cli` script.
 //!
-//! The backend never reimplements scraping. It always shells out to the
-//! vendored `ani-cli` script, parsing its `ANI_CLI_PLAYER=debug` stdout to
-//! recover the resolved stream URL, referer, and subtitle URL.
+//! Playback resolution is native — the backend no longer spawns the
+//! script. These modules keep the script itself healthy for the CLI
+//! users sharing the install:
 //!
-//! Submodules:
-//!
-//! - `parser` — ANSI-strip and grammar for the debug output. Pure, easy to
-//!   property-test.
-//! - `process` — `tokio::process::Command` with `kill_on_drop`,
-//!   `TERM=dumb`, `NO_COLOR=1`, and a wall-clock timeout. The function
-//!   that actually spawns the script.
+//! - `process` — locate the script on PATH / the bundled fallback.
+//! - `update` — the auto-updater (`-U`) plus the carried fork patches
+//!   it reapplies.
 
 pub mod bash;
-pub mod botan_shim;
-mod capability;
 mod carried_patches;
 pub mod env;
-pub mod parser;
 pub mod process;
 pub mod update;
-
-pub use parser::{DebugOutput, SearchResult};
-pub use process::{run_debug, run_search};

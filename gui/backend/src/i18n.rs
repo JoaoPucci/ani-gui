@@ -48,11 +48,10 @@ pub mod keys {
     // --- error.scraper.* ---
     /// `ani-cli` binary not found.
     pub const SCRAPER_MISSING_BINARY: &str = "error.scraper.missing_binary";
-    /// A base tool `ani-cli` depends on (curl, sed, grep, openssl,
-    /// fzf) is missing on this machine — `dep_ch`'s die() exit. A
-    /// local setup problem that says nothing about allanime's
-    /// health, so the scraper gate's outcome recorders must ignore
-    /// it (unlike the parse-failed catch-all, which counts).
+    /// A tool the app shells out to is missing on this machine. A
+    /// local setup problem that says nothing about the provider's
+    /// health, so the gate's outcome recorders must ignore it
+    /// (unlike the parse-failed catch-all, which counts).
     pub const SCRAPER_MISSING_DEP: &str = "error.scraper.missing_dep";
     /// `ani-cli` stdout could not be parsed.
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";

@@ -12,12 +12,8 @@ import { m } from '$lib/paraglide/messages';
  *  feeds this into the loading overlay. */
 export function progressLabel(p: PlayProgress): string {
 	switch (p.kind) {
-		case 'banner':
-			return p.text;
 		case 'links_fetched':
 			return `${p.provider} ✓`;
-		case 'other':
-			return p.text;
 		case 'searching':
 			return m.play_progress_searching({ provider: p.provider });
 		case 'matched':

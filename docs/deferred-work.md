@@ -185,6 +185,28 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+## The bundled script's remaining purpose
+
+- **Decide what the ani-cli auto-update setting is for**, now that
+  nothing in the app runs the script.
+
+  The toggle is on by default and makes a network request at every
+  launch. What it updates is `$XDG_CACHE_HOME/ani-gui/ani-cli` — a
+  copy the app maintains for itself. That copy is not on `PATH`, no
+  packaging exposes it (the `.deb` postinst symlinks only the
+  `ani-gui` launcher), and an `ani-cli` the user installed separately
+  is never touched. Playback, downloads and availability all resolve
+  natively and read none of it.
+
+  So the setting currently buys a user nothing they can observe. The
+  copy describes it accurately, which makes the emptiness visible
+  rather than fixing it. Three ways out, and picking one is a
+  maintainer call: expose the maintained copy as the terminal
+  command so the toggle means what it says; keep the script as an
+  inert bundled artifact and retire the updater with its setting and
+  its diagnostics panel; or drop the script from the bundle
+  altogether and point terminal users at upstream.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if

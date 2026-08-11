@@ -184,8 +184,7 @@ describe('createSession', () => {
 		const fetchMock = mockFetchOnce({
 			session_id: '11111111-1111-1111-1111-111111111111',
 			media_url: 'http://127.0.0.1:42337/s/11111111-.../master.m3u8',
-			media_kind: 'hls',
-			subtitle_url: null
+			media_kind: 'hls'
 		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -202,27 +201,6 @@ describe('createSession', () => {
 			referer: 'https://allmanga.to'
 		});
 		expect(resp.session_id).toBe('11111111-1111-1111-1111-111111111111');
-	});
-
-	it('forwards optional subtitle_url through the JSON body', async () => {
-		const fetchMock = mockFetchOnce({
-			session_id: 'sid',
-			media_url: 'http://127.0.0.1:1/s/sid/master.m3u8',
-			media_kind: 'hls',
-			subtitle_url: 'http://127.0.0.1:1/s/sid/sub.vtt'
-		});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		await createSession({
-			upstream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to',
-			subtitle_url: 'https://cdn.example/cap.vtt'
-		});
-
-		const { init } = lastCall(fetchMock);
-		expect(JSON.parse(init?.body as string)).toMatchObject({
-			subtitle_url: 'https://cdn.example/cap.vtt'
-		});
 	});
 
 	it('propagates rejection so callers can render the error', async () => {
@@ -245,7 +223,6 @@ describe('openExternalPlayer', () => {
 		await openExternalPlayer({
 			stream_url: 'https://cdn.example/master.m3u8',
 			referer: 'https://allmanga.to',
-			subtitle_url: null,
 			title: 'Some Anime EP 5',
 			player_command: 'mpv'
 		});
@@ -264,8 +241,7 @@ describe('play', () => {
 		const sessionResponse = {
 			session_id: 'abc-123',
 			media_url: 'http://127.0.0.1:42337/s/abc-123/master.m3u8',
-			media_kind: 'hls' as const,
-			subtitle_url: null
+			media_kind: 'hls' as const
 		};
 		const fetchMock = mockFetchOnce(sessionResponse);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -461,8 +437,7 @@ describe('playStream', () => {
 		return {
 			session_id: 'sid',
 			media_url: `${BASE}/s/sid/master.m3u8`,
-			media_kind: 'hls',
-			subtitle_url: null
+			media_kind: 'hls'
 		};
 	}
 
@@ -611,13 +586,13 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('progress', JSON.stringify({ kind: 'links_fetched', provider: 'youtube' }));
-		es.dispatch('progress', JSON.stringify({ kind: 'banner', text: 'hi' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'anidb.app' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'matched', title: 'The Show' }));
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 		expect(seen).toEqual([
-			{ kind: 'links_fetched', provider: 'youtube' },
-			{ kind: 'banner', text: 'hi' }
+			{ kind: 'searching', provider: 'anidb.app' },
+			{ kind: 'matched', title: 'The Show' }
 		]);
 	});
 

@@ -4,11 +4,11 @@
 //!
 //! - the streaming proxy (its session table, app secret, http client,
 //!   origin, and the kernel-assigned base URL once the listener is up)
-//! - the resolved path to `ani-cli` and a [`DebugOptions`] template the
-//!   commands fill in per call
-//! - the path of the shared ani-hsts history file
-//! - a concurrency limiter for ani-cli invocations so we never hammer
-//!   allanime
+//! - the resolved path to the vendored `ani-cli` script, which the
+//!   auto-updater keeps current
+//! - the path of the GUI's own watch-history file
+//! - an admission gate for provider traffic so background probes
+//!   never hammer the upstream
 //!
 //! Built once during `tauri::Builder::setup` and stored as managed state.
 
@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::account::InternalSecret;
-use crate::anicli::process::{locate_ani_cli, DebugOptions};
+use crate::anicli::process::locate_ani_cli;
 use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
 use crate::commands::account::AccountWriteLocks;
@@ -36,7 +36,7 @@ pub struct AppState {
     /// Outbound http client used by the proxy.
     pub proxy_http: reqwest::Client,
     /// Outbound HTTP client for metadata calls (Kitsu, AniList,
-    /// allanime search, images, GitHub release polls). Separate from
+    /// images, GitHub release polls). Separate from
     /// `proxy_http` so these calls carry tight timeouts: the proxy
     /// client's 120s ceiling is sized for streaming bodies, and a
     /// stalled metadata connection could hold a probe handler for two
@@ -60,33 +60,14 @@ pub struct AppState {
     /// system install. `None` on Unix and on Windows dev runs where
     /// the directory hasn't been laid down.
     pub bundled_bin: Option<PathBuf>,
-    /// Directory holding the provisioned `botan` wrapper that execs
-    /// this binary's `--botan-shim` mode. Appended (never prepended)
-    /// to every ani-cli spawn PATH so 4.15's hard botan requirement
-    /// resolves with no system install, while a real Botan anywhere
-    /// earlier on PATH still wins. `None` when provisioning failed —
-    /// playback then behaves exactly as before the shim existed.
-    pub botan_shim_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
-    /// Base URL for allanime scraper calls. `None` in production,
-    /// which means the real API. Tests set it to a local stub so the
-    /// disambiguation search never leaves the machine — a live search
-    /// inside an integration test turns a throttled IP into a red
-    /// `cargo test` on an unrelated diff.
-    pub allanime_base: Option<String>,
-
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).
     pub anidb_base: Option<String>,
-    /// Admission gate for allanime scraper traffic: paces background
-    /// probes and breaks the circuit on consecutive failures so cold
-    /// caches can't rate-limit the IP out from under a user's click.
-    pub scraper_gate: Arc<crate::scraper::gate::ScraperGate>,
-    /// The anidb provider's own pacing + breaker. Separate from the
-    /// allanime gate above: the providers share no upstream, and a
-    /// shared gate lets one manufacture or cancel the other's
-    /// breaker state.
+    /// Admission gate for provider traffic: paces background probes
+    /// and breaks the circuit on consecutive failures so cold caches
+    /// can't rate-limit the IP out from under a user's click.
     pub anidb_gate: Arc<crate::scraper::gate::ScraperGate>,
     /// On-disk image-cache directory served by the `image://` protocol.
     pub image_cache_dir: PathBuf,
@@ -166,14 +147,11 @@ impl AppState {
         // upstream's script: strip the bats loader guard (else every
         // -U reports Updated) and restore the fork's search capture.
         update::repair_carried_patches(&ani_cli_path);
-        // Windows: locate Git Bash so every ani-cli spawn (regular,
-        // search, `-U`) can wrap the POSIX script with bash. Surface
-        // BashMissing so the frontend can render an install-Git-for-
-        // Windows pointer instead of a generic missing-binary error.
-        // Unix: the field stays None — the script runs via shebang.
-        let bash_path = resolve_bash_path()?;
-        let botan_shim_bin = crate::anicli::botan_shim::provision_own_botan_shim(&cache_root);
-        let history_path = paths::ani_cli_history().ok_or(AniError::Io)?;
+        // Windows: locate Git Bash so the updater's `-U` spawn can
+        // wrap the POSIX script with it. Not finding one is not a
+        // boot failure — see `bash_for_updates`.
+        let bash_path = bash_for_updates();
+        let history_path = paths::gui_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
         let metadata_db = paths::metadata_db().ok_or(AniError::Io)?;
@@ -194,11 +172,8 @@ impl AppState {
             ani_cli_path,
             bash_path,
             bundled_bin,
-            botan_shim_bin,
             history_path,
-            allanime_base: None,
             anidb_base: None,
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
@@ -255,20 +230,6 @@ impl AppState {
         update::read_outcomes(&self.state_dir)
     }
 
-    /// A fresh [`DebugOptions`] for an ani-cli invocation, picking up the
-    /// right script path, bash path, and history dir from this state.
-    #[must_use]
-    pub fn debug_options(&self) -> DebugOptions {
-        let mut opts = DebugOptions::new(self.ani_cli_path.clone());
-        opts.bash_path = self.bash_path.clone();
-        opts.bundled_bin = self.bundled_bin.clone();
-        opts.shim_bin = self.botan_shim_bin.clone();
-        // history_path is `…/ani-cli/ani-hsts`; ANI_CLI_HIST_DIR wants the
-        // directory containing the file.
-        opts.hist_dir = self.history_path.parent().map(std::path::Path::to_path_buf);
-        opts
-    }
-
     /// Configured image-cache size cap, in bytes. Reads from the
     /// user's settings TOML on each call (cheap; sub-millisecond)
     /// so a settings change applies immediately without restarting.
@@ -292,21 +253,22 @@ impl AppState {
     }
 }
 
-/// Resolve `bash.exe` at startup on Windows; return `None` on Unix
-/// where the script runs via shebang. On Windows, `Err(BashMissing)`
-/// when no Git for Windows install is reachable so the frontend can
-/// render an install pointer.
-fn resolve_bash_path() -> Result<Option<PathBuf>> {
+/// Where the auto-updater's spawn should find `bash`, or `None`.
+///
+/// `None` is not a failure. It means either Unix, where the spawn
+/// invokes bash off PATH rather than by absolute path, or a Windows
+/// host with no Git for Windows install — and on that host the app
+/// still resolves streams, downloads and probes availability, all
+/// natively. Only `ani-cli -U` wants a shell, and it reports its own
+/// spawn failure into the update log the diagnostics page renders.
+fn bash_for_updates() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        match crate::anicli::bash::locate_bash() {
-            Some(p) => Ok(Some(p)),
-            None => Err(AniError::BashMissing),
-        }
+        crate::anicli::bash::locate_bash()
     }
     #[cfg(not(windows))]
     {
-        Ok(None)
+        None
     }
 }
 
@@ -413,11 +375,8 @@ mod tests {
             ani_cli_path: PathBuf::from("/tmp/ani-cli"),
             bash_path: None,
             bundled_bin: None,
-            botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            allanime_base: None,
             anidb_base: None,
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -440,77 +399,27 @@ mod tests {
         let id = proxy.sessions.insert(crate::proxy::StreamSession::new(
             url::Url::parse("https://example.com/m.m3u8").unwrap(),
             "https://allmanga.to",
-            None,
         ));
         assert!(app.sessions.get(&id).is_some());
     }
 
-    #[test]
-    fn debug_options_picks_up_hist_dir_from_state() {
-        let app = fake_state();
-        let opts = app.debug_options();
-        assert_eq!(opts.ani_cli_path, PathBuf::from("/tmp/ani-cli"));
-        assert_eq!(
-            opts.hist_dir.as_deref(),
-            Some(std::path::Path::new("/tmp/ani-cli"))
-        );
-    }
-
-    #[test]
-    fn debug_options_threads_bash_path_from_state() {
-        // Windows-readiness: the AppState's resolved bash path must
-        // flow into every spawn site via DebugOptions. Linux fakes
-        // None; setting a path on the state proves the threading is
-        // wired through.
-        let mut app = fake_state();
-        app.bash_path = Some(PathBuf::from("/opt/git/bin/bash.exe"));
-        let opts = app.debug_options();
-        assert_eq!(
-            opts.bash_path.as_deref(),
-            Some(std::path::Path::new("/opt/git/bin/bash.exe"))
-        );
-    }
-
-    #[test]
-    fn debug_options_carries_none_bash_path_on_unix_default() {
-        // The default fake_state has no bash configured; debug_options
-        // must propagate that None so the spawn helper runs the
-        // script directly via shebang on Unix.
-        let app = fake_state();
-        assert!(app.debug_options().bash_path.is_none());
-    }
-
     #[cfg(not(windows))]
     #[test]
-    fn resolve_bash_path_returns_ok_none_on_unix() {
-        // On Unix, no bash lookup happens — the script runs via
-        // shebang. The helper must return Ok(None) to keep the
-        // optional-field invariant.
-        let got = resolve_bash_path().expect("resolve_bash_path should not error on Unix");
+    fn a_missing_bash_is_not_a_boot_failure() {
+        // Bash is reachable from one place now: the updater's spawn.
+        // Nothing in the play, download or availability paths shells
+        // out, so a host without Git for Windows must still boot —
+        // it gets a working app and a failed entry in the update
+        // log, not a backend that refuses to start. The helper
+        // therefore has no error path at all, on any platform.
+        //
+        // On Unix it answers None regardless, because the spawn
+        // invokes bash off PATH rather than by absolute path.
+        let got: Option<PathBuf> = bash_for_updates();
+        #[cfg(not(windows))]
         assert!(got.is_none(), "Unix expects None, got {got:?}");
-    }
-
-    #[test]
-    fn debug_options_threads_bundled_bin_from_state() {
-        // Windows-readiness: AppState::bundled_bin must flow into
-        // every spawn site so `compose_anicli_path` can prepend it
-        // ahead of the inherited PATH. Mirror of the bash_path test.
-        let mut app = fake_state();
-        app.bundled_bin = Some(PathBuf::from("/opt/ani-gui/resources/bin"));
-        let opts = app.debug_options();
-        assert_eq!(
-            opts.bundled_bin.as_deref(),
-            Some(std::path::Path::new("/opt/ani-gui/resources/bin"))
-        );
-    }
-
-    #[test]
-    fn debug_options_carries_none_bundled_bin_by_default() {
-        // Default fake_state has no bundled dir; debug_options must
-        // propagate that None so the spawn helper falls through to
-        // the inherited PATH unchanged. Linux build path always.
-        let app = fake_state();
-        assert!(app.debug_options().bundled_bin.is_none());
+        #[cfg(windows)]
+        let _ = got;
     }
 
     #[test]

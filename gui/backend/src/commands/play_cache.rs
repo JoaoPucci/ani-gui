@@ -64,7 +64,6 @@ pub(crate) async fn try_serve_cached(
     let session_args = CreateSessionArgs {
         upstream_url: cached.upstream_url.clone(),
         referer: cached.referer.clone(),
-        subtitle_url: cached.subtitle_url.clone(),
     };
     let mut resp = create_session_with_kind(state, &session_args, cached.media_kind).ok()?;
     // Tag so the renderer can decide whether a player error is
@@ -118,7 +117,6 @@ pub(crate) async fn try_launch_args_from_cache(
         } else {
             Some(cached.referer)
         },
-        subtitle_url: cached.subtitle_url,
         title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,

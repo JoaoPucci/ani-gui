@@ -3,14 +3,14 @@
 //! This crate is the headless backend of the Electron application. It does
 //! three things on the user's machine:
 //!
-//! 1. Drives the vendored `ani-cli` script (subprocess) to scrape allanime
-//!    for search results, episode lists, and resolved stream URLs.
+//! 1. Scrapes the streaming provider natively for search results,
+//!    episode lists, and resolved stream URLs.
 //! 2. Runs a localhost HTTP server that mounts (a) a streaming proxy which
 //!    injects `Referer:` and rewrites m3u8 manifests so the embedded
 //!    `<video>` + `hls.js` player can fetch segments without CORS pain,
 //!    and (b) the API the renderer talks to via plain `fetch()`.
 //! 3. Talks to Kitsu (and eventually AniList) for metadata, caches results
-//!    in SQLite + images on disk, and reads the shared ani-cli history file.
+//!    in SQLite + images on disk, and keeps its own watch-history file.
 //!
 //! Every listening socket is bound to `127.0.0.1`. The Electron renderer
 //! discovers the kernel-assigned port from the `ani-gui-backend` binary's
@@ -32,6 +32,7 @@ pub mod i18n;
 pub mod meta;
 pub mod proxy;
 pub mod scraper;
+pub mod spawn;
 
 pub use error::{AniError, Result};
 

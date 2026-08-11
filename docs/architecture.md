@@ -1,6 +1,6 @@
 # Architecture
 
-`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. Under the hood it reuses the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper unmodified and adds a Rust + SvelteKit frontend on top of it.
+`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. It began as a front end over the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper and now resolves streams itself in Rust; the script still ships in the bundle, unmodified, for people who want the terminal flow.
 
 ## What gets shipped
 
@@ -10,8 +10,8 @@ A single-window desktop application. Linux: AppImage, `.deb`, Flatpak. macOS: `.
 
 The app talks to three things a browser tab cannot reach on its own:
 
-1. The vendored `ani-cli` script — needs a subprocess.
-2. The shared history file at `$XDG_STATE_HOME/ani-cli/ani-hsts` — needs filesystem access.
+1. The streaming provider — sits behind TLS-fingerprinting protection that rejects browser and plain-HTTP clients, so requests go out through a `curl-impersonate` subprocess.
+2. The watch-history file — needs filesystem access.
 3. Anime stream CDNs — require a `Referer:` header that browser fetch APIs cannot set, and serve segments without permissive CORS.
 
 So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port, that orchestrates these pieces. It runs as a sidecar process the desktop shell launches at startup — a localhost daemon, not a server anyone else can reach.
@@ -27,8 +27,8 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
  │  │ SvelteKit + hls.js │ ◄────────── │ Rust HTTP server   │   │
  │  └─────────┬──────────┘             └─────┬──────────────┘   │
  │            │                              │                  │
- │            │ <video src="http://127.0.0.1:├──► ani-cli       │
- │            │  PORT/s/<token>/...">        │   subprocess     │
+ │            │ <video src="http://127.0.0.1:├──► anidb.app    │
+ │            │  PORT/s/<token>/...">        │   via curl       │
  │            │                              │                  │
  │            │  bytes streamed via proxy    ├──► Kitsu (REST)  │
  │            └─────────────────────────────►│   AniList (GQL)  │
@@ -45,15 +45,15 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
 Three layers, in lockstep:
 
 - **Renderer** — SvelteKit static SPA running inside the desktop shell's web view. Renders the discovery surface, search results, detail pages, and the embedded player (`<video>` + hls.js). Stateless beyond UI state; talks only to the backend.
-- **Backend** — Rust crate inside `gui/backend/`. Spawned as a sidecar by the desktop shell at startup. Spawns `ani-cli` as a subprocess, fetches metadata from Kitsu/AniList, reads/writes the shared history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
-- **External processes** — `ani-cli` (the script) and optionally `mpv` for the "Open in external player" escape hatch.
+- **Backend** — Rust crate inside `gui/backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the provider, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
+- **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.
 2. The renderer calls `POST /api/kitsu/search`. The backend hits Kitsu and returns matches.
 3. The user picks a result; the renderer fetches detail and episode list via `GET /api/kitsu/anime/:id` and `GET /api/kitsu/episodes/:id`.
-4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend spawns `ani-cli` with `ANI_CLI_PLAYER=debug` and `-e <ep>`, parses the resolved stream URL plus its `Referer` requirement and any subtitle `.vtt` URL.
+4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against [anidb.app](https://anidb.app): it searches the browse page for the title (falling back through every alias), probes candidates' episode lists to pick the right show, fetches the episode's language embeds, and reads the master-playlist URL off the chosen embed page. Requests go through a `curl-impersonate` subprocess — the provider sits behind TLS-fingerprinting protection that rejects plain HTTP clients.
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
 6. The renderer mounts `<video>` and points hls.js at `http://127.0.0.1:<port>/s/<token>/master.m3u8`.
 7. The streaming proxy fetches the upstream master playlist with the correct `Referer:` header, parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
@@ -67,7 +67,7 @@ The landing page shows four rows: **Trending Now**, **Popular This Season**, **T
 - **Popular This Season**, **Top Rated**, and **Recently Released** are fetched from Kitsu (REST/JSON:API). Kitsu's posters and banners (sizes verified at build time) are sufficient for these views.
 - Both APIs are hit only when cache misses; cache is SQLite (`$XDG_CACHE_HOME/ani-gui/meta.db`) with TTLs from 1 hour (trending) up to 30 days (title-match cache).
 
-When a user clicks a discovery card, the backend resolves its title against `ani-cli` (search by every available alias from the metadata API: English, Romaji, Native, synonyms) and falls into the same playback flow. The cross-API bridge — including how Kitsu's episode count disambiguates colliding titles on allmanga, and how the MAL id is fetched for the aniskip and trending lookups — is documented in [`title-resolution.md`](./title-resolution.md).
+When a user clicks a discovery card, the backend resolves its title against the provider (searching every available alias from the metadata API: English, Romaji, Native, synonyms) and falls into the same playback flow. The cross-API bridge — including how Kitsu's episode count disambiguates colliding titles on the provider, and how the MAL id is fetched for the aniskip and trending lookups — is documented in [`title-resolution.md`](./title-resolution.md).
 
 When Kitsu's `coverImage` is null (common for shows currently airing — roughly half of the trending row in any given week), the detail-page resolver falls back to AniList: it bridges the Kitsu id through the mappings endpoint to a MAL id, then queries AniList for that MAL id's `bannerImage`. Without the fallback the detail page would render a flat colour where the hero banner belongs.
 
@@ -80,22 +80,22 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days |
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days |
-| Availability probe (negative — show isn't on allmanga) | SQLite `meta_cache` | 7 days |
+| Availability probe (negative — show isn't on anidb.app) | SQLite `meta_cache` | 7 days |
 | aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
-| Title matches (Kitsu/AniList → allanime ID) | SQLite `title_match` | 30 days |
+| Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite play-resolution table | until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
 
-Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache is separate from `meta_cache` — it stores fully-resolved stream URLs keyed by `(allanime id, episode, mode, quality)` so a repeat visit to an episode skips both the `ani-cli` spawn and the upstream link-discovery round trip. Entries are invalidated only when a cached URL fails on use; allmanga's slugs rotate every few weeks, so the layer self-heals via the silent retry path rather than a wall-clock TTL.
+Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache is separate from `meta_cache` — it stores fully-resolved stream URLs keyed by the request tuple `(title, mode, quality, episode, year, episode count)` so a repeat visit to an episode skips the whole provider walk. Entries are invalidated only when a cached URL fails on use; upstream URLs rotate, so the layer self-heals via the silent retry path rather than a wall-clock TTL.
 
 The **availability TTL branches on Kitsu's `status` field**: shows airing weekly need a 24-hour window so a new episode surfaces within a day, but finished shows can hold for 30 days. Unknown / missing status falls back to the short (24h) window — a stale "no episode 1161 yet" is much worse than re-probing too eagerly.
 
-## Bundled ani-cli script — keeping the scraper fresh
+## Bundled ani-cli script — keeping the CLI fresh
 
-The Bash scraper at the repository root is shipped inside the desktop bundle, but its scraping logic drifts daily as upstream patches around allmanga API changes. The bundled copy goes stale within days. The app handles this in three steps:
+The Bash script at the repository root is shipped inside the desktop bundle. The GUI no longer spawns it — resolution is native, and the two keep separate watch histories — but anyone who installed the bundle has the script on their machine, so the app keeps it current in three steps:
 
-1. **Materialise a writable copy.** AppImage / `.deb` / `.msi` resource directories are read-only on most platforms, and `-U` patches the script in place. On first launch the seed (the script shipped inside the bundle) is copied to `$XDG_CACHE_HOME/ani-gui/ani-cli`, and from then on every spawn — search, play, download, `-U` itself — uses that writable cache copy.
+1. **Materialise a writable copy.** AppImage / `.deb` / `.msi` resource directories are read-only on most platforms, and `-U` patches the script in place. On first launch the seed (the script shipped inside the bundle) is copied to `$XDG_CACHE_HOME/ani-gui/ani-cli`, and `-U` runs against that writable cache copy.
 2. **Strip the carried test-loader guard.** The seed in the repo carries a single `__ANI_CLI_LIB__` source-guard line so the bats test loader can `source` the script without executing `main`. The runtime never sources, so the line is dead code there — and worse, it's the one byte that always differs from upstream `master`. Without stripping it on copy, `-U` would report `Updated` on every single boot in a perpetual remove-then-reapply cycle.
 3. **Run `-U` in the background on every launch.** A Tokio task is spawned right after the proxy listener binds, so app startup isn't blocked. The task runs `bash <cached-script> -U` with `TERM=dumb` and `NO_COLOR=1`, captures stdout / stderr, and classifies the run as `NoChange`, `Updated`, or `Failed`. Outcomes are persisted as a small JSON log under `$XDG_STATE_HOME/ani-gui/` (the latest few entries) so the **/diagnostics** route can render the last attempt's status, output, and timestamp.
 
@@ -107,14 +107,14 @@ Playback happens inside the desktop window — not in a detached `mpv` process. 
 
 - `<video>` element receives the master.m3u8 URL from the local proxy.
 - `hls.js` handles HLS streams. mp4 streams (some providers) play natively via `<video src=...>`.
-- Subtitles render via `<track kind="subtitles">` from the proxied `.vtt` URL ani-cli already extracts.
+- Subtitles come embedded in the HLS manifest; hls.js surfaces them as `textTracks` and the player's CC picker selects among them.
 - Quality switching maps to hls.js's `currentLevel` for HLS, or re-resolution for mp4.
 
-An "Open in external player" button on the player chrome launches the user's `mpv` (or platform default) with the same arguments `ani-cli` would have used. This is a user choice, never an automatic fallback — silent fallback would be confusing.
+An "Open in external player" button on the player chrome launches the user's `mpv` (or platform default) with the natively resolved master-playlist URL. This is a user choice, never an automatic fallback — silent fallback would be confusing.
 
 ### Skip OP / ED via aniskip
 
-The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than allanime or Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
+The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
 
 ### Persistent Picture-in-Picture across navigation
 
@@ -141,7 +141,7 @@ Clicking back into the same episode reuses the live session: the play page's loa
 
 Two prefetch surfaces warm play data ahead of demand so episode boundaries don't stutter:
 
-- **Adjacent-episode warm.** When the play page mounts, it warms `episode + 1` (and on the detail page, `episode 1`) through the same play-resolution path the click would take. Hits land in the long-term resolution cache. If the current playback ends and auto-play-next is on, the next episode usually plays from cache instead of waiting on a fresh allmanga scrape.
+- **Adjacent-episode warm.** When the play page mounts, it warms `episode + 1` (and on the detail page, `episode 1`) through the same play-resolution path the click would take. Hits land in the long-term resolution cache. If the current playback ends and auto-play-next is on, the next episode usually plays from cache instead of waiting on a fresh provider walk.
 - **Visible-page warm.** The episode strip's currently-rendered Kitsu page is warmed in parallel so episode tiles get titles and thumbnails before the user scrolls.
 
 Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps a 4-hour TTL. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
@@ -157,7 +157,7 @@ The deferred entry can be discharged in three ways:
 
 1. **PiP closes elsewhere** — the listener fires `clearForShow(showId)` and self-removes. User truly disengaged.
 2. **PiP closes while the user is back on `/play/[id]` for the same show** — listener noops; the new mount has already taken ownership of the prefetches.
-3. **A different show's `/play/[id]` mounts during PiP** — the new mount calls `fireDeferredCancelsExcept(currentShowId)`, which flushes every deferred cancel whose id differs from the current one. Without this, two shows' prefetches would run concurrently against the allmanga rate limit until PiP eventually closed.
+3. **A different show's `/play/[id]` mounts during PiP** — the new mount calls `fireDeferredCancelsExcept(currentShowId)`, which flushes every deferred cancel whose id differs from the current one. Without this, two shows' prefetches would run concurrently against the provider's rate limit until PiP eventually closed.
 
 Closing PiP via X **while still on `/play/[id]`** doesn't kill prefetch — the page never unmounted, no listener was registered, and `onDestroy` hasn't run.
 
@@ -194,7 +194,7 @@ The `ani-cli` script at the repository root is a fully functional, separately in
 - Users who want a terminal flow run `ani-cli` directly. The GUI is not installed and not required.
 - Users who want a graphical experience install the desktop bundle.
 
-The script is mergeable from upstream `pystardust/ani-cli` without conflict because the GUI lives entirely under `gui/` and only invokes the script as a subprocess. The single carried patch is a `__ANI_CLI_LIB__` source guard added near the bottom of the script for testability.
+The script is mergeable from upstream `pystardust/ani-cli` without conflict because the GUI lives entirely under `gui/` and never edits the script. The single carried patch is a `__ANI_CLI_LIB__` source guard added near the bottom of the script for testability.
 
 ## Design direction (UI as a first-class surface)
 

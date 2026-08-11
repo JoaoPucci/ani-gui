@@ -138,19 +138,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: gui/backend
-      - name: Install ani-cli runtime deps (Linux only)
-        # The `anicli_run_debug` integration test spawns ./ani-cli, which
-        # `dep_ch`s curl, a botan binary (the harness stages
-        # fake_botan.sh, whose GCM needs python3-cryptography), and fzf
-        # before doing any work. Without them the test exits in 30ms
-        # with a missing-dep error and gives no useful diagnostic. The
-        # bash workflow already installs these — mirror the list. The integration test is gated to
+      - name: Install runtime deps (Linux only)
+        # The provider transport resolves a curl binary before it can
+        # issue a request, and the player / download surfaces probe for
+        # mpv, ffmpeg and aria2. The tests that assert on tool argv
+        # stage their own stubs; these are here so the paths that look
+        # for a real installation find one. `api_play` is gated to
         # `#![cfg(target_os = "linux")]`, so other matrix legs skip it
         # without needing the deps.
         if: needs.filter.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl python3-cryptography bsdmainutils xxd fzf mpv ffmpeg aria2
+          sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: gui/backend

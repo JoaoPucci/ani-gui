@@ -169,17 +169,15 @@ where
         subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
-    let mut forward = |p: crate::anicli::parser::ProgressLine| {
+    let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
-            crate::anicli::parser::ProgressLine::Banner { text }
-            | crate::anicli::parser::ProgressLine::Other { text } => text,
-            crate::anicli::parser::ProgressLine::LinksFetched { provider } => {
+            crate::commands::progress::ProgressLine::LinksFetched { provider } => {
                 format!("{provider} links fetched")
             }
-            crate::anicli::parser::ProgressLine::Searching { provider } => {
+            crate::commands::progress::ProgressLine::Searching { provider } => {
                 format!("Searching {provider}...")
             }
-            crate::anicli::parser::ProgressLine::Matched { title } => {
+            crate::commands::progress::ProgressLine::Matched { title } => {
                 format!("Matched {title}")
             }
         };
@@ -345,7 +343,7 @@ where
                     // mislabeled file and surface the install
                     // modal's error — the ffmpeg retry would need
                     // the very tool whose absence caused this.
-                    crate::anicli::process::discard_mislabeled(dest, &[target.clone()]);
+                    crate::commands::download_tool::discard_mislabeled(dest, &[target.clone()]);
                     return Err(AniError::FfmpegMissing);
                 }
                 // v5's && chain: a failing yt-dlp run retries the
@@ -463,7 +461,7 @@ where
     // the transfer deadline elapsing — the guard takes the process
     // group down; a waited child is already reaped and the guard
     // stands down by itself.
-    let mut child = crate::anicli::process::TreeKillChild::new(child);
+    let mut child = crate::spawn::TreeKillChild::new(child);
     let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
@@ -471,13 +469,13 @@ where
             // Defense in depth behind the environment above: the
             // dock's DownloadProgress promises stripped text, and a
             // tool that colorizes anyway must not reach it.
-            let line = crate::anicli::parser::strip_ansi(raw.as_bytes());
+            let line = crate::spawn::strip_ansi(raw.as_bytes());
             // The run is condemned the moment yt-dlp reports it left
             // MPEG-TS under the .mp4 name: how it ends stops
             // mattering (exit 0 included), and stopping now spares
             // the rest of a transfer whose output is already wrong.
             // The armed guard takes the tool down on return.
-            if crate::anicli::process::yt_dlp_could_not_repackage(&line) {
+            if crate::commands::download_tool::yt_dlp_could_not_repackage(&line) {
                 *repackage_failed = true;
                 return Err(AniError::FfmpegMissing);
             }

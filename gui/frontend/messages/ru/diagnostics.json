@@ -7,7 +7,7 @@
 	"refresh_button": "Обновить",
 	"clear_history_button": "Очистить историю",
 	"section_metadata_cache": "Кэш метаданных",
-	"metadata_cache_description": "Очищает SQLite-кэш с результатами поиска Kitsu, деталями тайтлов, списками эпизодов и сопоставлениями title→id. Файл истории ani-cli и ваши настройки не затрагиваются.",
+	"metadata_cache_description": "Очищает SQLite-кэш с результатами поиска Kitsu, деталями тайтлов, списками эпизодов и сопоставлениями title→id. История просмотров и ваши настройки не затрагиваются.",
 	"clear_metadata_cache_button": "Очистить кэш метаданных",
 	"section_search_kitsu": "Поиск по Kitsu",
 	"open_search_link_text": "Открыть поиск Kitsu",

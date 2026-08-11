@@ -18,28 +18,34 @@ pub mod availability_refresh;
 pub mod cour;
 pub mod download;
 mod download_range;
+pub(crate) mod download_tool;
 pub mod external_player;
 pub mod history;
 pub mod kitsu;
 pub mod kitsu_warm;
 pub mod play;
+pub mod play_args;
 pub mod play_cache;
 pub mod play_external_command;
+pub mod play_handoff;
+#[cfg(test)]
+#[path = "play_handoff_test.rs"]
+mod play_handoff_test;
 pub mod play_native;
 mod play_native_choice;
 pub mod play_native_episode;
 pub mod play_native_format;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
+mod play_native_record;
 pub mod play_native_resolve;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;
 pub mod play_native_walk;
 pub mod play_native_year;
-pub mod play_referer;
 pub mod play_resolution_cache;
-pub mod play_select;
 pub mod play_syncplay;
+pub mod progress;
 pub mod proxy_url;
 pub mod session;
 pub mod settings;

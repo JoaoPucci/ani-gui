@@ -402,7 +402,7 @@
 						<span class="field-key">{m.settings_field_external_player_custom_args_key()}</span>
 						<span class="field-hint">
 							{m.settings_field_external_player_custom_args_hint_prefix()}<code
-								>{'{url}, {referer}, {title}, {sub}'}</code
+								>{'{url}, {referer}, {title}'}</code
 							>{m.settings_field_external_player_custom_args_hint_suffix()}<code
 								>{'--no-config --referer={referer} {url}'}</code
 							>

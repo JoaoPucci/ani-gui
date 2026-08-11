@@ -132,8 +132,6 @@ curl -sI http://127.0.0.1:42337/healthz
 | Variable | Purpose |
 |---|---|
 | `RUST_LOG` | tracing filter |
-| `ANI_CLI_PLAYER` | propagated when invoking ani-cli; the GUI defaults to `debug` |
-| `ANI_CLI_HIST_DIR` | shared with the CLI; the GUI reads/writes the same `ani-hsts` |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
@@ -161,8 +159,8 @@ The project's hard rule on the CLI script: it is vendored from upstream and must
 **Why doesn't an `mpv` window pop up when I play something?**
 The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is only launched if you click "Open in external player".
 
-**Why does `ani-gui` look at `~/.local/state/ani-cli/ani-hsts`?**
-History is shared between the CLI and the GUI. Watch in one, continue in the other.
+**Where does the GUI keep watch history?**
+In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
 **Why does the dev server work in a browser tab too?**
 By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL).

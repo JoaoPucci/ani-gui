@@ -29,7 +29,7 @@ use tokio::time::{Duration, Instant};
 
 use super::reservation::{SlotGuard, SlotSchedule};
 
-pub use super::outcome::{outcome_of, ScrapeOutcome};
+pub use super::outcome::ScrapeOutcome;
 
 /// Minimum spacing between background scraper requests. Matches the
 /// cadence the warm loop always intended (one probe per 500 ms) but

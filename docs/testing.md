@@ -41,7 +41,7 @@ tests/
 │   ├── kitsu/             # JSON:API responses
 │   ├── anilist/           # GraphQL responses
 │   ├── m3u8/              # master + media playlists, edge cases
-│   └── history/           # ani-hsts samples
+│   └── history/           # watch-history samples
 └── arch/                  # cross-cutting architectural invariants
     ├── boundaries.sh
     ├── i18n.sh

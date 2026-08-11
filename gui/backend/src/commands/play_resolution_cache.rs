@@ -1,7 +1,7 @@
 //! Long-term cache for play resolutions.
 //!
 //! Caches the *result* of running ani-cli (upstream URL, referer,
-//! subtitle URL, media kind) keyed by `(canonical_title, mode, quality,
+//! media kind) keyed by `(canonical_title, mode, quality,
 //! episode)`. A subsequent click on the same episode skips the 30s
 //! ani-cli spawn entirely — we just register a fresh proxy session
 //! around the cached upstream and return immediately.
@@ -103,30 +103,28 @@ use crate::proxy::MediaKind;
 // keep serving it instantly; bumping re-resolves.
 const SCHEMA: &str = "v12";
 
-/// What ani-cli's debug output produced, frozen for replay. The session
+/// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
+/// Rows written by earlier schemas may carry extra keys (the retired
+/// `subtitle_url` sidecar) — serde ignores them on read.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedResolution {
-    /// Final upstream URL ani-cli selected (after `select_quality`).
+    /// Final upstream URL the resolve selected.
     pub upstream_url: String,
     /// Referer header to send when fetching upstream. Empty string when
     /// no referer was captured / inferred.
     pub referer: String,
-    /// Subtitle URL when ani-cli surfaced one, else `None`.
-    pub subtitle_url: Option<String>,
     /// Whether the proxy should serve this as HLS (manifest rewrite)
     /// or MP4 (byte-stream pass-through).
     pub media_kind: MediaKind,
-    /// Allanime show id of the chosen candidate. Captured during the
-    /// fresh-fetch path so a subsequent cache-hit can update
-    /// `ani-hsts` (which `ani-cli`'s `update_history` keys on this id).
-    /// Empty string on rows written before this field existed —
-    /// callers fall back to skipping the history write.
+    /// Provider show id (anidb slug) of the chosen candidate. Captured
+    /// during the fresh-fetch path so a subsequent cache-hit can write
+    /// the same history row a fresh resolve would. Empty string on rows
+    /// written before this field existed — callers fall back to
+    /// skipping the history write.
     #[serde(default)]
     pub show_id: String,
-    /// Allanime title of the chosen candidate, including the
-    /// `(N episodes)` parenthetical that `ani-cli`'s `update_history`
-    /// stores in column three. Empty on legacy rows.
+    /// Provider title of the chosen candidate. Empty on legacy rows.
     #[serde(default)]
     pub show_title: String,
     /// The resolved row's provider slot — what the cache-hit history
@@ -293,7 +291,6 @@ mod tests {
                 "https://video.wixstatic.com/video/3d2d69_c12bd6c53e234420b3ae3d3b4c5b526f/1080p/mp4/file.mp4"
                     .into(),
             referer: "https://allmanga.to".into(),
-            subtitle_url: None,
             media_kind: MediaKind::Mp4,
             show_id: "vDTSJHSpYnrkZnAvG".into(),
             show_title: "Naruto: Shippuuden (500 episodes)".into(),

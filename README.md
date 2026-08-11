@@ -25,7 +25,7 @@ The CLI still exists. The GUI does not replace it; the two share the script and 
 | **Picture-in-Picture** | Persists across navigation. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
 | **Downloads** | Per-episode or ranged, progress dock. aria2c bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
-| **Shared history** | Continue Watching reads/writes `$XDG_STATE_HOME/ani-cli/ani-hsts` — same file as the CLI. Remove a single card or clear the lot from the rail. |
+| **Watch history** | Continue Watching picks up where you left off. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
@@ -174,7 +174,7 @@ The flow is gated by the **Auto-update ani-cli** setting (default ON). When it's
 
 ## How it works
 
-A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and spawns `ani-cli` as a subprocess for stream resolution. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
+A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the provider itself. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
 
 For the long version — diagrams, cache TTLs, the title-resolution bridge, the PiP architecture — see [`docs/architecture.md`](./docs/architecture.md), [`docs/title-resolution.md`](./docs/title-resolution.md), and the rest of [`docs/`](./docs/).
 

@@ -198,7 +198,6 @@ export interface HistoryEntry {
 export interface CreateSessionArgs {
 	upstream_url: string;
 	referer: string;
-	subtitle_url?: string | null;
 }
 
 /** What kind of media the resolved upstream serves. The renderer uses
@@ -215,7 +214,6 @@ export interface CreateSessionResponse {
 	media_url: string;
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
-	subtitle_url: string | null;
 	/** True when this play resolution came from the long-term cache
 	 *  (no fresh ani-cli spawn). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
@@ -233,7 +231,6 @@ export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 export interface LaunchExternalPlayerArgs {
 	stream_url: string;
 	referer?: string | null;
-	subtitle_url?: string | null;
 	title?: string | null;
 	player_command: string;
 	player_kind?: ExternalPlayerKind;
@@ -550,13 +547,12 @@ export function markWatched(args: PlayArgs): Promise<void> {
 }
 
 /** One incremental progress event surfaced by `playStream`. Mirrors the
- *  Rust `ProgressLine` enum's tagged JSON shape. */
+ *  Rust `ProgressLine` enum's tagged JSON shape. Every variant names a
+ *  provider or a title rather than carrying prose — the copy is ours. */
 export type PlayProgress =
-	| { kind: 'banner'; text: string }
-	| { kind: 'links_fetched'; provider: string }
-	| { kind: 'other'; text: string }
 	| { kind: 'searching'; provider: string }
-	| { kind: 'matched'; title: string };
+	| { kind: 'matched'; title: string }
+	| { kind: 'links_fetched'; provider: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
  *  caller hears `<provider> Links Fetched` events as ani-cli emits

@@ -23,15 +23,6 @@ use std::sync::Arc;
 use ani_gui::{api, app, proxy, AniError};
 
 fn main() -> std::process::ExitCode {
-    // Botan-shim mode: the provisioned `botan` wrapper execs this same
-    // binary with `--botan-shim <args…>` for ani-cli's encrypted
-    // transport. Dispatch before any logging init — stdout must carry
-    // nothing but the operation's bytes (ani-cli pipes them onward).
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(String::as_str) == Some("--botan-shim") {
-        return run_botan_shim(&args[2..]);
-    }
-
     // Logging — RUST_LOG honoured, default keeps the noise down.
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "ani_gui=info".into());
     tracing_subscriber::fmt()
@@ -106,27 +97,7 @@ fn main() -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!(error = ?e, "ani-gui-backend exited with error");
-            // Structured fatal-signal line for Electron's main process
-            // to parse — without it, a Windows user with no Git for
-            // Windows install just sees "backend exited" and the app
-            // dies silently. Electron scans stderr for this prefix
-            // and surfaces a native dialog with the install link.
-            if matches!(e, AniError::BashMissing) {
-                eprintln!("ANI_GUI_FATAL bash_missing");
-            }
             std::process::ExitCode::FAILURE
         }
     }
-}
-
-/// Run one botan-shim invocation over the process's real streams and
-/// exit with the operation's code. Kept out of the server path: no
-/// tracing, no runtime, nothing on stdout but the operation output.
-fn run_botan_shim(args: &[String]) -> std::process::ExitCode {
-    use std::io::Write;
-    let mut stdin = std::io::stdin().lock();
-    let mut stdout = std::io::stdout().lock();
-    let code = ani_gui::anicli::botan_shim::run_shim(args, &mut stdin, &mut stdout);
-    let _ = stdout.flush();
-    std::process::ExitCode::from(code)
 }

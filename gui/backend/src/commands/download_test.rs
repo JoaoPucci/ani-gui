@@ -184,7 +184,6 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::sync::Arc;
     crate::app::AppState {
-        allanime_base: None,
         anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -194,9 +193,7 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         ani_cli_path: std::path::PathBuf::from("/tmp/ani-cli"),
         bash_path: None,
         bundled_bin: None,
-        botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
@@ -683,7 +680,7 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
     // The teardown must be the REAL one: a concurrently held
     // no-op probe would swallow the kill this test exists to
     // observe.
-    let _probe_scope = crate::anicli::process::TREE_KILL_PROBE_SCOPE.lock().await;
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let pidfile = dest.path().join("helper.pid");

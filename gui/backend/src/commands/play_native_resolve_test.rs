@@ -2,7 +2,7 @@ use super::super::play_native_test_provider::{
     browse_page, the_show_browse, Provider, ProviderRef,
 };
 use super::*;
-use crate::anicli::parser::ProgressLine;
+use crate::commands::progress::ProgressLine;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, FetchResponse};
 use std::sync::Mutex;
 

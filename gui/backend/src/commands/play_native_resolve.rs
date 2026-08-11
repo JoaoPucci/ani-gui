@@ -13,7 +13,7 @@
 //! (cloudflare) stops the walk — a block on one query blocks them
 //! all, and each further request deepens the hole.
 
-use crate::anicli::parser::ProgressLine;
+use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch};
 
