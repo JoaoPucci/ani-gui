@@ -421,7 +421,13 @@ where
     F: FnMut(&str) + Send,
 {
     use tokio::io::{AsyncBufReadExt, BufReader};
-    cmd.stdin(std::process::Stdio::null())
+    // §5's subprocess environment: nothing the child prints may
+    // depend on the terminal that launched the backend. Both tools
+    // colorize when the inherited environment says to, and every
+    // line here goes straight to the dock.
+    cmd.env("TERM", "dumb")
+        .env("NO_COLOR", "1")
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -451,7 +457,11 @@ where
     let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
+        while let Ok(Some(raw)) = lines.next_line().await {
+            // Defense in depth behind the environment above: the
+            // dock's DownloadProgress promises stripped text, and a
+            // tool that colorizes anyway must not reach it.
+            let line = crate::anicli::parser::strip_ansi(raw.as_bytes());
             // The run is condemned the moment yt-dlp reports it left
             // MPEG-TS under the .mp4 name: how it ends stops
             // mattering (exit 0 included), and stopping now spares
