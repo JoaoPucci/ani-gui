@@ -10,6 +10,29 @@ fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
     std::fs::set_permissions(&p, perms).expect("chmod");
 }
 
+#[cfg(unix)]
+#[test]
+fn find_tool_scans_past_a_non_executable_file() {
+    // An extracted binary that never got chmod +x is a regular file
+    // with the right name. Stopping the search there hides a usable
+    // yt-dlp in a later directory and the spawn dies with Network —
+    // an install with no ffmpeg then fails despite shipping a
+    // working downloader.
+    use std::os::unix::fs::PermissionsExt;
+    let dud = tempfile::tempdir().expect("dud");
+    let good = tempfile::tempdir().expect("good");
+    std::fs::write(dud.path().join("yt-dlp"), b"not executable").expect("stage");
+    let real = good.path().join("yt-dlp");
+    std::fs::write(&real, b"#!/bin/sh\nexit 0\n").expect("stage");
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let path_env = format!("{}:{}", dud.path().display(), good.path().display());
+    assert_eq!(
+        find_tool(&path_env, "yt-dlp", &[""]),
+        Some(real),
+        "the scan continues past an unusable entry"
+    );
+}
+
 #[test]
 fn find_tool_widens_names_with_the_platform_suffix_table() {
     // Windows installs name the tools yt-dlp.exe / ffmpeg.exe.
