@@ -163,9 +163,43 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let master_url =
-                            resolve_episode(client, &picked, req.episode, req.mode, req.quality)
-                                .await?;
+                        let master_url = match resolve_episode(
+                            client,
+                            &picked,
+                            req.episode,
+                            req.mode,
+                            req.quality,
+                        )
+                        .await
+                        {
+                            Ok(url) => url,
+                            // Blocks and refusals stop the walk as
+                            // everywhere else; an ANSWERED dead end —
+                            // missing episode, language, embed or
+                            // playlist on a stale candidate — moves
+                            // to the next alias, which is what the
+                            // surrounding loop exists for. Transport
+                            // failures stay transient.
+                            Err(ne)
+                                if ne.error.is_provider_block()
+                                    || matches!(ne.error, AniError::GateRefused) =>
+                            {
+                                return Err(ne);
+                            }
+                            Err(ne)
+                                if matches!(
+                                    ne.error,
+                                    AniError::NoResults | AniError::Upstream { .. }
+                                ) =>
+                            {
+                                any_answered_dead_end = true;
+                                continue;
+                            }
+                            Err(_) => {
+                                any_search_errored = true;
+                                continue;
+                            }
+                        };
                         on_progress(ProgressLine::LinksFetched {
                             provider: "anidb.app".into(),
                         });
