@@ -934,6 +934,7 @@
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
 				kitsu_id: d.id,
+				subtype: d.subtype ?? undefined,
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
@@ -1031,7 +1032,8 @@
 					episodeCount: d.episode_count ?? undefined,
 					year: yearFromKitsuRef(d) ?? undefined,
 					kitsuId: d.id,
-					status: d.status ?? undefined
+					status: d.status ?? undefined,
+					subtype: d.subtype ?? undefined
 				},
 				mode,
 				{
@@ -1765,6 +1767,7 @@
 						quality,
 						episode_count: detail?.episode_count ?? null,
 						year: yearFromKitsuRef(detail),
+						subtype: detail?.subtype ?? null,
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
@@ -1826,6 +1829,7 @@
 							quality,
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
+							subtype: detail?.subtype ?? null,
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1861,6 +1865,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});
@@ -1934,6 +1939,7 @@
 				quality,
 				episode_count: detail.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 		} catch {
@@ -2092,6 +2098,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -2147,6 +2154,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail)
 			});
 			toastStore.push(

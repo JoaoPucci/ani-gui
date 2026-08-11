@@ -38,6 +38,7 @@
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
 	import { describeRateLimit } from '$lib/play/error-copy';
+	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
 	import {
@@ -220,6 +221,7 @@
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
 				kitsu_id: d.id,
+				subtype: d.subtype ?? undefined,
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
@@ -639,7 +641,8 @@
 					episodeCount: d.episode_count ?? undefined,
 					year: yearFromKitsuRef(d) ?? undefined,
 					kitsuId: d.id,
-					status: d.status ?? undefined
+					status: d.status ?? undefined,
+					subtype: d.subtype ?? undefined
 				},
 				mode,
 				{
@@ -675,20 +678,6 @@
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
 	let actionProgress = $state<string | null>(null);
-
-	/** Format a single ProgressLine into the one-liner the overlay
-	 *  shows under the Lottie. Keeps copy short — the band is
-	 *  intentionally minimal. */
-	function progressLabel(p: import('$lib/api').PlayProgress): string {
-		switch (p.kind) {
-			case 'banner':
-				return p.text;
-			case 'links_fetched':
-				return `${p.provider} ✓`;
-			case 'other':
-				return p.text;
-		}
-	}
 
 	// The show's live list entry, folded from EVERY connected tracker so the
 	// editor opens on the real status/progress (the deviation safety) and the
@@ -970,6 +959,7 @@
 						quality,
 						episode_count: detail?.episode_count ?? null,
 						year: yearFromKitsuRef(detail),
+						subtype: detail?.subtype ?? null,
 						alt_titles: altTitles,
 						// Prefetches must NOT update Continue Watching — the
 						// 12 calls fired here resolve in arbitrary order, so
@@ -1272,6 +1262,7 @@
 							quality,
 							episode_count: detail?.episode_count ?? null,
 							year: yearFromKitsuRef(detail),
+							subtype: detail?.subtype ?? null,
 							alt_titles: altTitlesFromKitsu(detail),
 							kitsu_id: id
 						},
@@ -1301,6 +1292,7 @@
 				quality,
 				episode_count: detail?.episode_count ?? null,
 				year: yearFromKitsuRef(detail),
+				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail),
 				kitsu_id: id
 			}).catch(() => {});

@@ -11,6 +11,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<AppState> {
     use std::sync::Arc;
     Arc::new(AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -22,6 +23,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<AppState> {
         botan_shim_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

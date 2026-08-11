@@ -601,12 +601,20 @@ async fn post_play_mark_watched(
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // History write — same as before the kitsu_id field landed.
+            // ani-hsts speaks the provider's numbering; the offset
+            // was stamped by the resolve that wrote this cache row.
+            let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             let entry = crate::history::HistoryEntry {
-                ep_no: args.episode.clone(),
+                ep_no: crate::commands::anidb_offset::write_ep_no(
+                    &state,
+                    &cached.show_id,
+                    &args.episode,
+                    offset,
+                ),
                 id: cached.show_id.clone(),
                 title: cached.show_title.clone(),
             };
@@ -738,6 +746,7 @@ async fn post_play_cache_evict(
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
@@ -790,6 +799,7 @@ mod tests {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -801,6 +811,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: td.path().join("ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
@@ -835,9 +846,12 @@ mod tests {
     async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
+        // The native play admits through the anidb gate since the
+        // provider split; priming the allanime gate no longer
+        // refuses anything on this path.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .scraper_gate
+                .anidb_gate
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let router = build_api_router(Arc::new(state));
@@ -1391,7 +1405,7 @@ mod tests {
         let history_path = state.history_path.clone();
         // Seed a v2 cache row with the show_id explicitly empty —
         // the on-disk shape a legacy v1 row would deserialize into.
-        let key = cache_key("Legacy Show", "sub", "best", "3", None, None);
+        let key = cache_key("Legacy Show", "sub", "best", "3", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1402,6 +1416,7 @@ mod tests {
                 media_kind: MediaKind::Hls,
                 show_id: String::new(),
                 show_title: String::new(),
+                resolved_slot: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1435,7 +1450,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1446,6 +1461,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1487,7 +1503,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1498,6 +1514,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1550,7 +1567,15 @@ mod tests {
         // Cached resolution: allmanga's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
-        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        let key = cache_key(
+            "Stone Ocean",
+            "sub",
+            "best",
+            "1",
+            Some(2021),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1562,6 +1587,7 @@ mod tests {
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
+                resolved_slot: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1637,7 +1663,15 @@ mod tests {
         let state = test_app_state(&td);
 
         // show_title has no Part/Cour/Season suffix → cour_from_title=None.
-        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        let key = cache_key(
+            "Some Sequel",
+            "sub",
+            "best",
+            "1",
+            Some(2024),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1648,6 +1682,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "seq-show".into(),
                 show_title: "Some Sequel (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -1712,7 +1747,15 @@ mod tests {
         let state = test_app_state(&td);
 
         // allmanga title carries Part 2 → cour_from_title=Some(2).
-        let key = cache_key("Some Sequel", "sub", "best", "1", Some(2024), Some(12));
+        let key = cache_key(
+            "Some Sequel",
+            "sub",
+            "best",
+            "1",
+            Some(2024),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1723,6 +1766,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "seq2-show".into(),
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -1797,7 +1841,15 @@ mod tests {
         // unreachable port), so `kitsu_anime_detail` returns Err.
         // Per the guard's docstring, that should be treated as
         // "agree" and the reverse-mapping write must still happen.
-        let key = cache_key("Stone Ocean", "sub", "best", "1", Some(2021), Some(12));
+        let key = cache_key(
+            "Stone Ocean",
+            "sub",
+            "best",
+            "1",
+            Some(2021),
+            Some(12),
+            None,
+        );
         put(
             &state.cache_pool,
             &key,
@@ -1809,6 +1861,7 @@ mod tests {
                 show_id: "D5ksnsKtYAzzFXeSp".into(),
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
+                resolved_slot: None,
             },
         );
 
@@ -1896,7 +1949,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1907,6 +1960,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2023,7 +2077,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Some Show", "sub", "best", "5", None, None);
+        let key = cache_key("Some Show", "sub", "best", "5", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2034,6 +2088,7 @@ mod tests {
                 media_kind: MediaKind::Hls,
                 show_id: "abc".into(),
                 show_title: "Some Show (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let pool = state.cache_pool.clone();

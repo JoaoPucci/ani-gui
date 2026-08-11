@@ -193,6 +193,7 @@ fn state_for_cache_only_tests() -> AppState {
     use std::sync::Arc;
     AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -204,6 +205,7 @@ fn state_for_cache_only_tests() -> AppState {
         botan_shim_bin: None,
         history_path: PathBuf::from("/y/ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

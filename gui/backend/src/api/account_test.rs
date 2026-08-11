@@ -95,6 +95,7 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 fn test_state(td: &TempDir) -> Arc<AppState> {
     Arc::new(AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -106,6 +107,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -123,6 +125,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
 fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
     Arc::new(AppState {
         allanime_base: None,
+        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -134,6 +137,7 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
         scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

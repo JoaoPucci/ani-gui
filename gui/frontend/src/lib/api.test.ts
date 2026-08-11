@@ -560,6 +560,51 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('appends subtype to the SSE query when provided', async () => {
+		// The backend keys its play-resolution cache on subtype (a
+		// franchise's movie and TV entry can otherwise share every other
+		// axis), and the native picker uses it as format disproof. A
+		// query builder that drops it makes every renderer call arrive
+		// subtype-less, so those backend features never see the value.
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', subtype: 'movie' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('subtype=movie');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
+	it('appends kitsu_id to the SSE query when provided', async () => {
+		// The backend persists the native resolver's exact episode cap
+		// (and the show_id reverse mapping) only when the play carries
+		// the Kitsu id. The SSE branch is the normal renderer path —
+		// dropping the id there means neither click nor prefetch ever
+		// stamps availability; only the POST fallback would.
+		const promise = playStream({ title: 'X', episode: '1', mode: 'sub', kitsu_id: '42' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('kitsu_id=42');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
+	it('omits subtype when null or absent', async () => {
+		// Kitsu can return subtype: null; the wire treats absence and
+		// null identically, so a null must not serialize as "null".
+		const promise = playStream({ title: 'X', episode: '1', mode: 'sub', subtype: null }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).not.toContain('subtype');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it('forwards parsed progress events to onProgress in arrival order', async () => {
 		const seen: PlayProgress[] = [];
 		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, (p) => seen.push(p));
@@ -1303,6 +1348,24 @@ describe('historyByKitsu', () => {
 });
 
 describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
+	it('checkAvailability forwards subtype in the POST body', async () => {
+		// The backend probe now applies the same format disproof play
+		// and download use, but only if the caller sends the subtype:
+		// a probe without it lets a Movie/Special/OVA collision cache
+		// the wrong candidate's availability and cap.
+		const fetchMock = mockFetchOnce({ available: true, episode_count: 1, extra_episodes: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await checkAvailability({
+			title: 'X',
+			mode: 'sub',
+			subtype: 'special',
+			background: true
+		});
+		const { init } = lastCall(fetchMock);
+		const body = JSON.parse(init?.body as string);
+		expect(body.subtype).toBe('special');
+	});
+
 	it('checkAvailability POSTs the args to /api/availability', async () => {
 		const fetchMock = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1557,6 +1620,22 @@ describe('downloadStream', () => {
 		expect(es.url).toContain('quality=1080');
 		expect(es.url).toContain('kitsu_id=kid-9');
 		expect(es.url).toContain('download_dir=%2Ftmp%2Fdl');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
+	it('appends subtype when provided, mirroring playStream', async () => {
+		// The backend projects DownloadArgs onto the play picker's
+		// args; a query builder that drops subtype starves that
+		// projection on the download path alone.
+		const promise = downloadStream(
+			{ title: 'X', episode: '1', mode: 'sub', subtype: 'movie' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('subtype=movie');
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 	});

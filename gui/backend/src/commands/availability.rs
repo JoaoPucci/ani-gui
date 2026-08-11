@@ -59,6 +59,12 @@ pub struct AvailabilityArgs {
     /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`),
+    /// when the caller has it — the same format disproof the play
+    /// and download pickers apply, so availability cannot cache a
+    /// different candidate than they would select.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
     /// check still runs but its result isn't persisted.
     #[serde(default)]
@@ -315,6 +321,7 @@ pub(crate) async fn check_availability_with_base(
         quality: None,
         episode_count: args.episode_count,
         year: args.year,
+        subtype: args.subtype.clone(),
         alt_titles: args.alt_titles.clone(),
         // `prefetch` doubles as the scraper-gate priority: background
         // probes (rail warms, home-loader fills) are paced and refused
@@ -1273,6 +1280,7 @@ mod tests {
             alt_titles: Vec::new(),
             episode_count: None,
             year: None,
+            subtype: None,
             kitsu_id: None,
             status: None,
             background: false,
@@ -1294,6 +1302,7 @@ mod tests {
         use std::sync::Arc;
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -1305,6 +1314,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: td.path().join("ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -2104,5 +2114,24 @@ mod tests {
         let (_, _, approximate) =
             enrich_from_show_fetch(Ok(detail), &candidate, "sub").expect("ok");
         assert!(!approximate, "the detail fetch is authoritative");
+    }
+}
+
+#[cfg(test)]
+mod subtype_args_tests {
+    use super::*;
+
+    #[test]
+    fn availability_args_carry_the_callers_subtype() {
+        // The synthesized PlayArgs dropped subtype, so availability
+        // accepted the first format where Movie, Special and OVA
+        // candidates tie on title, year and count — caching the
+        // wrong candidate's availability and cap while play and
+        // download select or reject a different entry. The wire
+        // field is optional: probes without a subtype stay valid.
+        let args: AvailabilityArgs =
+            serde_json::from_str(r#"{"title":"x","mode":"sub","subtype":"special"}"#)
+                .expect("optional subtype deserializes");
+        assert_eq!(args.subtype.as_deref(), Some("special"));
     }
 }

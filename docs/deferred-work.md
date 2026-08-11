@@ -75,34 +75,25 @@ starting it, and delete it when you find it done.
 
 ## Resolver and provider
 
-- **Adapt the GUI to ani-cli 5.0's anidb provider.** The 5.0 sync
-  replaced the bundled script (allanime is gone; anidb.app is the
-  provider) but the Rust side still speaks allanime end to end, so
-  playback stays broken until it moves: the disambiguation search and
-  availability probes hit allanime's dead API, and the `-S` index they
-  compute selects from a list the script no longer produces. Known
-  edges beyond the search itself, found during the sync: the driver's
-  `--` separator rides into the browse query, the loading overlay
-  streams stderr while 5.0 writes progress to stdout, history and the
-  play-resolution cache are keyed by allanime ids while the script now
-  writes anidb slugs (and migrates old rows aside to `ani-hsts.v4`),
-  and the botan shim machinery (`anicli/botan_shim.rs`, the PATH
-  provisioning in `app.rs`) is dead weight 5.0 never invokes.
-
-- **Replace the bundled `ani-cli` with a native Rust resolver.**
-  Everything downstream of a resolved URL is already native —
-  `commands/play.rs` and `proxy/m3u8.rs` handle sessions, manifests
-  and segment signing. What is script-only is the resolution in
-  between; against anidb that is browse-page scraping, two JSON
-  endpoints and an embed page, with no encrypted transport, which is
-  a materially smaller job than it was against allanime.
+- **Finish moving the script-driven resolution paths to the native
+  anidb resolver.** Embedded playback already resolves natively —
+  browse search, direct candidate pick, episode-to-master resolution,
+  the numbering-offset bridge into `ani-hsts` — and the `-S` index
+  handoff is gone from the play path. Still on the script: downloads,
+  the external player and Syncplay launch paths, and the
+  auto-updater's reasons for existing. Availability never spawns the
+  script — it runs the Rust picker — but that picker still queries
+  allanime, so its remaining work is the provider migration to the
+  native anidb client, not a script removal. The
+  botan shim machinery (`anicli/botan_shim.rs`, the PATH provisioning
+  in `app.rs`) is dead weight 5.0 never invokes.
 
   Two separate finish lines, and the gap between them is the thing to
-  remember. Native playback means every path that resolves a stream,
-  including Syncplay and the external player. *Deleting* the script is
-  a much wider job — downloads, app startup, packaging, the updater and
-  the bats suites all reach for it, and a search for the binary name is
-  the only honest way to scope that.
+  remember. Native resolution everywhere means every path that
+  resolves a stream, including Syncplay and the external player.
+  *Deleting* the script is a much wider job — downloads, app startup,
+  packaging, the updater and the bats suites all reach for it, and a
+  search for the binary name is the only honest way to scope that.
 
 ## Correctness in the app
 
@@ -142,6 +133,17 @@ starting it, and delete it when you find it done.
   video that survives navigation — ships and is described in
   `README.md` and `docs/architecture.md`.
 - **Illustrated brand assets** — post-1.0.
+
+- **Bundle the curl-impersonate transport in the packages.** The
+  native anidb client needs an impersonating curl to get past the
+  provider's TLS-fingerprint front; without one the resolver falls
+  through to plain curl, which the front answers with the
+  interstitial. A PR staging one for the Linux packages is open;
+  until it lands, packaged Linux playback has the gap too, and
+  Windows — which impersonate build runs under Git Bash and how it
+  ships — is untouched. Waited because packaging is its own problem,
+  not a resolver change. Surprising: ani-cli 5.0 itself has the same
+  gap on Windows.
 
 ## Housekeeping
 

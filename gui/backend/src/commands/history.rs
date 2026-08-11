@@ -6,17 +6,32 @@
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
+/// Translate a row's on-disk `ep_no` — the provider's numbering,
+/// which `ani-cli` keys on — back to the per-entry (Kitsu) numbering
+/// every GUI surface counts in, using the offset the resolver
+/// stamped for the row's slug. Rows without a stamp pass through
+/// unchanged: that is the no-shift case, and the pre-stamp behavior
+/// for shows the GUI never resolved.
+fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
+    entry.ep_no = crate::commands::anidb_offset::read_ep_no(state, &entry.id, &entry.ep_no);
+    entry
+}
+
 /// Returns every history entry as the frontend would render the
 /// "Continue Watching" row. Most-recent-first order is the GUI's choice;
 /// the on-disk order from the CLI is "append-only with in-place updates",
 /// so we return entries in the order they appear on disk and let the
-/// frontend reverse if it wants newest-first.
+/// frontend reverse if it wants newest-first. Episode numbers are
+/// translated to the per-entry (Kitsu) numbering at this boundary.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] if the file exists but cannot
 /// be read.
 pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
-    read_all(&state.history_path)
+    Ok(read_all(&state.history_path)?
+        .into_iter()
+        .map(|e| to_kitsu_numbering(state, e))
+        .collect())
 }
 
 /// Find the history entry (if any) whose allmanga show_id maps to
@@ -50,7 +65,7 @@ pub fn history_by_kitsu(
     for entry in entries {
         if let Ok(Some(mapped)) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id) {
             if mapped == kitsu_id {
-                return Ok(Some(entry));
+                return Ok(Some(to_kitsu_numbering(state, entry)));
             }
         }
     }
@@ -97,6 +112,7 @@ mod tests {
     fn make_state(history_path: PathBuf) -> AppState {
         AppState {
             allanime_base: None,
+            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -108,6 +124,7 @@ mod tests {
             botan_shim_bin: None,
             history_path,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
@@ -127,6 +144,61 @@ mod tests {
         let s = make_state(tmp.path().join("nope"));
         let v = history_list(&s).unwrap();
         assert!(v.is_empty());
+    }
+
+    #[test]
+    fn list_translates_provider_numbering_back_to_kitsu() {
+        // ani-hsts speaks the provider's numbering (ani-cli greps the
+        // stored ep_no in the provider's episode list), while every
+        // GUI surface counts per-entry like Kitsu. The read boundary
+        // subtracts the offset stamped at resolve time; rows without
+        // a stamp pass through unchanged — that's today's behavior
+        // for shows the GUI has never resolved.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[
+                HistoryEntry {
+                    ep_no: "41".into(),
+                    id: "the-sequel-88".into(),
+                    title: "The Sequel".into(),
+                },
+                HistoryEntry {
+                    ep_no: "5".into(),
+                    id: "plain-1".into(),
+                    title: "Plain Show".into(),
+                },
+            ],
+        )
+        .unwrap();
+        crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+        let listed = history_list(&s).unwrap();
+        assert_eq!(listed[0].ep_no, "1", "provider 41 minus offset 40");
+        assert_eq!(listed[1].ep_no, "5", "no stamp: served raw");
+    }
+
+    #[test]
+    fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("ani-hsts");
+        let s = make_state(path.clone());
+        write_atomic(
+            &path,
+            &[HistoryEntry {
+                ep_no: "42".into(),
+                id: "the-sequel-88".into(),
+                title: "The Sequel".into(),
+            }],
+        )
+        .unwrap();
+        crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "K9").unwrap();
+        crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+        let hit = history_by_kitsu(&s, "K9").unwrap().expect("match");
+        assert_eq!(hit.ep_no, "2");
     }
 
     #[test]

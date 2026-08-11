@@ -102,6 +102,16 @@ describe('resolveHistoryEntry — year-suffixed titles (ani-cli ≥ 4.14.5)', ()
 });
 
 describe('resolveHistoryEntry — direct episode mapping', () => {
+	it('preserves a fractional episode identity', () => {
+		// Native playback writes decimal tags ("1.5" recaps) into
+		// history; the digit-split head turned them into episode 1,
+		// so the resume surface displayed and replayed a watched
+		// episode instead of the fractional one.
+		const r = resolveHistoryEntry(entry('Long Show (26 episodes)', '1.5'), stubKitsu());
+		expect(r.displayEpisode).toBe(1.5);
+		expect(r.kitsuEpisode).toBe(1.5);
+	});
+
 	it('maps episode number directly through to Kitsu', () => {
 		const r = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), stubKitsu());
 		expect(r.displayEpisode).toBe(5);

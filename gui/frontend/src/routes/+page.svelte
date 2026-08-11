@@ -15,6 +15,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeRateLimit } from '$lib/play/error-copy';
+	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
 	// row's out:scale + animate:flip. The two factories check
@@ -57,8 +58,7 @@
 		type CreateSessionResponse,
 		type HistoryEntry,
 		type KitsuAnimeRef,
-		type KitsuEpisode,
-		type PlayProgress
+		type KitsuEpisode
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
@@ -627,12 +627,6 @@
 		return "Couldn't start this episode right now. Try again in a few minutes.";
 	}
 
-	function progressLabel(p: PlayProgress): string {
-		if (p.kind === 'banner') return p.text;
-		if (p.kind === 'links_fetched') return `${p.provider} ✓`;
-		return p.text;
-	}
-
 	/** Click handler for a Continue Watching card. Resolves the play
 	 *  through the same getOrFire/playStream pipeline /anime/[id]
 	 *  uses, then navigates straight to /play/[id]?session=… —
@@ -653,6 +647,7 @@
 		quality: a.quality,
 		episode_count: a.match.episode_count ?? null,
 		year: yearFromKitsuRef(a.match),
+		subtype: a.match.subtype ?? null,
 		alt_titles: altTitlesFromKitsu(a.match),
 		kitsu_id: a.match.id
 	});

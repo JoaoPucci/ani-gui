@@ -147,8 +147,32 @@ impl ScraperGate {
     /// # Errors
     /// [`GateClosed`] for background admits while the breaker is open.
     pub async fn admit(&self, prio: ScrapePriority) -> Result<(), GateClosed> {
+        self.admit_chained(prio, None).await?;
+        Ok(())
+    }
+
+    /// [`ScraperGate::admit`] for callers whose logical request is a
+    /// CHAIN of provider fetches (a native resolve: search, probes,
+    /// the episode chain). Pacing is identical — every fetch takes
+    /// its own slot — but the half-open trial sanctions the chain,
+    /// not a single fetch: the admit that takes the trial hands the
+    /// sanction back, and the holder presents it on its further
+    /// admits, which pass while the gate still holds that exact
+    /// stamp. Everyone else stays refused until the chain's outcome
+    /// is recorded or the trial goes stale. Without this, a chain's
+    /// second fetch is refused by its own trial, the refusal is
+    /// recorded as failure, and the breaker re-opens on itself.
+    ///
+    /// # Errors
+    /// [`GateClosed`] for background admits while the breaker is
+    /// open, unless `held` is the outstanding trial's sanction.
+    pub async fn admit_chained(
+        &self,
+        prio: ScrapePriority,
+        held: Option<Instant>,
+    ) -> Result<Option<Instant>, GateClosed> {
         if prio == ScrapePriority::Interactive {
-            return Ok(());
+            return Ok(None);
         }
         let (slot, mut trial_stamp) = {
             let mut s = self.inner.lock().expect("gate lock");
@@ -165,7 +189,7 @@ impl ScraperGate {
                 s.paused_until = None;
                 s.pause_opened_at = None;
             }
-            let trial_stamp = breaker_gate(&mut s, now)?;
+            let trial_stamp = breaker_gate(&mut s, now, held)?;
             let floor = s.paused_until.unwrap_or(now);
             (
                 s.schedule.reserve(BACKGROUND_INTERVAL, floor, now),
@@ -202,11 +226,11 @@ impl ScraperGate {
                 let resleep = {
                     let mut s = self.inner.lock().expect("gate lock");
                     let now = Instant::now();
-                    let sanctioned =
-                        trial_stamp.is_some_and(|stamp| s.half_open_trial_at == Some(stamp));
-                    if !sanctioned {
-                        trial_stamp = breaker_gate(&mut s, now)?;
-                    }
+                    // breaker_gate's held check IS the sanction test:
+                    // a stamp the gate still holds passes straight
+                    // through; anything else re-submits to the
+                    // current breaker like everyone else.
+                    trial_stamp = breaker_gate(&mut s, now, trial_stamp)?;
                     s.paused_until.filter(|paused| now < *paused).map(|paused| {
                         if let Some(old) = guard.slot.take() {
                             s.schedule.release(old);
@@ -225,7 +249,7 @@ impl ScraperGate {
         let mut s = self.inner.lock().expect("gate lock");
         let fired = guard.slot.take().expect("fire path holds the reservation");
         s.schedule.consume(BACKGROUND_INTERVAL, fired);
-        Ok(())
+        Ok(trial_stamp)
     }
 
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
@@ -277,81 +301,13 @@ impl ScraperGate {
             }
         }
     }
-
-    /// Report how the admitted request went. `started_at` is when
-    /// the caller began the request (capture `Instant::now()` before
-    /// firing): failures count toward the breaker regardless, but a
-    /// success only closes an open breaker when the request started
-    /// after the breaker opened — a slow pre-storm request reporting
-    /// success later is stale evidence, not proof of recovery.
-    pub fn record_outcome(&self, ok: bool, started_at: Instant) {
-        let mut s = self.inner.lock().expect("gate lock");
-        if ok {
-            if let Some(opened) = s.opened_at {
-                if started_at < opened {
-                    // Pre-storm evidence: the request was already in
-                    // flight when the breaker opened, so its success
-                    // says nothing about the upstream's state NOW.
-                    // Leave the breaker (and the failure run) alone.
-                    return;
-                }
-            }
-            s.consecutive_failures = 0;
-            s.open_until = None;
-            s.opened_at = None;
-            s.half_open_trial_at = None;
-            // A success that STARTED before the pause opened ran
-            // against the pre-limit upstream; only fresh evidence
-            // clears the window.
-            let fresh_for_pause = s.pause_opened_at.is_none_or(|opened| started_at >= opened);
-            if fresh_for_pause && s.paused_until.take().is_some() {
-                // The schedule holds exactly the reservations real
-                // sleepers took (slots floor at the deadline instead
-                // of the deadline being pushed into the schedule), so
-                // clearing the pause preserves it: new callers queue
-                // after the outstanding sleepers and the global
-                // pacing survives the early recovery.
-                s.pause_opened_at = None;
-            }
-            // The boundary is when the successful request STARTED,
-            // advanced monotonically — a slow success that lands late
-            // proves recovery only as of its own start; requests that
-            // began after it may be watching a newer rate-limit
-            // episode and their failures stay fresh evidence.
-            s.last_recovery_at = Some(match s.last_recovery_at {
-                Some(prev) => prev.max(started_at),
-                None => started_at,
-            });
-        } else {
-            if let Some(recovered) = s.last_recovery_at {
-                if started_at < recovered {
-                    // The request ran against the pre-recovery
-                    // upstream; a newer accepted success already
-                    // proved the state it observed is gone.
-                    return;
-                }
-            }
-            s.consecutive_failures += 1;
-            if s.consecutive_failures >= FAILURE_THRESHOLD {
-                let now = Instant::now();
-                s.open_until = Some(now + BREAKER_COOLDOWN);
-                if s.opened_at.is_none() {
-                    // Closed → open transition only: stragglers that
-                    // fail while already open must not move the
-                    // staleness boundary (a fresh interactive success
-                    // started during the cooldown could never close
-                    // the breaker), and the queued slot schedule is
-                    // dropped so the half-open trial doesn't wait
-                    // behind reservations from callers that will all
-                    // be refused at wake.
-                    s.opened_at = Some(now);
-                    s.schedule.clear(now);
-                }
-                s.half_open_trial_at = None;
-            }
-        }
-    }
 }
+
+// `record_outcome` lives in a `#[path]` child module so its
+// complexity counts against its own file while the gate's state
+// stays private to this module tree.
+#[path = "gate_recording.rs"]
+mod recording;
 
 /// Breaker check under the gate lock: refuses while the breaker is
 /// open, and once the cooldown elapses hands the half-open trial role
@@ -363,10 +319,20 @@ impl ScraperGate {
 /// whose future was dropped stops blocking after
 /// [`HALF_OPEN_TRIAL_STALE`]. `consecutive_failures` is left as-is,
 /// so a single failed trial snaps the breaker shut.
-fn breaker_gate(s: &mut GateState, now: Instant) -> Result<Option<Instant>, GateClosed> {
+fn breaker_gate(
+    s: &mut GateState,
+    now: Instant,
+    held: Option<Instant>,
+) -> Result<Option<Instant>, GateClosed> {
     let Some(until) = s.open_until else {
         return Ok(None);
     };
+    // The holder of the outstanding trial's sanction IS the trial:
+    // its chain's further admits pass on the same stamp, for as long
+    // as the gate still holds exactly that stamp.
+    if held.is_some() && held == s.half_open_trial_at {
+        return Ok(held);
+    }
     if now < until {
         return Err(GateClosed);
     }

@@ -52,6 +52,17 @@ describe('buildDownloadArgs', () => {
 		expect(args.episode_count).toBeUndefined();
 	});
 
+	it("threads the detail's subtype for the picker's format disproof", () => {
+		const args = buildDownloadArgs({
+			detail: { ...refWithCount(1), subtype: 'movie' },
+			episode: 1,
+			mode: 'sub',
+			quality: 'best',
+			kitsuId: 'k1'
+		});
+		expect(args.subtype).toBe('movie');
+	});
+
 	it('threads canonical title, year, alt titles, and kitsu_id', () => {
 		const args = buildDownloadArgs({
 			detail: refWithCount(12),

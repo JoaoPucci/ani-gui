@@ -42,6 +42,11 @@ pub struct DownloadArgs {
     /// to the picker as the year tie-break; see [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`) —
+    /// the same format-disproof signal [`PlayArgs::subtype`] carries
+    /// on the play path.
+    #[serde(default)]
+    pub subtype: Option<String>,
     /// Fallback titles tried when the canonical title returns no
     /// allanime hits. Same wire forms as [`PlayArgs::alt_titles`].
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
@@ -217,6 +222,7 @@ fn play_args_view(args: &DownloadArgs) -> PlayArgs {
         quality: args.quality.clone(),
         episode_count: args.episode_count,
         year: args.year,
+        subtype: args.subtype.clone(),
         alt_titles: args.alt_titles.clone(),
         prefetch: false,
         kitsu_id: args.kitsu_id.clone(),
@@ -292,6 +298,27 @@ mod tests {
     }
 
     #[test]
+    fn play_args_view_carries_subtype_to_the_picker() {
+        // The projection feeds pick_title_and_index — the same picker
+        // the play path hands its subtype to. A projection that drops
+        // the field re-opens the movie-vs-TV mispick on the download
+        // path alone.
+        let args = DownloadArgs {
+            title: "x".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            episode_count: None,
+            year: None,
+            subtype: Some("movie".into()),
+            alt_titles: vec![],
+            kitsu_id: None,
+            download_dir: None,
+        };
+        assert_eq!(play_args_view(&args).subtype.as_deref(), Some("movie"));
+    }
+
+    #[test]
     fn download_gate_signal_counts_only_no_results() {
         // NoResults after the picker confirmed the show exists is
         // the rate-limit signature, and ani-cli dies with it at the
@@ -340,6 +367,7 @@ mod tests {
             quality: None,
             episode_count: None,
             year: None,
+            subtype: None,
             alt_titles: vec![],
             kitsu_id: None,
             download_dir: Some("/tmp/explicit".into()),
