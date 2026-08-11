@@ -197,11 +197,27 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|_| AniError::PlayerSpawnFailed {
-            binary: args.player_command.clone(),
-        })
+    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
+        binary: args.player_command.clone(),
+    })
+}
+
+/// Spawn with a short retry on ETXTBSY: exec of a freshly written
+/// executable can race a concurrent fork that briefly holds its
+/// write descriptor (the fds are close-on-exec, so the window is
+/// microseconds). Real for just-staged binaries; every other error
+/// surfaces immediately.
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
+    for _ in 0..5 {
+        match cmd.spawn() {
+            Ok(_) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    cmd.spawn().map(|_| ())
 }
 
 #[cfg(test)]

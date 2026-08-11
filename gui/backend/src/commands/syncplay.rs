@@ -148,11 +148,11 @@ pub fn open_syncplay(args: &SyncplayLaunchArgs) -> Result<()> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|_| AniError::SyncplaySpawnFailed {
+    crate::commands::external_player::spawn_detached(&mut cmd).map_err(|_| {
+        AniError::SyncplaySpawnFailed {
             binary: args.binary.clone(),
-        })
+        }
+    })
 }
 
 #[cfg(test)]
