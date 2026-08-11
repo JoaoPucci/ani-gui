@@ -189,7 +189,9 @@ async fn canonical_title_resolves_to_the_master_url() {
     assert_eq!(resolved.slug, "the-show-77");
     assert_eq!(resolved.title, "The Show");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
-    assert_eq!(resolved.episode_cap, Some(3));
+    // Two real episodes plus the "2.5" recap occupying slot 3: the
+    // cap counts display identities, and the recap rides the extras.
+    assert_eq!(resolved.episode_cap, Some(2));
     // Progress trail: structured kinds with interpolation data, so
     // Paraglide owns the user-facing copy. The subprocess path
     // relayed the script's own output verbatim; the native walk

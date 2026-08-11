@@ -14,6 +14,54 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
 }
 
 #[test]
+fn the_cap_counts_display_identities_not_integer_slots() {
+    // The recap in slot 3 displays "2.5": the show has two real
+    // episodes plus a fractional extra, and a cap of 3 would
+    // advertise an episode 3 no request can resolve.
+    let eps = vec![
+        EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        },
+        EpisodeRef {
+            id: 2,
+            number: 2,
+            number2: None,
+        },
+        EpisodeRef {
+            id: 3,
+            number: 3,
+            number2: Some("2.5".into()),
+        },
+    ];
+    assert_eq!(kitsu_episode_cap(&eps), Some(2));
+}
+
+proptest::proptest! {
+    /// Fractional rows are extras, whatever integer slots they
+    /// occupy: appending them to any listing leaves the integer cap
+    /// exactly where it was.
+    #[test]
+    fn fractional_rows_never_move_the_cap(
+        numbers in proptest::collection::vec(1u32..500, 1..12),
+        tags in proptest::collection::vec("[0-9]{1,3}\\.[0-9]", 0..6),
+    ) {
+        let mut eps = refs(&numbers);
+        let base = kitsu_episode_cap(&eps);
+        let max = *numbers.iter().max().expect("non-empty");
+        for (i, t) in tags.iter().enumerate() {
+            eps.push(EpisodeRef {
+                id: 900 + i as u64,
+                number: max + 1 + u32::try_from(i).expect("small index"),
+                number2: Some(t.clone()),
+            });
+        }
+        proptest::prop_assert_eq!(kitsu_episode_cap(&eps), base);
+    }
+}
+
+#[test]
 fn extras_are_the_non_integer_display_tags_in_listing_order() {
     // An integer number2 is a continuation's cumulative re-display,
     // not an extra; every non-integer tag is playable verbatim

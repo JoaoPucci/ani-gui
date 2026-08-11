@@ -57,3 +57,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
         .await
         .map_err(dead_end)
 }
+
+#[cfg(test)]
+#[path = "play_native_episode_test.rs"]
+mod tests;
