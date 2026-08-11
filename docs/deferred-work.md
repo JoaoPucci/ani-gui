@@ -22,54 +22,58 @@ Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
 pull request.
 
-Write an entry about the code, not about the work in flight. A commit
-sha and a merged pull-request number resolve forever, so rot is not
-the objection to them: the objection is that they name a change rather
-than a defect, and a reader who follows one is reading history when
-what they need to know is whether the behaviour is still wrong. What
-does rot is the state that travels with them — a branch name, a commit
-count, "the PR for this is open" — and a rotted entry is worse than no
-entry, because it sends the next reader to rebuild finished work or to
-reason from a state that no longer exists. So keep both out: name the
-behaviour that is wrong and where it lives; that stays checkable.
-References that do not rot — an upstream issue, a specification — are
-fine.
+Write an entry about the code, not about the work in flight. An entry
+stands on its own: what is wrong, where it lives, and what should
+change, all readable without following anything. If taking the links
+out would take the point with them, the entry is not written yet.
+
+On that condition a commit sha or a merged pull-request number is
+welcome. Both resolve forever, and where an entry is about this
+repository's own history they are the precise evidence for it. Cite
+them underneath the explanation, never in place of it — the reader
+should reach for one to confirm what the entry already told them, not
+to find out what it meant.
+
+What stays out is state that expires: a branch name, a commit count, a
+sentence like "the PR for this is open". A rotted entry is worse than
+no entry, because it sends the next reader to rebuild finished work or
+to reason from a state that no longer exists. References out of the
+repository that do not rot — an upstream issue, a specification — are
+fine on the same terms.
 
 Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## Open findings on the deferral checks
+## Known gaps in the deferral checks
 
-Raised in review and not yet fixed. Recorded here so they survive the
-thread.
+What `tests/arch/deferral_record.sh` gets wrong today.
 
-**Intent-to-add detected by porcelain, not by index metadata.**
-`record_is_recoverable` rejects `git add -N` entries by matching `" A"`
-in `git status --porcelain`. If the file is then deleted from the
-working tree the porcelain line changes, and the check stops
-recognising it. Reading the intent-to-add bit from index metadata is
-the robust form.
-
-There is a deleted-file variant of the same state worth checking at the
-same time.
+**Intent-to-add is read out of porcelain rather than index metadata.**
+`record_is_recoverable` rejects a `git add -N` entry by matching `" A"`
+in `git status --porcelain`. Delete that file from the working tree
+afterwards and the porcelain line changes, so the check stops
+recognising the state it is there to catch. Reading the intent-to-add
+bit from index metadata is the robust form. A deleted-file variant of
+the same state is worth handling in the same change.
 
 The failure message is wrong for this case too. `why_unrecoverable`
-sees that `ls-files` succeeds and reports "tracked as a symlink or
-submodule rather than a file", which is neither true nor actionable —
-the fix is `git add` on a path that is already, in a sense, added.
-Reporting the wrong reason has already been a defect on this branch
-once, for symlinks; the same argument applies. Fix it in the same
-change as the detection.
+sees `ls-files` succeed and reports "tracked as a symlink or submodule
+rather than a file" — neither true nor actionable, when what the
+reader needs is `git add` on a path that is already, in a sense,
+added. A check that names the wrong reason is a defect in its own
+right rather than a cosmetic one, because it sends whoever hits it to
+fix something that is not broken. Correct the message in the change
+that corrects the detection.
 
-**Setext H2 does not end the section.** The body scan recognises
-`^ {0,3}## `. A heading written as text followed by a line of `-` is
-also an H2, so the section runs past it into the next one.
+**A setext H2 does not end the section.** The body scan recognises
+`^ {0,3}## ` only. A heading written as a line of text underlined with
+`-` is also an H2, so the scan runs past it into the section below.
 
-This belongs to the Markdown-interpretation layer described above, and
-the same argument applies: it is the eighth rule of an open set. The
-recommendation remains to stop parsing document structure rather than
-to add setext handling.
+Adding setext handling is the wrong response. This is the
+regex-interpretation trap `AGENTS.md` §2 describes, where each rule
+added reveals the next one; the way out is to stop parsing document
+structure, not to parse more of it.
 
 ---
 
@@ -142,7 +146,7 @@ starting it, and delete it when you find it done.
   master; each was caught by a reviewer reading the log by hand, or
   missed.
 
-  Three things trip an implementation, and the first is what let the
+  Four things trip an implementation, and the first is what let the
   known violations through:
 
   - **The subject is the type, not the scope.** The rule covers every
@@ -167,6 +171,14 @@ starting it, and delete it when you find it done.
     upstream history verbatim, so its `feat` commits have no red of
     ours and cannot acquire one. Provenance is mechanical: reachable
     from the sync merge's second parent.
+  - **It has to run before the merge.** A squash merge fuses a
+    branch's reds and greens into a single commit, so for anything
+    landed that way master's history no longer holds a pairing to
+    check and a gate reading master cannot reconstruct one. This
+    repository merges both ways, which makes the shortfall silent
+    rather than obvious. Run the gate over `master..<branch-head>`
+    while the branch is still there. `0dccb527` is one of the fused
+    commits, carrying its tests and its fix together.
 
   Related to the pre-commit and TDD tension above — both are about
   giving the contract teeth instead of restating it.
