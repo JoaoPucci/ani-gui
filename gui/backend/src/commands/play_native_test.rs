@@ -96,6 +96,53 @@ async fn fractional_extras_do_not_inflate_the_candidate_count() {
     assert_eq!(picked.hit.slug, "the-show-7");
 }
 
+/// Slug 99 dies on transport; slug 88 answers twelve episodes.
+struct OneDeadOneAlive;
+
+#[async_trait::async_trait]
+impl AnidbFetch for OneDeadOneAlive {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/api/frontend/anime/99/episodes") {
+            return Err(AniError::Network);
+        }
+        if url.contains("/api/frontend/anime/88/episodes") {
+            let rows: Vec<String> = (1..=12)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
+                .collect();
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_transport_dead_title_match_blocks_a_sibling_pick() {
+    // The exact-title candidate's probe dies on transport while a
+    // count-plausible sibling answers. Picking the sibling caches
+    // and plays a possibly wrong show for the row's whole TTL on
+    // the strength of a transient failure — when the dead candidate
+    // carries more identity than the survivor, the pick must stay
+    // transient until it can answer.
+    let client = AnidbClient::new(OneDeadOneAlive);
+    let hits = [
+        hit("the-show-99", "The Show"),
+        hit("the-show-part-2-88", "The Show Part 2"),
+    ];
+    let err = pick_candidate(&client, &hits, Some(12), "the show", None, None)
+        .await
+        .expect_err("the identity-bearing candidate never answered");
+    assert!(
+        matches!(err, AniError::Network),
+        "expected the transient verdict, got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn expected_count_picks_the_closest_probed_candidate() {
     // Movie (1 ep) vs series (26 eps): expected 26 must pick the
