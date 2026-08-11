@@ -2141,7 +2141,6 @@ mod tests {
         for err in [
             AniError::ParseFailed { detail: "x".into() },
             AniError::MissingBinary,
-            AniError::BashMissing,
             AniError::PlayerSpawnFailed {
                 binary: "vlc".into(),
             },

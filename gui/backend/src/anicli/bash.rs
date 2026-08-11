@@ -66,9 +66,10 @@ pub fn pick_first_existing(
 ///    via scoop's shim
 /// 2. Candidate paths from [`windows_bash_candidate_paths`]
 ///
-/// Returns `None` only when the user has no Git for Windows install
-/// reachable; the caller surfaces [`crate::error::AniError::BashMissing`]
-/// to the frontend with a one-link install pointer.
+/// Returns `None` when the user has no Git for Windows install
+/// reachable. That is not an error: the only caller is the
+/// auto-updater's spawn, and a host without bash simply never
+/// updates the bundled script.
 ///
 /// On Unix this function isn't called — the spawn path uses
 /// [`build_anicli_command`] which is a noop there.
@@ -101,7 +102,7 @@ pub fn build_anicli_command(
         // under cfg(windows); no extension trait import needed.
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         // Production callers always pass `Some(path)` (resolved at
-        // startup via locate_bash, with BashMissing surfaced if the
+        // startup via locate_bash, with `None` carried through if the
         // locator finds nothing). `None` is the test-fixture path —
         // fall back to "bash" on PATH so the spawn fails gracefully
         // with a normal io::Error instead of panicking on .expect.

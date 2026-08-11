@@ -55,13 +55,6 @@ pub enum AniError {
     #[error("missing ani-cli binary")]
     MissingBinary,
 
-    /// Windows-readiness: no `bash.exe` reachable. The locator probes
-    /// PATH, Git for Windows install dirs, and the scoop default; if
-    /// none point at an executable, this fires. The frontend renders
-    /// a one-link install pointer for Git for Windows.
-    #[error("missing bash.exe (install Git for Windows)")]
-    BashMissing,
-
     /// Windows-readiness for downloads: `ffmpeg` isn't on PATH and
     /// isn't in the bundled-bin directory. ani-cli's `dep_ch
     /// "ffmpeg" "aria2c"` exits the script the moment downloads start
@@ -159,7 +152,6 @@ impl AniError {
             Self::NoResults => "error.search.no_results",
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
             Self::MissingBinary => "error.scraper.missing_binary",
-            Self::BashMissing => "error.bash.missing",
             Self::FfmpegMissing => crate::i18n::keys::DOWNLOAD_FFMPEG_MISSING,
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
             Self::SyncplaySpawnFailed { .. } => "error.syncplay.spawn_failed",
@@ -216,7 +208,6 @@ impl AniError {
             Self::UnsupportedPkce => 400,
             Self::ParseFailed { .. }
             | Self::MissingBinary
-            | Self::BashMissing
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }
             | Self::SyncplaySpawnFailed { .. }

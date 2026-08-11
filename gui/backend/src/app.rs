@@ -147,12 +147,10 @@ impl AppState {
         // upstream's script: strip the bats loader guard (else every
         // -U reports Updated) and restore the fork's search capture.
         update::repair_carried_patches(&ani_cli_path);
-        // Windows: locate Git Bash so every ani-cli spawn (regular,
-        // search, `-U`) can wrap the POSIX script with bash. Surface
-        // BashMissing so the frontend can render an install-Git-for-
-        // Windows pointer instead of a generic missing-binary error.
-        // Unix: the field stays None — the script runs via shebang.
-        let bash_path = resolve_bash_path()?;
+        // Windows: locate Git Bash so the updater's `-U` spawn can
+        // wrap the POSIX script with it. Not finding one is not a
+        // boot failure — see `bash_for_updates`.
+        let bash_path = bash_for_updates();
         let history_path = paths::gui_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
@@ -255,21 +253,22 @@ impl AppState {
     }
 }
 
-/// Resolve `bash.exe` at startup on Windows; return `None` on Unix
-/// where the script runs via shebang. On Windows, `Err(BashMissing)`
-/// when no Git for Windows install is reachable so the frontend can
-/// render an install pointer.
-fn resolve_bash_path() -> Result<Option<PathBuf>> {
+/// Where the auto-updater's spawn should find `bash`, or `None`.
+///
+/// `None` is not a failure. It means either Unix, where the spawn
+/// invokes bash off PATH rather than by absolute path, or a Windows
+/// host with no Git for Windows install — and on that host the app
+/// still resolves streams, downloads and probes availability, all
+/// natively. Only `ani-cli -U` wants a shell, and it reports its own
+/// spawn failure into the update log the diagnostics page renders.
+fn bash_for_updates() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        match crate::anicli::bash::locate_bash() {
-            Some(p) => Ok(Some(p)),
-            None => Err(AniError::BashMissing),
-        }
+        crate::anicli::bash::locate_bash()
     }
     #[cfg(not(windows))]
     {
-        Ok(None)
+        None
     }
 }
 

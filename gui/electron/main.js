@@ -236,12 +236,6 @@ function spawnBackend() {
     });
     let buf = "";
     let resolved = false;
-    // Set when the backend emits the ANI_GUI_FATAL bash_missing
-    // signal — typically a Windows machine with no Git for Windows
-    // install. Promoted to a class of error rather than a generic
-    // "backend exited" message so app.whenReady can show a native
-    // dialog with a download link instead of just logging.
-    let fatalReason = null;
 
     // Backend prints the renderer-only secret on a separate handshake
     // line right after ANI_GUI_LISTENING. We may see either order on
@@ -292,50 +286,20 @@ function spawnBackend() {
       }
     });
     child.stderr.on("data", (chunk) => {
-      const text = chunk.toString("utf-8");
-      process.stderr.write(`[backend] ${text}`);
-      if (text.includes("ANI_GUI_FATAL bash_missing")) {
-        fatalReason = "bash_missing";
-      }
+      process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
     });
     child.on("exit", (code, signal) => {
       if (!resolved) {
-        const err = new Error(
-          `backend exited before handshake (code=${code}, signal=${signal})`,
+        reject(
+          new Error(
+            `backend exited before handshake (code=${code}, signal=${signal})`,
+          ),
         );
-        err.fatalReason = fatalReason;
-        reject(err);
       } else {
         console.error(`[backend] exited (code=${code}, signal=${signal})`);
       }
     });
   });
-}
-
-// Surface a Windows-friendly "Install Git for Windows" dialog when
-// the backend bails out at startup with the `bash_missing` signal.
-// Blocks until the user picks a button; clicking the install option
-// opens gitforwindows.org in the default browser. Either way the app
-// then quits — there's no recovery without bash.
-async function showBashMissingDialog() {
-  const result = await dialog.showMessageBox({
-    type: "error",
-    title: "Git for Windows required",
-    message: "ani-gui needs Git for Windows to run.",
-    detail:
-      "ani-gui drives the upstream ani-cli script via bash, which on Windows is " +
-      "shipped as part of Git for Windows. Install it from gitforwindows.org and " +
-      "relaunch ani-gui — it'll find bash automatically.\n\n" +
-      "(If Git for Windows is already installed, make sure bash.exe is on PATH or " +
-      "reachable at the standard install path.)",
-    buttons: ["Open download page", "Quit"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  });
-  if (result.response === 0) {
-    await shell.openExternal("https://gitforwindows.org/");
-  }
 }
 
 let backendChild = null;
@@ -948,16 +912,6 @@ app.whenReady().then(async () => {
     await createWindow(apiBase, internalSecret);
   } catch (err) {
     console.error("[main] startup failed:", err);
-    // Surface a friendly install dialog when the backend bailed out
-    // because Git for Windows wasn't reachable. The bash_missing
-    // signal flows up via spawnBackend's rejected error.
-    if (err && err.fatalReason === "bash_missing") {
-      try {
-        await showBashMissingDialog();
-      } catch (dialogErr) {
-        console.error("[main] bash-missing dialog failed:", dialogErr);
-      }
-    }
     app.exit(1);
   }
 });
