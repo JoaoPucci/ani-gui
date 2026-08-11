@@ -19,6 +19,15 @@ pub(super) async fn stream_url<F: AnidbFetch>(
     // availability, history, and a cached session the proxy
     // cannot load.
     let body = client.content(master_url).await?;
+    if !is_hls_playlist(&body) {
+        // 200 with an HTML page passes the status and interstitial
+        // checks; success here would ride into the breaker,
+        // availability, history, and a cached session for a stream
+        // hls.js cannot load.
+        return Err(AniError::ParseFailed {
+            detail: "master URL did not answer with an HLS playlist".into(),
+        });
+    }
     if quality == "best" {
         return Ok(master_url.to_string());
     }
@@ -44,7 +53,16 @@ pub(super) async fn stream_url<F: AnidbFetch>(
     // stamps availability, history, and a cached session on a
     // blocked play.
     match client.content(&rendition).await {
-        Ok(_) => Ok(rendition),
+        // An HTML answer on the rendition is an answered miss like
+        // a 404 — the validated adaptive master carries the play.
+        Ok(body) if is_hls_playlist(&body) => Ok(rendition),
+        Ok(_) => {
+            tracing::debug!(
+                quality,
+                "anidb: rendition answered without a playlist, keeping adaptive master"
+            );
+            Ok(master_url.to_string())
+        }
         Err(AniError::Upstream { status })
             if !AniError::Upstream { status }.is_provider_block() =>
         {
@@ -57,4 +75,10 @@ pub(super) async fn stream_url<F: AnidbFetch>(
         }
         Err(e) => Err(e),
     }
+}
+
+/// The one marker every HLS playlist opens with; anything else is a
+/// page, not a stream.
+fn is_hls_playlist(body: &str) -> bool {
+    body.trim_start().starts_with("#EXTM3U")
 }
