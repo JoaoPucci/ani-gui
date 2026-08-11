@@ -66,3 +66,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         player_binary: cfg.external_player,
     })
 }
+
+#[cfg(all(test, unix))]
+#[path = "play_syncplay_test.rs"]
+mod tests;

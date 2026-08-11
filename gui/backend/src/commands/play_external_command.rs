@@ -40,3 +40,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     let launch = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
     external_player::open_external_player(&launch)
 }
+
+#[cfg(all(test, unix))]
+#[path = "play_external_command_test.rs"]
+mod tests;
