@@ -394,6 +394,41 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
+    // The range path walks aliases and candidate listings itself
+    // rather than going through resolve_native_bounded, so a slow
+    // provider can leave it resolving for minutes before the first
+    // transfer starts — past the gate's half-open trial lifetime.
+    // The pick carries the same outer deadline the play path does;
+    // the per-episode transfer deadlines are separate and stay.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_secs(19))
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+        )
+        .mount(&server)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Slow Show",
+        "episode": "1-4",
+        "mode": "sub",
+        "alt_titles": "a\nb\nc\nd\ne\nf",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let got = download_with_tools(&state, &args, "", |_p| {}).await;
+    assert!(
+        matches!(got, Err(AniError::Timeout)),
+        "a stalled pick ends as a timeout: {got:?}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
