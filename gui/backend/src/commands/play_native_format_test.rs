@@ -12,10 +12,6 @@ fn hits_from(kinds: &[Option<&'static str>]) -> Vec<BrowseHit> {
         .collect()
 }
 
-fn movie_shaped(kind: Option<&str>) -> bool {
-    kind.is_some_and(|k| k.eq_ignore_ascii_case("movie"))
-}
-
 const KINDS: &[Option<&str>] = &[
     None,
     Some("Movie"),
@@ -33,12 +29,12 @@ fn kind_strategy() -> impl proptest::strategy::Strategy<Value = Option<&'static 
 }
 
 proptest::proptest! {
-    /// Over arbitrary pools, expectations and subtype casing: the
-    /// survivors are always an order-preserving subsequence, unknown
-    /// badges never exclude, a signal-less call is the identity, and
-    /// both directions read the badge case-insensitively — a movie
-    /// expectation keeps exactly the unknown-or-movie cards, a
-    /// series expectation drops exactly the movie-shaped ones.
+    /// Over arbitrary pools, expectations and tag casing: survivors
+    /// are always an order-preserving subsequence, unknown badges
+    /// never exclude, a signal-less call is the identity, and when
+    /// both the subtype and the badge name known categories the two
+    /// must agree — with the count-derived movie exclusion applying
+    /// only when the subtype gives no category.
     #[test]
     fn the_disproof_holds_over_arbitrary_pools(
         kinds in proptest::collection::vec(kind_strategy(), 0..10),
@@ -50,8 +46,19 @@ proptest::proptest! {
             proptest::strategy::Just("TV"),
             proptest::strategy::Just("special"),
             proptest::strategy::Just("OVA"),
+            proptest::strategy::Just("ONA"),
         ]),
     ) {
+        fn cat(tag: &str) -> Option<&'static str> {
+            match tag.to_ascii_lowercase().as_str() {
+                "movie" => Some("movie"),
+                "tv" => Some("tv"),
+                "ova" => Some("ova"),
+                "special" => Some("special"),
+                "ona" | "web" => Some("ona"),
+                _ => None,
+            }
+        }
         let hits = hits_from(&kinds);
         let out = format_survivors(&hits, expected, subtype);
         // Order-preserving subsequence, nothing fabricated.
@@ -61,27 +68,20 @@ proptest::proptest! {
             proptest::prop_assert!(found.is_some(), "fabricated or reordered: {s:?}");
             cursor += found.unwrap() + 1;
         }
-        let expects_movie = subtype.is_some_and(|s| s.eq_ignore_ascii_case("movie"));
-        let expects_non_movie = matches!(expected, Some(n) if n > 1)
-            || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-        if expects_movie {
-            // Exactly the unknown-or-movie cards survive.
-            for h in &hits {
-                let should_survive = h.kind.is_none() || movie_shaped(h.kind.as_deref());
-                proptest::prop_assert_eq!(out.contains(h), should_survive, "hit {:?}", h);
-            }
-        } else if expects_non_movie {
-            // Exactly the movie-shaped cards drop, any casing.
-            for h in &hits {
-                proptest::prop_assert_eq!(
-                    out.contains(h),
-                    !movie_shaped(h.kind.as_deref()),
-                    "hit {:?}",
-                    h
-                );
-            }
-        } else {
-            // No signal: the identity, unknown badges and all.
+        let want = subtype.and_then(cat);
+        for h in &hits {
+            let have = h.kind.as_deref().and_then(cat);
+            let survive = match (want, have) {
+                (Some(w), Some(hc)) => w == hc,
+                _ => {
+                    let expects_non_movie =
+                        want.is_none() && matches!(expected, Some(n) if n > 1);
+                    !(expects_non_movie && have == Some("movie"))
+                }
+            };
+            proptest::prop_assert_eq!(out.contains(h), survive, "hit {:?}", h);
+        }
+        if want.is_none() && !matches!(expected, Some(n) if n > 1) {
             proptest::prop_assert_eq!(&out, &hits);
         }
     }

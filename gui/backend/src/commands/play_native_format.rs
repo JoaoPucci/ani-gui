@@ -38,15 +38,33 @@ pub(crate) fn format_compatible(
     expected: Option<u32>,
     subtype: Option<&str>,
 ) -> bool {
-    let expects_movie = subtype.is_some_and(|s| s.eq_ignore_ascii_case("movie"));
-    let expects_non_movie = matches!(expected, Some(n) if n > 1)
-        || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-    if expects_movie {
-        kind.is_none_or(|k| k.eq_ignore_ascii_case("movie"))
-    } else if expects_non_movie {
-        !kind.is_some_and(|k| k.eq_ignore_ascii_case("movie"))
-    } else {
-        true
+    let want = subtype.and_then(format_category);
+    let have = kind.and_then(format_category);
+    if let (Some(w), Some(h)) = (want, have) {
+        // Both sides known: the categories must agree — a special is
+        // not a TV entry is not an OVA, and for one-video same-title
+        // same-year entries the tag is the only separating signal.
+        return w == h;
+    }
+    // No category verdict (either side unknown or subtype absent):
+    // the count-derived movie exclusion still applies — a card
+    // badged movie-shaped cannot be the multi-episode series.
+    let expects_non_movie = want.is_none() && matches!(expected, Some(n) if n > 1);
+    !(expects_non_movie && have == Some("movie"))
+}
+
+/// The category a format tag names, unifying Kitsu subtypes and the
+/// provider's badges case-insensitively. `None` for tags neither
+/// side is known to emit — unknown never excludes.
+fn format_category(tag: &str) -> Option<&'static str> {
+    match tag.to_ascii_lowercase().as_str() {
+        "movie" => Some("movie"),
+        "tv" => Some("tv"),
+        "ova" => Some("ova"),
+        "special" => Some("special"),
+        // Kitsu says ONA where the provider badges Web.
+        "ona" | "web" => Some("ona"),
+        _ => None,
     }
 }
 
