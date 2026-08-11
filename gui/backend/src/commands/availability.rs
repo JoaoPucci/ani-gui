@@ -370,8 +370,14 @@ pub(crate) async fn check_availability_with_base(
     }
     let (available, episode_count, extra_episodes) = match picked {
         Ok(p) => {
-            let covered =
-                mode_covered_prefix(state, &client, &p, mode, prio, walk_started_at).await?;
+            let Some(covered) =
+                mode_covered_prefix(state, &client, &p, mode, prio, walk_started_at).await?
+            else {
+                // Every row the mode search touched was missing. The
+                // provider said nothing about this mode, which is
+                // not absence — surface it and persist nothing.
+                return Err(crate::error::AniError::NoResults);
+            };
             // The cap and the extras describe the rows the requested
             // mode HAS. Truncating from the end keeps the listing's
             // minimum display, so the continuation offset both
@@ -465,7 +471,7 @@ async fn mode_covered_prefix<F: crate::scraper::anidb::AnidbFetch>(
     mode: &str,
     prio: crate::scraper::gate::ScrapePriority,
     walk_started_at: tokio::time::Instant,
-) -> Result<usize> {
+) -> Result<Option<usize>> {
     match crate::commands::availability_mode::mode_prefix_len(client, &picked.episodes, mode).await
     {
         Ok(covered) => Ok(covered),
