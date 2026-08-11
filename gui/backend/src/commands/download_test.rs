@@ -187,7 +187,9 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
 }
 
 /// Provider fixture for the range tests: one show, two episodes,
-/// jpn embeds, validating masters.
+/// jpn embeds, validating masters. Unix-gated with the stub-tool
+/// tests that drive it.
+#[cfg(unix)]
 async fn stub_range_show() -> wiremock::MockServer {
     use wiremock::matchers::{method, path};
     let server = wiremock::MockServer::start().await;
@@ -281,6 +283,73 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
         "second run targets episode 2: {}",
         lines[1]
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_stops_at_the_first_failing_episode() {
+    // "1-3" on a two-episode listing: episodes 1 and 2 transfer,
+    // episode 3 resolves to the typed dead end and the loop stops
+    // there — the script's own loop dies mid-range the same way.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1-3",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let err = download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect_err("episode 3 does not exist");
+    assert!(matches!(err, AniError::NoResults));
+    let calls = std::fs::read_to_string(&log).expect("the first two episodes ran");
+    assert_eq!(
+        calls.lines().count(),
+        2,
+        "the loop stops at the dead episode: {calls}"
+    );
+}
+
+#[tokio::test]
+async fn a_range_download_surfaces_the_walks_clean_miss() {
+    // The walk's own verdicts pass through untranslated: an
+    // all-clean no-match is the typed NoResults, and no tool runs.
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+        )
+        .mount(&server)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Ghost Show",
+        "episode": "1-2",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let err = download_with_tools(&state, &args, "", |_p| {})
+        .await
+        .expect_err("nothing matches");
+    assert!(matches!(err, AniError::NoResults));
 }
 
 #[cfg(unix)]

@@ -540,7 +540,7 @@ static TREE_KILL_PROBE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::ne
 /// the REAL teardown to run must not overlap — a no-op probe held by
 /// one would silently swallow the other's kill. Held for the whole
 /// test either way.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) static TREE_KILL_PROBE_SCOPE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[cfg(test)]
