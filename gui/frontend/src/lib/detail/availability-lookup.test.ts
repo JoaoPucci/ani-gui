@@ -64,6 +64,18 @@ describe('startAvailabilityLookup', () => {
 		]);
 	});
 
+	it('forwards the subtype axis to the probe', async () => {
+		// A cold detail page for a same-title, same-year Movie/OVA
+		// collision: the page-load probe was the one caller left
+		// subtype-blind, so it could cache and render availability
+		// for a format the subtype-aware play request then rejects.
+		const h = harness();
+		startAvailabilityLookup({ ...SUBJECT, subtype: 'movie' }, 'sub', h.deps);
+		await settled();
+
+		expect((h.sent[0] as { subtype?: string }).subtype).toBe('movie');
+	});
+
 	it('marks the question open before asking and answered once it lands', async () => {
 		const h = harness();
 		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
