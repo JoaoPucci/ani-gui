@@ -120,6 +120,13 @@ where
     let dest = resolve_dest(args)?;
     std::fs::create_dir_all(&dest).map_err(|_| AniError::Io)?;
 
+    // The bundled-binary directory joins the search ahead of PATH —
+    // packaged builds ship their own yt-dlp (Windows: ffmpeg too),
+    // and the bundle is the tool the package validated, exactly as
+    // the curl resolver ranks its bundled directory first.
+    let path_env = tool_search_path(state, path_env);
+    let path_env = path_env.as_str();
+
     // A "1-12"-shaped episode is the Download All/Range UI: the
     // script's own -e loop, one pick then one transfer per episode.
     if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
@@ -296,8 +303,15 @@ where
         // The typed error the frontend's install modal renders.
         return Err(AniError::FfmpegMissing);
     }
+    let child_path = std::env::join_paths(std::env::split_paths(path_env).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .ok();
     if let Some(exe) = ytdlp {
         let mut cmd = tokio::process::Command::new(exe);
+        if let Some(p) = &child_path {
+            cmd.env("PATH", p);
+        }
         cmd.arg(master_url)
             .arg("--no-skip-unavailable-fragments")
             .arg("--fragment-retries")
@@ -331,6 +345,9 @@ where
     }
     let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
     let mut cmd = tokio::process::Command::new(exe);
+    if let Some(p) = &child_path {
+        cmd.env("PATH", p);
+    }
     cmd.arg("-extension_picky")
         .arg("0")
         .arg("-loglevel")
@@ -342,6 +359,21 @@ where
         .arg("copy")
         .arg(&target);
     run_tool(cmd, timeout, on_line).await
+}
+
+/// The downloader's tool-search path: the bundled-binary directory
+/// (when packaging ships one) ahead of the caller's PATH. Also what
+/// the spawned tool itself sees as PATH, so a bundled yt-dlp finds
+/// the bundled ffmpeg for its own repackaging.
+fn tool_search_path(state: &AppState, path_env: &str) -> String {
+    match &state.bundled_bin {
+        Some(dir) => std::env::join_paths(
+            std::iter::once(dir.clone()).chain(std::env::split_paths(path_env)),
+        )
+        .map(|joined| joined.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path_env.to_string()),
+        None => path_env.to_string(),
+    }
 }
 
 /// First on-PATH hit for a tool name, widened by the platform's
