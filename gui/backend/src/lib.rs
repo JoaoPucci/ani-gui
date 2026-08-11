@@ -3,8 +3,8 @@
 //! This crate is the headless backend of the Electron application. It does
 //! three things on the user's machine:
 //!
-//! 1. Drives the vendored `ani-cli` script (subprocess) to scrape allanime
-//!    for search results, episode lists, and resolved stream URLs.
+//! 1. Scrapes the streaming provider natively for search results,
+//!    episode lists, and resolved stream URLs.
 //! 2. Runs a localhost HTTP server that mounts (a) a streaming proxy which
 //!    injects `Referer:` and rewrites m3u8 manifests so the embedded
 //!    `<video>` + `hls.js` player can fetch segments without CORS pain,

@@ -533,32 +533,26 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-/// Bridge a history-recorded allmanga show_id to its Kitsu entry by
-/// walking allmanga's `Show` GraphQL aliases (`englishName`,
-/// `nativeName`, `altNames`) through Kitsu's text search. Returns the
-/// first matching [`KitsuAnimeRef`] and persists the
-/// `(show_id → kitsu_id)` reverse mapping so subsequent calls
-/// short-circuit through `allmanga_kitsu_get`.
-///
-/// Recovers the case where allmanga's primary `name` is a stub the
-/// frontend can't text-match (e.g. `"1P"` for One Piece, `"Nato:
-/// Shippuuden"` for Naruto Shippuuden). The reverse cache normally
-/// hides this, but a Settings → Clear cache wipes it and the bug
-/// re-surfaces; this resolver re-warms the cache on first hit.
+/// Bridge a history-recorded show_id to its Kitsu entry. anidb slug
+/// rows resolve by searching Kitsu with the slug's own words; a match
+/// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
+/// calls short-circuit through `allmanga_kitsu_get`. Legacy allanime
+/// rows resolve only through an already-stamped mapping — their alias
+/// source (allanime's `Show` endpoint) retired with the provider.
 ///
 /// Returns `Ok(None)` when:
 ///   - The reverse cache has no entry AND
-///   - allmanga's `Show` endpoint returns no usable aliases OR
-///   - Every Kitsu text search returned zero hits.
+///   - the id isn't slug-shaped (legacy allanime row) OR
+///   - the slug-derived Kitsu search returned zero usable hits.
 ///
 /// Returns `Ok(Some(_))` on:
 ///   - Reverse-cache hit (fast path, no HTTP).
-///   - Successful enrichment + Kitsu match.
+///   - Successful slug-derived Kitsu match.
 ///
 /// # Errors
 /// Cache I/O errors propagate; HTTP failures fall through to
 /// `Ok(None)` so the caller (Continue Watching) can still render
-/// the bare allmanga title without breaking.
+/// the bare history title without breaking.
 pub async fn resolve_allmanga_show_id(
     state: &AppState,
     show_id: &str,
@@ -573,78 +567,39 @@ pub async fn resolve_allmanga_show_id(
     //    only reaches enrichment after it has already read AND rejected
     //    this reverse row (count/music/title guard). Re-reading it here
     //    would hand back the very id it just rejected, so the caller asks
-    //    us to go straight to the alias walk instead.
+    //    us to go straight to re-resolution instead.
     if !bypass_cache {
         if let Ok(Some(kid)) = allmanga_kitsu_get(state, show_id) {
             if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
                 return Ok(Some(detail));
             }
             // Stale id (Kitsu removed it, or the cached row is bad) —
-            // fall through and re-resolve from allmanga.
+            // fall through and re-resolve.
         }
     }
 
-    // 1b) anidb slug rows carry their identity in the slug itself —
-    //     there is no allanime record to enrich from. Search Kitsu
-    //     with the slug words directly; a miss stays a soft None
-    //     rather than falling through to the allanime fetch, where
-    //     the slug means nothing.
+    // 2) anidb slug rows carry their identity in the slug itself —
+    //    the hyphenated words are the show's title. Search Kitsu with
+    //    them directly; a miss stays a soft None.
     if let Some(term) = crate::scraper::anidb::slug_search_term(show_id) {
         return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
     }
 
-    // 2) Hit allmanga's Show GraphQL to get the alias surface
-    //    (englishName / nativeName / altNames). Network failure is
-    //    soft — Continue Watching can still render the bare
-    //    allmanga title, so we return Ok(None).
-    // Alias enrichment is opportunistic cache filling — the card can
-    // render the bare allmanga title, so the fetch goes through the
-    // scraper gate as background traffic and is skipped while the
-    // breaker is open.
-    if state
-        .scraper_gate
-        .admit(crate::scraper::gate::ScrapePriority::Background)
-        .await
-        .is_err()
-    {
-        tracing::warn!(show_id, "scraper gate open; skipping reverse-resolve fetch");
-        return Ok(None);
-    }
-    let started_at = tokio::time::Instant::now();
-    let fetched = crate::scraper::allanime::fetch_show(
-        &state.meta_http,
+    // 3) Anything else is a legacy allanime row. Its only alias
+    //    source was allanime's Show endpoint, gone with the provider
+    //    — without a stamped mapping the row can't be resolved, so
+    //    fail soft and let Continue Watching render the bare title.
+    tracing::debug!(
         show_id,
-        state.allanime_base.as_deref(),
-    )
-    .await;
-    state
-        .scraper_gate
-        .record(crate::scraper::gate::outcome_of(&fetched), started_at);
-    let show = match fetched {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(
-                show_id = show_id,
-                error = ?e,
-                "allmanga Show fetch failed during reverse-resolve",
-            );
-            return Ok(None);
-        }
-    };
-
-    // 3) Walk aliases through Kitsu text search. First non-empty hit
-    //    wins. We could be cleverer with slug-matching here (the
-    //    pickKitsuMatch heuristic already does that on the frontend
-    //    for cour-suffixed entries), but the cryptic-name case is
-    //    simpler — the alias is usually unambiguous (e.g.
-    //    "One Piece" lands one entry).
-    Ok(first_kitsu_match(state, show_id, show.search_terms()).await)
+        "reverse-resolve: unmapped legacy row, no alias source",
+    );
+    Ok(None)
 }
 
 /// Walk `terms` through Kitsu text search and return the first
 /// non-music hit, persisting the `(show_id → kitsu_id)` reverse
 /// mapping so subsequent calls short-circuit through the cache.
-/// Shared by the allanime alias walk and the slug-derived path.
+/// Used by the slug-derived path.
 ///
 /// A single term's search failure skips to the next term; a cache
 /// write failure is non-fatal — the resolution still succeeds for
@@ -843,7 +798,6 @@ mod tests {
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -855,7 +809,6 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: PathBuf::from("/y/ani-hsts"),
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -1311,13 +1264,10 @@ mod tests {
     #[tokio::test]
     async fn a_slug_row_resolves_through_kitsu_without_allanime() {
         // Post-provider-switch history rows key on the anidb slug
-        // ("one-piece-69"). A slug carries no allanime identity, so
-        // enrichment must derive its search text from the slug words
-        // and walk Kitsu directly. The allanime base points at the
-        // same mock with no GraphQL route mounted: a fetch_show
-        // detour fails and soft-returns None, so Some proves the
-        // slug branch. The mapping persists so the next call
-        // short-circuits through the reverse cache.
+        // ("one-piece-69"). A slug carries its identity in its own
+        // words: the resolver derives the Kitsu search text from
+        // them and walks Kitsu directly. The mapping persists so
+        // the next call short-circuits through the reverse cache.
         let mock = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/anime"))
@@ -1329,8 +1279,7 @@ mod tests {
             )
             .mount(&mock)
             .await;
-        let mut state = state_with_kitsu_at(&mock.uri());
-        state.allanime_base = Some(mock.uri());
+        let state = state_with_kitsu_at(&mock.uri());
 
         let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
             .await

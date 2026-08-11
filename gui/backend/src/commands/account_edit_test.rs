@@ -20,7 +20,6 @@ use crate::meta::mal_user::{MalProvider, MalRefreshState};
 fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
     use std::path::PathBuf;
     Arc::new(AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -32,7 +31,6 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

@@ -41,7 +41,6 @@ mod tests {
 
     fn fake_state() -> AppState {
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -53,7 +52,6 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: PathBuf::from("/home/u/.local/state/ani-cli/ani-hsts"),
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

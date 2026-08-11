@@ -37,7 +37,7 @@ pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60
 /// resets.
 pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60); // 5min
 
-/// TTL for title-match cache (Kitsu/AniList → allanime id).
+/// TTL for title-match cache (Kitsu/AniList → provider id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
 /// TTL for cached play resolutions (canonical_title + mode + quality +

@@ -32,10 +32,10 @@ pub enum AniError {
     #[error("no results")]
     NoResults,
 
-    /// allanime answered HTTP 200 with an in-band GraphQL "Too many
-    /// requests" error — its application-level rate limit. Distinct
-    /// from [`AniError::Upstream`] with 429: allanime never sends the
-    /// HTTP status, only this payload.
+    /// The provider answered HTTP 200 with an in-band "Too many
+    /// requests" error — an application-level rate limit. Distinct
+    /// from [`AniError::Upstream`] with 429: the status line says
+    /// nothing, only the payload does.
     #[error("rate limited by upstream")]
     RateLimited {
         /// Seconds the upstream asked us to wait ("please try again

@@ -97,7 +97,6 @@ async fn stub_anidb() -> wiremock::MockServer {
 /// that would try dies loudly.
 fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
     AppState {
-        allanime_base: None,
         anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -109,7 +108,6 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: tmp.join("hist/ani-hsts"),
-        scraper_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
         cache_pool: cache::open_in_memory().expect("in-mem pool"),

@@ -13,7 +13,6 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
     use std::path::PathBuf;
     use std::sync::Arc;
     Arc::new(crate::app::AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -25,7 +24,6 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -937,7 +935,6 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
     use std::sync::Arc;
     let state = Arc::new(crate::app::AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -949,7 +946,6 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

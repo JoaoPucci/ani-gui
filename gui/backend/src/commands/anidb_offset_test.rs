@@ -2,7 +2,6 @@ use super::*;
 
 fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
     crate::app::AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -14,7 +13,6 @@ fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path,
-        scraper_gate: std::sync::Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: std::sync::Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

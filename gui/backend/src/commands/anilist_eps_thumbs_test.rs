@@ -192,7 +192,6 @@ fn state_for_cache_only_tests() -> AppState {
     use std::path::PathBuf;
     use std::sync::Arc;
     AppState {
-        allanime_base: None,
         anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -204,7 +203,6 @@ fn state_for_cache_only_tests() -> AppState {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: PathBuf::from("/y/ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

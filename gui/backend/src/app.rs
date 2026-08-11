@@ -4,11 +4,11 @@
 //!
 //! - the streaming proxy (its session table, app secret, http client,
 //!   origin, and the kernel-assigned base URL once the listener is up)
-//! - the resolved path to `ani-cli` and a [`DebugOptions`] template the
-//!   commands fill in per call
-//! - the path of the shared ani-hsts history file
-//! - a concurrency limiter for ani-cli invocations so we never hammer
-//!   allanime
+//! - the resolved path to the vendored `ani-cli` script, which the
+//!   auto-updater keeps current
+//! - the path of the watch-history file
+//! - an admission gate for provider traffic so background probes
+//!   never hammer the upstream
 //!
 //! Built once during `tauri::Builder::setup` and stored as managed state.
 
@@ -36,7 +36,7 @@ pub struct AppState {
     /// Outbound http client used by the proxy.
     pub proxy_http: reqwest::Client,
     /// Outbound HTTP client for metadata calls (Kitsu, AniList,
-    /// allanime search, images, GitHub release polls). Separate from
+    /// images, GitHub release polls). Separate from
     /// `proxy_http` so these calls carry tight timeouts: the proxy
     /// client's 120s ceiling is sized for streaming bodies, and a
     /// stalled metadata connection could hold a probe handler for two
@@ -69,24 +69,12 @@ pub struct AppState {
     pub botan_shim_bin: Option<PathBuf>,
     /// Path of the shared history file.
     pub history_path: PathBuf,
-    /// Base URL for allanime scraper calls. `None` in production,
-    /// which means the real API. Tests set it to a local stub so the
-    /// disambiguation search never leaves the machine — a live search
-    /// inside an integration test turns a throttled IP into a red
-    /// `cargo test` on an unrelated diff.
-    pub allanime_base: Option<String>,
-
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).
     pub anidb_base: Option<String>,
-    /// Admission gate for allanime scraper traffic: paces background
-    /// probes and breaks the circuit on consecutive failures so cold
-    /// caches can't rate-limit the IP out from under a user's click.
-    pub scraper_gate: Arc<crate::scraper::gate::ScraperGate>,
-    /// The anidb provider's own pacing + breaker. Separate from the
-    /// allanime gate above: the providers share no upstream, and a
-    /// shared gate lets one manufacture or cancel the other's
-    /// breaker state.
+    /// Admission gate for provider traffic: paces background probes
+    /// and breaks the circuit on consecutive failures so cold caches
+    /// can't rate-limit the IP out from under a user's click.
     pub anidb_gate: Arc<crate::scraper::gate::ScraperGate>,
     /// On-disk image-cache directory served by the `image://` protocol.
     pub image_cache_dir: PathBuf,
@@ -196,9 +184,7 @@ impl AppState {
             bundled_bin,
             botan_shim_bin,
             history_path,
-            allanime_base: None,
             anidb_base: None,
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
@@ -401,9 +387,7 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
-            allanime_base: None,
             anidb_base: None,
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

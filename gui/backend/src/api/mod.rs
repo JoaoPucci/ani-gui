@@ -798,7 +798,6 @@ mod tests {
     fn test_app_state(td: &TempDir) -> AppState {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
-            allanime_base: None,
             anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
@@ -810,7 +809,6 @@ mod tests {
             bundled_bin: None,
             botan_shim_bin: None,
             history_path: td.path().join("ani-hsts"),
-            scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

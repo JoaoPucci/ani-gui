@@ -9,7 +9,6 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::sync::Arc;
     AppState {
-        allanime_base: None,
         anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -21,7 +20,6 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
         bundled_bin: None,
         botan_shim_bin: None,
         history_path: td.path().join("ani-hsts"),
-        scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
