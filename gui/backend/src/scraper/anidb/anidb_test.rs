@@ -190,6 +190,21 @@ fn encode_query_form_urlencodes_the_title() {
 // ── episodes + languages + embed parsing ────────────────────────────
 
 #[test]
+fn parse_episodes_surfaces_the_decimal_tag() {
+    // The provider lists recaps and specials under decimal tags in
+    // number2 while number carries the integer slot. Dropping
+    // number2 made every fractional episode unresolvable natively:
+    // the strip advertises "1061.5", the click sends it, and the
+    // resolver's integer parse rejects it as NoResults.
+    let eps = parse_episodes(
+        r#"{"episodes":[{"id":1,"number":3,"number2":null},{"id":2,"number":4,"number2":3.5}]}"#,
+    )
+    .expect("parses");
+    assert_eq!(eps[0].number2, None);
+    assert_eq!(eps[1].number2.as_deref(), Some("3.5"));
+}
+
+#[test]
 fn parse_episodes_yields_id_number_pairs_in_order() {
     let eps = parse_episodes(&fixture("episodes_one_piece.json")).expect("parses");
     assert_eq!(

@@ -64,7 +64,7 @@ impl AnidbFetch for Provider {
         if url.contains("/api/frontend/anime/77/episodes") {
             return Ok(FetchResponse {
                 status: 200,
-                body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":703,"number":3}]}"#
+                body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":725,"number":3,"number2":2.5}]}"#
                     .into(),
             });
         }
@@ -563,6 +563,20 @@ async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
     let err = got.expect_err("episode 3 has not aired");
     assert!(!err.clean_miss);
     assert!(matches!(err.error, AniError::NoResults));
+}
+
+#[tokio::test]
+async fn a_decimal_episode_tag_resolves_through_number2() {
+    // Availability advertises fractional extras ("3.5" recaps); the
+    // strip renders them and the click sends the tag verbatim. The
+    // integer parse alone rejected every such click as NoResults —
+    // moving play native made all surfaced decimal episodes
+    // unplayable. A request that is not an integer must match the
+    // listing's number2 tag instead.
+    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
+    let resolved = got.expect("the decimal tag resolves via number2");
+    assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
 }
 
 /// A transport whose every request hangs forever — the provider
