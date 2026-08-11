@@ -796,3 +796,19 @@ proptest::proptest! {
         }
     }
 }
+
+#[tokio::test]
+async fn a_tv_badge_cannot_carry_a_special_expectation() {
+    // Every non-movie subtype fell into one branch that rejected
+    // only Movie: a Kitsu special still accepted TV/OVA/Web badges,
+    // and single-video same-title same-year entries tie on every
+    // later signal — provider order picked the wrong video. Known
+    // badge and known subtype must agree category-wise; unknown
+    // badges still never exclude.
+    let client = AnidbClient::new(EpisodesTable(&[(11, 1)]));
+    let hits = [typed_hit("the-tv-11", "The Show", "TV")];
+    let err = pick_candidate(&client, &hits, Some(1), "the show", None, Some("special"))
+        .await
+        .expect_err("a TV badge cannot satisfy a special expectation");
+    assert!(matches!(err, AniError::NoResults), "got {err:?}");
+}
