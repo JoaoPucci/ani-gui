@@ -343,7 +343,11 @@ where
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let mut child = loop {
+    // Own process group, so cancellation can address the tool's
+    // whole tree: yt-dlp spawns helpers kill_on_drop cannot reach.
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let child = loop {
         match cmd.spawn() {
             Ok(c) => break c,
             // ETXTBSY: a concurrent fork briefly holds the tool's
@@ -357,13 +361,18 @@ where
             Err(_) => return Err(AniError::Network),
         }
     };
-    let stderr = child.stderr.take().ok_or(AniError::Io)?;
+    // Dropped unreaped — the dock's Cancel aborting the SSE task, or
+    // the transfer deadline elapsing — the guard takes the process
+    // group down; a waited child is already reaped and the guard
+    // stands down by itself.
+    let mut child = crate::anicli::process::TreeKillChild::new(child);
+    let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             on_line(&line);
         }
-        child.wait().await.map_err(|_| AniError::Io)
+        child.child_mut().wait().await.map_err(|_| AniError::Io)
     };
     let status = tokio::time::timeout(timeout, drive)
         .await
@@ -545,6 +554,11 @@ mod tests {
         // whole tree, like the subprocess downloader's group-kill
         // guard did — otherwise Cancel leaves an orphaned transfer
         // writing the file after the UI removed the row.
+        //
+        // The teardown must be the REAL one: a concurrently held
+        // no-op probe would swallow the kill this test exists to
+        // observe.
+        let _probe_scope = crate::anicli::process::TREE_KILL_PROBE_SCOPE.lock().await;
         let bin = tempfile::tempdir().expect("bin");
         let dest = tempfile::tempdir().expect("dest");
         let pidfile = dest.path().join("helper.pid");

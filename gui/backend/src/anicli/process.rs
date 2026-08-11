@@ -474,18 +474,25 @@ pub struct DownloadRequest<'a> {
 /// the crate forbids unsafe code, and both binaries ship with any
 /// host that can run ani-cli. `.status()` (not `.spawn()`) so the
 /// helper can't linger as a zombie; it exits in microseconds.
-struct TreeKillChild {
+pub(crate) struct TreeKillChild {
     child: tokio::process::Child,
     armed: bool,
 }
 
 impl TreeKillChild {
-    fn new(child: tokio::process::Child) -> Self {
+    pub(crate) fn new(child: tokio::process::Child) -> Self {
         Self { child, armed: true }
     }
 
     fn disarm(&mut self) {
         self.armed = false;
+    }
+
+    /// The guarded child, for the caller's own I/O and wait. A child
+    /// the caller has waited to completion is reaped, so the drop
+    /// guard reads `id() == None` and stands down by itself.
+    pub(crate) fn child_mut(&mut self) -> &mut tokio::process::Child {
+        &mut self.child
     }
 }
 
@@ -527,6 +534,14 @@ fn kill_process_tree(pid: u32) {
 /// the parent's reap. The probe takes over the cleanup duty too.
 #[cfg(test)]
 static TREE_KILL_PROBE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// Serializes the probe's scope: a test that REGISTERS a probe (and
+/// so redirects every teardown in the process) and a test that needs
+/// the REAL teardown to run must not overlap — a no-op probe held by
+/// one would silently swallow the other's kill. Held for the whole
+/// test either way.
+#[cfg(test)]
+pub(crate) static TREE_KILL_PROBE_SCOPE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[cfg(test)]
 fn tree_kill_probe() -> Option<PathBuf> {
