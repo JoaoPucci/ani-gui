@@ -86,8 +86,9 @@ async fn a_fully_covered_listing_costs_one_request() {
 
 #[tokio::test]
 async fn an_absent_mode_costs_two_requests_and_reports_zero() {
-    // Sub-only show asked for dub: last says no, first says no, and
-    // the answered absence is the cacheable negative.
+    // Sub-only show asked for dub: last says no, first says no —
+    // every row the search looked at answered, so the absence is a
+    // real verdict and may cache.
     let provider = Dubbed::new(0);
     let client = AnidbClient::new(&provider);
     let eps = listing(12);
@@ -164,9 +165,30 @@ async fn a_dead_trailing_row_is_not_counted_as_covered() {
         .await
         .expect("an answered row is not weather");
     assert_eq!(
-        covered,
-        Some(11),
-        "the missing row is above the proven prefix, not inside it"
+        covered, None,
+        "a row that answered nothing leaves the cap unproven"
+    );
+}
+
+#[tokio::test]
+async fn a_gap_below_the_boundary_yields_no_verdict() {
+    // The whole listing is dubbed except that row 3's languages
+    // endpoint is gone. Any answer that counts row 3 — including
+    // "the last row is covered, so all of them are" — advertises an
+    // episode whose own resolve hits the same missing row.
+    let provider = Dubbed {
+        dubbed: 12,
+        asked: Mutex::new(Vec::new()),
+        dead: &[3],
+    };
+    let client = AnidbClient::new(&provider);
+    let eps = listing(12);
+    let covered = mode_prefix_len(&client, &eps, "dub")
+        .await
+        .expect("an answered row is not weather");
+    assert_eq!(
+        covered, None,
+        "a gap the search saw makes the prefix unprovable"
     );
 }
 
@@ -188,9 +210,8 @@ async fn a_dead_first_row_does_not_manufacture_coverage() {
         .await
         .expect("the provider answered");
     assert_eq!(
-        covered,
-        Some(0),
-        "no live row carries the mode, so nothing is covered"
+        covered, None,
+        "the search saw a row that answered nothing, so it reports nothing"
     );
 }
 
@@ -213,10 +234,9 @@ async fn a_listing_of_dead_rows_yields_no_verdict() {
 }
 
 #[tokio::test]
-async fn a_dead_row_at_the_boundary_counts_only_what_a_live_row_proved() {
-    // Rows 1-4 dubbed, 5 dead, 6-8 sub-only. The dead row cannot
-    // decide either way, so the cap stops at the last row a live
-    // answer proved.
+async fn a_dead_row_at_the_boundary_yields_no_verdict() {
+    // Rows 1-4 dubbed, 5 dead, 6-8 sub-only. The boundary is exactly
+    // where the search cannot see, so there is no cap to report.
     let provider = Dubbed {
         dubbed: 4,
         asked: Mutex::new(Vec::new()),
@@ -227,7 +247,7 @@ async fn a_dead_row_at_the_boundary_counts_only_what_a_live_row_proved() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("the provider answered");
-    assert_eq!(covered, Some(4));
+    assert_eq!(covered, None);
 }
 
 /// Every languages fetch dies on transport.
