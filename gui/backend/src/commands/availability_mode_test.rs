@@ -1,4 +1,4 @@
-use super::{mode_prefix_len, mode_prefix_len_bounded};
+use super::mode_prefix_len;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, EpisodeRef, FetchResponse};
 use std::sync::Mutex;
 
@@ -228,60 +228,6 @@ async fn a_dead_row_at_the_boundary_counts_only_what_a_live_row_proved() {
         .await
         .expect("the provider answered");
     assert_eq!(covered, Some(4));
-}
-
-/// A provider that accepts every request and answers each one
-/// slowly. Under a paused clock the runtime advances time when it
-/// goes idle, so the elapsed budget is real without the wall clock
-/// being.
-struct Stalling;
-
-#[async_trait::async_trait]
-impl AnidbFetch for Stalling {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
-        tokio::time::sleep(std::time::Duration::from_secs(19)).await;
-        // Partially dubbed, so the bisection actually runs its
-        // series — a uniform answer would settle in two requests and
-        // never reach the ceiling.
-        let id: u64 = url
-            .split("/episode/")
-            .nth(1)
-            .and_then(|rest| rest.split('/').next())
-            .and_then(|s| s.parse().ok())
-            .expect("a languages url");
-        let langs = if id <= 100 {
-            r#"[{"code":"jpn","embed_url":"https://e/s"},{"code":"eng","embed_url":"https://e/d"}]"#
-        } else {
-            r#"[{"code":"jpn","embed_url":"https://e/s"}]"#
-        };
-        Ok(FetchResponse {
-            status: 200,
-            body: format!(r#"{{"languages":{langs}}}"#),
-        })
-    }
-}
-
-#[tokio::test(start_paused = true)]
-async fn the_mode_probe_stops_at_the_resolution_deadline() {
-    // Each languages request can burn most of the transport's own
-    // timeout, and the probe makes a logarithmic series of them. With
-    // no aggregate ceiling a detail-page availability check can stay
-    // pending for minutes and outlive the gate's half-open trial
-    // window — the same reason the resolve walk is bounded.
-    let client = AnidbClient::new(Stalling);
-    let eps = listing(512);
-    let started = tokio::time::Instant::now();
-    let got = mode_prefix_len_bounded(&client, &eps, "dub").await;
-    assert!(
-        matches!(got, Err(crate::error::AniError::Timeout)),
-        "a stalled probe ends as a timeout: {got:?}"
-    );
-    assert!(
-        started.elapsed()
-            <= crate::commands::play_native_resolve::RESOLVE_DEADLINE
-                + std::time::Duration::from_secs(1),
-        "and it ends AT the deadline, not after the whole series"
-    );
 }
 
 /// Every languages fetch dies on transport.

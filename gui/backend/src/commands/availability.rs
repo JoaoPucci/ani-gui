@@ -344,23 +344,19 @@ pub(crate) async fn check_availability_with_base(
     };
     let client = anidb_client_with_base(state, anidb_base, prio)?;
     let walk_started_at = tokio::time::Instant::now();
-    let picked = pick_native_walk(
-        &client,
-        &args.title,
-        &args.alt_titles,
-        args.episode_count,
-        args.year,
-        args.subtype.as_deref(),
-    )
-    .await;
-    // Feed the anidb breaker the walk's outcome under the same
-    // mapping the play path uses: answered verdicts (including the
-    // clean miss) are health, weather is distress, and a gate
-    // refusal records nothing. Timestamped with the attempt that
-    // observed the outcome so a walk that began before a concurrent
-    // recovery never reads as post-recovery evidence.
-    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &picked) {
-        let observed_at = picked
+    let probed = probe_show(&client, args, mode).await;
+    // One request, one outcome. The pick and the mode check are two
+    // stages of a single probe, so the breaker hears their combined
+    // verdict once — recording the pick's success first would reset
+    // the failure run every time a show's languages endpoint is
+    // down, and the breaker would never open. Same mapping the play
+    // path uses: answered verdicts (the clean miss included) are
+    // health, weather is distress, a gate refusal records nothing.
+    // Timestamped with the attempt that observed the outcome, so a
+    // probe that began before a concurrent recovery never reads as
+    // post-recovery evidence.
+    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &probed) {
+        let observed_at = probed
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
@@ -368,11 +364,9 @@ pub(crate) async fn check_availability_with_base(
             .unwrap_or(walk_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
-    let (available, episode_count, extra_episodes) = match picked {
-        Ok(p) => {
-            let Some(covered) =
-                mode_covered_prefix(state, &client, &p, mode, prio, walk_started_at).await?
-            else {
+    let (available, episode_count, extra_episodes) = match probed {
+        Ok((p, covered)) => {
+            let Some(covered) = covered else {
                 // Every row the mode search touched was missing. The
                 // provider said nothing about this mode, which is
                 // not absence — surface it and persist nothing.
@@ -460,51 +454,64 @@ pub(crate) async fn check_availability_with_base(
     })
 }
 
-/// How many leading rows of the picked show carry the requested
-/// audio mode ([`availability_mode::mode_prefix_len`]), with the
-/// walk's own breaker discipline: weather feeds the anidb breaker
-/// and surfaces typed, so nothing is persisted off a failed probe.
-async fn mode_covered_prefix<F: crate::scraper::anidb::AnidbFetch>(
-    state: &AppState,
+/// The probe's provider half, under one ceiling: pick the show, then
+/// measure how far the requested mode reaches.
+///
+/// Both stages are the same request as far as the caller and the
+/// breaker are concerned, so they share [`RESOLVE_DEADLINE`] — the
+/// walk alone can spend tens of seconds per alias against a slow
+/// provider, and a probe that outlives the gate's half-open trial
+/// window is the overlap the sanction chain forbids — and they
+/// produce a single outcome.
+///
+/// # Errors
+/// The walk's own verdicts, the mode probe's transport failures, and
+/// [`AniError::Timeout`] at the deadline. `clean_miss` survives from
+/// the walk, so a persistable absence is still persistable.
+async fn probe_show<F: crate::scraper::anidb::AnidbFetch>(
     client: &crate::scraper::anidb::AnidbClient<F>,
-    picked: &crate::commands::play_native::PickedShow,
+    args: &AvailabilityArgs,
     mode: &str,
-    prio: crate::scraper::gate::ScrapePriority,
-    walk_started_at: tokio::time::Instant,
-) -> Result<Option<usize>> {
-    match crate::commands::availability_mode::mode_prefix_len_bounded(
-        client,
-        &picked.episodes,
-        mode,
-    )
-    .await
-    {
-        Ok(covered) => Ok(covered),
-        Err(error) => {
-            let failed: std::result::Result<(), crate::commands::play_native_resolve::NativeError> =
-                Err(crate::commands::play_native_resolve::NativeError {
+) -> std::result::Result<
+    (crate::commands::play_native::PickedShow, Option<usize>),
+    crate::commands::play_native_resolve::NativeError,
+> {
+    let probe = async {
+        let picked = pick_native_walk(
+            client,
+            &args.title,
+            &args.alt_titles,
+            args.episode_count,
+            args.year,
+            args.subtype.as_deref(),
+        )
+        .await?;
+        let covered =
+            crate::commands::availability_mode::mode_prefix_len(client, &picked.episodes, mode)
+                .await
+                .map_err(|error| crate::commands::play_native_resolve::NativeError {
                     error,
                     clean_miss: false,
                     failed_at: None,
-                });
-            if let Some(outcome) =
-                crate::commands::play_native_outcome::breaker_outcome(prio, &failed)
-            {
-                let observed_at = client
-                    .transport()
-                    .last_attempt_at()
-                    .unwrap_or(walk_started_at);
-                state.anidb_gate.record(outcome, observed_at);
-            }
-            Err(match failed {
-                Err(ne) => ne.error,
-                Ok(()) => unreachable!(),
-            })
-        }
+                })?;
+        Ok((picked, covered))
+    };
+    match tokio::time::timeout(
+        crate::commands::play_native_resolve::RESOLVE_DEADLINE,
+        probe,
+    )
+    .await
+    {
+        Ok(verdict) => verdict,
+        Err(_elapsed) => Err(crate::commands::play_native_resolve::NativeError {
+            error: crate::error::AniError::Timeout,
+            clean_miss: false,
+            failed_at: None,
+        }),
     }
 }
 
-/// Persist a known availability result. Public so the play and
+/// Persist a known availability result./// Persist a known availability result. Public so the play and
 /// download paths can update the cache from their own success /
 /// NoResults outcomes — clicks from any tile end up populating the
 /// cache without an extra network round-trip. Episode count is
@@ -1219,7 +1226,7 @@ mod tests {
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Slow Show",
             "mode": "sub",
-            "alt_titles": "a\nb\nc\nd\ne\nf",
+            "alt_titles": ["a", "b", "c", "d", "e", "f"],
         }))
         .expect("args");
         let started = tokio::time::Instant::now();
