@@ -913,6 +913,39 @@ mod tests {
         }
     }
 
+    /// anidb distress must not refuse allanime work, nor allanime
+    /// health clear an anidb pause: the two providers share no
+    /// upstream, so a shared gate lets one manufacture or cancel the
+    /// other's breaker state — an interactive allanime success right
+    /// after an anidb 429 reopens background anidb traffic into the
+    /// advertised window.
+    #[tokio::test]
+    async fn anidb_distress_leaves_the_allanime_gate_open() {
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state.anidb_gate.record(
+                crate::scraper::gate::ScrapeOutcome::Failure,
+                tokio::time::Instant::now(),
+            );
+        }
+        assert!(
+            state
+                .anidb_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_err(),
+            "anidb breaker must be open after its own failures"
+        );
+        assert!(
+            state
+                .scraper_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "allanime gate must not hear anidb distress"
+        );
+    }
+
     /// Three consecutive clean misses (the show simply isn't in the
     /// catalogue — a fresh Continue Watching rail full of uncarried
     /// titles produces exactly this) must not open the breaker: a
