@@ -83,6 +83,32 @@ pub(crate) async fn mode_prefix_len<F: AnidbFetch>(
     Ok(Some(lo + 1))
 }
 
+/// [`mode_prefix_len`] under the resolve walk's own ceiling
+/// ([`RESOLVE_DEADLINE`]). The probe makes a logarithmic series of
+/// requests and each can burn most of the transport's timeout, so
+/// without an aggregate deadline a detail-page check can stay
+/// pending long enough to outlive the gate's half-open trial window.
+///
+/// # Errors
+/// As [`mode_prefix_len`], plus [`AniError::Timeout`] at the
+/// deadline — a provider that answers too slowly to finish is
+/// weather, and the caller feeds it to the breaker as such.
+pub(crate) async fn mode_prefix_len_bounded<F: AnidbFetch>(
+    client: &AnidbClient<F>,
+    episodes: &[EpisodeRef],
+    mode: &str,
+) -> Result<Option<usize>> {
+    match tokio::time::timeout(
+        crate::commands::play_native_resolve::RESOLVE_DEADLINE,
+        mode_prefix_len(client, episodes, mode),
+    )
+    .await
+    {
+        Ok(verdict) => verdict,
+        Err(_elapsed) => Err(AniError::Timeout),
+    }
+}
+
 /// How many missing rows one search step will step over before
 /// giving up. Bounded deliberately: a listing that answers not-found
 /// everywhere would otherwise cost one request per episode to learn

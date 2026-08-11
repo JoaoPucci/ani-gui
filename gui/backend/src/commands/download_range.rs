@@ -48,15 +48,30 @@ where
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
     let walk_started_at = tokio::time::Instant::now();
-    let picked = pick_native_walk(
-        &client,
-        &args.title,
-        &args.alt_titles,
-        args.episode_count,
-        args.year,
-        args.subtype.as_deref(),
+    // Bounded like the play path's resolve: the walk probes aliases
+    // and candidate listings in sequence, each request against its
+    // own transport timeout, so an unbounded pick can delay the
+    // first transfer past the gate's half-open trial window.
+    let picked = match tokio::time::timeout(
+        super::play_native_resolve::RESOLVE_DEADLINE,
+        pick_native_walk(
+            &client,
+            &args.title,
+            &args.alt_titles,
+            args.episode_count,
+            args.year,
+            args.subtype.as_deref(),
+        ),
     )
-    .await;
+    .await
+    {
+        Ok(picked) => picked,
+        Err(_elapsed) => Err(super::play_native_resolve::NativeError {
+            error: crate::error::AniError::Timeout,
+            clean_miss: false,
+            failed_at: None,
+        }),
+    };
     if let Some(outcome) = super::play_native_outcome::breaker_outcome(prio, &picked) {
         let observed_at = picked
             .as_ref()

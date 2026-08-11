@@ -472,7 +472,12 @@ async fn mode_covered_prefix<F: crate::scraper::anidb::AnidbFetch>(
     prio: crate::scraper::gate::ScrapePriority,
     walk_started_at: tokio::time::Instant,
 ) -> Result<Option<usize>> {
-    match crate::commands::availability_mode::mode_prefix_len(client, &picked.episodes, mode).await
+    match crate::commands::availability_mode::mode_prefix_len_bounded(
+        client,
+        &picked.episodes,
+        mode,
+    )
+    .await
     {
         Ok(covered) => Ok(covered),
         Err(error) => {

@@ -232,11 +232,25 @@ struct Stalling;
 
 #[async_trait::async_trait]
 impl AnidbFetch for Stalling {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         tokio::time::sleep(std::time::Duration::from_secs(19)).await;
+        // Partially dubbed, so the bisection actually runs its
+        // series — a uniform answer would settle in two requests and
+        // never reach the ceiling.
+        let id: u64 = url
+            .split("/episode/")
+            .nth(1)
+            .and_then(|rest| rest.split('/').next())
+            .and_then(|s| s.parse().ok())
+            .expect("a languages url");
+        let langs = if id <= 100 {
+            r#"[{"code":"jpn","embed_url":"https://e/s"},{"code":"eng","embed_url":"https://e/d"}]"#
+        } else {
+            r#"[{"code":"jpn","embed_url":"https://e/s"}]"#
+        };
         Ok(FetchResponse {
             status: 200,
-            body: r#"{"languages":[{"code":"jpn","embed_url":"https://e/s"}]}"#.to_string(),
+            body: format!(r#"{{"languages":{langs}}}"#),
         })
     }
 }
