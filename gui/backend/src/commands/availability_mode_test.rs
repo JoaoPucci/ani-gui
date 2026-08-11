@@ -147,10 +147,12 @@ async fn an_empty_listing_covers_nothing() {
 }
 
 #[tokio::test]
-async fn a_dead_row_does_not_truncate_the_prefix() {
-    // A stale episode id the provider no longer serves answers
-    // not-found. That is a verdict about the ROW, not about the
-    // mode: it must not read as "the dub stops here".
+async fn a_dead_trailing_row_is_not_counted_as_covered() {
+    // A stale id the provider no longer serves is not weather — but
+    // it is not coverage either. Counting it advertises an episode
+    // whose playback cannot resolve, which is the same defect as
+    // reading a dead FIRST row as a yes. The cap stops at the
+    // highest row that actually answered.
     let provider = Dubbed {
         dubbed: 12,
         asked: Mutex::new(Vec::new()),
@@ -161,7 +163,11 @@ async fn a_dead_row_does_not_truncate_the_prefix() {
     let covered = mode_prefix_len(&client, &eps, "dub")
         .await
         .expect("an answered row is not weather");
-    assert_eq!(covered, Some(12));
+    assert_eq!(
+        covered,
+        Some(11),
+        "the missing row is above the proven prefix, not inside it"
+    );
 }
 
 #[tokio::test]
