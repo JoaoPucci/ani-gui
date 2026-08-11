@@ -215,6 +215,71 @@ mod tests {
         open_in_memory().expect("in-memory pool")
     }
 
+    /// One full argument tuple for [`cache_key`], over its real
+    /// domains: titles may carry colons (Stone Ocean Part 2 does),
+    /// every other field is colon-free by construction — the enums,
+    /// digit episodes, and Kitsu subtypes the callers pass.
+    #[allow(clippy::type_complexity)]
+    fn axis() -> impl proptest::strategy::Strategy<
+        Value = (
+            String,
+            String,
+            String,
+            String,
+            Option<u32>,
+            Option<u32>,
+            Option<String>,
+        ),
+    > {
+        (
+            "[a-zA-Z0-9 :'-]{0,16}",
+            proptest::prop_oneof![
+                proptest::strategy::Just("sub".to_string()),
+                proptest::strategy::Just("dub".to_string()),
+            ],
+            proptest::prop_oneof![
+                proptest::strategy::Just("best".to_string()),
+                proptest::strategy::Just("worst".to_string()),
+                proptest::strategy::Just("720".to_string()),
+                proptest::strategy::Just("1080".to_string()),
+            ],
+            "[0-9]{1,4}(\\.[0-9])?",
+            proptest::option::of(0u32..3000),
+            proptest::option::of(0u32..5000),
+            proptest::option::of(proptest::prop_oneof![
+                proptest::strategy::Just("TV".to_string()),
+                proptest::strategy::Just("movie".to_string()),
+                proptest::strategy::Just("OVA".to_string()),
+                proptest::strategy::Just("ONA".to_string()),
+                proptest::strategy::Just("special".to_string()),
+            ]),
+        )
+    }
+
+    proptest::proptest! {
+        /// Determinism and axis separation: two keys agree exactly
+        /// when every axis agrees. Colons in the title cannot forge
+        /// another tuple's key — every non-title field is colon-free,
+        /// so keys with differing colon counts differ as strings and
+        /// keys with equal counts align positionally.
+        #[test]
+        fn keys_are_deterministic_and_separate_every_axis(a in axis(), b in axis()) {
+            let key = |x: &(
+                String,
+                String,
+                String,
+                String,
+                Option<u32>,
+                Option<u32>,
+                Option<String>,
+            )| {
+                cache_key(&x.0, &x.1, &x.2, &x.3, x.4, x.5, x.6.as_deref())
+            };
+            proptest::prop_assert_eq!(key(&a), key(&a));
+            proptest::prop_assert_eq!(key(&a) == key(&b), a == b);
+        }
+    }
+
     fn sample_resolution() -> CachedResolution {
         CachedResolution {
             upstream_url:
