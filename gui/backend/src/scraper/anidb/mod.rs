@@ -210,12 +210,21 @@ impl<F: AnidbFetch> AnidbClient<F> {
             );
             return Ok(master_url.to_string());
         };
-        Ok(
-            match url::Url::parse(master_url).and_then(|base| base.join(&variant.url)) {
-                Ok(joined) => joined.to_string(),
-                Err(_) => master_url.to_string(),
-            },
-        )
+        let rendition = match url::Url::parse(master_url).and_then(|base| base.join(&variant.url)) {
+            Ok(joined) => joined.to_string(),
+            Err(_) => return Ok(master_url.to_string()),
+        };
+        // The rendition gets its own validating fetch: a dead
+        // rendition behind a healthy master must not report success
+        // — and must not fail a play the served adaptive master can
+        // carry either, so the miss falls back soft.
+        match self.content(&rendition).await {
+            Ok(_) => Ok(rendition),
+            Err(e) => {
+                tracing::debug!(quality, error = ?e, "anidb: rendition unfetchable, keeping adaptive master");
+                Ok(master_url.to_string())
+            }
+        }
     }
 
     /// The premiere year the slug's detail page names, when it names
