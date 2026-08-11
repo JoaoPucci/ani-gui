@@ -875,6 +875,25 @@ impl AnidbFetch for HtmlAnswers {
     }
 }
 
+proptest::proptest! {
+    /// The predicate accepts exactly the bodies whose trimmed prefix
+    /// is the HLS marker: any leading whitespace is tolerated, and a
+    /// body built NOT to open with the marker is refused whatever it
+    /// contains further in.
+    #[test]
+    fn hls_predicate_accepts_exactly_marker_prefixed_bodies(
+        ws in "[ \t\r\n]{0,8}",
+        rest in "[a-zA-Z0-9 #:=,\n-]{0,64}",
+        junk in "[a-zA-Z0-9<][a-zA-Z0-9 #:=,\n-]{0,64}",
+    ) {
+        let playlist = format!("{ws}#EXTM3U{rest}");
+        let page = format!("{ws}{junk}");
+        proptest::prop_assert!(super::quality::is_hls_playlist(&playlist));
+        proptest::prop_assert!(!super::quality::is_hls_playlist(&page));
+        proptest::prop_assert!(!super::quality::is_hls_playlist(&ws));
+    }
+}
+
 #[tokio::test]
 async fn a_masters_html_answer_is_not_a_playlist() {
     // 200 with an HTML body passes the status check and the

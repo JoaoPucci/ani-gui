@@ -43,6 +43,26 @@ fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
     }
 }
 
+proptest::proptest! {
+    /// The dead-candidate decision table: a strictly stronger
+    /// identity always blocks, an equal identity-bearing rank blocks
+    /// exactly from an earlier position, plain rank-2 ties never
+    /// block, weaker never blocks, and no failure never blocks.
+    #[test]
+    fn dead_outranks_holds_over_all_ranks_and_positions(
+        failed_rank in 0u8..=2,
+        failed_pos in 0usize..8,
+        winner_rank in 0u8..=2,
+        winner_pos in 0usize..8,
+    ) {
+        let got = dead_outranks(Some((failed_rank, failed_pos)), winner_rank, winner_pos);
+        let expected = failed_rank < winner_rank
+            || (failed_rank == winner_rank && failed_rank <= 1 && failed_pos < winner_pos);
+        proptest::prop_assert_eq!(got, expected);
+        proptest::prop_assert!(!dead_outranks(None, winner_rank, winner_pos));
+    }
+}
+
 #[test]
 fn threshold_is_a_floor_of_three_with_proportional_slack() {
     assert_eq!(ep_count_threshold(1), 3);

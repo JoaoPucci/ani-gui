@@ -79,6 +79,6 @@ pub(super) async fn stream_url<F: AnidbFetch>(
 
 /// The one marker every HLS playlist opens with; anything else is a
 /// page, not a stream.
-fn is_hls_playlist(body: &str) -> bool {
+pub(super) fn is_hls_playlist(body: &str) -> bool {
     body.trim_start().starts_with("#EXTM3U")
 }
