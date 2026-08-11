@@ -205,10 +205,19 @@ pub async fn pick_candidate<F: AnidbFetch>(
         }
         return Err(crate::error::AniError::NoResults);
     }
+    // Among the best-distance candidates: an exact title match is
+    // the user's own words and stays dominant; below it, a detail
+    // year that matched Kitsu's exactly outranks a merely tolerated
+    // neighbor; only a full tie falls to provider order (min_by_key
+    // keeps the first of equals).
     let winner_idx = probed_ok
         .iter()
-        .position(|(h, _, d, _)| *d == best_dist && h.title.trim().to_lowercase() == needle)
-        .or_else(|| probed_ok.iter().position(|(_, _, d, _)| *d == best_dist))
+        .enumerate()
+        .filter(|(_, (_, _, d, _))| *d == best_dist)
+        .min_by_key(|(_, (h, _, _, confirmed))| {
+            (h.title.trim().to_lowercase() != needle, !*confirmed)
+        })
+        .map(|(i, _)| i)
         .expect("best_dist came from this list");
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
     Ok(PickedShow {
