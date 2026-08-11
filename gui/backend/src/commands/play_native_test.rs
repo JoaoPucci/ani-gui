@@ -143,6 +143,72 @@ async fn a_transport_dead_title_match_blocks_a_sibling_pick() {
     );
 }
 
+/// Two exact-title twins: slug 99 (provider-first) dies on
+/// transport, slug 88 answers twelve episodes.
+struct FirstTwinDead;
+
+#[async_trait::async_trait]
+impl AnidbFetch for FirstTwinDead {
+    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+        if url.contains("/api/frontend/anime/99/episodes") {
+            return Err(AniError::Network);
+        }
+        if url.contains("/api/frontend/anime/88/episodes") {
+            let rows: Vec<String> = (1..=12)
+                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
+                .collect();
+            return Ok(FetchResponse {
+                status: 200,
+                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
+            });
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_equal_rank_dead_twin_ahead_in_order_stays_transient() {
+    // Both candidates carry the same exact display title; provider
+    // order is the tie-break that would have decided between them,
+    // and it favors the one whose probe died. Handing the second
+    // twin the win converts a transient failure into a cached,
+    // possibly wrong pick — the strict outranks-only guard let it
+    // through.
+    let client = AnidbClient::new(FirstTwinDead);
+    let hits = [
+        hit("the-show-99", "The Show"),
+        hit("the-show-88", "The Show"),
+    ];
+    let err = pick_candidate(&client, &hits, Some(12), "the show", None, None)
+        .await
+        .expect_err("the preceding twin never answered");
+    assert!(
+        matches!(err, AniError::Network),
+        "expected the transient verdict, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
+    // No identity anywhere: provider order among no-identity
+    // candidates is weak evidence, and treating every dead earlier
+    // row as blocking would abort picks on any garbage hit dying —
+    // the probe-skip behavior exists precisely for that. Only
+    // identity-bearing equal ranks block.
+    let client = AnidbClient::new(FirstTwinDead);
+    let hits = [
+        hit("unrelated-99", "Unrelated"),
+        hit("also-unrelated-88", "Also Unrelated"),
+    ];
+    let picked = pick_candidate(&client, &hits, Some(12), "something else", None, None)
+        .await
+        .expect("the surviving plain candidate still wins");
+    assert_eq!(picked.hit.slug, "also-unrelated-88");
+}
+
 #[tokio::test]
 async fn expected_count_picks_the_closest_probed_candidate() {
     // Movie (1 ep) vs series (26 eps): expected 26 must pick the
