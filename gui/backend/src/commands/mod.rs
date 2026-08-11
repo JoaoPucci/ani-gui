@@ -13,6 +13,7 @@ pub mod anilist_eps_thumbs;
 pub mod aniskip;
 pub mod app_info;
 pub mod availability;
+mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
 pub mod download;

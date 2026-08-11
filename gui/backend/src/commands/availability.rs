@@ -370,20 +370,24 @@ pub(crate) async fn check_availability_with_base(
     }
     let (available, episode_count, extra_episodes) = match picked {
         Ok(p) => {
-            if requested_mode_available(state, &client, &p, mode, prio, walk_started_at).await? {
+            let covered =
+                mode_covered_prefix(state, &client, &p, mode, prio, walk_started_at).await?;
+            // The cap and the extras describe the rows the requested
+            // mode HAS. Truncating from the end keeps the listing's
+            // minimum display, so the continuation offset both
+            // helpers derive is the same one the full listing gives.
+            let rows = &p.episodes[..covered];
+            if rows.is_empty() {
+                // The provider ANSWERED absence for this mode: no
+                // row carries a matching embed. Cacheable, like the
+                // clean search miss.
+                (false, None, Vec::new())
+            } else {
                 (
                     true,
-                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
-                    // The listing already names the playable
-                    // fractional rows — same paid-for source as the
-                    // cap, same per-entry numbering.
-                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
+                    crate::commands::play_native_numbering::kitsu_episode_cap(rows),
+                    crate::commands::play_native_numbering::extra_episode_tags(rows),
                 )
-            } else {
-                // The provider ANSWERED absence for this mode: a
-                // languages row with no matching embed. Cacheable,
-                // like the clean search miss.
-                (false, None, Vec::new())
             }
         }
         // Clean miss: the only verdict that proves absence — flows
@@ -450,38 +454,21 @@ pub(crate) async fn check_availability_with_base(
     })
 }
 
-/// Whether the picked show carries the requested audio mode, judged
-/// from its first episode's languages row. The search and episode
-/// listing are mode-independent; only a languages row says whether a
-/// dub exists, so a positive verdict may not be cached without this
-/// ask. One request; the show-level granularity matches the
-/// allanime-era probe (its search filtered by translation type,
-/// per-episode gaps surfaced at playback then too).
-///
-/// A SERVED languages list decides. An answered non-block status is
-/// a verdict about the ROW — a stale episode id — not about the
-/// mode, so it keeps the pre-probe shape rather than caching absence
-/// off one dead row. Weather feeds the breaker and surfaces typed,
-/// exactly like the walk's own failures.
-async fn requested_mode_available<F: crate::scraper::anidb::AnidbFetch>(
+/// How many leading rows of the picked show carry the requested
+/// audio mode ([`availability_mode::mode_prefix_len`]), with the
+/// walk's own breaker discipline: weather feeds the anidb breaker
+/// and surfaces typed, so nothing is persisted off a failed probe.
+async fn mode_covered_prefix<F: crate::scraper::anidb::AnidbFetch>(
     state: &AppState,
     client: &crate::scraper::anidb::AnidbClient<F>,
     picked: &crate::commands::play_native::PickedShow,
     mode: &str,
     prio: crate::scraper::gate::ScrapePriority,
     walk_started_at: tokio::time::Instant,
-) -> Result<bool> {
-    let Some(first) = picked.episodes.first() else {
-        // Nothing to ask; keep the legacy shape for a rowless listing.
-        return Ok(true);
-    };
-    match client.has_mode(first.id, mode).await {
-        Ok(b) => Ok(b),
-        Err(e)
-            if matches!(e, crate::error::AniError::Upstream { .. }) && !e.is_provider_block() =>
-        {
-            Ok(true)
-        }
+) -> Result<usize> {
+    match crate::commands::availability_mode::mode_prefix_len(client, &picked.episodes, mode).await
+    {
+        Ok(covered) => Ok(covered),
         Err(error) => {
             let failed: std::result::Result<(), crate::commands::play_native_resolve::NativeError> =
                 Err(crate::commands::play_native_resolve::NativeError {
@@ -1031,9 +1018,13 @@ mod tests {
             )
             .mount(&server)
             .await;
-        // The mode probe asks the first episode's languages.
+        // The mode probe asks the last episode's languages: a
+        // covered last row means the whole listing is covered.
         wiremock::Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/5001/languages"))
+            .and(path(format!(
+                "/api/frontend/episode/{}/languages",
+                5000 + count
+            )))
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
                 r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
             ))
@@ -1106,7 +1097,7 @@ mod tests {
             .mount(&server)
             .await;
         wiremock::Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/311/languages"))
+            .and(path("/api/frontend/episode/314/languages"))
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
                 r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/r1"}]}"#,
             ))
@@ -1244,13 +1235,18 @@ mod tests {
             )
             .mount(&server)
             .await;
-        wiremock::Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/711/languages"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
-            ))
-            .mount(&server)
-            .await;
+        // Both rows are sub-only: the mode probe asks the last row
+        // first (a covered last row means a covered listing), then
+        // the first.
+        for ep in [711, 712] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
+                ))
+                .mount(&server)
+                .await;
+        }
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1303,7 +1299,7 @@ mod tests {
             .mount(&server)
             .await;
         wiremock::Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/941/languages"))
+            .and(path("/api/frontend/episode/942/languages"))
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
                 r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/q1"}]}"#,
             ))
