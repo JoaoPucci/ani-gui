@@ -132,16 +132,27 @@ starting it, and delete it when you find it done.
   the same gap on Windows.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
-  requires a `test(red):` predecessor for every `feat`/`fix(green):`
-  and spells the verification out as a mechanical procedure, but
-  nothing runs it. Unpaired fixes have reached master; each was caught
-  by a reviewer reading the log by hand, or missed.
+  requires a `test(red):` predecessor for anything that introduces a
+  `feat` or a `fix`, and spells the verification out as a mechanical
+  procedure, but nothing runs it. Unpaired commits have reached
+  master; each was caught by a reviewer reading the log by hand, or
+  missed.
 
-  The subtlety that makes a naive check worse than none: asking
-  whether a branch contains *any* red passes a green whose red landed
-  on a separately-merged branch, and asking
-  `--is-ancestor <green> <red>` tests the negation. The question is
-  whether each green has a red **ancestor**.
+  Three things trip an implementation, and the first is what let the
+  known violations through:
+
+  - **The subject is the type, not the scope.** The rule covers every
+    `feat` and `fix`, so a gate keyed on `feat(green):`/`fix(green):`
+    misses a bare `fix:` — which is the form every unpaired commit
+    took.
+  - **Any-red is not the question.** Asking whether the branch
+    contains *a* red passes a green whose red landed on a
+    separately-merged branch. Ask whether each green has a red
+    **ancestor**; `--is-ancestor <green> <red>` tests the negation.
+  - **Upstream commits are exempt** (§2). A sync merge imports
+    upstream history verbatim, so its `feat` commits have no red of
+    ours and cannot acquire one. Provenance is mechanical: reachable
+    from the sync merge's second parent.
 
   Related to the pre-commit and TDD tension above — both are about
   giving the contract teeth instead of restating it.
