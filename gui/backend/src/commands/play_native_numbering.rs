@@ -36,6 +36,20 @@ pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Opti
         .map(|m| m.saturating_sub(offset))
 }
 
+/// The number of regular episodes a listing carries — rows whose
+/// display identity is an integer. Kitsu's episode_count excludes
+/// recaps, so candidate scoring must too.
+pub fn regular_episode_count(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
+    let regular = episodes
+        .iter()
+        .filter(|e| match e.number2.as_deref() {
+            Some(tag) => tag.parse::<u32>().is_ok(),
+            None => true,
+        })
+        .count();
+    u32::try_from(regular).unwrap_or(u32::MAX)
+}
+
 /// The provider's fractional display tags, in listing order — what
 /// availability advertises as `extra_episodes`. An integer `number2`
 /// is a continuation's cumulative re-display, not an extra; every

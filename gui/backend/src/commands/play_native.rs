@@ -16,6 +16,7 @@ use crate::error::Result;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
 
 use super::play_native_format::format_survivors;
+use super::play_native_numbering::regular_episode_count;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -138,7 +139,10 @@ pub async fn pick_candidate<F: AnidbFetch>(
     for (h, year_confirmed) in head {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
-                let count = u32::try_from(eps.len()).unwrap_or(u32::MAX);
+                // Kitsu's expected count excludes recaps; so must
+                // the candidate's, or a show is rejected on its own
+                // fractional extras.
+                let count = regular_episode_count(&eps);
                 probed_ok.push((h, eps, count.abs_diff(expected), year_confirmed));
             }
             Err(e) => {
@@ -186,7 +190,9 @@ pub async fn pick_candidate<F: AnidbFetch>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, _, confirmed))| *confirmed && eps.len() < expected as usize)
+            .filter(|(_, (_, eps, _, confirmed))| {
+                *confirmed && regular_episode_count(eps) < expected
+            })
             .min_by_key(|(_, (_, _, d, _))| *d)
             .map(|(i, _)| i)
         {
