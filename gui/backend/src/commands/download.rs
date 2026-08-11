@@ -97,6 +97,21 @@ pub struct DownloadResponse {
 pub async fn download_with_progress<F>(
     state: &AppState,
     args: &DownloadArgs,
+    on_progress: F,
+) -> Result<DownloadResponse>
+where
+    F: FnMut(DownloadProgress) + Send,
+{
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    download_with_tools(state, args, &path_env, on_progress).await
+}
+
+/// [`download_with_progress`] with the tool-search PATH explicit —
+/// the seam the stub-tool tests drive.
+pub(crate) async fn download_with_tools<F>(
+    state: &AppState,
+    args: &DownloadArgs,
+    path_env: &str,
     mut on_progress: F,
 ) -> Result<DownloadResponse>
 where
@@ -104,6 +119,26 @@ where
 {
     let dest = resolve_dest(args)?;
     std::fs::create_dir_all(&dest).map_err(|_| AniError::Io)?;
+
+    // A "1-12"-shaped episode is the Download All/Range UI: the
+    // script's own -e loop, one pick then one transfer per episode.
+    if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
+        let quality = args.quality.as_deref().unwrap_or("best");
+        super::download_range::download_range(
+            state,
+            args,
+            first,
+            last,
+            quality,
+            &dest,
+            path_env,
+            &mut on_progress,
+        )
+        .await?;
+        return Ok(DownloadResponse {
+            dest_dir: dest.to_string_lossy().into_owned(),
+        });
+    }
 
     // Resolve the stream natively — the same walk, disambiguation
     // and episode mapping as the play path — then hand the master URL
@@ -172,13 +207,12 @@ where
         "download: spawning tool on natively resolved stream",
     );
     let file_stem = format!("{} Episode {}", resolved.title, args.episode);
-    let path_env = std::env::var("PATH").unwrap_or_default();
     spawn_download_tool(
         &resolved.master_url,
         &dest,
         &file_stem,
         Some(quality),
-        &path_env,
+        path_env,
         std::time::Duration::from_secs(60 * 60),
         &mut |line| {
             tracing::info!(line = %line, "download.tool.stderr");
