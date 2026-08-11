@@ -369,10 +369,19 @@ pub(crate) async fn check_availability_with_base(
         state.anidb_gate.record(outcome, observed_at);
     }
     let (available, episode_count) = match picked {
-        Ok(p) => (
-            true,
-            crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
-        ),
+        Ok(p) => {
+            if requested_mode_available(state, &client, &p, mode, prio, walk_started_at).await? {
+                (
+                    true,
+                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
+                )
+            } else {
+                // The provider ANSWERED absence for this mode: a
+                // languages row with no matching embed. Cacheable,
+                // like the clean search miss.
+                (false, None)
+            }
+        }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below.
         Err(ne) if ne.clean_miss => (false, None),
@@ -436,6 +445,62 @@ pub(crate) async fn check_availability_with_base(
         episode_count_approximate,
         gate_refused,
     })
+}
+
+/// Whether the picked show carries the requested audio mode, judged
+/// from its first episode's languages row. The search and episode
+/// listing are mode-independent; only a languages row says whether a
+/// dub exists, so a positive verdict may not be cached without this
+/// ask. One request; the show-level granularity matches the
+/// allanime-era probe (its search filtered by translation type,
+/// per-episode gaps surfaced at playback then too).
+///
+/// A SERVED languages list decides. An answered non-block status is
+/// a verdict about the ROW — a stale episode id — not about the
+/// mode, so it keeps the pre-probe shape rather than caching absence
+/// off one dead row. Weather feeds the breaker and surfaces typed,
+/// exactly like the walk's own failures.
+async fn requested_mode_available<F: crate::scraper::anidb::AnidbFetch>(
+    state: &AppState,
+    client: &crate::scraper::anidb::AnidbClient<F>,
+    picked: &crate::commands::play_native::PickedShow,
+    mode: &str,
+    prio: crate::scraper::gate::ScrapePriority,
+    walk_started_at: tokio::time::Instant,
+) -> Result<bool> {
+    let Some(first) = picked.episodes.first() else {
+        // Nothing to ask; keep the legacy shape for a rowless listing.
+        return Ok(true);
+    };
+    match client.has_mode(first.id, mode).await {
+        Ok(b) => Ok(b),
+        Err(e)
+            if matches!(e, crate::error::AniError::Upstream { .. }) && !e.is_provider_block() =>
+        {
+            Ok(true)
+        }
+        Err(error) => {
+            let failed: std::result::Result<(), crate::commands::play_native_resolve::NativeError> =
+                Err(crate::commands::play_native_resolve::NativeError {
+                    error,
+                    clean_miss: false,
+                    failed_at: None,
+                });
+            if let Some(outcome) =
+                crate::commands::play_native_outcome::breaker_outcome(prio, &failed)
+            {
+                let observed_at = client
+                    .transport()
+                    .last_attempt_at()
+                    .unwrap_or(walk_started_at);
+                state.anidb_gate.record(outcome, observed_at);
+            }
+            Err(match failed {
+                Err(ne) => ne.error,
+                Ok(()) => unreachable!(),
+            })
+        }
+    }
 }
 
 /// Persist a known availability result. Public so the play and
@@ -963,6 +1028,14 @@ mod tests {
             )
             .mount(&server)
             .await;
+        // The mode probe asks the first episode's languages.
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/5001/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
+            ))
+            .mount(&server)
+            .await;
         server
     }
 
@@ -1087,6 +1160,13 @@ mod tests {
                     r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#,
                 ),
             )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/941/languages"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/q1"}]}"#,
+            ))
             .mount(&server)
             .await;
         let td = tempfile::tempdir().expect("td");

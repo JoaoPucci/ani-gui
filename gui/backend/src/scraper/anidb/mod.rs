@@ -164,6 +164,20 @@ impl<F: AnidbFetch> AnidbClient<F> {
         parse_episodes(&body)
     }
 
+    /// Whether an episode's languages carry the requested mode's
+    /// embed — the availability probes' one-request mode check. Only
+    /// the languages row is fetched; no embed page.
+    ///
+    /// # Errors
+    /// Upstream/transport errors as in [`Self::search`],
+    /// [`AniError::ParseFailed`] on an unrecognized body.
+    pub async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
+        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
+        let body = self.content(&url).await?;
+        let embeds = parse_languages(&body)?;
+        Ok(preferred_embed(&embeds, mode).is_some())
+    }
+
     /// Resolve an episode's master-playlist URL for `sub`/`dub`:
     /// languages → preferred embed → embed page → jwplayer `file:`.
     ///
