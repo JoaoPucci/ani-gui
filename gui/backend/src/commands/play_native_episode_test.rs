@@ -140,3 +140,47 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
         .expect("per-entry 2 is display 42");
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
+
+proptest::proptest! {
+    /// The chain-failure decision table over every error shape: a
+    /// provider block or gate refusal stops the walk with the error
+    /// intact, answered dead ends (NoResults, non-block upstream
+    /// statuses) move to the next alias, and everything else stays
+    /// transient.
+    #[test]
+    fn chain_failures_classify_by_the_decision_table(
+        kind in 0u8..6,
+        status in 100u16..600,
+    ) {
+        let error = match kind {
+            0 => AniError::Upstream { status },
+            1 => AniError::GateRefused,
+            2 => AniError::NoResults,
+            3 => AniError::Network,
+            4 => AniError::Timeout,
+            _ => AniError::RateLimited {
+                retry_after_secs: None,
+            },
+        };
+        let stops = error.is_provider_block() || matches!(error, AniError::GateRefused);
+        let dead_end =
+            !stops && matches!(error, AniError::NoResults | AniError::Upstream { .. });
+        let ne = NativeError {
+            error,
+            clean_miss: false,
+            failed_at: None,
+        };
+        match classify_chain_failure(ne) {
+            ChainOutcome::Stop(kept) => {
+                proptest::prop_assert!(stops, "only blocks and refusals stop the walk");
+                proptest::prop_assert!(
+                    kept.error.is_provider_block()
+                        || matches!(kept.error, AniError::GateRefused),
+                    "the stop keeps the error's identity"
+                );
+            }
+            ChainOutcome::DeadEnd => proptest::prop_assert!(dead_end),
+            ChainOutcome::Transient => proptest::prop_assert!(!stops && !dead_end),
+        }
+    }
+}
