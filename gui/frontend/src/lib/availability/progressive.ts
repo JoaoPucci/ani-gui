@@ -39,6 +39,7 @@ async function probeInline<T extends KitsuAnimeRef>(
 					episode_count: item.episode_count ?? undefined,
 					year: yearFromKitsuRef(item) ?? undefined,
 					kitsu_id: item.id,
+					subtype: item.subtype ?? undefined,
 					status: item.status ?? undefined
 					// Interactive, unlike the rail fills: the user is
 					// actively waiting on these results, and the gate's

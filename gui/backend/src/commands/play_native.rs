@@ -15,6 +15,11 @@
 use crate::error::Result;
 use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
 
+use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
+use super::play_native_format::format_survivors;
+use super::play_native_numbering::regular_episode_count;
+use super::play_native_year::year_filtered;
+
 /// How many browse hits get an episodes probe. Beyond this the match
 /// was not a match; the request budget is better spent on the next
 /// alias.
@@ -30,56 +35,25 @@ pub struct PickedShow {
     pub episodes: Vec<crate::scraper::anidb::EpisodeRef>,
 }
 
+/// Whether a transport-dead candidate outranks the winner: a
+/// strictly stronger identity always does, and an equal
+/// identity-bearing rank does when the dead candidate came first —
+/// provider order would have decided the tie for it. Plain
+/// no-identity failures never block; provider order among garbage
+/// hits is weak evidence, and the probe-skip behavior exists for
+/// exactly that pool.
+fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: usize) -> bool {
+    let Some((rank, pos)) = best_failed else {
+        return false;
+    };
+    rank < winner_rank || (rank == winner_rank && rank <= 1 && pos < winner_pos)
+}
+
 /// Distance tolerance: long-running shows get proportional slack,
 /// short shows a hard floor of 3 — the same rule the allanime picker
 /// converged on after the sibling-mispick rounds.
 pub fn ep_count_threshold(expected: u32) -> u32 {
     (expected / 10).max(3)
-}
-
-/// The considered head of `hits`, narrowed by Kitsu's year when it
-/// is known: each candidate's detail page names its premiere year,
-/// and a known year more than one off Kitsu's excludes the
-/// candidate — the identity signal applies even to a lone candidate.
-/// Only an exact year counts as positive identity; one year off is
-/// tolerated (December premieres straddle catalogue years) without
-/// vouching for the candidate.
-/// Unknown years (a 404ing detail page, a page without a season
-/// link) never exclude, so a provider markup change degrades to
-/// year-blind picking rather than emptying pools. A pool whose every
-/// candidate carries a known mismatched year contains the show
-/// nowhere — that is a rejection ([`AniError::NoResults`]), so the
-/// walk can try the next alias. Each survivor carries whether its
-/// own year positively matched.
-async fn year_filtered<'a, F: AnidbFetch>(
-    client: &AnidbClient<F>,
-    hits: &'a [BrowseHit],
-    year: Option<u32>,
-) -> Result<(Vec<(&'a BrowseHit, bool)>, bool)> {
-    let head = hits.iter().take(MAX_PROBED_CANDIDATES);
-    let Some(year) = year else {
-        return Ok((head.map(|h| (h, false)).collect(), false));
-    };
-    let mut kept = Vec::new();
-    let mut excluded_any = false;
-    for h in head {
-        match client.detail_year(&h.slug).await {
-            // Exact match is positive identity; one year off is the
-            // December-premiere allowance — enough to stay in the
-            // pool and compete on count, never enough to vouch for
-            // a candidate (the rescue and the countless preference
-            // key on the flag, and a boundary-tolerated movie must
-            // not ride them past a large count mismatch).
-            Some(y) if y == year => kept.push((h, true)),
-            Some(y) if y.abs_diff(year) <= 1 => kept.push((h, false)),
-            Some(_) => excluded_any = true,
-            None => kept.push((h, false)),
-        }
-    }
-    if kept.is_empty() {
-        return Err(crate::error::AniError::NoResults);
-    }
-    Ok((kept, excluded_any))
 }
 
 /// Pick the show a query meant from browse `hits`, using Kitsu's
@@ -123,62 +97,17 @@ pub async fn pick_candidate<F: AnidbFetch>(
         return Err(crate::error::AniError::NoResults);
     }
     let needle = search_title.trim().to_lowercase();
-    let (head, year_excluded_any) = year_filtered(client, hits, year).await?;
-
-    // Format disproof, the layer the allanime picker carried as its
-    // type filter: a card badged `Movie` cannot be the multi-episode
-    // series the caller expects — nor the clicked entry when Kitsu
-    // says it is anything but a movie (the special-vs-movie shape:
-    // both are single videos, count-tied, and only the format tells
-    // them apart). Unknown badges never exclude, an absent subtype
-    // keeps single-video pools permissive, and a pool left empty
-    // here is disproven — the next alias may carry the real show.
-    let expects_non_movie = matches!(expected, Some(n) if n > 1)
-        || subtype.is_some_and(|s| !s.eq_ignore_ascii_case("movie"));
-    let head: Vec<_> = if expects_non_movie {
-        head.into_iter()
-            .filter(|(h, _)| h.kind.as_deref() != Some("Movie"))
-            .collect()
-    } else {
-        head
-    };
+    // Format disproof in both directions, over the RAW list — the
+    // badge is free, so incompatible formats never crowd the bounded
+    // probe head (see play_native_format).
+    let hits = format_survivors(hits, expected, subtype);
+    let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
 
     let Some(expected) = expected else {
-        // No count signal: an exact title beats positional order,
-        // then a candidate whose own year matched Kitsu's beats the
-        // rest. When the year disproved part of the pool and no
-        // survivor carries positive identity evidence, the pool is
-        // token-search garbage — reject it so the next alias gets
-        // its chance (the live Tai-Ari mispick: three decades-off
-        // hits excluded, an unknown-year movie left standing). A
-        // pool the year disproved nothing about keeps the
-        // provider's own ranking, so pages without season links
-        // stay resolvable. The single probe still runs so the
-        // caller gets the episode list it needs.
-        let exact = head
-            .iter()
-            .map(|(h, _)| *h)
-            .find(|h| h.title.trim().to_lowercase() == needle);
-        let confirmed = head.iter().find(|(_, c)| *c).map(|(h, _)| *h);
-        let chosen = match (exact, confirmed) {
-            (Some(h), _) => h,
-            (None, Some(h)) => h,
-            (None, None) if year_excluded_any => {
-                return Err(crate::error::AniError::NoResults);
-            }
-            (None, None) => head
-                .first()
-                .map(|(h, _)| *h)
-                .ok_or(crate::error::AniError::NoResults)?,
-        };
-        let episodes = client.episodes(&chosen.slug).await?;
-        return Ok(PickedShow {
-            hit: chosen.clone(),
-            episodes,
-        });
+        return pick_without_count(client, &head, &needle, year_excluded_any).await;
     };
 
     // Probe the surviving head; a failing probe removes the
@@ -190,24 +119,67 @@ pub async fn pick_candidate<F: AnidbFetch>(
         u32,
         bool,
     )> = Vec::new();
-    for (h, year_confirmed) in head {
+    let mut any_transport_failure = false;
+    // Identity carried by transport-DEAD candidates
+    // ([`identity_rank`]), with their provider position: a dead
+    // candidate that outranks the eventual winner — or ties an
+    // identity-bearing rank from an earlier position, where provider
+    // order would have decided for it — makes the whole pick
+    // transient. The sibling must not win on the strength of
+    // weather.
+    let mut best_failed: Option<(u8, usize)> = None;
+    let mut positions: Vec<usize> = Vec::new();
+    for (pos, (h, year_confirmed)) in head.into_iter().enumerate() {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
-                let count = u32::try_from(eps.len()).unwrap_or(u32::MAX);
+                // Kitsu's expected count excludes recaps; so must
+                // the candidate's, or a show is rejected on its own
+                // fractional extras.
+                let count = regular_episode_count(&eps);
                 probed_ok.push((h, eps, count.abs_diff(expected), year_confirmed));
+                positions.push(pos);
             }
             Err(e) => {
+                // A refusal or rate limit is the provider blocking,
+                // not this candidate missing: continuing the walk
+                // turns one block into a burst of further probes, and
+                // the alias walk would repeat the burst per alias.
+                // Not-found-shaped statuses are the candidate itself
+                // dead — a stale slug 404s — and, like transport
+                // failures, only drop the candidate.
+                if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) {
+                    // A block or the gate's own refusal: every
+                    // further probe repeats the same answer.
+                    return Err(e);
+                }
+                if !matches!(e, crate::error::AniError::Upstream { .. }) {
+                    any_transport_failure = true;
+                    let failed =
+                        identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
+                    if best_failed.is_none_or(|best| (failed, pos) < best) {
+                        best_failed = Some((failed, pos));
+                    }
+                }
                 tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
             }
         }
     }
-    // Every probe failing says nothing about the show — that verdict
-    // is transient, never the persistable absence.
-    let best_dist = probed_ok
-        .iter()
-        .map(|(_, _, d, _)| *d)
-        .min()
-        .ok_or(crate::error::AniError::Network)?;
+    // An empty pool splits by what killed the probes: any transport
+    // death means nothing was learned (the transient Network), while
+    // all-answered not-found means the pool is dead but the provider
+    // is healthy — the not-found-shaped verdict, so the breaker never
+    // opens on a provider that answered every request. Neither is
+    // ever the persistable absence.
+    let best_dist =
+        probed_ok
+            .iter()
+            .map(|(_, _, d, _)| *d)
+            .min()
+            .ok_or(if any_transport_failure {
+                crate::error::AniError::Network
+            } else {
+                crate::error::AniError::Upstream { status: 404 }
+            })?;
     if best_dist > ep_count_threshold(expected) {
         // The airing-part rescue: a candidate whose own year matched
         // Kitsu's and whose list is short is what a currently-airing
@@ -217,23 +189,42 @@ pub async fn pick_candidate<F: AnidbFetch>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, _, confirmed))| *confirmed && eps.len() < expected as usize)
-            .min_by_key(|(_, (_, _, d, _))| *d)
+            .filter(|(_, (_, eps, _, confirmed))| {
+                *confirmed && regular_episode_count(eps) < expected
+            })
+            // Distance first, then the user's own words — the same
+            // dominance winner selection keeps — with provider order
+            // as the final tie (min_by_key keeps the first of
+            // equals).
+            .min_by_key(|(_, (h, _, d, _))| (*d, h.title.trim().to_lowercase() != needle))
             .map(|(i, _)| i)
         {
+            let (h, _, _, c) = &probed_ok[idx];
+            let rescue_rank = identity_rank(h.title.trim().to_lowercase() == needle, *c);
+            if dead_outranks(best_failed, rescue_rank, positions[idx]) {
+                // An identity-bearing candidate died unheard; the
+                // rescue must not outrank it on weather.
+                return Err(crate::error::AniError::Network);
+            }
             let (hit, episodes, _, _) = probed_ok.swap_remove(idx);
             return Ok(PickedShow {
                 hit: hit.clone(),
                 episodes,
             });
         }
+        // A rejection is only a clean verdict when every candidate
+        // got to answer: a transiently dead probe may have hidden
+        // the right show, and NoResults rides the walk into a
+        // persistable clean miss. Weather stays weather.
+        if any_transport_failure {
+            return Err(crate::error::AniError::Network);
+        }
         return Err(crate::error::AniError::NoResults);
     }
-    let winner_idx = probed_ok
-        .iter()
-        .position(|(h, _, d, _)| *d == best_dist && h.title.trim().to_lowercase() == needle)
-        .or_else(|| probed_ok.iter().position(|(_, _, d, _)| *d == best_dist))
-        .expect("best_dist came from this list");
+    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
+    if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
+        return Err(crate::error::AniError::Network);
+    }
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
     Ok(PickedShow {
         hit: hit.clone(),

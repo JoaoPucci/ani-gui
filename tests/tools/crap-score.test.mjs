@@ -153,3 +153,34 @@ test('--json names the file at the p95 boundary', () => {
 		'and that row must be reachable in `top` at its own rank'
 	);
 });
+
+/** A record carrying real per-line DA data alongside its summary. */
+function lcovRecordWithDa(file, daHits, LF, LH) {
+	const da = daHits.map((c, i) => `DA:${i + 1},${c}`);
+	return ['TN:', `SF:${file}`, ...da, `LF:${LF}`, `LH:${LH}`, 'end_of_record'].join('\n');
+}
+
+test('per-line DA data outranks a disagreeing LF/LH summary', () => {
+	// Captured live from a ratchet run: the runner's toolchain emitted
+	// LH=96 for a record whose 139 DA lines all show hits. The summary
+	// under-reports, the penalty term invents uncovered lines that do
+	// not exist, and a fully covered file reads as high-risk. Per-line
+	// data is the ground truth; the summary is only a fallback for
+	// records that carry no DA lines at all.
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-da-'));
+	const xml = ['<root><cppncss><measure type="Function">', lizardItem('src/d.rs', 6), '</measure></cppncss></root>'].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'lizard.xml'), xml);
+	fs.writeFileSync(
+		path.join(tmpDir, 'lcov.info'),
+		lcovRecordWithDa('src/d.rs', [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 10, 5)
+	);
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8',
+			input: fs.readFileSync(path.join(tmpDir, 'lizard.xml'), 'utf-8')
+		})
+	);
+	assert.equal(out.top[0].cov, 100, 'ten DA lines, ten hits: the file is fully covered');
+	assert.equal(out.top[0].crap, 6, 'full coverage leaves only the bare complexity');
+});

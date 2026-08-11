@@ -119,8 +119,14 @@ pub fn select_first_with_hits_opt(
     expected_year: Option<u32>,
     mode: &str,
 ) -> (String, usize) {
-    let (title, idx, _) =
-        select_first_with_hits_with_candidate(primary, results, expected, expected_year, mode);
+    let (title, idx, _) = select_first_with_hits_with_candidate(
+        primary,
+        results,
+        expected,
+        expected_year,
+        mode,
+        None,
+    );
     (title, idx)
 }
 
@@ -138,11 +144,31 @@ pub fn select_first_with_hits_with_candidate(
     expected: Option<u32>,
     expected_year: Option<u32>,
     mode: &str,
+    subtype: Option<&str>,
 ) -> (String, usize, Option<Candidate>) {
     for (title, cands) in results {
         if cands.is_empty() {
             continue;
         }
+        // Format disproof first, sharing the native picker's
+        // predicate: count and year cannot separate one video from
+        // another, and the tag is already on the candidate. Indices
+        // survive through `compat` because the returned pick is
+        // 1-based into the script's own search list.
+        let compat: Vec<usize> = (0..cands.len())
+            .filter(|&i| {
+                super::play_native_format::format_compatible(
+                    cands[i].show_type.as_deref(),
+                    expected,
+                    subtype,
+                )
+            })
+            .collect();
+        if compat.is_empty() {
+            continue;
+        }
+        let pool: Vec<Candidate> = compat.iter().map(|&i| cands[i].clone()).collect();
+        let cands = &pool;
         let pick = match expected {
             // Picker may explicitly reject the pool (year mismatch
             // or ep-count distance over the tolerance) — when it
@@ -167,8 +193,9 @@ pub fn select_first_with_hits_with_candidate(
         // `pick` is 1-based; clamp into the slice in case
         // pick_by_ep_count ever returns out-of-bounds (defence in
         // depth — its current contract is 1..=len).
-        let idx0 = pick.saturating_sub(1).min(cands.len() - 1);
-        return (title.clone(), pick, Some(cands[idx0].clone()));
+        let pool_idx0 = pick.saturating_sub(1).min(cands.len() - 1);
+        let idx0 = compat[pool_idx0];
+        return (title.clone(), idx0 + 1, Some(pool[pool_idx0].clone()));
     }
     (primary.to_string(), 1, None)
 }
@@ -221,6 +248,34 @@ mod tests {
             available_episodes: AvailableEpisodes { sub, dub: 0 },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_movie_candidate_cannot_carry_a_special_expectation() {
+        // The single-video collision: count and year cannot separate
+        // a Movie from the Special the user clicked — both are one
+        // video — and only the format tag tells them apart. The
+        // subprocess paths (download, external player, Syncplay) all
+        // pick through here, with the subtype the frontend now
+        // supplies on every payload; ignoring it selects the wrong
+        // format exactly where the native picker already refuses to.
+        let movie = Candidate {
+            show_type: Some("Movie".into()),
+            ..cand("the-film", 1)
+        };
+        let results = vec![("Primary".to_string(), vec![movie])];
+        let (_, _, chosen) = select_first_with_hits_with_candidate(
+            "Primary",
+            &results,
+            Some(1),
+            None,
+            "sub",
+            Some("special"),
+        );
+        assert!(
+            chosen.is_none(),
+            "a Movie cannot satisfy a Special expectation"
+        );
     }
 
     fn cand_with_year_local(id: &str, sub: u32, year: Option<u32>) -> Candidate {
@@ -366,8 +421,14 @@ mod tests {
             "Naruto Shippuuden".into(),
             vec![cand("KO_GAKUEN", 1), cand("NARUTO_SHIPPUUDEN", 500)],
         )];
-        let (title, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(500), None, "sub");
+        let (title, pick, chosen) = select_first_with_hits_with_candidate(
+            "Primary",
+            &results,
+            Some(500),
+            None,
+            "sub",
+            None,
+        );
         assert_eq!(title, "Naruto Shippuuden");
         assert_eq!(pick, 2);
         assert_eq!(chosen.expect("candidate").id, "NARUTO_SHIPPUUDEN");
@@ -377,7 +438,7 @@ mod tests {
     fn with_candidate_returns_none_when_every_list_is_empty() {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), vec![])];
         let (_, _, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub", None);
         assert!(chosen.is_none());
     }
 
@@ -404,6 +465,7 @@ mod tests {
             Some(43),
             Some(1979),
             "sub",
+            None,
         );
         assert!(
             chosen.is_none(),
@@ -427,7 +489,7 @@ mod tests {
         ];
         let results: Vec<(String, Vec<Candidate>)> = vec![("Show".into(), cands)];
         let (_, _, chosen) =
-            select_first_with_hits_with_candidate("Show", &results, None, Some(2025), "sub");
+            select_first_with_hits_with_candidate("Show", &results, None, Some(2025), "sub", None);
         assert_eq!(
             chosen.expect("year filter picks the in-range candidate").id,
             "right",
@@ -454,6 +516,7 @@ mod tests {
             Some(43),
             Some(1979),
             "sub",
+            None,
         );
         assert_eq!(
             title, "Kidou Senshi Gundam",
@@ -474,7 +537,7 @@ mod tests {
         let results: Vec<(String, Vec<Candidate>)> = vec![("alt".into(), one)];
         // Force pick=1 via expected == 1 (closest match).
         let (_, pick, chosen) =
-            select_first_with_hits_with_candidate("Primary", &results, Some(1), None, "sub");
+            select_first_with_hits_with_candidate("Primary", &results, Some(1), None, "sub", None);
         assert_eq!(pick, 1);
         assert_eq!(chosen.expect("candidate").id, "only");
     }
@@ -501,7 +564,7 @@ mod tests {
                 .map(|i| (format!("title-{i}"), Vec::<Candidate>::new()))
                 .collect();
             let (title, pick, chosen) =
-                select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub");
+                select_first_with_hits_with_candidate("Primary", &results, Some(12), None, "sub", None);
             proptest::prop_assert_eq!(title, "Primary");
             proptest::prop_assert_eq!(pick, 1);
             proptest::prop_assert!(chosen.is_none());
@@ -547,7 +610,7 @@ mod tests {
             }
 
             let (title, pick, chosen) = select_first_with_hits_with_candidate(
-                "Primary", &results, Some(expected), None, "sub",
+                "Primary", &results, Some(expected), None, "sub", None,
             );
 
             // Three cases now that the picker may reject a pool:

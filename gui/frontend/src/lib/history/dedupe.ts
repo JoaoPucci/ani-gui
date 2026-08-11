@@ -92,6 +92,8 @@ export function dedupeHistoryByKitsuId(
  *  good row in the progress comparison. Real ep counts start at 1;
  *  anything ≤ 0 is also defensively low here. */
 function parseEpForProgress(s: string): number {
-	const n = parseInt(s, 10);
+	// parseFloat, not parseInt: the "12.5" recap is more progress
+	// than "12", and the integer parse tied them.
+	const n = parseFloat(s);
 	return Number.isFinite(n) ? n : -1;
 }

@@ -26,7 +26,7 @@ use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
 use crate::error::{AniError, Result};
-use crate::proxy::{upstream, MediaKind};
+use crate::proxy::MediaKind;
 use crate::scraper;
 use crate::scraper::Candidate;
 
@@ -187,8 +187,23 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
+    // ani-hsts speaks the provider's numbering; the offset was
+    // stamped by the fresh resolve that wrote this cache row.
+    let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
-        ep_no: args.episode.clone(),
+        // The row's own slot when it carries one; older rows fall
+        // back to the stamp-aware translation.
+        ep_no: cached.resolved_slot.map_or_else(
+            || {
+                crate::commands::anidb_offset::write_ep_no(
+                    state,
+                    &cached.show_id,
+                    &args.episode,
+                    offset,
+                )
+            },
+            |slot| slot.to_string(),
+        ),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
     };
@@ -235,6 +250,8 @@ pub(super) async fn stamp_availability_after_native(
     args: &PlayArgs,
     available: bool,
     generation_at_start: u64,
+    episode_cap: Option<u32>,
+    extra_tags: &[String],
 ) {
     let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
@@ -245,30 +262,74 @@ pub(super) async fn stamp_availability_after_native(
         &row,
         generation_at_start,
         false,
-        || crate::commands::availability::write_cache(state, id, &args.mode, available),
+        || match episode_cap {
+            // The resolve already paid for the provider's episode
+            // list — the cap is exact FOR SUB, and dropping it would
+            // evict an exact row into episode_count: null for the
+            // whole TTL. A dub resolve only proves the requested
+            // episode has an English embed, so the provider-wide
+            // list must not become an exact (kitsu_id, dub) count —
+            // the dub row stays boolean and self-heals via the next
+            // mode-aware probe. Status is unknown at this call site,
+            // so the row takes the ongoing TTL like the boolean
+            // write.
+            Some(cap) if available && args.mode != "dub" => {
+                crate::commands::availability::write_cache_full(
+                    state,
+                    id,
+                    &args.mode,
+                    None,
+                    &crate::commands::availability::AvailabilityResponse {
+                        available: true,
+                        episode_count: Some(cap),
+                        // Derived from the listing the resolve paid
+                        // for — the same tags a fractional play
+                        // matches against number2, so they outrank
+                        // whatever an older probe stored.
+                        extra_episodes: extra_tags.to_vec(),
+                        episode_count_approximate: false,
+                        gate_refused: false,
+                    },
+                );
+            }
+            _ => crate::commands::availability::write_cache(state, id, &args.mode, available),
+        },
     )
     .await;
 }
 
 /// The production anidb client: the curl-impersonate transport
 /// resolved through the bundled directory then PATH, pointed at the
-/// provider (or the test override).
+/// provider (or the test override), with every request admitted
+/// through the scraper gate at `priority` — the walk fans out into
+/// candidate probes and the episode chain, and each of those is a
+/// provider request the pacing contract covers, not just the search.
 ///
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach the provider by any transport.
-fn anidb_client(
-    state: &AppState,
-) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
-    anidb_client_with_base(state, state.anidb_base.as_deref())
+fn anidb_client<'a>(
+    state: &'a AppState,
+    priority: crate::scraper::gate::ScrapePriority,
+) -> Result<
+    crate::scraper::anidb::AnidbClient<
+        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+    >,
+> {
+    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
 }
 
 /// [`anidb_client`] with an explicit origin override, shared with the
-/// availability probes' test seam.
-pub(super) fn anidb_client_with_base(
-    state: &AppState,
+/// availability and download paths (and their test seams).
+pub(super) fn anidb_client_with_base<'a>(
+    state: &'a AppState,
     base: Option<&str>,
-) -> Result<crate::scraper::anidb::AnidbClient<crate::scraper::anidb::CurlImpersonateFetch>> {
+    priority: crate::scraper::gate::ScrapePriority,
+) -> Result<
+    crate::scraper::anidb::AnidbClient<
+        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+    >,
+> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
@@ -278,6 +339,7 @@ pub(super) fn anidb_client_with_base(
         tracing::error!("no curl binary found for the anidb transport");
         AniError::Network
     })?;
+    let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
     Ok(match base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
@@ -436,6 +498,7 @@ pub(super) async fn pick_title_and_index_with_base(
             args.episode_count,
             args.year,
             mode,
+            args.subtype.as_deref(),
         );
         if c.is_some() {
             chosen_so_far = c;
@@ -542,6 +605,7 @@ where
         &args.episode,
         args.year,
         args.episode_count,
+        args.subtype.as_deref(),
     );
     if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
         if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -579,52 +643,67 @@ where
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     );
-    let client = anidb_client(state)?;
+    let client = anidb_client(state, scrape_priority(args))?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
         episode: &args.episode,
         mode: &args.mode,
+        quality,
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
     let resolve_started_at = tokio::time::Instant::now();
-    let native = crate::commands::play_native_resolve::resolve_native(
+    // Bounded: a provider that accepts connections but stalls every
+    // request must not keep the play pending past the gate's
+    // half-open trial window (see RESOLVE_DEADLINE).
+    let native = crate::commands::play_native_resolve::resolve_native_bounded(
         &client,
-        Some(&state.scraper_gate),
-        scrape_priority(args),
         request,
         &mut on_progress,
     )
     .await;
     // Feed the breaker the resolution's outcome so background traffic
-    // backs off after provider-shaped failures.
-    let outcome = match &native {
-        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
-        // A clean miss is the provider ANSWERING — every search
-        // completed and nothing matched. Only weather (transport,
-        // refusals, rate limits) is distress; counting misses as
-        // failures let a run of uncarried titles brown out all
-        // background traffic.
-        Err(ne) if ne.clean_miss => crate::scraper::gate::ScrapeOutcome::Success,
-        Err(ne) => match ne.error {
-            AniError::RateLimited { retry_after_secs } => {
-                crate::scraper::gate::ScrapeOutcome::RateLimited {
-                    retry_after: retry_after_secs.map(std::time::Duration::from_secs),
-                }
-            }
-            _ => crate::scraper::gate::ScrapeOutcome::Failure,
-        },
-    };
-    state.scraper_gate.record(outcome, resolve_started_at);
+    // backs off after provider-shaped failures — and only those. The
+    // mapping lives in play_native_resolve::breaker_outcome: answered
+    // verdicts (clean misses, absent episodes or audio) are health,
+    // weather is distress.
+    // None = the gate refused before any provider contact; the
+    // breaker only hears about requests that got past it.
+    if let Some(outcome) =
+        crate::commands::play_native_outcome::breaker_outcome(scrape_priority(args), &native)
+    {
+        // Timestamped with the attempt that OBSERVED the outcome,
+        // not the chain's start: the gate's stale filters discard
+        // evidence predating the last recovery, and a long resolve
+        // would otherwise have its fresh 429 thrown away whenever a
+        // concurrent resolve recorded recovery mid-chain. The chain
+        // start remains the fallback for a resolve refused before
+        // any fetch ran.
+        let observed_at = native
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
+            .unwrap_or(resolve_started_at);
+        state.anidb_gate.record(outcome, observed_at);
+    }
     let native = match native {
         Ok(n) => n,
         Err(ne) => {
             if ne.clean_miss {
                 // The one verdict that proves absence — persist it,
                 // guarded against a refresh that answered meanwhile.
-                stamp_availability_after_native(state, args, false, availability_generation).await;
+                stamp_availability_after_native(
+                    state,
+                    args,
+                    false,
+                    availability_generation,
+                    None,
+                    &[],
+                )
+                .await;
             }
             tracing::info!(
                 title = %args.title,
@@ -637,16 +716,51 @@ where
         }
     };
     // A successful resolve is a positive availability fact, same
-    // guard. The episode-cap enrichment joins the availability port
-    // (the native episodes list carries it for free) — plain write
-    // for now, matching the old breaker-open degradation.
-    stamp_availability_after_native(state, args, true, availability_generation).await;
+    // guard — carrying the episode cap the native episodes list
+    // already paid for.
+    stamp_availability_after_native(
+        state,
+        args,
+        true,
+        availability_generation,
+        native.episode_cap,
+        &native.extra_tags,
+    )
+    .await;
+    // Stamp the show's numbering offset while it's known — the
+    // cache-hit and mark-watched writers and the history read
+    // boundary all key on it by slug. Prefetches stamp too: their
+    // resolve is exactly as authoritative.
+    match &native.resolved_tag {
+        // The matched row's display differs from its slot: stamp the
+        // pair so the read boundary and the listing-less writers can
+        // translate between the CLI's slot and the GUI's display.
+        Some(tag)
+            if !crate::commands::play_native_episode::tag_matches(
+                tag,
+                &native.resolved_slot.to_string(),
+            ) =>
+        {
+            crate::commands::anidb_offset::put_display(
+                state,
+                &native.slug,
+                native.numbering_offset,
+                native.resolved_slot,
+                tag,
+            );
+        }
+        _ => crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset),
+    }
     // The subprocess used to write ani-hsts itself on a fresh
     // resolve; natively that write is ours. Prefetches stay out of
-    // the user's history exactly as before.
+    // the user's history exactly as before. ani-hsts speaks the
+    // provider's numbering — ani-cli's reader greps the stored
+    // number in the provider's episode list.
     if !args.prefetch {
         let entry = crate::history::HistoryEntry {
-            ep_no: args.episode.clone(),
+            // The matched row's own slot — exactly what the CLI's
+            // reader greps, whatever space the display tags live in.
+            ep_no: native.resolved_slot.to_string(),
             id: native.slug.clone(),
             title: native.title.clone(),
         };
@@ -660,8 +774,6 @@ where
         }
     }
 
-    // Decide media kind: cheap path-extension first, HEAD fallback
-    // when the URL is opaque (fast4speed.rsvp/<id>/sub/1, etc).
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
         detail: format!("upstream_url: {} is not a valid URL", native.master_url),
     })?;
@@ -670,19 +782,13 @@ where
     // invocation dropped the flag with the provider change.
     let referer = String::new();
 
-    let kind = match MediaKind::from_url(&upstream_url) {
-        Some(k) => k,
-        None => {
-            // HEAD failures fall back to MP4 — that's the safe default
-            // (binary streams, unknown CDNs). The proxy then serves
-            // /file.mp4 with byte-range support; if the upstream truly
-            // is an HLS manifest mislabelled, hls.js never enters the
-            // picture and the renderer surfaces a real error.
-            upstream::classify_via_head(&state.meta_http, &upstream_url, &referer)
-                .await
-                .unwrap_or(MediaKind::Mp4)
-        }
-    };
+    // The resolve already fetched this URL and accepted it only
+    // because its body opens as #EXTM3U — it is definitively HLS,
+    // whatever shape the URL takes and however the CDN answers HEAD.
+    // Re-deriving the kind here misclassified opaque playlist URLs
+    // as MP4 and probed the stream upstream through the metadata
+    // client.
+    let kind = MediaKind::Hls;
     tracing::info!(
         title = %args.title,
         episode = %args.episode,
@@ -704,6 +810,7 @@ where
         media_kind: kind,
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
+        resolved_slot: Some(native.resolved_slot),
     };
     play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
 
@@ -845,6 +952,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -858,6 +966,149 @@ mod tests {
         }
     }
 
+    /// The Codex-flagged gap: when no availability row exists — the
+    /// mount-time probe failed, or the show was never probed — a
+    /// successful play stamped extra_episodes: [], hiding every
+    /// decimal episode for the row's whole TTL. The resolve already
+    /// paid for the provider's full listing, and its fractional
+    /// display tags are exactly what the strip needs to advertise.
+    #[tokio::test]
+    async fn the_exact_cap_stamp_derives_extras_with_no_prior_row() {
+        let state = state_with_proxy_origin();
+        let args = PlayArgs {
+            title: "x".into(),
+            episode: "3".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("42".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            args.kitsu_id.as_deref(),
+            args.mode.as_str(),
+        );
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            generation,
+            Some(1061),
+            &["1061.5".to_string()],
+        )
+        .await;
+        let key = crate::commands::availability::cache_key("42", "sub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.extra_episodes,
+            vec!["1061.5".to_string()],
+            "the stamp must advertise the listing's own fractional tags"
+        );
+        assert_eq!(row.episode_count, Some(1061));
+    }
+
+    /// The listing the stamp derives from is the same one fractional
+    /// plays resolve against, so its tags outrank whatever an older
+    /// probe stored: a stale extra the provider no longer lists is a
+    /// dead tile at play time, and preserving it would keep the
+    /// corpse alive for the row's TTL.
+    #[tokio::test]
+    async fn the_exact_cap_stamp_replaces_stale_extras_with_the_listings() {
+        let state = state_with_proxy_origin();
+        crate::commands::availability::write_cache_full(
+            &state,
+            "42",
+            "sub",
+            None,
+            &crate::commands::availability::AvailabilityResponse {
+                available: true,
+                episode_count: Some(1060),
+                extra_episodes: vec!["999.5".into()],
+                episode_count_approximate: false,
+                gate_refused: false,
+            },
+        );
+        let args = PlayArgs {
+            title: "x".into(),
+            episode: "3".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("42".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            args.kitsu_id.as_deref(),
+            args.mode.as_str(),
+        );
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            generation,
+            Some(1061),
+            &["1061.5".to_string()],
+        )
+        .await;
+        let key = crate::commands::availability::cache_key("42", "sub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.extra_episodes,
+            vec!["1061.5".to_string()],
+            "the freshly derived tags replace the stale cached ones"
+        );
+        assert_eq!(row.episode_count, Some(1061));
+    }
+
+    /// anidb distress must not refuse allanime work, nor allanime
+    /// health clear an anidb pause: the two providers share no
+    /// upstream, so a shared gate lets one manufacture or cancel the
+    /// other's breaker state — an interactive allanime success right
+    /// after an anidb 429 reopens background anidb traffic into the
+    /// advertised window.
+    #[tokio::test]
+    async fn anidb_distress_leaves_the_allanime_gate_open() {
+        let state = state_with_proxy_origin();
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state.anidb_gate.record(
+                crate::scraper::gate::ScrapeOutcome::Failure,
+                tokio::time::Instant::now(),
+            );
+        }
+        assert!(
+            state
+                .anidb_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_err(),
+            "anidb breaker must be open after its own failures"
+        );
+        assert!(
+            state
+                .scraper_gate
+                .admit(crate::scraper::gate::ScrapePriority::Background)
+                .await
+                .is_ok(),
+            "allanime gate must not hear anidb distress"
+        );
+    }
+
     /// Three consecutive clean misses (the show simply isn't in the
     /// catalogue — a fresh Continue Watching rail full of uncarried
     /// titles produces exactly this) must not open the breaker: a
@@ -869,7 +1120,8 @@ mod tests {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string("<html>no cards</html>"),
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
             )
             .mount(&server)
             .await;
@@ -893,7 +1145,7 @@ mod tests {
         }
         assert!(
             state
-                .scraper_gate
+                .anidb_gate
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
@@ -913,7 +1165,44 @@ mod tests {
             media_kind: kind,
             show_id: String::new(),
             show_title: String::new(),
+            resolved_slot: None,
         }
+    }
+
+    #[test]
+    fn cache_hit_history_writes_the_providers_numbering() {
+        // ani-hsts speaks the provider's numbering — ani-cli greps
+        // the stored ep_no in the provider's episode list — so a
+        // Kitsu-relative "1" written for a continuation cour (whose
+        // provider list starts at 41) vanishes from `ani-cli -c`.
+        // The writer adds the offset stamped at resolve time.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.history_path = tmp.path().join("ani-hsts");
+        let mut cached = cached_blank(
+            "https://cdn.example/x/master.m3u8".into(),
+            String::new(),
+            MediaKind::Hls,
+        );
+        cached.show_id = "the-sequel-88".into();
+        cached.show_title = "The Sequel".into();
+        crate::commands::anidb_offset::put(&state, "the-sequel-88", 40);
+        let args = PlayArgs {
+            title: "The Sequel".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        write_history_on_cache_hit(&state, &args, &cached);
+        let rows = crate::history::read_all(&state.history_path).expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].ep_no, "41", "provider numbering, not Kitsu's");
     }
 
     #[tokio::test]
@@ -1029,6 +1318,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            args.subtype.as_deref(),
         );
         play_resolution_cache::put(
             &state.cache_pool,
@@ -1040,6 +1330,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
     }
@@ -1069,6 +1360,49 @@ mod tests {
             "play_with_progress must tag cache-hit responses so the renderer can retry on player error"
         );
         assert_eq!(resp.media_kind, MediaKind::Mp4);
+    }
+
+    /// A still-valid cache row for a fractional extra can outlive
+    /// the sidecar's single (slot, tag) stamp — resolving 1.5 then
+    /// 2.5 replaces the stamp, and the 1.5 replay would fall back
+    /// to the display tag ani-cli cannot grep. The cache row itself
+    /// carries the resolved slot, so the replay writes it directly.
+    #[test]
+    fn cache_hit_history_writes_the_cached_slot() {
+        let state = state_with_proxy_origin();
+        let td = tempfile::tempdir().expect("tempdir");
+        let mut state = state;
+        state.history_path = td.path().join("ani-hsts");
+        let args = PlayArgs {
+            title: "Recap Show".into(),
+            episode: "3.5".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        let mut cached = cached_blank(
+            "https://u.example/x.mp4".into(),
+            String::new(),
+            MediaKind::Mp4,
+        );
+        cached.show_id = "recap-show-7".into();
+        cached.show_title = "Recap Show".into();
+        cached.resolved_slot = Some(4);
+        write_history_on_cache_hit(&state, &args, &cached);
+        let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
+        assert!(
+            body.contains("\t4\t") || body.starts_with("4\t"),
+            "the replay must write the cached slot, not the display tag; got {body:?}"
+        );
+        assert!(
+            !body.contains("3.5"),
+            "the display tag must not reach the shared file; got {body:?}"
+        );
     }
 
     /// Same shape, but with a non-empty referer + show_id — exercises
@@ -1130,6 +1464,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
@@ -1204,6 +1539,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         assert!(
             play_resolution_cache::get(&state.cache_pool, &key)
@@ -1233,6 +1569,7 @@ mod tests {
             &args.episode,
             args.year,
             args.episode_count,
+            None,
         );
         play_resolution_cache::put(
             &state.cache_pool,
@@ -1244,6 +1581,7 @@ mod tests {
                 media_kind: MediaKind::Mp4,
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
+                resolved_slot: None,
             },
         );
         let cfg = external_cfg();
@@ -1626,7 +1964,7 @@ mod tests {
         crate::commands::availability::write_cache(&state, "race-1", "sub", true);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, generation).await;
+        stamp_availability_after_native(&state, &args, false, generation, None, &[]).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -1639,6 +1977,88 @@ mod tests {
             cached.cached.get("race-1"),
             Some(&true),
             "the refresh's answer must survive the stale stamp"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_native_success_stamp_persists_the_resolved_cap() {
+        // The resolve already paid for the provider's episode list;
+        // a boolean-only stamp evicts an exact availability row into
+        // episode_count: null, so home resume and episode prefetch
+        // fall back to Kitsu's announced total for the row's whole
+        // TTL and target episodes the provider has not listed.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Cap Show".into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("cap-1".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("cap-1"),
+            "sub",
+        );
+        stamp_availability_after_native(&state, &args, true, generation, Some(2), &[]).await;
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["cap-1".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("cap-1"), Some(&true));
+        assert_eq!(
+            cached.playable_episode_counts.get("cap-1"),
+            Some(&2),
+            "the resolved cap must survive the stamp"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dub_success_stamp_keeps_the_cap_out_of_the_row() {
+        // picked.episodes is the provider-wide list: a dub resolve
+        // only proves the REQUESTED episode has an English embed.
+        // Persisting the total-list cap as an exact (kitsu_id, dub)
+        // count makes undubbed later episodes look playable for the
+        // row's whole TTL. The dub stamp stays boolean-only; the
+        // count self-heals via the next mode-aware probe.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Dub Show".into(),
+            episode: "1".into(),
+            mode: "dub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("dub-1".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("dub-1"),
+            "dub",
+        );
+        stamp_availability_after_native(&state, &args, true, generation, Some(12), &[]).await;
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["dub-1".into()],
+                mode: "dub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("dub-1"), Some(&true));
+        assert!(
+            !cached.playable_episode_counts.contains_key("dub-1"),
+            "the provider-wide cap must not become an exact dub count"
         );
     }
 

@@ -27,6 +27,15 @@ pub trait AnidbFetch: Send + Sync {
     /// [`AniError::Network`] on spawn/transport failure,
     /// [`AniError::Timeout`] when the request exceeds its deadline.
     async fn get(&self, url: &str) -> Result<FetchResponse>;
+
+    /// The post-admission start of this transport's most recent
+    /// attempt, when the transport tracks one (the gated production
+    /// transport does). The walk stamps aggregate failure verdicts
+    /// with it so a fetch that began before a concurrent recovery
+    /// never reads as post-recovery evidence.
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
 }
 
 /// Production transport: a curl-impersonate binary spawned per
@@ -34,26 +43,67 @@ pub trait AnidbFetch: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct CurlImpersonateFetch {
     exe: PathBuf,
+    deadline: std::time::Duration,
+}
+
+/// Executable-name suffixes the platform's binaries carry. Windows
+/// ships `curl.exe` and `curl_chrome136.exe`; the bare name stays
+/// first everywhere so a suffixless shim wins where both exist.
+/// Deliberately narrower than `PATHEXT`: the resolver hunts real curl
+/// executables, and a `.bat`/`.cmd` entry resolved through the wider
+/// table would name something the spawn cannot treat as curl.
+#[cfg(windows)]
+const EXE_SUFFIXES: &[&str] = &["", ".exe"];
+#[cfg(not(windows))]
+const EXE_SUFFIXES: &[&str] = &[""];
+
+/// Every filename `name` may carry given the platform's suffix table,
+/// bare name first.
+pub(crate) fn candidate_names(name: &str, suffixes: &[&str]) -> Vec<String> {
+    suffixes.iter().map(|s| format!("{name}{s}")).collect()
 }
 
 impl CurlImpersonateFetch {
-    /// Walk [`CURL_FAILOVER`] across `extra_dir` (the bundled-binary
-    /// directory, when packaging ships one) and then the given PATH
-    /// string, returning the first executable found — the same
-    /// preference order as the script's `dep_ch_failover`.
+    /// Resolve the transport binary: the whole [`CURL_FAILOVER`] list
+    /// is exhausted in `extra_dir` (the bundled-binary directory,
+    /// when packaging ships one) before PATH is consulted at all —
+    /// any bundled name outranks every system install, since the
+    /// bundle is the transport the package validated. Within each
+    /// location the script's `dep_ch_failover` name order decides,
+    /// widened by the platform's executable suffixes.
     pub fn resolve(extra_dir: Option<&Path>, path_env: &str) -> Option<Self> {
-        for name in CURL_FAILOVER {
-            for file in Self::filenames_for(name) {
-                if let Some(dir) = extra_dir {
+        Self::resolve_with_suffixes(extra_dir, path_env, EXE_SUFFIXES)
+    }
+
+    /// [`Self::resolve`] with the suffix table explicit, so the
+    /// Windows arm is exercisable from any platform's tests.
+    pub(crate) fn resolve_with_suffixes(
+        extra_dir: Option<&Path>,
+        path_env: &str,
+        suffixes: &[&str],
+    ) -> Option<Self> {
+        if let Some(dir) = extra_dir {
+            for name in CURL_FAILOVER {
+                for file in candidate_names(name, suffixes) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
-                        return Some(Self { exe: candidate });
+                        return Some(Self {
+                            exe: candidate,
+                            deadline: FETCH_TIMEOUT,
+                        });
                     }
                 }
+            }
+        }
+        for name in CURL_FAILOVER {
+            for file in candidate_names(name, suffixes) {
                 for dir in std::env::split_paths(path_env) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
-                        return Some(Self { exe: candidate });
+                        return Some(Self {
+                            exe: candidate,
+                            deadline: FETCH_TIMEOUT,
+                        });
                     }
                 }
             }
@@ -61,21 +111,20 @@ impl CurlImpersonateFetch {
         None
     }
 
-    /// The on-disk filenames a failover name can appear under.
-    /// Windows suffixes its executables, so a plain `curl` in the
-    /// list must also match `curl.exe` — the only name the system
-    /// curl actually ships under there.
-    fn filenames_for(name: &str) -> Vec<String> {
-        if cfg!(windows) {
-            vec![name.to_string(), format!("{name}.exe")]
-        } else {
-            vec![name.to_string()]
-        }
-    }
-
     /// The resolved executable, for logging and diagnostics.
     pub fn exe(&self) -> &Path {
         &self.exe
+    }
+
+    /// Replace the outer deadline — the seam the hang test drives;
+    /// production keeps [`FETCH_TIMEOUT`] from resolution. Gated to
+    /// the platform that drives it: the hang test stages a shell
+    /// stub, so on Windows the seam would be dead code under
+    /// -D warnings.
+    #[cfg(all(test, unix))]
+    pub(crate) fn with_deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.deadline = deadline;
+        self
     }
 }
 
@@ -98,27 +147,76 @@ fn is_executable(path: &Path) -> bool {
 /// script's own `--max-time 10` so curl reports its timeout first.
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// The script's Darwin cipher pinning (its `ciphers`/`tls13_ciphers`
+/// globals, applied by the Darwin arm of its platform case): macOS
+/// curl builds negotiate default suites the provider's TLS
+/// fingerprinting rejects. Everywhere else the impersonate build's
+/// own defaults ARE the fingerprint, so no flags are added.
+#[cfg(target_os = "macos")]
+const CIPHER_ARGS: &[&str] = &[
+    "--ciphers",
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
+    "--tls13-ciphers",
+    "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256",
+];
+#[cfg(not(target_os = "macos"))]
+const CIPHER_ARGS: &[&str] = &[];
+
 #[async_trait::async_trait]
 impl AnidbFetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
         // `-w` appends the status after the body; the last line is
         // split back off. Mirrors the script's anidb_curl flags.
         let mut cmd = tokio::process::Command::new(&self.exe);
-        cmd.arg("-sL")
+        // §5's subprocess environment: nothing the child prints may
+        // depend on the terminal that launched the backend.
+        cmd.env("TERM", "dumb")
+            .env("NO_COLOR", "1")
+            // First, where curl honors it: a user's ~/.curlrc can
+            // redirect the output or append transfers, and this code
+            // parses the body.
+            .arg("-q")
+            .arg("-sL")
             .arg("-A")
             .arg(IMPERSONATE_AGENT)
             .arg("--max-time")
             .arg("10")
+            .args(CIPHER_ARGS)
             .arg("-w")
             .arg("\n%{http_code}")
             .arg(url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
-        let output = tokio::time::timeout(FETCH_TIMEOUT, cmd.output())
-            .await
-            .map_err(|_| AniError::Timeout)?
-            .map_err(|_| AniError::Network)?;
+            .stderr(std::process::Stdio::null())
+            // §5's subprocess rule: when the deadline drops the
+            // output() future, the child goes with it instead of
+            // surviving as an orphan for its full hang.
+            .kill_on_drop(true);
+        // ETXTBSY is transient by construction — a fork elsewhere in
+        // the process still holds the executable's write fd (the auto
+        // -updater re-staging a binary; the test suite staging stubs)
+        // — so a bounded retry outlives the writer where an immediate
+        // Network error would report weather as a typed failure.
+        let mut busy_retries = 0u32;
+        let output = loop {
+            match tokio::time::timeout(self.deadline, cmd.output()).await {
+                Err(_) => return Err(AniError::Timeout),
+                Ok(Ok(out)) => break out,
+                Ok(Err(e))
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy && busy_retries < 10 =>
+                {
+                    busy_retries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                }
+                Ok(Err(_)) => return Err(AniError::Network),
+            }
+        };
+        // The -w trailer reports the last HTTP status even when the
+        // transfer then failed, so a nonzero exit means the body is
+        // not to be trusted whatever the trailer parses to.
+        if !output.status.success() {
+            return Err(AniError::Network);
+        }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
         let status: u16 = status_line.trim().parse().map_err(|_| AniError::Network)?;
@@ -132,3 +230,7 @@ impl AnidbFetch for CurlImpersonateFetch {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "fetch_prop_test.rs"]
+mod fetch_prop_tests;

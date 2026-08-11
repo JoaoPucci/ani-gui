@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatTime, progressLabel, skipLabel } from './format';
+import { m } from '$lib/paraglide/messages';
 
 describe('progressLabel', () => {
 	it('returns the banner text for banner events (used as the loading-overlay headline)', () => {
@@ -17,6 +18,20 @@ describe('progressLabel', () => {
 
 	it('passes through "other" event text verbatim', () => {
 		expect(progressLabel({ kind: 'other', text: 'whatever' })).toBe('whatever');
+	});
+
+	it('renders the native searching and matched kinds through Paraglide', () => {
+		// The native resolver fabricates its progress lines, so unlike
+		// the subprocess path (whose banner/other text is the script's
+		// own output, relayed verbatim) these arrive as structured
+		// kinds with interpolation data — the backend must not ship
+		// English copy, and every locale renders its own message.
+		expect(progressLabel({ kind: 'searching', provider: 'anidb.app' })).toBe(
+			m.play_progress_searching({ provider: 'anidb.app' })
+		);
+		expect(progressLabel({ kind: 'matched', title: 'The Show' })).toBe(
+			m.play_progress_matched({ title: 'The Show' })
+		);
 	});
 });
 

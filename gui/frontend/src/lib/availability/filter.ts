@@ -63,6 +63,7 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 			episode_count: i.episode_count ?? undefined,
 			year: yearFromKitsuRef(i) ?? undefined,
 			kitsu_id: i.id,
+			subtype: i.subtype ?? undefined,
 			status: i.status ?? undefined
 		}));
 	if (toWarm.length > 0) {

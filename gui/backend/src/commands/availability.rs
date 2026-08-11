@@ -60,8 +60,10 @@ pub struct AvailabilityArgs {
     /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
-    /// Kitsu's subtype, forwarded to the picker's format disproof so
-    /// availability verdicts agree with what play would pick.
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`),
+    /// when the caller has it — the same format disproof the play
+    /// and download pickers apply, so availability cannot cache a
+    /// different candidate than they would select.
     #[serde(default)]
     pub subtype: Option<String>,
     /// Kitsu id — cache key. When omitted (legacy callers), the
@@ -335,17 +337,15 @@ pub(crate) async fn check_availability_with_base(
     // back exact and free — the second detail fetch, its gate-refused
     // fallback and the approximate-count provenance all retire with
     // the provider.
-    let client = anidb_client_with_base(state, anidb_base)?;
     let prio = if args.background {
         crate::scraper::gate::ScrapePriority::Background
     } else {
         crate::scraper::gate::ScrapePriority::Interactive
     };
+    let client = anidb_client_with_base(state, anidb_base, prio)?;
     let walk_started_at = tokio::time::Instant::now();
     let picked = pick_native_walk(
         &client,
-        Some(&state.scraper_gate),
-        prio,
         &args.title,
         &args.alt_titles,
         args.episode_count,
@@ -353,15 +353,25 @@ pub(crate) async fn check_availability_with_base(
         args.subtype.as_deref(),
     )
     .await;
-    let outcome = match &picked {
-        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
-        Err(_) => crate::scraper::gate::ScrapeOutcome::Failure,
-    };
-    state.scraper_gate.record(outcome, walk_started_at);
+    // Feed the anidb breaker the walk's outcome under the same
+    // mapping the play path uses: answered verdicts (including the
+    // clean miss) are health, weather is distress, and a gate
+    // refusal records nothing. Timestamped with the attempt that
+    // observed the outcome so a walk that began before a concurrent
+    // recovery never reads as post-recovery evidence.
+    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &picked) {
+        let observed_at = picked
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
+            .unwrap_or(walk_started_at);
+        state.anidb_gate.record(outcome, observed_at);
+    }
     let (available, episode_count) = match picked {
         Ok(p) => (
             true,
-            crate::commands::play_native_resolve::kitsu_episode_cap(&p.episodes),
+            crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
         ),
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below.
@@ -912,8 +922,8 @@ mod tests {
             mode: "sub".into(),
             alt_titles: Vec::new(),
             episode_count: None,
-            subtype: None,
             year: None,
+            subtype: None,
             kitsu_id: None,
             status: None,
             background: false,
@@ -1086,6 +1096,7 @@ mod tests {
             botan_shim_bin: None,
             history_path: td.path().join("ani-hsts"),
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -1671,14 +1682,15 @@ mod tests {
     #[tokio::test]
     async fn background_probe_skips_the_network_while_the_breaker_is_open() {
         // Once the breaker is open, a background probe must not touch
-        // allanime at all — it surfaces the same transient Network
-        // error as an all-errored search, and the row stays unwritten.
+        // the provider at all — the gated transport refuses before
+        // any request, the typed refusal surfaces, and the row stays
+        // unwritten.
         let server = wiremock::MockServer::start().await;
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .scraper_gate
+                .anidb_gate
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1689,7 +1701,7 @@ mod tests {
         }))
         .expect("args");
         let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
-        assert!(matches!(got, Err(crate::error::AniError::Network)));
+        assert!(matches!(got, Err(crate::error::AniError::GateRefused)));
         assert!(
             server
                 .received_requests()
@@ -1845,5 +1857,24 @@ mod tests {
             serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
         assert!(!parsed.episode_count_approximate);
         assert!(cache_hit_is_usable(&parsed));
+    }
+}
+
+#[cfg(test)]
+mod subtype_args_tests {
+    use super::*;
+
+    #[test]
+    fn availability_args_carry_the_callers_subtype() {
+        // The synthesized PlayArgs dropped subtype, so availability
+        // accepted the first format where Movie, Special and OVA
+        // candidates tie on title, year and count — caching the
+        // wrong candidate's availability and cap while play and
+        // download select or reject a different entry. The wire
+        // field is optional: probes without a subtype stay valid.
+        let args: AvailabilityArgs =
+            serde_json::from_str(r#"{"title":"x","mode":"sub","subtype":"special"}"#)
+                .expect("optional subtype deserializes");
+        assert_eq!(args.subtype.as_deref(), Some("special"));
     }
 }

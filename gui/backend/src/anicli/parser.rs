@@ -61,6 +61,22 @@ pub enum ProgressLine {
         /// The original line, ANSI-stripped and trimmed.
         text: String,
     },
+    /// The native resolver started searching a provider. A
+    /// structured kind rather than a Banner: the subprocess path
+    /// relays the script's own output verbatim, but the native walk
+    /// FABRICATES its lines, and fabricated English is the backend
+    /// returning localized strings — the renderer owns the copy and
+    /// interpolates the provider.
+    Searching {
+        /// Provider label (`anidb.app`).
+        provider: String,
+    },
+    /// The native resolver picked a show. The renderer interpolates
+    /// the title into its own localized copy.
+    Matched {
+        /// The picked show's display title.
+        title: String,
+    },
 }
 
 /// Classify a single (already ANSI-stripped) line of `ani-cli` stderr

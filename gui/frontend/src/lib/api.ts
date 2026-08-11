@@ -494,6 +494,12 @@ export interface PlayArgs {
 	 *  allmanga title. Optional; missing on legacy click sites that
 	 *  haven't been updated yet. */
 	kitsu_id?: string;
+	/** Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
+	 *  The backend keys its play-resolution cache on it — a
+	 *  franchise's movie and TV entry can share every other axis —
+	 *  and the native picker uses it as format disproof against the
+	 *  provider's browse-card badges. Kitsu can return null. */
+	subtype?: string | null;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -548,7 +554,9 @@ export function markWatched(args: PlayArgs): Promise<void> {
 export type PlayProgress =
 	| { kind: 'banner'; text: string }
 	| { kind: 'links_fetched'; provider: string }
-	| { kind: 'other'; text: string };
+	| { kind: 'other'; text: string }
+	| { kind: 'searching'; provider: string }
+	| { kind: 'matched'; title: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
  *  caller hears `<provider> Links Fetched` events as ani-cli emits
@@ -580,6 +588,8 @@ export function playStream(
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
+	if (args.subtype) params.set('subtype', args.subtype);
+	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	// alt_titles is a Vec<String> on the backend. serde_urlencoded can't
 	// decode that from repeated keys, so we join with `\n` and the
 	// backend's custom deserializer splits on the same separator.
@@ -664,6 +674,9 @@ export interface DownloadArgs {
 	quality?: string;
 	episode_count?: number;
 	year?: number;
+	/** Kitsu's subtype — same format-disproof signal
+	 *  {@link PlayArgs.subtype} carries on the play path. */
+	subtype?: string | null;
 	alt_titles?: string[];
 	kitsu_id?: string;
 	download_dir?: string;
@@ -704,6 +717,7 @@ export function downloadStream(
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
+	if (args.subtype) params.set('subtype', args.subtype);
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
@@ -781,6 +795,11 @@ export interface AvailabilityArgs {
 	episode_count?: number;
 	year?: number;
 	kitsu_id?: string;
+	/** Kitsu's subtype ("TV", "movie", "special", "OVA", "ONA") when
+	 *  the surface has it. The probe applies the same format disproof
+	 *  play and download use; without it a Movie/Special/OVA
+	 *  collision caches the wrong candidate's availability and cap. */
+	subtype?: string | null;
 	/** Kitsu's airing status — one of "current", "finished",
 	 *  "upcoming", "tba", "unreleased". Branches the positive cache
 	 *  TTL: ongoing shows refresh in 24h, finished in 30d. Optional;

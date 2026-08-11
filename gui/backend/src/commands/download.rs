@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::commands::play::anidb_client_with_base;
-use crate::commands::play_native_resolve::{resolve_native, NativeResolveRequest};
+use crate::commands::play_native_resolve::{resolve_native_bounded, NativeResolveRequest};
 use crate::error::{AniError, Result};
 
 /// Wire payload for the download endpoint. A near-clone of [`PlayArgs`]
@@ -40,7 +40,9 @@ pub struct DownloadArgs {
     /// to the picker as the year tie-break; see [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
-    /// Kitsu's subtype, for the picker's format disproof.
+    /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`) —
+    /// the same format-disproof signal [`PlayArgs::subtype`] carries
+    /// on the play path.
     #[serde(default)]
     pub subtype: Option<String>,
     /// Fallback titles tried when the canonical title returns no
@@ -110,12 +112,16 @@ where
     // keep stderr quiet mid-transfer, so no shorter timeout can be
     // informed by progress.
     let quality = args.quality.as_deref().unwrap_or("best");
-    let client = anidb_client_with_base(state, state.anidb_base.as_deref())?;
+    // Downloads are always a user waiting at the dock — interactive
+    // priority, like the play path's non-prefetch requests.
+    let prio = crate::scraper::gate::ScrapePriority::Interactive;
+    let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
         episode: &args.episode,
         mode: &args.mode,
+        quality,
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
@@ -128,25 +134,34 @@ where
             crate::anicli::parser::ProgressLine::LinksFetched { provider } => {
                 format!("{provider} links fetched")
             }
+            crate::anicli::parser::ProgressLine::Searching { provider } => {
+                format!("Searching {provider}...")
+            }
+            crate::anicli::parser::ProgressLine::Matched { title } => {
+                format!("Matched {title}")
+            }
         };
         on_progress(DownloadProgress { line: text });
     };
-    let resolved = resolve_native(
-        &client,
-        Some(&state.scraper_gate),
-        crate::scraper::gate::ScrapePriority::Interactive,
-        request,
-        &mut forward,
-    )
-    .await;
-    // Resolution and transfer are separate stages now, so the gate
+    // Bounded like the play path: a provider that accepts connections
+    // but stalls must not pin the resolve past the gate's half-open
+    // trial window. The hour-long deadline below covers the transfer
+    // alone.
+    let resolved = resolve_native_bounded(&client, request, &mut forward).await;
+    // Resolution and transfer are separate stages now, so the breaker
     // learns from the fresh resolution outcome alone — the stale
-    // whole-run signal the subprocess forced is gone.
-    let outcome = match &resolved {
-        Ok(_) => crate::scraper::gate::ScrapeOutcome::Success,
-        Err(_) => crate::scraper::gate::ScrapeOutcome::Failure,
-    };
-    state.scraper_gate.record(outcome, resolve_started_at);
+    // whole-run signal the subprocess forced is gone. Same mapping
+    // as play: answered verdicts are health, weather is distress, a
+    // gate refusal records nothing.
+    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &resolved) {
+        let observed_at = resolved
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.transport().last_attempt_at())
+            .unwrap_or(resolve_started_at);
+        state.anidb_gate.record(outcome, observed_at);
+    }
     let resolved = resolved.map_err(|ne| ne.error)?;
 
     tracing::info!(
@@ -536,8 +551,8 @@ mod tests {
             mode: "sub".into(),
             quality: None,
             episode_count: None,
-            subtype: None,
             year: None,
+            subtype: None,
             alt_titles: vec![],
             kitsu_id: None,
             download_dir: Some("/tmp/explicit".into()),

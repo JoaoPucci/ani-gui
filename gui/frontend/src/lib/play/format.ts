@@ -18,6 +18,10 @@ export function progressLabel(p: PlayProgress): string {
 			return `${p.provider} ✓`;
 		case 'other':
 			return p.text;
+		case 'searching':
+			return m.play_progress_searching({ provider: p.provider });
+		case 'matched':
+			return m.play_progress_matched({ title: p.title });
 	}
 }
 

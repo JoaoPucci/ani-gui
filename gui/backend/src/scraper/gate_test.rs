@@ -6,6 +6,39 @@
 use super::*;
 
 #[tokio::test(start_paused = true)]
+async fn a_trial_chain_keeps_its_sanction_across_admits() {
+    // A native resolve is a CHAIN of provider requests, each with its
+    // own admission. The half-open trial must sanction the whole
+    // chain: the first admit takes the trial and hands back the
+    // sanction, everyone else stays refused while it is outstanding,
+    // and the holder's further admits pass by presenting it —
+    // otherwise the chain's second fetch is refused, its failure is
+    // recorded, and the breaker re-opens on its own refusal.
+    let gate = ScraperGate::new();
+    for _ in 0..FAILURE_THRESHOLD {
+        gate.record(ScrapeOutcome::Failure, Instant::now());
+    }
+    tokio::time::sleep(BREAKER_COOLDOWN + Duration::from_secs(1)).await;
+    let sanction = gate
+        .admit_chained(ScrapePriority::Background, None)
+        .await
+        .expect("the cooled-down breaker grants one trial");
+    assert!(sanction.is_some(), "the trial admit hands back a sanction");
+    assert!(
+        gate.admit_chained(ScrapePriority::Background, None)
+            .await
+            .is_err(),
+        "everyone else stays refused while the trial is outstanding"
+    );
+    assert!(
+        gate.admit_chained(ScrapePriority::Background, sanction)
+            .await
+            .is_ok(),
+        "the sanction holder's chain continues"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn first_background_admit_is_immediate() {
     let gate = ScraperGate::new();
     let t0 = Instant::now();

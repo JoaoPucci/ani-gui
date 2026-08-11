@@ -83,6 +83,11 @@ pub struct AppState {
     /// probes and breaks the circuit on consecutive failures so cold
     /// caches can't rate-limit the IP out from under a user's click.
     pub scraper_gate: Arc<crate::scraper::gate::ScraperGate>,
+    /// The anidb provider's own pacing + breaker. Separate from the
+    /// allanime gate above: the providers share no upstream, and a
+    /// shared gate lets one manufacture or cancel the other's
+    /// breaker state.
+    pub anidb_gate: Arc<crate::scraper::gate::ScraperGate>,
     /// On-disk image-cache directory served by the `image://` protocol.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
@@ -194,6 +199,7 @@ impl AppState {
             allanime_base: None,
             anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir,
             cache_pool,
             kitsu,
@@ -412,6 +418,7 @@ mod tests {
             allanime_base: None,
             anidb_base: None,
             scraper_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),

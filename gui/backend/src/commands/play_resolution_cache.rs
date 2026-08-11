@@ -81,6 +81,10 @@ use crate::proxy::MediaKind;
 // v7: the provider moved to anidb — upstream URLs, show ids (now
 // slugs) and titles from the allanime era are all unreplayable, so
 // every v6 row becomes an unreachable miss.
+// v12: subtype joined the key axes. v11 rows were keyed subtype-blind
+// while the picker consumed it, so two one-video entries differing
+// only by Kitsu format shared a row and the second served the first's
+// stream with no disproof run.
 // v11: the picker gained the subtype disproof — Kitsu's subtype now
 // rejects format-mismatched candidates (a movie badge against a
 // non-movie subtype). A v10 row resolved by the subtype-blind picker
@@ -97,7 +101,7 @@ use crate::proxy::MediaKind;
 // resolved by the old picker can hold a different show's stream
 // (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
 // keep serving it instantly; bumping re-resolves.
-const SCHEMA: &str = "v11";
+const SCHEMA: &str = "v12";
 
 /// What ani-cli's debug output produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -125,6 +129,13 @@ pub struct CachedResolution {
     /// stores in column three. Empty on legacy rows.
     #[serde(default)]
     pub show_title: String,
+    /// The resolved row's provider slot — what the cache-hit history
+    /// writer stores so a replay never depends on the sidecar's
+    /// single display stamp still describing this episode. `None` on
+    /// rows written before the field existed; those fall back to the
+    /// stamp-aware translation.
+    #[serde(default)]
+    pub resolved_slot: Option<u32>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -148,16 +159,20 @@ pub fn cache_key(
     episode: &str,
     year: Option<u32>,
     episode_count: Option<u32>,
+    subtype: Option<&str>,
 ) -> String {
     // `:` is the table convention. The fields don't contain it
-    // (mode/quality are enums, episode is digits), so no escaping
-    // needed for them. Title can contain `:` (Stone Ocean Part 2
-    // canonical has one). It's still unambiguous given the field
-    // count, and serde_json never tries to parse this — it's only a
-    // SQLite text key.
+    // (mode/quality are enums, episode is digits, subtype is Kitsu's
+    // enum). Title can contain `:` (Stone Ocean Part 2 canonical has
+    // one). It's still unambiguous given the field count, and
+    // serde_json never tries to parse this — it's only a SQLite text
+    // key. Subtype is an axis for the same reason year and count are:
+    // the picker consumes it, so entries differing by it must not
+    // share a row.
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}")
+    let s = subtype.unwrap_or("-");
+    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
 }
 
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.
@@ -207,6 +222,71 @@ mod tests {
         open_in_memory().expect("in-memory pool")
     }
 
+    /// One full argument tuple for [`cache_key`], over its real
+    /// domains: titles may carry colons (Stone Ocean Part 2 does),
+    /// every other field is colon-free by construction — the enums,
+    /// digit episodes, and Kitsu subtypes the callers pass.
+    #[allow(clippy::type_complexity)]
+    fn axis() -> impl proptest::strategy::Strategy<
+        Value = (
+            String,
+            String,
+            String,
+            String,
+            Option<u32>,
+            Option<u32>,
+            Option<String>,
+        ),
+    > {
+        (
+            "[a-zA-Z0-9 :'-]{0,16}",
+            proptest::prop_oneof![
+                proptest::strategy::Just("sub".to_string()),
+                proptest::strategy::Just("dub".to_string()),
+            ],
+            proptest::prop_oneof![
+                proptest::strategy::Just("best".to_string()),
+                proptest::strategy::Just("worst".to_string()),
+                proptest::strategy::Just("720".to_string()),
+                proptest::strategy::Just("1080".to_string()),
+            ],
+            "[0-9]{1,4}(\\.[0-9])?",
+            proptest::option::of(0u32..3000),
+            proptest::option::of(0u32..5000),
+            proptest::option::of(proptest::prop_oneof![
+                proptest::strategy::Just("TV".to_string()),
+                proptest::strategy::Just("movie".to_string()),
+                proptest::strategy::Just("OVA".to_string()),
+                proptest::strategy::Just("ONA".to_string()),
+                proptest::strategy::Just("special".to_string()),
+            ]),
+        )
+    }
+
+    proptest::proptest! {
+        /// Determinism and axis separation: two keys agree exactly
+        /// when every axis agrees. Colons in the title cannot forge
+        /// another tuple's key — every non-title field is colon-free,
+        /// so keys with differing colon counts differ as strings and
+        /// keys with equal counts align positionally.
+        #[test]
+        fn keys_are_deterministic_and_separate_every_axis(a in axis(), b in axis()) {
+            let key = |x: &(
+                String,
+                String,
+                String,
+                String,
+                Option<u32>,
+                Option<u32>,
+                Option<String>,
+            )| {
+                cache_key(&x.0, &x.1, &x.2, &x.3, x.4, x.5, x.6.as_deref())
+            };
+            proptest::prop_assert_eq!(key(&a), key(&a));
+            proptest::prop_assert_eq!(key(&a) == key(&b), a == b);
+        }
+    }
+
     fn sample_resolution() -> CachedResolution {
         CachedResolution {
             upstream_url:
@@ -217,23 +297,77 @@ mod tests {
             media_kind: MediaKind::Mp4,
             show_id: "vDTSJHSpYnrkZnAvG".into(),
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
+            resolved_slot: None,
         }
     }
 
     #[test]
     fn cache_key_is_deterministic_for_the_same_inputs() {
-        let a = cache_key("One Piece", "sub", "best", "1", None, None);
-        let b = cache_key("One Piece", "sub", "best", "1", None, None);
+        let a = cache_key("One Piece", "sub", "best", "1", None, None, None);
+        let b = cache_key("One Piece", "sub", "best", "1", None, None, None);
         assert_eq!(a, b);
     }
 
     #[test]
+    fn cache_key_separates_subtypes() {
+        // Subtype changes candidate selection (the movie-vs-special
+        // disproof), so it is a key axis: two one-video entries with
+        // identical other axes but different Kitsu formats must not
+        // share a row, or the second request serves the first entry's
+        // HEAD-valid stream without the disproof ever running.
+        assert_ne!(
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("special")
+            ),
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("movie")
+            ),
+        );
+        assert_ne!(
+            cache_key(
+                "Konoha Gakuen",
+                "sub",
+                "best",
+                "1",
+                None,
+                Some(1),
+                Some("special")
+            ),
+            cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), None),
+        );
+    }
+
+    #[test]
     fn cache_key_differs_across_each_axis() {
-        let base = cache_key("One Piece", "sub", "best", "1", None, None);
-        assert_ne!(cache_key("Naruto", "sub", "best", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "dub", "best", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "sub", "1080", "1", None, None), base);
-        assert_ne!(cache_key("One Piece", "sub", "best", "2", None, None), base);
+        let base = cache_key("One Piece", "sub", "best", "1", None, None, None);
+        assert_ne!(
+            cache_key("Naruto", "sub", "best", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "dub", "best", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "sub", "1080", "1", None, None, None),
+            base
+        );
+        assert_ne!(
+            cache_key("One Piece", "sub", "best", "2", None, None, None),
+            base
+        );
         // Year + ep-count axes — different Kitsu entries sharing a
         // title must map to different keys so the first resolve
         // doesn't poison the row for the other entry.
@@ -244,7 +378,8 @@ mod tests {
                 "best",
                 "1",
                 Some(1979),
-                Some(43)
+                Some(43),
+                None
             ),
             cache_key(
                 "Mobile Suit Gundam",
@@ -252,7 +387,8 @@ mod tests {
                 "best",
                 "1",
                 Some(1995),
-                Some(49)
+                Some(49),
+                None
             ),
         );
         // Just-year-different is enough — Codex's concern was two
@@ -260,12 +396,12 @@ mod tests {
         // count is the secondary discriminator; pin both axes
         // independently so a regression on either drops a test.
         assert_ne!(
-            cache_key("Show", "sub", "best", "1", Some(2020), None),
-            cache_key("Show", "sub", "best", "1", Some(2021), None),
+            cache_key("Show", "sub", "best", "1", Some(2020), None, None),
+            cache_key("Show", "sub", "best", "1", Some(2021), None, None),
         );
         assert_ne!(
-            cache_key("Show", "sub", "best", "1", None, Some(12)),
-            cache_key("Show", "sub", "best", "1", None, Some(13)),
+            cache_key("Show", "sub", "best", "1", None, Some(12), None),
+            cache_key("Show", "sub", "best", "1", None, Some(13), None),
         );
     }
 
@@ -276,8 +412,8 @@ mod tests {
         // become misses on first access. This test pins the prefix
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
-        let k = cache_key("X", "sub", "best", "1", None, None);
-        assert!(k.starts_with("play:v11:"), "got {k}");
+        let k = cache_key("X", "sub", "best", "1", None, None, None);
+        assert!(k.starts_with("play:v12:"), "got {k}");
     }
 
     #[test]
@@ -286,14 +422,14 @@ mod tests {
         // episode_count=None. The key must stay well-formed (no
         // adjacent colons) so the SQLite text doesn't drift across
         // None/Some shapes — `-` is the chosen placeholder.
-        let k = cache_key("Show", "sub", "best", "1", None, None);
+        let k = cache_key("Show", "sub", "best", "1", None, None, None);
         assert!(k.ends_with(":-:-"), "got {k}");
     }
 
     #[test]
     fn put_then_get_round_trips_the_resolution() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
         put(&pool, &key, &sample_resolution());
         let got = get(&pool, &key).expect("ok").expect("hit");
         assert_eq!(got, sample_resolution());
@@ -309,7 +445,7 @@ mod tests {
     #[test]
     fn evict_removes_a_row_so_subsequent_get_misses() {
         let pool = pool();
-        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None);
+        let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
         put(&pool, &key, &sample_resolution());
         assert!(get(&pool, &key).expect("ok").is_some());
         evict(&pool, &key);

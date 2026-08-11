@@ -140,3 +140,18 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Ratchet — fail if max/p95/high_risk regressed
         run: node tools/check-coverage-baseline.mjs
+
+      # The runner's coverage attribution differs from local
+      # toolchains (the known high-risk boundary skew): the uploaded
+      # lcov is the only way to see WHICH lines this run counted
+      # uncovered, instead of re-deriving them from a local run that
+      # disagrees.
+      - if: needs.filter.outputs.relevant == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ratchet-lcov
+          path: |
+            gui/backend/lcov.info
+            gui/frontend/coverage/lcov.info
+            coverage/crap-summary.json
+          retention-days: 3

@@ -22,11 +22,17 @@
 //! different shows.
 
 pub mod fetch;
+pub mod gated;
 pub mod parse;
+pub mod parse_api;
 pub use fetch::{AnidbFetch, CurlImpersonateFetch, FetchResponse};
+pub use gated::GatedFetch;
 pub use parse::{
-    encode_query, extract_master_url, is_cloudflare_interstitial, parse_browse, parse_detail_year,
-    parse_episodes, parse_languages, preferred_embed, slug_search_term,
+    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, slug_search_term,
+};
+pub use parse_api::{
+    extract_master_url, parse_episodes, parse_languages, parse_master_variants, preferred_embed,
+    select_variant, MasterVariant,
 };
 
 use crate::error::{AniError, Result};
@@ -82,6 +88,10 @@ pub struct EpisodeRef {
     pub id: u64,
     /// 1-based episode number as shown to users.
     pub number: u32,
+    /// The provider's display tag when it differs from `number` —
+    /// recaps and specials stream under decimal tags ("1061.5"),
+    /// and a decimal play request matches this field verbatim.
+    pub number2: Option<String>,
 }
 
 /// One playable embed for an episode, by audio language.
@@ -117,16 +127,26 @@ impl<F: AnidbFetch> AnidbClient<F> {
         }
     }
 
+    /// The transport this client fetches through. The orchestrator
+    /// reads the gated transport's per-attempt stamp off it when
+    /// recording breaker outcomes ([`GatedFetch::last_attempt_at`]).
+    pub fn transport(&self) -> &F {
+        &self.fetch
+    }
+
     /// Search the browse page. An interstitial or non-success status
-    /// is a typed upstream error; a result-less page is `Ok(vec![])`.
+    /// is a typed upstream error; a result-less page is `Ok(vec![])`
+    /// only when it shows the browse shape — an unrecognized zero-hit
+    /// body is a parse failure, never absence.
     ///
     /// # Errors
     /// [`AniError::Upstream`] when cloudflare or the site refuses,
+    /// [`AniError::ParseFailed`] on an unrecognized zero-hit body,
     /// plus the transport errors of [`AnidbFetch::get`].
     pub async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
         let url = format!("{}/browse?q={}", self.base, encode_query(query));
         let body = self.content(&url).await?;
-        Ok(parse_browse(&body))
+        parse_browse(&body)
     }
 
     /// List a show's episodes by slug.
@@ -158,14 +178,49 @@ impl<F: AnidbFetch> AnidbClient<F> {
         extract_master_url(&embed_body).ok_or(AniError::NoResults)
     }
 
+    /// The stream URL a quality setting selects from a master
+    /// playlist, mirroring the script's `select_quality`. `best`
+    /// keeps the adaptive master URL (hls.js picks levels itself)
+    /// after one validating fetch; any other setting parses
+    /// its variants and returns the matching height's URI resolved
+    /// against the master's URL. Soft only on a SERVED playlist that
+    /// misses — an unserved height, an unparseable body or variant
+    /// URI — where the master URL comes back and playback stays
+    /// adaptive.
+    ///
+    /// # Errors
+    /// The fetch's own failure: returning the master URL that just
+    /// failed would report success upstream — stamping availability,
+    /// caching a session the player cannot load — and a swallowed
+    /// 429 would record breaker health instead of the rate-limit
+    /// pause.
+    pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> Result<String> {
+        quality::stream_url(self, master_url, quality).await
+    }
+
     /// The premiere year the slug's detail page names, when it names
-    /// one. Soft: a fetch or parse miss is `None`, never an error —
-    /// the year is an identity hint for the picker, and resolution
-    /// must not die on a missing hint.
-    pub async fn detail_year(&self, slug: &str) -> Option<u32> {
+    /// one. A missing page (not-found-shaped status) or a page
+    /// without a season link is the soft `Ok(None)` — the year is an
+    /// identity hint, and resolution must not die on a missing hint.
+    /// A refusal, rate limit, or transport failure is NOT a missing
+    /// hint: it is the provider blocking this client, and swallowing
+    /// it would let the picker keep probing detail pages and select
+    /// year-blind through the block.
+    ///
+    /// # Errors
+    /// [`AniError::RateLimited`], refusal-shaped [`AniError::Upstream`]
+    /// statuses, and transport errors, verbatim from the fetch.
+    pub async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         let url = format!("{}/anime/{slug}", self.base);
-        let body = self.content(&url).await.ok()?;
-        parse_detail_year(&body)
+        match self.content(&url).await {
+            Ok(body) => Ok(parse_detail_year(&body)),
+            Err(AniError::Upstream { status })
+                if !AniError::Upstream { status }.is_provider_block() =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Fetch `url` and hand back content, refusing challenge pages
@@ -184,6 +239,8 @@ impl<F: AnidbFetch> AnidbClient<F> {
         Ok(resp.body)
     }
 }
+
+mod quality;
 
 #[cfg(test)]
 #[path = "anidb_test.rs"]

@@ -71,11 +71,20 @@ function parseLcov(file, prefix = '') {
 			} else if (prefix) {
 				p = path.join(prefix, p);
 			}
-			cur = { file: path.normalize(p), LF: 0, LH: 0 };
+			cur = { file: path.normalize(p), LF: 0, LH: 0, daLines: 0, daHit: 0 };
+		} else if (line.startsWith('DA:') && cur) {
+			// Per-line data is the ground truth: toolchains have been
+			// caught emitting LF/LH summaries that disagree with their
+			// own DA lines (LH under-reporting a fully covered file),
+			// and a summary-trusting score invents risk that isn't
+			// there.
+			cur.daLines += 1;
+			if (Number(line.slice(3).split(',')[1]) > 0) cur.daHit += 1;
 		} else if (line.startsWith('LF:') && cur) cur.LF = Number(line.slice(3));
 		else if (line.startsWith('LH:') && cur) cur.LH = Number(line.slice(3));
 		else if (line === 'end_of_record' && cur) {
-			byFile.set(cur.file, { LF: cur.LF, LH: cur.LH });
+			const entry = cur.daLines > 0 ? { LF: cur.daLines, LH: cur.daHit } : { LF: cur.LF, LH: cur.LH };
+			byFile.set(cur.file, entry);
 			cur = null;
 		}
 	}
