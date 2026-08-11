@@ -166,6 +166,21 @@ fn put_and_get_round_trip_including_updates() {
 }
 
 #[test]
+fn fractional_episodes_translate_like_integers() {
+    // The native resolve translates a clicked per-entry "1.5" to
+    // provider tag "41.5"; the history writer must speak the same
+    // provider numbering or ani-cli's process_hist_entry, which
+    // searches the provider list for the stored tag exactly, no
+    // longer recognizes the shared row. The read boundary maps it
+    // back for the GUI.
+    assert_eq!(provider_ep_no("1.5", 40), "41.5");
+    assert_eq!(kitsu_ep_no("41.5", 40), "1.5");
+    // At or below the offset the stamp doesn't describe this row —
+    // same pass-through rule as integers.
+    assert_eq!(kitsu_ep_no("3.5", 40), "3.5");
+}
+
+#[test]
 fn translation_is_identity_at_offset_zero() {
     assert_eq!(provider_ep_no("5", 0), "5");
     assert_eq!(kitsu_ep_no("5", 0), "5");
@@ -199,5 +214,17 @@ proptest::proptest! {
             kitsu_ep_no(&provider, offset),
             episode.to_string()
         );
+    }
+
+    /// Fractional tags round-trip the same way the integers do.
+    #[test]
+    fn fractional_translation_round_trips(
+        episode in 1u32..=100_000,
+        frac in 0u32..10,
+        offset in 0u32..=50_000,
+    ) {
+        let per_entry = format!("{episode}.{frac}");
+        let provider = provider_ep_no(&per_entry, offset);
+        proptest::prop_assert_eq!(kitsu_ep_no(&provider, offset), per_entry);
     }
 }
