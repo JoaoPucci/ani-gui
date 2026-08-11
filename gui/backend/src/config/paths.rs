@@ -132,6 +132,12 @@ pub fn state_dir() -> Option<PathBuf> {
     Some(pd.data_local_dir().to_path_buf())
 }
 
+/// The GUI's own watch-history file.
+#[must_use]
+pub fn gui_history() -> Option<PathBuf> {
+    None
+}
+
 /// The history file shared with the CLI:
 /// `$XDG_STATE_HOME/ani-cli/ani-hsts` on Linux. On Windows the path
 /// resolves under `%USERPROFILE%\.local\state\ani-cli\ani-hsts`,
@@ -231,11 +237,12 @@ mod tests {
             let s = p.to_string_lossy();
             assert!(s.contains("ani-gui-dev"), "dev profile relocates: {s}");
         }
-        // The shared CLI history must stay on the real `ani-cli` path.
-        let hist = ani_cli_history().expect("hist");
+        // The GUI's own history rides the profile like every other
+        // state file — a dev run must not touch the real history.
+        let hist = gui_history().expect("hist");
         assert!(
-            !hist.to_string_lossy().contains("ani-gui-dev"),
-            "history is not relocated by dev profile: {}",
+            hist.to_string_lossy().contains("ani-gui-dev"),
+            "history relocates with the dev profile: {}",
             hist.to_string_lossy()
         );
 
@@ -252,17 +259,23 @@ mod tests {
     }
 
     #[test]
-    fn ani_cli_history_honors_override() {
+    fn gui_history_lives_in_the_gui_state_dir_only() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Decoupled from the CLI: no ani-cli path segment, no
+        // ANI_CLI_HIST_DIR override — the 5.0 CLI re-keyed and backs
+        // up its own file, so sharing buys no continuity in either
+        // direction, and the GUI's history starts (and stays) its
+        // own.
         let saved = std::env::var_os("ANI_CLI_HIST_DIR");
         std::env::set_var("ANI_CLI_HIST_DIR", "/tmp/test-ani-hsts-dir");
-        let p = ani_cli_history().expect("history path resolves");
+        let p = gui_history().expect("history path resolves");
         if let Some(s) = saved {
             std::env::set_var("ANI_CLI_HIST_DIR", s);
         } else {
             std::env::remove_var("ANI_CLI_HIST_DIR");
         }
-        assert!(p.ends_with("ani-hsts"));
+        assert_eq!(p, state_dir().expect("state").join("history"));
+        assert!(!p.to_string_lossy().contains("ani-cli"));
         assert!(p.starts_with("/tmp/test-ani-hsts-dir"));
     }
 
