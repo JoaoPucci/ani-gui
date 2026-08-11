@@ -368,28 +368,31 @@ pub(crate) async fn check_availability_with_base(
             .unwrap_or(walk_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
-    let (available, episode_count) = match picked {
+    let (available, episode_count, extra_episodes) = match picked {
         Ok(p) => {
             if requested_mode_available(state, &client, &p, mode, prio, walk_started_at).await? {
                 (
                     true,
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
+                    // The listing already names the playable
+                    // fractional rows — same paid-for source as the
+                    // cap, same per-entry numbering.
+                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                 )
             } else {
                 // The provider ANSWERED absence for this mode: a
                 // languages row with no matching embed. Cacheable,
                 // like the clean search miss.
-                (false, None)
+                (false, None, Vec::new())
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below.
-        Err(ne) if ne.clean_miss => (false, None),
+        Err(ne) if ne.clean_miss => (false, None, Vec::new()),
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
     };
-    let extra_episodes: Vec<String> = Vec::new();
     let episode_count_approximate = false;
     let gate_refused = false;
 
