@@ -396,6 +396,73 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
+    // The one-hour ceiling is the transfer's, not each tool's. A
+    // yt-dlp run that burns most of it and then fails must leave the
+    // ffmpeg fallback only what remains — otherwise a download can
+    // stay active for nearly two hours under a deadline documented
+    // as one.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "sleep 0.6; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "sleep 0.6; exit 0");
+    let started = std::time::Instant::now();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_millis(900),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(
+        matches!(got, Err(AniError::Timeout)),
+        "the fallback runs against what is left of the deadline: {got:?}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1_600),
+        "and the whole chain ends at the deadline, not at one per tool"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
+    // The busy retry sits before the child exists, so the transfer
+    // timeout never covers it: a tool held open for writing forever
+    // spins the loop forever and the SSE request never reaches its
+    // promised ceiling. The spawn loop runs under the same deadline.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "exit 0");
+    let _held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(bin.path().join("yt-dlp"))
+        .expect("hold the tool open for writing");
+    let got = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_millis(400),
+            &mut |_l: &str| {},
+        ),
+    )
+    .await
+    .expect("the spawn loop must not outlive its deadline");
+    assert!(
+        matches!(got, Err(AniError::Timeout)),
+        "a tool that never becomes runnable ends as a timeout: {got:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_busy_executable_is_retried_rather_than_failed() {
     // exec of a file another process still holds open for WRITING
     // fails with ETXTBSY. It is transient by construction — the
