@@ -71,8 +71,11 @@ where
         line: format!("Matched {}", picked.hit.title),
     });
     for ep in first..=last {
+        // The shape the dock's progress parser consumes — ani-cli's
+        // own per-iteration announcement, which drives the
+        // "Episode N of M" display.
         on_progress(DownloadProgress {
-            line: format!("Episode {ep}"),
+            line: format!("Playing episode {ep}"),
         });
         let ep_no = ep.to_string();
         let episode_started_at = tokio::time::Instant::now();
