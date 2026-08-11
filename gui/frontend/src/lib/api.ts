@@ -795,6 +795,11 @@ export interface AvailabilityArgs {
 	episode_count?: number;
 	year?: number;
 	kitsu_id?: string;
+	/** Kitsu's subtype ("TV", "movie", "special", "OVA", "ONA") when
+	 *  the surface has it. The probe applies the same format disproof
+	 *  play and download use; without it a Movie/Special/OVA
+	 *  collision caches the wrong candidate's availability and cap. */
+	subtype?: string | null;
 	/** Kitsu's airing status — one of "current", "finished",
 	 *  "upcoming", "tba", "unreleased". Branches the positive cache
 	 *  TTL: ongoing shows refresh in 24h, finished in 30d. Optional;

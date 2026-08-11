@@ -1348,6 +1348,24 @@ describe('historyByKitsu', () => {
 });
 
 describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
+	it('checkAvailability forwards subtype in the POST body', async () => {
+		// The backend probe now applies the same format disproof play
+		// and download use, but only if the caller sends the subtype:
+		// a probe without it lets a Movie/Special/OVA collision cache
+		// the wrong candidate's availability and cap.
+		const fetchMock = mockFetchOnce({ available: true, episode_count: 1, extra_episodes: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await checkAvailability({
+			title: 'X',
+			mode: 'sub',
+			subtype: 'special',
+			background: true
+		});
+		const { init } = lastCall(fetchMock);
+		const body = JSON.parse(init?.body as string);
+		expect(body.subtype).toBe('special');
+	});
+
 	it('checkAvailability POSTs the args to /api/availability', async () => {
 		const fetchMock = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;

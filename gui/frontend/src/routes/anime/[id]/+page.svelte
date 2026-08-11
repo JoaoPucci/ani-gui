@@ -221,6 +221,7 @@
 				episode_count: d.episode_count ?? undefined,
 				year: yearFromKitsuRef(d) ?? undefined,
 				kitsu_id: d.id,
+				subtype: d.subtype ?? undefined,
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
