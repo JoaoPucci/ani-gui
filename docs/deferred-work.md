@@ -22,41 +22,58 @@ Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
 pull request.
 
+Write an entry about the code, not about the work in flight. An entry
+stands on its own: what is wrong, where it lives, and what should
+change, all readable without following anything. If taking the links
+out would take the point with them, the entry is not written yet.
+
+On that condition a commit sha or a merged pull-request number is
+welcome. Both resolve forever, and where an entry is about this
+repository's own history they are the precise evidence for it. Cite
+them underneath the explanation, never in place of it — the reader
+should reach for one to confirm what the entry already told them, not
+to find out what it meant.
+
+What stays out is state that expires: a branch name, a commit count, a
+sentence like "the PR for this is open". A rotted entry is worse than
+no entry, because it sends the next reader to rebuild finished work or
+to reason from a state that no longer exists. References out of the
+repository that do not rot — an upstream issue, a specification — are
+fine on the same terms.
+
 Remove an entry when the work lands, in the change that lands it.
 
 ---
 
-## Open findings on the deferral checks
+## Known gaps in the deferral checks
 
-Raised in review and not yet fixed. Recorded here so they survive the
-thread.
+What `tests/arch/deferral_record.sh` gets wrong today.
 
-**Intent-to-add detected by porcelain, not by index metadata.**
-`record_is_recoverable` rejects `git add -N` entries by matching `" A"`
-in `git status --porcelain`. If the file is then deleted from the
-working tree the porcelain line changes, and the check stops
-recognising it. Reading the intent-to-add bit from index metadata is
-the robust form.
-
-There is a deleted-file variant of the same state worth checking at the
-same time.
+**Intent-to-add is read out of porcelain rather than index metadata.**
+`record_is_recoverable` rejects a `git add -N` entry by matching `" A"`
+in `git status --porcelain`. Delete that file from the working tree
+afterwards and the porcelain line changes, so the check stops
+recognising the state it is there to catch. Reading the intent-to-add
+bit from index metadata is the robust form. A deleted-file variant of
+the same state is worth handling in the same change.
 
 The failure message is wrong for this case too. `why_unrecoverable`
-sees that `ls-files` succeeds and reports "tracked as a symlink or
-submodule rather than a file", which is neither true nor actionable —
-the fix is `git add` on a path that is already, in a sense, added.
-Reporting the wrong reason has already been a defect on this branch
-once, for symlinks; the same argument applies. Fix it in the same
-change as the detection.
+sees `ls-files` succeed and reports "tracked as a symlink or submodule
+rather than a file" — neither true nor actionable, when what the
+reader needs is `git add` on a path that is already, in a sense,
+added. A check that names the wrong reason is a defect in its own
+right rather than a cosmetic one, because it sends whoever hits it to
+fix something that is not broken. Correct the message in the change
+that corrects the detection.
 
-**Setext H2 does not end the section.** The body scan recognises
-`^ {0,3}## `. A heading written as text followed by a line of `-` is
-also an H2, so the section runs past it into the next one.
+**A setext H2 does not end the section.** The body scan recognises
+`^ {0,3}## ` only. A heading written as a line of text underlined with
+`-` is also an H2, so the scan runs past it into the section below.
 
-This belongs to the Markdown-interpretation layer described above, and
-the same argument applies: it is the eighth rule of an open set. The
-recommendation remains to stop parsing document structure rather than
-to add setext handling.
+Adding setext handling is the wrong response. This is the
+regex-interpretation trap `AGENTS.md` §2 describes, where each rule
+added reveals the next one; the way out is to stop parsing document
+structure, not to parse more of it.
 
 ---
 
@@ -72,28 +89,6 @@ from session state and reviewing them turned up more than a dozen
 errors — mostly work that had already shipped, a couple of problems
 that never existed as described. Check an item against the code before
 starting it, and delete it when you find it done.
-
-## Resolver and provider
-
-- **Finish moving the script-driven resolution paths to the native
-  anidb resolver.** Embedded playback already resolves natively —
-  browse search, direct candidate pick, episode-to-master resolution,
-  the numbering-offset bridge into `ani-hsts` — and the `-S` index
-  handoff is gone from the play path. Still on the script: downloads,
-  the external player and Syncplay launch paths, and the
-  auto-updater's reasons for existing. Availability never spawns the
-  script — it runs the Rust picker — but that picker still queries
-  allanime, so its remaining work is the provider migration to the
-  native anidb client, not a script removal. The
-  botan shim machinery (`anicli/botan_shim.rs`, the PATH provisioning
-  in `app.rs`) is dead weight 5.0 never invokes.
-
-  Two separate finish lines, and the gap between them is the thing to
-  remember. Native resolution everywhere means every path that
-  resolves a stream, including Syncplay and the external player.
-  *Deleting* the script is a much wider job — downloads, app startup,
-  packaging, the updater and the bats suites all reach for it, and a
-  search for the binary name is the only honest way to scope that.
 
 ## Correctness in the app
 
@@ -144,23 +139,49 @@ starting it, and delete it when you find it done.
   problem, not a resolver change. Surprising: ani-cli 5.0 itself has
   the same gap on Windows.
 
-- **Four fixes on the anidb-availability branch have no `test(red)`
-  predecessor.** `ca6a94ea` (busy-executable retry), `953063bb`
-  (Windows curl resolution — its test sits inside the same commit),
-  `0a6540c5` (year threading) and `a79b5ba8` (subtype threading) all
-  landed as `fix:` commits without the paired red the contract in
-  §2 asks for. The behaviors are covered by tests today, so this is
-  about commit ordering, not a coverage hole.
+- **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
+  requires a `test(red):` predecessor for anything that introduces a
+  `feat` or a `fix`, and spells the verification out as a mechanical
+  procedure, but nothing runs it. Unpaired commits have reached
+  master; each was caught by a reviewer reading the log by hand, or
+  missed.
 
-  Not fixed in place because the ordering cannot be repaired on that
-  branch: the earliest of the four sits 245 commits back, and the
-  range between it and the head absorbs eight of master's own merge
-  commits (including master's merges of #140, #141 and #142). Any
-  reorder replays those, forking the branch off master's real
-  ancestry and turning the PR into a whole-tree diff. Rebuilding the
-  work on a fresh branch is the only mechanism that produces the
-  ordering, and that is a maintainer call about the review trail,
-  not a code change.
+  Four things trip an implementation, and the first is what let the
+  known violations through:
+
+  - **The subject is the type, not the scope.** The rule covers every
+    `feat` and `fix`, so a gate keyed on `feat(green):`/`fix(green):`
+    misses a bare `fix:` — which is the form every unpaired commit
+    took.
+  - **Ancestry is not pairing.** Asking whether the branch contains
+    *a* red passes a green whose red landed on a separately-merged
+    branch. Narrowing that to "this green has a red **ancestor**" is
+    still too weak: once one honest pair lands, its red is an
+    ancestor of everything after it, so the next unpaired green
+    inherits it and passes. The gate has to attribute a specific red
+    to a specific green — §2 reads that off adjacency, each green's
+    parent being its red — not merely find one somewhere behind it.
+
+    Direction matters too, wherever an ancestry test does get used:
+    `--is-ancestor <green> <red>` is not the ancestry question
+    negated. It exits nonzero for the separately-merged case exactly
+    as it does for a correct pair, so all it detects on its own is a
+    red committed after its green.
+  - **Upstream commits are exempt** (§2). A sync merge imports
+    upstream history verbatim, so its `feat` commits have no red of
+    ours and cannot acquire one. Provenance is mechanical: reachable
+    from the sync merge's second parent.
+  - **It has to run before the merge.** A squash merge fuses a
+    branch's reds and greens into a single commit, so for anything
+    landed that way master's history no longer holds a pairing to
+    check and a gate reading master cannot reconstruct one. This
+    repository merges both ways, which makes the shortfall silent
+    rather than obvious. Run the gate over `master..<branch-head>`
+    while the branch is still there. `0dccb527` is one of the fused
+    commits, carrying its tests and its fix together.
+
+  Related to the pre-commit and TDD tension above — both are about
+  giving the contract teeth instead of restating it.
 
 - **Per-episode audio-mode caps.** Availability answers whether a
   show carries the requested mode, not which of its episodes do, so
