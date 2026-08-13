@@ -282,13 +282,22 @@ So a change of that kind answers the question for both platforms
 inside the same change, or it does not land. "Linux stages one;
 Windows is untouched" is not a state a merge may leave behind.
 
-Where an invariant guards one platform, it guards both. `tests/arch/
-linux_deps.sh` asserts that the Linux packages stage their bundled
-binaries; its own header says the Windows installer has the same shape
-and that the check exists so a refactor cannot quietly drop one side.
-There is no `windows_deps.sh`. An invariant written for two platforms
-and enforced on one is worse than no invariant, because the green run
-reads as coverage.
+Where an invariant guards one platform, it guards both.
+`tests/arch/linux_deps.sh` asserts that the Linux packages stage their
+bundled binaries, and its own header says the Windows installer has
+the same shape and that the check exists so a refactor cannot quietly
+drop one side. For a long time it had no counterpart, and an invariant
+written for two platforms while enforced on one is worse than no
+invariant, because the green run reads as coverage of both. That is
+how the transport gap reached a release.
+
+`tests/arch/windows_deps.sh` is that counterpart now. Add a bundled
+dependency to one fetcher and the other check goes red. Both are
+static, though: they assert that a package is *configured* to carry
+what it needs, not that a built installer does. Nothing builds the
+Windows installer in CI, so on that side the configuration is the only
+thing under guard — which is worth knowing before trusting a green
+run about a platform nobody is building.
 
 When a platform genuinely cannot be served in the same change, the
 obligation moves rather than disappearing, and the half that matters

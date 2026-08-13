@@ -37,10 +37,18 @@
 //                time rather than embedding it in the .exe.
 //
 // This script is the Linux analog of `fetch-windows-deps.mjs`. Keep
-// the two in lockstep when adding a new bundled dep. Exception:
-// curl-impersonate — the Windows transport story (the backend would
-// have to spawn .exe wrappers, which upstream ships as bash scripts)
-// is tracked separately and not yet staged there.
+// the two in lockstep when adding a new bundled dep — there are no
+// exceptions, and `tests/arch/{linux,windows}_deps.sh` hold each side
+// to it.
+//
+// The two stage curl-impersonate differently, which is a difference in
+// what upstream ships rather than in what each platform needs. Here the
+// per-browser wrappers are shell scripts and carry the fingerprint in
+// their own flags, so the staged set is the binary plus wrappers.
+// Windows gets those wrappers as `.bat` files, which the resolver
+// refuses to name (see `fetch.rs` EXE_SUFFIXES), so it stages the bare
+// binary alone and the failover list pairs it with an `--impersonate`
+// target instead.
 
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, rm } from 'node:fs/promises';
