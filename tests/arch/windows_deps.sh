@@ -23,6 +23,14 @@
 #   - `dist:win` must chain `fetch:win-deps`, so invoking it directly
 #     populates the bin dir the way `dist` does on Linux.
 #   - the impersonating transport must be among the staged binaries.
+#
+# What this check does NOT establish: that the fetch succeeds, that
+# the archive still contains the entry the dep names, or that the
+# staged binary runs. Those want a Windows packaging job, and there is
+# none — CI runs `cargo test` on windows-latest and never builds the
+# installer, which is the other half of why the gap shipped unnoticed.
+# So a green run here means the package is *configured* to carry a
+# transport, not that a built installer has one.
 
 set -eu
 

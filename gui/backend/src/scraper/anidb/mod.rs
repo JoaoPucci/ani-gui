@@ -45,17 +45,60 @@ pub const ANIDB_BASE: &str = "https://anidb.app";
 /// fingerprint first but the agent rides along for parity.
 pub const IMPERSONATE_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-/// curl binaries in preference order — ani-cli 5.0's failover list.
-/// Impersonate builds come first: the plain-curl tail exists so the
+/// One transport candidate: the executable name the resolver hunts,
+/// and the impersonation target that name needs passed to it.
+///
+/// Upstream's per-browser entries are wrapper scripts that spell a
+/// fingerprint out in their own flags, so a wrapper needs no target —
+/// its name *is* the choice. The patched binary underneath them
+/// carries no fingerprint by default and takes `--impersonate
+/// <target>` instead. That distinction is the whole reason this is a
+/// struct rather than a name: Windows ships those wrappers as `.bat`
+/// files, which the resolver deliberately will not name (see
+/// `fetch::EXE_SUFFIXES`), leaving the bare binary as the only
+/// impersonating transport it can spawn there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportCandidate {
+    /// Executable name, before the platform's suffix table widens it.
+    pub name: &'static str,
+    /// Target to pass as `--impersonate`, when the binary needs one.
+    pub impersonate: Option<&'static str>,
+}
+
+/// curl binaries in preference order — ani-cli 5.0's failover list,
+/// with the bare impersonate build inserted ahead of the plain-curl
+/// tail. Impersonate builds come first; the tail exists so the
 /// resolver can still name an executable on hosts without them, where
 /// the interstitial then surfaces as a typed upstream error rather
 /// than a missing-binary one.
-pub const CURL_FAILOVER: &[&str] = &[
-    "curl_firefox135",
-    "curl_chrome136",
-    "curl_chrome116",
-    "curl_ff117",
-    "curl",
+///
+/// The wrappers stay ahead of the bare binary so the packages that
+/// stage them keep resolving exactly what they resolved before.
+pub const CURL_FAILOVER: &[TransportCandidate] = &[
+    TransportCandidate {
+        name: "curl_firefox135",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome136",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome116",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_ff117",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl-impersonate",
+        impersonate: Some("chrome136"),
+    },
+    TransportCandidate {
+        name: "curl",
+        impersonate: None,
+    },
 ];
 
 /// One row of the browse page: the slug the whole provider API is

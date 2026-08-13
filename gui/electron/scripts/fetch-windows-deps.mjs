@@ -77,6 +77,34 @@ const DEPS = [
 		binary: 'yt-dlp.exe',
 		directBinary: true,
 	},
+	// curl-impersonate: the transport native anidb resolution spawns.
+	// The provider's TLS-fingerprinting front 403s plain curl, so
+	// without this every play, availability probe and download dies
+	// with a network error — the exact footgun bundling exists to
+	// remove, and the reason a Windows build could install and browse
+	// while resolving nothing.
+	//
+	// Only the patched binary is staged, no wrappers. Upstream's
+	// per-browser entries are `.bat` files here, and the resolver's
+	// suffix table is deliberately narrower than PATHEXT so it never
+	// names something the spawn cannot treat as curl. The binary takes
+	// its fingerprint from `--impersonate` instead, which the failover
+	// list pairs with it (fetch.rs CURL_FAILOVER).
+	//
+	// Source: github.com/lexiforest/curl-impersonate (the maintained
+	// fork; ani-cli 5.0's own instructions point users at it).
+	{
+		name: 'curl-impersonate',
+		version: '2.0.0',
+		archiveName: 'curl-impersonate-v2.0.0.x86_64-win32.tar.gz',
+		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-win32.tar.gz',
+		sha256: 'd2e5905f8adf76f042afe78d1758a978253afddf4eb7bdcb8ddfb38c2f0e530c',
+		binary: 'curl-impersonate.exe',
+		// Entries carry a `./` prefix in this tarball, and tar matches
+		// the name as written — dropping the prefix fails the extract
+		// with "not found in archive".
+		archivePath: './curl-impersonate.exe',
+	},
 ];
 
 const cacheDir = path.join(electronDir, '.win-deps-cache');

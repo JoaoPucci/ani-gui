@@ -43,6 +43,9 @@ pub trait AnidbFetch: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct CurlImpersonateFetch {
     exe: PathBuf,
+    /// The matched candidate's target, passed as `--impersonate` when
+    /// the resolved binary carries no fingerprint of its own.
+    impersonate: Option<&'static str>,
     deadline: std::time::Duration,
 }
 
@@ -83,25 +86,27 @@ impl CurlImpersonateFetch {
         suffixes: &[&str],
     ) -> Option<Self> {
         if let Some(dir) = extra_dir {
-            for name in CURL_FAILOVER {
-                for file in candidate_names(name, suffixes) {
+            for cand in CURL_FAILOVER {
+                for file in candidate_names(cand.name, suffixes) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
                         return Some(Self {
                             exe: candidate,
+                            impersonate: cand.impersonate,
                             deadline: FETCH_TIMEOUT,
                         });
                     }
                 }
             }
         }
-        for name in CURL_FAILOVER {
-            for file in candidate_names(name, suffixes) {
+        for cand in CURL_FAILOVER {
+            for file in candidate_names(cand.name, suffixes) {
                 for dir in std::env::split_paths(path_env) {
                     let candidate = dir.join(&file);
                     if is_executable(&candidate) {
                         return Some(Self {
                             exe: candidate,
+                            impersonate: cand.impersonate,
                             deadline: FETCH_TIMEOUT,
                         });
                     }
@@ -114,6 +119,12 @@ impl CurlImpersonateFetch {
     /// The resolved executable, for logging and diagnostics.
     pub fn exe(&self) -> &Path {
         &self.exe
+    }
+
+    /// The impersonation target the resolved binary needs passed, if
+    /// any. `None` means the executable encodes its own fingerprint.
+    pub fn impersonate(&self) -> Option<&'static str> {
+        self.impersonate
     }
 
     /// Replace the outer deadline — the seam the hang test drives;
@@ -162,29 +173,46 @@ const CIPHER_ARGS: &[&str] = &[
 #[cfg(not(target_os = "macos"))]
 const CIPHER_ARGS: &[&str] = &[];
 
+/// The child's argv, without the executable. Pure so the flag set is
+/// assertable without spawning anything.
+///
+/// `-w` appends the status after the body; the last line is split
+/// back off. Mirrors the script's anidb_curl flags, plus the
+/// impersonation target when the resolved binary needs one.
+pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
+    let mut args: Vec<String> = Vec::with_capacity(12);
+    // First, where curl honors it: a user's ~/.curlrc can redirect
+    // the output or append transfers, and this code parses the body.
+    args.push("-q".into());
+    args.push("-sL".into());
+    // Ahead of the header and cipher flags, so a target's own
+    // defaults are in place before anything overrides them.
+    if let Some(target) = impersonate {
+        args.push("--impersonate".into());
+        args.push(target.into());
+    }
+    args.push("-A".into());
+    args.push(IMPERSONATE_AGENT.into());
+    args.push("--max-time".into());
+    args.push("10".into());
+    args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
+    args.push("-w".into());
+    args.push("\n%{http_code}".into());
+    // The URL stays last: curl reads it as the operand, and a flag
+    // appended after it would be parsed for the next transfer.
+    args.push(url.into());
+    args
+}
+
 #[async_trait::async_trait]
 impl AnidbFetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
-        // `-w` appends the status after the body; the last line is
-        // split back off. Mirrors the script's anidb_curl flags.
         let mut cmd = tokio::process::Command::new(&self.exe);
         // §5's subprocess environment: nothing the child prints may
         // depend on the terminal that launched the backend.
         cmd.env("TERM", "dumb")
             .env("NO_COLOR", "1")
-            // First, where curl honors it: a user's ~/.curlrc can
-            // redirect the output or append transfers, and this code
-            // parses the body.
-            .arg("-q")
-            .arg("-sL")
-            .arg("-A")
-            .arg(IMPERSONATE_AGENT)
-            .arg("--max-time")
-            .arg("10")
-            .args(CIPHER_ARGS)
-            .arg("-w")
-            .arg("\n%{http_code}")
-            .arg(url)
+            .args(fetch_args(url, self.impersonate))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
