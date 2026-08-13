@@ -135,18 +135,9 @@ starting it, and delete it when you find it done.
   through to plain curl, which the front answers with the
   interstitial. The Linux packages stage one; Windows is untouched,
   and the open question there is which impersonate build runs under
-  Git Bash and how it ships. Surprising: ani-cli 5.0 itself has the
-  same gap on Windows.
-
-  This is a shipped defect on a supported platform, not work that is
-  merely wanted. A Windows build installs, opens and browses metadata,
-  then fails every play and every download. `AGENTS.md` §15 exists
-  because it was deferred rather than blocking, and the deferral was
-  the wrong call: a runtime dependency that lands for one packaged
-  platform is unfinished, not delivered. `tests/arch/linux_deps.sh`
-  asserts the Linux half of exactly this and says in its own header
-  that the Windows installer has the same shape; the missing
-  counterpart is the check that would have caught it.
+  Git Bash and how it ships. Waited because packaging is its own
+  problem, not a resolver change. Surprising: ani-cli 5.0 itself has
+  the same gap on Windows.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
