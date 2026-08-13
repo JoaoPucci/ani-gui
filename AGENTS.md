@@ -267,7 +267,58 @@ package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
 
-## 15. Pointers
+## 15. Every change ships on every platform we package
+
+The packaged platforms are **Linux** (AppImage and `.deb`) and
+**Windows** (NSIS). A change is not finished when it works on the one
+you happen to be running.
+
+This binds hardest on anything the app needs at runtime that is not
+Rust: a bundled binary, a spawned executable, a path convention, a
+dependency probe. Those are where a platform gets left behind in
+silence. Nothing fails to compile, no test goes red, and the platform
+simply does the wrong thing on a machine nobody in the loop is using.
+So a change of that kind answers the question for both platforms
+inside the same change, or it does not land. "Linux stages one;
+Windows is untouched" is not a state a merge may leave behind.
+
+Where an invariant guards one platform, it guards both. `tests/arch/
+linux_deps.sh` asserts that the Linux packages stage their bundled
+binaries; its own header says the Windows installer has the same shape
+and that the check exists so a refactor cannot quietly drop one side.
+There is no `windows_deps.sh`. An invariant written for two platforms
+and enforced on one is worse than no invariant, because the green run
+reads as coverage.
+
+When a platform genuinely cannot be served in the same change, the
+obligation moves rather than disappearing, and the half that matters
+is user-facing:
+
+- A release announces itself to everyone, not to the platforms it
+  carries assets for.
+- The update notifier compares versions and nothing else. It does not
+  read a release's assets and has no concept of platform, so shipping
+  a release with no asset for a platform actively prompts that
+  platform's users toward a page with nothing on it for them. Any
+  change to which platforms a release serves has to answer for that
+  path.
+- Say it in the release notes, and record the gap where the next
+  person will find it.
+
+This section exists because of a shipped failure. The provider
+migration bundled the impersonating transport the new catalogue
+requires into the Linux packages alone — `fetch-windows-deps.mjs`
+stages fzf, aria2c and yt-dlp and no transport. A Windows build of it
+installs and browses metadata normally, then fails every play and
+every download, because the resolver falls back to a plain curl that
+the provider answers with its interstitial. Separately, Windows
+packaging stopped after v0.8.0 while the notifier went on telling
+those installs that five later releases were available, none of which
+they could install. Both were written down as deferred work and
+neither was treated as blocking. That judgement is what this rule
+removes.
+
+## 16. Pointers
 
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
