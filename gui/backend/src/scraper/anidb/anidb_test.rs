@@ -1041,3 +1041,116 @@ async fn a_failed_master_fetch_propagates_instead_of_reporting_success() {
         "got {err:?}"
     );
 }
+
+// ── the bare impersonate build and its target ───────────────────────
+//
+// The per-browser entries upstream ships are wrapper scripts that
+// encode a fingerprint in their own flags, and on Windows they are
+// `.bat` files the resolver deliberately will not name. The patched
+// binary itself takes `--impersonate <target>`, which is the path
+// that works on every platform we package.
+
+#[test]
+fn the_failover_list_pairs_the_bare_build_with_an_impersonation_target() {
+    let bare = CURL_FAILOVER
+        .iter()
+        .find(|c| c.name == "curl-impersonate")
+        .expect("the bare impersonate build must be a transport candidate");
+    assert_eq!(
+        bare.impersonate,
+        Some("chrome136"),
+        "the bare binary carries no fingerprint of its own — it needs the target passed"
+    );
+}
+
+#[test]
+fn the_bare_build_yields_to_the_wrappers_and_outranks_plain_curl() {
+    let at = |n: &str| {
+        CURL_FAILOVER
+            .iter()
+            .position(|c| c.name == n)
+            .unwrap_or_else(|| panic!("{n} missing from the failover list"))
+    };
+    // A wrapper is preferred where one exists: it is what the Linux
+    // packages stage and what the script itself reaches for, so this
+    // ordering keeps the working platform's behavior unchanged.
+    assert!(at("curl_firefox135") < at("curl-impersonate"));
+    // But an impersonating build of any shape beats plain curl, which
+    // the provider answers with its interstitial.
+    assert!(at("curl-impersonate") < at("curl"));
+}
+
+#[test]
+fn every_wrapper_and_plain_curl_carry_no_target() {
+    for name in [
+        "curl_firefox135",
+        "curl_chrome136",
+        "curl_chrome116",
+        "curl_ff117",
+        "curl",
+    ] {
+        let c = CURL_FAILOVER
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} missing from the failover list"));
+        assert_eq!(
+            c.impersonate, None,
+            "{name} encodes its fingerprint itself, or has none to encode"
+        );
+    }
+}
+
+#[test]
+fn a_candidate_with_a_target_passes_it_on_the_command_line() {
+    let args = fetch::fetch_args("https://anidb.app/anime/x", Some("chrome136"));
+    let i = args
+        .iter()
+        .position(|a| a == "--impersonate")
+        .expect("the target must reach the child as a flag");
+    assert_eq!(args[i + 1], "chrome136");
+}
+
+#[test]
+fn a_candidate_without_a_target_gets_no_impersonate_flag() {
+    let args = fetch::fetch_args("https://anidb.app/anime/x", None);
+    assert!(
+        !args.iter().any(|a| a == "--impersonate"),
+        "a wrapper already carries its fingerprint; passing a target too would fight it"
+    );
+}
+
+#[test]
+fn the_url_stays_last_whether_or_not_a_target_is_passed() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("https://anidb.app/anime/x")
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_carries_the_matched_candidates_target() {
+    // Windows stages only the bare binary, so resolution must land on
+    // it and remember what to impersonate. Driven through the Windows
+    // suffix table so the behavior is provable from any platform.
+    let dir = tempfile::tempdir().expect("tmp");
+    stage_exe(dir.path(), "curl-impersonate.exe");
+    let path_env = dir.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve_with_suffixes(None, &path_env, &["", ".exe"])
+        .expect("resolved");
+    assert!(fetch.exe().ends_with("curl-impersonate.exe"));
+    assert_eq!(fetch.impersonate(), Some("chrome136"));
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_carries_no_target_for_a_wrapper() {
+    let dir = tempfile::tempdir().expect("tmp");
+    stage_exe(dir.path(), "curl_firefox135");
+    let path_env = dir.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve(None, &path_env).expect("resolved");
+    assert_eq!(fetch.impersonate(), None);
+}
