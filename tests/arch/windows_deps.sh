@@ -77,34 +77,35 @@ esac
 #    still pass, which is the failure this file exists to end rather
 #    than to reproduce one binary at a time.
 #
-#    The inventory is the declared `name:` of each entry. Some
-#    dependencies are declared once per build variant — Linux stages
-#    the impersonate binary plus a wrapper per browser, all from one
-#    archive — so a name that is another declared name followed by a
-#    hyphen is folded into that shorter name before comparing. What
-#    remains is the set of dependencies, independent of how many builds
-#    of each a platform happens to stage.
+#    A dependency may be declared once per build — Linux stages the
+#    impersonate binary plus a wrapper per browser out of one archive —
+#    so each entry names the dependency it belongs to in its own `dep`
+#    field, and the comparison is over those. That identity is
+#    declared, not deduced: an earlier version of this check folded a
+#    name into any shorter name it started with, which would have
+#    swallowed a genuinely separate `aria2-helper` into `aria2` and
+#    passed. Reading meaning out of a name's shape is the trap
+#    `AGENTS.md` §2 describes, so the inventory is read with a real
+#    parser — node imports the module and reports what it declares.
+#    The fetchers guard their own entry point, so importing one costs
+#    nothing and downloads nothing.
 LINUX_FETCH=gui/electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=gui/electron/scripts/fetch-windows-deps.mjs
 
-# Declared entry names, one per line.
-dep_names() {
-    sed -n "s/^[[:space:]]*name: '\([^']*\)'.*/\1/p" "$1"
-}
-
-# The same list with variant entries folded into their base name.
+# The distinct dependencies a fetcher declares, one per line. An entry
+# with no `dep` is an error rather than an anonymous member of the set:
+# a silent `undefined` would compare equal across platforms and hide
+# exactly what this is here to find.
 canonical_deps() {
-    names=$(dep_names "$1")
-    for n in $names; do
-        base="$n"
-        for m in $names; do
-            case "$n" in
-                "$m"-*) [ "${#m}" -lt "${#base}" ] && base="$m" ;;
-                *) ;;
-            esac
-        done
-        printf '%s\n' "$base"
-    done | sort -u
+    node --input-type=module -e "
+        import { DEPS } from '$REPO_ROOT/$1';
+        const missing = DEPS.filter((d) => typeof d.dep !== 'string' || !d.dep);
+        if (missing.length) {
+            console.error('entries without a dep field: ' + missing.map((d) => d.name).join(', '));
+            process.exit(1);
+        }
+        console.log([...new Set(DEPS.map((d) => d.dep))].sort().join('\n'));
+    "
 }
 
 if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then

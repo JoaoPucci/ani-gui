@@ -26,7 +26,7 @@ import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -43,9 +43,10 @@ const repoRoot = path.resolve(electronDir, '..', '..');
 // just the file, not the whole archive). The SHA-256 is captured on
 // first download by re-running this script after a version bump:
 // failure prints actual vs expected so you can paste the new hash.
-const DEPS = [
+export const DEPS = [
 	{
 		name: 'fzf',
+		dep: 'fzf',
 		version: '0.62.0',
 		archiveName: 'fzf-0.62.0-windows_amd64.zip',
 		url: 'https://github.com/junegunn/fzf/releases/download/v0.62.0/fzf-0.62.0-windows_amd64.zip',
@@ -56,6 +57,7 @@ const DEPS = [
 	},
 	{
 		name: 'aria2',
+		dep: 'aria2',
 		version: '1.37.0',
 		archiveName: 'aria2-1.37.0-win-64bit-build1.zip',
 		url: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip',
@@ -68,6 +70,7 @@ const DEPS = [
 	},
 	{
 		name: 'yt-dlp',
+		dep: 'yt-dlp',
 		version: '2025.09.26',
 		// Upstream ships a self-contained .exe, not an archive, so
 		// there is nothing to unzip — see `directBinary` below.
@@ -95,6 +98,7 @@ const DEPS = [
 	// fork; ani-cli 5.0's own instructions point users at it).
 	{
 		name: 'curl-impersonate',
+		dep: 'curl-impersonate',
 		version: '2.0.0',
 		archiveName: 'curl-impersonate-v2.0.0.x86_64-win32.tar.gz',
 		url: 'https://github.com/lexiforest/curl-impersonate/releases/download/v2.0.0/curl-impersonate-v2.0.0.x86_64-win32.tar.gz',
@@ -258,7 +262,11 @@ async function main() {
 	);
 }
 
-main().catch((err) => {
-	console.error('[fetch-win-deps] failed:', err.message);
-	process.exit(1);
-});
+// Only fetch when run as a program — see the note in
+// `fetch-linux-deps.mjs`. The arch check imports this for `DEPS`.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+	main().catch((err) => {
+		console.error('[fetch-win-deps] failed:', err.message);
+		process.exit(1);
+	});
+}
