@@ -71,7 +71,63 @@ case "$line" in
         ;;
 esac
 
-# 4. The impersonating transport must be staged. Windows stages the
+# 4. The two fetchers must declare the same dependencies. Checking one
+#    hard-coded name only guards that name: every other bundled
+#    dependency could land on one platform alone and both checks would
+#    still pass, which is the failure this file exists to end rather
+#    than to reproduce one binary at a time.
+#
+#    The inventory is the declared `name:` of each entry. Some
+#    dependencies are declared once per build variant — Linux stages
+#    the impersonate binary plus a wrapper per browser, all from one
+#    archive — so a name that is another declared name followed by a
+#    hyphen is folded into that shorter name before comparing. What
+#    remains is the set of dependencies, independent of how many builds
+#    of each a platform happens to stage.
+LINUX_FETCH=gui/electron/scripts/fetch-linux-deps.mjs
+WINDOWS_FETCH=gui/electron/scripts/fetch-windows-deps.mjs
+
+# Declared entry names, one per line.
+dep_names() {
+    sed -n "s/^[[:space:]]*name: '\([^']*\)'.*/\1/p" "$1"
+}
+
+# The same list with variant entries folded into their base name.
+canonical_deps() {
+    names=$(dep_names "$1")
+    for n in $names; do
+        base="$n"
+        for m in $names; do
+            case "$n" in
+                "$m"-*) [ "${#m}" -lt "${#base}" ] && base="$m" ;;
+                *) ;;
+            esac
+        done
+        printf '%s\n' "$base"
+    done | sort -u
+}
+
+if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
+    linux_deps=$(canonical_deps "$LINUX_FETCH")
+    windows_deps=$(canonical_deps "$WINDOWS_FETCH")
+    for dep in $linux_deps; do
+        if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
+            printf 'arch/windows_deps FAIL: %s is staged for Linux but not for Windows — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
+            failed=1
+        fi
+    done
+    for dep in $windows_deps; do
+        if ! printf '%s\n' "$linux_deps" | grep -qx -- "$dep"; then
+            printf 'arch/windows_deps FAIL: %s is staged for Windows but not for Linux — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
+            failed=1
+        fi
+    done
+fi
+
+# 5. The impersonating transport must be staged by name. Parity alone
+#    would be satisfied by both platforms dropping it together, and
+#    this is the one dependency whose absence has already shipped.
+#    Windows stages the
 #    bare patched binary and no wrappers: upstream ships the per-browser
 #    entries as `.bat` files, and the resolver's suffix table is
 #    deliberately narrower than PATHEXT so it never names something the
