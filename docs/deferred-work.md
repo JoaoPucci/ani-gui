@@ -129,16 +129,6 @@ starting it, and delete it when you find it done.
   `README.md` and `docs/architecture.md`.
 - **Illustrated brand assets** — post-1.0.
 
-- **Bundle the curl-impersonate transport in the Windows package.**
-  The native anidb client needs an impersonating curl to get past the
-  provider's TLS-fingerprint front; without one the resolver falls
-  through to plain curl, which the front answers with the
-  interstitial. The Linux packages stage one; Windows is untouched,
-  and the open question there is which impersonate build runs under
-  Git Bash and how it ships. Waited because packaging is its own
-  problem, not a resolver change. Surprising: ani-cli 5.0 itself has
-  the same gap on Windows.
-
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
   `feat` or a `fix`, and spells the verification out as a mechanical
