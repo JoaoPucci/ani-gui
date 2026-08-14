@@ -3,7 +3,7 @@
 	"title": "Sobre o ani-gui",
 	"tagline": "Navegue e assista anime",
 	"version_prefix": "Versão",
-	"intro": "O ani-gui é uma interface desktop sobre o ani-cli — o Kitsu fornece metadados, o AniList alimenta a linha de tendências da página inicial e o aniskip marca as janelas de OP/ED. A reprodução acontece no player hls.js embutido ou pode ser delegada a um player externo de sua preferência.",
+	"intro": "O ani-gui encontra e reproduz anime por conta própria — o Kitsu fornece metadados, o AniList alimenta a linha de tendências da página inicial e o aniskip marca as janelas de OP/ED. A reprodução acontece no player hls.js embutido ou pode ser delegada a um player externo de sua preferência.",
 	"section_donate_title": "Apoie",
 	"section_donate_hint": "ETH na mainnet",
 	"donate_intro": "Se o ani-gui te poupou tempo, uma contribuição ajuda a manter o desenvolvimento. Clique no endereço para copiá-lo e depois cole-o na sua carteira.",
