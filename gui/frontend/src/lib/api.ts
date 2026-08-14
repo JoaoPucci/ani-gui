@@ -352,13 +352,13 @@ export interface KitsuAnimeRef {
  * raw kana, then English alternates. The romanized mashup aliases
  * Kitsu carries under `abbreviated_titles` come LAST: they're noisier,
  * but for some shows (Yu-Gi-Oh! 5D's) one of them is the only string
- * allmanga resolves to the right series, so they're a genuine
+ * the provider resolves to the right series, so they're a genuine
  * last-resort recovery path. Ordering them after the official titles
  * means the resolver only reaches them when the clean names produced
  * no accepted candidate — so a clean canonical hit is never displaced.
  *
  * Empty / null-ish titles are dropped. The output is deduped so the
- * backend never makes redundant allanime queries.
+ * backend never makes redundant provider queries.
  */
 export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): string[] {
 	if (!ref) return [];
