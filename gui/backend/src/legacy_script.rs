@@ -45,7 +45,39 @@ pub fn sweep_legacy_files(cache_dir: &Path, state_dir: &Path) -> SweepReport {
             removed.push(target);
         }
     }
+    removed.extend(sweep_staging_copies(cache_dir));
     SweepReport { removed }
+}
+
+/// Remove the per-pid staging copies an interrupted update left behind.
+///
+/// The updater wrote one of these beside the script before going to
+/// the network and deleted it when the run ended, so a process killed
+/// mid-update leaves one per launch — and the code that would have
+/// cleaned them up is gone.
+///
+/// The one place this sweep matches on a prefix rather than an exact
+/// name, because the pid is unknowable from here. The prefix is the
+/// staging one specifically, not the script's name: a user's own
+/// `ani-cli.bak` in the same directory is not ours to delete.
+fn sweep_staging_copies(cache_dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(cache_dir) else {
+        return Vec::new();
+    };
+    let mut removed: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(STAGING_PREFIX))
+        })
+        .filter(|p| remove_if_present(p))
+        .collect();
+    // `read_dir` order is filesystem-defined; sort so the diagnostics
+    // block lists the same thing twice in a row.
+    removed.sort();
+    removed
 }
 
 /// Remove one path, reporting whether it actually went.
@@ -80,6 +112,10 @@ const SCRIPT_NAME: &str = "ani-cli";
 /// The outcome log the updater appended to under the state dir. Written
 /// `.new`-then-rename, so the temporary is swept alongside it.
 const UPDATE_LOG_NAME: &str = "anicli-update-log.json";
+
+/// Prefix of the staging copies the updater made beside the script,
+/// one per launch, each suffixed with the process id.
+const STAGING_PREFIX: &str = "ani-cli.update-staging.";
 
 #[cfg(test)]
 #[path = "legacy_script_test.rs"]
