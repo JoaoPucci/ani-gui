@@ -82,14 +82,22 @@ if [ -d gui/backend/src/proxy ]; then
 fi
 
 # 3. scraper/ sits below meta/, commands/, api/ — none of those should
-#    appear in its imports.
+#    appear in its imports. Both the plain form and a single-line
+#    grouped `use crate::{meta::…, …}` are matched.
+#
+#    Not covered: a grouped import rustfmt has split across lines,
+#    where the offending segment sits on a line of its own. Catching
+#    that needs a Rust parser rather than a line-oriented grep, and
+#    AGENTS.md §2 is explicit about which side of that line this
+#    suite stays on. Said here so a green run is not read as more
+#    than it is.
 if [ -d gui/backend/src/scraper ]; then
     files=$(find gui/backend/src/scraper -type f -name '*.rs')
     if [ -n "$files" ]; then
         # shellcheck disable=SC2086
         assert_no_match \
             'scraper/ may not import crate::meta, crate::commands, or crate::api (it sits below all three)' \
-            '^use[[:space:]]+crate::(meta|commands|api)[:;]' \
+            '^use[[:space:]]+crate::((meta|commands|api)[:;]|\{[^}]*(meta|commands|api)::)' \
             $files
     fi
 fi
