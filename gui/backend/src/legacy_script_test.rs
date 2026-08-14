@@ -47,7 +47,10 @@ fn the_sweep_is_idempotent() {
     // diagnostics panel reports a removal that did not happen.
     let dir = cache_with(&["ani-cli"]);
     let state = state_with(&["anicli-update-log.json"]);
-    assert_eq!(sweep_legacy_files(dir.path(), state.path()).removed.len(), 2);
+    assert_eq!(
+        sweep_legacy_files(dir.path(), state.path()).removed.len(),
+        2
+    );
     assert!(sweep_legacy_files(dir.path(), state.path())
         .removed
         .is_empty());
@@ -131,5 +134,8 @@ fn a_sweep_reports_the_script_and_the_log_together() {
     // One upgrade clears both, and the diagnostics block names each.
     let cache = cache_with(&["ani-cli"]);
     let state = state_with(&["anicli-update-log.json"]);
-    assert_eq!(sweep_legacy_files(cache.path(), state.path()).removed.len(), 2);
+    assert_eq!(
+        sweep_legacy_files(cache.path(), state.path()).removed.len(),
+        2
+    );
 }
