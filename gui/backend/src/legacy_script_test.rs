@@ -12,6 +12,15 @@ fn cache_with(entries: &[&str]) -> tempfile::TempDir {
     dir
 }
 
+/// A state dir holding the files the retired updater wrote there.
+fn state_with(entries: &[&str]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("tmp");
+    for name in entries {
+        std::fs::write(dir.path().join(name), b"[]\n").expect("write");
+    }
+    dir
+}
+
 #[test]
 fn the_orphaned_copy_is_removed_and_named() {
     let dir = cache_with(&["ani-cli"]);
@@ -68,4 +77,52 @@ fn a_directory_named_like_the_script_is_left_alone() {
     std::fs::create_dir(dir.path().join("ani-cli")).expect("mkdir");
     assert!(sweep_legacy_script(dir.path()).removed.is_empty());
     assert!(dir.path().join("ani-cli").is_dir());
+}
+
+#[test]
+fn the_updaters_outcome_log_is_removed_too() {
+    // The updater appended every `-U` result to this file, and the
+    // diagnostics panel read it back. Both are gone, so on any profile
+    // where auto-update ran — the default — it is app-written state
+    // with no reader and nothing left to remove it.
+    let cache = cache_with(&[]);
+    let state = state_with(&["anicli-update-log.json"]);
+    let report = sweep_legacy_files(cache.path(), state.path());
+    assert_eq!(report.removed.len(), 1);
+    assert!(report.removed[0].ends_with("anicli-update-log.json"));
+    assert!(!state.path().join("anicli-update-log.json").exists());
+}
+
+#[test]
+fn the_logs_half_written_temporary_is_removed_too() {
+    // The log was written `.new`-then-rename, so a crash mid-write
+    // leaves the temporary behind. Sweeping the log and not its
+    // scratch file would leave the same orphan under a longer name.
+    let cache = cache_with(&[]);
+    let state = state_with(&["anicli-update-log.json.new"]);
+    let report = sweep_legacy_files(cache.path(), state.path());
+    assert_eq!(report.removed.len(), 1);
+    assert!(report.removed[0].ends_with("anicli-update-log.json.new"));
+}
+
+#[test]
+fn the_state_dirs_live_files_are_untouched() {
+    // The state dir also holds the watch history and the account
+    // tokens. Losing either would be considerably worse than the
+    // orphan this sweep exists to clear.
+    let cache = cache_with(&[]);
+    let state = state_with(&["anicli-update-log.json", "history", "accounts.json"]);
+    let report = sweep_legacy_files(cache.path(), state.path());
+    assert_eq!(report.removed.len(), 1, "only the retired log");
+    for kept in ["history", "accounts.json"] {
+        assert!(state.path().join(kept).exists(), "{kept} must survive");
+    }
+}
+
+#[test]
+fn a_sweep_reports_the_script_and_the_log_together() {
+    // One upgrade clears both, and the diagnostics block names each.
+    let cache = cache_with(&["ani-cli"]);
+    let state = state_with(&["anicli-update-log.json"]);
+    assert_eq!(sweep_legacy_files(cache.path(), state.path()).removed.len(), 2);
 }
