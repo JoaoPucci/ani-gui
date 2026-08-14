@@ -62,10 +62,6 @@
 			{
 				"from": "../backend/target/release/ani-gui-backend",
 				"to": "ani-gui-backend"
-			},
-			{
-				"from": "../../ani-cli",
-				"to": "ani-cli"
 			}
 		],
 		"linux": {
@@ -119,10 +115,6 @@
 				{
 					"from": "../backend/target/release/ani-gui-backend.exe",
 					"to": "ani-gui-backend.exe"
-				},
-				{
-					"from": "../../ani-cli",
-					"to": "ani-cli"
 				},
 				{
 					"from": "build-resources/win/bin",
