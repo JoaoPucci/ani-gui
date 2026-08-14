@@ -1036,10 +1036,16 @@
 	}
 
 	/** Human-readable copy for a play-call failure. The raw AniError
-	 *  shape is `{kind, key?, detail?}` — `kind: "scraper"` is the
-	 *  most common one (allmanga returned no usable upstream); `kind:
-	 *  "timeout"` means resolution took >60s; everything else collapses
-	 *  to a generic message. The user shouldn't have to read JSON. */
+	 *  shape is `{kind, key?, detail?}`. A play that finds nothing
+	 *  arrives as `kind: "no_results"`, a stalled one as
+	 *  `kind: "timeout"`, and a provider that refused or went missing
+	 *  as `network` / `upstream`; everything else collapses to a
+	 *  generic message. The user shouldn't have to read JSON.
+	 *
+	 *  `kind: "scraper"` is matched below and cannot reach here: the
+	 *  only thing that constructs it is a download tool exiting
+	 *  non-zero, and this describes the play call. The branch stays
+	 *  because it costs nothing and the variant is shared. */
 	function describePlayFailure(e: unknown): string {
 		// Shared first-chance branch: the typed rate limit renders the
 		// same localized busy-source copy (with the upstream's own
@@ -1049,9 +1055,9 @@
 		const raw = describeErrorString(e).toLowerCase();
 		if (raw.includes('no_results')) {
 			// "Not in the catalog" reads cleaner than the prior
-			// "may not be available — try again later" hedge — when
-			// allmanga returns NoResults the title genuinely isn't
-			// indexed, retrying won't help. The detail page also
+			// "may not be available — try again later" hedge — a
+			// NoResults verdict means the title genuinely isn't
+			// indexed, and retrying won't help. The detail page also
 			// gates the Play CTA proactively when the availability
 			// probe lands first; this copy is the lazy fallback.
 			return m.detail_error_play_no_results();

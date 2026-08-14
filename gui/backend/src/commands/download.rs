@@ -337,6 +337,10 @@ where
         std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
     ))
     .ok();
+    // Set only where this run wrote the file at the target and was
+    // told it is unusable. It licenses `-y` below, and the license
+    // does not extend to a path this run never touched.
+    let mut replace_target = false;
     if let Some(exe) = ytdlp {
         let mut cmd = tokio::process::Command::new(exe);
         if let Some(p) = &child_path {
@@ -391,6 +395,7 @@ where
                     // `-y` and replaces whatever survives, which is
                     // what a file this process cannot unlink does.
                     let _ = std::fs::remove_file(&target);
+                    replace_target = true;
                     on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
                 } else {
                     // v5's && chain: a failing yt-dlp run retries the
@@ -408,12 +413,20 @@ where
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
     }
-    // `-y`: this command owns the target — the caller picked the name
-    // and is writing it now. Without it ffmpeg asks on a stdin that
-    // has nothing on it, reads EOF and refuses, so any leftover at
-    // that path turns a working retry into a failed download.
-    cmd.arg("-y")
-        .arg("-extension_picky")
+    // `-y` only for the retry. There it is required: yt-dlp wrote that
+    // file during this run and condemned it, the removal ahead of the
+    // retry is best-effort, and ffmpeg asked on a stdin with nothing
+    // on it reads EOF and refuses — so a file that could not be
+    // unlinked would fail a retry that has a working ffmpeg.
+    //
+    // Everywhere else the flag is the wrong answer. When ffmpeg is the
+    // first tool, anything at that path predates this download, and
+    // the confirm dialog asks the user for a directory and never for
+    // permission to overwrite. Refusing is the honest outcome there.
+    if replace_target {
+        cmd.arg("-y");
+    }
+    cmd.arg("-extension_picky")
         .arg("0")
         .arg("-loglevel")
         .arg("error")
