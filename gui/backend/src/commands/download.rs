@@ -129,6 +129,20 @@ where
     let path_env = tool_search_path(state, path_env);
     let path_env = path_env.as_str();
 
+    // Refuse before the provider is touched. With neither tool
+    // installed the resolution has no use, so walking for it spends
+    // the user's wait and the provider's patience to reach an answer
+    // that was already knowable — and a walk that fails on the way
+    // reports a network error over the real cause.
+    //
+    // `spawn_download_tool` still checks: it is reachable on its own
+    // (the range loop, the tests) and a probe that ran once at the
+    // top cannot speak for a tool uninstalled during an hour-long
+    // transfer. This is the early refusal, not the authority.
+    if !a_download_tool_exists(path_env) {
+        return Err(AniError::FfmpegMissing);
+    }
+
     // A "1-12"-shaped episode is the Download All/Range UI: the
     // script's own -e loop, one pick then one transfer per episode.
     if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
@@ -408,6 +422,19 @@ fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path:
             // the search.
             .find(|p| crate::scraper::anidb::is_executable(p))
     })
+}
+
+/// Whether either tool that can perform a transfer is installed.
+///
+/// One definition for the two places that ask: `download_with_tools`
+/// refuses on it before resolving, and `spawn_download_tool` re-checks
+/// at the moment it would spawn. Both need the same answer to the same
+/// question, and a second hand-written pair of `find_tool` calls is how
+/// they would drift apart.
+fn a_download_tool_exists(path_env: &str) -> bool {
+    let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
+    find_tool(path_env, "yt-dlp", suffixes).is_some()
+        || find_tool(path_env, "ffmpeg", suffixes).is_some()
 }
 
 /// Run one download tool to completion, streaming stderr lines.

@@ -1,6 +1,28 @@
 use super::*;
 
 #[cfg(unix)]
+/// A directory `find_tool` accepts as holding an installed yt-dlp.
+///
+/// For cases whose subject is the provider walk rather than the
+/// transfer: `download_with_tools` refuses before it resolves anything
+/// when no tool is installed, so a walk case with an empty search path
+/// never reaches the walk. Nothing here is ever spawned — these cases
+/// end before a tool would run — which is why a file is enough.
+/// Portable because `is_executable` reduces to `is_file` off unix.
+fn dir_with_a_findable_tool() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("bin");
+    let p = dir.path().join("yt-dlp");
+    std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write stub");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&p).expect("meta").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+    }
+    dir
+}
+
 fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
     use std::os::unix::fs::PermissionsExt;
     let p = dir.join(name);
@@ -418,7 +440,8 @@ async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
-    let got = download_with_tools(&state, &args, "", |_p| {}).await;
+    let bin = dir_with_a_findable_tool();
+    let got = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {}).await;
     assert!(
         matches!(got, Err(AniError::Timeout)),
         "a stalled pick ends as a timeout: {got:?}"
@@ -660,7 +683,8 @@ async fn a_range_download_surfaces_the_walks_clean_miss() {
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
-    let err = download_with_tools(&state, &args, "", |_p| {})
+    let bin = dir_with_a_findable_tool();
+    let err = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
         .await
         .expect_err("nothing matches");
     assert!(matches!(err, AniError::NoResults));

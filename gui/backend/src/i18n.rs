@@ -25,10 +25,13 @@ pub mod keys {
     pub const CONFIG_PARSE: &str = "error.config.parse";
 
     // --- error.download.* ---
-    /// Download mode requires `ffmpeg` (HLS → MP4 mux). The variant
-    /// surfaces it before resolution starts so the frontend can
-    /// render a clear modal pointing at ffmpeg.org/download instead
-    /// of a generic failure.
+    /// A download needs yt-dlp or ffmpeg to turn the HLS stream into
+    /// an MP4, and neither is installed. `download_with_tools` refuses
+    /// on this before it resolves anything, so the frontend's install
+    /// modal is what the user meets rather than a generic failure a
+    /// provider walk got to first. The name predates yt-dlp becoming
+    /// an accepted alternative; the key is what the frontend keys its
+    /// modal on, so renaming it is a frontend change too.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
 
     // --- error.io.* ---
