@@ -89,14 +89,15 @@ fn reads_present_the_stamped_display_per_entry() {
 
 #[test]
 fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
-    // config/paths.rs gives debug and packaged builds separate cache
-    // databases while the history file lives in the state dir. An offset persisted in
-    // the profile-local cache is invisible to the other profile: the
-    // packaged app writes provider episode 41 with offset 40, the
-    // source-built GUI reads the same history row, finds no
-    // stamp, and shows episode 41 — and deleting the XDG cache has
-    // the same effect. The translation lives beside the history file
-    // it makes readable.
+    // Why the store is a file beside the history rather than a cache
+    // row. `config/paths.rs` gives debug and packaged builds separate
+    // cache databases, so an offset kept there would be invisible to
+    // the other profile: the packaged app writes provider episode 41
+    // with offset 40, the source-built GUI reads the same history row,
+    // finds no stamp and shows 41. Deleting the XDG cache would do the
+    // same. Keeping it beside the history means the translation lives
+    // exactly as long, and reaches exactly as far, as the rows it
+    // makes readable — which is what this asserts.
     let tmp = tempfile::tempdir().expect("tmp");
     let history = tmp.path().join("history");
     let packaged = make_state_at(history.clone());

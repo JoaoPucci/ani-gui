@@ -1707,10 +1707,13 @@
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
-	// Backend will see up to 12 concurrent resolves; if the provider
-	// or local CPU complains, wire SCRAPER_CONCURRENCY (already on
-	// AppState) into run_debug. Today the semaphore is allocated but
-	// not acquired — bumping the radius is what surfaces the need.
+	// The backend does not see all of these at once. `play-cache.ts`
+	// caps background warms at PREFETCH_CONCURRENCY (2) and only a
+	// foreground click bypasses that, and the backend paces provider
+	// traffic again through ScraperGate, which spaces background
+	// admits and refuses them outright while its breaker is open.
+	// Widening the radius here changes how many are queued, not how
+	// many are in flight.
 	$effect(() => {
 		if (!detail || !config || !episodes) return;
 		// Wait for the airing answer — warming on mount with airing

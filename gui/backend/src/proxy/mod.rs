@@ -307,6 +307,12 @@ async fn handle_seg(
 
     // Raw segment: stream bytes through. Pass any Range header from the
     // player so the upstream's seekable mp4 keeps working.
+    // The session's own referer is what the CDN checks; the literal
+    // below is only reached when that string will not parse as a
+    // header value, which resolution should never produce. It is a
+    // leftover from the allanime era and kept only because changing a
+    // fallback nobody reaches is not this change's business — see the
+    // note in the pull request.
     let mut req = state.client.get(upstream_url.as_str()).header(
         reqwest::header::REFERER,
         HeaderValue::from_str(&sess.referer)

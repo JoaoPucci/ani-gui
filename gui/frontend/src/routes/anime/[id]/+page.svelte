@@ -1144,9 +1144,11 @@
 		}, 4000);
 	}
 
-	// Title we feed to the provider's search. The backend's run_debug picks
-	// the first allanime match, so a stable canonical title is the
-	// best signal we have. KitsuAnimeRef.canonical_title is non-null
+	// Title we feed to the provider's search. The backend searches on
+	// it and then disambiguates the results itself — `pick_candidate`
+	// weighs episode count, year, subtype and title — so what this
+	// side owes it is a stable, canonical query rather than a lucky
+	// one. KitsuAnimeRef.canonical_title is non-null
 	// per the type, but the detail isn't populated until kitsuAnimeDetail
 	// resolves — guard for the null pre-load state.
 	function playTitle(): string {

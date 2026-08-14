@@ -79,12 +79,14 @@ const cached = new Map<CacheKey, CacheEntry>();
 /**
  * Cap on the number of `fire` calls running at once. Twelve concurrent
  * resolves from a single page mount overloads the backend (CPU
- * contention + allanime rate-limit risk) and slows the user's own
+ * contention plus the provider's rate limit) and slows the user's own
  * click; queueing past the cap keeps the active set small while still
  * eventually warming every visible episode.
  *
- * Tunable: bump if backend SCRAPER_CONCURRENCY grows; lower if the
- * ratio of prefetched-but-unused entries becomes wasteful.
+ * Tunable, but the backend paces provider traffic again through
+ * ScraperGate, so raising this mostly moves the queue rather than the
+ * throughput. Lower it if the ratio of prefetched-but-unused entries
+ * becomes wasteful.
  */
 const PREFETCH_CONCURRENCY = 2;
 let activeFires = 0;

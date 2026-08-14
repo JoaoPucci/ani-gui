@@ -1,9 +1,9 @@
-//! Global admission gate for allanime scraper traffic.
+//! Global admission gate for provider traffic.
 //!
 //! Cold caches make the home page warm every rail entry at once, and
 //! each probe fans out over the primary title plus every alt title.
 //! Ungated, one launch fired hundreds of searches in under a minute,
-//! allanime rate-limited the IP, and the user's very first play click
+//! the provider rate-limited the IP, and the user's very first play click
 //! died in resolution with "No results found!". The gate exists so
 //! background traffic can never poison the connection the user's next
 //! click depends on:
