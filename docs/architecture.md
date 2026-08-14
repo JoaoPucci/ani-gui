@@ -1,6 +1,6 @@
 # Architecture
 
-`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. It began as a front end over the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper and now resolves streams itself in Rust; the script still ships in the bundle, unmodified, for people who want the terminal flow.
+`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. It began as a front end over the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper and now resolves streams itself in Rust. The script still lives at the repository root, unmodified, for people who want the terminal flow — but the desktop bundle no longer carries it.
 
 ## What gets shipped
 
@@ -39,7 +39,7 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
  │                                              image cache     │
  └──────────────────────────────────────────────────────────────┘
 
- sibling: pystardust/ani-cli (vendored, untouched)
+ sibling: pystardust/ani-cli (vendored, untouched — not bundled)
 ```
 
 Three layers, in lockstep:
@@ -91,15 +91,26 @@ Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]
 
 The **availability TTL branches on Kitsu's `status` field**: shows airing weekly need a 24-hour window so a new episode surfaces within a day, but finished shows can hold for 30 days. Unknown / missing status falls back to the short (24h) window — a stale "no episode 1161 yet" is much worse than re-probing too eagerly.
 
-## Bundled ani-cli script — keeping the CLI fresh
+## The copy earlier versions maintained
 
-The Bash script at the repository root is shipped inside the desktop bundle. The GUI no longer spawns it — resolution is native, and the two keep separate watch histories — but anyone who installed the bundle has the script on their machine, so the app keeps it current in three steps:
+Versions before 0.12 shipped the script inside the bundle and kept it
+current: a writable copy was seeded into `$XDG_CACHE_HOME/ani-gui/`,
+the carried test-loader guard was stripped from it, and a background
+task ran `-U` against it at every launch. A setting governed that and
+the **/diagnostics** page showed a log of the runs.
 
-1. **Materialise a writable copy.** AppImage / `.deb` / `.msi` resource directories are read-only on most platforms, and `-U` patches the script in place. On first launch the seed (the script shipped inside the bundle) is copied to `$XDG_CACHE_HOME/ani-gui/ani-cli`, and `-U` runs against that writable cache copy.
-2. **Strip the carried test-loader guard.** The seed in the repo carries a single `__ANI_CLI_LIB__` source-guard line so the bats test loader can `source` the script without executing `main`. The runtime never sources, so the line is dead code there — and worse, it's the one byte that always differs from upstream `master`. Without stripping it on copy, `-U` would report `Updated` on every single boot in a perpetual remove-then-reapply cycle.
-3. **Run `-U` in the background on every launch.** A Tokio task is spawned right after the proxy listener binds, so app startup isn't blocked. The task runs `bash <cached-script> -U` with `TERM=dumb` and `NO_COLOR=1`, captures stdout / stderr, and classifies the run as `NoChange`, `Updated`, or `Failed`. Outcomes are persisted as a small JSON log under `$XDG_STATE_HOME/ani-gui/` (the latest few entries) so the **/diagnostics** route can render the last attempt's status, output, and timestamp.
+Native resolution made the whole flow unreadable by anything. The copy
+was not on `PATH`, no packaging exposed it, and a separately installed
+`ani-cli` was never touched — so it updated a file nobody could reach,
+over the network, on every start.
 
-The whole flow is gated by the `auto_update_anicli` setting (default ON; the toggle lives on the Settings page). Disable it and the bundle just keeps using whatever script lives in the cache, indefinitely. Failures are non-fatal — a bad `-U` (e.g. offline at launch) means the previous script keeps running. The next successful boot self-heals.
+All of it is gone. What remains is a boot-time sweep: if that cache
+copy is present, the backend deletes it and reports the path on
+`/api/app-info`, so the **/diagnostics** page can say what was removed
+rather than the file vanishing silently. The sweep takes a regular
+file at exactly that path — a directory wearing the name is left
+alone, and the neighbouring image cache and database are never
+candidates.
 
 ## Embedded playback
 
@@ -195,6 +206,8 @@ The `ani-cli` script at the repository root is a fully functional, separately in
 - Users who want a graphical experience install the desktop bundle.
 
 The script is mergeable from upstream `pystardust/ani-cli` without conflict because the GUI lives entirely under `gui/` and never edits the script. The single carried patch is a `__ANI_CLI_LIB__` source guard added near the bottom of the script for testability.
+
+The desktop bundle does not include the script, and the app never invokes it. `tests/arch/boundaries.sh` holds that: nothing under `gui/` may source it, carry its test guard, or stage it as a packaged resource.
 
 ## Design direction (UI as a first-class surface)
 

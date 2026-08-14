@@ -92,7 +92,7 @@ The percentage / kcov baselines (`rust.*`, `frontend.*`, `bash.*`) are tighten-o
 |---|---|---|---|
 | Bash pure functions | bashcov / kcov | 95% | 90% |
 | Bash network/subprocess | bashcov | 70% | — |
-| Rust core (proxy, cache, anicli, history) | `cargo llvm-cov` | 85% | 75% |
+| Rust core (proxy, cache, scraper, history) | `cargo llvm-cov` | 85% | 75% |
 | Rust glue (HTTP API handlers) | `cargo llvm-cov` | 60% | — |
 | Frontend lib/stores | vitest + c8 | 80% | — |
 | Frontend components | vitest + c8 | 50% | — |
@@ -133,7 +133,7 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 | Invariant | Tool |
 |---|---|
-| `gui/**` may not reference `ani-cli` outside `gui/backend/src/anicli/path.rs` | ripgrep + allowlist |
+| `gui/**` may not source `ani-cli`, carry its test guard, or stage it as a packaged resource | grep |
 | `ani-cli` must not contain `gui/`, `axum`, etc. | grep |
 | Frontend imports no Rust types except generated `bindings/*.ts` | custom ESLint rule |
 | Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
@@ -145,7 +145,7 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 Trigger condition: after the Bash retrofit and the first GUI feature slice are green on CI for 30 days and total CI duration stays under 8 minutes.
 
-- **Rust**: `cargo-mutants` nightly, scoped to `proxy/`, `cache/`, `history/`, `anicli/`. Target survival rate < 15%.
+- **Rust**: `cargo-mutants` nightly, scoped to `proxy/`, `cache/`, `history/`, `scraper/`. Target survival rate < 15%.
 - **TS**: `stryker-js` nightly, scoped to `lib/` (DOM mutation noise on components is too high).
 - **Bash**: no mature mutation tool exists. We compensate with property tests on pure functions and high-coverage acceptance tests.
 
