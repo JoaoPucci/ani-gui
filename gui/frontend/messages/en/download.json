@@ -27,7 +27,7 @@
 	"button_browse": "Browse…",
 	"hint_filename_prefix": "Files land as ",
 	"hint_filename_template": "{title} Episode N.mp4",
-	"hint_filename_suffix": " per ani-cli's naming.",
+	"hint_filename_suffix": " — the naming is not configurable.",
 	"button_cancel": "Cancel",
 	"button_confirm": "Start download",
 	"button_confirming": "Starting…",

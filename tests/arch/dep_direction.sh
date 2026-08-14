@@ -13,9 +13,14 @@
 #      streaming proxy is mechanical (tokenize, fetch upstream, rewrite
 #      manifest); it doesn't touch metadata clients.
 #
-#   3. `gui/backend/src/anicli/`    never `use`s `crate::meta`,
-#      `crate::commands`, or `crate::api`. The subprocess driver sits
-#      below all three.
+#   3. `gui/backend/src/scraper/`   never `use`s `crate::meta`,
+#      `crate::commands`, or `crate::api`. Provider resolution sits
+#      below all three: it is handed a title and returns a stream, and
+#      knows nothing of who asked or what else they looked up. This
+#      rule named `anicli/` until that module was deleted, at which
+#      point its directory guard began skipping and the check passed
+#      by having no subject. `scraper/` inherited the position, so the
+#      invariant moved rather than retiring.
 #
 #   4. `gui/frontend/src/`           imports nothing from outside its
 #      own `src/` tree (no `../../backend`, no `../../tools`, etc.).
@@ -76,15 +81,23 @@ if [ -d gui/backend/src/proxy ]; then
     fi
 fi
 
-# 3. anicli/ sits below meta/, commands/, api/ — none of those should
-#    appear in its imports.
-if [ -d gui/backend/src/anicli ]; then
-    files=$(find gui/backend/src/anicli -type f -name '*.rs')
+# 3. scraper/ sits below meta/, commands/, api/ — none of those should
+#    appear in its imports. Both the plain form and a single-line
+#    grouped `use crate::{meta::…, …}` are matched.
+#
+#    Not covered: a grouped import rustfmt has split across lines,
+#    where the offending segment sits on a line of its own. Catching
+#    that needs a Rust parser rather than a line-oriented grep, and
+#    AGENTS.md §2 is explicit about which side of that line this
+#    suite stays on. Said here so a green run is not read as more
+#    than it is.
+if [ -d gui/backend/src/scraper ]; then
+    files=$(find gui/backend/src/scraper -type f -name '*.rs')
     if [ -n "$files" ]; then
         # shellcheck disable=SC2086
         assert_no_match \
-            'anicli/ may not import crate::meta, crate::commands, or crate::api (it sits below all three)' \
-            '^use[[:space:]]+crate::(meta|commands|api)[:;]' \
+            'scraper/ may not import crate::meta, crate::commands, or crate::api (it sits below all three)' \
+            '^use[[:space:]]+crate::((meta|commands|api)[:;]|\{[^}]*(meta|commands|api)::)' \
             $files
     fi
 fi

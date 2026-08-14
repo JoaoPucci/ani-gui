@@ -3,7 +3,7 @@
 	"title": "Acerca de ani-gui",
 	"tagline": "Navega y mira anime",
 	"version_prefix": "Versión",
-	"intro": "ani-gui es una interfaz de escritorio sobre ani-cli — Kitsu provee los metadatos, AniList alimenta la fila de tendencias en la página de inicio, y aniskip marca las ventanas de OP/ED. La reproducción ocurre en el reproductor hls.js integrado o se delega a un reproductor externo de tu preferencia.",
+	"intro": "ani-gui encuentra y reproduce anime por su cuenta — Kitsu provee los metadatos, AniList alimenta la fila de tendencias en la página de inicio, y aniskip marca las ventanas de OP/ED. La reproducción ocurre en el reproductor hls.js integrado o se delega a un reproductor externo de tu preferencia.",
 	"section_donate_title": "Apoyo",
 	"section_donate_hint": "ETH en mainnet",
 	"donate_intro": "Si ani-gui te ha ahorrado tiempo, una propina ayuda a mantener el desarrollo. Haz clic en la dirección para copiarla y pégala luego en tu billetera.",
@@ -22,9 +22,8 @@
 	"license_link_label": "Proyecto en GitHub",
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
-	"bundled_tool_note_ani_cli": "Resolución de fuentes y canalización de descargas. ani-gui es una interfaz de escritorio sobre el script incluido.",
-	"bundled_tool_note_fzf": "Incluido en .deb y AppImage para que ani-cli siempre tenga un selector disponible.",
-	"bundled_tool_note_aria2": "Incluido en .deb y AppImage; ani-cli lo usa para descargas en paralelo.",
+	"bundled_tool_note_curl_impersonate": "Transporte HTTP para la resolución de fuentes. El proveedor rechaza las solicitudes comunes, así que la reproducción y las descargas dependen de él.",
+	"bundled_tool_note_yt_dlp": "Motor de descargas. Obtiene el episodio en fragmentos paralelos y reintenta los que fallan, para que una conexión inestable no reinicie el archivo completo.",
 	"bundled_tool_note_ffmpeg": "El .deb lo declara como Recommends; el AppImage depende de la instalación del sistema. Usado para combinar los segmentos descargados en MP4.",
 	"asset_note_lottie_loading": "Anima el LoadingOverlay usado durante la resolución de reproducción y esperas similares."
 }

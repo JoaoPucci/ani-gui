@@ -20,7 +20,6 @@
 #![warn(missing_docs, rust_2018_idioms)]
 
 pub mod account;
-pub mod anicli;
 pub mod api;
 pub mod app;
 pub mod cache;
@@ -29,6 +28,7 @@ pub mod config;
 pub mod error;
 pub mod history;
 pub mod i18n;
+pub mod legacy_script;
 pub mod meta;
 pub mod proxy;
 pub mod scraper;

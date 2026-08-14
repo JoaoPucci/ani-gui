@@ -182,9 +182,13 @@ async function deleteJson<T>(path: string): Promise<T> {
 /** Output of `cmd_app_info`. */
 export interface AppInfo {
 	version: string;
-	ani_cli_path: string;
 	history_path: string;
 	proxy_base_url: string;
+	/** Paths the backend's boot sweep deleted of the script copy
+	 *  versions before 0.12 kept current. Empty on all but the first
+	 *  launch after upgrading; the diagnostics page decides what to
+	 *  show via `$lib/diagnostics/legacy-sweep`. */
+	removed_legacy_paths: string[];
 }
 
 /** One row from the shared `ani-hsts` file. */
@@ -281,23 +285,11 @@ export interface Config {
 	auto_skip_ed: boolean;
 	use_custom_player_controls: boolean;
 	disable_auto_pip_on_leave: boolean;
-	auto_update_anicli: boolean;
 	update_include_prereleases: boolean;
 	/** Chosen lead tracker (`"anilist"` | `"mal"`); empty = no choice
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the
 	 *  Watch Later rail order, not write-back (which fans to all). */
 	primary_account: string;
-}
-
-/** Outcome of the most recent ani-cli `-U` run. The backend writes
- *  this to `$XDG_STATE_HOME/ani-gui/anicli-update.json` after every
- *  attempt; the diagnostics page reads it via {@link anicliUpdateStatus}. */
-export interface AnicliUpdateOutcome {
-	status: 'no_change' | 'updated' | 'failed';
-	stdout: string;
-	stderr: string;
-	finished_at: string; // RFC3339 (Z-suffixed)
-	duration_ms: number;
 }
 
 /** Single-size thumbnail Kitsu exposes for episodes (no tiny/small variants). */
@@ -1095,16 +1087,9 @@ export function settingsPut(cfg: Config): Promise<void> {
 	return putJson<void>('/api/settings', cfg);
 }
 
-/** Fetch the rolling log of recent ani-cli `-U` outcomes, latest
- *  first. Capped at 100 entries by the backend. Empty when no run
- *  has happened yet (first launch or auto-update permanently off). */
-export function anicliUpdateLog(): Promise<AnicliUpdateOutcome[]> {
-	return getJson<AnicliUpdateOutcome[]>('/api/anicli/update-log');
-}
-
 /**
  * Wipe the SQLite metadata cache (Kitsu responses + title-match
- * mappings). Does NOT touch the ani-cli history file or the on-disk
+ * mappings). Does NOT touch the watch-history file or the on-disk
  * image cache. Used by the diagnostics "Clear metadata cache" button
  * when cached data goes stale.
  */

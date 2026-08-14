@@ -4,8 +4,7 @@
 //!
 //! - the streaming proxy (its session table, app secret, http client,
 //!   origin, and the kernel-assigned base URL once the listener is up)
-//! - the resolved path to the vendored `ani-cli` script, which the
-//!   auto-updater keeps current
+//! - the directory of bundled binaries native resolution spawns
 //! - the path of the GUI's own watch-history file
 //! - an admission gate for provider traffic so background probes
 //!   never hammer the upstream
@@ -16,8 +15,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::account::InternalSecret;
-use crate::anicli::process::locate_ani_cli;
-use crate::anicli::update::{self, UpdateOutcome};
 use crate::cache::SqlitePool;
 use crate::commands::account::AccountWriteLocks;
 use crate::config::paths;
@@ -46,20 +43,18 @@ pub struct AppState {
     /// Public base URL the frontend uses to reach the proxy
     /// (`http://127.0.0.1:<port>`). Set after the listener binds.
     pub proxy_origin: ProxyOrigin,
-    /// Resolved path to the vendored `ani-cli` script.
-    pub ani_cli_path: PathBuf,
-    /// Resolved path to `bash.exe` on Windows; `None` on Unix where
-    /// the script runs directly via shebang. Resolved once at startup
-    /// via [`crate::anicli::bash::locate_bash`] and threaded into
-    /// every spawn site via [`DebugOptions::bash_path`].
-    pub bash_path: Option<PathBuf>,
-    /// Directory shipped next to the backend binary holding bundled
-    /// POSIX deps (Windows: `fzf.exe`). Computed once in `build()`
-    /// from the resource dir; threaded into every ani-cli spawn so
-    /// the script's `dep_ch` finds the bundled binaries before any
-    /// system install. `None` on Unix and on Windows dev runs where
-    /// the directory hasn't been laid down.
+    /// Directory the packages stage next to the backend binary,
+    /// holding the impersonating transport and the download tools.
+    /// Computed once in `build()` from the resource dir; searched
+    /// ahead of PATH so a bundled binary beats a system install.
+    /// `None` on a dev run that hasn't staged the directory.
     pub bundled_bin: Option<PathBuf>,
+    /// What the boot-time sweep removed of the script copy earlier
+    /// versions maintained. Empty on every launch after the first, and
+    /// on installs that never ran one of those versions. Surfaced by
+    /// the diagnostics page so the removal is visible rather than
+    /// silent.
+    pub legacy_sweep: crate::legacy_script::SweepReport,
     /// Path of the shared history file.
     pub history_path: PathBuf,
     /// Test override for the anidb provider origin the native play
@@ -77,8 +72,8 @@ pub struct AppState {
     pub kitsu: KitsuClient,
     /// Path to the user's TOML settings file (`config.toml`).
     pub config_path: PathBuf,
-    /// `$XDG_STATE_HOME/ani-gui/` — backing store for the latest
-    /// `ani-cli -U` outcome JSON the diagnostics page reads.
+    /// `$XDG_STATE_HOME/ani-gui/` — backing store for the watch
+    /// history and the account tokens.
     pub state_dir: PathBuf,
     /// Per-process random secret renderer-only paths require as the
     /// `x-ani-gui-internal-secret` header. Currently used to gate the
@@ -110,47 +105,40 @@ pub struct AppState {
 
 impl AppState {
     /// Build state from the resolved proxy origin and the shared http
-    /// client. `ani_cli_resource_dir` is the Tauri-bundled fallback path
-    /// (the script is shipped as a resource); we look it up on PATH first.
+    /// client. `resource_dir` is the packaged resources directory; its
+    /// `bin/` holds the binaries the native resolver and the downloader
+    /// spawn.
     ///
     /// # Errors
-    /// - [`AniError::MissingBinary`] if neither PATH nor the resource dir
-    ///   has `ani-cli`.
     /// - [`AniError::Io`] if the history file's parent directory can't be
     ///   resolved (e.g., XDG paths fail on an exotic platform).
     pub fn build(
         proxy_http: reqwest::Client,
         proxy_origin: ProxyOrigin,
-        ani_cli_resource_dir: Option<PathBuf>,
+        resource_dir: Option<PathBuf>,
     ) -> Result<Self> {
-        // Bundled-deps dir lives at `<resource_dir>/bin`. On Windows
-        // the NSIS installer drops `fzf.exe` here via electron-builder
-        // `extraResources`; in cargo dev runs the same path is
-        // populated by the `fetch:win-deps` script so playback works
-        // without polluting global PATH. Computed before consuming
-        // `ani_cli_resource_dir` for the script fallback below.
-        let bundled_bin = resolve_bundled_bin(ani_cli_resource_dir.as_deref());
-        // Resolve the script path through the writable cache copy so
-        // `-U` can patch it in place. The seed is whatever PATH or
-        // the resource dir gives us; the live path is always under
-        // `$XDG_CACHE_HOME/ani-gui/ani-cli`. The reapply pass is
-        // idempotent and ensures our `__ANI_CLI_LIB__` source guard
-        // survives between releases.
-        let fallback = ani_cli_resource_dir.map(|d| d.join("ani-cli"));
-        let seed = locate_ani_cli(fallback.as_ref())?;
+        // Bundled-deps dir lives at `<resource_dir>/bin`, holding the
+        // impersonating transport the native resolver spawns plus the
+        // downloader's tools. electron-builder stages it through
+        // `extraResources`; cargo dev runs get the same path from the
+        // `fetch:*-deps` scripts, so playback works without polluting
+        // global PATH.
+        let bundled_bin = resolve_bundled_bin(resource_dir.as_deref());
         let cache_root = paths::cache_dir().ok_or(AniError::Io)?;
-        let ani_cli_path = update::resolve_anicli_path(&seed, &cache_root).map_err(|e| {
-            tracing::warn!(target: "anicli::boot", error = %e, "resolve_anicli_path failed; falling back to seed");
-            AniError::Io
-        })?;
-        // A prior session's `-U` may have replaced the cache with
-        // upstream's script: strip the bats loader guard (else every
-        // -U reports Updated) and restore the fork's search capture.
-        update::repair_carried_patches(&ani_cli_path);
-        // Windows: locate Git Bash so the updater's `-U` spawn can
-        // wrap the POSIX script with it. Not finding one is not a
-        // boot failure — see `bash_for_updates`.
-        let bash_path = bash_for_updates();
+        let state_root = paths::state_dir().ok_or(AniError::Io)?;
+        // Earlier versions kept their own copy of the shell script in
+        // the cache root and logged every update attempt under the
+        // state dir. Nothing reads either now, so both are removed
+        // rather than left behind — reported, not silent, through the
+        // diagnostics page.
+        let legacy_sweep = crate::legacy_script::sweep_legacy_files(&cache_root, &state_root);
+        for path in &legacy_sweep.removed {
+            tracing::info!(
+                target: "legacy_script",
+                path = %path.display(),
+                "removed the script copy an earlier version maintained"
+            );
+        }
         let history_path = paths::gui_history().ok_or(AniError::Io)?;
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
@@ -162,16 +150,15 @@ impl AppState {
         let meta_http = crate::proxy::upstream::build_meta_client();
         let kitsu = KitsuClient::new(meta_http.clone());
         let config_path = paths::config_file().ok_or(AniError::Io)?;
-        let state_dir = paths::state_dir().ok_or(AniError::Io)?;
+        let state_dir = state_root;
         Ok(Self {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http,
             meta_http,
             proxy_origin,
-            ani_cli_path,
-            bash_path,
             bundled_bin,
+            legacy_sweep,
             history_path,
             anidb_base: None,
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
@@ -186,48 +173,6 @@ impl AppState {
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         })
-    }
-
-    /// Spawn a background task that runs `ani-cli -U` and appends
-    /// the outcome to the rolling log for /diagnostics to read.
-    /// Gated only by the `auto_update_anicli` settings toggle. The
-    /// task fires off the listener-bind path so app launch is
-    /// unaffected by the curl latency.
-    pub fn maybe_spawn_anicli_update(self: &Arc<Self>) {
-        let cfg = crate::config::read_config(&self.config_path).unwrap_or_default();
-        if !cfg.auto_update_anicli {
-            return;
-        }
-        let script = self.ani_cli_path.clone();
-        let bash = self.bash_path.clone();
-        let bundled_bin = self.bundled_bin.clone();
-        let state_dir = self.state_dir.clone();
-        tokio::spawn(async move {
-            tracing::info!(target: "anicli::update", script = %script.display(), "running -U in background");
-            // The sandwich variant: -U's comparison must see an
-            // upstream-shaped script (a persistent fork diff would
-            // false-report Updated on every launch), and the repair
-            // afterwards keeps this session's later spawns
-            // index-stable.
-            let outcome =
-                update::run_update_with_repair(&script, bash.as_deref(), bundled_bin.as_deref())
-                    .await;
-            tracing::info!(
-                target: "anicli::update",
-                status = ?outcome.status,
-                duration_ms = outcome.duration_ms,
-                "ani-cli -U finished"
-            );
-            if let Err(e) = update::append_outcome(&state_dir, &outcome) {
-                tracing::warn!(target: "anicli::update", error = %e, "append_outcome failed");
-            }
-        });
-    }
-
-    /// Read the persisted log of recent `-U` outcomes, latest first.
-    /// Empty vector when no run has happened yet.
-    pub fn anicli_update_log(&self) -> std::io::Result<Vec<UpdateOutcome>> {
-        update::read_outcomes(&self.state_dir)
     }
 
     /// Configured image-cache size cap, in bytes. Reads from the
@@ -253,32 +198,13 @@ impl AppState {
     }
 }
 
-/// Where the auto-updater's spawn should find `bash`, or `None`.
-///
-/// `None` is not a failure. It means either Unix, where the spawn
-/// invokes bash off PATH rather than by absolute path, or a Windows
-/// host with no Git for Windows install — and on that host the app
-/// still resolves streams, downloads and probes availability, all
-/// natively. Only `ani-cli -U` wants a shell, and it reports its own
-/// spawn failure into the update log the diagnostics page renders.
-fn bash_for_updates() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        crate::anicli::bash::locate_bash()
-    }
-    #[cfg(not(windows))]
-    {
-        None
-    }
-}
-
 /// Resolve the bundled-deps directory next to the backend binary.
-/// `<resource_dir>/bin` holds POSIX-side ani-cli deps the script
-/// needs but Git for Windows doesn't bundle (today: `fzf.exe`,
-/// `aria2c.exe`). Returns `Some` only when the dir actually exists
-/// — so a Linux build (no resource dir at all) and a dev Windows
-/// run that hasn't run `fetch:win-deps` both come out as `None`,
-/// and the spawn path falls through to the inherited PATH.
+/// `<resource_dir>/bin` holds what native resolution spawns and the
+/// host may not have: the impersonating transport the provider
+/// requires, plus the download tools. Both packaged platforms stage
+/// it (`fetch:linux-deps` / `fetch:win-deps`). Returns `Some` only
+/// when the dir actually exists, so a dev run that never staged it
+/// comes out `None` and the spawn path falls through to PATH.
 fn resolve_bundled_bin(resource_dir: Option<&std::path::Path>) -> Option<PathBuf> {
     resource_dir.map(|d| d.join("bin")).filter(|p| p.is_dir())
 }
@@ -289,25 +215,17 @@ mod tests {
 
     /// Boot the real `build` path against a staged environment: a
     /// tempdir plays HOME + every XDG root, and the resource dir
-    /// carries a stub ani-cli the locator can seed the cache copy
-    /// from. Unix-only: the Windows arm additionally needs a Git
-    /// Bash install, and the coverage gate this protects runs on
-    /// Linux.
+    /// carries the `bin/` the packages stage. Unix-only, because the
+    /// coverage gate this protects runs on Linux.
     #[cfg(unix)]
     #[tokio::test]
     async fn build_assembles_state_from_a_staged_environment() {
-        use std::os::unix::fs::PermissionsExt;
         let _guard = crate::config::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let td = tempfile::tempdir().expect("tempdir");
         let resource = td.path().join("resources");
         std::fs::create_dir_all(resource.join("bin")).expect("mkdir resources/bin");
-        let script = resource.join("ani-cli");
-        std::fs::write(&script, "#!/bin/sh\nexit 0\n").expect("write stub script");
-        let mut perms = std::fs::metadata(&script).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script, perms).expect("chmod stub");
 
         let saved: Vec<(String, Option<String>)> = [
             "HOME",
@@ -342,11 +260,6 @@ mod tests {
 
         let state = built.expect("build succeeds against the staged env");
         let root = td.path().to_path_buf();
-        assert!(
-            state.ani_cli_path.exists(),
-            "cache copy of the script exists"
-        );
-        assert!(state.ani_cli_path.starts_with(&root));
         assert!(state.history_path.starts_with(&root));
         assert!(state.image_cache_dir.starts_with(&root));
         assert!(state.config_path.starts_with(&root));
@@ -354,15 +267,13 @@ mod tests {
         assert!(state.image_cache_dir.is_dir(), "image cache dir created");
         assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
 
-        // The update log starts empty, and the update spawn is a
-        // no-op while the settings toggle is off — config.toml was
-        // never written, but an explicit off pin keeps this stable
-        // if the default ever flips.
-        std::fs::create_dir_all(state.config_path.parent().unwrap()).expect("config dir");
-        std::fs::write(&state.config_path, "auto_update_anicli = false\n").expect("write config");
-        let arc = Arc::new(state);
-        arc.maybe_spawn_anicli_update();
-        assert_eq!(arc.anicli_update_log().expect("readable log").len(), 0);
+        // Boot sweeps the script copy an earlier version would have
+        // left in the cache root. This staged env never had one, so
+        // the report is empty rather than absent.
+        assert!(
+            state.legacy_sweep.removed.is_empty(),
+            "nothing to sweep in a freshly staged cache"
+        );
     }
 
     fn fake_state() -> AppState {
@@ -372,10 +283,9 @@ mod tests {
             proxy_http: reqwest::Client::new(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
-            ani_cli_path: PathBuf::from("/tmp/ani-cli"),
-            bash_path: None,
             bundled_bin: None,
-            history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
+            legacy_sweep: crate::legacy_script::SweepReport::default(),
+            history_path: PathBuf::from("/tmp/ani-gui/history"),
             anidb_base: None,
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
@@ -404,24 +314,6 @@ mod tests {
     }
 
     #[cfg(not(windows))]
-    #[test]
-    fn a_missing_bash_is_not_a_boot_failure() {
-        // Bash is reachable from one place now: the updater's spawn.
-        // Nothing in the play, download or availability paths shells
-        // out, so a host without Git for Windows must still boot —
-        // it gets a working app and a failed entry in the update
-        // log, not a backend that refuses to start. The helper
-        // therefore has no error path at all, on any platform.
-        //
-        // On Unix it answers None regardless, because the spawn
-        // invokes bash off PATH rather than by absolute path.
-        let got: Option<PathBuf> = bash_for_updates();
-        #[cfg(not(windows))]
-        assert!(got.is_none(), "Unix expects None, got {got:?}");
-        #[cfg(windows)]
-        let _ = got;
-    }
-
     #[test]
     fn resolve_bundled_bin_returns_none_when_resource_dir_is_none() {
         // No resource dir handed in (cargo run from source on Linux,

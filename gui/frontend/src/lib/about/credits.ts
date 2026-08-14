@@ -1,17 +1,19 @@
 /**
  * Hand-curated credits surfaced by the About page.
  *
- * Scope: the bits the About page is actually about — bundled
- * upstream tools (ani-cli + the binaries we ship alongside it for
- * `dep_ch` to find) and editorial assets (Lottie animation,
- * eventually fonts / illustrations). Frontend + backend dep lists
- * are not credited here — they are dev-facing and surfacing them
- * here turned the page into a build dashboard rather than an
- * "about this app" surface.
+ * Scope: the bits the About page is actually about — the upstream
+ * binaries the packages ship so playback and downloads work without
+ * the user installing anything, and editorial assets (Lottie
+ * animation, eventually fonts / illustrations). Frontend + backend
+ * dep lists are not credited here — they are dev-facing, and
+ * surfacing them turned the page into a build dashboard rather than
+ * an "about this app" surface.
  *
- * When you change `fetch-linux-deps.mjs` or swap an asset, update
- * the entry here too — but keep the list focused on things a user
- * has a reason to know about.
+ * When a platform fetcher gains or loses an entry, or an asset is
+ * swapped, update this list too. The obligation runs both ways: a
+ * tool credited here that nothing spawns tells the reader the app
+ * needs something it never invokes, which is how fzf and aria2c
+ * outlived the script that used them.
  *
  * Display-only data (name / version / license / url) is hard-coded.
  * Visitor-facing description strings live in the i18n message
@@ -21,14 +23,13 @@
  * reason Paraglide exists.
  */
 
-export type BundledToolNoteId = 'ani_cli' | 'fzf' | 'aria2' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'yt_dlp' | 'ffmpeg';
 
 export interface BundledTool {
 	/** Display label — the upstream's own name. */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
-	 *  the upstream doesn't version uniformly (the bundled ani-cli
-	 *  script carries its own tag separately; ffmpeg is whatever
+	 *  the upstream doesn't version uniformly (ffmpeg is whatever
 	 *  the distro ships). */
 	version: string | null;
 	/** SPDX license id (or a free-text combo for dual-licensed
@@ -43,30 +44,30 @@ export interface BundledTool {
 	noteId: BundledToolNoteId;
 }
 
-/** Tools the .deb / AppImage bundles or recommends so ani-cli's
- *  `dep_ch` finds them without the user having to install anything
- *  by hand. Versions track what `fetch-linux-deps.mjs` pins. */
+/** Tools the packages bundle or recommend so playback and downloads
+ *  work without the user installing anything by hand. Versions track
+ *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
+ *  two stage the same set, so one version here covers both. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
-		name: 'ani-cli',
-		version: null,
-		license: 'GPL-3.0',
-		url: 'https://github.com/pystardust/ani-cli',
-		noteId: 'ani_cli'
-	},
-	{
-		name: 'fzf',
-		version: '0.62.0',
+		// The transport the native resolver spawns. The provider
+		// fingerprints TLS and answers a plain curl with an
+		// interstitial, so without this nothing resolves at all.
+		name: 'curl-impersonate',
+		version: '2.0.0',
 		license: 'MIT',
-		url: 'https://github.com/junegunn/fzf',
-		noteId: 'fzf'
+		url: 'https://github.com/lexiforest/curl-impersonate',
+		noteId: 'curl_impersonate'
 	},
 	{
-		name: 'aria2',
-		version: '1.37.0',
-		license: 'GPL-2.0',
-		url: 'https://aria2.github.io/',
-		noteId: 'aria2'
+		// The downloader. Preferred over ffmpeg when both are present:
+		// it retries fragments indefinitely and pulls sixteen at once,
+		// where ffmpeg does one stream copy with no retries.
+		name: 'yt-dlp',
+		version: '2025.09.26',
+		license: 'Unlicense',
+		url: 'https://github.com/yt-dlp/yt-dlp',
+		noteId: 'yt_dlp'
 	},
 	{
 		name: 'ffmpeg',

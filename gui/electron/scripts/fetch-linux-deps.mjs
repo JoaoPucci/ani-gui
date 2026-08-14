@@ -1,32 +1,28 @@
-// Pre-build step for `package:release`: download the POSIX-side
-// ani-cli dependencies that aren't safe to assume on every Linux
-// host, and stage them under `build-resources/linux/bin/`. electron-
-// builder copies the dir into both the .deb and AppImage payloads
-// via `linux.extraResources` in `package.json`, landing at
+// Pre-build step for `package:release`: download the binaries the app
+// spawns that aren't safe to assume on every Linux host, and stage
+// them under `build-resources/linux/bin/`. electron-builder copies the
+// dir into both the .deb and AppImage payloads via
+// `linux.extraResources` in `package.json`, landing at
 // `<install>/resources/bin/<binary>` at runtime. The Rust backend
-// prepends that dir to the spawned bash's PATH (see
-// `gui/backend/src/anicli/env.rs`) so ani-cli's `dep_ch` finds the
-// bundled binaries before any system install.
+// searches that dir ahead of PATH, so a bundled binary beats a system
+// install (see `resolve_bundled_bin` in `gui/backend/src/app.rs`).
 //
-// Why this exists: ani-cli's dep_ch surfaces missing deps via `die`,
-// which `exit 1`s the entire shell. A Linux desktop without these
-// tools bricks playback or downloads silently. Bundling the small
-// fast ones (fzf, aria2c) removes that footgun.
+// Why this exists: without them a Linux desktop fails at the two
+// points that matter and says little about why — every play dies on
+// the provider's interstitial, or every download dies on a missing
+// downloader.
 //
 // Bundled today:
-//   - fzf      — required for any spawn (dep_ch fzf at script start)
-//   - aria2c   — required for downloads (dep_ch ffmpeg aria2c)
-//   - yt-dlp   — ani-cli 4.15 PREFERS it over ffmpeg when both are
-//                present, and the two are not equivalent:
+//   - curl-impersonate — the transport native resolution spawns. See
+//                the block above its entries below.
+//   - yt-dlp   — the downloader. It and ffmpeg are not equivalent:
 //                  yt-dlp  --fragment-retries infinite -N 16
 //                  ffmpeg  -c copy
 //                Sixteen parallel chunks with infinite per-chunk
 //                retries against one at a time with none. Bundling
 //                gives every user the faster, more failure-tolerant
 //                downloader rather than only those who happened to
-//                install it. ~37 MB, one self-contained file — the
-//                same order as aria2c, so the ~80 MB argument that
-//                keeps ffmpeg out does not apply here.
+//                install it. ~37 MB, one self-contained file.
 //
 // NOT bundled, by design:
 //   - ffmpeg   — too large (~80 MB compressed). Declared as a
@@ -51,7 +47,7 @@
 // target instead.
 
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -59,7 +55,7 @@ import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import { needsExtraction, assertDepShape } from '../lib/dep-staging.cjs';
+import { needsExtraction, assertDepShape, retiredStagedBinaries } from '../lib/dep-staging.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
@@ -72,38 +68,12 @@ const repoRoot = path.resolve(electronDir, '..', '..');
 // script after a version bump — the failure prints actual vs
 // expected so you can paste the new hash.
 //
-// Sources:
-//   - fzf:   github.com/junegunn/fzf releases (official upstream)
-//   - aria2: github.com/asdo92/aria2-static-builds (third-party
-//            static builds; aria2 upstream only ships source +
-//            Windows binaries, so this is the cleanest static
-//            Linux source available). 724-star repo, current with
-//            upstream 1.37.0.
+// fzf and aria2c used to be staged here. They were the shell
+// script's dependencies — its interactive picker and its downloader —
+// and the app dropped them when it stopped running the script: it has
+// no picker, and the native downloader asks yt-dlp for concurrency
+// (`-N 16`) rather than handing off to aria2c.
 export const DEPS = [
-	{
-		name: 'fzf',
-		dep: 'fzf',
-		version: '0.62.0',
-		archiveName: 'fzf-0.62.0-linux_amd64.tar.gz',
-		url: 'https://github.com/junegunn/fzf/releases/download/v0.62.0/fzf-0.62.0-linux_amd64.tar.gz',
-		sha256: '64b56dd484a2317d5f04c28ac0791b36807f034adb419209ad39fb6637255794',
-		binary: 'fzf',
-		// fzf's Linux tarball is flat — fzf sits at the archive root.
-		archivePath: 'fzf',
-		tarFlag: '-xzf',
-	},
-	{
-		name: 'aria2',
-		dep: 'aria2',
-		version: '1.37.0',
-		archiveName: 'aria2-1.37.0-linux-gnu-64bit-build1.tar.bz2',
-		url: 'https://github.com/asdo92/aria2-static-builds/releases/download/v1.37.0/aria2-1.37.0-linux-gnu-64bit-build1.tar.bz2',
-		sha256: '80c0a04aabaedf1f3cf8ec77861547823b7ecc317fb61220b06c28edf97bb964',
-		binary: 'aria2c',
-		// aria2's tarball nests the binary under a versioned dir.
-		archivePath: 'aria2-1.37.0-linux-gnu-64bit-build1/aria2c',
-		tarFlag: '-xjf',
-	},
 	{
 		name: 'yt-dlp',
 		dep: 'yt-dlp',
@@ -297,10 +267,34 @@ async function stageDep(dep) {
 	}
 }
 
+/**
+ * Delete binaries a previous run staged that `DEPS` no longer names.
+ *
+ * Staging is per-entry, and `extraResources` copies the directory
+ * whole — so without this a retired dependency keeps shipping from any
+ * checkout that staged it before, with nothing in the build output to
+ * say so. Runs over the dev mirrors for the same reason: a `cargo run`
+ * finds them ahead of PATH.
+ */
+async function sweepRetired() {
+	for (const dir of [stagedBinDir, ...devTargetBinDirs]) {
+		if (!existsSync(dir)) continue;
+		const stale = retiredStagedBinaries(await readdir(dir), DEPS);
+		for (const name of stale) {
+			await rm(path.join(dir, name), { recursive: true, force: true });
+			console.log(`[fetch-linux-deps] removed retired ${path.join(dir, name)}`);
+		}
+	}
+}
+
 async function main() {
 	// Validate every entry before touching the network: a typo should
 	// cost a syntax error, not a partial download.
 	for (const dep of DEPS) assertDepShape(dep);
+
+	// Before staging: drop anything an earlier run left that this
+	// list no longer declares.
+	await sweepRetired();
 
 	for (const dep of DEPS) {
 		console.log(`[fetch-linux-deps] === ${dep.name} ${dep.version} ===`);

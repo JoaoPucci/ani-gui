@@ -29,12 +29,4 @@ if [ -x "$LAUNCHER" ]; then
     ln -sf "$LAUNCHER" "$LINK"
 fi
 
-# Bundled ani-cli script needs the executable bit — extraResources copies
-# it but dpkg's tar extraction doesn't always preserve the +x bit on
-# files that lack it in the source tree.
-ANI_CLI=/opt/ani-gui/resources/ani-cli
-if [ -e "$ANI_CLI" ]; then
-    chmod 0755 "$ANI_CLI"
-fi
-
 exit 0

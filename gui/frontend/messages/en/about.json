@@ -3,7 +3,7 @@
 	"title": "About ani-gui",
 	"tagline": "Browse and watch anime",
 	"version_prefix": "Version",
-	"intro": "ani-gui is a desktop shell over ani-cli — Kitsu drives metadata, AniList feeds the home page's trending row, and aniskip marks OP/ED windows. Playback runs in the embedded hls.js player or hands off to an external one when you prefer.",
+	"intro": "ani-gui finds and plays anime on its own — Kitsu drives metadata, AniList feeds the home page's trending row, and aniskip marks OP/ED windows. Playback runs in the embedded hls.js player or hands off to an external one when you prefer.",
 	"section_donate_title": "Support",
 	"section_donate_hint": "ETH on mainnet",
 	"donate_intro": "If ani-gui has saved you time, a tip helps keep development going. Click the address to copy it, then paste into your wallet.",
@@ -22,9 +22,8 @@
 	"license_link_label": "Project on GitHub",
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
-	"bundled_tool_note_ani_cli": "Source-resolution and download pipeline. ani-gui is a desktop shell over the bundled script.",
-	"bundled_tool_note_fzf": "Bundled in .deb + AppImage so ani-cli always has a selector available.",
-	"bundled_tool_note_aria2": "Bundled in .deb + AppImage; ani-cli uses it for parallel downloads.",
+	"bundled_tool_note_curl_impersonate": "HTTP transport for source resolution. The provider turns away ordinary requests, so playback and downloads depend on it.",
+	"bundled_tool_note_yt_dlp": "Download engine. Fetches the episode in parallel fragments and retries the ones that fail, so a flaky connection does not restart the whole file.",
 	"bundled_tool_note_ffmpeg": ".deb declares it as Recommends; AppImage relies on the system install. Used to mux downloaded segments into MP4.",
 	"asset_note_lottie_loading": "Drives the LoadingOverlay used during play resolution and similar waits."
 }

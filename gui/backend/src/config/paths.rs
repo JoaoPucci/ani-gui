@@ -108,9 +108,8 @@ pub fn logs_dir() -> Option<PathBuf> {
 /// `~/Library/Application Support/net.thirdmovement.ani-gui`).
 ///
 /// Holds machine-state files that aren't quite cache (regenerable)
-/// and aren't quite config (user-edited). The latest ani-cli `-U`
-/// outcome lands here so /diagnostics can surface it without
-/// re-running the update.
+/// and aren't quite config (user-edited): the watch history and the
+/// account tokens.
 #[must_use]
 pub fn state_dir() -> Option<PathBuf> {
     if let Ok(state) = std::env::var("XDG_STATE_HOME") {

@@ -3,7 +3,7 @@
 	"title": "Sobre o ani-gui",
 	"tagline": "Navegue e assista anime",
 	"version_prefix": "Versão",
-	"intro": "O ani-gui é uma interface desktop sobre o ani-cli — o Kitsu fornece metadados, o AniList alimenta a linha de tendências da página inicial e o aniskip marca as janelas de OP/ED. A reprodução acontece no player hls.js embutido ou pode ser delegada a um player externo de sua preferência.",
+	"intro": "O ani-gui encontra e reproduz anime por conta própria — o Kitsu fornece metadados, o AniList alimenta a linha de tendências da página inicial e o aniskip marca as janelas de OP/ED. A reprodução acontece no player hls.js embutido ou pode ser delegada a um player externo de sua preferência.",
 	"section_donate_title": "Apoie",
 	"section_donate_hint": "ETH na mainnet",
 	"donate_intro": "Se o ani-gui te poupou tempo, uma contribuição ajuda a manter o desenvolvimento. Clique no endereço para copiá-lo e depois cole-o na sua carteira.",
@@ -22,9 +22,8 @@
 	"license_link_label": "Projeto no GitHub",
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
-	"bundled_tool_note_ani_cli": "Resolução de fontes e pipeline de download. O ani-gui é uma interface desktop sobre o script embutido.",
-	"bundled_tool_note_fzf": "Incluído no .deb e no AppImage para que o ani-cli sempre tenha um seletor disponível.",
-	"bundled_tool_note_aria2": "Incluído no .deb e no AppImage; o ani-cli o usa para downloads em paralelo.",
+	"bundled_tool_note_curl_impersonate": "Transporte HTTP para a resolução de fontes. O provedor recusa requisições comuns, então a reprodução e os downloads dependem dele.",
+	"bundled_tool_note_yt_dlp": "Motor de downloads. Baixa o episódio em fragmentos paralelos e repete os que falham, para que uma conexão instável não reinicie o arquivo inteiro.",
 	"bundled_tool_note_ffmpeg": "O .deb o declara como Recommends; o AppImage depende da instalação do sistema. Usado para combinar os segmentos baixados em MP4.",
 	"asset_note_lottie_loading": "Anima o LoadingOverlay usado durante a resolução de reprodução e esperas semelhantes."
 }

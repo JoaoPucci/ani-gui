@@ -8,9 +8,9 @@
   <img width="2751" height="1300" alt="home image" src="https://github.com/user-attachments/assets/ee2e3d80-01e8-46cb-afa0-a132cd3e3273" />
 </p>
 
-ani-gui is a graphical front-end for [pystardust/ani-cli](https://github.com/pystardust/ani-cli). It embeds the upstream Bash scraper unmodified and wraps it in a Rust + SvelteKit desktop application — discovery, search, an embedded player, downloads, persistent watch history, Picture-in-Picture, and OP/ED skip on top of the same scraping engine.
+ani-gui is a Rust + SvelteKit desktop application for browsing and watching anime — discovery, search, an embedded player, downloads, persistent watch history, Picture-in-Picture, and OP/ED skip. It began as a graphical front end over [pystardust/ani-cli](https://github.com/pystardust/ani-cli) and resolves streams itself now, in Rust.
 
-The CLI still exists. The GUI does not replace it; the two share the script and coexist in this repository. See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
+The script still lives in this repository for anyone who wants the terminal flow, but the desktop bundle no longer carries or runs it. See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Features
 
@@ -24,17 +24,17 @@ The CLI still exists. The GUI does not replace it; the two share the script and 
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Persists across navigation. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. aria2c bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
 | **Watch history** | Continue Watching picks up where you left off. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
 | **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
-| **No telemetry** | No analytics or tracking. Outbound traffic is metadata, the stream you picked, launch-time update checks (the app's own GitHub releases + the bundled script's self-update), and — with an account connected — your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
+| **No telemetry** | No analytics or tracking. Outbound traffic is metadata, the stream you picked, a launch-time check of the app's own GitHub releases, and — with an account connected — your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. The bundled script is updated automatically on launch (see *Self-update* below); a separate `ani-cli` install is **not** required.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the provider ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -47,7 +47,7 @@ Platform support tiers:
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
-- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
+- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
 - **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
 
 </details>
@@ -57,7 +57,7 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-ani-gui drives the upstream `ani-cli` Bash script via `bash`, which on Windows ships as part of [Git for Windows](https://gitforwindows.org/). If Git for Windows isn't installed when you launch the app, you'll see a dialog with a one-click link to its download page. The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so the download feature works out of the box; aria2c and fzf are bundled directly. The ffmpeg fetch runs even when you already have ffmpeg installed via a per-user package manager (scoop, winget user-scope) — the installer's elevated context doesn't see per-user PATH entries, and the bundled copy is what the app uses at runtime in either case.
+The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so the download feature works out of the box; the impersonating transport and yt-dlp are bundled directly. The ffmpeg fetch runs even when you already have ffmpeg installed via a per-user package manager (scoop, winget user-scope) — the installer's elevated context doesn't see per-user PATH entries, and the bundled copy is what the app uses at runtime in either case.
 
 </details>
 
@@ -127,11 +127,11 @@ For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./
 On first launch the app:
 
 1. Spawns the Rust sidecar on a kernel-assigned localhost port (no fixed port, no internet-reachable service).
-2. Materialises the bundled `ani-cli` script to `$XDG_CACHE_HOME/ani-gui/ani-cli` so it can be patched in place by `-U`.
-3. Runs `bash ani-cli -U` in the background to pick up any same-day upstream hotfixes.
-4. Loads the discovery surface.
+2. Loads the discovery surface.
 
-After that, click anything that looks clickable. The app routes the click through Kitsu / AniList for metadata, `ani-cli` for the actual stream resolution, and the embedded player for playback.
+After that, click anything that looks clickable. The app routes the click through Kitsu / AniList for metadata, its own resolver for the stream, and the embedded player for playback.
+
+Upgrading from a version before 0.12 adds one step: those releases kept their own copy of the `ani-cli` script under your cache directory and refreshed it at every launch. Nothing reads it now, so the first launch after upgrading deletes it and says so on the **/diagnostics** page.
 
 <p align="center">
   <img width="2751" height="1300" alt="player image" src="https://github.com/user-attachments/assets/db9f1816-d622-40ab-aa15-88a86f14f1d1" />
@@ -160,17 +160,8 @@ User settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Settings page 
 - auto-skip OP / ED
 - custom-vs-native player controls
 - whether to enter PiP automatically when you navigate away from a playing video
-- whether to keep `ani-cli` self-updating on launch
 
 Full table with defaults and effects is in [`docs/architecture.md`](./docs/architecture.md#user-settings).
-
-### Self-update of the bundled scraper
-
-Allmanga (the catalogue `ani-cli` scrapes) changes its API often, and upstream `pystardust/ani-cli` ships hotfixes daily. The bundled snapshot in your install would go stale within a week.
-
-ani-gui handles this for you: on every launch a background task runs `bash <cached-ani-cli> -U`, captures the outcome, and persists the last few attempts. The app itself isn't blocked by the update — startup proceeds normally; the script is patched in place by the next time you trigger a search or a play.
-
-The flow is gated by the **Auto-update ani-cli** setting (default ON). When it's off, the bundle just keeps using whatever script is in your cache, indefinitely. The latest update outcome is visible on the **/diagnostics** page.
 
 ## How it works
 
@@ -180,13 +171,13 @@ For the long version — diagrams, cache TTLs, the title-resolution bridge, the 
 
 ## Contributing
 
-See [`docs/development.md`](./docs/development.md). The repository carries one upstream patch (a single source-guard line in `ani-cli` for testability) and otherwise mirrors `pystardust/ani-cli` so script-side fixes flow in without conflict.
+See [`docs/development.md`](./docs/development.md). The script at the repository root carries one patch — a single source-guard line for testability — and otherwise mirrors `pystardust/ani-cli`.
 
 ## Acknowledgements
 
 ani-gui only exists because of the projects it builds on:
 
-- **[pystardust/ani-cli](https://github.com/pystardust/ani-cli)** — the Bash scraper that does the actual stream resolution. ani-gui ships the script unmodified.
+- **[pystardust/ani-cli](https://github.com/pystardust/ani-cli)** — the Bash scraper this project grew out of, and the source of the provider pipeline the Rust resolver reimplements.
 - **[Kitsu](https://kitsu.io/)** and **[AniList](https://anilist.co/)** for the metadata, posters, and trending data behind the discovery surface.
 - **[aniskip](https://aniskip.com/)** for the community-submitted OP/ED intervals.
 - **[hls.js](https://github.com/video-dev/hls.js/)** for the HLS playback inside the embedded player.

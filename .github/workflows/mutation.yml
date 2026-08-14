@@ -30,7 +30,7 @@ jobs:
             -p ani-gui \
             -f 'src/proxy/**/*.rs' \
             -f 'src/cache/**/*.rs' \
-            -f 'src/anicli/**/*.rs' \
+            -f 'src/scraper/**/*.rs' \
             -f 'src/history/**/*.rs' \
             --json > mutants.json
       - name: Upload mutants report

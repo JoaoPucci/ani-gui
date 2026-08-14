@@ -7,7 +7,7 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 `ani-gui` is a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that adds a desktop GUI on top of the existing CLI. The repo holds **two peer artifacts**:
 
 - `ani-cli` (root) — the original 666-line POSIX-shell anime scraper, vendored from upstream and intentionally kept untouched.
-- `gui/` — the desktop app. Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively. It touches the script only to keep the bundled copy updated, through `gui/backend/src/anicli/`.
+- `gui/` — the desktop app. Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively. It does not touch the script at all: the packages stopped carrying it, and `gui/backend/src/legacy_script.rs` exists only to delete the copy earlier versions left in the user's cache.
 
 Read first:
 
@@ -127,7 +127,7 @@ Carried fork patches are the exception, not the rule. Every patch beyond the `__
 
 Mechanical rules enforced by `tests/arch/boundaries.sh` and `tests/arch/i18n.sh`:
 
-- `gui/**` may reference `ani-cli` only through `gui/backend/src/anicli/`, which exists solely to locate and auto-update the bundled script. No sourcing, no path references elsewhere, and nothing there resolves a stream.
+- `gui/**` does not depend on `ani-cli`. Nothing may source it, carry its `__ANI_CLI_LIB__` test guard, or name it in a packaging manifest. The one path that mentions the script by name is the boot sweep that removes an old copy from the cache.
 - The frontend never fetches an upstream URL directly. All stream traffic flows through the local proxy at `http://127.0.0.1:<port>/s/<token>/...`.
 - SQLite holds metadata only. Image bytes live on the filesystem under `$XDG_CACHE_HOME/ani-gui/images/`.
 - The backend never returns localized strings. It returns stable error keys (`error.search.no_results`); the frontend resolves them via Paraglide.

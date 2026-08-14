@@ -9,12 +9,17 @@ use crate::error::Result;
 pub struct AppInfo {
     /// Crate version from Cargo.toml, with a `-dev` marker under the dev profile.
     pub version: String,
-    /// Detected `ani-cli` script path.
-    pub ani_cli_path: String,
     /// Where this build of ani-gui keeps its own watch history.
     pub history_path: String,
     /// `http://127.0.0.1:<port>` for the streaming proxy.
     pub proxy_base_url: String,
+    /// What the boot sweep deleted of the script copy earlier versions
+    /// kept current (see `crate::legacy_script`). Empty on every launch
+    /// after the first and on installs that never ran one of those
+    /// versions — which is nearly all of them. Carried here because
+    /// the diagnostics page reads nothing else that could report a
+    /// file the app removed on the user's behalf.
+    pub removed_legacy_paths: Vec<String>,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -25,9 +30,14 @@ pub struct AppInfo {
 pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
     Ok(AppInfo {
         version: crate::display_version(),
-        ani_cli_path: state.ani_cli_path.display().to_string(),
         history_path: state.history_path.display().to_string(),
         proxy_base_url: state.proxy_origin.base.clone(),
+        removed_legacy_paths: state
+            .legacy_sweep
+            .removed
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
     })
 }
 
@@ -39,6 +49,20 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    #[test]
+    fn app_info_advertises_no_bundled_script() {
+        // The app resolves natively; there is no script to point at,
+        // and a path here would send a reader looking for a component
+        // that no longer ships.
+        let json = serde_json::to_value(app_info(&fake_state()).expect("info")).expect("json");
+        let obj = json.as_object().expect("object");
+        assert!(
+            !obj.contains_key("ani_cli_path"),
+            "app-info still advertises a bundled script: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
+    }
+
     fn fake_state() -> AppState {
         AppState {
             anidb_base: None,
@@ -47,9 +71,8 @@ mod tests {
             proxy_http: reqwest::Client::new(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 42_337),
-            ani_cli_path: PathBuf::from("/usr/local/bin/ani-cli"),
-            bash_path: None,
             bundled_bin: None,
+            legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
@@ -66,6 +89,33 @@ mod tests {
     }
 
     #[test]
+    fn app_info_reports_what_the_boot_sweep_removed() {
+        // The sweep runs once, during backend boot, on installs that
+        // carried the copy an earlier version maintained. Reporting it
+        // here is what makes the removal visible rather than silent:
+        // the diagnostics page reads app-info and has no other channel
+        // to learn a file was deleted out from under the user.
+        let mut state = fake_state();
+        state.legacy_sweep = crate::legacy_script::SweepReport {
+            removed: vec![PathBuf::from("/home/u/.cache/ani-gui/ani-cli")],
+        };
+        let info = app_info(&state).expect("info");
+        assert_eq!(
+            info.removed_legacy_paths,
+            vec!["/home/u/.cache/ani-gui/ani-cli".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_empty_sweep_reports_an_empty_list_not_an_absent_one() {
+        // Every launch after the first, and every install that never
+        // ran one of those versions. The field is present and empty so
+        // the page renders nothing, rather than absent so it breaks.
+        let info = app_info(&fake_state()).expect("info");
+        assert!(info.removed_legacy_paths.is_empty());
+    }
+
+    #[test]
     fn app_info_projects_state_fields() {
         let s = fake_state();
         let info = app_info(&s).unwrap();
@@ -73,7 +123,6 @@ mod tests {
         // toggling ANI_GUI_DEV): the version always starts with the crate
         // version.
         assert!(info.version.starts_with(crate::VERSION));
-        assert_eq!(info.ani_cli_path, "/usr/local/bin/ani-cli");
         assert_eq!(info.history_path, "/home/u/.local/state/ani-gui/history");
         assert_eq!(info.proxy_base_url, "http://127.0.0.1:42337");
     }
@@ -84,7 +133,6 @@ mod tests {
         let info = app_info(&s).unwrap();
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"version\""));
-        assert!(json.contains("\"ani_cli_path\""));
         assert!(json.contains("\"history_path\""));
         assert!(json.contains("\"proxy_base_url\""));
     }

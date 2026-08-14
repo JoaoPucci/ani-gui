@@ -197,25 +197,27 @@ starting it, and delete it when you find it done.
 
 ## The bundled script's remaining purpose
 
-- **Decide what the ani-cli auto-update setting is for**, now that
-  nothing in the app runs the script.
+- **Comments across the app describe a subprocess that no longer
+  runs.** Well over a hundred sites in `gui/backend/src/` and several
+  dozen in `gui/frontend/src/` say things like "a fresh ani-cli spawn
+  (~30s)", "falling back to ani-cli", or "the data ani-cli produced".
+  Native resolution replaced that subprocess, so they name a component
+  the code has not had for some time.
 
-  The toggle is on by default and makes a network request at every
-  launch. What it updates is `$XDG_CACHE_HOME/ani-gui/ani-cli` — a
-  copy the app maintains for itself. That copy is not on `PATH`, no
-  packaging exposes it (the `.deb` postinst symlinks only the
-  `ani-gui` launcher), and an `ani-cli` the user installed separately
-  is never touched. Playback, downloads and availability all resolve
-  natively and read none of it.
+  They are wrong rather than merely dated, which is what makes them
+  worth a pass: a reader following `play_resolution_cache`'s module
+  doc goes looking for a spawn whose result is being cached, and there
+  is none. Some cite allanime, a provider upstream 5.0 deleted. Three
+  — in `history/mod.rs` and `config/paths.rs` — point at
+  `config::paths::ani_cli_history`, a function that no longer exists;
+  they describe a history file shared with the CLI, which stopped
+  being shared when 5.0 re-keyed its numbering.
 
-  So the setting currently buys a user nothing they can observe. The
-  copy describes it accurately, which makes the emptiness visible
-  rather than fixing it. Three ways out, and picking one is a
-  maintainer call: expose the maintained copy as the terminal
-  command so the toggle means what it says; keep the script as an
-  inert bundled artifact and retire the updater with its setting and
-  its diagnostics panel; or drop the script from the bundle
-  altogether and point terminal users at upstream.
+  Not every mention is stale, which is the trap. The history TSV
+  really is the format the script writes, and some error variants
+  really are about a missing external tool. This wants a reading pass
+  where each site gets a decision, not a rename — several also quote
+  timings measured against the old path.
 
 ## Housekeeping
 

@@ -4,7 +4,6 @@ import {
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
 	altTitlesFromKitsu,
-	anicliUpdateLog,
 	airingGet,
 	aniskipGet,
 	appInfo,
@@ -98,8 +97,7 @@ describe('appInfo', () => {
 	it('GETs /api/app-info and returns the parsed body', async () => {
 		const fetchMock = mockFetchOnce({
 			version: '0.1.0',
-			ani_cli_path: '/usr/local/bin/ani-cli',
-			history_path: '/home/u/.local/state/ani-cli/ani-hsts',
+			history_path: '/home/u/.local/state/ani-gui/history',
 			proxy_base_url: 'http://127.0.0.1:42337'
 		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -873,7 +871,6 @@ describe('apiBase configuration', () => {
 		g.window = { aniGui: { apiBase: 'http://127.0.0.1:9999' } };
 		const fetchMock = mockFetchOnce({
 			version: '0.0.0',
-			ani_cli_path: '/x',
 			history_path: '/y',
 			proxy_base_url: 'http://127.0.0.1:1'
 		});
@@ -1102,7 +1099,6 @@ describe('settingsGet', () => {
 			auto_skip_ed: false,
 			use_custom_player_controls: false,
 			disable_auto_pip_on_leave: false,
-			auto_update_anicli: true,
 			update_include_prereleases: true,
 			primary_account: ''
 		};
@@ -1131,7 +1127,6 @@ describe('settingsPut', () => {
 			auto_skip_ed: true,
 			use_custom_player_controls: true,
 			disable_auto_pip_on_leave: true,
-			auto_update_anicli: false,
 			update_include_prereleases: false,
 			primary_account: 'mal'
 		};
@@ -1142,39 +1137,6 @@ describe('settingsPut', () => {
 		expect(url).toBe(`${BASE}/api/settings`);
 		expect(init?.method).toBe('PUT');
 		expect(JSON.parse(init?.body as string)).toEqual(cfg);
-	});
-});
-
-describe('anicliUpdateLog', () => {
-	it('GETs /api/anicli/update-log and returns the array', async () => {
-		const log = [
-			{
-				status: 'updated' as const,
-				stdout: 'Script has been updated\n',
-				stderr: '',
-				finished_at: '2026-05-10T05:00:00Z',
-				duration_ms: 1234
-			},
-			{
-				status: 'no_change' as const,
-				stdout: 'Script is up to date :)\n',
-				stderr: '',
-				finished_at: '2026-05-09T05:00:00Z',
-				duration_ms: 800
-			}
-		];
-		const fetchMock = mockFetchOnce(log);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await anicliUpdateLog();
-		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/anicli/update-log`);
-		expect(got).toEqual(log);
-	});
-
-	it('returns an empty array when no run has happened yet', async () => {
-		const fetchMock = mockFetchOnce([]);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await anicliUpdateLog();
-		expect(got).toEqual([]);
 	});
 });
 

@@ -1,29 +1,26 @@
-// Pre-build step for `package:win`: download the POSIX-side ani-cli
-// dependencies that Git for Windows doesn't bundle, and stage them
-// under `build-resources/win/bin/`. electron-builder copies the dir
-// into the NSIS payload via `win.extraResources` in `package.json`,
+// Pre-build step for `package:win`: download the binaries the app
+// spawns that a Windows host will not have, and stage them under
+// `build-resources/win/bin/`. electron-builder copies the dir into
+// the NSIS payload via `win.extraResources` in `package.json`,
 // landing at `<install>/resources/bin/<binary>` at runtime. The Rust
-// backend prepends that dir to the spawned bash's PATH (see
-// `gui/backend/src/anicli/env.rs`) so ani-cli's `dep_ch` finds the
-// bundled binaries before any system install.
+// backend searches that dir ahead of PATH, so a bundled binary beats
+// a system install (see `resolve_bundled_bin` in
+// `gui/backend/src/app.rs`).
 //
-// Why this exists: ani-cli's dep_ch surfaces missing deps via `die`,
-// which `exit 1`s the entire shell — the `|| true` next to dep_ch
-// calls only catches non-fatal returns, not explicit exits. So a
-// Windows machine without these deps bricks playback / downloads
-// silently with a generic "couldn't start this episode" or
-// "download failed instantly" error. Bundling removes the
-// dependency on the user's environment.
+// Why this exists: a Windows machine has none of these, and without
+// them playback and downloads fail with nothing useful to say —
+// every play dies on the provider's interstitial, every download on a
+// missing downloader. Bundling removes the dependency on the user's
+// environment.
 //
 // Bundled today:
-//   - fzf       — required for any spawn (dep_ch fzf at script start)
-//   - aria2c    — required for downloads (dep_ch ffmpeg aria2c)
+//   - curl-impersonate.exe — the transport native resolution spawns.
+//   - yt-dlp.exe           — the downloader.
 // Not bundled: ffmpeg. Too large (~80 MB compressed) to ship in the
-// installer. Fetched on-demand by the backend when the user first
-// triggers a download — see `gui/backend/src/anicli/ffmpeg.rs`.
-
+// installer, so the NSIS script fetches it at install time — see
+// `build-resources/installer.nsh`.
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -31,7 +28,7 @@ import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import { needsExtraction, assertDepShape } from '../lib/dep-staging.cjs';
+import { needsExtraction, assertDepShape, retiredStagedBinaries } from '../lib/dep-staging.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
@@ -43,31 +40,11 @@ const repoRoot = path.resolve(electronDir, '..', '..');
 // just the file, not the whole archive). The SHA-256 is captured on
 // first download by re-running this script after a version bump:
 // failure prints actual vs expected so you can paste the new hash.
+// fzf.exe and aria2c.exe used to be staged here, mirroring Linux.
+// They were the shell script's dependencies — its interactive picker
+// and its downloader — and both platforms dropped them when the app
+// stopped running the script.
 export const DEPS = [
-	{
-		name: 'fzf',
-		dep: 'fzf',
-		version: '0.62.0',
-		archiveName: 'fzf-0.62.0-windows_amd64.zip',
-		url: 'https://github.com/junegunn/fzf/releases/download/v0.62.0/fzf-0.62.0-windows_amd64.zip',
-		sha256: 'dac80c9d652c34f0ccd5d7c1c7b0e3ac9aa2e26c86d0a98b206ce5126f8a9774',
-		binary: 'fzf.exe',
-		// The fzf zip is flat — fzf.exe sits at the archive root.
-		archivePath: 'fzf.exe',
-	},
-	{
-		name: 'aria2',
-		dep: 'aria2',
-		version: '1.37.0',
-		archiveName: 'aria2-1.37.0-win-64bit-build1.zip',
-		url: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip',
-		// Captured on first run — see SHA-256 mismatch error message
-		// for how to refresh after a version bump.
-		sha256: '67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288',
-		binary: 'aria2c.exe',
-		// aria2's zip nests the binary under a versioned directory.
-		archivePath: 'aria2-1.37.0-win-64bit-build1/aria2c.exe',
-	},
 	{
 		name: 'yt-dlp',
 		dep: 'yt-dlp',
@@ -248,10 +225,34 @@ async function stageDep(dep) {
 	}
 }
 
+/**
+ * Delete binaries a previous run staged that `DEPS` no longer names.
+ *
+ * Staging is per-entry, and `extraResources` copies the directory
+ * whole — so without this a retired dependency keeps shipping from any
+ * checkout that staged it before, with nothing in the build output to
+ * say so. Runs over the dev mirrors for the same reason: a `cargo run`
+ * finds them ahead of PATH.
+ */
+async function sweepRetired() {
+	for (const dir of [stagedBinDir, ...devTargetBinDirs]) {
+		if (!existsSync(dir)) continue;
+		const stale = retiredStagedBinaries(await readdir(dir), DEPS);
+		for (const name of stale) {
+			await rm(path.join(dir, name), { recursive: true, force: true });
+			console.log(`[fetch-windows-deps] removed retired ${path.join(dir, name)}`);
+		}
+	}
+}
+
 async function main() {
 	// Validate every entry before touching the network: a typo should
 	// cost a syntax error, not a partial download.
 	for (const dep of DEPS) assertDepShape(dep);
+
+	// Before staging: drop anything an earlier run left that this
+	// list no longer declares.
+	await sweepRetired();
 
 	for (const dep of DEPS) {
 		console.log(`[fetch-win-deps] === ${dep.name} ${dep.version} ===`);
