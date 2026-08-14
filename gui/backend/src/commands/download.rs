@@ -82,10 +82,12 @@ pub struct DownloadProgress {
 ///
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
-/// return. A single-episode download does land on `<resolved title>
-/// Episode <n>.mp4` — a yt-dlp run that could not repackage the stream
-/// never reaches this type, since that path deletes the mislabeled
-/// file and returns [`AniError::FfmpegMissing`] instead.
+/// return. A single-episode download lands on `<resolved title>
+/// Episode <n>.mp4` however it got there — including a yt-dlp run that
+/// could not repackage and was retried through ffmpeg, which discards
+/// the mislabeled file and writes the same target. Only a repackage
+/// failure with no ffmpeg to retry through fails instead, with
+/// [`AniError::FfmpegMissing`].
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
     /// Directory the file was written to. Renderer feeds this to

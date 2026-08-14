@@ -1,7 +1,7 @@
 //! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
-//! Reads/writes the app's own history file, in the line format the
-//! CLI's uses.
+//! Reads/writes the app's own history file, whose line format is
+//! characterized from the script's. The file is not.
 
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
@@ -18,10 +18,10 @@ fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> 
 }
 
 /// Returns every history entry as the frontend would render the
-/// "Continue Watching" row. Most-recent-first order is the GUI's choice;
-/// the on-disk order from the CLI is "append-only with in-place updates",
-/// so we return entries in the order they appear on disk and let the
-/// frontend reverse if it wants newest-first. Episode numbers are
+/// "Continue Watching" row. On-disk order is append-only with in-place
+/// updates — the format's own rule, kept because the format is — so
+/// entries come back in the order they appear on disk and the frontend
+/// reverses if it wants newest-first. Episode numbers are
 /// translated to the per-entry (Kitsu) numbering at this boundary.
 ///
 /// # Errors
@@ -34,21 +34,21 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
         .collect())
 }
 
-/// Find the history entry (if any) whose allmanga show_id maps to
-/// the supplied `kitsu_id`. Walks the on-disk TSV, resolving each
-/// entry's `id` through the `(allmanga show_id → kitsu_id)` reverse
-/// cache stamped by every successful play. Returns the first match
-/// or `None` when:
+/// Find the history entry (if any) whose show id maps to the supplied
+/// `kitsu_id`. Walks the on-disk TSV, resolving each entry's `id` —
+/// a provider slug on rows written since the migration — through the
+/// `(show id → kitsu_id)` reverse cache a successful play stamps.
+/// Returns the first match or `None` when:
 ///   - The history file is missing or empty.
-///   - No entry's allmanga id has a cached mapping.
+///   - No entry's show id has a cached mapping.
 ///   - None of the cached mappings equal `kitsu_id`.
 ///
-/// The reverse cache is the same surface Continue Watching uses; if
-/// it has no entry for a given allmanga id (the user hasn't played
-/// that show through the GUI yet), that history row is skipped here.
-/// CLI-only history rows therefore won't surface a Resume affordance
-/// until the user plays the show once via the GUI — by design, since
-/// otherwise we'd need to round-trip Kitsu search per row.
+/// The reverse cache is the same surface Continue Watching uses. A row
+/// can be in the file without being in it: a play that had no Kitsu id
+/// to record, a mapping the cross-cour guard refused, or a row older
+/// than the mapping itself. Those rows are skipped here and show no
+/// Resume affordance until a play stamps them — by design, since the
+/// alternative is a Kitsu search per row.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file

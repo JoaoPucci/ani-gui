@@ -131,7 +131,9 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
 /// same old file, independently merge their row, and overwrite one
 /// another (or consume each other's temp file) — a lost stamp
 /// exposes provider numbering on the home rail. Cross-process
-/// exclusion — the store is shared by the packaged and dev profiles,
-/// which can run at once — is the OS file lock taken inside `put`;
-/// this mutex keeps the process's own threads from contending it.
+/// exclusion — two processes resolving the same history path, whether
+/// two instances of one build or a packaged binary run with
+/// `ANI_GUI_DEV` set, which lands it on the dev profile's files — is
+/// the OS file lock taken inside `put`; this mutex keeps the process's
+/// own threads from contending it.
 static PUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

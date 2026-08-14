@@ -88,16 +88,22 @@ fn reads_present_the_stamped_display_per_entry() {
 }
 
 #[test]
-fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
+fn offsets_follow_the_history_file_they_translate() {
     // Why the store is a file beside the history rather than a cache
-    // row. `config/paths.rs` gives debug and packaged builds separate
-    // cache databases, so an offset kept there would be invisible to
-    // the other profile: the packaged app writes provider episode 41
-    // with offset 40, the source-built GUI reads the same history row,
-    // finds no stamp and shows 41. Deleting the XDG cache would do the
-    // same. Keeping it beside the history means the translation lives
-    // exactly as long, and reaches exactly as far, as the rows it
-    // makes readable — which is what this asserts.
+    // row: it has to reach whoever reads that history, and last as
+    // long as the rows do. An offset kept in the cache database is
+    // scoped to the cache instead — a different profile's database, or
+    // a cleared one — and a row it cannot reach shows the provider's
+    // episode 41 where the user expects 1.
+    //
+    // Two states are given the same history path here, which is the
+    // whole property: the store is keyed to that file and nothing
+    // else. Not a claim about profiles — `paths::app_name` puts a
+    // debug build under `ani-gui-dev`, so a source build and a
+    // packaged one have different history files and share nothing by
+    // default. What makes them meet is being pointed at one file,
+    // which `ANI_GUI_DEV` does across builds and two instances of one
+    // build do by existing.
     let tmp = tempfile::tempdir().expect("tmp");
     let history = tmp.path().join("history");
     let packaged = make_state_at(history.clone());
