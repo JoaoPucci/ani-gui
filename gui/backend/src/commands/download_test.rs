@@ -866,3 +866,58 @@ async fn a_missing_tool_refuses_before_the_provider_is_touched() {
         hits.len()
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
+    // yt-dlp's warning names the condition — MPEG-TS left under the
+    // .mp4 name — and suggests ffmpeg as the fix. It is not a report
+    // that ffmpeg is absent, and the run condemns itself on the
+    // warning alone, so an install with a working ffmpeg reached the
+    // install modal and was told to install what it already had.
+    //
+    // The mislabeled file still goes: whatever ffmpeg writes must not
+    // land on top of half a transfer in the wrong container.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '\\107TSDATA' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "printf 'GOODMP4' > '{target}'\nexit 0",
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let got = download_with_tools(&state, &args, &path_env, |_p| {}).await;
+    assert!(
+        got.is_ok(),
+        "an installed ffmpeg must get the retry rather than the install modal: {got:?}"
+    );
+    assert_eq!(
+        std::fs::read(&target).expect("ffmpeg wrote the file"),
+        b"GOODMP4",
+        "the retry's output replaces the mislabeled file"
+    );
+}
