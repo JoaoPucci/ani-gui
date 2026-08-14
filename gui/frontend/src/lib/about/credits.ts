@@ -5,14 +5,15 @@
  * binaries the packages ship so playback and downloads work without
  * the user installing anything, and editorial assets (Lottie
  * animation, eventually fonts / illustrations). Frontend + backend
- * dep lists
- * are not credited here — they are dev-facing and surfacing them
- * here turned the page into a build dashboard rather than an
- * "about this app" surface.
+ * dep lists are not credited here — they are dev-facing, and
+ * surfacing them turned the page into a build dashboard rather than
+ * an "about this app" surface.
  *
- * When you change `fetch-linux-deps.mjs` or swap an asset, update
- * the entry here too — but keep the list focused on things a user
- * has a reason to know about.
+ * When a platform fetcher gains or loses an entry, or an asset is
+ * swapped, update this list too. The obligation runs both ways: a
+ * tool credited here that nothing spawns tells the reader the app
+ * needs something it never invokes, which is how fzf and aria2c
+ * outlived the script that used them.
  *
  * Display-only data (name / version / license / url) is hard-coded.
  * Visitor-facing description strings live in the i18n message
@@ -22,7 +23,7 @@
  * reason Paraglide exists.
  */
 
-export type BundledToolNoteId = 'curl_impersonate' | 'fzf' | 'aria2' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'ffmpeg';
 
 export interface BundledTool {
 	/** Display label — the upstream's own name. */
@@ -57,20 +58,6 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		license: 'MIT',
 		url: 'https://github.com/lexiforest/curl-impersonate',
 		noteId: 'curl_impersonate'
-	},
-	{
-		name: 'fzf',
-		version: '0.62.0',
-		license: 'MIT',
-		url: 'https://github.com/junegunn/fzf',
-		noteId: 'fzf'
-	},
-	{
-		name: 'aria2',
-		version: '1.37.0',
-		license: 'GPL-2.0',
-		url: 'https://aria2.github.io/',
-		noteId: 'aria2'
 	},
 	{
 		name: 'ffmpeg',

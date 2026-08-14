@@ -32,10 +32,6 @@
 		switch (id) {
 			case 'curl_impersonate':
 				return m.about_bundled_tool_note_curl_impersonate();
-			case 'fzf':
-				return m.about_bundled_tool_note_fzf();
-			case 'aria2':
-				return m.about_bundled_tool_note_aria2();
 			case 'ffmpeg':
 				return m.about_bundled_tool_note_ffmpeg();
 		}

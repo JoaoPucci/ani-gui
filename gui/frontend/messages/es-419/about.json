@@ -23,8 +23,6 @@
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
 	"bundled_tool_note_curl_impersonate": "Transporte HTTP para la resolución de fuentes. El proveedor rechaza las solicitudes comunes, así que la reproducción y las descargas dependen de él.",
-	"bundled_tool_note_fzf": "Incluido en .deb y AppImage para que ani-cli siempre tenga un selector disponible.",
-	"bundled_tool_note_aria2": "Incluido en .deb y AppImage; ani-cli lo usa para descargas en paralelo.",
 	"bundled_tool_note_ffmpeg": "El .deb lo declara como Recommends; el AppImage depende de la instalación del sistema. Usado para combinar los segmentos descargados en MP4.",
 	"asset_note_lottie_loading": "Anima el LoadingOverlay usado durante la resolución de reproducción y esperas similares."
 }

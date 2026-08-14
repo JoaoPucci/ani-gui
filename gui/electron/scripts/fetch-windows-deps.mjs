@@ -43,31 +43,11 @@ const repoRoot = path.resolve(electronDir, '..', '..');
 // just the file, not the whole archive). The SHA-256 is captured on
 // first download by re-running this script after a version bump:
 // failure prints actual vs expected so you can paste the new hash.
+// fzf.exe and aria2c.exe used to be staged here, mirroring Linux.
+// They were the shell script's dependencies — its interactive picker
+// and its downloader — and both platforms dropped them when the app
+// stopped running the script.
 export const DEPS = [
-	{
-		name: 'fzf',
-		dep: 'fzf',
-		version: '0.62.0',
-		archiveName: 'fzf-0.62.0-windows_amd64.zip',
-		url: 'https://github.com/junegunn/fzf/releases/download/v0.62.0/fzf-0.62.0-windows_amd64.zip',
-		sha256: 'dac80c9d652c34f0ccd5d7c1c7b0e3ac9aa2e26c86d0a98b206ce5126f8a9774',
-		binary: 'fzf.exe',
-		// The fzf zip is flat — fzf.exe sits at the archive root.
-		archivePath: 'fzf.exe',
-	},
-	{
-		name: 'aria2',
-		dep: 'aria2',
-		version: '1.37.0',
-		archiveName: 'aria2-1.37.0-win-64bit-build1.zip',
-		url: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip',
-		// Captured on first run — see SHA-256 mismatch error message
-		// for how to refresh after a version bump.
-		sha256: '67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288',
-		binary: 'aria2c.exe',
-		// aria2's zip nests the binary under a versioned directory.
-		archivePath: 'aria2-1.37.0-win-64bit-build1/aria2c.exe',
-	},
 	{
 		name: 'yt-dlp',
 		dep: 'yt-dlp',

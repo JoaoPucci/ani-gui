@@ -72,38 +72,12 @@ const repoRoot = path.resolve(electronDir, '..', '..');
 // script after a version bump — the failure prints actual vs
 // expected so you can paste the new hash.
 //
-// Sources:
-//   - fzf:   github.com/junegunn/fzf releases (official upstream)
-//   - aria2: github.com/asdo92/aria2-static-builds (third-party
-//            static builds; aria2 upstream only ships source +
-//            Windows binaries, so this is the cleanest static
-//            Linux source available). 724-star repo, current with
-//            upstream 1.37.0.
+// fzf and aria2c used to be staged here. They were the shell
+// script's dependencies — its interactive picker and its downloader —
+// and the app dropped them when it stopped running the script: it has
+// no picker, and the native downloader asks yt-dlp for concurrency
+// (`-N 16`) rather than handing off to aria2c.
 export const DEPS = [
-	{
-		name: 'fzf',
-		dep: 'fzf',
-		version: '0.62.0',
-		archiveName: 'fzf-0.62.0-linux_amd64.tar.gz',
-		url: 'https://github.com/junegunn/fzf/releases/download/v0.62.0/fzf-0.62.0-linux_amd64.tar.gz',
-		sha256: '64b56dd484a2317d5f04c28ac0791b36807f034adb419209ad39fb6637255794',
-		binary: 'fzf',
-		// fzf's Linux tarball is flat — fzf sits at the archive root.
-		archivePath: 'fzf',
-		tarFlag: '-xzf',
-	},
-	{
-		name: 'aria2',
-		dep: 'aria2',
-		version: '1.37.0',
-		archiveName: 'aria2-1.37.0-linux-gnu-64bit-build1.tar.bz2',
-		url: 'https://github.com/asdo92/aria2-static-builds/releases/download/v1.37.0/aria2-1.37.0-linux-gnu-64bit-build1.tar.bz2',
-		sha256: '80c0a04aabaedf1f3cf8ec77861547823b7ecc317fb61220b06c28edf97bb964',
-		binary: 'aria2c',
-		// aria2's tarball nests the binary under a versioned dir.
-		archivePath: 'aria2-1.37.0-linux-gnu-64bit-build1/aria2c',
-		tarFlag: '-xjf',
-	},
 	{
 		name: 'yt-dlp',
 		dep: 'yt-dlp',
