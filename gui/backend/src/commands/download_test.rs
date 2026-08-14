@@ -263,7 +263,7 @@ async fn stub_range_show() -> wiremock::MockServer {
 #[tokio::test]
 async fn a_range_download_resolves_and_spawns_per_episode() {
     // The Download All/Range UI sends "1-12"-shaped episode
-    // values; ani-cli's own `-e 1-12` looped over episodes. The
+    // values; the script's own `-e 1-12` looped over episodes. The
     // native path must do the same: one pick, then per-episode
     // resolution and one tool run per episode — not hand the
     // whole range to the episode resolver, which matches a single

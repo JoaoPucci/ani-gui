@@ -243,7 +243,7 @@ where
     }
 }
 
-/// allanime / ani-cli never index music videos, so a Kitsu `subtype ==
+/// The provider never indexes music videos, so a Kitsu `subtype ==
 /// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
 /// to playback. Drop these from every list surface so they never appear
 /// as a pickable card. Detail-by-id (`parse_anime_response`) is
@@ -874,7 +874,7 @@ mod tests {
 
     #[test]
     fn parse_search_drops_music_subtype_entries() {
-        // ani-cli / allanime never indexes music videos (the YOASOBI
+        // The provider never indexes music videos (the YOASOBI
         // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
         // resolve to playback. It must not appear in ANY list surface —
         // search, trending, and top-rated all route through here.

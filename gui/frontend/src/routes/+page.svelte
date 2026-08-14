@@ -603,7 +603,7 @@
 		return String(e);
 	}
 
-	/** Surface ani-cli failure kinds as user-readable copy. Mirrors the
+	/** Surface resolution failure kinds as user-readable copy. Mirrors the
 	 *  same mapper on /anime/[id] and /play/[id]. */
 	function describePlayFailure(e: unknown): string {
 		// Shared first-chance branch: the typed rate limit renders the

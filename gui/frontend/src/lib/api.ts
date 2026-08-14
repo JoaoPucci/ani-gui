@@ -219,7 +219,7 @@ export interface CreateSessionResponse {
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
 	/** True when this play resolution came from the long-term cache
-	 *  (no fresh ani-cli spawn). The play page uses it to decide
+	 *  (no fresh resolve). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
 	 *  be evicted + re-resolved; fresh fetches already exhausted the
 	 *  resolve path so the user should see the error. Optional for
@@ -444,7 +444,7 @@ export function openExternalPlayer(args: LaunchExternalPlayerArgs): Promise<void
 
 /** Body for the play endpoints — same shape on both `/api/play` and
  *  `/api/play/external`. The backend takes the canonical title (from
- *  Kitsu metadata), resolves it through ani-cli, and either wraps the
+ *  Kitsu metadata), resolves it through the provider, and either wraps the
  *  result in a session or hands it to the OS player. */
 export interface PlayArgs {
 	title: string;
@@ -515,7 +515,7 @@ export function playSyncplay(args: PlayArgs): Promise<void> {
 }
 
 /** Drop the cached play resolution for `args` so the next play call
- *  cache-misses and re-runs ani-cli. Used by the player error path:
+ *  cache-misses and resolves afresh. Used by the player error path:
  *  if the cached upstream URL 4xx'd (rotated *after* our HEAD said
  *  it was alive), the renderer evicts and silently retries. */
 export function evictPlayCache(args: PlayArgs): Promise<void> {
@@ -547,7 +547,7 @@ export type PlayProgress =
 	| { kind: 'links_fetched'; provider: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
- *  caller hears `<provider> Links Fetched` events as ani-cli emits
+ *  caller hears `<provider> Links Fetched` events as resolution emits
  *  them. Resolves with the same `CreateSessionResponse` `play()`
  *  returns; rejects on server-side errors or when the stream closes
  *  without a `done` event.
@@ -685,10 +685,10 @@ export interface DownloadResponse {
 
 /** Streaming download. Same shape as {@link playStream}: opens an SSE
  *  connection to GET /api/download/stream, fires `onProgress` for every
- *  forwarded ani-cli stderr line, resolves with the destination dir on
+ *  forwarded progress line, resolves with the destination dir on
  *  the `done` event, rejects on `error` or close-before-done. The
  *  `signal` lets callers cancel mid-download — closing the SSE drops
- *  the spawned ani-cli child via Tokio's `kill_on_drop(true)`. */
+ *  the spawned downloader via Tokio's `kill_on_drop(true)`. */
 export function downloadStream(
 	args: DownloadArgs,
 	onProgress: (p: DownloadProgress) => void,

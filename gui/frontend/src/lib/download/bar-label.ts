@@ -11,7 +11,7 @@
 
 export interface DownloadBarItem {
 	title: string;
-	/** Episode argument as sent to ani-cli — `"5"` for single,
+	/** Episode argument as sent to the backend — `"5"` for single,
 	 *  `"5-12"` for range. */
 	episode: string;
 	rangeTotal: number | null;

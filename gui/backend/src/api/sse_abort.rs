@@ -10,7 +10,7 @@ use futures_util::stream::{Stream, StreamExt};
 /// Axum drops the body when the client disconnects (page unmount,
 /// EventSource.close, the play-cache's click bypass aborting a
 /// prefetch, the download dock's Cancel) — without this, the detached
-/// resolution task keeps its ani-cli child running against allanime
+/// resolution task keeps its transport child running against the provider
 /// with nobody listening. Aborting the task drops its in-flight
 /// future, and the child is spawned `kill_on_drop`, so the subprocess
 /// is reaped with it. When the stream instead ends naturally (channel

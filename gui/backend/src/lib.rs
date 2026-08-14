@@ -1,4 +1,4 @@
-//! ani-gui — desktop GUI for the ani-cli anime scraper.
+//! ani-gui — desktop anime app with a native stream resolver.
 //!
 //! This crate is the headless backend of the Electron application. It does
 //! three things on the user's machine:

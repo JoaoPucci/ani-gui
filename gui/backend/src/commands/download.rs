@@ -1,7 +1,7 @@
-//! Download an episode via `ani-cli -d`. Mirrors the play command's
+//! Download an episode to disk. Mirrors the play command's
 //! shape (same disambiguation, same Kitsu-driven select-index logic),
 //! but instead of registering a stream session it spawns yt-dlp /
-//! ffmpeg / aria2c via ani-cli to write an mp4 to disk.
+//! yt-dlp or ffmpeg to write an mp4 to disk.
 //!
 //! Progress lines (aria2c / yt-dlp / ffmpeg stderr) are forwarded to
 //! the SSE handler in `api::get_download_stream` so the renderer can
@@ -23,7 +23,7 @@ use crate::error::{AniError, Result};
 /// `paths::download_dir()`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DownloadArgs {
-    /// Canonical Kitsu title (drives the ani-cli search step).
+    /// Canonical Kitsu title (drives the provider search step).
     pub title: String,
     /// Episode number, as a string (matches the CLI's `-e <n>` shape).
     pub episode: String,
@@ -72,7 +72,7 @@ pub struct DownloadProgress {
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
 /// in (so the renderer can fire a "reveal in folder" intent without
-/// guessing the exact filename — ani-cli's name templating depends on
+/// guessing the exact filename — the template depends on
 /// the upstream's `allanime_title`, which we don't surface here).
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
@@ -83,9 +83,9 @@ pub struct DownloadResponse {
 
 /// Drive a download from `args`. Picks the same (title, candidate
 /// index) pair as the equivalent /api/play call so what was watched is
-/// what gets saved, then spawns ani-cli with `-d` + the chosen
+/// what gets saved, then spawns the downloader with the chosen
 /// destination directory. `on_progress` is invoked for every stderr
-/// line ani-cli forwards (aria2c progress, yt-dlp fragment events,
+/// line the downloader emits (yt-dlp fragment events,
 /// etc.).
 ///
 /// # Errors
@@ -268,7 +268,7 @@ where
 /// Spawn the download tool directly on a resolved stream URL —
 /// yt-dlp when present (v5's own arguments: fragment-retrying,
 /// 16-way concurrent), falling back to ffmpeg stream-copy when
-/// yt-dlp is missing or fails, exactly as ani-cli 5.0's download()
+/// yt-dlp is missing or fails, mirroring the script's download()
 /// chains them. Streams each stderr line into `on_line`; the child
 /// dies with a dropped future (kill_on_drop), which is what the
 /// dock's Cancel rides.

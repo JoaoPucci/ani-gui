@@ -52,7 +52,7 @@ describe('describeSyncplayLaunchFailure', () => {
 	});
 
 	it('falls back to describePlayFailure for resolve-step errors', () => {
-		// If the URL resolution (ani-cli) fails before Syncplay even
+		// If the URL resolution fails before Syncplay even
 		// spawns, the user should see the same polished message as
 		// the embedded play path — not a debug-y "Syncplay failed:
 		// scraper" string.

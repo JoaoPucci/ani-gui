@@ -19,7 +19,7 @@ describe('pickNextEpisode', () => {
 	});
 
 	it('returns 1 for malformed lastWatched (NaN / non-finite)', () => {
-		// Defensive: ani-cli history rows are user-editable text;
+		// Defensive: history rows are user-editable text;
 		// parseInt-then-pass should always land on a sane default.
 		expect(pickNextEpisode(Number.NaN, 12)).toBe(1);
 		expect(pickNextEpisode(Number.POSITIVE_INFINITY, 12)).toBe(1);

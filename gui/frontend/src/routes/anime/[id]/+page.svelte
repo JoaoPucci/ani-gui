@@ -394,7 +394,7 @@
 	 *  episode numbers allmanga has but Kitsu doesn't (One Piece:
 	 *  Kitsu stops at 1106, allmanga has 1161) plus the announced
 	 *  unaired tail, and non-integer extras ("1061.5" recaps) splice
-	 *  in — `String(number)` round-trips those to ani-cli fine. */
+	 *  in — `String(number)` round-trips those to the provider fine. */
 	const episodes: KitsuEpisode[] | null = $derived.by(() => {
 		if (rawWindowed === null) return null;
 		const out = rawWindowed.slice();
@@ -674,7 +674,7 @@
 	 *  a fixed-position overlay regardless of scroll. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
 	// True while a play/playExternal request is in flight. Buttons
-	// disable themselves to keep the user from double-clicking ani-cli
+	// disable themselves to keep the user from double-clicking into a second resolve
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
 	let actionProgress = $state<string | null>(null);
@@ -802,7 +802,7 @@
 	];
 
 	// Cancel in-flight prefetches for this show on unmount. Prevents
-	// abandoned ani-cli spawns from holding allmanga slots after the
+	// abandoned resolves from holding provider slots after the
 	// user navigates away — clearForShow aborts each entry's signal
 	// which closes the SSE EventSource and rejects the promise.
 	onDestroy(() => {
@@ -902,13 +902,13 @@
 	// user's current mode/quality, fire a play() for the default
 	// episode in the background so the eventual hero-button click is
 	// instant. The play-cache dedupes against the click handler — both
-	// share the same promise, so there's never a duplicate ani-cli
+	// share the same promise, so there's never a duplicate
 	// spawn. Failures are swallowed here; the click handler surfaces
 	// them when the user actually wants to play.
 	$effect(() => {
 		const title = detail?.canonical_title;
 		if (!id || !title || !config) return;
-		// Music videos can't exist on allanime; prefetching one spawns ani-cli
+		// Music videos are not in the provider's catalogue; prefetching one resolves
 		// with the music title and fuzzy-matches an unrelated show, warming the
 		// play cache with the wrong candidate. The Play/Download UI is already
 		// gated off for these (availability=false), so skip the warm too.
@@ -1038,7 +1038,7 @@
 	/** Human-readable copy for a play-call failure. The raw AniError
 	 *  shape is `{kind, key?, detail?}` — `kind: "scraper"` is the
 	 *  most common one (allmanga returned no usable upstream); `kind:
-	 *  "timeout"` means ani-cli took >60s; everything else collapses
+	 *  "timeout"` means resolution took >60s; everything else collapses
 	 *  to a generic message. The user shouldn't have to read JSON. */
 	function describePlayFailure(e: unknown): string {
 		// Shared first-chance branch: the typed rate limit renders the
@@ -1144,7 +1144,7 @@
 		}, 4000);
 	}
 
-	// Title we feed to ani-cli's search. The backend's run_debug picks
+	// Title we feed to the provider's search. The backend's run_debug picks
 	// the first allanime match, so a stable canonical title is the
 	// best signal we have. KitsuAnimeRef.canonical_title is non-null
 	// per the type, but the detail isn't populated until kitsuAnimeDetail
@@ -1207,7 +1207,7 @@
 		const quality = config?.quality ?? 'best';
 		// Persistent-PiP short-circuit: if the singleton video is
 		// already loaded for this exact (show, ep) AT THE SAME quality +
-		// mode, bypass the ani-cli respawn + new session creation and
+		// mode, bypass a fresh resolve + new session creation and
 		// navigate straight to the existing /play URL. Without this, a
 		// re-click on the episode the user is watching in PiP would tear
 		// down and restart playback at zero. A quality/mode change fails
@@ -1249,7 +1249,7 @@
 			// completes instantly here. Fresh resolutions land in the
 			// cache for the next click within this session. The streaming
 			// variant feeds progress events into the overlay so the user
-			// sees `<provider> ✓` ticks while ani-cli runs.
+			// sees `<provider> ✓` ticks while resolution runs.
 			const session = await getOrFire(
 				makeKey(id, ep, mode, quality),
 				(emit, signal) =>
@@ -1336,7 +1336,7 @@
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
 	// user pick a folder (defaulting to the backend's download_dir
-	// resolver) before kicking off ani-cli -d. Active downloads then
+	// resolver) before kicking off the downloader. Active downloads then
 	// surface in the global topbar dock + bottom progress strip.
 	let downloadModalOpen = $state(false);
 	let downloadArgs = $state<DownloadArgs | null>(null);
@@ -1368,7 +1368,7 @@
 	function onPickEpisode(n: number) {
 		// Honour the availability gate — episode tiles call this too,
 		// not just the masthead Play CTA. Without this guard a click
-		// on a tile fires startPlay → ani-cli → NoResults overlay.
+		// on a tile fires startPlay → resolve → NoResults overlay.
 		if (availability === false) return;
 		void startPlay(n);
 	}

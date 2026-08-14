@@ -1,4 +1,4 @@
-//! Range downloads — the native path's version of ani-cli's
+//! Range downloads — the native path's version of the script's
 //! `-e 1-12` loop: one pick, then per-episode resolution and one
 //! tool run per episode, in order, stopping at the first failure
 //! exactly as the script's own loop dies mid-range.
@@ -86,7 +86,7 @@ where
         line: format!("Matched {}", picked.hit.title),
     });
     for ep in first..=last {
-        // The shape the dock's progress parser consumes — ani-cli's
+        // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
         // "Episode N of M" display.
         on_progress(DownloadProgress {

@@ -3,13 +3,13 @@
 //! Format (TSV, one record per line):
 //!     <ep_no>\t<id>\t<title>
 //!
-//! `ani-cli`'s `update_history` function (in the script) reads/writes this
+//! The script's `update_history` function reads/writes its own copy of this
 //! file with atomic semantics: write to `path.new`, then rename. Tests in
 //! `tests/bash/network/update_history.bats` characterize that contract.
 //! The Rust reader/writer here must produce byte-identical output so a
 //! user alternating between CLI and GUI sees a single coherent history.
 //!
-//! Path resolution lives in [`crate::config::paths::ani_cli_history`].
+//! Path resolution lives in [`crate::config::paths::gui_history`].
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -22,7 +22,7 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched. `ani-cli` writes this back
+    /// Episode number the user last watched. The script writes this back
     /// after each play, so on next launch the GUI's "Continue Watching"
     /// row knows where to resume.
     pub ep_no: String,
@@ -35,7 +35,7 @@ pub struct HistoryEntry {
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
 ///
 /// A missing file returns `Ok(vec![])`. Malformed lines are silently
-/// dropped — `ani-cli`'s shell parser does the same when the column count
+/// dropped — the script's shell parser does the same when the column count
 /// doesn't match.
 ///
 /// # Errors
@@ -66,7 +66,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
 }
 
 /// Serialize entries back to the TSV body. Each line ends with `\n`,
-/// including the last one (matches what `ani-cli` writes via its
+/// including the last one (matches what the script writes via its
 /// `printf "%s\t%s\t%s\n"` line in `update_history`).
 #[must_use]
 pub fn serialize(entries: &[HistoryEntry]) -> String {
@@ -85,7 +85,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 /// Insert or update an entry, matching by `id`. If `id` is already in the
 /// vector, that entry's `ep_no` and `title` are replaced; otherwise the
 /// new entry is appended. The vector is mutated in place. Mirrors
-/// `update_history`'s semantics from `ani-cli`.
+/// `update_history`'s semantics from the script.
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
@@ -103,7 +103,7 @@ pub fn remove_by_id(entries: &mut Vec<HistoryEntry>, id: &str) -> bool {
 }
 
 /// Atomically write the entire history file. Implemented as `path.new` +
-/// rename, exactly as `ani-cli`'s `update_history` does. The `.new`
+/// rename, exactly as the script's `update_history` does. The `.new`
 /// sidecar is unlinked before this function returns successfully (the
 /// final `rename` overwrites the original atomically on Unix).
 ///
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn serialize_byte_identical_to_bash_fixture() {
-        // Cross-stack contract: ani-cli's update_history writes
+        // Format contract: the script's update_history writes
         //     printf "%s\t%s\t%s\n" "$ep_no" "$id" "$title"
         // Our serialize() must produce byte-identical output for the same
         // logical entries so a user alternating between CLI and GUI sees
@@ -364,7 +364,7 @@ mod tests {
 
     // — Properties ────────────────────────────────────────────────────
     //
-    // The TSV format is shared with the bash `ani-cli` script — both
+    // The TSV format is the one the bash script uses — both
     // have to agree on what the file means. Roundtripping (serialize
     // then parse) is the load-bearing invariant: if it ever breaks,
     // history written by the GUI silently disappears the next time

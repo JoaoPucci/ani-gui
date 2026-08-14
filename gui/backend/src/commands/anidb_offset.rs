@@ -3,7 +3,7 @@
 //!
 //! anidb.app carries a franchise's cumulative episode count into
 //! continuation cours (TYBW's fourth part lists 41 and 42), and
-//! `ani-cli`'s `process_hist_entry` greps the stored `ep_no` in that
+//! The script's `process_hist_entry` greps the stored `ep_no` in that
 //! provider list — so the shared history file speaks PROVIDER
 //! numbering. Every GUI surface counts per-entry like Kitsu. The
 //! resolver computes the shift once per show; this module persists it

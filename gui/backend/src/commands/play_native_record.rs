@@ -42,7 +42,7 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved) {
 
 /// Record the watch.
 ///
-/// `ep_no` is the matched row's own slot — exactly what ani-cli's
+/// `ep_no` is the matched row's own slot — exactly what the script's
 /// reader greps, whatever space the display tags live in. A failed
 /// write is logged and swallowed: the stream is resolved and the
 /// user is waiting on it.

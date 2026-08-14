@@ -129,7 +129,7 @@ export interface VideoStateSnapshot {
 
 /** Pure decision: "given a current session, a target `(kitsuId,
  *  episode)`, and the video's playback state, can we reuse the
- *  session instead of respawning ani-cli?". Returns the session on
+ *  session instead of resolving again?". Returns the session on
  *  match (so the caller can read its `session_id` etc.) or null.
  *  All four early-out reasons are exercised by the colocated test. */
 export function canReuseSession(
@@ -159,7 +159,7 @@ export function canReuseSession(
 
 /** Module-level wrapper around [`canReuseSession`] that reads the
  *  live singleton state. Used by play call sites to short-circuit a
- *  redundant ani-cli spawn when the user clicks an episode they're
+ *  redundant resolve when the user clicks an episode they're
  *  already watching in PiP — navigating with the cached session keeps
  *  playback at its current timestamp instead of restarting from zero. */
 export function reuseSessionIfMatching(

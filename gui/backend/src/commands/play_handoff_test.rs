@@ -91,9 +91,9 @@ fn args_for() -> PlayArgs {
 
 #[tokio::test]
 async fn the_handoff_resolves_through_the_native_walk() {
-    // Both handoffs used to shell out to ani-cli for the stream URL.
+    // Both handoffs used to shell out to the script for the stream URL.
     // The provider is anidb now, and the walk that serves the
-    // embedded player serves these too — the state's ani_cli_path
+    // embedded player serves these too — the state's provider base
     // deliberately points at nothing, so a subprocess resolve fails
     // the test rather than quietly working.
     let server = stub_provider().await;

@@ -80,7 +80,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
         // A fresh profile reaches this write before anything has
-        // created $XDG_STATE_HOME/ani-cli — the history writer only
+        // created the state dir — the history writer only
         // runs afterwards.
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;

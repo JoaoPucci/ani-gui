@@ -2,7 +2,7 @@
  * Sort history entries for the home Continue Watching strip.
  *
  * The on-disk `ani-hsts` file orders rows by "first time played"
- * (ani-cli's `update_history` updates the `ep_no` in place rather
+ * (the history writer updates the `ep_no` in place rather
  * than moving the row), so file position is a poor signal of what
  * the user wants to resume. Backend records a per-show wall-clock
  * timestamp in SQLite on every GUI play through `mark-watched`;

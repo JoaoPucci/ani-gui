@@ -134,7 +134,7 @@ describe('getOrFire', () => {
 	it('reuses a resolved background prefetch instead of refiring', async () => {
 		// Once the prefetch has fulfilled there is nothing to wait
 		// behind — the cached session IS the payoff of warming. A click
-		// must get it instantly, not burn a fresh ani-cli spawn.
+		// must get it instantly, not burn a fresh resolve.
 		const key = makeKey('show', 6, 'sub', 'best');
 		const prefetchFire = vi.fn(plainFire(fakeResp('warmed')));
 		await getOrFire(key, prefetchFire);
@@ -321,7 +321,7 @@ describe('priority subscriber promotion', () => {
 		// third queues. A user click on the third (passing an onProgress
 		// callback) should promote it to run immediately rather than
 		// wait for one of the active two to drain — otherwise the
-		// loading overlay sits idle while ani-cli's queue clears.
+		// loading overlay sits idle while the resolve queue clears.
 		const releasers: Array<() => void> = [];
 		const fire = (seed: string) => () =>
 			new Promise<CreateSessionResponse>((resolve) => {

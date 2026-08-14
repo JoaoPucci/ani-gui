@@ -7,7 +7,7 @@ use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
 /// Translate a row's on-disk `ep_no` — the provider's numbering,
-/// which `ani-cli` keys on — back to the per-entry (Kitsu) numbering
+/// which the history file keys on — back to the per-entry (Kitsu) numbering
 /// every GUI surface counts in, using the offset the resolver
 /// stamped for the row's slug. Rows without a stamp pass through
 /// unchanged: that is the no-shift case, and the pre-stamp behavior
@@ -93,7 +93,7 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     Ok(true)
 }
 
-/// Truncate the history file to zero length. Mirrors `ani-cli -D`.
+/// Truncate the history file to zero length. Mirrors the script's `-D`.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] if the file cannot be written.
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn list_translates_provider_numbering_back_to_kitsu() {
-        // ani-hsts speaks the provider's numbering (ani-cli greps the
+        // The history file speaks the provider's numbering (a reader greps the
         // stored ep_no in the provider's episode list), while every
         // GUI surface counts per-entry like Kitsu. The read boundary
         // subtracts the offset stamped at resolve time; rows without

@@ -1,6 +1,6 @@
 //! Tests for the spawn plumbing: the platform teardown command and
 //! output cleaning. Moved here with their subject — they never
-//! tested ani-cli, only how a spawned tool is taken down.
+//! tested the resolver, only how a spawned tool is taken down.
 
 use super::*;
 

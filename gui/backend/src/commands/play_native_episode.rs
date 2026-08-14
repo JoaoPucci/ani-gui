@@ -98,7 +98,7 @@ pub async fn resolve_episode<F: AnidbFetch>(
 }
 
 /// A resolved episode: the playable URL plus the matched row's slot
-/// and display tag — the slot is what ani-cli's history reader
+/// and display tag — the slot is what a history reader
 /// greps, the tag what the GUI displays.
 #[derive(Debug)]
 pub struct ResolvedEpisode {

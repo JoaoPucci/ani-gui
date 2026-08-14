@@ -4,7 +4,7 @@
 //! each probe fans out over the primary title plus every alt title.
 //! Ungated, one launch fired hundreds of searches in under a minute,
 //! allanime rate-limited the IP, and the user's very first play click
-//! died inside ani-cli with "No results found!". The gate exists so
+//! died in resolution with "No results found!". The gate exists so
 //! background traffic can never poison the connection the user's next
 //! click depends on:
 //!
@@ -57,7 +57,7 @@ pub const MAX_ADVERTISED_PAUSE: Duration = Duration::from_secs(600);
 /// trial whose future was dropped (cancelled prefetch) never records
 /// an outcome; after this window a new trial may start instead of
 /// wedging the gate shut. Sized past the longest gated operation —
-/// the 60 s prefetch ani-cli spawn timeout, not just the 30 s meta
+/// the 60 s prefetch resolve timeout, not just the 30 s meta
 /// client — with margin, or a slow spawn-trial still legitimately
 /// running would see a second trial sanctioned beside it.
 pub const HALF_OPEN_TRIAL_STALE: Duration = Duration::from_secs(90);

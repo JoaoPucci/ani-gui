@@ -1540,7 +1540,7 @@
 		// $lib/play/prefetch-lifecycle for the policy.
 		//
 		//   • PiP not active: cancel immediately like before. Without
-		//     this, abandoned ani-cli spawns keep streaming SSE events
+		//     this, abandoned resolves keep streaming SSE events
 		//     to a closed page and holding allmanga rate-limit slots.
 		//
 		//   • PiP active: defer. The user is still engaged with this
@@ -1707,7 +1707,7 @@
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
-	// Backend will see up to 12 concurrent ani-cli spawns; if allanime
+	// Backend will see up to 12 concurrent resolves; if the provider
 	// or local CPU complains, wire SCRAPER_CONCURRENCY (already on
 	// AppState) into run_debug. Today the semaphore is allocated but
 	// not acquired — bumping the radius is what surfaces the need.
@@ -1822,7 +1822,7 @@
 			// each gets its own shot. Resetting on a same-episode landing
 			// (the auto-recovery path, and the manual Reload path) would
 			// let chronically expired CDN URLs loop unbounded through
-			// eviction + resolve, hammering ani-cli and upstream until a
+			// eviction + resolve, hammering the resolver and upstream until a
 			// non-network error happens. See Codex P1 #3366915811.
 			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
 				hasAutoRetried = false;
@@ -1882,11 +1882,11 @@
 		}
 	}
 
-	/** Hand off to a fresh ani-cli resolve when the player layer fails
+	/** Hand off to a fresh resolve when the player layer fails
 	 *  on what looks like a stale upstream URL (4xx mid-stream, hls.js
 	 *  fatal networkError, <video> MEDIA_ERR_NETWORK). Drops the cache
 	 *  row server-side AND in memory, then re-runs switchToEpisode for
-	 *  the current ep — which cache-misses, runs ani-cli, swaps the
+	 *  the current ep — which cache-misses, resolves, swaps the
 	 *  session URL. LoadingOverlay shows naturally during the retry
 	 *  because switchBusy goes high inside switchToEpisode.
 	 *
@@ -2157,7 +2157,7 @@
 
 	// Download flow — opens the DownloadConfirm modal. The modal lets
 	// the user pick a destination folder (defaulting to the backend's
-	// download_dir resolver) before kicking off ani-cli -d. Once
+	// download_dir resolver) before kicking off the downloader. Once
 	// confirmed, the download lives in the global download store and
 	// surfaces in the topbar dock + bottom progress strip.
 	let downloadModalOpen = $state(false);

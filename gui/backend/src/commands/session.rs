@@ -38,7 +38,7 @@ pub struct CreateSessionResponse {
     /// on the renderer. Wire form is "hls" / "mp4" (lowercase).
     pub media_kind: MediaKind,
     /// `true` when the play resolution came from the long-term cache
-    /// (no fresh ani-cli spawn). The renderer uses this to decide
+    /// (no fresh resolve). The renderer uses this to decide
     /// whether to silently evict + retry on a player error: a cache
     /// hit can be evicted and re-resolved, while a fresh-fetch failure
     /// already exhausted the resolve path and the user should see a

@@ -52,7 +52,7 @@ async fn stub_provider(mock: &MockServer, query: &str) {
 /// Mount a listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
-/// history row has to carry the slot — ani-cli's reader greps the
+/// history row has to carry the slot — the script's reader greps the
 /// stored number against the provider's own listing, where 4 is the
 /// recap.
 async fn stub_provider_with_a_recap(mock: &MockServer, query: &str) {
@@ -178,7 +178,7 @@ async fn wait_for(argv_file: &std::path::Path) -> String {
 #[tokio::test]
 async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master_url() {
     // Cache is empty, so the fresh path runs. Everything the walk
-    // needs is stubbed on the provider origin; ani_cli_path points at
+    // needs is stubbed on the provider origin; the provider base points at
     // a nonexistent binary, so an Ok can only come from the native
     // resolution — a subprocess attempt would fail the play.
     let mock = MockServer::start().await;
@@ -235,7 +235,7 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
 
 #[tokio::test]
 async fn an_external_play_records_the_provider_slot_not_the_display_number() {
-    // The history file speaks the provider's numbering: ani-cli's
+    // The history file speaks the provider's numbering: the script's
     // reader greps the stored number against the show's own listing.
     // On a show with a recap, display episode 4 is slot 5 — storing
     // the display number points the row at the recap instead, and

@@ -89,7 +89,7 @@ fn serializes_with_kind_discriminator() {
 
 #[test]
 fn ffmpeg_missing_serializes_with_a_dedicated_kind_and_key() {
-    // ani-cli's download path runs `dep_ch "ffmpeg" "aria2c"` at
+    // The script's download path ran `dep_ch "ffmpeg" "aria2c"` at
     // startup — without ffmpeg it exits the shell instantly, and
     // the user previously saw a generic "Download failed" tooltip
     // with no actionable info. The dedicated variant lets the

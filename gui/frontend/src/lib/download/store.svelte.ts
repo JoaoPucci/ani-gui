@@ -16,7 +16,7 @@
  * Active downloads also carry an `AbortController` so the topbar
  * dock's cancel button can abort the in-flight fetch — the SSE
  * connection closes, the backend's `kill_on_drop(true)` reaps the
- * ani-cli child.
+ * downloader child.
  */
 
 export type DownloadStatus = 'pending' | 'active' | 'done' | 'error';
@@ -24,7 +24,7 @@ export type DownloadStatus = 'pending' | 'active' | 'done' | 'error';
 export interface DownloadItem {
 	id: string;
 	title: string;
-	/** Episode arg as sent to ani-cli — `"5"` for single, `"5-12"` for range. */
+	/** Episode arg as sent to the backend — `"5"` for single, `"5-12"` for range. */
 	episode: string;
 	mode: string;
 	quality: string;
@@ -42,7 +42,7 @@ export interface DownloadItem {
 	 *  range — drives the dock's "Episode N of M" annotation. Null
 	 *  for single-episode downloads. */
 	rangeTotal: number | null;
-	/** Last episode number ani-cli announced via `Playing episode N…`
+	/** Last episode number the downloader announced via `Playing episode N…`
 	 *  on stderr. Updated by setProgress as lines arrive. Null until
 	 *  the first such line is parsed. */
 	currentEp: number | null;
@@ -108,7 +108,7 @@ class DownloadStore {
 	}
 
 	setProgress(id: string, line: string) {
-		// ani-cli prints `Playing episode N...` on each iteration of a
+		// The downloader prints `Playing episode N...` on each iteration of a
 		// range download (line 448 of upstream). Parse it so the dock
 		// can show "Episode N of M" without surfacing the raw line.
 		const match = line.match(/^Playing episode\s+(\d+(?:\.\d+)?)/i);

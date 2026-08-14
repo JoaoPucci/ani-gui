@@ -107,13 +107,13 @@ fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
 
 #[test]
 fn puts_create_the_store_directory_on_a_fresh_profile() {
-    // On a fresh profile $XDG_STATE_HOME/ani-cli does not exist yet:
+    // On a fresh profile the state dir does not exist yet:
     // the first continuation-cour resolve reaches the offset write
     // BEFORE the history writer creates the directory, so a put that
     // assumes the parent silently loses the stamp — and the cached
     // resolution keeps the loss alive for the row's whole TTL.
     let tmp = tempfile::tempdir().expect("tmp");
-    let state = make_state_at(tmp.path().join("ani-cli").join("ani-hsts"));
+    let state = make_state_at(tmp.path().join("ani-gui").join("history"));
     put(&state, "the-sequel-88", 40);
     assert_eq!(get(&state, "the-sequel-88"), 40);
 }
@@ -220,7 +220,7 @@ fn put_and_get_round_trip_including_updates() {
 fn fractional_episodes_translate_like_integers() {
     // The native resolve translates a clicked per-entry "1.5" to
     // provider tag "41.5"; the history writer must speak the same
-    // provider numbering or ani-cli's process_hist_entry, which
+    // provider numbering or the script's process_hist_entry, which
     // searches the provider list for the stored tag exactly, no
     // longer recognizes the shared row. The read boundary maps it
     // back for the GUI.

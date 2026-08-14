@@ -17,14 +17,14 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// The vendored `ani-cli` script reported an internal failure.
+    /// Provider resolution reported an internal failure.
     #[error("scraper error")]
     Scraper {
         /// i18n key under `error.scraper.*`.
         key: &'static str,
     },
 
-    /// The `ani-cli` subprocess didn't finish within its timeout.
+    /// Resolution didn't finish within its timeout.
     #[error("scraper timed out")]
     Timeout,
 
@@ -44,19 +44,20 @@ pub enum AniError {
         retry_after_secs: Option<u64>,
     },
 
-    /// Stdout from `ani-cli` did not match the expected debug-mode shape.
+    /// A provider response did not match the expected shape.
     #[error("parse failed: {detail}")]
     ParseFailed {
         /// Free-text detail for logs only — not surfaced to the user.
         detail: String,
     },
 
-    /// `ani-cli` was not found on PATH or under the bundled resource dir.
-    #[error("missing ani-cli binary")]
+    /// A binary resolution needs was not found on PATH or in the
+    /// bundled-bin directory.
+    #[error("missing resolver binary")]
     MissingBinary,
 
     /// Windows-readiness for downloads: `ffmpeg` isn't on PATH and
-    /// isn't in the bundled-bin directory. ani-cli's `dep_ch
+    /// isn't in the bundled-bin directory. The script's `dep_ch
     /// "ffmpeg" "aria2c"` exits the script the moment downloads start
     /// without it. Surfaced before the spawn so the frontend can
     /// render a clear modal pointing the user at the official

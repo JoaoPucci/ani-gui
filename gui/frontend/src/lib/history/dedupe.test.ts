@@ -37,8 +37,8 @@ describe('dedupeHistoryByKitsuId', () => {
 	});
 
 	it('keeps the highest-progress occurrence of each Kitsu id, ties broken by first', () => {
-		// The empirical trigger #116 targets: allmanga catalog drift
-		// across ani-cli runs produces two hsts rows whose alias-walk
+		// The empirical trigger #116 targets: provider catalogue drift
+		// across resolves produces two hsts rows whose alias-walk
 		// both land on the same Kitsu entry. The user's true "where
 		// am I?" signal is ep_no — pick the most-advanced row so the
 		// surviving card resumes from their actual progress. Ties on
@@ -73,7 +73,7 @@ describe('dedupeHistoryByKitsuId', () => {
 	it('preserves CLI progress over an older GUI-stamped row when ep_no is higher', () => {
 		// Codex P2 #3367725631 — the regression my first cut hit. User
 		// watched via GUI at ep 5 long ago (stamped, sorted to the
-		// top). Allmanga drifted, they continued via ani-cli to ep 12
+		// top). The catalogue drifted, they continued to ep 12
 		// (unstamped, sorted below). Previous "first occurrence wins"
 		// dropped the CLI row and the strip would resume from the
 		// stale ep 5. The fix: ep_no comparison wins.

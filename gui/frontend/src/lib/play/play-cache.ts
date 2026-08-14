@@ -5,12 +5,12 @@ import type { CreateSessionResponse, PlayProgress } from '$lib/api';
  * path on the detail / player pages: when the page mounts we fire
  * a play() request for the likely-next episode and store the promise
  * here; when the user later clicks, we return the same promise (or
- * its resolved value) instead of starting a fresh ani-cli spawn.
+ * its resolved value) instead of starting a fresh resolve.
  *
  * The cache also tracks **progress subscribers**. The prefetch passes
  * `playStream`'s SSE events into the entry; a later click that races
  * an in-flight prefetch can subscribe via `getOrFire`'s `onProgress`
- * argument and receive the remaining events as ani-cli runs. The
+ * argument and receive the remaining events as resolution runs. The
  * latest event is replayed to new subscribers so they see what's
  * already happened (e.g. `youtube ✓`) and not just future events.
  *
@@ -64,7 +64,7 @@ interface CacheEntry {
 	/** When the entry is still waiting for a slot in `withSlot`'s queue,
 	 *  this is the resolver that, when called, lets it run. A click
 	 *  (priority subscriber) calls this to cut the queue rather than
-	 *  sit on a Lottie while ani-cli warms unrelated episodes.
+	 *  sit on a Lottie while the backend warms unrelated episodes.
 	 *  Cleared once the slot is acquired and `fire` actually starts. */
 	startNow?: () => void;
 	/** Drives cancellation when the user navigates away mid-resolve
@@ -78,7 +78,7 @@ const cached = new Map<CacheKey, CacheEntry>();
 
 /**
  * Cap on the number of `fire` calls running at once. Twelve concurrent
- * ani-cli spawns from a single page mount overloads the backend (CPU
+ * resolves from a single page mount overloads the backend (CPU
  * contention + allanime rate-limit risk) and slows the user's own
  * click; queueing past the cap keeps the active set small while still
  * eventually warming every visible episode.
@@ -244,7 +244,7 @@ export function getOrFire(
  * Drop every cache entry for the given show and abort any in-flight
  * fires. Called on detail-page / player-page unmount so prefetched-
  * but-unused sessions don't keep streaming SSE events into the void
- * (and don't keep ani-cli holding allmanga rate-limit slots) while
+ * (and don't keep the resolver holding provider rate-limit slots) while
  * the user is on a different page.
  *
  * The abort propagates through `fire`'s signal argument — playStream

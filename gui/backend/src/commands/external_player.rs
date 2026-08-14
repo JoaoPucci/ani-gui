@@ -177,7 +177,7 @@ fn substitute_token(tok: &str, url: &str, referer: &str, title: &str) -> Option<
 /// On Unix the child inherits a closed stdin/stdout/stderr; the parent
 /// never `wait()`s on it, so when ani-gui exits the child is reparented
 /// to init (PID 1) and continues independently. That's the behavior
-/// `ani-cli`'s `nohup ... &` invocation gives, sufficient for our needs.
+/// the script's `nohup ... &` invocation gives, sufficient for our needs.
 /// On Windows, `Command::spawn` without `Wait()` already detaches.
 ///
 /// # Errors

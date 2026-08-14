@@ -5,7 +5,7 @@
 //!
 //! Keys are organized by surface:
 //!
-//! - `error.scraper.*` — failures from the ani-cli subprocess
+//! - `error.scraper.*` — failures from provider resolution
 //! - `error.search.*` — search-specific outcomes
 //! - `error.network.*` — HTTP / TLS / connectivity
 //! - `error.cache.*` — SQLite + on-disk image cache
@@ -26,7 +26,7 @@ pub mod keys {
 
     // --- error.download.* ---
     /// Download mode requires `ffmpeg` (HLS → MP4 mux). The variant
-    /// surfaces it before the ani-cli spawn so the frontend can
+    /// surfaces it before resolution starts so the frontend can
     /// render a clear modal pointing at ffmpeg.org/download instead
     /// of a generic failure.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
@@ -46,22 +46,22 @@ pub mod keys {
     pub const NETWORK_UPSTREAM: &str = "error.network.upstream";
 
     // --- error.scraper.* ---
-    /// `ani-cli` binary not found.
+    /// A binary resolution needs was not found.
     pub const SCRAPER_MISSING_BINARY: &str = "error.scraper.missing_binary";
     /// A tool the app shells out to is missing on this machine. A
     /// local setup problem that says nothing about the provider's
     /// health, so the gate's outcome recorders must ignore it
     /// (unlike the parse-failed catch-all, which counts).
     pub const SCRAPER_MISSING_DEP: &str = "error.scraper.missing_dep";
-    /// `ani-cli` stdout could not be parsed.
+    /// A provider response could not be parsed.
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
-    /// ani-cli's "Episode not released" verdict — a content-level
+    /// The "episode not released" verdict — a content-level
     /// answer, not infrastructure trouble. Carries its own key so the
     /// scraper gate's outcome recorder can tell it apart from the
     /// generic non-zero-exit catch-all (which includes curl transport
     /// deaths and must count toward the breaker).
     pub const SCRAPER_EPISODE_NOT_RELEASED: &str = "error.scraper.episode_not_released";
-    /// `ani-cli` subprocess exceeded its timeout.
+    /// Resolution exceeded its timeout.
     pub const SCRAPER_TIMEOUT: &str = "error.scraper.timeout";
 
     // --- error.search.* ---

@@ -1091,7 +1091,7 @@ mod tests {
         // Normalization makes "  STONE OCEAN  PART 2  " hash to the
         // same row as "stone ocean  part 2". (Inner whitespace is left
         // alone — only trim + lowercase — but that's enough to soak
-        // up the common variations from ani-cli's hsts.)
+        // up the common variations from the history file.)
         let state = state_with_kitsu_at("http://unused");
         title_match_put(&state, "Stone Ocean", 1, "id-1").expect("put");
         let got_lc = title_match_get(&state, "stone ocean", 1).expect("get lowercased");
@@ -1142,7 +1142,7 @@ mod tests {
     // — allmanga → kitsu reverse mapping ——————————————————————————————
     //
     // Forward direction (Kitsu canonical_title → allmanga show) works
-    // through ani-cli's lenient catalog search. The reverse — taking
+    // through the provider's lenient catalog search. The reverse — taking
     // an allmanga title from `ani-hsts` and finding its Kitsu entry —
     // is broken when allmanga has typos (e.g. "Nato: Shippuuden" for
     // Naruto), because Kitsu's text search isn't fuzzy and returns

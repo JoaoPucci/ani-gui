@@ -96,7 +96,7 @@ describe('aniskip fetch trigger', () => {
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'idle' });
 	});
 
-	it('treats episode 0 as incomplete (ani-cli/aniskip episodes are 1-indexed)', () => {
+	it('treats episode 0 as incomplete (aniskip episodes are 1-indexed)', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
 	});

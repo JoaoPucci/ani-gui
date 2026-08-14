@@ -110,7 +110,7 @@ fn play_args() -> PlayArgs {
 
 #[tokio::test]
 async fn a_fresh_syncplay_launch_resolves_natively_and_receives_the_master_url() {
-    // Empty cache forces the fresh path; ani_cli_path is nonexistent,
+    // Empty cache forces the fresh path; the provider is unreachable,
     // so success proves the resolution never left the native client.
     let mock = MockServer::start().await;
     stub_provider(&mock, "the show").await;

@@ -420,7 +420,7 @@ async fn delete_image_cache(State(state): State<Arc<AppState>>) -> Result<Status
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Resolve a Kitsu-titled episode through ani-cli and wrap the
+/// Resolve a Kitsu-titled episode through the provider and wrap the
 /// upstream URL in a stream session for the embedded player. The
 /// renderer navigates to `/play?session=<id>` with the response.
 async fn post_play(
@@ -432,7 +432,7 @@ async fn post_play(
 
 /// SSE variant of `/api/play`. Same resolution chain, but the body is
 /// a `text/event-stream` that emits a `progress` event for every
-/// parsed `<provider> Links Fetched` line on ani-cli's stderr, then a
+/// parsed `<provider> Links Fetched` progress line, then a
 /// final `done` event with the resolved CreateSessionResponse. Errors
 /// are sent as a single `error` event before the stream closes.
 ///
@@ -478,7 +478,7 @@ async fn get_play_stream(
 }
 
 /// SSE entry point for the Download action. Mirrors get_play_stream:
-/// `progress` events for each ani-cli stderr line (aria2c / yt-dlp /
+/// `progress` events for each downloader line (yt-dlp /
 /// ffmpeg progress), then a final `done` event with the destination
 /// directory, or an `error` event before close.
 ///
@@ -494,7 +494,7 @@ async fn get_download_stream(
 
     // abort_on_drop is what makes the dock's Cancel real: the
     // frontend cancels the fetch, the connection closes, and the
-    // aria2c / yt-dlp / ffmpeg pipeline dies with the task instead of
+    // yt-dlp / ffmpeg pipeline dies with the task instead of
     // finishing a download nobody asked to keep.
     let handle = tokio::spawn(async move {
         let result = download_inner::download_with_progress(&state, &args, move |progress| {
@@ -578,7 +578,7 @@ async fn post_play_external(
 
 /// Stamp Continue Watching for the just-clicked episode. Frontend
 /// calls this after a click resolves a play, regardless of whether
-/// the play came from cache or fresh ani-cli — covers the
+/// the play came from cache or a fresh resolve — covers the
 /// `getOrFire` reuse case where the click subscribes to an in-flight
 /// prefetch promise (so the backend never saw `prefetch=false`).
 ///
@@ -723,7 +723,7 @@ async fn get_watched_at_all(
 /// upstream URL (URL rotated *after* our HEAD validated, or the CDN
 /// throttled), the renderer calls this to drop the row before
 /// retrying the play call. The retry then cache-misses and runs
-/// ani-cli fresh.
+/// resolved afresh.
 async fn post_play_cache_evict(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
@@ -1262,7 +1262,7 @@ mod tests {
     }
 
     /// Detail-page episode clicks call `POST /api/play`. The handler
-    /// resolves the title via the ani-cli driver, wraps the resolved
+    /// resolves the title through the provider, wraps the resolved
     /// upstream URL in a session, and returns a `CreateSessionResponse`
     /// the renderer uses to navigate to `/play?session=<id>`. This
     /// test pins only the route's existence + body validation contract

@@ -5,11 +5,11 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * one per group, keeping the row whose `ep_no` is highest. The home
  * page calls this after `sortByWatchedAt`.
  *
- * Why this exists: allmanga catalog drift across ani-cli invocations
+ * Why this exists: provider catalogue drift across resolves
  * can produce two `ani-hsts` rows whose alias-walk (see
  * `resolve_allmanga_show_id` in the backend) both land on the same
  * Kitsu entry. Stub-name catalog rows (`1P` for One Piece is the
- * canonical example) and changes in ani-cli's `search_anime`
+ * canonical example) and changes in the provider's catalogue
  * ranking are the usual culprits — the user ends up with two
  * Continue Watching cards for what is logically the same show.
  *
