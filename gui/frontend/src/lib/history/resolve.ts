@@ -349,7 +349,7 @@ function titleTokens(s: string): Set<string> {
 }
 
 /** Whether the allanime/hsts title is specific enough that a near-zero overlap
- *  with the Kitsu titles is real evidence of a mismatch. allanime indexes some
+ *  with the Kitsu titles is real evidence of a mismatch. The provider indexes some
  *  shows under terse stubs ("1P" for One Piece) that share no token with the
  *  canonical title yet are correct — those carry no signal, so we never judge
  *  them. Informative = ≥2 tokens, or a single token ≥5 chars. */

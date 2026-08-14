@@ -2,7 +2,7 @@
 //
 // A tile dims when the anime database says the episode aired but it
 // sits above the episode count allmanga reported. That count is
-// cached — 24 hours for an ongoing show — and allmanga catalogues
+// cached — 24 hours for an ongoing show — and the provider catalogues
 // episodes inside that window, so the tile can stay dead long after
 // the episode became streamable.
 //

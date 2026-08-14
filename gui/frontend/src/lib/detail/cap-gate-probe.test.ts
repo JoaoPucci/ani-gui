@@ -246,7 +246,7 @@ describe('createCapGateProbe', () => {
 		d.release(7);
 		await flush();
 
-		// allmanga catalogues sub and dub separately and dub lags, so a
+		// the provider catalogues sub and dub separately and dub lags, so a
 		// sub count of 7 unlocking dub episode 5 resolves something the
 		// dub catalogue does not have. Same show, different question.
 		expect(cleared).toEqual([]);

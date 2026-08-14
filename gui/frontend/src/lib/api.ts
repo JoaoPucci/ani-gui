@@ -318,7 +318,7 @@ export interface KitsuAnimeRef {
 	 *  Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp`
 	 *  (kana). Missing keys are absent from the map entirely. The play
 	 *  flow uses these to retry allanime lookups when the canonical
-	 *  title (often English) doesn't match allmanga's index — see
+	 *  title (often English) doesn't match the provider's index — see
 	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
 	 *  produced before titles were surfaced; treat as `?:`. */
 	titles?: Record<string, string>;
@@ -348,7 +348,7 @@ export interface KitsuAnimeRef {
  * Build the fallback-title list for a play call from a Kitsu ref.
  * Returns the localized variants (`en_jp`, `ja_jp`, `en`, `en_us`)
  * that aren't already the canonical, in priority order: romanized
- * Japanese first because allmanga indexes shows under that form, then
+ * Japanese first because the provider indexes shows under that form, then
  * raw kana, then English alternates. The romanized mashup aliases
  * Kitsu carries under `abbreviated_titles` come LAST: they're noisier,
  * but for some shows (Yu-Gi-Oh! 5D's) one of them is the only string
@@ -466,7 +466,7 @@ export interface PlayArgs {
 	 *  allanime hits. Build with {@link altTitlesFromKitsu}. The
 	 *  backend walks them in order and stops at the first non-empty
 	 *  search result. Used to recover Stone Ocean Part 6 and similar
-	 *  shows whose Kitsu canonical disagrees with allmanga's index. */
+	 *  shows whose Kitsu canonical disagrees with the provider's index. */
 	alt_titles?: string[];
 	/** `true` when the call is a background prefetch (warming the
 	 *  cache for an episode the user hasn't clicked yet). The backend
@@ -807,7 +807,7 @@ export interface AvailabilityArgs {
 	/** Skip the cached count and ask allmanga directly.
 	 *
 	 *  The stored count is a snapshot — 24h for an ongoing show — and
-	 *  allmanga catalogues episodes inside that window. A user clicking
+	 *  the provider catalogues episodes inside that window. A user clicking
 	 *  a tile the stored count calls unavailable is asking something
 	 *  the cache cannot answer, so replaying it back confirms the
 	 *  tile's own claim without anyone having checked.
@@ -845,7 +845,7 @@ export interface AvailabilityResponse {
 	gate_refused?: boolean;
 }
 
-/** "Is this title in allmanga's catalog?" probe. The detail page hits
+/** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a
  *  click instead of letting the user discover the gap by clicking. */
 export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityResponse> {
@@ -1023,7 +1023,7 @@ export function kitsuTitleMatchPut(title: string, cour: number, kitsuId: string)
  * has already populated it.
  *
  * Continue Watching's resolver hits this BEFORE the legacy title-
- * match path because allmanga's catalog has typos (e.g. "Nato:
+ * match path because the provider's catalog has typos (e.g. "Nato:
  * Shippuuden" for Naruto Shippuuden) that Kitsu's text search
  * can't recover from. Show_id is unambiguous; the title isn't.
  */

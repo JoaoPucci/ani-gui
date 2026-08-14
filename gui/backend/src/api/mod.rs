@@ -170,7 +170,7 @@ async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Remove one history row by its allmanga show_id. 204 whether or
+/// Remove one history row by its show id. 204 whether or
 /// not a row was actually removed — idempotent semantics keep client
 /// retries safe.
 async fn delete_history_entry(

@@ -1,11 +1,11 @@
-//! "Is this title playable?" probe — runs the same allmanga search
+//! "Is this title playable?" probe — runs the same provider search
 //! the play path does, returns true iff any candidate exists for the
 //! canonical title or any alt-title.
 //!
 //! The detail page hits this on mount so it can gate the Play +
 //! Download CTAs ahead of a click — better than letting the user
-//! discover "this show isn't on allmanga" by clicking and getting an
-//! error overlay (the prior failure mode for shows like Kitsu's
+//! discover the provider does not carry the show by clicking and
+//! getting an error overlay (the prior failure mode for shows like Kitsu's
 //! Western-animation entries: "Arcane Season 2", etc.).
 
 use std::collections::HashMap;
@@ -89,7 +89,7 @@ pub struct AvailabilityArgs {
     /// Skip the cached row and ask allanime directly.
     ///
     /// The stored count is a snapshot — 24h for an ongoing show — and
-    /// allanime catalogues episodes inside that window. A user
+    /// the provider catalogues episodes inside that window. A user
     /// clicking a tile the stored count says is unavailable is asking
     /// a question the cache cannot answer, so replaying it back is
     /// worse than not answering: it confirms the tile's own claim
@@ -284,7 +284,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
 /// signal matches what play would do at the same time).
 ///
 /// # Errors
-/// - Network errors from the underlying allmanga search propagate;
+/// - Network errors from the underlying provider search propagate;
 ///   the frontend can fall back to the lazy click path.
 pub async fn check_availability(
     state: &AppState,

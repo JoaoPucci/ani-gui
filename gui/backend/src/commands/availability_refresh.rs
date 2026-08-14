@@ -29,7 +29,7 @@ pub(crate) type RowLock = Arc<tokio::sync::Mutex<()>>;
 /// cache-bypassing refresh, and the lock that makes reading that
 /// count mean something.
 ///
-/// Keyed per show AND mode because allmanga catalogues sub and dub
+/// Keyed per show AND mode because the provider catalogues sub and dub
 /// separately — a refresh of the dub row says nothing about whether
 /// the sub row is current.
 ///

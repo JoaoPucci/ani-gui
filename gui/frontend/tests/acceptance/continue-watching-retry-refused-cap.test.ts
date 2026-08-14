@@ -1,7 +1,7 @@
 // Acceptance: a Continue card whose availability probe the scraper
 // gate refused corrects itself once the breaker recovers.
 //
-// A refused probe answers with the allmanga search hit's count, which
+// A refused probe answers with the provider search hit's count, which
 // counts half-episodes as whole ones and so runs high. The card then
 // offers an episode past the end. The backend refuses to serve that
 // count back from cache so it self-heals on the next read, and the

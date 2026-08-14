@@ -103,7 +103,7 @@
 	// Availability probe — runs once after detail loads. null = not
 	// yet checked / network error (lazy fallback handles the click);
 	// true = allmanga has at least one candidate; false = the show
-	// isn't in allmanga's catalog (Kitsu indexes Western animation
+	// isn't in the provider's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
 	let availability = $state<boolean | null>(null);
 	// True once the availability probe settled (result, error, or the
@@ -134,7 +134,7 @@
 	 * progress.
 	 */
 	/**
-	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * The audio mode the re-ask asks about. The provider catalogues sub and
 	 * dub separately and dub lags, so this is part of the question
 	 * rather than a detail of it: the probe sends it, and the context
 	 * the answer is checked against is keyed on it. Settings land after
@@ -372,7 +372,7 @@
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 
 	// CTA area render state. 'ready' includes the settled-but-unknown
-	// verdict (probe errored, e.g. throttled allmanga searches) — the
+	// verdict (probe errored, e.g. throttled provider searches) — the
 	// old availability===null skeleton had no retry and pulsed forever
 	// when the first probe hit a rate limit; the lazy click path
 	// surfaces the real error instead.
@@ -1325,7 +1325,7 @@
 		}
 	}
 
-	// Not-yet-premiered shows can exist as searchable allmanga stubs,
+	// Not-yet-premiered shows can exist as searchable provider stubs,
 	// so availability === true while zero episodes have aired. The
 	// tiles and prefetch are gated by epAirState, but pickNextEpisode's
 	// no-history branch returns 1 regardless of the cap — block the

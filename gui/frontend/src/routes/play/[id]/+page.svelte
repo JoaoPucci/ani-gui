@@ -830,7 +830,7 @@
 	 * strip may have replaced.
 	 */
 	/**
-	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * The audio mode the re-ask asks about. The provider catalogues sub and
 	 * dub separately and dub lags, so this is part of the question
 	 * rather than a detail of it: the probe sends it, and the context
 	 * the answer is checked against is keyed on it. Settings land after

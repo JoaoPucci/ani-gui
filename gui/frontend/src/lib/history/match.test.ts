@@ -464,7 +464,7 @@ describe('resolveKitsuMatch', () => {
 
 	it('returns null when text search and allmanga enrichment both miss', async () => {
 		// Worst case: title-search empty AND backend enrichment also
-		// finds no Kitsu match (shows allmanga indexes that Kitsu
+		// finds no Kitsu match (shows the provider indexes that Kitsu
 		// doesn't carry at all). Resolver returns null; the home page
 		// renders the bare allmanga title and routes the resume card
 		// to /search.

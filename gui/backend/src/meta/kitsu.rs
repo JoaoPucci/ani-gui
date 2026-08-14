@@ -938,8 +938,8 @@ mod tests {
     fn parse_search_surfaces_titles_map_with_localized_variants() {
         // Kitsu serves `attributes.titles: { en, en_jp, ja_jp[, en_us] }`
         // alongside `canonicalTitle`. The play flow needs the romanized
-        // (`en_jp`) variant to retry allmanga searches when the canonical
-        // (often English) title doesn't appear in allmanga's index —
+        // (`en_jp`) variant to retry provider searches when the canonical
+        // (often English) title doesn't appear in the provider's index —
         // Stone Ocean Part 6 reproduces this. Without the titles map
         // surfaced on the public ref, the retry has nothing to fall back
         // to and the user sees an empty results list.

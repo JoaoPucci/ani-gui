@@ -756,7 +756,7 @@ describe('altTitlesFromKitsu', () => {
 		expect(altTitlesFromKitsu(undefined)).toEqual([]);
 	});
 
-	it('emits en_jp first (allmanga indexes under romanized JP)', () => {
+	it('emits en_jp first (the provider indexes under romanized JP)', () => {
 		const ref = baseRef({
 			canonical_title: "JoJo's Bizarre Adventure: Stone Ocean",
 			titles: {
