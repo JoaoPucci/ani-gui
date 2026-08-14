@@ -108,9 +108,12 @@ class DownloadStore {
 	}
 
 	setProgress(id: string, line: string) {
-		// The downloader prints `Playing episode N...` on each iteration of a
-		// range download (line 448 of upstream). Parse it so the dock
-		// can show "Episode N of M" without surfacing the raw line.
+		// A range download emits `Playing episode N` before it resolves each
+		// episode. That line comes from the backend's own range loop, not
+		// from yt-dlp or ffmpeg — it is a protocol line the orchestrator
+		// mixes into the tool's stderr, so changing its shape means
+		// changing `download_range.rs` and this parse together. Parsed so
+		// the dock can show "Episode N of M" instead of the raw line.
 		const match = line.match(/^Playing episode\s+(\d+(?:\.\d+)?)/i);
 		const currentEp = match ? Number.parseFloat(match[1]) : null;
 		this.items = this.items.map((i) =>

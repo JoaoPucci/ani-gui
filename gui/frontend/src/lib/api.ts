@@ -547,10 +547,13 @@ export type PlayProgress =
 	| { kind: 'links_fetched'; provider: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
- *  caller hears `<provider> Links Fetched` events as resolution emits
- *  them. Resolves with the same `CreateSessionResponse` `play()`
- *  returns; rejects on server-side errors or when the stream closes
- *  without a `done` event.
+ *  caller hears resolution progress as it happens. `onProgress`
+ *  receives every {@link PlayProgress} variant — `searching`,
+ *  `matched` and `links_fetched` — in whatever order the resolve
+ *  emits them, so a caller that renders only one of the three goes
+ *  quiet for the stages it ignores. Resolves with the same
+ *  `CreateSessionResponse` `play()` returns; rejects on server-side
+ *  errors or when the stream closes without a `done` event.
  *
  *  Falls back to a plain `play()` POST when `EventSource` isn't
  *  available — e.g. server-side rendering or older webviews. The

@@ -71,11 +71,14 @@ pub struct DownloadProgress {
 }
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
-/// in, which is what a "reveal in folder" intent needs. The name is
-/// built here as `<resolved title> Episode <n>` with an `.mp4`
-/// extension, but the extension is not guaranteed: when yt-dlp cannot
-/// repackage the stream it leaves what it downloaded, so the
-/// directory is the only part the renderer can rely on.
+/// in, which is what a "reveal in folder" intent needs.
+///
+/// Only the directory, because the same response ends a range
+/// download: `1-12` writes twelve files and there is no single name to
+/// return. A single-episode download does land on `<resolved title>
+/// Episode <n>.mp4` — a yt-dlp run that could not repackage the stream
+/// never reaches this type, since that path deletes the mislabeled
+/// file and returns [`AniError::FfmpegMissing`] instead.
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
     /// Directory the file was written to. Renderer feeds this to

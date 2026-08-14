@@ -479,9 +479,11 @@ where
 
     // Persist the resolution so the next play of the same episode
     // skips the provider round-trips (subject to TTL + HEAD
-    // validation). show_id is the anidb slug — the id the provider's
-    // own update_history writes — so cache-hit history rows and the
-    // CLI's rows agree.
+    // validation). show_id is the anidb slug, and storing it is what
+    // lets a cache hit write the same history row a fresh resolve
+    // would: `play_native_record::write_history` has the slug in hand
+    // from the walk, `write_history_on_cache_hit` reads it back from
+    // here. Nothing outside this app writes that file.
     let cached_resolution = CachedResolution {
         upstream_url: native.master_url.clone(),
         referer: referer.clone(),
