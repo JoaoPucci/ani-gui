@@ -51,11 +51,6 @@ pub enum AniError {
         detail: String,
     },
 
-    /// A binary resolution needs was not found on PATH or in the
-    /// bundled-bin directory.
-    #[error("missing resolver binary")]
-    MissingBinary,
-
     /// Windows-readiness for downloads: `ffmpeg` isn't on PATH and
     /// isn't in the bundled-bin directory. The script's `dep_ch
     /// "ffmpeg" "aria2c"` exits the script the moment downloads start
@@ -152,7 +147,6 @@ impl AniError {
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
-            Self::MissingBinary => "error.scraper.missing_binary",
             Self::FfmpegMissing => crate::i18n::keys::DOWNLOAD_FFMPEG_MISSING,
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
             Self::SyncplaySpawnFailed { .. } => "error.syncplay.spawn_failed",
@@ -208,7 +202,6 @@ impl AniError {
             Self::Timeout => 504,
             Self::UnsupportedPkce => 400,
             Self::ParseFailed { .. }
-            | Self::MissingBinary
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }
             | Self::SyncplaySpawnFailed { .. }

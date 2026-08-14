@@ -195,30 +195,6 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## The bundled script's remaining purpose
-
-- **Comments across the app describe a subprocess that no longer
-  runs.** Well over a hundred sites in `gui/backend/src/` and several
-  dozen in `gui/frontend/src/` say things like "a fresh ani-cli spawn
-  (~30s)", "falling back to ani-cli", or "the data ani-cli produced".
-  Native resolution replaced that subprocess, so they name a component
-  the code has not had for some time.
-
-  They are wrong rather than merely dated, which is what makes them
-  worth a pass: a reader following `play_resolution_cache`'s module
-  doc goes looking for a spawn whose result is being cached, and there
-  is none. Some cite allanime, a provider upstream 5.0 deleted. Three
-  — in `history/mod.rs` and `config/paths.rs` — point at
-  `config::paths::ani_cli_history`, a function that no longer exists;
-  they describe a history file shared with the CLI, which stopped
-  being shared when 5.0 re-keyed its numbering.
-
-  Not every mention is stale, which is the trap. The history TSV
-  really is the format the script writes, and some error variants
-  really are about a missing external tool. This wants a reading pass
-  where each site gets a decision, not a rename — several also quote
-  timings measured against the old path.
-
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if

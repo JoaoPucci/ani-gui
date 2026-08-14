@@ -52,7 +52,6 @@ fn every_variant_has_a_stable_key() {
         AniError::Timeout,
         AniError::NoResults,
         AniError::ParseFailed { detail: "x".into() },
-        AniError::MissingBinary,
         AniError::FfmpegMissing,
         AniError::PlayerSpawnFailed {
             binary: "vlc".into(),

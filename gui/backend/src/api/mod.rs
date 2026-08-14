@@ -2121,14 +2121,13 @@ mod tests {
 
     #[tokio::test]
     async fn ani_error_internal_variants_map_to_500() {
-        // ParseFailed / MissingBinary / PlayerSpawnFailed / Cache / Io
+        // ParseFailed / PlayerSpawnFailed / Cache / Io
         // / Config / Metadata / Scraper all collapse to the same 500
         // — they're backend-side bugs the frontend can't usefully
         // discriminate at the HTTP layer (it still discriminates on
         // the JSON body's kind/key for i18n).
         for err in [
             AniError::ParseFailed { detail: "x".into() },
-            AniError::MissingBinary,
             AniError::PlayerSpawnFailed {
                 binary: "vlc".into(),
             },
