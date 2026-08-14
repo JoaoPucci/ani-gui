@@ -44,7 +44,8 @@ fn nothing_else_in_the_cache_is_touched() {
     // The cache root holds live state — an over-eager sweep would take
     // the image cache or the database with it.
     let dir = cache_with(&["ani-cli", "ani-cli.bak", "images", "meta.sqlite3"]);
-    sweep_legacy_script(dir.path());
+    let report = sweep_legacy_script(dir.path());
+    assert_eq!(report.removed.len(), 1, "only the script itself");
     for kept in ["ani-cli.bak", "images", "meta.sqlite3"] {
         assert!(dir.path().join(kept).exists(), "{kept} must survive");
     }

@@ -27,9 +27,36 @@ pub struct SweepReport {
 /// Never fails the caller: this runs during boot, and a cache that
 /// cannot be read or written is not a reason to refuse to start.
 #[must_use]
-pub fn sweep_legacy_script(_cache_dir: &Path) -> SweepReport {
-    todo!("sweep the orphaned script copy")
+pub fn sweep_legacy_script(cache_dir: &Path) -> SweepReport {
+    let target = cache_dir.join(SCRIPT_NAME);
+    // `is_file` rather than `exists`: a directory wearing this name is
+    // not the file the updater wrote, and removing it is not ours to
+    // do. It also covers the fresh-profile case, where the cache root
+    // does not exist yet.
+    if !target.is_file() {
+        return SweepReport::default();
+    }
+    match std::fs::remove_file(&target) {
+        Ok(()) => SweepReport {
+            removed: vec![target],
+        },
+        // A cache we cannot write is not a reason to refuse to boot,
+        // and the next launch tries again. Reporting a removal that
+        // did not happen would be worse than reporting nothing.
+        Err(e) => {
+            tracing::warn!(
+                target: "legacy_script",
+                path = %target.display(),
+                error = %e,
+                "could not remove the orphaned script copy"
+            );
+            SweepReport::default()
+        }
+    }
 }
+
+/// The name the updater wrote under the cache root.
+const SCRIPT_NAME: &str = "ani-cli";
 
 #[cfg(test)]
 #[path = "legacy_script_test.rs"]

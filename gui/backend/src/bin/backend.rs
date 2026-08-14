@@ -64,8 +64,6 @@ fn main() -> std::process::ExitCode {
             resource_dir,
         )?);
         // Daily ani-cli `-U` — runs in the background after the
-        // listener binds so it never blocks app launch.
-        state.maybe_spawn_anicli_update();
 
         let proxy_router = proxy::build_router(state.proxy_state());
         let api_router = api::build_api_router(state.clone());

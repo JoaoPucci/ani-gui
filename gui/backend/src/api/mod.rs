@@ -135,7 +135,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             get(get_kitsu_resolve_allmanga),
         )
         .route("/api/watched-at", get(get_watched_at_all))
-        .route("/api/anicli/update-log", get(get_anicli_update_log))
         .merge(account::router())
         .merge(airing::router())
         .with_state(state)
@@ -717,15 +716,6 @@ async fn get_watched_at_all(
     Ok(Json(kitsu_inner::watched_at_all(&state)?))
 }
 
-/// Returns the persisted log of recent ani-cli `-U` outcomes,
-/// latest first. Empty when no run has happened yet. The
-/// /diagnostics page renders one row per entry.
-async fn get_anicli_update_log(
-    State(state): State<Arc<AppState>>,
-) -> Json<Vec<crate::anicli::update::UpdateOutcome>> {
-    Json(state.anicli_update_log().unwrap_or_default())
-}
-
 /// Evict the cached play resolution for `(title, mode, quality,
 /// episode)`. Idempotent — returns 204 even if no row matched.
 ///
@@ -804,9 +794,8 @@ mod tests {
             proxy_http: reqwest::Client::new(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
-            ani_cli_path: PathBuf::from("/tmp/ani-cli"),
-            bash_path: None,
             bundled_bin: None,
+            legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: td.path().join("ani-hsts"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
@@ -887,7 +876,6 @@ mod tests {
         // Shape sanity — actual values come from the shared AppState
         // and don't matter for this test.
         assert!(body.contains("version"), "body: {body}");
-        assert!(body.contains("ani_cli_path"), "body: {body}");
         assert!(body.contains("proxy_base_url"), "body: {body}");
     }
 

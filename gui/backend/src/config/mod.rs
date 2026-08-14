@@ -82,13 +82,6 @@ pub struct Config {
     /// expected Back to halt playback). Users who actively want
     /// PiP can flip this to `false` in Settings.
     pub disable_auto_pip_on_leave: bool,
-    /// When `true`, the backend runs `ani-cli -U` against its cached
-    /// copy on each boot if the script is older than 24 h. Defaults
-    /// to `true` because allmanga's API drifts daily — without
-    /// fresh script content, playback breaks for everyone the moment
-    /// upstream pushes a hotfix we don't have. Users on metered or
-    /// strictly offline setups can flip it off.
-    pub auto_update_anicli: bool,
     /// When `true`, the renderer's update notifier considers GitHub
     /// pre-releases when checking for a newer version. Defaults to
     /// `true` because every ani-gui release shipped so far is marked
@@ -127,7 +120,6 @@ impl Default for Config {
             auto_skip_ed: false,
             use_custom_player_controls: true,
             disable_auto_pip_on_leave: true,
-            auto_update_anicli: true,
             update_include_prereleases: true,
             primary_account: String::new(),
         }

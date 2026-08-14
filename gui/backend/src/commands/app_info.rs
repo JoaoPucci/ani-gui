@@ -9,8 +9,6 @@ use crate::error::Result;
 pub struct AppInfo {
     /// Crate version from Cargo.toml, with a `-dev` marker under the dev profile.
     pub version: String,
-    /// Detected `ani-cli` script path.
-    pub ani_cli_path: String,
     /// Where this build of ani-gui keeps its own watch history.
     pub history_path: String,
     /// `http://127.0.0.1:<port>` for the streaming proxy.
@@ -25,7 +23,6 @@ pub struct AppInfo {
 pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
     Ok(AppInfo {
         version: crate::display_version(),
-        ani_cli_path: state.ani_cli_path.display().to_string(),
         history_path: state.history_path.display().to_string(),
         proxy_base_url: state.proxy_origin.base.clone(),
     })
@@ -61,9 +58,8 @@ mod tests {
             proxy_http: reqwest::Client::new(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 42_337),
-            ani_cli_path: PathBuf::from("/usr/local/bin/ani-cli"),
-            bash_path: None,
             bundled_bin: None,
+            legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
@@ -87,7 +83,6 @@ mod tests {
         // toggling ANI_GUI_DEV): the version always starts with the crate
         // version.
         assert!(info.version.starts_with(crate::VERSION));
-        assert_eq!(info.ani_cli_path, "/usr/local/bin/ani-cli");
         assert_eq!(info.history_path, "/home/u/.local/state/ani-gui/history");
         assert_eq!(info.proxy_base_url, "http://127.0.0.1:42337");
     }
@@ -98,7 +93,6 @@ mod tests {
         let info = app_info(&s).unwrap();
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"version\""));
-        assert!(json.contains("\"ani_cli_path\""));
         assert!(json.contains("\"history_path\""));
         assert!(json.contains("\"proxy_base_url\""));
     }
