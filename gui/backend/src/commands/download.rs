@@ -3,9 +3,14 @@
 //! but instead of registering a stream session it spawns yt-dlp, or
 //! ffmpeg when yt-dlp is absent or fails, to write the file to disk.
 //!
-//! Progress lines from whichever of the two ran are forwarded to the
-//! SSE handler in `api::get_download_stream` so the renderer can show
-//! a live progress bar in the dock.
+//! Everything the dock shows arrives as one stream of text lines,
+//! forwarded to the SSE handler in `api::get_download_stream`, and the
+//! tool is only its last third. Resolution reports go first —
+//! `Searching`, `Matched`, `… links fetched` — because they happen
+//! before either tool exists. A range download interleaves its own
+//! `Matched` and a `Playing episode N` per episode from the loop in
+//! `download_range`. Then the tool's stderr. A change to the protocol
+//! is a change to all three, not to yt-dlp's output alone.
 
 use std::path::PathBuf;
 
@@ -61,12 +66,14 @@ pub struct DownloadArgs {
     pub download_dir: Option<String>,
 }
 
-/// SSE event body for each progress line forwarded from the downloader
-/// (aria2c / yt-dlp / ffmpeg). Frontend renders the latest line under
-/// each active download row.
+/// SSE event body for one line of the download's progress stream —
+/// see the module header for the three sources that feed it. Frontend
+/// renders the latest line under each active download row.
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
-    /// Raw stderr line from aria2c / yt-dlp / ffmpeg, ANSI-stripped.
+    /// One line of text. A tool's stderr arrives ANSI-stripped; the
+    /// resolution and orchestration lines are composed here and carry
+    /// no escapes to strip.
     pub line: String,
 }
 
@@ -89,9 +96,9 @@ pub struct DownloadResponse {
 /// Drive a download from `args`. Picks the same (title, candidate
 /// index) pair as the equivalent /api/play call so what was watched is
 /// what gets saved, then spawns the downloader with the chosen
-/// destination directory. `on_progress` is invoked for every stderr
-/// line the downloader emits (yt-dlp fragment events,
-/// etc.).
+/// destination directory. `on_progress` is invoked for every line of
+/// the progress stream — resolution reports, a range run's own
+/// per-episode lines, and the tool's stderr alike.
 ///
 /// # Errors
 /// - [`AniError::Config`] when no destination is supplied and the

@@ -673,9 +673,12 @@ export interface DownloadArgs {
 	download_dir?: string;
 }
 
-/** SSE progress event body — one raw stderr line from aria2c / yt-dlp /
- *  ffmpeg. The renderer stores the latest line and the dock surfaces it
- *  under the active row. */
+/** SSE progress event body — one line of the download's progress
+ *  stream. Not only tool output: the backend resolves the stream
+ *  before either tool runs and reports that here too, and a range
+ *  download adds a line per episode from the loop driving it. The
+ *  renderer stores the latest line and the dock surfaces it under the
+ *  active row. */
 export interface DownloadProgress {
 	line: string;
 }
@@ -1043,10 +1046,12 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
 }
 
 /**
- * Resolve an allmanga show_id to its full Kitsu entry by walking
- * allmanga's `Show` GraphQL aliases (englishName / nativeName /
- * altNames) through Kitsu's text search. Returns null when no Kitsu
- * match is found OR when the upstream HTTP fails.
+ * Resolve a history row's show id to its full Kitsu entry: the stored
+ * reverse mapping first, then — when the id is a provider slug — a
+ * Kitsu text search built from the slug's own words. An id from the
+ * retired provider has neither, and resolves only if something already
+ * mapped it. Returns null when no Kitsu match is found OR when the
+ * upstream HTTP fails.
  *
  * Use this as the LAST step in the Continue Watching resolver, when
  * the reverse cache and the title-search both yield nothing — e.g.

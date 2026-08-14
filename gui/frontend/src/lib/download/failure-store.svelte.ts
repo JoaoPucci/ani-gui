@@ -13,7 +13,7 @@
  */
 
 /** Discriminated payload identifying the failure kind. Future kinds
- *  (e.g. `aria2c_missing`, `disk_full`) extend this union. */
+ *  (`disk_full`, say) extend this union. */
 export type DownloadFailurePayload = { kind: 'ffmpeg_missing' };
 
 class DownloadFailureStore {

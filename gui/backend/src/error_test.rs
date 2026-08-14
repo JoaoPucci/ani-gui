@@ -88,12 +88,12 @@ fn serializes_with_kind_discriminator() {
 
 #[test]
 fn ffmpeg_missing_serializes_with_a_dedicated_kind_and_key() {
-    // The script's download path ran `dep_ch "ffmpeg" "aria2c"` at
-    // startup — without ffmpeg it exits the shell instantly, and
-    // the user previously saw a generic "Download failed" tooltip
-    // with no actionable info. The dedicated variant lets the
-    // frontend render a clear modal pointing at the official
-    // ffmpeg download page.
+    // A download with no usable tool used to reach the user as a
+    // generic "Download failed" tooltip with nothing actionable in
+    // it. The dedicated variant is what lets the frontend render a
+    // modal pointing at the official download page instead, so its
+    // serialized shape is part of that contract rather than an
+    // implementation detail.
     let err = AniError::FfmpegMissing;
     let s = serde_json::to_string(&err).expect("serializes");
     assert!(

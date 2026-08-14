@@ -299,9 +299,9 @@ describe('pickKitsuMatch', () => {
 		// picker locks onto Doraemon, persists the title-match cache,
 		// and Continue Watching renders the wrong show forever. With
 		// the filter Doraemon is rejected (1 vs 366 — way outside
-		// tolerance) and the picker falls through; the alias
-		// enrichment path (englishName "Bleach") then resolves
-		// correctly.
+		// tolerance) and the picker falls through; the enrichment step,
+		// which resolves from the show id rather than the title, then
+		// gets its turn.
 		const r = resolveHistoryEntry(entry('Burichi - (366 episodes)', '2'), null);
 		const hits = [
 			titledCountedHit('doraemon14', 'Doraemon Movie 14: Nobita to Buriki no Labyrinth', 1),
@@ -347,9 +347,8 @@ describe('pickKitsuMatch', () => {
 		// Re:Zero S4: allmanga reports 5 streamable episodes, Kitsu's
 		// announced total is 19. Without the asymmetric rule the
 		// strict ratio (14/5 = 2.8) rejected the correct match,
-		// forcing the resolver into alias enrichment where Kitsu's
-		// text-search for the englishName returned an unrelated
-		// fuzzy hit (Genjitsu Shugi). The asymmetric branch lets
+		// forcing the resolver into enrichment, where a Kitsu text
+		// search returned an unrelated fuzzy hit (Genjitsu Shugi). The asymmetric branch lets
 		// the legitimate ongoing match through.
 		const r = resolveHistoryEntry(
 			entry('Re:Zero kara Hajimeru Isekai Seikatsu Season 4 (5 episodes)', '1'),
@@ -388,7 +387,7 @@ describe('pickKitsuMatch', () => {
 		// catching up." That's a 20× franchise gap and almost
 		// certainly the wrong show. The absolute-cap rule (diff ≤ 50)
 		// rejects cleanly; the resolver then falls through to the
-		// alias-enrichment path. Pin to lock in the upper bound.
+		// enrichment step. Pin to lock in the upper bound.
 		const r = resolveHistoryEntry(entry('Some Cour (20 episodes)', '1'), null);
 		const hits = [
 			titledCountedHit('wrong-huge', 'Unrelated Long Franchise', 400),
@@ -415,8 +414,8 @@ describe('pickKitsuMatch', () => {
 		// almost certainly has a known Kitsu episode_count, so a
 		// null-count match for courSize > 50 is overwhelmingly a
 		// poisoned mapping pointing at an unrelated short entry.
-		// Reject so resolveKitsuMatch falls through to the alias-
-		// enrichment path and re-resolves correctly.
+		// Reject so resolveKitsuMatch falls through to the enrichment
+		// step and re-resolves correctly.
 		const r = resolveHistoryEntry(entry('Naruto (220 episodes)', '1'), null);
 		const hits = [titledCountedHit('duan-nao-2', 'Duan Nao 2', null)];
 		expect(pickKitsuMatch(hits, r)).toBeNull();
@@ -859,8 +858,8 @@ describe('long-runners Kitsu has no episode total for', () => {
 		// true there, but that is "no judgement possible", not proof:
 		// there is nothing in '1P' to compare. This lane has no count
 		// evidence either, so accepting an unjudged title accepts on
-		// nothing at all, and the row never reaches the alias
-		// enrichment that exists to resolve exactly these stubs.
+		// nothing at all, and the row never reaches the enrichment step,
+		// which resolves from the show id and is what places a stub.
 		const r = resolveHistoryEntry(entry('1P (1100 episodes)', '1050'), null);
 		const unrelated = hit({
 			id: '210',

@@ -133,14 +133,17 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 		}
 	}
 
-	// 4) Allmanga-aliases enrichment fallback. Reach here when steps
-	//    0-3 all whiff — typically because allmanga's primary `name`
-	//    is a stub the Kitsu text search can't resolve ("1P" for One
-	//    Piece, "Nato: Shippuuden" for Naruto Shippuuden). The backend
-	//    fetches allmanga's Show GraphQL, harvests englishName /
-	//    nativeName / altNames, retries Kitsu search with each, and
-	//    persists the resolved kitsu_id into the reverse cache so
-	//    subsequent calls short-circuit through step 0.
+	// 4) Backend enrichment fallback. Reach here when steps 0-3 all
+	//    whiff — typically because the row's stored `name` is a stub
+	//    the Kitsu text search can't resolve ("1P" for One Piece,
+	//    "Nato: Shippuuden" for Naruto Shippuuden). The backend tries
+	//    the show id rather than the name: a provider slug carries its
+	//    title in its own words, so `one-piece-69` searches Kitsu for
+	//    "one piece" and persists the resolved kitsu_id into the
+	//    reverse cache, and subsequent calls short-circuit through
+	//    step 0. A row from the retired provider has no such words and
+	//    no alias source left, so a stub name there is not recoverable
+	//    by this step — those rows depend on having been mapped.
 	//
 	//    Only fires when there's an allmanga show_id to enrich AND
 	//    earlier paths already failed — title-search hits skip this

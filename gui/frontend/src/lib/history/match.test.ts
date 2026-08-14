@@ -439,8 +439,8 @@ describe('resolveKitsuMatch', () => {
 		// Repro: cleared metadata cache + cryptic allmanga `name`. The
 		// reverse cache miss + title-match cache miss + slug skip + 0-hit
 		// text search should NOT be terminal — the resolver calls the
-		// new enrichment IPC, which fetches allmanga's Show GraphQL and
-		// retries Kitsu search with englishName / altNames.
+		// enrichment IPC, which resolves from the show id rather than
+		// from the stub name.
 		const preliminary = resolveHistoryEntry(
 			{ id: 'ReooPAxPMsHM4KPMY', ep_no: '1', title: '1P (1161 episodes)' },
 			null

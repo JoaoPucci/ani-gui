@@ -557,8 +557,9 @@ export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef)
 	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
 	// 'proven', not merely not-refuted: this lane has no count
 	// evidence to fall back on, so an unjudged title would accept the
-	// hit on nothing — and would take an allmanga stub like '1P' away
-	// from the alias enrichment that exists to resolve it.
+	// hit on nothing — and would take a stub like '1P' away from the
+	// enrichment step, which resolves from the show id instead of the
+	// name and so is the one path that can still place it.
 	return titleIdentity(preliminary.searchTitle, hit) === 'proven';
 }
 
@@ -585,7 +586,7 @@ export function pickKitsuMatch(
 	//  - hits whose episode_count is incompatible with the history record
 	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
 	// When nothing survives, surface null so resolveKitsuMatch falls through
-	// to the alias-enrichment path (retries with allmanga englishName / altNames)
+	// to the enrichment step (which resolves from the show id, not the title)
 	// instead of the picker landing on a wrong match.
 	const candidates = hits.filter((h) => isCandidateForRow(preliminary, h));
 	if (candidates.length === 0) {

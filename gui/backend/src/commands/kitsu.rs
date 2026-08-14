@@ -547,10 +547,11 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     }
 }
 
-/// Whether a Kitsu `subtype` is a music video. These never exist on allanime
-/// (it indexes anime episodes, not song clips), so the enrichment alias-walk
-/// skips them — otherwise an alias like "Idol" could resolve to, and persist,
-/// the YOASOBI MV's id. Case-insensitive; an absent subtype is not music.
+/// Whether a Kitsu `subtype` is a music video. A provider that indexes
+/// anime episodes has no song clips, so the reverse resolve's Kitsu
+/// search skips them — otherwise a search term like "Idol" resolves to
+/// the YOASOBI MV and persists its id into the reverse mapping.
+/// Case-insensitive; an absent subtype is not music.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype
         .map(|s| s.eq_ignore_ascii_case("music"))
@@ -1198,14 +1199,13 @@ mod tests {
 
     // — resolve_allmanga_show_id: end-to-end orchestration ——————————
     //
-    // The full chain (allmanga `Show` GraphQL → walk aliases → Kitsu
-    // text search → cache result) is exercised against a MockServer
-    // whose URI we stamp into BOTH the Kitsu client base AND the
-    // allanime base override (via state_with_kitsu_at hijacking the
-    // Kitsu client; the allanime call uses state.meta_http with no
-    // override, so production prod plumbing isn't exercised here —
-    // see the green commit for the with_bases helper that threads a
-    // test override into the allanime call too).
+    // The chain is: stored reverse mapping → a Kitsu text search built
+    // from a slug's own words → cache the result. Exercised against a
+    // MockServer whose URI is stamped into the Kitsu client base via
+    // `state_with_kitsu_at`. There is no second upstream to stub: the
+    // step that once fetched the provider's aliases went away with the
+    // provider, so an id that is not slug-shaped now ends the chain
+    // rather than starting a fetch.
 
     #[tokio::test]
     async fn resolve_allmanga_show_id_short_circuits_on_reverse_cache_hit() {
@@ -1323,9 +1323,10 @@ mod tests {
 
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
-        // The enrichment alias-walk must skip music-video hits (a YOASOBI
-        // "Idol" MV) so it never returns or persists one — music can't exist
-        // on allanime. Streamable subtypes and an absent subtype pass.
+        // The reverse resolve's Kitsu search must skip music-video hits
+        // (a YOASOBI "Idol" MV) so it never returns or persists one — the
+        // provider has no song clips. Streamable subtypes and an absent
+        // subtype pass.
         assert!(is_music_subtype(Some("music")));
         assert!(is_music_subtype(Some("Music")));
         assert!(!is_music_subtype(Some("TV")));

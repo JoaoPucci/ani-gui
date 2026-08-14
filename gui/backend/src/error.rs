@@ -51,14 +51,17 @@ pub enum AniError {
         detail: String,
     },
 
-    /// Windows-readiness for downloads: `ffmpeg` isn't on PATH and
-    /// isn't in the bundled-bin directory. The script's `dep_ch
-    /// "ffmpeg" "aria2c"` exits the script the moment downloads start
-    /// without it. Surfaced before the spawn so the frontend can
-    /// render a clear modal pointing the user at the official
-    /// download page. `aria2c` is bundled (commit d6c9992) so its
-    /// absence isn't expected and falls through as a generic
-    /// Scraper error.
+    /// A download has no tool to run: neither yt-dlp nor ffmpeg is on
+    /// PATH or in the bundled-bin directory. Raised on the way in,
+    /// before any provider request, so the frontend's install modal is
+    /// what the user meets rather than a network error from a walk
+    /// that could not have been used. Also raised when yt-dlp reports
+    /// it could not repackage the stream and no ffmpeg exists to
+    /// retry through — the mislabeled file is deleted first.
+    ///
+    /// The name predates yt-dlp becoming an accepted alternative. It
+    /// is the key the frontend renders its modal on, so renaming it is
+    /// a frontend change too.
     #[error("ffmpeg required for downloads")]
     FfmpegMissing,
 
