@@ -23,6 +23,7 @@
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
 	"bundled_tool_note_curl_impersonate": "HTTP transport for source resolution. The provider turns away ordinary requests, so playback and downloads depend on it.",
+	"bundled_tool_note_yt_dlp": "Download engine. Fetches the episode in parallel fragments and retries the ones that fail, so a flaky connection does not restart the whole file.",
 	"bundled_tool_note_ffmpeg": ".deb declares it as Recommends; AppImage relies on the system install. Used to mux downloaded segments into MP4.",
 	"asset_note_lottie_loading": "Drives the LoadingOverlay used during play resolution and similar waits."
 }

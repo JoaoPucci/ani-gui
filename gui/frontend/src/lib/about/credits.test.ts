@@ -42,7 +42,7 @@ const NOT_FETCHED = new Set(['ffmpeg']);
 function stagedDeps(): Set<string> {
 	const scripts = path.resolve(
 		path.dirname(fileURLToPath(import.meta.url)),
-		'../../../../electron/scripts',
+		'../../../../electron/scripts'
 	);
 	const found = new Set<string>();
 	for (const file of ['fetch-linux-deps.mjs', 'fetch-windows-deps.mjs']) {
@@ -119,9 +119,7 @@ describe('credits — bundled tools', () => {
 		// rather than a hole in the parity check.
 		const names = BUNDLED_TOOLS.map((t) => t.name);
 		for (const name of NOT_FETCHED) {
-			expect(names, `${name} is exempted from the parity check but not credited`).toContain(
-				name,
-			);
+			expect(names, `${name} is exempted from the parity check but not credited`).toContain(name);
 		}
 	});
 

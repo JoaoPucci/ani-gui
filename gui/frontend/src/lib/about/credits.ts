@@ -23,7 +23,7 @@
  * reason Paraglide exists.
  */
 
-export type BundledToolNoteId = 'curl_impersonate' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'yt_dlp' | 'ffmpeg';
 
 export interface BundledTool {
 	/** Display label — the upstream's own name. */
@@ -58,6 +58,16 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		license: 'MIT',
 		url: 'https://github.com/lexiforest/curl-impersonate',
 		noteId: 'curl_impersonate'
+	},
+	{
+		// The downloader. Preferred over ffmpeg when both are present:
+		// it retries fragments indefinitely and pulls sixteen at once,
+		// where ffmpeg does one stream copy with no retries.
+		name: 'yt-dlp',
+		version: '2025.09.26',
+		license: 'Unlicense',
+		url: 'https://github.com/yt-dlp/yt-dlp',
+		noteId: 'yt_dlp'
 	},
 	{
 		name: 'ffmpeg',

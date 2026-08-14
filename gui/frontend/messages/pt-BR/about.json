@@ -23,6 +23,7 @@
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
 	"bundled_tool_note_curl_impersonate": "Transporte HTTP para a resolução de fontes. O provedor recusa requisições comuns, então a reprodução e os downloads dependem dele.",
+	"bundled_tool_note_yt_dlp": "Motor de downloads. Baixa o episódio em fragmentos paralelos e repete os que falham, para que uma conexão instável não reinicie o arquivo inteiro.",
 	"bundled_tool_note_ffmpeg": "O .deb o declara como Recommends; o AppImage depende da instalação do sistema. Usado para combinar os segmentos baixados em MP4.",
 	"asset_note_lottie_loading": "Anima o LoadingOverlay usado durante a resolução de reprodução e esperas semelhantes."
 }

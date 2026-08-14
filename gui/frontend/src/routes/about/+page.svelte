@@ -32,6 +32,8 @@
 		switch (id) {
 			case 'curl_impersonate':
 				return m.about_bundled_tool_note_curl_impersonate();
+			case 'yt_dlp':
+				return m.about_bundled_tool_note_yt_dlp();
 			case 'ffmpeg':
 				return m.about_bundled_tool_note_ffmpeg();
 		}
