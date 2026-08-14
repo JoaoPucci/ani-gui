@@ -18,17 +18,22 @@
  * UI can show "Part N" badges if desired, but kitsuEpisode is now a
  * direct passthrough of displayEpisode.
  *
- * Allmanga's `name` is sometimes a stub ("1P" for One Piece) — the
+ * When the history row's own title is too thin to search on, the
  * recovery path lives on the backend at `resolve_allmanga_show_id`,
- * which fetches allmanga's `Show` GraphQL aliases (englishName /
- * nativeName / altNames) and retries Kitsu search with each. The
- * frontend reaches it via the `kitsuResolveAllmangaShowId` IPC as
- * the last step in `resolveKitsuMatch`.
+ * reached from here through the `kitsuResolveAllmangaShowId` IPC as
+ * the last step in `resolveKitsuMatch`. It tries three things in
+ * order: the stored reverse mapping, then — for rows keyed on a
+ * provider slug — a Kitsu search built from the slug's own words,
+ * since `one-piece-69` carries the title it needs. Anything else is a
+ * row from the retired provider, and those resolve only from a stored
+ * mapping: their alias source went away with the provider, so an
+ * unmapped one returns null and Continue Watching renders the bare
+ * title.
  *
- * NOTE: anime-offline-database (Manami) is NOT a viable bridge here —
- * it indexes AniList / MAL / Kitsu / AniDB but does NOT include
- * allmanga show_ids, so reverse-mapping our history rows still
- * has to go through the alias-walk above.
+ * NOTE: anime-offline-database (Manami) is not a way around that last
+ * case. It indexes AniList / MAL / Kitsu / AniDB and never carried the
+ * retired provider's show ids, which are exactly the ids those rows
+ * are keyed on.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';

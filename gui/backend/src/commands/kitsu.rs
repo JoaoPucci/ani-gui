@@ -1259,8 +1259,9 @@ mod tests {
         // and REJECTED the reverse row (e.g. a count-incompatible binding). With
         // bypass_cache=true the resolver must NOT short-circuit on that same row,
         // or the just-rejected id round-trips straight back. Cache is seeded and
-        // /anime/12 is mocked; bypass means neither is consulted — the alias-walk
-        // (Kitsu search unmocked) finds nothing and fails soft to Ok(None).
+        // /anime/12 is mocked; bypass means neither is consulted. The id is not
+        // slug-shaped, so no search follows either — it is a row from the retired
+        // provider, whose alias source went with it, and it fails soft to Ok(None).
         let mock = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/anime/12"))

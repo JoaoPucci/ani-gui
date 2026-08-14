@@ -325,7 +325,7 @@ struct TitleMatchQuery {
 struct ResolveAllmangaQuery {
     /// Skip the reverse-cache fast path. The Continue Watching resolver sets
     /// this once it has already read + rejected the reverse row, so enrichment
-    /// goes straight to the alias walk instead of returning the rejected id.
+    /// re-resolves from the show id instead of handing back the rejected one.
     #[serde(default)]
     bypass_cache: bool,
 }
@@ -695,12 +695,12 @@ async fn delete_allmanga_kitsu_map(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Resolve a history-recorded allmanga show_id to its full
-/// [`KitsuAnimeRef`] by walking allmanga's `Show` aliases through
-/// Kitsu's text search. Wraps
+/// Resolve a history-recorded show id to its full [`KitsuAnimeRef`]:
+/// the stored reverse mapping first, then a Kitsu text search built
+/// from a provider slug's own words. Wraps
 /// [`kitsu_inner::resolve_allmanga_show_id`]; returns `null` JSON when
 /// no Kitsu match is found so the renderer can fall back to the raw
-/// allmanga label.
+/// history label.
 async fn get_kitsu_resolve_allmanga(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
