@@ -52,8 +52,8 @@ export interface ResumeTarget {
 	 *  canonical_title when a match is available so this surface agrees
 	 *  with the detail page (the user navigates from one to the other
 	 *  and they need to read as the same show). Falls back to the
-	 *  history entry with the trailing "(N episodes)" parenthetical
-	 *  stripped when there's no Kitsu match.
+	 *  history entry when there's no Kitsu match, with the legacy
+	 *  "(N episodes)" parenthetical stripped if the row carries one.
 	 *
 	 *  Cours stay distinct because Kitsu typically gives each cour its
 	 *  own entry (`Stone Ocean` vs `Stone Ocean Part 2`); the EP number
@@ -69,8 +69,10 @@ export interface ResumeTarget {
 	searchTitle: string;
 	/** The episode number the user remembers (allmanga-relative). */
 	displayEpisode: number;
-	/** Cour size taken from the "(N episodes)" tail. Null when the
-	 *  entry has no parenthetical (older history formats). */
+	/** Cour size read from a legacy row's "(N episodes)" tail. Null
+	 *  whenever the tail is absent, which is every row written since
+	 *  the provider migration — the native writer does not append one.
+	 *  Callers must treat null as "unknown", not as "zero". */
 	courSize: number | null;
 	/** Detected cour index. 1 when no Part/Cour/Season suffix is
 	 *  found at the end of the title, which is most shows. */
@@ -167,10 +169,13 @@ function courTitleRegex(cour: number): RegExp {
 	return new RegExp(`\\b(?:${alts.join('|')})\\b`, 'i');
 }
 
-/** Matches the "(N episodes)" parenthetical the history writer appends, plus the
- *  "(YYYY)" release-year tail added from 4.14.5 onward after it. Both are
- *  bookkeeping, not part of the show's name; rows written by older
- *  versions lack the year, so it stays optional. */
+/** Matches the "(N episodes)" parenthetical, plus the "(YYYY)" release-year
+ *  tail some versions added after it. Both are bookkeeping rather than part
+ *  of the show's name, and both belong to rows written before the provider
+ *  migration: the native writer stores the provider's own card title
+ *  verbatim and appends nothing. This is legacy-format compatibility —
+ *  kept because those rows are still in users' files, and the year stays
+ *  optional because only some of them carry it. */
 const EPISODE_TAIL_RE = /\s*\(\s*(\d+)\s+episodes?\s*\)\s*(?:\(\s*\d{1,4}\s*\)\s*)?$/i;
 
 export function resolveHistoryEntry(
@@ -484,8 +489,9 @@ export function isAiringStatus(status: string | null | undefined): boolean {
 }
 
 /** Whether a Kitsu hit's `episode_count` is plausibly the same show
- *  as the user's history record (which carries `courSize` from the
- *  "(N episodes)" tail).
+ *  as the user's history record. Reads `courSize`, which only a legacy
+ *  row carries; a null one has no count to judge against and every hit
+ *  passes.
  *
  *  Asymmetric tolerance:
  *

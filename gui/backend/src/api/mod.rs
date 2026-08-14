@@ -1982,14 +1982,14 @@ mod tests {
         );
     }
 
-    /// Reverse-mapping endpoint: given an allmanga show_id (the id
-    /// in column 2 of the history file), return the kitsu_id that the user
-    /// played it as — when we've recorded it. The home-page Continue
-    /// Watching strip uses this to render the right Kitsu metadata
-    /// for shows whose allmanga title is typo'd (e.g. "Nato:
-    /// Shippuuden" → Naruto Shippuuden), bypassing Kitsu text search.
-    /// Returns `null` body on miss so the frontend can fall through
-    /// to the legacy title-match path.
+    /// Reverse-mapping endpoint: given a show id from column 2 of the
+    /// history file — a provider slug on rows written since the
+    /// migration — return the kitsu_id the user played it as, when one
+    /// was recorded. The home-page Continue Watching strip uses it to
+    /// render the right Kitsu metadata without a text search, which
+    /// matters most when the stored title is a stub or a typo the
+    /// search would miss. Returns a `null` body on a miss so the
+    /// frontend can fall through to the title-match path.
     #[tokio::test]
     async fn allmanga_kitsu_map_get_returns_null_when_unmapped() {
         let td = TempDir::new().expect("tempdir");

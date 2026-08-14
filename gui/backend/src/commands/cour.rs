@@ -26,10 +26,11 @@ const COUR_KEYWORDS: &[&str] = &["part", "cour", "season"];
 #[must_use]
 pub fn cour_from_title(name: &str) -> Option<u32> {
     let trimmed = name.trim_end();
-    // `play_resolution_cache::put` writes show_title as
-    // "<name> (<N> episodes)" (see commands/play.rs). Strip that
-    // bookkeeping suffix first; otherwise the trailing chars are
-    // "episodes)" and every production cache row returns None.
+    // Legacy cache rows carry show_title as "<name> (<N> episodes)";
+    // the native writer stores the provider's card title verbatim and
+    // appends nothing. Strip the suffix when it is there — on a row
+    // that has one the trailing chars are otherwise "episodes)" and
+    // the cour never parses.
     let trimmed = strip_trailing_episode_count(trimmed);
     // Walk back from the end to read a trailing decimal number.
     let (digits_start, _) = trailing_digits(trimmed)?;

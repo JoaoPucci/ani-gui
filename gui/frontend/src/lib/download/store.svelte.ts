@@ -42,9 +42,10 @@ export interface DownloadItem {
 	 *  range — drives the dock's "Episode N of M" annotation. Null
 	 *  for single-episode downloads. */
 	rangeTotal: number | null;
-	/** Last episode number the downloader announced via `Playing episode N…`
-	 *  on stderr. Updated by setProgress as lines arrive. Null until
-	 *  the first such line is parsed. */
+	/** Last episode number seen in a `Playing episode N` line. The
+	 *  backend's range loop emits those itself, before it resolves or
+	 *  spawns anything — no tool prints them. Updated by setProgress as
+	 *  lines arrive; null until the first one is parsed. */
 	currentEp: number | null;
 }
 
