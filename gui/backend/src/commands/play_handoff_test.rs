@@ -92,10 +92,10 @@ fn args_for() -> PlayArgs {
 #[tokio::test]
 async fn the_handoff_resolves_through_the_native_walk() {
     // Both handoffs used to shell out to the script for the stream URL.
-    // The provider is anidb now, and the walk that serves the
-    // embedded player serves these too — the state's provider base
-    // deliberately points at nothing, so a subprocess resolve fails
-    // the test rather than quietly working.
+    // The provider is anidb now, and the walk that serves the embedded
+    // player serves these too — which is what this asserts: the state's
+    // provider base is the stub below, and the launch args come back
+    // carrying the URL that stub answered with.
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());

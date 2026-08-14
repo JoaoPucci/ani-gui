@@ -317,7 +317,7 @@ export interface KitsuAnimeRef {
 	/** Localized title variants Kitsu serves under `attributes.titles`.
 	 *  Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp`
 	 *  (kana). Missing keys are absent from the map entirely. The play
-	 *  flow uses these to retry allanime lookups when the canonical
+	 *  flow uses these to retry provider lookups when the canonical
 	 *  title (often English) doesn't match the provider's index — see
 	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
 	 *  produced before titles were surfaced; treat as `?:`. */
@@ -326,7 +326,7 @@ export interface KitsuAnimeRef {
 	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
 	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
 	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
-	 *  the right series on allmanga, so {@link altTitlesFromKitsu} appends
+	 *  the right series on the provider, so {@link altTitlesFromKitsu} appends
 	 *  them as last-resort fallback queries. May be missing on cached
 	 *  responses produced before the field was surfaced; treat as `?:`. */
 	abbreviated_titles?: string[];
@@ -415,7 +415,7 @@ export function historyClear(): Promise<void> {
 	return deleteJson<void>('/api/history');
 }
 
-/** Remove one history row by its allmanga `show_id`. Backend rewrites
+/** Remove one history row by its `show_id`. Backend rewrites
  *  the history file atomically without that row; idempotent on unknown / empty
  *  ids (always 204), so client retries during transient errors are
  *  safe. The Continue Watching rail uses this for per-card delete. */
