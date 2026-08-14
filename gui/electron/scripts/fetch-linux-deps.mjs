@@ -47,7 +47,7 @@
 // target instead.
 
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -55,7 +55,7 @@ import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import { needsExtraction, assertDepShape } from '../lib/dep-staging.cjs';
+import { needsExtraction, assertDepShape, retiredStagedBinaries } from '../lib/dep-staging.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
@@ -267,10 +267,34 @@ async function stageDep(dep) {
 	}
 }
 
+/**
+ * Delete binaries a previous run staged that `DEPS` no longer names.
+ *
+ * Staging is per-entry, and `extraResources` copies the directory
+ * whole — so without this a retired dependency keeps shipping from any
+ * checkout that staged it before, with nothing in the build output to
+ * say so. Runs over the dev mirrors for the same reason: a `cargo run`
+ * finds them ahead of PATH.
+ */
+async function sweepRetired() {
+	for (const dir of [stagedBinDir, ...devTargetBinDirs]) {
+		if (!existsSync(dir)) continue;
+		const stale = retiredStagedBinaries(await readdir(dir), DEPS);
+		for (const name of stale) {
+			await rm(path.join(dir, name), { recursive: true, force: true });
+			console.log(`[fetch-linux-deps] removed retired ${path.join(dir, name)}`);
+		}
+	}
+}
+
 async function main() {
 	// Validate every entry before touching the network: a typo should
 	// cost a syntax error, not a partial download.
 	for (const dep of DEPS) assertDepShape(dep);
+
+	// Before staging: drop anything an earlier run left that this
+	// list no longer declares.
+	await sweepRetired();
 
 	for (const dep of DEPS) {
 		console.log(`[fetch-linux-deps] === ${dep.name} ${dep.version} ===`);

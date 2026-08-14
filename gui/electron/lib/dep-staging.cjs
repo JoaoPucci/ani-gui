@@ -43,4 +43,24 @@ function assertDepShape(dep) {
 	}
 }
 
-module.exports = { needsExtraction, assertDepShape };
+/**
+ * Binaries sitting in a staging directory that the current `DEPS` no
+ * longer declares.
+ *
+ * Staging is per-entry: each dep writes the one file it owns and
+ * touches nothing else. That is fine while the set only grows, and
+ * wrong the moment it shrinks — `extraResources` copies the whole
+ * directory into the package, so a retired binary keeps shipping from
+ * any checkout that staged it before, with no build-time signal.
+ *
+ * Keyed on `binary` rather than `dep`, because several entries can
+ * share a `dep`: Linux stages the impersonate binary plus a wrapper
+ * per browser out of one archive, and each is a file in its own
+ * right.
+ */
+function retiredStagedBinaries(stagedNames, deps) {
+	const declared = new Set(deps.map((d) => d.binary));
+	return stagedNames.filter((name) => !declared.has(name));
+}
+
+module.exports = { needsExtraction, assertDepShape, retiredStagedBinaries };
