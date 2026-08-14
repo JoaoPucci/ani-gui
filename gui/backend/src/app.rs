@@ -4,8 +4,7 @@
 //!
 //! - the streaming proxy (its session table, app secret, http client,
 //!   origin, and the kernel-assigned base URL once the listener is up)
-//! - the resolved path to the vendored `ani-cli` script, which the
-//!   auto-updater keeps current
+//! - the directory of bundled binaries native resolution spawns
 //! - the path of the GUI's own watch-history file
 //! - an admission gate for provider traffic so background probes
 //!   never hammer the upstream
@@ -44,12 +43,11 @@ pub struct AppState {
     /// Public base URL the frontend uses to reach the proxy
     /// (`http://127.0.0.1:<port>`). Set after the listener binds.
     pub proxy_origin: ProxyOrigin,
-    /// Directory shipped next to the backend binary holding bundled
-    /// POSIX deps (Windows: `fzf.exe`). Computed once in `build()`
-    /// from the resource dir; threaded into every ani-cli spawn so
-    /// the script's `dep_ch` finds the bundled binaries before any
-    /// system install. `None` on Unix and on Windows dev runs where
-    /// the directory hasn't been laid down.
+    /// Directory the packages stage next to the backend binary,
+    /// holding the impersonating transport and the download tools.
+    /// Computed once in `build()` from the resource dir; searched
+    /// ahead of PATH so a bundled binary beats a system install.
+    /// `None` on a dev run that hasn't staged the directory.
     pub bundled_bin: Option<PathBuf>,
     /// What the boot-time sweep removed of the script copy earlier
     /// versions maintained. Empty on every launch after the first, and
@@ -74,8 +72,8 @@ pub struct AppState {
     pub kitsu: KitsuClient,
     /// Path to the user's TOML settings file (`config.toml`).
     pub config_path: PathBuf,
-    /// `$XDG_STATE_HOME/ani-gui/` — backing store for the latest
-    /// `ani-cli -U` outcome JSON the diagnostics page reads.
+    /// `$XDG_STATE_HOME/ani-gui/` — backing store for the watch
+    /// history and the account tokens.
     pub state_dir: PathBuf,
     /// Per-process random secret renderer-only paths require as the
     /// `x-ani-gui-internal-secret` header. Currently used to gate the
@@ -199,12 +197,12 @@ impl AppState {
 }
 
 /// Resolve the bundled-deps directory next to the backend binary.
-/// `<resource_dir>/bin` holds POSIX-side ani-cli deps the script
-/// needs but Git for Windows doesn't bundle (today: `fzf.exe`,
-/// `aria2c.exe`). Returns `Some` only when the dir actually exists
-/// — so a Linux build (no resource dir at all) and a dev Windows
-/// run that hasn't run `fetch:win-deps` both come out as `None`,
-/// and the spawn path falls through to the inherited PATH.
+/// `<resource_dir>/bin` holds what native resolution spawns and the
+/// host may not have: the impersonating transport the provider
+/// requires, plus the download tools. Both packaged platforms stage
+/// it (`fetch:linux-deps` / `fetch:win-deps`). Returns `Some` only
+/// when the dir actually exists, so a dev run that never staged it
+/// comes out `None` and the spawn path falls through to PATH.
 fn resolve_bundled_bin(resource_dir: Option<&std::path::Path>) -> Option<PathBuf> {
     resource_dir.map(|d| d.join("bin")).filter(|p| p.is_dir())
 }
@@ -215,25 +213,17 @@ mod tests {
 
     /// Boot the real `build` path against a staged environment: a
     /// tempdir plays HOME + every XDG root, and the resource dir
-    /// carries a stub ani-cli the locator can seed the cache copy
-    /// from. Unix-only: the Windows arm additionally needs a Git
-    /// Bash install, and the coverage gate this protects runs on
-    /// Linux.
+    /// carries the `bin/` the packages stage. Unix-only, because the
+    /// coverage gate this protects runs on Linux.
     #[cfg(unix)]
     #[tokio::test]
     async fn build_assembles_state_from_a_staged_environment() {
-        use std::os::unix::fs::PermissionsExt;
         let _guard = crate::config::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let td = tempfile::tempdir().expect("tempdir");
         let resource = td.path().join("resources");
         std::fs::create_dir_all(resource.join("bin")).expect("mkdir resources/bin");
-        let script = resource.join("ani-cli");
-        std::fs::write(&script, "#!/bin/sh\nexit 0\n").expect("write stub script");
-        let mut perms = std::fs::metadata(&script).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script, perms).expect("chmod stub");
 
         let saved: Vec<(String, Option<String>)> = [
             "HOME",
@@ -293,7 +283,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/tmp/ani-cli/ani-hsts"),
+            history_path: PathBuf::from("/tmp/ani-gui/history"),
             anidb_base: None,
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
