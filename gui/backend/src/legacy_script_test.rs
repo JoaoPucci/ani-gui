@@ -171,6 +171,25 @@ fn every_staging_copy_goes_not_just_the_first() {
 }
 
 #[test]
+fn a_staging_name_without_a_pid_suffix_survives() {
+    // The updater only ever produced a process id after the prefix.
+    // Anything else wearing that prefix was written by someone else,
+    // and the argument for deleting it — that the machinery which
+    // made it is gone — does not apply.
+    let cache = cache_with(&[
+        "ani-cli.update-staging.notes",
+        "ani-cli.update-staging.",
+        "ani-cli.update-staging.12a",
+    ]);
+    let report = sweep_legacy_files(cache.path(), state_with(&[]).path());
+    assert!(
+        report.removed.is_empty(),
+        "only pid-suffixed names are ours"
+    );
+    assert_eq!(std::fs::read_dir(cache.path()).expect("read").count(), 3);
+}
+
+#[test]
 fn a_cache_entry_that_merely_starts_with_the_script_name_survives() {
     // The prefix has to be the staging one specifically. A user's own
     // `ani-cli.bak`, or anything else that happens to begin with the
