@@ -27,7 +27,7 @@
 	"button_browse": "Procurar…",
 	"hint_filename_prefix": "Os arquivos chegam como ",
 	"hint_filename_template": "{title} Episódio N.mp4",
-	"hint_filename_suffix": " conforme a nomenclatura do ani-cli.",
+	"hint_filename_suffix": " — a nomenclatura não é configurável.",
 	"button_cancel": "Cancelar",
 	"button_confirm": "Iniciar download",
 	"button_confirming": "Iniciando…",

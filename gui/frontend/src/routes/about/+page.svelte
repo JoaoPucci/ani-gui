@@ -30,8 +30,8 @@
 	// keeps that obligation typechecked.
 	function bundledToolNote(id: BundledToolNoteId): string {
 		switch (id) {
-			case 'ani_cli':
-				return m.about_bundled_tool_note_ani_cli();
+			case 'curl_impersonate':
+				return m.about_bundled_tool_note_curl_impersonate();
 			case 'fzf':
 				return m.about_bundled_tool_note_fzf();
 			case 'aria2':

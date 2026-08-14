@@ -1,10 +1,11 @@
 /**
  * Hand-curated credits surfaced by the About page.
  *
- * Scope: the bits the About page is actually about — bundled
- * upstream tools (ani-cli + the binaries we ship alongside it for
- * `dep_ch` to find) and editorial assets (Lottie animation,
- * eventually fonts / illustrations). Frontend + backend dep lists
+ * Scope: the bits the About page is actually about — the upstream
+ * binaries the packages ship so playback and downloads work without
+ * the user installing anything, and editorial assets (Lottie
+ * animation, eventually fonts / illustrations). Frontend + backend
+ * dep lists
  * are not credited here — they are dev-facing and surfacing them
  * here turned the page into a build dashboard rather than an
  * "about this app" surface.
@@ -21,14 +22,13 @@
  * reason Paraglide exists.
  */
 
-export type BundledToolNoteId = 'ani_cli' | 'fzf' | 'aria2' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'fzf' | 'aria2' | 'ffmpeg';
 
 export interface BundledTool {
 	/** Display label — the upstream's own name. */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
-	 *  the upstream doesn't version uniformly (the bundled ani-cli
-	 *  script carries its own tag separately; ffmpeg is whatever
+	 *  the upstream doesn't version uniformly (ffmpeg is whatever
 	 *  the distro ships). */
 	version: string | null;
 	/** SPDX license id (or a free-text combo for dual-licensed
@@ -43,16 +43,20 @@ export interface BundledTool {
 	noteId: BundledToolNoteId;
 }
 
-/** Tools the .deb / AppImage bundles or recommends so ani-cli's
- *  `dep_ch` finds them without the user having to install anything
- *  by hand. Versions track what `fetch-linux-deps.mjs` pins. */
+/** Tools the packages bundle or recommend so playback and downloads
+ *  work without the user installing anything by hand. Versions track
+ *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
+ *  two stage the same set, so one version here covers both. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
-		name: 'ani-cli',
-		version: null,
-		license: 'GPL-3.0',
-		url: 'https://github.com/pystardust/ani-cli',
-		noteId: 'ani_cli'
+		// The transport the native resolver spawns. The provider
+		// fingerprints TLS and answers a plain curl with an
+		// interstitial, so without this nothing resolves at all.
+		name: 'curl-impersonate',
+		version: '2.0.0',
+		license: 'MIT',
+		url: 'https://github.com/lexiforest/curl-impersonate',
+		noteId: 'curl_impersonate'
 	},
 	{
 		name: 'fzf',

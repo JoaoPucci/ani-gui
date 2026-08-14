@@ -22,7 +22,7 @@
 	"license_link_label": "Projeto no GitHub",
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
-	"bundled_tool_note_ani_cli": "Resolução de fontes e pipeline de download. O ani-gui é uma interface desktop sobre o script embutido.",
+	"bundled_tool_note_curl_impersonate": "Transporte HTTP para a resolução de fontes. O provedor recusa requisições comuns, então a reprodução e os downloads dependem dele.",
 	"bundled_tool_note_fzf": "Incluído no .deb e no AppImage para que o ani-cli sempre tenha um seletor disponível.",
 	"bundled_tool_note_aria2": "Incluído no .deb e no AppImage; o ani-cli o usa para downloads em paralelo.",
 	"bundled_tool_note_ffmpeg": "O .deb o declara como Recommends; o AppImage depende da instalação do sistema. Usado para combinar os segmentos baixados em MP4.",

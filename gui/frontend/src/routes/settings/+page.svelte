@@ -218,10 +218,6 @@
 		if (!cfg) return;
 		void persist({ ...cfg, disable_auto_pip_on_leave: value });
 	}
-	function setAutoUpdateAnicli(value: boolean) {
-		if (!cfg) return;
-		void persist({ ...cfg, auto_update_anicli: value });
-	}
 	function setUpdateIncludePrereleases(value: boolean) {
 		if (!cfg) return;
 		void persist({ ...cfg, update_include_prereleases: value });
@@ -600,29 +596,6 @@
 
 			<div class="field">
 				<div class="field-label">
-					<span class="field-key">{m.settings_field_auto_update_anicli_key()}</span>
-					<span class="field-hint">{m.settings_field_auto_update_anicli_hint()}</span>
-				</div>
-				<label class="switch">
-					<input
-						type="checkbox"
-						checked={cfg.auto_update_anicli}
-						onchange={(e) => setAutoUpdateAnicli((e.currentTarget as HTMLInputElement).checked)}
-						aria-label={m.settings_auto_update_anicli_aria_label()}
-					/>
-					<span class="switch-track" aria-hidden="true">
-						<span class="switch-thumb"></span>
-					</span>
-					<span class="switch-state"
-						>{cfg.auto_update_anicli
-							? m.settings_switch_state_on()
-							: m.settings_switch_state_off()}</span
-					>
-				</label>
-			</div>
-
-			<div class="field">
-				<div class="field-label">
 					<span class="field-key">{m.settings_field_update_include_prereleases_key()}</span>
 					<span class="field-hint">{m.settings_field_update_include_prereleases_hint()}</span>
 				</div>
@@ -722,7 +695,7 @@
 					<span class="field-key">{m.settings_field_history_key()}</span>
 					<span class="field-hint">
 						{m.settings_field_history_hint_path_prefix()}<code
-							>{info?.history_path ?? '~/.local/state/ani-cli/ani-hsts'}</code
+							>{info?.history_path ?? '~/.local/state/ani-gui/history'}</code
 						>{m.settings_field_history_hint_path_suffix()}
 					</span>
 				</div>
@@ -769,9 +742,9 @@
 							target="_blank"
 							rel="noreferrer"
 						>
-							{m.settings_about_ani_cli_link()}
+							{m.settings_about_origin_link()}
 						</a>
-						<span class="about-foot">{m.settings_about_ani_cli_description()}</span>
+						<span class="about-foot">{m.settings_about_origin_description()}</span>
 					</dd>
 				</div>
 				<div class="about-row">

@@ -13,6 +13,13 @@ pub struct AppInfo {
     pub history_path: String,
     /// `http://127.0.0.1:<port>` for the streaming proxy.
     pub proxy_base_url: String,
+    /// What the boot sweep deleted of the script copy earlier versions
+    /// kept current (see `crate::legacy_script`). Empty on every launch
+    /// after the first and on installs that never ran one of those
+    /// versions — which is nearly all of them. Carried here because
+    /// the diagnostics page reads nothing else that could report a
+    /// file the app removed on the user's behalf.
+    pub removed_legacy_paths: Vec<String>,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -25,6 +32,12 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
         version: crate::display_version(),
         history_path: state.history_path.display().to_string(),
         proxy_base_url: state.proxy_origin.base.clone(),
+        removed_legacy_paths: state
+            .legacy_sweep
+            .removed
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
     })
 }
 
