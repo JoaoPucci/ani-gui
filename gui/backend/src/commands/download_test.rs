@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg(unix)]
 /// A directory `find_tool` accepts as holding an installed yt-dlp.
 ///
 /// For cases whose subject is the provider walk rather than the
@@ -23,6 +22,7 @@ fn dir_with_a_findable_tool() -> tempfile::TempDir {
     dir
 }
 
+#[cfg(unix)]
 fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
     use std::os::unix::fs::PermissionsExt;
     let p = dir.join(name);
@@ -836,7 +836,11 @@ async fn a_missing_tool_refuses_before_the_provider_is_touched() {
     // first thing that happens, not the thing that happens after a
     // walk — or instead of the walk's own failure, which is worse
     // still: a network error then hides the real cause.
-    let server = stub_range_show().await;
+    // A bare server with nothing mounted: the assertion is that it was
+    // never asked, so a fixture that answers would only add a way for
+    // the case to be about something else. wiremock records unmatched
+    // requests too, which is what makes the empty log mean anything.
+    let server = wiremock::MockServer::start().await;
     let td = tempfile::tempdir().expect("td");
     let state = native_test_state(&td, &server.uri());
     let bin = tempfile::tempdir().expect("bin");
