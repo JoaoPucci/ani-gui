@@ -29,9 +29,13 @@ pub mod keys {
     /// an MP4, and neither is installed. `download_with_tools` refuses
     /// on this before it resolves anything, so the frontend's install
     /// modal is what the user meets rather than a generic failure a
-    /// provider walk got to first. The name predates yt-dlp becoming
-    /// an accepted alternative; the key is what the frontend keys its
-    /// modal on, so renaming it is a frontend change too.
+    /// provider walk got to first. A yt-dlp run that cannot repackage
+    /// reaches it by the same test: ffmpeg is tried first, and this is
+    /// what is left when there is none.
+    ///
+    /// The name predates yt-dlp becoming an accepted alternative; the
+    /// key is what the frontend keys its modal on, so renaming it is a
+    /// frontend change too.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
 
     // --- error.io.* ---

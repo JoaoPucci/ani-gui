@@ -17,7 +17,11 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// Provider resolution reported an internal failure.
+    /// A download tool exited non-zero. The only thing that raises
+    /// this is `spawn_download_tool` when yt-dlp or ffmpeg fails in a
+    /// way that is not a missing tool and not a timeout — provider
+    /// resolution has its own variants and constructs none of these.
+    /// The name is older than that narrowing.
     #[error("scraper error")]
     Scraper {
         /// i18n key under `error.scraper.*`.
@@ -55,9 +59,12 @@ pub enum AniError {
     /// PATH or in the bundled-bin directory. Raised on the way in,
     /// before any provider request, so the frontend's install modal is
     /// what the user meets rather than a network error from a walk
-    /// that could not have been used. Also raised when yt-dlp reports
-    /// it could not repackage the stream and no ffmpeg exists to
-    /// retry through — the mislabeled file is deleted first.
+    /// that could not have been used.
+    ///
+    /// The other way in is a yt-dlp run that reports MPEG-TS left
+    /// under the .mp4 name: the mislabeled file is deleted, and the
+    /// stream is retried through ffmpeg when one exists — so this
+    /// error still means what it says, that no tool is left to try.
     ///
     /// The name predates yt-dlp becoming an accepted alternative. It
     /// is the key the frontend renders its modal on, so renaming it is

@@ -365,19 +365,28 @@ where
             Err(e) => {
                 if repackage_failed {
                     // yt-dlp's own report: the fragments live under
-                    // the .mp4 name as raw MPEG-TS. Discard the
-                    // mislabeled file and surface the install
-                    // modal's error — the ffmpeg retry would need
-                    // the very tool whose absence caused this.
+                    // the .mp4 name as raw MPEG-TS. The file goes
+                    // first either way — whatever happens next must
+                    // not land on top of half a transfer in the wrong
+                    // container.
                     crate::commands::download_tool::discard_mislabeled(dest, &[target.clone()]);
-                    return Err(AniError::FfmpegMissing);
+                    // The warning names the condition and suggests
+                    // ffmpeg; it is not a report that ffmpeg is
+                    // missing. So an install that has one gets the
+                    // retry, and only an install without one is told
+                    // to go and install it.
+                    if ffmpeg.is_none() {
+                        return Err(AniError::FfmpegMissing);
+                    }
+                    on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
+                } else {
+                    // v5's && chain: a failing yt-dlp run retries the
+                    // whole stream through ffmpeg when one exists.
+                    if ffmpeg.is_none() {
+                        return Err(e);
+                    }
+                    on_line("yt-dlp failed; retrying with ffmpeg");
                 }
-                // v5's && chain: a failing yt-dlp run retries the
-                // whole stream through ffmpeg when one exists.
-                if ffmpeg.is_none() {
-                    return Err(e);
-                }
-                on_line("yt-dlp failed; retrying with ffmpeg");
             }
         }
     }
