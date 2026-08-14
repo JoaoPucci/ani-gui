@@ -71,6 +71,18 @@ describe('credits — bundled tools', () => {
 		expect(names, 'the transport is bundled on both platforms').toContain('curl-impersonate');
 	});
 
+	it('does not credit binaries only the script ever ran', () => {
+		// fzf was the script's interactive picker and aria2c its
+		// downloader. The GUI never drove either: it has no picker, and
+		// the native downloader resolves yt-dlp or ffmpeg and asks
+		// yt-dlp for concurrency (`-N 16`) rather than shelling out to
+		// aria2c. Listing them here tells a user the app needs
+		// something it never invokes.
+		const names = BUNDLED_TOOLS.map((t) => t.name);
+		expect(names, 'no picker exists to drive fzf').not.toContain('fzf');
+		expect(names, 'the downloader never spawns aria2c').not.toContain('aria2');
+	});
+
 	it('noteIds are unique (and thus typesafe against the page-side switch)', () => {
 		const seen = new Set<string>();
 		for (const tool of BUNDLED_TOOLS) {
