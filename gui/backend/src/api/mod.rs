@@ -604,7 +604,7 @@ async fn post_play_mark_watched(
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // ani-hsts speaks the provider's numbering; the offset
+            // the history file speaks the provider's numbering; the offset
             // was stamped by the resolve that wrote this cache row.
             let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             let entry = crate::history::HistoryEntry {
@@ -796,7 +796,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: td.path().join("ani-hsts"),
+            history_path: td.path().join("history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -1973,7 +1973,7 @@ mod tests {
     }
 
     /// Reverse-mapping endpoint: given an allmanga show_id (the id
-    /// in column 2 of `ani-hsts`), return the kitsu_id that the user
+    /// in column 2 of the history file), return the kitsu_id that the user
     /// played it as — when we've recorded it. The home-page Continue
     /// Watching strip uses this to render the right Kitsu metadata
     /// for shows whose allmanga title is typo'd (e.g. "Nato:

@@ -38,7 +38,7 @@ pub struct NativeResolved {
     pub episode_cap: Option<u32>,
     /// The shift between the provider's episode numbers and the
     /// per-entry numbers the request used ([`numbering_offset`]).
-    /// The ani-hsts writers add it — the shared history speaks the
+    /// The history writers add it — the history file speaks the
     /// provider's numbering — and the offset store persists it for
     /// the cache-hit and mark-watched writers and the read boundary.
     pub numbering_offset: u32,

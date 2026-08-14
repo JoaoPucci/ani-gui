@@ -44,7 +44,7 @@ use crate::proxy::MediaKind;
 /// Bump history:
 /// - v1: original (upstream_url, referer, subtitle_url, media_kind).
 /// - v2: added `show_id` + `show_title` so cache hits can also update
-///   `ani-hsts` / Continue Watching. v1 rows had no metadata to write
+///   the history file / Continue Watching. v1 rows had no metadata to write
 ///   the history line with — bumping forces a re-resolve so the new
 ///   fields populate naturally.
 /// - v3: disambiguator started using allmanga's `airedStart.year` as a

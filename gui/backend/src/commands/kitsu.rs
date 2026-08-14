@@ -830,7 +830,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/ani-hsts"),
+            history_path: PathBuf::from("/y/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -1143,7 +1143,7 @@ mod tests {
     //
     // Forward direction (Kitsu canonical_title → allmanga show) works
     // through the provider's lenient catalog search. The reverse — taking
-    // an allmanga title from `ani-hsts` and finding its Kitsu entry —
+    // a title from the history file and finding its Kitsu entry —
     // is broken when allmanga has typos (e.g. "Nato: Shippuuden" for
     // Naruto), because Kitsu's text search isn't fuzzy and returns
     // unrelated first hits. So we record the (allmanga show_id →
@@ -1330,7 +1330,7 @@ mod tests {
 
     // — Watched-at timestamps for Continue Watching ordering ——————————
     //
-    // ani-hsts is keyed by show_id and only stores ep_no/title — no
+    // The history file is keyed by show_id and only stores ep_no/title — no
     // timestamps. The file's row order reflects "first time played"
     // (in-place updates don't move rows). To render Continue Watching
     // most-recently-watched-first we record a per-show_id wall-clock

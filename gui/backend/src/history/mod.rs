@@ -1,13 +1,17 @@
-//! Reader and writer for the shared `ani-hsts` history file.
+//! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
 //!     <ep_no>\t<id>\t<title>
 //!
-//! The script's `update_history` function reads/writes its own copy of this
-//! file with atomic semantics: write to `path.new`, then rename. Tests in
-//! `tests/bash/network/update_history.bats` characterize that contract.
-//! The Rust reader/writer here must produce byte-identical output so a
-//! user alternating between CLI and GUI sees a single coherent history.
+//! The line format is the one the script's `update_history` uses, and
+//! so are the atomic semantics: write to `path.new`, then rename. Tests
+//! in `tests/bash/network/update_history.bats` characterize that
+//! contract, and the reader here is written against the same shape.
+//!
+//! The two no longer share a file. The 5.0 CLI re-keyed its history
+//! onto provider slugs and backs the old one up on its own first run,
+//! so the app keeps its own under its state dir. What is still shared
+//! is the format, which is why the bats characterization stays useful.
 //!
 //! Path resolution lives in [`crate::config::paths::gui_history`].
 
@@ -291,7 +295,7 @@ mod tests {
         // Format contract: the script's update_history writes
         //     printf "%s\t%s\t%s\n" "$ep_no" "$id" "$title"
         // Our serialize() must produce byte-identical output for the same
-        // logical entries so a user alternating between CLI and GUI sees
+        // logical entries so a reader of either file sees
         // one coherent history file.
         let entries = vec![
             HistoryEntry {
@@ -318,7 +322,7 @@ mod tests {
     #[test]
     fn write_atomic_round_trips_disk_to_memory() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let entries = vec![sample_entry("a", "1"), sample_entry("b", "2")];
         write_atomic(&path, &entries).unwrap();
         let back = read_all(&path).unwrap();
@@ -330,7 +334,7 @@ mod tests {
     #[test]
     fn write_atomic_creates_parent_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("nested/dir/ani-hsts");
+        let path = tmp.path().join("nested/dir/history");
         let entries = vec![sample_entry("a", "1")];
         write_atomic(&path, &entries).unwrap();
         assert!(path.exists());
@@ -339,7 +343,7 @@ mod tests {
     #[test]
     fn upsert_and_write_creates_then_updates() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
 
         upsert_and_write(&path, sample_entry("a", "1")).unwrap();
         upsert_and_write(&path, sample_entry("b", "2")).unwrap();

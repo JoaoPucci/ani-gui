@@ -1,7 +1,7 @@
 //! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
-//! Reads/writes the same `ani-hsts` file the CLI uses, so a user
-//! alternating between CLI and GUI sees one coherent history.
+//! Reads/writes the app's own history file, in the line format the
+//! CLI's uses.
 
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
@@ -151,7 +151,7 @@ mod tests {
         // a stamp pass through unchanged — that's today's behavior
         // for shows the GUI has never resolved.
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn by_kitsu_returns_the_matching_entry() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
 
         write_atomic(
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
 
         write_atomic(
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn delete_removes_matching_row_and_preserves_others() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -306,7 +306,7 @@ mod tests {
         // Per-card double-clicks and bad client retries must be safe.
         // No-op delete returns false; the file stays byte-identical.
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -339,7 +339,7 @@ mod tests {
         // accidentally wipe rows with id="" (parser already drops
         // those at read, but pin the contract anyway).
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn list_then_clear_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         // Pre-populate with a known fixture.
         write_atomic(

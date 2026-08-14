@@ -191,7 +191,7 @@ export interface AppInfo {
 	removed_legacy_paths: string[];
 }
 
-/** One row from the shared `ani-hsts` file. */
+/** One row from the watch-history file. */
 export interface HistoryEntry {
 	ep_no: string;
 	id: string;
@@ -416,7 +416,7 @@ export function historyClear(): Promise<void> {
 }
 
 /** Remove one history row by its allmanga `show_id`. Backend rewrites
- *  ani-hsts atomically without that row; idempotent on unknown / empty
+ *  the history file atomically without that row; idempotent on unknown / empty
  *  ids (always 204), so client retries during transient errors are
  *  safe. The Continue Watching rail uses this for per-card delete. */
 export function historyDelete(id: string): Promise<void> {
@@ -1010,7 +1010,7 @@ export function kitsuTitleMatchPut(title: string, cour: number, kitsuId: string)
 
 /**
  * Reverse-direction mapping: given an allmanga show_id (from
- * ani-hsts column 2), look up the kitsu_id the user previously
+ * history column 2), look up the kitsu_id the user previously
  * played it as. Returns `null` on miss. The mapping is recorded by
  * the backend during `mark-watched` whenever the frontend supplies
  * `kitsu_id` in PlayArgs — so any past click on `/anime/[id]/play`

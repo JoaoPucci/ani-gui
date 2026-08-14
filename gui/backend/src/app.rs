@@ -55,7 +55,7 @@ pub struct AppState {
     /// the diagnostics page so the removal is visible rather than
     /// silent.
     pub legacy_sweep: crate::legacy_script::SweepReport,
-    /// Path of the shared history file.
+    /// Path of the app's watch-history file.
     pub history_path: PathBuf,
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).

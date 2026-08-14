@@ -6,7 +6,7 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * page calls this after `sortByWatchedAt`.
  *
  * Why this exists: provider catalogue drift across resolves
- * can produce two `ani-hsts` rows whose alias-walk (see
+ * can produce two history rows whose alias-walk (see
  * `resolve_allmanga_show_id` in the backend) both land on the same
  * Kitsu entry. Stub-name catalog rows (`1P` for One Piece is the
  * canonical example) and changes in the provider's catalogue

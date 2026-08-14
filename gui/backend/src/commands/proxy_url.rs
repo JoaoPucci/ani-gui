@@ -30,7 +30,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", port),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/ani-hsts"),
+            history_path: PathBuf::from("/y/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

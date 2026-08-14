@@ -210,7 +210,7 @@ async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master
 
 #[tokio::test]
 async fn an_external_play_lands_in_history_under_the_provider_slug() {
-    // The subprocess used to write ani-hsts itself; the native path
+    // The subprocess used to write the history file itself; the native path
     // owns that write now, keyed on the slug like embedded play.
     let mock = MockServer::start().await;
     stub_provider(&mock, "the show").await;

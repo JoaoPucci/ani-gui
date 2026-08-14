@@ -29,7 +29,7 @@ fn make_state() -> crate::app::AppState {
     // Leak the tempdir so the per-test history path stays alive; the
     // OS reclaims it after the test process exits.
     let dir = Box::leak(Box::new(tmp));
-    make_state_at(dir.path().join("ani-hsts"))
+    make_state_at(dir.path().join("history"))
 }
 
 #[test]
@@ -90,15 +90,15 @@ fn reads_present_the_stamped_display_per_entry() {
 #[test]
 fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
     // config/paths.rs gives debug and packaged builds separate cache
-    // databases while ani-hsts stays shared. An offset persisted in
+    // databases while the history file lives in the state dir. An offset persisted in
     // the profile-local cache is invisible to the other profile: the
     // packaged app writes provider episode 41 with offset 40, the
-    // source-built GUI reads the same shared history row, finds no
+    // source-built GUI reads the same history row, finds no
     // stamp, and shows episode 41 — and deleting the XDG cache has
     // the same effect. The translation lives beside the history file
     // it makes readable.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let packaged = make_state_at(history.clone());
     let dev = make_state_at(history);
     put(&packaged, "the-sequel-88", 40);
@@ -125,7 +125,7 @@ fn concurrent_puts_keep_every_stamp() {
     // consume its temp file), and the lost show's history starts
     // exposing provider numbering. The whole sequence holds a lock.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let state = std::sync::Arc::new(make_state_at(history));
     let mut handles = Vec::new();
     for t in 0..16u32 {
@@ -163,7 +163,7 @@ fn puts_exclude_each_other_across_processes_via_the_file_lock() {
     // plays the second process by taking that lock on its own
     // handle: the put must wait for it.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let state = make_state_at(history.clone());
     let lock_path = history.with_file_name("ani-gui-offsets.lock");
     let foreign = std::fs::OpenOptions::new()

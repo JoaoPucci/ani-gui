@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
-/// The offsets file: a sibling of `ani-hsts`, one `slug\toffset` row
+/// The offsets file: a sibling of the history file, one `slug\toffset` row
 /// per stamped show.
 pub(super) fn store_path(history_path: &Path) -> PathBuf {
     history_path.with_file_name("ani-gui-offsets")
@@ -23,7 +23,7 @@ fn lock_path(store: &Path) -> PathBuf {
 
 /// One store row: the slug's offset plus, when the last native
 /// watch landed on a row whose display tag differs from its slot,
-/// that (slot, tag) pair — the bridge that lets ani-hsts speak the
+/// that (slot, tag) pair — the bridge that lets the history file speak the
 /// CLI's slot numbers while the GUI keeps the display identity.
 pub(super) struct Row {
     pub(super) slug: String,

@@ -1,23 +1,21 @@
 //! Provider-numbering offset store — the bridge between the two
-//! numbering spaces that share `ani-hsts`.
+//! numbering spaces the history file has to span.
 //!
 //! anidb.app carries a franchise's cumulative episode count into
 //! continuation cours (TYBW's fourth part lists 41 and 42), and
 //! The script's `process_hist_entry` greps the stored `ep_no` in that
-//! provider list — so the shared history file speaks PROVIDER
+//! provider list — so the history file speaks PROVIDER
 //! numbering. Every GUI surface counts per-entry like Kitsu. The
 //! resolver computes the shift once per show; this module persists it
 //! keyed by slug so the history writers can add it and the read
-//! boundary can subtract it — for GUI- and CLI-written rows alike.
+//! boundary can subtract it.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
 //!
 //! The store is a TSV file BESIDE the history file, not a cache row:
-//! debug and packaged builds keep separate cache databases while
-//! `ani-hsts` stays shared, and the diagnostics clear (or a deleted
-//! XDG cache dir) wipes the database outright — the translation must
-//! live exactly as long, and exactly as shared, as the rows it makes
-//! readable.
+//! the diagnostics clear (or a deleted XDG cache dir) wipes the
+//! database outright, and the translation has to outlive that — it
+//! must live exactly as long as the rows it makes readable.
 
 use crate::app::AppState;
 
@@ -85,7 +83,7 @@ pub fn read_ep_no(state: &AppState, slug: &str, ep_no: &str) -> String {
     kitsu_ep_no(ep_no, offset)
 }
 
-/// Kitsu-relative episode → the provider's number, for ani-hsts
+/// Kitsu-relative episode → the provider's number, for history
 /// writes. Non-numeric input passes through unchanged (defensive —
 /// the play paths only ever see digits).
 #[must_use]

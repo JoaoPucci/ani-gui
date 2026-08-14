@@ -1,7 +1,7 @@
 /**
  * Sort history entries for the home Continue Watching strip.
  *
- * The on-disk `ani-hsts` file orders rows by "first time played"
+ * The on-disk history file orders rows by "first time played"
  * (the history writer updates the `ep_no` in place rather
  * than moving the row), so file position is a poor signal of what
  * the user wants to resume. Backend records a per-show wall-clock

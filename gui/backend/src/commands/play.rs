@@ -118,7 +118,7 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
-    // ani-hsts speaks the provider's numbering; the offset was
+    // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
     let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
@@ -763,7 +763,7 @@ mod tests {
         // The writer adds the offset stamped at resolve time.
         let tmp = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
-        state.history_path = tmp.path().join("ani-hsts");
+        state.history_path = tmp.path().join("history");
         let mut cached = cached_blank(
             "https://cdn.example/x/master.m3u8".into(),
             String::new(),
@@ -956,7 +956,7 @@ mod tests {
         let state = state_with_proxy_origin();
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = state;
-        state.history_path = td.path().join("ani-hsts");
+        state.history_path = td.path().join("history");
         let args = PlayArgs {
             title: "Recap Show".into(),
             episode: "3.5".into(),
@@ -1011,7 +1011,7 @@ mod tests {
         // succeeds and we can assert against it.
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = state;
-        state.history_path = td.path().join("ani-hsts");
+        state.history_path = td.path().join("history");
         let _ = play_with_progress(&state, &args, |_| {}).await.expect("ok");
         // The history file must exist with one row referencing the
         // seeded show_id.

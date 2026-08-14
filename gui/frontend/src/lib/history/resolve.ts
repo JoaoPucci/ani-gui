@@ -27,7 +27,7 @@
  *
  * NOTE: anime-offline-database (Manami) is NOT a viable bridge here —
  * it indexes AniList / MAL / Kitsu / AniDB but does NOT include
- * allmanga show_ids, so reverse-mapping our `ani-hsts` rows still
+ * allmanga show_ids, so reverse-mapping our history rows still
  * has to go through the alias-walk above.
  */
 
@@ -85,7 +85,7 @@ export interface ResumeTarget {
 	 *  case we want to log misses or tag cards visually. */
 	mappingNote: 'direct' | 'no-kitsu-match';
 
-	/** allmanga show id from `ani-hsts` column 2. Used by the
+	/** provider show id from history column 2. Used by the
 	 *  resolver as a deterministic key for the
 	 *  `(show_id → kitsu_id)` reverse-mapping cache, which beats
 	 *  fuzzy-text-searching the (sometimes typo'd) allmanga title. */
