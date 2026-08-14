@@ -139,3 +139,46 @@ fn a_sweep_reports_the_script_and_the_log_together() {
         2
     );
 }
+
+#[test]
+fn an_interrupted_updates_staging_copy_is_removed() {
+    // The updater staged an upstream-shaped copy beside the script
+    // before going to the network, named with its own pid so two
+    // launches could not collide, and removed it when the run ended.
+    // A process killed mid-update never got there — so the file it
+    // left is the one thing the retired machinery could not clean up
+    // after itself.
+    let cache = cache_with(&["ani-cli", "ani-cli.update-staging.4242"]);
+    let report = sweep_legacy_files(cache.path(), state_with(&[]).path());
+    assert_eq!(report.removed.len(), 2);
+    assert!(!cache.path().join("ani-cli.update-staging.4242").exists());
+}
+
+#[test]
+fn every_staging_copy_goes_not_just_the_first() {
+    // Several interrupted launches leave several pids behind.
+    let cache = cache_with(&[
+        "ani-cli.update-staging.1",
+        "ani-cli.update-staging.2",
+        "ani-cli.update-staging.3",
+    ]);
+    assert_eq!(
+        sweep_legacy_files(cache.path(), state_with(&[]).path())
+            .removed
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn a_cache_entry_that_merely_starts_with_the_script_name_survives() {
+    // The prefix has to be the staging one specifically. A user's own
+    // `ani-cli.bak`, or anything else that happens to begin with the
+    // script's name, is not ours to delete.
+    let cache = cache_with(&["ani-cli.bak", "ani-cli-notes.txt"]);
+    let report = sweep_legacy_files(cache.path(), state_with(&[]).path());
+    assert!(report.removed.is_empty());
+    for kept in ["ani-cli.bak", "ani-cli-notes.txt"] {
+        assert!(cache.path().join(kept).exists(), "{kept} must survive");
+    }
+}
