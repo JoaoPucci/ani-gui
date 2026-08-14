@@ -985,3 +985,42 @@ async fn the_ffmpeg_retry_starts_from_an_absent_target() {
         b"GOODMP4"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_ffmpeg_run_permits_replacing_its_target() {
+    // Clearing the target before the retry is best-effort: a file the
+    // process cannot unlink — read-only parent, a Windows lock — stays
+    // where it is, and ffmpeg without an overwrite flag then refuses
+    // and the retry fails on a machine that has ffmpeg. `-y` is what
+    // makes the removal's outcome stop mattering.
+    //
+    // The stub refuses unless it sees the flag, which is the contract
+    // being asserted: not that the file is gone, but that ffmpeg is
+    // allowed to replace it either way.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "for a in \"$@\"; do [ \"$a\" = '-y' ] && exec sh -c \"printf 'OK' > '{target}'\"; done\n\
+             echo 'File exists. Not overwriting - exiting' >&2\nexit 1",
+            target = target.display()
+        ),
+    );
+    let mut lines: Vec<String> = Vec::new();
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("ffmpeg must be allowed to replace its own target");
+    assert_eq!(std::fs::read(&target).expect("ffmpeg wrote it"), b"OK");
+}
