@@ -49,8 +49,8 @@ ani-gui keeps the following on your computer only:
 ## What ani-gui transmits to public services
 
 Most outbound traffic happens only when you take an action that
-requires it; the exceptions are the two automatic checks that run on
-launch (the update checks below). For each kind of request:
+requires it; the exception is the update check that runs on launch
+(below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the anidb.app streaming catalogue playback
@@ -71,13 +71,16 @@ launch (the update checks below). For each kind of request:
     requests:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
-- **Update checks (automatic, on launch)** — two checks run when the
-  app opens. ani-gui queries GitHub's public releases API to notify
-  you when a new app version is published (the settings only control
-  whether pre-releases are included, not whether the check runs), and
-  the bundled `ani-cli` self-updates by fetching the latest script
-  from its upstream (`ani-cli -U`, on by default, can be turned off in
-  settings). No account information is sent by either.
+- **Update check (automatic, on launch)** — ani-gui queries GitHub's
+  public releases API to notify you when a new app version is
+  published. The settings only control whether pre-releases are
+  included, not whether the check runs. No account information is
+  sent.
+
+  Versions before 0.12 made a second automatic request here: the
+  bundled copy of the `ani-cli` script fetched its own latest version
+  from upstream at every launch. The app no longer carries or runs
+  that script, so that request is gone.
 - **Aniskip OP/ED timing** — when the auto-skip toggle is on, ani-gui
   asks the Aniskip community service for crowd-sourced opening /
   ending timestamps for the episode you're watching. No account

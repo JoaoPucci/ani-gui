@@ -34,7 +34,7 @@ The script still lives in this repository for anyone who wants the terminal flow
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. Nothing else needs installing — the binaries it spawns to reach the provider and to write downloads ship inside it.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the provider ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -47,7 +47,7 @@ Platform support tiers:
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
-- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
+- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
 - **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
 
 </details>
