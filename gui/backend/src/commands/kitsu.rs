@@ -1238,19 +1238,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_allmanga_show_id_returns_none_when_no_cache_and_no_aliases() {
-        // No reverse cache entry; allmanga (real) call is presumed to
-        // return nothing meaningful for a synthetic id. The contract
-        // is "fail soft" — Ok(None), not an error, so Continue
-        // Watching can still render the bare allmanga title.
+    async fn an_unmapped_legacy_row_fails_soft_without_searching() {
+        // No reverse mapping, and the id is not slug-shaped — no
+        // numeric tail — so there are no words to search Kitsu with.
+        // That is a row from the retired provider, whose alias source
+        // went away with it, and the contract is to fail soft: Ok(None)
+        // rather than an error, so Continue Watching still renders the
+        // bare history title.
+        //
+        // Kitsu points at a closed port, which is the assertion's other
+        // half: reaching it at all would be a connection error, so
+        // Ok(None) is also evidence that nothing was searched.
         let state = state_with_kitsu_at("http://127.0.0.1:1");
         let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve", false).await;
-        // Either Ok(None) (no aliases, no Kitsu match) or Ok(Some(_))
-        // is acceptable — we only assert the call doesn't panic and
-        // doesn't surface a network error to the caller. Stub returns
-        // Ok(None); the green-commit impl returns Ok(None) for this
-        // synthetic id too.
-        assert!(got.is_ok(), "resolver must not error: {got:?}");
+        assert!(
+            matches!(got, Ok(None)),
+            "an unmapped legacy row resolves to nothing, quietly: {got:?}"
+        );
     }
 
     #[tokio::test]
