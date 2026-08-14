@@ -364,8 +364,12 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * plausibly name the same show. Used only to reject a poisoned reverse-map /
  * title-match binding (e.g. the Love Live movie's allanime id bound to the
  * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
- * choose the final match, so a false reject costs at most one extra resolution
- * (the alias-walk backstops stubs).
+ * choose the final match, so a false reject costs one extra resolution. A row
+ * keyed on a slug recovers from the slug's own words; a row from the retired
+ * provider has only its stored mapping, which is the thing just rejected, so
+ * there a false reject costs the binding until a play re-stamps it. Stubs are
+ * never judged at all — see the token rule below — which is what keeps that
+ * case from arising in practice.
  *
  * Compares the allanime title's tokens against every Kitsu title (canonical +
  * localized variants + de-slugged slug), scoring the best alias by the WEAKER

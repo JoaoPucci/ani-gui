@@ -371,11 +371,15 @@ mod tests {
 
     // — Properties ────────────────────────────────────────────────────
     //
-    // The TSV format is the one the bash script uses — both
-    // have to agree on what the file means. Roundtripping (serialize
-    // then parse) is the load-bearing invariant: if it ever breaks,
-    // history written by the GUI silently disappears the next time
-    // the CLI loads the file (or vice versa).
+    // The line format is the one the bash script uses, characterized
+    // from it and kept deliberately. The files are separate — the GUI
+    // owns `<state_dir>/history` and the script keeps its own — so
+    // nothing here can make one side's rows vanish from the other's
+    // file. What roundtripping (serialize then parse) protects is this
+    // module against itself: a serializer and parser that disagree
+    // lose the user's own history on the next load, and a format that
+    // drifts from the characterized one loses the reason these rules
+    // are what they are.
     use proptest::prelude::*;
 
     /// Generate a single field that's safe to put in a TSV row.

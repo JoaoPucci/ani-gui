@@ -29,8 +29,11 @@ use crate::proxy::MediaKind;
 /// Frontend → backend payload for both play endpoints.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlayArgs {
-    /// Canonical title from the Kitsu metadata. Fed to the provider's
-    /// search step (after we've picked the right candidate index).
+    /// Canonical title from the Kitsu metadata. It is the search
+    /// query: the resolver asks the provider with it first, and the
+    /// hits that come back are what the candidate picker then
+    /// disambiguates using the fields below. Nothing selects a
+    /// candidate before the search.
     pub title: String,
     /// Episode number, as a string to match the CLI's positional arg
     /// shape (`-e 5` accepts `"5"` literally).

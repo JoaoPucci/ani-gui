@@ -518,8 +518,8 @@ describe('titlesPlausiblySameShow', () => {
 	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
 		// THE extreme case: allanime indexes One Piece as "1P". It shares
 		// no token with "One Piece", but a 1-short-token stub carries no
-		// signal to reject on — the binding (recorded from a real play /
-		// alias-walk) must stay trusted. Only INFORMATIVE allanime titles
+		// signal to reject on — the binding (recorded from a real play,
+		// or from a reverse-resolve) must stay trusted. Only INFORMATIVE allanime titles
 		// (≥2 tokens, or one token ≥5 chars) are judged.
 		expect(titlesPlausiblySameShow('1P', ref('One Piece'))).toBe(true);
 		expect(titlesPlausiblySameShow('1P (1161 episodes)', ref('One Piece'))).toBe(true);
@@ -633,7 +633,7 @@ describe('cachedBindingVerdict', () => {
 	it('re-resolves a single-token romaji/typo binding instead of deleting it', () => {
 		// "Burichi" is allmanga's stub for BLEACH — zero literal overlap with the
 		// Kitsu title, but the cached row is correct. The old guard deleted it
-		// every load and depended on the network alias walk; now a fuzzy title
+		// every load and depended on a network re-resolve; now a fuzzy title
 		// miss only re-resolves (the title-match cache backstops it).
 		const p = resolveHistoryEntry(entry('Burichi (366 episodes)', '5'), null);
 		expect(

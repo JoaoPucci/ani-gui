@@ -6,9 +6,10 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * page calls this after `sortByWatchedAt`.
  *
  * Why this exists: provider catalogue drift across resolves
- * can produce two history rows whose alias-walk (see
- * `resolve_allmanga_show_id` in the backend) both land on the same
- * Kitsu entry. Stub-name catalog rows (`1P` for One Piece is the
+ * can produce two history rows that resolve to the same Kitsu entry
+ * — through the stored mapping for one and a fresh slug-derived
+ * search for the other, say (see `resolve_allmanga_show_id` in the
+ * backend). Stub-name catalog rows (`1P` for One Piece is the
  * canonical example) and changes in the provider's catalogue
  * ranking are the usual culprits — the user ends up with two
  * Continue Watching cards for what is logically the same show.
@@ -30,7 +31,7 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  *   1. Per-row release semantics from PR #50: a card stays visible
  *      as a loading placeholder while its match probe is in flight;
  *      we can't know its Kitsu id yet, so we can't dedupe it.
- *   2. Without a Kitsu id (null match: the alias-walk found nothing)
+ *   2. Without a Kitsu id (null match: resolution found nothing)
  *      we have no equivalence signal between two such rows. They
  *      might be the same show or might not; rendering both lets the
  *      user decide.

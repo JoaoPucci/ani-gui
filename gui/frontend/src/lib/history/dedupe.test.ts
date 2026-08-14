@@ -38,8 +38,8 @@ describe('dedupeHistoryByKitsuId', () => {
 
 	it('keeps the highest-progress occurrence of each Kitsu id, ties broken by first', () => {
 		// The empirical trigger #116 targets: provider catalogue drift
-		// across resolves produces two hsts rows whose alias-walk
-		// both land on the same Kitsu entry. The user's true "where
+		// across resolves produces two history rows that resolve to
+		// the same Kitsu entry. The user's true "where
 		// am I?" signal is ep_no — pick the most-advanced row so the
 		// surviving card resumes from their actual progress. Ties on
 		// ep_no fall back to input order (most-recent first under
@@ -158,8 +158,7 @@ describe('dedupeHistoryByKitsuId', () => {
 	});
 
 	it('keeps entries with a null match (no Kitsu match found)', () => {
-		// resolveKitsuMatch returned null — the alias-walk found
-		// nothing on Kitsu. Without a Kitsu id we have no equivalence
+		// resolveKitsuMatch returned null — nothing on Kitsu matched. Without a Kitsu id we have no equivalence
 		// signal, so two null-matched rows might be the same show or
 		// might not be. Keep them; the user still wants to see them
 		// and can click them (routes to /search per the page's null-
