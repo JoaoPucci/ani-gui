@@ -307,17 +307,17 @@ async fn handle_seg(
 
     // Raw segment: stream bytes through. Pass any Range header from the
     // player so the upstream's seekable mp4 keeps working.
-    // The session's own referer is what the CDN checks; the literal
-    // below is only reached when that string will not parse as a
-    // header value, which resolution should never produce. It is a
-    // leftover from the allanime era and kept only because changing a
-    // fallback nobody reaches is not this change's business — see the
-    // note in the pull request.
-    let mut req = state.client.get(upstream_url.as_str()).header(
-        reqwest::header::REFERER,
-        HeaderValue::from_str(&sess.referer)
-            .unwrap_or_else(|_| HeaderValue::from_static("https://allmanga.to")),
-    );
+    //
+    // The session's own referer is what the CDN checks, and it is sent
+    // only when it parses as a header value — the same rule the three
+    // `upstream::` fetches follow. A stored referer that cannot become
+    // a header is a resolution the app should not have produced, and
+    // the answer to it is to say nothing rather than to name some
+    // other origin.
+    let mut req = state.client.get(upstream_url.as_str());
+    if let Ok(referer) = HeaderValue::from_str(&sess.referer) {
+        req = req.header(reqwest::header::REFERER, referer);
+    }
     if let Some(range) = headers_in.get("range") {
         if let Ok(rstr) = range.to_str() {
             req = req.header("Range", rstr);
