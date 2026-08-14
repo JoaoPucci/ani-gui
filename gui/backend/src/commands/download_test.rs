@@ -925,3 +925,63 @@ async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
         "the retry's output replaces the mislabeled file"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_ffmpeg_retry_starts_from_an_absent_target() {
+    // The warning names two conditions and `discard_mislabeled` only
+    // recognizes one: it removes a file whose first byte is the
+    // MPEG-TS sync byte, so the malformed-AAC half leaves a real MP4
+    // sitting under the target name. ffmpeg is spawned without `-y`
+    // and with nothing on stdin, so an existing output is a refusal
+    // rather than an overwrite — the retry would then fail on a
+    // machine where ffmpeg is installed and working, which is the one
+    // case the retry exists for.
+    //
+    // The stub stands in for that refusal: it fails if the target is
+    // already there, and writes it otherwise.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            // A real MP4 header, not MPEG-TS: the file survives the
+            // discard exactly as the AAC-timestamp case does.
+            "printf '\\000\\000\\000\\040ftypmp42' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "if [ -e '{target}' ]; then echo 'File exists. Not overwriting - exiting' >&2; exit 1; fi\n\
+             printf 'GOODMP4' > '{target}'\nexit 0",
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let got = download_with_tools(&state, &args, &path_env, |_p| {}).await;
+    assert!(
+        got.is_ok(),
+        "the retry must not collide with what yt-dlp left: {got:?}"
+    );
+    assert_eq!(
+        std::fs::read(&target).expect("ffmpeg wrote the file"),
+        b"GOODMP4"
+    );
+}
