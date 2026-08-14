@@ -149,7 +149,11 @@ fn player_spawn_failed_carries_the_configured_binary_name() {
 /// so a stray `#[error("…")]` rewrite gets caught.
 #[test]
 fn display_messages_match_thiserror_attributes() {
-    assert_eq!(format!("{}", AniError::Timeout), "scraper timed out");
+    // Renamed off "scraper timed out": a download transfer that ran
+    // past its hour ends in this variant too, and a log line naming a
+    // provider sends whoever reads it to the wrong subsystem. Display
+    // is log-only — the frontend renders from `kind` and `key`.
+    assert_eq!(format!("{}", AniError::Timeout), "deadline exceeded");
     assert_eq!(format!("{}", AniError::NoResults), "no results");
     assert_eq!(format!("{}", AniError::Network), "network error");
     assert_eq!(

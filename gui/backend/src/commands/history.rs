@@ -1,7 +1,10 @@
 //! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
-//! Reads/writes the app's own history file, whose line format is
-//! characterized from the script's. The file is not.
+//! Reads/writes the app's own history file. Its line format is
+//! characterized from the script's and deliberately kept compatible;
+//! the file itself is not shared with the script, which keeps its own
+//! under a different path and has since it re-keyed onto provider
+//! slugs.
 
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};

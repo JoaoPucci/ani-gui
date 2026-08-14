@@ -28,8 +28,10 @@ pub enum AniError {
         key: &'static str,
     },
 
-    /// Resolution didn't finish within its timeout.
-    #[error("scraper timed out")]
+    /// A deadline elapsed. The shared one: a bounded resolve, an
+    /// availability probe, and a download whose transfer ran past its
+    /// hour all end here, and only the first is a provider's fault.
+    #[error("deadline exceeded")]
     Timeout,
 
     /// Search returned zero results.
