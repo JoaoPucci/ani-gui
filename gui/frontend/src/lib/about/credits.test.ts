@@ -23,6 +23,34 @@ import {
 	type BundledTool
 } from './credits';
 import { isValidEthAddress } from './eth';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+/** Tools the packages provide without a fetcher staging them. */
+const NOT_FETCHED = new Set(['ffmpeg']);
+
+/**
+ * The `dep` names both platform fetchers declare.
+ *
+ * Read as text rather than imported: the fetchers live outside the
+ * frontend root, so vitest cannot resolve them as modules. `dep` is a
+ * declared literal on every entry — `windows_deps.sh` compares the two
+ * platforms through that same field — so finding it is a lookup, not
+ * an interpretation of what the script does.
+ */
+function stagedDeps(): Set<string> {
+	const scripts = path.resolve(
+		path.dirname(fileURLToPath(import.meta.url)),
+		'../../../../electron/scripts',
+	);
+	const found = new Set<string>();
+	for (const file of ['fetch-linux-deps.mjs', 'fetch-windows-deps.mjs']) {
+		const src = readFileSync(path.join(scripts, file), 'utf8');
+		for (const m of src.matchAll(/^\t\tdep: '([^']+)',$/gm)) found.add(m[1]);
+	}
+	return found;
+}
 
 function assertCommonShape(entry: { name: string; license: string; url: string }, label: string) {
 	expect(entry.name, `${label}: name`).toBeTruthy();
@@ -59,28 +87,42 @@ describe('credits — bundled tools', () => {
 		assertUniqueNames(BUNDLED_TOOLS, 'BUNDLED_TOOLS');
 	});
 
-	it('lists what the packages actually ship, and nothing they dropped', () => {
-		// Both halves moved when resolution went native: the shell
-		// script stopped being bundled, and the impersonating transport
-		// the resolver spawns started being. A credits list that lags
-		// either way misstates what the user installed — and this one
-		// is the page's whole claim, so a stale entry is a wrong answer
-		// rather than a missing one.
-		const names = BUNDLED_TOOLS.map((t) => t.name);
-		expect(names, 'the script is no longer bundled').not.toContain('ani-cli');
-		expect(names, 'the transport is bundled on both platforms').toContain('curl-impersonate');
+	it('credits exactly what the fetchers stage', () => {
+		// The page's whole claim is that this list is what the packages
+		// bundle, so both directions are wrong in their own way: a
+		// missing entry hides a binary the user received, and a stale
+		// one tells them the app needs something it never invokes.
+		//
+		// Checked against the fetchers themselves rather than a second
+		// hand-written list — one list compared to another only proves
+		// they were typed the same day. fzf and aria2c outlived the
+		// script in both places at once precisely because nothing tied
+		// them together.
+		const credited = new Set(BUNDLED_TOOLS.map((t) => t.name));
+		const staged = stagedDeps();
+
+		expect(staged.size, 'the fetchers should declare something').toBeGreaterThan(0);
+		for (const dep of staged) {
+			expect(credited.has(dep), `${dep} is staged by a fetcher but not credited`).toBe(true);
+		}
+		for (const name of credited) {
+			if (NOT_FETCHED.has(name)) continue;
+			expect(staged.has(name), `${name} is credited but no fetcher stages it`).toBe(true);
+		}
 	});
 
-	it('does not credit binaries only the script ever ran', () => {
-		// fzf was the script's interactive picker and aria2c its
-		// downloader. The GUI never drove either: it has no picker, and
-		// the native downloader resolves yt-dlp or ffmpeg and asks
-		// yt-dlp for concurrency (`-N 16`) rather than shelling out to
-		// aria2c. Listing them here tells a user the app needs
-		// something it never invokes.
+	it('names the entries that are bundled without being fetched', () => {
+		// ffmpeg is the one tool the packages provide by another route:
+		// an apt `Recommends:` on the .deb and an install-time download
+		// in the NSIS script, because ~80 MB is too much to stage. The
+		// exemption above is declared here so it stays a decision
+		// rather than a hole in the parity check.
 		const names = BUNDLED_TOOLS.map((t) => t.name);
-		expect(names, 'no picker exists to drive fzf').not.toContain('fzf');
-		expect(names, 'the downloader never spawns aria2c').not.toContain('aria2');
+		for (const name of NOT_FETCHED) {
+			expect(names, `${name} is exempted from the parity check but not credited`).toContain(
+				name,
+			);
+		}
 	});
 
 	it('noteIds are unique (and thus typesafe against the page-side switch)', () => {
