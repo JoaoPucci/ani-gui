@@ -1,19 +1,27 @@
 #!/bin/sh
-# Architectural invariant: gui/ may invoke ani-cli only via subprocess —
-# never via sourcing, never by importing function bodies.
+
+# Architectural invariant: `gui/` does not depend on the `ani-cli`
+# script.
 #
-# Concretely:
-#   1. The string "source ./ani-cli", ". ./ani-cli", or "source ../../ani-cli"
-#      must NOT appear under gui/ (the test seam __ANI_CLI_LIB__ is for
-#      tests/bash/ only).
-#   2. The string "ani-cli" inside gui/ must only appear in known
-#      whitelisted contexts: comments, docstrings, the literal binary
-#      name passed to Command::new, or the resource path in
-#      tauri.conf.json. Anything else is a layer violation.
+# This used to read "may invoke it only via subprocess". That was the
+# rule while the app drove the script for playback and downloads: the
+# app shipped a vendored copy, spawned it, and kept it updated, so the
+# boundary worth policing was *how* it reached it. Resolution is
+# native now and the packages no longer carry the script at all, so
+# the boundary is simply that nothing under `gui/` reaches for it —
+# by sourcing it, by carrying the test seam, or by declaring it as a
+# packaged resource.
 #
-# This invariant exists because vendoring ani-cli straight from upstream
-# is the only sustainable strategy; the moment gui/ source-imports the
-# script, every upstream rebase becomes a merge minefield.
+# The script itself still ships for people who want the terminal flow,
+# which is why this check has a subject at all. When it goes, so does
+# this file.
+#
+# What this does NOT check: that no Rust code spawns a process named
+# `ani-cli`. Deciding which string literal reaches a spawn means
+# reading Rust with regular expressions, and AGENTS.md §2 is explicit
+# that inferring meaning from source that way does not terminate. The
+# three checks below are each something a `grep` either finds or does
+# not.
 
 set -eu
 
@@ -31,7 +39,9 @@ failed=0
 # may sit on disk and contain copies of the script. Skip them.
 GREP_EXCLUDE='--exclude-dir=target --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=.svelte-kit'
 
-# 1. No sourcing.
+# 1. No sourcing. The cheapest way to reacquire the dependency is to
+# pull the script's functions into a shell the app runs, which would
+# make every upstream change a merge problem again.
 # shellcheck disable=SC2086
 matches=$(grep -rnE $GREP_EXCLUDE '(^|[[:space:]])((source|\.)[[:space:]]+["'"'"']?[^"'"'"' ]*ani-cli)' gui/ 2>/dev/null || true)
 if [ -n "$matches" ]; then
@@ -39,51 +49,46 @@ if [ -n "$matches" ]; then
     failed=1
 fi
 
-# 2. __ANI_CLI_LIB__ guard outside its two legitimate homes.
-#
-# The test seam lives in tests/bash/. The `update.rs` module re-applies
-# the guard after every `ani-cli -U` (the upstream `update_script`
-# clobbers it) and `app.rs` documents that responsibility. Any other
-# reference under gui/ would mean a layer started reading the guard
-# back out of the script, which it should never do.
+# 2. The `__ANI_CLI_LIB__` source-guard is a seam for `tests/bash/`,
+# which sources the script as a library. It previously had two
+# legitimate homes under gui/ — the auto-updater re-applied the guard
+# after every `ani-cli -U`, and app.rs documented that duty. Both are
+# gone along with the updater, so any occurrence here now means a
+# layer started reading the guard back out of the script.
 # shellcheck disable=SC2086
-matches=$(grep -rn $GREP_EXCLUDE '__ANI_CLI_LIB__' gui/ 2>/dev/null |
-    grep -vE 'gui/backend/src/anicli/update\.rs:|gui/backend/src/app\.rs:' || true)
+matches=$(grep -rn $GREP_EXCLUDE '__ANI_CLI_LIB__' gui/ 2>/dev/null || true)
 if [ -n "$matches" ]; then
-    printf 'arch/boundaries FAIL: __ANI_CLI_LIB__ appears in gui/ outside the update module:\n%s\n' "$matches" >&2
+    printf 'arch/boundaries FAIL: __ANI_CLI_LIB__ appears in gui/ — the test seam is for tests/bash/ only:\n%s\n' "$matches" >&2
     failed=1
 fi
 
-# 3. ani-cli's internal globals (allanime_*, search_anime, etc.) must
-# never appear in gui/. If a Rust file references them by name, it's
-# almost certainly a re-implementation of scraping logic that should
-# instead be a subprocess call.
-banned_symbols='search_anime\|episodes_list\|get_episode_url\|process_tobeparsed\|get_aa_req\|fetch_keys\|allanime_key\|allanime_base\|generate_link\|provider_init'
+# 3. No packaging manifest may stage the script. This is the one that
+# actually regressed in reverse: the packages carried the script long
+# after anything read it, and the entries that put it there were
+# exactly two `extraResources` lines. Re-adding one would ship a file
+# the app has no code to use — dead weight the boot sweep then deletes
+# from the user's cache on the next launch.
 # shellcheck disable=SC2086
-matches=$(grep -rnE $GREP_EXCLUDE "($banned_symbols)" gui/ 2>/dev/null |
-    grep -v 'tests/.*proxy_router.rs' |
-    grep -v 'docs\.rs\|//[!/].*' ||
-    true)
-# Filter doc-comment matches (allow them — they reference the ani-cli
-# function the GUI driver hits, which is informational).
-filtered=$(printf '%s\n' "$matches" | awk -F: '
-    # Skip empty lines
-    NF == 0 { next }
-    # Skip lines whose remainder is a doc comment
-    {
-        rest = ""
-        for (i = 3; i <= NF; i++) rest = rest ":" $i
-        gsub(/^:/, "", rest)
-        if (rest ~ /^[[:space:]]*\/\/[!\/]/) next
-        print
-    }
-')
-if [ -n "$filtered" ]; then
-    printf 'arch/boundaries FAIL: gui/ references ani-cli internal globals (suspect re-implementation):\n%s\n' "$filtered" >&2
+matches=$(grep -rnE $GREP_EXCLUDE '"from"[[:space:]]*:[[:space:]]*"([^"]*/)?ani-cli"' gui/ 2>/dev/null || true)
+if [ -n "$matches" ]; then
+    printf 'arch/boundaries FAIL: a gui/ packaging manifest stages ani-cli as a resource:\n%s\n' "$matches" >&2
     failed=1
 fi
 
-# 4. Reverse: ani-cli the script must not contain GUI references.
+# A fourth check used to live here: gui/ must not mention the script's
+# internal globals (`search_anime`, `allanime_key`, `get_aa_req`, …),
+# on the grounds that naming one meant re-implementing scraping that
+# should have been a subprocess call. It is deliberately not carried
+# forward. Re-implementing resolution natively is the architecture
+# now, so the rule guarded against the intended design; and every
+# symbol it named belonged to the allanime pipeline that upstream 5.0
+# deleted, so it had no subject left either. It passed vacuously,
+# which is the failure AGENTS.md §2 warns about — a green run that
+# reads as coverage of something nobody is checking.
+
+# 4. Reverse: the script must not grow references to the GUI. It is
+# vendored from upstream and syncs by merge; a GUI reference in it
+# would be a fork patch nobody declared.
 if [ -f ani-cli ]; then
     matches=$(grep -nE '(gui/|tauri::|use ani_gui|svelte)' ani-cli || true)
     if [ -n "$matches" ]; then
