@@ -107,13 +107,14 @@ pub struct PlayArgs {
 
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
 
-/// Update Continue Watching on a play-cache hit. The cache-miss
-/// path used to get history for free from the script's
-/// `update_history`; nothing writes it for us now, so write the row
-/// directly. No-op
-/// on prefetch calls (the page-mount loop fires concurrently and
-/// whichever finishes last would otherwise overwrite the user's
-/// real click) and on legacy rows missing show_id.
+/// Update Continue Watching on a play-cache hit.
+///
+/// A cache miss records the row on its way through
+/// `play_native_record::write_history`. A hit never reaches that
+/// path, so the row is written here instead. No-op on prefetch calls
+/// (the page-mount loop fires concurrently and whichever finishes
+/// last would otherwise overwrite the user's real click) and on
+/// legacy rows missing show_id.
 fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &CachedResolution) {
     if args.prefetch || cached.show_id.is_empty() {
         return;
@@ -1039,7 +1040,10 @@ mod tests {
         let upstream = format!("{}/dead.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
         let r = play_with_progress(&state, &args, |_| {}).await;
-        assert!(r.is_err(), "the fresh-resolve fallback must error in the test env");
+        assert!(
+            r.is_err(),
+            "the fresh-resolve fallback must error in the test env"
+        );
         // Cache row should be gone.
         let key = play_resolution_cache::cache_key(
             &args.title,
