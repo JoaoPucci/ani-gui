@@ -48,7 +48,11 @@ pub enum AniError {
         retry_after_secs: Option<u64>,
     },
 
-    /// A provider response did not match the expected shape.
+    /// Something did not have the shape the code required. Mostly
+    /// upstream bodies — Kitsu, AniList, MAL, the provider's HTML and
+    /// JSON, the proxy's manifests — but also input the app validates
+    /// on its own, like a session's upstream URL or an `image://` URI.
+    /// The shared parse-or-validate variant, not a provider one.
     #[error("parse failed: {detail}")]
     ParseFailed {
         /// Free-text detail for logs only — not surfaced to the user.

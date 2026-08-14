@@ -299,10 +299,10 @@ pub async fn play(state: &AppState, args: &PlayArgs) -> Result<CreateSessionResp
 /// `/api/play/stream` endpoint to forward incremental status to the
 /// renderer's loading overlay.
 ///
-/// The callback runs on the same async task as the resolution; a slow
-/// callback stalls the subprocess. SSE handlers should push events
-/// through an `mpsc` channel inside the callback rather than do work
-/// inline.
+/// The callback runs on the same async task as the resolution, and
+/// there is no other task to absorb it: a slow callback stalls the
+/// provider walk itself. SSE handlers should push events through an
+/// `mpsc` channel inside the callback rather than do work inline.
 ///
 /// # Errors
 /// Same as [`play`].
