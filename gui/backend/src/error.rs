@@ -68,10 +68,14 @@ pub enum AniError {
     /// what the user meets rather than a network error from a walk
     /// that could not have been used.
     ///
-    /// The other way in is a yt-dlp run that reports MPEG-TS left
-    /// under the .mp4 name: the mislabeled file is deleted, and the
-    /// stream is retried through ffmpeg when one exists — so this
-    /// error still means what it says, that no tool is left to try.
+    /// The other way in is a yt-dlp run reporting it could not
+    /// repackage. With an ffmpeg to retry through, that is not this
+    /// error; without one it is, and the run ends here having discarded
+    /// only what it could identify as the mislabeled output — a file
+    /// whose first byte is the MPEG-TS sync byte. The warning's other
+    /// half leaves a real MP4, and one of those is not provably this
+    /// run's to delete, so it stays. Deleting a download the user
+    /// already had is the worse error of the two.
     ///
     /// The name predates yt-dlp becoming an accepted alternative. It
     /// is the key the frontend renders its modal on, so renaming it is

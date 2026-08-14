@@ -33,9 +33,15 @@ pub struct HistoryEntry {
     /// resolution came from cache — so on the next launch the
     /// "Continue Watching" row knows where to resume.
     pub ep_no: String,
-    /// The provider's show id: an anidb slug.
+    /// The provider's show id — a slug on every row written since the
+    /// migration. Older rows carry the retired provider's opaque id
+    /// instead, which is why the reverse resolver still has a branch
+    /// for an id it cannot derive a search term from.
     pub id: String,
-    /// Display title (typically `"<name> (<n> episodes)"`).
+    /// Display title, as the provider's own card gives it. Rows
+    /// written before the migration carry a `"(<n> episodes)"` tail
+    /// the writer of the day appended; nothing appends one now, and
+    /// the frontend strips it where it finds it.
     pub title: String,
 }
 
