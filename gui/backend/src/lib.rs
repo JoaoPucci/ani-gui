@@ -29,6 +29,7 @@ pub mod config;
 pub mod error;
 pub mod history;
 pub mod i18n;
+pub mod legacy_script;
 pub mod meta;
 pub mod proxy;
 pub mod scraper;

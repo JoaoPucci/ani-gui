@@ -39,6 +39,20 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    #[test]
+    fn app_info_advertises_no_bundled_script() {
+        // The app resolves natively; there is no script to point at,
+        // and a path here would send a reader looking for a component
+        // that no longer ships.
+        let json = serde_json::to_value(app_info(&fake_state()).expect("info")).expect("json");
+        let obj = json.as_object().expect("object");
+        assert!(
+            !obj.contains_key("ani_cli_path"),
+            "app-info still advertises a bundled script: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
+    }
+
     fn fake_state() -> AppState {
         AppState {
             anidb_base: None,
