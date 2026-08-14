@@ -26,11 +26,14 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched. The script writes this back
-    /// after each play, so on next launch the GUI's "Continue Watching"
-    /// row knows where to resume.
+    /// Episode number the user last watched, in the provider's
+    /// numbering. Written after each play — by
+    /// `play_native_record::write_history` on a fresh resolve, and
+    /// directly by `play::write_history_on_cache_hit` when the
+    /// resolution came from cache — so on the next launch the
+    /// "Continue Watching" row knows where to resume.
     pub ep_no: String,
-    /// Allanime show id.
+    /// The provider's show id: an anidb slug.
     pub id: String,
     /// Display title (typically `"<name> (<n> episodes)"`).
     pub title: String,

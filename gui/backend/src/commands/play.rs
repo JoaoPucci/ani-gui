@@ -2,15 +2,16 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! The embedded path resolves natively: the anidb client searches,
-//! disambiguates by episode count, and walks episode → languages →
-//! embed → master-playlist URL, which becomes a [`StreamSession`].
-//! The external and download siblings still spawn the vendored
-//! script; they move to the native resolver with the availability
-//! port.
+//! Resolution is native: the anidb client searches, disambiguates by
+//! episode count, and walks episode → languages → embed →
+//! master-playlist URL, which becomes a [`StreamSession`]. The
+//! external and download siblings take the same walk and differ only
+//! in what they do with the result.
 //!
-//! No title-match cache yet — every play resolves the title afresh. The cache
-//! is task #51 and lands once the spawn cost actually bites the UX.
+//! Resolved streams are cached. `play_with_progress` consults
+//! `play_resolution_cache` first and returns a hit without touching
+//! the provider; see that module for what the row holds and when it
+//! is evicted.
 
 use serde::Deserialize;
 
