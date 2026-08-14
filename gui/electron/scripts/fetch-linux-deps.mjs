@@ -1,32 +1,28 @@
-// Pre-build step for `package:release`: download the POSIX-side
-// ani-cli dependencies that aren't safe to assume on every Linux
-// host, and stage them under `build-resources/linux/bin/`. electron-
-// builder copies the dir into both the .deb and AppImage payloads
-// via `linux.extraResources` in `package.json`, landing at
+// Pre-build step for `package:release`: download the binaries the app
+// spawns that aren't safe to assume on every Linux host, and stage
+// them under `build-resources/linux/bin/`. electron-builder copies the
+// dir into both the .deb and AppImage payloads via
+// `linux.extraResources` in `package.json`, landing at
 // `<install>/resources/bin/<binary>` at runtime. The Rust backend
-// prepends that dir to the spawned bash's PATH (see
-// `gui/backend/src/anicli/env.rs`) so ani-cli's `dep_ch` finds the
-// bundled binaries before any system install.
+// searches that dir ahead of PATH, so a bundled binary beats a system
+// install (see `resolve_bundled_bin` in `gui/backend/src/app.rs`).
 //
-// Why this exists: ani-cli's dep_ch surfaces missing deps via `die`,
-// which `exit 1`s the entire shell. A Linux desktop without these
-// tools bricks playback or downloads silently. Bundling the small
-// fast ones (fzf, aria2c) removes that footgun.
+// Why this exists: without them a Linux desktop fails at the two
+// points that matter and says little about why — every play dies on
+// the provider's interstitial, or every download dies on a missing
+// downloader.
 //
 // Bundled today:
-//   - fzf      — required for any spawn (dep_ch fzf at script start)
-//   - aria2c   — required for downloads (dep_ch ffmpeg aria2c)
-//   - yt-dlp   — ani-cli 4.15 PREFERS it over ffmpeg when both are
-//                present, and the two are not equivalent:
+//   - curl-impersonate — the transport native resolution spawns. See
+//                the block above its entries below.
+//   - yt-dlp   — the downloader. It and ffmpeg are not equivalent:
 //                  yt-dlp  --fragment-retries infinite -N 16
 //                  ffmpeg  -c copy
 //                Sixteen parallel chunks with infinite per-chunk
 //                retries against one at a time with none. Bundling
 //                gives every user the faster, more failure-tolerant
 //                downloader rather than only those who happened to
-//                install it. ~37 MB, one self-contained file — the
-//                same order as aria2c, so the ~80 MB argument that
-//                keeps ffmpeg out does not apply here.
+//                install it. ~37 MB, one self-contained file.
 //
 // NOT bundled, by design:
 //   - ffmpeg   — too large (~80 MB compressed). Declared as a

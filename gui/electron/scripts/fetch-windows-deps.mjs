@@ -1,27 +1,24 @@
-// Pre-build step for `package:win`: download the POSIX-side ani-cli
-// dependencies that Git for Windows doesn't bundle, and stage them
-// under `build-resources/win/bin/`. electron-builder copies the dir
-// into the NSIS payload via `win.extraResources` in `package.json`,
+// Pre-build step for `package:win`: download the binaries the app
+// spawns that a Windows host will not have, and stage them under
+// `build-resources/win/bin/`. electron-builder copies the dir into
+// the NSIS payload via `win.extraResources` in `package.json`,
 // landing at `<install>/resources/bin/<binary>` at runtime. The Rust
-// backend prepends that dir to the spawned bash's PATH (see
-// `gui/backend/src/anicli/env.rs`) so ani-cli's `dep_ch` finds the
-// bundled binaries before any system install.
+// backend searches that dir ahead of PATH, so a bundled binary beats
+// a system install (see `resolve_bundled_bin` in
+// `gui/backend/src/app.rs`).
 //
-// Why this exists: ani-cli's dep_ch surfaces missing deps via `die`,
-// which `exit 1`s the entire shell — the `|| true` next to dep_ch
-// calls only catches non-fatal returns, not explicit exits. So a
-// Windows machine without these deps bricks playback / downloads
-// silently with a generic "couldn't start this episode" or
-// "download failed instantly" error. Bundling removes the
-// dependency on the user's environment.
+// Why this exists: a Windows machine has none of these, and without
+// them playback and downloads fail with nothing useful to say —
+// every play dies on the provider's interstitial, every download on a
+// missing downloader. Bundling removes the dependency on the user's
+// environment.
 //
 // Bundled today:
-//   - fzf       — required for any spawn (dep_ch fzf at script start)
-//   - aria2c    — required for downloads (dep_ch ffmpeg aria2c)
+//   - curl-impersonate.exe — the transport native resolution spawns.
+//   - yt-dlp.exe           — the downloader.
 // Not bundled: ffmpeg. Too large (~80 MB compressed) to ship in the
-// installer. Fetched on-demand by the backend when the user first
-// triggers a download — see `gui/backend/src/anicli/ffmpeg.rs`.
-
+// installer, so the NSIS script fetches it at install time — see
+// `build-resources/installer.nsh`.
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
