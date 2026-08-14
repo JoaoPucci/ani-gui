@@ -383,11 +383,13 @@ where
                     // `discard_mislabeled` recognizes MPEG-TS by its
                     // sync byte, and the warning's other half —
                     // malformed AAC timestamps — leaves a real MP4 it
-                    // walks past. ffmpeg runs without `-y` and with
-                    // nothing on stdin, so a surviving target is a
-                    // refusal, and the retry would fail with a working
-                    // ffmpeg. Whatever yt-dlp left is condemned by its
-                    // own report, so it goes regardless of shape.
+                    // walks past. What yt-dlp left is condemned by its
+                    // own report, so it goes regardless of shape
+                    // rather than being written over and half
+                    // forgotten. The result is ignored because nothing
+                    // downstream depends on it: the ffmpeg run carries
+                    // `-y` and replaces whatever survives, which is
+                    // what a file this process cannot unlink does.
                     let _ = std::fs::remove_file(&target);
                     on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
                 } else {
@@ -406,7 +408,12 @@ where
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
     }
-    cmd.arg("-extension_picky")
+    // `-y`: this command owns the target — the caller picked the name
+    // and is writing it now. Without it ffmpeg asks on a stdin that
+    // has nothing on it, reads EOF and refuses, so any leftover at
+    // that path turns a working retry into a failed download.
+    cmd.arg("-y")
+        .arg("-extension_picky")
         .arg("0")
         .arg("-loglevel")
         .arg("error")
