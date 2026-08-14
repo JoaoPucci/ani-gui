@@ -432,7 +432,8 @@ async fn post_play(
 
 /// SSE variant of `/api/play`. Same resolution chain, but the body is
 /// a `text/event-stream` that emits a `progress` event for every
-/// parsed `<provider> Links Fetched` progress line, then a
+/// [`ProgressLine`] the resolve reports — `Searching`, `Matched` and
+/// `LinksFetched`, each serialized as it arrives — then a
 /// final `done` event with the resolved CreateSessionResponse. Errors
 /// are sent as a single `error` event before the stream closes.
 ///
@@ -1265,9 +1266,11 @@ mod tests {
     /// resolves the title through the provider, wraps the resolved
     /// upstream URL in a session, and returns a `CreateSessionResponse`
     /// the renderer uses to navigate to `/play?session=<id>`. This
-    /// test pins only the route's existence + body validation contract
-    /// — the full subprocess behavior is exercised by the curl-shim
-    /// integration test in `tests/api_play.rs`.
+    /// test pins only the route's existence + body validation contract.
+    /// The resolution behaviour behind it is exercised by
+    /// `tests/api_play.rs`, which points `AppState::anidb_base` at a
+    /// local wiremock server and drives the real provider walk against
+    /// stubbed responses.
     #[tokio::test]
     async fn play_route_rejects_request_without_json_content_type() {
         // axum's Json extractor returns 415 (Unsupported Media Type)

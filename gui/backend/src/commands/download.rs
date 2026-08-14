@@ -1,11 +1,11 @@
 //! Download an episode to disk. Mirrors the play command's
 //! shape (same disambiguation, same Kitsu-driven select-index logic),
-//! but instead of registering a stream session it spawns yt-dlp /
-//! yt-dlp or ffmpeg to write an mp4 to disk.
+//! but instead of registering a stream session it spawns yt-dlp, or
+//! ffmpeg when yt-dlp is absent or fails, to write the file to disk.
 //!
-//! Progress lines (aria2c / yt-dlp / ffmpeg stderr) are forwarded to
-//! the SSE handler in `api::get_download_stream` so the renderer can
-//! show a live progress bar in the dock.
+//! Progress lines from whichever of the two ran are forwarded to the
+//! SSE handler in `api::get_download_stream` so the renderer can show
+//! a live progress bar in the dock.
 
 use std::path::PathBuf;
 
@@ -71,9 +71,11 @@ pub struct DownloadProgress {
 }
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
-/// in (so the renderer can fire a "reveal in folder" intent without
-/// guessing the exact filename — the template depends on
-/// the upstream's `allanime_title`, which we don't surface here).
+/// in, which is what a "reveal in folder" intent needs. The name is
+/// built here as `<resolved title> Episode <n>` with an `.mp4`
+/// extension, but the extension is not guaranteed: when yt-dlp cannot
+/// repackage the stream it leaves what it downloaded, so the
+/// directory is the only part the renderer can rely on.
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
     /// Directory the file was written to. Renderer feeds this to
