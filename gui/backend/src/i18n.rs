@@ -5,7 +5,10 @@
 //!
 //! Keys are organized by surface:
 //!
-//! - `error.scraper.*` — failures from provider resolution
+//! - `error.scraper.*` — a malformed body or a deadline, from
+//!   whichever layer hit it. The name says resolution and the grouping
+//!   no longer does: both remaining keys are cross-cutting, and a
+//!   download reaches each of them.
 //! - `error.search.*` — search-specific outcomes
 //! - `error.network.*` — HTTP / TLS / connectivity
 //! - `error.cache.*` — SQLite + on-disk image cache
@@ -53,9 +56,16 @@ pub mod keys {
     pub const NETWORK_UPSTREAM: &str = "error.network.upstream";
 
     // --- error.scraper.* ---
-    /// A provider response could not be parsed.
+    /// Something the app read did not have the shape it expected.
+    /// `AniError::ParseFailed` maps here from the metadata clients,
+    /// the provider parsers, the proxy's manifest rewriter and session
+    /// URL parsing; `AniError::Scraper` maps here too, and the only
+    /// thing that constructs it is a download tool exiting non-zero.
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
-    /// Resolution exceeded its timeout.
+    /// A deadline elapsed. `AniError::Timeout` maps here from a
+    /// bounded resolve, an availability probe, and a download whose
+    /// transfer ran past its hour — the last of which has nothing to
+    /// do with a provider.
     pub const SCRAPER_TIMEOUT: &str = "error.scraper.timeout";
 
     // --- error.search.* ---
