@@ -743,7 +743,7 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
             tracing::info!(
                 retry_after_secs = ?retry_after_secs,
                 wait = ?backoff,
-                "availability warm: allanime rate limited; backing off",
+                "availability warm: provider rate limited; backing off",
             );
         }
         sleep(backoff).await;

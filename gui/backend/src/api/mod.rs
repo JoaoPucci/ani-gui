@@ -537,7 +537,7 @@ async fn post_availability(
     ))
 }
 
-/// Cached-only batch lookup. No fresh allmanga queries are issued —
+/// Cached-only batch lookup. Nothing is asked of the provider —
 /// the caller (home / search) just reads what's already in the cache
 /// to filter known-unavailable cards out of list views.
 async fn post_availability_batch(

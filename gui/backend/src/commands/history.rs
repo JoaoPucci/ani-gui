@@ -263,7 +263,7 @@ mod tests {
 
     // — history_delete ————————————————————————————————————————————
     //
-    // Per-row delete operates on the same TSV file the CLI shares.
+    // Per-row delete operates on the app's own TSV file.
     // Pins: removes the matching id, preserves others byte-identically,
     // is idempotent (no-op delete of an unknown id returns false), and
     // handles a missing file as "nothing to delete" rather than erroring.
