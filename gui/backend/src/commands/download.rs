@@ -380,6 +380,15 @@ where
                     if ffmpeg.is_none() {
                         return Err(AniError::FfmpegMissing);
                     }
+                    // `discard_mislabeled` recognizes MPEG-TS by its
+                    // sync byte, and the warning's other half —
+                    // malformed AAC timestamps — leaves a real MP4 it
+                    // walks past. ffmpeg runs without `-y` and with
+                    // nothing on stdin, so a surviving target is a
+                    // refusal, and the retry would fail with a working
+                    // ffmpeg. Whatever yt-dlp left is condemned by its
+                    // own report, so it goes regardless of shape.
+                    let _ = std::fs::remove_file(&target);
                     on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
                 } else {
                     // v5's && chain: a failing yt-dlp run retries the
