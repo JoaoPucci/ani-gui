@@ -988,29 +988,23 @@ async fn the_ffmpeg_retry_starts_from_an_absent_target() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn the_ffmpeg_run_permits_replacing_its_target() {
-    // Clearing the target before the retry is best-effort: a file the
-    // process cannot unlink — read-only parent, a Windows lock — stays
-    // where it is, and ffmpeg without an overwrite flag then refuses
-    // and the retry fails on a machine that has ffmpeg. `-y` is what
-    // makes the removal's outcome stop mattering.
-    //
-    // The stub refuses unless it sees the flag, which is the contract
-    // being asserted: not that the file is gone, but that ffmpeg is
-    // allowed to replace it either way.
+async fn ffmpeg_as_the_first_tool_may_not_replace_an_earlier_download() {
+    // Nothing this invocation wrote can be at the target when ffmpeg
+    // is the first tool to run: whatever is there is an earlier
+    // download. The confirm dialog asks the user for a directory and
+    // never for permission to overwrite, so replacing it silently is
+    // a file they did not agree to lose.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    let target = dest.path().join("Show Episode 1.mp4");
+    let argv = dest.path().join("argv");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "for a in \"$@\"; do [ \"$a\" = '-y' ] && exec sh -c \"printf 'OK' > '{target}'\"; done\n\
-             echo 'File exists. Not overwriting - exiting' >&2\nexit 1",
-            target = target.display()
+            "printf '%s\\n' \"$@\" > '{argv}'\nexit 0",
+            argv = argv.display()
         ),
     );
-    let mut lines: Vec<String> = Vec::new();
     spawn_download_tool(
         "https://cdn.example/x/master.m3u8",
         dest.path(),
@@ -1018,9 +1012,63 @@ async fn the_ffmpeg_run_permits_replacing_its_target() {
         None,
         &bin.path().display().to_string(),
         std::time::Duration::from_secs(10),
-        &mut |l: &str| lines.push(l.to_string()),
+        &mut |_l: &str| {},
     )
     .await
-    .expect("ffmpeg must be allowed to replace its own target");
-    assert_eq!(std::fs::read(&target).expect("ffmpeg wrote it"), b"OK");
+    .expect("the stub succeeds");
+    let seen = std::fs::read_to_string(&argv).expect("stub recorded its argv");
+    assert!(
+        !seen.lines().any(|a| a == "-y"),
+        "ffmpeg must not be told to overwrite a file this run did not write: {seen:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_repackage_retry_may_replace_the_file_it_condemned() {
+    // The other half. Here yt-dlp wrote the target during this run and
+    // reported it unusable, so the retry owns that path — and the
+    // removal ahead of it is best-effort, which is why the flag has to
+    // carry the case where the file could not be unlinked.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    let argv = dest.path().join("argv");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '\\000\\000\\000\\040ftypmp42' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "printf '%s\\n' \"$@\" > '{argv}'\nprintf 'OK' > '{target}'\nexit 0",
+            argv = argv.display(),
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("the retry runs");
+    let seen = std::fs::read_to_string(&argv).expect("stub recorded its argv");
+    assert!(
+        seen.lines().any(|a| a == "-y"),
+        "the retry owns the target and must be allowed to replace it: {seen:?}"
+    );
 }
