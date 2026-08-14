@@ -56,10 +56,12 @@ pub fn sweep_legacy_files(cache_dir: &Path, state_dir: &Path) -> SweepReport {
 /// mid-update leaves one per launch — and the code that would have
 /// cleaned them up is gone.
 ///
-/// The one place this sweep matches on a prefix rather than an exact
-/// name, because the pid is unknowable from here. The prefix is the
-/// staging one specifically, not the script's name: a user's own
-/// `ani-cli.bak` in the same directory is not ours to delete.
+/// The one place this sweep matches on a pattern rather than an exact
+/// name, because the pid is unknowable from here. The pattern is as
+/// tight as the thing it is cleaning up: the staging prefix followed
+/// by digits, which is all the updater ever wrote. A user's own
+/// `ani-cli.bak`, or an `ani-cli.update-staging.notes` nobody's code
+/// produced, is not ours to delete.
 fn sweep_staging_copies(cache_dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(cache_dir) else {
         return Vec::new();
@@ -70,7 +72,11 @@ fn sweep_staging_copies(cache_dir: &Path) -> Vec<PathBuf> {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with(STAGING_PREFIX))
+                .and_then(|n| n.strip_prefix(STAGING_PREFIX))
+                // The suffix the updater wrote was a process id and
+                // nothing else. Requiring digits is what separates a
+                // file it made from one that merely wears the name.
+                .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
         })
         .filter(|p| remove_if_present(p))
         .collect();
