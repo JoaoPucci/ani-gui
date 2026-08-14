@@ -1,15 +1,32 @@
 #!/bin/sh
 # Architectural invariant: the Linux packages (.deb + AppImage) must
-# ship the small POSIX-side ani-cli dependencies bundled in the
-# package, and the .deb must declare `Recommends: ffmpeg` so apt
-# pulls the heavy distro build automatically.
+# stage the binaries the app spawns, and the .deb must declare
+# `Recommends: ffmpeg` so apt pulls the heavy distro build
+# automatically.
 #
-# Without this, ani-cli's `dep_ch fzf` aborts the script at startup
-# on a clean Ubuntu / Fedora desktop, silently bricking playback —
-# even before the download path needs ffmpeg/aria2c. The Windows
-# installer has the same shape (`fetch-windows-deps.mjs` + NSIS
-# bundle); this test keeps the Linux side in lockstep so a future
-# refactor can't quietly drop one side.
+# Without them a clean Ubuntu / Fedora desktop fails at the two points
+# that matter and says little about why: every play dies on the
+# provider's TLS interstitial without the impersonating transport, and
+# every download dies without a downloader. Bundling the small fast
+# ones removes that dependency on the user's environment; ffmpeg is
+# too large to stage, hence the `Recommends:`.
+#
+# This once described the script's dependencies — `dep_ch fzf`
+# aborting at startup, aria2c for downloads. Those went when the app
+# stopped running the script, and the staged set is now the transport
+# plus yt-dlp. The assertions below did not change with them, which is
+# the hazard this header exists to avoid: a check whose stated subject
+# has been retired still runs green, and the green reads as coverage
+# of something nobody is checking.
+#
+# The Windows installer has the same shape
+# (`fetch-windows-deps.mjs` + NSIS bundle) and `windows_deps.sh` is
+# its counterpart, including an inventory comparison that holds the
+# two platforms to the same dependency set. One difference is worth
+# knowing: the e2e workflow runs `pnpm run dist`, so a Linux package
+# really is built in CI, while nothing builds the Windows installer.
+# On this side the configuration is checked and then exercised; on
+# that side only the configuration.
 #
 # Specifically:
 #   - `gui/electron/scripts/fetch-linux-deps.mjs` must exist as the
