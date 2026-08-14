@@ -24,7 +24,7 @@ fn state_with(entries: &[&str]) -> tempfile::TempDir {
 #[test]
 fn the_orphaned_copy_is_removed_and_named() {
     let dir = cache_with(&["ani-cli"]);
-    let report = sweep_legacy_script(dir.path());
+    let report = sweep_legacy_files(dir.path(), state_with(&[]).path());
     assert_eq!(report.removed.len(), 1);
     assert!(report.removed[0].ends_with("ani-cli"));
     assert!(
@@ -36,7 +36,9 @@ fn the_orphaned_copy_is_removed_and_named() {
 #[test]
 fn a_cache_without_the_copy_reports_nothing() {
     let dir = cache_with(&[]);
-    assert!(sweep_legacy_script(dir.path()).removed.is_empty());
+    assert!(sweep_legacy_files(dir.path(), state_with(&[]).path())
+        .removed
+        .is_empty());
 }
 
 #[test]
@@ -44,8 +46,11 @@ fn the_sweep_is_idempotent() {
     // Every launch runs this. The second run must be silent, or the
     // diagnostics panel reports a removal that did not happen.
     let dir = cache_with(&["ani-cli"]);
-    assert_eq!(sweep_legacy_script(dir.path()).removed.len(), 1);
-    assert!(sweep_legacy_script(dir.path()).removed.is_empty());
+    let state = state_with(&["anicli-update-log.json"]);
+    assert_eq!(sweep_legacy_files(dir.path(), state.path()).removed.len(), 2);
+    assert!(sweep_legacy_files(dir.path(), state.path())
+        .removed
+        .is_empty());
 }
 
 #[test]
@@ -53,7 +58,7 @@ fn nothing_else_in_the_cache_is_touched() {
     // The cache root holds live state — an over-eager sweep would take
     // the image cache or the database with it.
     let dir = cache_with(&["ani-cli", "ani-cli.bak", "images", "meta.sqlite3"]);
-    let report = sweep_legacy_script(dir.path());
+    let report = sweep_legacy_files(dir.path(), state_with(&[]).path());
     assert_eq!(report.removed.len(), 1, "only the script itself");
     for kept in ["ani-cli.bak", "images", "meta.sqlite3"] {
         assert!(dir.path().join(kept).exists(), "{kept} must survive");
@@ -66,7 +71,7 @@ fn a_missing_cache_directory_is_not_an_error() {
     // root yet, and a sweep that failed there would fail the boot.
     let dir = tempfile::tempdir().expect("tmp");
     let absent = dir.path().join("not-created-yet");
-    assert!(sweep_legacy_script(&absent).removed.is_empty());
+    assert!(sweep_legacy_files(&absent, &absent).removed.is_empty());
 }
 
 #[test]
@@ -75,7 +80,9 @@ fn a_directory_named_like_the_script_is_left_alone() {
     // wearing that name belongs to whoever made it.
     let dir = tempfile::tempdir().expect("tmp");
     std::fs::create_dir(dir.path().join("ani-cli")).expect("mkdir");
-    assert!(sweep_legacy_script(dir.path()).removed.is_empty());
+    assert!(sweep_legacy_files(dir.path(), state_with(&[]).path())
+        .removed
+        .is_empty());
     assert!(dir.path().join("ani-cli").is_dir());
 }
 

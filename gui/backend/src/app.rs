@@ -125,11 +125,13 @@ impl AppState {
         // global PATH.
         let bundled_bin = resolve_bundled_bin(resource_dir.as_deref());
         let cache_root = paths::cache_dir().ok_or(AniError::Io)?;
-        // Earlier versions maintained their own copy of the shell
-        // script here and refreshed it on launch. Nothing reads it now,
-        // so it is removed rather than left behind — reported, not
-        // silent, through the diagnostics page.
-        let legacy_sweep = crate::legacy_script::sweep_legacy_script(&cache_root);
+        let state_root = paths::state_dir().ok_or(AniError::Io)?;
+        // Earlier versions kept their own copy of the shell script in
+        // the cache root and logged every update attempt under the
+        // state dir. Nothing reads either now, so both are removed
+        // rather than left behind — reported, not silent, through the
+        // diagnostics page.
+        let legacy_sweep = crate::legacy_script::sweep_legacy_files(&cache_root, &state_root);
         for path in &legacy_sweep.removed {
             tracing::info!(
                 target: "legacy_script",
@@ -148,7 +150,7 @@ impl AppState {
         let meta_http = crate::proxy::upstream::build_meta_client();
         let kitsu = KitsuClient::new(meta_http.clone());
         let config_path = paths::config_file().ok_or(AniError::Io)?;
-        let state_dir = paths::state_dir().ok_or(AniError::Io)?;
+        let state_dir = state_root;
         Ok(Self {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
