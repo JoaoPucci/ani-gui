@@ -2,8 +2,10 @@
 //! upstream HLS URL (with referer) and gets back the
 //! proxy URL hls.js / `<video>` should fetch.
 //!
-//! In M1.5 the upstream URL comes from a manual paste field; in M2+ it'll
-//! come from the scraper output. The IPC contract is the same either way.
+//! The URL comes from the resolver: the play path walks the provider
+//! and hands the master playlist here. The contract predates that — it
+//! was written against a paste field — and is unchanged by it, which is
+//! the point of taking a URL rather than a show.
 
 use serde::{Deserialize, Serialize};
 use url::Url;

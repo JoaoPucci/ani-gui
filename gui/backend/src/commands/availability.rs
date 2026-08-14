@@ -34,7 +34,8 @@ const AVAILABILITY_TTL_ONGOING_SECS: u64 = 24 * 60 * 60;
 const AVAILABILITY_TTL_NEGATIVE_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Inputs for `availability_check` — a Kitsu title (plus alts) and
-/// the audio mode under which to ask "is this on allmanga?". Carries
+/// the audio mode under which to ask "does the provider carry this?".
+/// Carries
 /// optional Kitsu metadata (`episode_count`, `status`, `kitsu_id`)
 /// that lets the resolver disambiguate name collisions and pick the
 /// right cache TTL bucket.
@@ -42,7 +43,7 @@ const AVAILABILITY_TTL_NEGATIVE_SECS: u64 = 7 * 24 * 60 * 60;
 pub struct AvailabilityArgs {
     /// Canonical Kitsu title — first search target.
     pub title: String,
-    /// `"sub"` or `"dub"` — gates the kind of result allmanga returns.
+    /// `"sub"` or `"dub"` — gates the kind of result the provider returns.
     pub mode: String,
     /// Fallback titles to try when canonical returns no hits (e.g.
     /// romanized + native name pulled from Kitsu's `titles.*`).
@@ -52,12 +53,12 @@ pub struct AvailabilityArgs {
     /// disambiguation the play path uses (Stone Ocean Part 6 etc.).
     /// Without it, the picker falls back to first-hit, which means
     /// availability says "yes" for any show with a colliding name
-    /// even when the actual show isn't on allmanga.
+    /// even when the provider does not carry the actual show.
     #[serde(default)]
     pub episode_count: Option<u32>,
     /// Year the show first aired, parsed from Kitsu's `start_date`.
     /// Plumbed through the picker as the primary tie-break against
-    /// allmanga's `airedStart.year`. See [`PlayArgs::year`].
+    /// the provider's own aired-start year. See [`PlayArgs::year`].
     #[serde(default)]
     pub year: Option<u32>,
     /// Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`),
@@ -86,7 +87,7 @@ pub struct AvailabilityArgs {
     /// legacy callers keep interactive semantics.
     #[serde(default)]
     pub background: bool,
-    /// Skip the cached row and ask allanime directly.
+    /// Skip the cached row and ask the provider directly.
     ///
     /// The stored count is a snapshot — 24h for an ongoing show — and
     /// the provider catalogues episodes inside that window. A user
@@ -104,13 +105,13 @@ pub struct AvailabilityArgs {
     pub bypass_cache: bool,
 }
 
-/// Result of an availability probe — does allmanga carry the show in
+/// Result of an availability probe — does the provider carry the show in
 /// the requested mode, and (when it does) what's the truthful episode
 /// cap and recap-tag list?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AvailabilityResponse {
-    /// True when allmanga has at least one candidate matching any of
-    /// the queried titles. False = the show is not in allmanga's
+    /// True when the provider has at least one candidate matching any
+    /// of the queried titles. False = the show is not in its
     /// catalog (e.g. Western animation Kitsu happens to index).
     pub available: bool,
     /// Highest INTEGER episode number streamable in the requested
@@ -120,7 +121,7 @@ pub struct AvailabilityResponse {
     /// `extra_episodes`. None when available=false or legacy cache.
     #[serde(default)]
     pub episode_count: Option<u32>,
-    /// Non-integer episode tags allmanga has streamable (recap /
+    /// Non-integer episode tags the provider has streamable (recap /
     /// special episodes — e.g. `["1061.5"]` for One Piece).
     /// Frontend splices these into the episode strip at their
     /// numeric position. Empty when there are no extras.
@@ -188,9 +189,9 @@ pub struct AvailabilityBatchResponse {
     /// a cached value; missing ids should be treated as "unknown,
     /// render normally" by the caller.
     pub cached: HashMap<String, bool>,
-    /// Map of kitsu_id → allmanga's playable episode count, for cached
+    /// Map of kitsu_id → the provider's playable episode count, for cached
     /// rows where the probe found the show. Lets the home Continue
-    /// Watching card cap pickNextEpisode against allmanga's true count
+    /// Watching card cap pickNextEpisode against the provider's true count
     /// instead of Kitsu's (sometimes stale) announced total — the
     /// detail page reads the same value via an inline probe, so home
     /// and detail end up computing the same defaultEpisode without an
@@ -690,7 +691,7 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// needed to run check_availability (title + alt_titles + mode +
 /// kitsu_id). Entries with an existing fresh cache entry are
 /// skipped; the rest are probed sequentially with a 500ms gap
-/// between queries so we don't hammer allmanga.
+/// between queries so we don't hammer the provider.
 ///
 /// Designed to be called fire-and-forget after a list view renders;
 /// the caller doesn't wait for the result. The next visit to the
@@ -1690,7 +1691,7 @@ mod tests {
     }
 
     /// Cross-mode cache isolation: writing a sub row must not
-    /// surface under dub lookup, since allmanga can have a show
+    /// surface under dub lookup, since the provider can have a show
     /// in one mode but not the other.
     #[test]
     fn batch_cached_keys_by_mode() {

@@ -28,9 +28,10 @@ pub enum AniError {
         key: &'static str,
     },
 
-    /// A deadline elapsed. The shared one: a bounded resolve, an
-    /// availability probe, and a download whose transfer ran past its
-    /// hour all end here, and only the first is a provider's fault.
+    /// A deadline elapsed. The shared one: a bounded resolve and an
+    /// availability probe both talk to the provider and both end here,
+    /// and so does a download whose transfer ran past its hour, which
+    /// is not the provider's doing at all.
     #[error("deadline exceeded")]
     Timeout,
 
