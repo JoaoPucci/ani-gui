@@ -802,3 +802,43 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));
 }
+
+#[tokio::test]
+async fn a_missing_tool_refuses_before_the_provider_is_touched() {
+    // With neither yt-dlp nor ffmpeg installed the resolution cannot
+    // be used for anything, so spending it is spending the user's
+    // time and the provider's patience to arrive at an answer that
+    // was knowable at the click. The install modal should be the
+    // first thing that happens, not the thing that happens after a
+    // walk — or instead of the walk's own failure, which is worse
+    // still: a network error then hides the real cause.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let err = download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect_err("no tool means no download");
+    assert!(
+        matches!(err, AniError::FfmpegMissing),
+        "the absent tool is what the user is told about: {err:?}"
+    );
+    let hits = server
+        .received_requests()
+        .await
+        .expect("the mock server records requests");
+    assert!(
+        hits.is_empty(),
+        "the provider was walked before the tool check: {} request(s)",
+        hits.len()
+    );
+}
