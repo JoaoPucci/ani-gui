@@ -59,6 +59,18 @@ describe('credits — bundled tools', () => {
 		assertUniqueNames(BUNDLED_TOOLS, 'BUNDLED_TOOLS');
 	});
 
+	it('lists what the packages actually ship, and nothing they dropped', () => {
+		// Both halves moved when resolution went native: the shell
+		// script stopped being bundled, and the impersonating transport
+		// the resolver spawns started being. A credits list that lags
+		// either way misstates what the user installed — and this one
+		// is the page's whole claim, so a stale entry is a wrong answer
+		// rather than a missing one.
+		const names = BUNDLED_TOOLS.map((t) => t.name);
+		expect(names, 'the script is no longer bundled').not.toContain('ani-cli');
+		expect(names, 'the transport is bundled on both platforms').toContain('curl-impersonate');
+	});
+
 	it('noteIds are unique (and thus typesafe against the page-side switch)', () => {
 		const seen = new Set<string>();
 		for (const tool of BUNDLED_TOOLS) {

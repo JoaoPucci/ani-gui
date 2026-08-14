@@ -76,6 +76,33 @@ mod tests {
     }
 
     #[test]
+    fn app_info_reports_what_the_boot_sweep_removed() {
+        // The sweep runs once, during backend boot, on installs that
+        // carried the copy an earlier version maintained. Reporting it
+        // here is what makes the removal visible rather than silent:
+        // the diagnostics page reads app-info and has no other channel
+        // to learn a file was deleted out from under the user.
+        let mut state = fake_state();
+        state.legacy_sweep = crate::legacy_script::SweepReport {
+            removed: vec![PathBuf::from("/home/u/.cache/ani-gui/ani-cli")],
+        };
+        let info = app_info(&state).expect("info");
+        assert_eq!(
+            info.removed_legacy_paths,
+            vec!["/home/u/.cache/ani-gui/ani-cli".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_empty_sweep_reports_an_empty_list_not_an_absent_one() {
+        // Every launch after the first, and every install that never
+        // ran one of those versions. The field is present and empty so
+        // the page renders nothing, rather than absent so it breaks.
+        let info = app_info(&fake_state()).expect("info");
+        assert!(info.removed_legacy_paths.is_empty());
+    }
+
+    #[test]
     fn app_info_projects_state_fields() {
         let s = fake_state();
         let info = app_info(&s).unwrap();
