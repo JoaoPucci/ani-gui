@@ -559,6 +559,25 @@ fn scratch_path(dest: &std::path::Path) -> std::path::PathBuf {
 /// watching the dock, and the same sentence.
 const ALREADY_HERE: &str = "that episode is already in this folder; keeping the existing file";
 
+/// Whether `path` holds an episode.
+///
+/// Present and non-empty. The emptiness is not fussiness: where hard
+/// links are unsupported, publication claims the name by creating it
+/// and then renames onto its own claim, and a process that dies
+/// between those two calls leaves the empty claim standing. Nothing
+/// distinguishes it from a finished download by name alone, so under
+/// a plain existence test every later attempt reported the episode as
+/// present and the name stayed unusable until the user found a
+/// zero-byte file in their downloads and deleted it.
+///
+/// A zero-length file is not an episode. Nothing plays it, no
+/// transfer produces one, and it is exactly what that failure leaves
+/// — so it is claimable, and every question of the form "is the
+/// episode already here" is asked through this.
+fn holds_an_episode(path: &std::path::Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > 0)
+}
+
 /// What happened when a finished transfer went to take its name.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Published {
@@ -591,6 +610,19 @@ pub(crate) enum Published {
 /// [`AniError::Io`] when the finished file cannot be installed and
 /// nothing was already there to explain why.
 pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Result<Published> {
+    // Before either mechanism, because both ask the filesystem for a
+    // name nobody holds and an abandoned claim holds it. Clearing it
+    // here rather than in the link-free branch also covers a claim
+    // left on a volume that supports links — `hard_link` can fail for
+    // its own reasons and drop through to the fallback.
+    //
+    // The concurrent case costs nothing worth avoiding: the window
+    // between another publisher's claim and its rename is two
+    // syscalls wide, and losing it means one complete copy of this
+    // episode replacing another complete copy of it.
+    if target.exists() && !holds_an_episode(target) {
+        let _ = std::fs::remove_file(target);
+    }
     match std::fs::hard_link(scratch, target) {
         Ok(()) => {
             // The link is the file now; the scratch name is one extra
@@ -695,7 +727,7 @@ where
     // Below both locks, because above them it would be answering
     // while another download is midway through creating that file,
     // and the interesting case is exactly the one where it appears.
-    if target.exists() {
+    if holds_an_episode(&target) {
         on_line(ALREADY_HERE);
         return Ok(());
     }
@@ -818,7 +850,12 @@ where
     // to install. That has always ended as a success here, and
     // changing it is a separate argument from where the file gets
     // written.
-    if !scratch.path.exists() {
+    //
+    // An empty file is the same event with one more syscall in it, and
+    // publishing one would put a name in the user's folder that reads
+    // as an episode to everything downstream — the app manufacturing
+    // the very claim it now has to recover from.
+    if !holds_an_episode(&scratch.path) {
         return Ok(());
     }
     // Publication decides the file's fate from here: installed under
