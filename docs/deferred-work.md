@@ -195,6 +195,33 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+## Recovering a download's abandoned claim automatically
+
+- **Take back the empty file an interrupted download left at an
+  episode's name**, instead of asking the user to delete it.
+
+  Where the destination has no hard links, publication claims the name
+  by creating it empty and renames onto its own claim. A process that
+  dies between those two calls leaves the empty file, and the app now
+  refuses that name and says so rather than clearing it.
+
+  Clearing it automatically was tried three ways and each failed
+  differently. Gating on the download's lock does not work: the lock
+  file is named for the target, so two spellings of one name take two
+  lock files, and requiring a lock blocks recovery wherever no lock
+  can be made. Unlinking and re-claiming leaves a window where the
+  name is free. Renaming over the claim closes that window but still
+  acts on a classification that can be stale, so two publishers each
+  replace the other's finished file — and the target name carries
+  neither mode nor quality, so those need not be the same episode.
+
+  What is missing is a conditional replace: swap in a file only if the
+  name still holds exactly what was inspected. Nothing portable to
+  FAT32 and exFAT on both Linux and Windows offers one. Anyone picking
+  this up should start there rather than at the reclaim, and should
+  know that every scheme layered on top of a plain classify-then-act
+  has been tried on this branch.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if

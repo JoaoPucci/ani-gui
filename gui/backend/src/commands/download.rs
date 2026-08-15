@@ -663,32 +663,31 @@ pub(crate) enum Published {
 /// nothing was already there to explain why.
 pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Result<Published> {
     match at_target(target) {
-        // Renamed onto, not unlinked first. Unlinking and then
-        // claiming the freed name is two operations with a gap, and
-        // the gap is what let a second instance — having classified
-        // the same claim before any of it happened — delete a finished
-        // episode. A rename replaces the claim in one step, on every
-        // filesystem this ships to, so there is no moment where the
-        // name is free and nothing to unlink that may have stopped
-        // being a claim.
+        // Reported, not taken. Three shapes were tried for taking it
+        // and none of them worked, for one reason: deciding a file is
+        // abandoned and acting on that decision are separate steps,
+        // and this filesystem offers nothing to fuse them. Whatever
+        // the act is — unlink, or rename over — it can land on
+        // something that stopped being a claim in between.
         //
-        // Gating this on the target's lock was the previous answer and
-        // was wrong twice over. The lock file is named for the target,
-        // so two spellings of one name — 8.3 aliases — can take two
-        // different locks and leave both holders believing they are
-        // alone; and where no lock can be made at all, refusing to
-        // reclaim left a crashed download's claim blocking that
-        // episode on every future attempt.
+        // The lock cannot stand in for that. It is named for the
+        // target, so two spellings of one name take two lock files and
+        // leave both holders believing they are alone; and requiring
+        // it blocked recovery entirely wherever no lock can be made.
         //
-        // What remains is narrow and bounded: an episode that arrives
-        // between the classification and the rename is replaced rather
-        // than destroyed, so the folder still ends with one complete
-        // file at that name.
+        // Underneath was a demand for two guarantees at once: never
+        // leave a name blocked, and never replace a file this app
+        // cannot prove is its own. On a filesystem with no conditional
+        // replace they do not both fit, and the second is the one this
+        // branch has spent itself establishing — the confirm dialog
+        // asks for a directory and never for permission to overwrite.
+        //
+        // So the app says what is in the way and stops. The caller
+        // names the file on the progress stream, which is what turns
+        // this from a dead end into one deletion.
         AtTarget::AbandonedClaim => {
-            return match std::fs::rename(scratch, target) {
-                Ok(()) => Ok(Published::Installed),
-                Err(_) => Err(AniError::Io),
-            };
+            let _ = std::fs::remove_file(scratch);
+            return Err(AniError::Io);
         }
         // Someone else is mid-publish. Standing down costs this
         // transfer; taking the claim would let both renames land, each
@@ -807,8 +806,19 @@ where
     // while another download is midway through creating that file,
     // and the interesting case is exactly the one where it appears.
     match at_target(&target) {
-        // Free, or holding only a claim nobody is coming back for.
-        AtTarget::Nothing | AtTarget::AbandonedClaim => {}
+        // Free.
+        AtTarget::Nothing => {}
+        // An interrupted publication left an empty file at the
+        // episode's name. Nothing can install over it safely, so the
+        // dock names it and the user removes it — before a transfer
+        // rather than after, since the answer cannot change.
+        AtTarget::AbandonedClaim => {
+            on_line(&format!(
+                "an interrupted download left an empty file at {}; delete it and try again",
+                target.display()
+            ));
+            return Err(AniError::Io);
+        }
         // Present, or being published right now by someone else. Both
         // end with the episode at that name and neither is this
         // transfer's to change.
