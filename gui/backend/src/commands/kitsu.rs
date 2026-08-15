@@ -663,8 +663,9 @@ async fn first_kitsu_match(
 /// Cache-key prefix for the per-show last-watched timestamp. Stamped
 /// on every GUI-driven `mark-watched` call; the home-page Continue
 /// Watching strip sorts by it descending so the user's most recent
-/// play surfaces first regardless of file position. CLI-only plays
-/// never stamp here, so those rows fall to the bottom of the strip
+/// play surfaces first regardless of file position. A play that
+/// resolved and never reached mark-watched — the user left before it
+/// fired — has no stamp, so its row falls to the bottom of the strip
 /// (still rendered, just demoted).
 const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
 
@@ -672,9 +673,9 @@ fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
 }
 
-/// Read the millis-since-epoch wall-clock timestamp for the last GUI
-/// play of `show_id`. Returns `None` for shows the user has only
-/// played via the CLI (or hasn't played at all).
+/// Read the millis-since-epoch wall-clock timestamp for the last
+/// marked-watched play of `show_id`. Returns `None` for a show whose
+/// plays never reached mark-watched, and for one never played.
 pub fn watched_at_get(state: &AppState, show_id: &str) -> Result<Option<i64>> {
     let body = meta_cache_get(&state.cache_pool, &watched_at_key(show_id))?;
     Ok(body.and_then(|s| s.parse::<i64>().ok()))

@@ -1079,7 +1079,7 @@ export function kitsuResolveAllmangaShowId(
 /**
  * Per-show last-watched millis-since-epoch map. Populated by the
  * backend's `mark-watched` handler whenever the user clicks an
- * episode through the GUI; CLI plays bypass it. Drives the home
+ * episode; a play that never reaches it leaves no stamp. Drives the home
  * page Continue Watching sort: stamped rows on top (most recent
  * first), unstamped rows at the bottom in original file order.
  */

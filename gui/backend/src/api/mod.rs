@@ -1881,7 +1881,7 @@ mod tests {
     }
 
     /// Watched-at endpoint: returns the SQLite-stamped per-show_id
-    /// last-watched-millis map (GUI-only; CLI plays don't update this).
+    /// last-watched-millis map (only mark-watched writes it).
     /// Home-page Continue Watching strip uses it to sort the strip
     /// most-recent-first; untimestamped rows stay in file order at the
     /// bottom.

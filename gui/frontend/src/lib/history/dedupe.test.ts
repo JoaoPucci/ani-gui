@@ -70,18 +70,19 @@ describe('dedupeHistoryByKitsuId', () => {
 		expect(dedupeHistoryByKitsuId([frac, int], matches)).toEqual([frac]);
 	});
 
-	it('preserves CLI progress over an older GUI-stamped row when ep_no is higher', () => {
-		// Codex P2 #3367725631 — the regression my first cut hit. User
-		// watched via GUI at ep 5 long ago (stamped, sorted to the
-		// top). The catalogue drifted, they continued to ep 12
-		// (unstamped, sorted below). Previous "first occurrence wins"
-		// dropped the CLI row and the strip would resume from the
+	it('preserves the further-along row over an older stamped one when ep_no is higher', () => {
+		// Codex P2 #3367725631 — the regression my first cut hit. The
+		// user watched to ep 5 long ago and it was marked watched, so
+		// it sorts to the top. The catalogue drifted and they
+		// continued to ep 12, whose play never reached mark-watched,
+		// so it sorts below. Previous "first occurrence wins" dropped
+		// the further-along row and the strip would resume from the
 		// stale ep 5. The fix: ep_no comparison wins.
 		const stampedOld = entry('all-stamped-old', '5');
-		const cliCurrent = entry('all-cli-current', '12');
+		const cliCurrent = entry('all-unstamped-current', '12');
 		const matches: Record<string, KitsuAnimeRef | null> = {
 			'all-stamped-old': kitsu('k-shared'),
-			'all-cli-current': kitsu('k-shared')
+			'all-unstamped-current': kitsu('k-shared')
 		};
 		// sortByWatchedAt would land the stamped row first; the
 		// dedupe still picks the row with the actual current progress.

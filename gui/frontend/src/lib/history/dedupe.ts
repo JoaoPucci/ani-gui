@@ -40,9 +40,9 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  *
  * Position-preservation: the surviving row emits at the position of
  * its group's first occurrence in the input. So if the input is
- * `[stamped-old, other-show, cli-current]` (sortByWatchedAt put the
- * stamped row at index 0 and the unstamped CLI row at index 2), the
- * output is `[cli-current, other-show]` — the dedupe winner takes
+ * `[stamped-old, other-show, unstamped-current]` (sortByWatchedAt
+ * put the stamped row at index 0 and the unstamped one at index 2),
+ * the output is `[unstamped-current, other-show]` — the winner takes
  * the loser's slot and the overall strip ordering is unchanged.
  *
  * One cosmetic side effect when duplicates DO exist: matches arrive
