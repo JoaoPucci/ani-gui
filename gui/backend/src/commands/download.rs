@@ -453,22 +453,30 @@ where
     F: FnMut(&str) + Send,
 {
     let target = dest.join(format!("{file_stem}.mp4"));
+    // The ceiling belongs to the transfer, not to each step inside
+    // it: one absolute instant, and everything below runs against
+    // what is left of it. Taken before either lock, because waiting
+    // for whoever holds this file is time the transfer is spending —
+    // and the two waits are one wait to the user, who is looking at a
+    // queued download either way.
+    //
+    // It sat between them once, so a duplicate click waited out the
+    // first download's whole hour and then started an hour of its
+    // own, while the identical wait against another app instance
+    // ended at the deadline.
+    let deadline = tokio::time::Instant::now() + timeout;
     // Held until this function returns, so everything below — the
     // discard, the removal, the `-y` run — happens with no other
     // invocation writing this path.
     let lock = target_lock(&target);
-    let _writing = lock.lock().await;
+    let Ok(_writing) = tokio::time::timeout_at(deadline, lock.lock()).await else {
+        return Err(AniError::Timeout);
+    };
     // And the other app instance's download. Taken after the
     // in-process mutex so this process's own tasks queue on the cheap
     // lock and only one of them contends the file. Held to the return
     // — dropping the handle closes the descriptor, which is what
     // releases it.
-    //
-    // The ceiling belongs to the transfer, not to each tool inside
-    // it: one absolute instant, and every step below runs against
-    // what is left of it — starting with the wait for another
-    // instance, which is time this transfer is spending.
-    let deadline = tokio::time::Instant::now() + timeout;
     let _instance = acquire_instance_lock(&target, deadline).await?;
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
