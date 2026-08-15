@@ -335,42 +335,41 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// order them — including when one is killed mid-download, since it
 /// releases the lock on the dying process's behalf.
 ///
-/// Named from the target's path rather than placed beside it: a
-/// `.lock` sibling per episode would accumulate in the user's
-/// download folder, and this is app bookkeeping the user has no
-/// reason to meet.
+/// Placed beside the target, in a `.ani-gui-locks/` directory next to
+/// the file, and named from a digest of the file name.
 ///
-/// It lives under the app's own cache directory rather than the
-/// system temp directory, which is what lets the caller refuse a
-/// download that cannot take it. Temp is shared between local
-/// accounts on Linux, so another account can hold the file, and
-/// "cannot lock" there is an ordinary condition no download should
-/// hard-fail on. Under a directory this app creates, the same failure
-/// means the cache directory is unusable — which the metadata
-/// database and the image cache are about to discover too — so
-/// refusing is the honest answer.
+/// The location cannot depend on anything a process is configured
+/// with. Two earlier attempts did and both failed: the app cache
+/// directory moves with the dev profile, and the profile-independent
+/// one still resolved under `$XDG_CACHE_HOME`, which any launcher can
+/// set. An installed release and a source build with different cache
+/// roots write the same download folder and take different locks —
+/// exactly the case the lock exists for.
 ///
-/// [`paths::shared_lock_dir`] rather than [`paths::cache_dir`],
-/// because the latter moves with the dev profile and an installed
-/// release downloading beside a source build would then take a
-/// different lock for the same file.
+/// The destination directory is the one thing both contenders
+/// provably agree on: they were handed the same one, or they would
+/// not be racing. It is also writable by construction, since the
+/// download is about to put a video in it, which is what makes
+/// refusing on a lock failure reasonable rather than harsh.
 ///
-/// The parent is canonicalized so two instances configured with
-/// different routes to one directory — a symlink, a trailing `.` —
-/// still agree on the name.
+/// The cost is a directory the user can see in their download folder.
+/// It is dot-prefixed, so it is hidden on Linux and macOS and visible
+/// on Windows; carrying a lock nobody can rely on would be the worse
+/// trade.
+///
+/// Digested rather than named after the episode because a target
+/// already at the filesystem's name limit leaves no room for a
+/// suffix.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     use sha2::Digest as _;
     let parent = target.parent()?;
-    let dir = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-    let full = dir.join(target.file_name()?);
-    let digest = sha2::Sha256::digest(full.as_os_str().as_encoded_bytes());
+    let digest = sha2::Sha256::digest(target.file_name()?.as_encoded_bytes());
     let name = digest[..8].iter().fold(String::new(), |mut s, b| {
         use std::fmt::Write as _;
         let _ = write!(s, "{b:02x}");
         s
     });
-    let locks = crate::config::paths::shared_lock_dir()?;
-    Some(locks.join(format!("download-{name}.lock")))
+    Some(parent.join(".ani-gui-locks").join(format!("{name}.lock")))
 }
 
 /// How often a download waiting on another instance re-tries the OS
