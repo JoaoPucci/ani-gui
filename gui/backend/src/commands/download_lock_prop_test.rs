@@ -73,9 +73,12 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
 /// substituted a table — which is why case, then final sigma, then
 /// canonical normalization each had to be found separately.
 ///
-/// The name is bounded rather than assumed: past what a filesystem
-/// will accept, there is a digest instead, and both contenders reach
-/// that branch on the same input.
+/// There is no bound and no fallback. A digest past some byte
+/// threshold was the shape before this, and it put the table back: the
+/// threshold is measured on the spelling, so two spellings of one file
+/// can straddle it and then differ again once hashed. Carrying the
+/// name into a directory of its own needs no threshold, because a name
+/// that fits as a target fits as a sibling of one.
 #[test]
 fn the_lock_is_named_for_the_target_verbatim() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
