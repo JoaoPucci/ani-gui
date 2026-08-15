@@ -1832,7 +1832,7 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
     std::fs::write(&target, b"").expect("another publisher's live claim");
 
     assert_eq!(
-        publish(&scratch, &target).expect("publication succeeds"),
+        publish(&scratch, &target, Reclaim::Permitted).expect("publication succeeds"),
         Published::AlreadyThere,
         "a claim made moments ago belongs to a publisher still running"
     );
@@ -1953,7 +1953,7 @@ fn a_directory_at_the_target_is_a_failure_not_a_download() {
     std::fs::create_dir(&target).expect("something else holds the name");
 
     assert!(
-        publish(&scratch, &target).is_err(),
+        publish(&scratch, &target, Reclaim::Permitted).is_err(),
         "nothing playable is at the target, so this did not succeed"
     );
 }
@@ -2003,7 +2003,7 @@ fn publication_takes_over_an_abandoned_claim() {
     age_it(&target);
 
     assert_eq!(
-        publish(&scratch, &target).expect("publication succeeds"),
+        publish(&scratch, &target, Reclaim::Permitted).expect("publication succeeds"),
         Published::Installed
     );
     assert_eq!(
