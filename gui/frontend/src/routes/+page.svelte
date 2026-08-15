@@ -342,9 +342,10 @@
 		});
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
-				// Continue Watching ordering: GUI-stamped rows on top,
-				// most recently watched first. Unstamped (CLI-only)
-				// rows fall to the bottom in original file order. The
+				// Continue Watching ordering: stamped rows on top,
+				// most recently watched first. Rows that resolved but
+				// never reached mark-watched carry no stamp and fall
+				// to the bottom in original file order. The
 				// watched-at endpoint never throws — its catch above
 				// degrades to "treat everything as unstamped," which
 				// just preserves file order for everyone.

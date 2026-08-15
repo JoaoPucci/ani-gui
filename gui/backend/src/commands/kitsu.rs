@@ -1338,10 +1338,19 @@ mod tests {
     //
     // The history file is keyed by show_id and only stores ep_no/title — no
     // timestamps. The file's row order reflects "first time played"
-    // (in-place updates don't move rows). To render Continue Watching
+    // (in-place updates don't move rows), so to render Continue Watching
     // most-recently-watched-first we record a per-show_id wall-clock
-    // millis timestamp on every GUI play. CLI plays bypass this; their
-    // entries fall to the bottom of the strip ordered by file position.
+    // millis timestamp beside it.
+    //
+    // A row and its stamp are written by different requests. The row
+    // goes in when the stream resolves; the stamp is written by the
+    // click-side mark-watched handler. So an unstamped row is one that
+    // resolved and never reached mark-watched — the user left before it
+    // fired — or one whose stamp write failed, which is logged and
+    // swallowed because the play itself succeeded.
+    //
+    // Not the CLI: its history is a different file and nothing imports
+    // from it, so no CLI play can reach this ordering at all.
 
     #[test]
     fn watched_at_round_trips_for_a_given_show_id() {

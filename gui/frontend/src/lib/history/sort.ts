@@ -9,15 +9,20 @@
  * this sorter joins that map against the file order.
  *
  * Two-tier sort:
- *   1. GUI-stamped rows on top, descending by timestamp (most
- *      recently watched first).
- *   2. CLI-only / un-stamped rows at the bottom, preserving their
- *      on-disk file order.
+ *   1. Stamped rows on top, descending by timestamp (most recently
+ *      watched first).
+ *   2. Unstamped rows at the bottom, preserving their on-disk file
+ *      order.
  *
- * CLI plays don't reach `mark-watched`, so users alternating
- * between the GUI and CLI see CLI plays demoted but still rendered.
- * No reconciliation needed — Continue Watching is a GUI-tracked
- * surface.
+ * A row and its stamp arrive on different requests: the row when the
+ * stream resolves, the stamp from the click-side `mark-watched`. So
+ * tier 2 holds plays that resolved and never reached `mark-watched`
+ * — the user left first — plus any whose stamp write failed. They
+ * are demoted rather than dropped, because a row that exists is
+ * still something the user started.
+ *
+ * The CLI cannot contribute either tier. Its history is a separate
+ * file with no import path into this one.
  */
 
 import type { HistoryEntry } from '$lib/api';
