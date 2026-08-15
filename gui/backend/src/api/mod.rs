@@ -592,7 +592,7 @@ async fn post_play_external(
 ///
 /// Idempotent: looks up the cache row, writes a history line keyed
 /// on the cached `show_id`, and (when `args.kitsu_id` is supplied)
-/// records the (allmanga show_id → kitsu_id) reverse mapping so the
+/// records the (provider show_id → kitsu_id) reverse mapping so the
 /// home-page strip can resolve the right Kitsu match without a
 /// fuzzy text search. No-op when the cache row is missing or has
 /// no captured metadata (legacy / pre-resolve states).
@@ -651,14 +651,14 @@ async fn post_play_mark_watched(
                     "play: watched-at stamp write failed",
                 );
             }
-            // Reverse mapping — store (allmanga show_id → kitsu_id)
+            // Reverse mapping — store (provider show_id → kitsu_id)
             // when the frontend supplied kitsu_id. Errors are
             // swallowed (logged) because the play already succeeded;
             // the mapping is opportunistic.
             //
             // Cross-cour integrity guard: the play picker
             // (`pick_by_ep_count_v2`) can land on a sibling cour's
-            // allmanga show_id when ep-count and year tie (e.g.
+            // provider show_id when ep-count and year tie (e.g.
             // Stone Ocean Parts 1/2/3 all 12 eps, 2021–2022). The
             // frontend supplies kitsu_id from the URL or Continue
             // Watching context, which then doesn't match the chosen
@@ -833,7 +833,7 @@ mod tests {
     /// terminal `error` event and close the stream. Forcing the
     /// breaker open and asking for a prefetch makes the whole path
     /// run without touching the network: every gate admit is refused
-    /// before any allanime request is built, so the handler's spawn,
+    /// before any provider request is built, so the handler's spawn,
     /// terminal-event send, and abort_on_drop passthrough (natural
     /// completion) are all exercised hermetically.
     #[tokio::test]
@@ -841,7 +841,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         // The native play admits through the anidb gate since the
-        // provider split; priming the allanime gate no longer
+        // provider split; priming the provider gate no longer
         // refuses anything on this path.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     /// The reverse-mapping write must REJECT cross-cour pairings.
-    /// The backend's allmanga picker can land on a sibling cour when
+    /// The backend's provider picker can land on a sibling cour when
     /// ep-count and year tie (Stone Ocean parts 1/2/3 all 12 eps,
     /// 2021–2022) and persist the wrong (show_id → kitsu_id)
     /// pairing. Once persisted, the home-page strip serves the wrong
@@ -1556,7 +1556,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // Cached resolution: allmanga's Part 2 show, derived from
+        // Cached resolution: The provider's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
         let key = cache_key(
@@ -1636,7 +1636,7 @@ mod tests {
     }
 
     /// One-sided cour evidence must not be treated as disagreement.
-    /// When the allmanga `show_title` has no parseable cour suffix
+    /// When the provider `show_title` has no parseable cour suffix
     /// (the title format the picker writes for shows without a clean
     /// `Part N` / `Cour N` / `Season N` token) but Kitsu's slug DOES
     /// carry one, we have no proof the pairing is wrong — only one
@@ -1723,7 +1723,7 @@ mod tests {
         );
     }
 
-    /// Symmetric: allmanga title says Part 2 but Kitsu detail's slug
+    /// Symmetric: The provider title says Part 2 but Kitsu detail's slug
     /// is absent or doesn't carry a parseable cour suffix. Still
     /// one-sided; still not proof of disagreement.
     #[tokio::test]
@@ -1736,7 +1736,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // allmanga title carries Part 2 → cour_from_title=Some(2).
+        // The provider title carries Part 2 → cour_from_title=Some(2).
         let key = cache_key(
             "Some Sequel",
             "sub",
@@ -1824,7 +1824,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // Allmanga show_title carries a trailing "Part 2" (cour 2).
+        // The provider show_title carries a trailing "Part 2" (cour 2).
         // Crucially, we do NOT pre-populate the kitsu detail cache —
         // the in-process Kitsu client points at 127.0.0.1:1 (an
         // unreachable port), so `kitsu_anime_detail` returns Err.
@@ -2215,7 +2215,7 @@ mod tests {
     }
 
     /// `/api/sessions` requires a valid CreateSessionArgs body. We
-    /// don't have allmanga to satisfy a fully-shaped session, so
+    /// don't have the provider to satisfy a fully-shaped session, so
     /// drive a malformed one and assert the route rejects it without
     /// panicking. Covers the post_session decode branch.
     #[tokio::test]

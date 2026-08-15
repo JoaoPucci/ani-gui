@@ -1192,7 +1192,7 @@ mod tests {
         // The MAL→Kitsu bridge (lookup_by_mal_id) feeds both the AniList
         // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
         // mapping to a Kitsu `subtype: music` item must not surface there —
-        // music can never resolve on allanime — so the mappings parser
+        // music can never resolve on the provider — so the mappings parser
         // returns None for it (the single chokepoint for every bridge).
         let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
             "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;

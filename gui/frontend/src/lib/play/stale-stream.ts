@@ -1,7 +1,7 @@
 /**
  * Stale-upstream-URL recovery policy for the play page.
  *
- * Allmanga (and the other allanime mirrors we resolve through) rotate
+ * The provider (and the other the provider mirrors we resolve through) rotate
  * the byte-stream URL behind their CDN tokens on a short horizon. If
  * the user pauses, the laptop sleeps, then they come back hours later
  * and click play, the URL they're sitting on is dead — the <video>

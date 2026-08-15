@@ -812,13 +812,13 @@
 		)
 	);
 
-	// allmanga's `availableEpisodes.<mode>` for this show; populated
+	// The provider's `availableEpisodes.<mode>` for this show; populated
 	// alongside detail. Same role as on /anime/[id] — authoritative
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
 	/**
-	 * Clicking a cap-gated tile re-asks allmanga rather than staying
+	 * Clicking a cap-gated tile re-asks the provider rather than staying
 	 * inert. The count is a snapshot from when the strip loaded and
 	 * the catalogue catches up while the user is watching.
 	 *
@@ -922,7 +922,7 @@
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
-				// being questioned and never reaches allmanga.
+				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
 			// The whole row, not one field of it. The controller decides
@@ -965,7 +965,7 @@
 		switchBusy = true;
 		// Set, not cleared. `switchToEpisode` leaves its last caption
 		// behind — its finally only resets `switchBusy` — so without
-		// this the block raised for an allmanga lookup would read as a
+		// this the block raised for a provider lookup would read as a
 		// provider tick from whatever ran before it.
 		switchProgress = m.detail_ep_recheck_busy();
 		capGate.request(n);
@@ -981,11 +981,11 @@
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
 	let showListed = $state<boolean | null>(null);
-	// Non-integer episode tags allmanga has streamable (recaps).
+	// Non-integer episode tags the provider has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
-	// Probe allmanga for the playable episode count IN THE PLAYBACK
+	// Probe the provider for the playable episode count IN THE PLAYBACK
 	// MODE — dub catalogues lag sub, so a sub-mode probe would cap a
 	// dub session too high and Download All could request undubbed
 	// episodes (Codex P2 #3566111944). Re-runs when the mode flips
@@ -1064,7 +1064,7 @@
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 
 	// How far the strip renders tiles: with airing data present it
-	// extends past allmanga's count to the announced total, so the
+	// extends past the provider's count to the announced total, so the
 	// unaired tail shows as greyed dated tiles (same treatment as the
 	// detail page) instead of being absent.
 	const stripCap = $derived(
@@ -1541,7 +1541,7 @@
 		//
 		//   • PiP not active: cancel immediately like before. Without
 		//     this, abandoned resolves keep streaming SSE events
-		//     to a closed page and holding allmanga rate-limit slots.
+		//     to a closed page and holding the provider rate-limit slots.
 		//
 		//   • PiP active: defer. The user is still engaged with this
 		//     show via the floating thumbnail; killing the prefetches
@@ -1650,7 +1650,7 @@
 		// (because PiP was keeping its show alive) and the user is
 		// now mounting a *different* show's player, flush the old
 		// show's prefetches now. Otherwise we'd run two shows'
-		// prefetches concurrently against the allmanga rate limit
+		// prefetches concurrently against the provider rate limit
 		// until PiP eventually closes. Same-show remounts are kept;
 		// the new component will take ownership.
 		fireDeferredCancelsExcept(id);
@@ -1721,7 +1721,7 @@
 		if (airingIsPending) return;
 		// ...and for the availability probe, or the null playable cap
 		// reads as unbounded and the warm resolves padded tiles
-		// allmanga hasn't catalogued (Codex P2 #3566100686).
+		// the provider hasn't catalogued (Codex P2 #3566100686).
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
@@ -1732,10 +1732,10 @@
 			const targetEp = ep.number ?? ep.relative_number ?? null;
 			if (targetEp === null) continue;
 			// The strip now renders unaired tiles (stripCap) — skip
-			// them, and skip anything past allmanga's playable count:
+			// them, and skip anything past the provider's playable count:
 			// both are doomed resolutions the warm must not spend
 			// scraper slots on. beyondPlayable floor-compares so
-			// allmanga's own decimal extras stay warmable.
+			// the provider's own decimal extras stay warmable.
 			if (epAirState(targetEp, airing).unaired) continue;
 			if (beyondPlayable(targetEp, playableEpisodeCount)) continue;
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
@@ -1772,7 +1772,7 @@
 		// resolution, no matter who asked. While the airing lookup is
 		// in flight everything reads as aired (airing is null), so
 		// switches hold until the answer lands (Codex P2 #3565988145);
-		// aired-but-uncatalogued targets above allmanga's count are
+		// aired-but-uncatalogued targets above the provider's count are
 		// equally doomed (catalog lag).
 		// A delisted show comes back without a count, so the cap check
 		// below cannot catch it — the cap is whatever it already was.

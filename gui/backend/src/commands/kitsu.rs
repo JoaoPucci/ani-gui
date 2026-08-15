@@ -423,11 +423,11 @@ pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str)
     )
 }
 
-/// Cache key for the reverse `allmanga show_id → kitsu_id` mapping.
+/// Cache key for the reverse `provider show_id → kitsu_id` mapping.
 /// Recorded on every successful play (where we know both ids) so
 /// the home-page Continue Watching strip can look up the right
 /// Kitsu entry by show_id instead of fuzzy-text-searching the
-/// possibly-typo'd allmanga title.
+/// possibly-typo'd provider title.
 ///
 /// Schema versions:
 /// - v1: original — populated whenever `resolve_allmanga_show_id`
@@ -459,13 +459,13 @@ fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
 }
 
-/// Read the cached `allmanga show_id → kitsu_id` mapping. Returns
+/// Read the cached `provider show_id → kitsu_id` mapping. Returns
 /// `None` on miss; SQLite errors propagate.
 pub fn allmanga_kitsu_get(state: &AppState, show_id: &str) -> Result<Option<String>> {
     meta_cache_get(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
 
-/// Persist an `allmanga show_id → kitsu_id` mapping. Same TTL as
+/// Persist an `provider show_id → kitsu_id` mapping. Same TTL as
 /// `title_match` (30d) — the mapping is as stable as Kitsu's id
 /// space, and re-puts on every successful play keep it fresh.
 pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
@@ -477,7 +477,7 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
-/// Evict a single `allmanga show_id → kitsu_id` mapping. Used by the
+/// Evict a single `provider show_id → kitsu_id` mapping. Used by the
 /// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
 /// row when the cached kitsu detail's slug disagrees with the history
 /// entry's cour suffix. SQLite errors propagate; a missing row is not
@@ -518,7 +518,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
 }
 
 /// True when both sides carry positive cour evidence AND it
-/// disagrees. Missing evidence (Kitsu fetch failure; an allmanga
+/// disagrees. Missing evidence (Kitsu fetch failure; a provider
 /// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
 /// with `slug = None` entirely) returns false — step 0's frontend
 /// slug guard heals genuinely cross-cour rows on the next read,
@@ -1140,14 +1140,14 @@ mod tests {
         );
     }
 
-    // — allmanga → kitsu reverse mapping ——————————————————————————————
+    // — the provider → kitsu reverse mapping ——————————————————————————————
     //
-    // Forward direction (Kitsu canonical_title → allmanga show) works
+    // Forward direction (Kitsu canonical_title → the provider show) works
     // through the provider's lenient catalog search. The reverse — taking
     // a title from the history file and finding its Kitsu entry —
-    // is broken when allmanga has typos (e.g. "Nato: Shippuuden" for
+    // is broken when the provider has typos (e.g. "Nato: Shippuuden" for
     // Naruto), because Kitsu's text search isn't fuzzy and returns
-    // unrelated first hits. So we record the (allmanga show_id →
+    // unrelated first hits. So we record the (provider show_id →
     // kitsu_id) pair on every successful play (where we know both
     // ids) and the home page reads it directly by show_id.
 
@@ -1171,7 +1171,7 @@ mod tests {
     #[test]
     fn allmanga_kitsu_cache_overwrites_on_re_put() {
         // If the user navigates to a different Kitsu entry for the
-        // same allmanga show (e.g. they corrected their pick), the
+        // same provider show (e.g. they corrected their pick), the
         // newer mapping wins.
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "abc", "old-kitsu").expect("put old");
@@ -1209,7 +1209,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_allmanga_show_id_short_circuits_on_reverse_cache_hit() {
-        // When the reverse mapping already exists, no allmanga or
+        // When the reverse mapping already exists, no provider or
         // Kitsu HTTP fires — the cached kitsu_id resolves through
         // anime_detail and returns. State has no mock servers
         // attached, so the test verifies the pure cache hit by

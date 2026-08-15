@@ -312,7 +312,7 @@ describe('pickKitsuMatch', () => {
 
 	it('passes hits whose episode count is close to courSize', () => {
 		// Off-by-one episode-count differences are common (Kitsu
-		// counts a recap, allmanga doesn't). Accept those.
+		// counts a recap, the provider doesn't). Accept those.
 		const r = resolveHistoryEntry(entry('Bleach (366 episodes)', '2'), null);
 		const hits = [
 			titledCountedHit('right', 'BLEACH', 367),
@@ -344,7 +344,7 @@ describe('pickKitsuMatch', () => {
 	});
 
 	it('accepts ongoing shows where allmanga lags behind Kitsu announced count', () => {
-		// Re:Zero S4: allmanga reports 5 streamable episodes, Kitsu's
+		// Re:Zero S4: The provider reports 5 streamable episodes, Kitsu's
 		// announced total is 19. Without the asymmetric rule the
 		// strict ratio (14/5 = 2.8) rejected the correct match,
 		// forcing the resolver into enrichment, where a Kitsu text
@@ -383,7 +383,7 @@ describe('pickKitsuMatch', () => {
 
 	it('rejects huge-gap ongoing-shape mismatches (20 vs 400)', () => {
 		// Pre-refactor the 0.95 ratio cap let this through: courSize
-		// 20 vs kitsu 400 = 380/400 = 0.95 → accepted as "allmanga
+		// 20 vs kitsu 400 = 380/400 = 0.95 → accepted as "the provider
 		// catching up." That's a 20× franchise gap and almost
 		// certainly the wrong show. The absolute-cap rule (diff ≤ 50)
 		// rejects cleanly; the resolver then falls through to the
@@ -422,7 +422,7 @@ describe('pickKitsuMatch', () => {
 	});
 
 	it('accepts within ±25% tolerance for long-running shows', () => {
-		// Long shows (Naruto, One Piece) have wide allmanga ↔ Kitsu
+		// Long shows (Naruto, One Piece) have wide the provider ↔ Kitsu
 		// drift because Kitsu sometimes splits filler arcs into
 		// separate entries. 220 vs 200 should still match.
 		const r = resolveHistoryEntry(entry('Naruto (220 episodes)', '1'), null);
@@ -484,8 +484,8 @@ describe('titlesPlausiblySameShow', () => {
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
-		// hsts/allanime title vs the YOASOBI "Idol" music video Kitsu entry:
-		// they share only "Idol", which is 1 of 9 allanime tokens → reject.
+		// hsts/the provider title vs the YOASOBI "Idol" music video Kitsu entry:
+		// they share only "Idol", which is 1 of 9 the provider tokens → reject.
 		expect(
 			titlesPlausiblySameShow(
 				'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen',
@@ -496,7 +496,7 @@ describe('titlesPlausiblySameShow', () => {
 
 	it('accepts the legitimate typo case (allanime stub vs canonical)', () => {
 		// The reverse-map exists for exactly this: "Nato: Shippuuden" is
-		// allanime's typo for "Naruto: Shippuuden" — they share the
+		// the provider's typo for "Naruto: Shippuuden" — they share the
 		// distinctive "Shippuuden", so the binding stays trusted.
 		expect(titlesPlausiblySameShow('Nato: Shippuuden', ref('Naruto: Shippuuden'))).toBe(true);
 	});
@@ -515,10 +515,10 @@ describe('titlesPlausiblySameShow', () => {
 	});
 
 	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
-		// THE extreme case: allanime indexes One Piece as "1P". It shares
+		// THE extreme case: The provider indexes One Piece as "1P". It shares
 		// no token with "One Piece", but a 1-short-token stub carries no
 		// signal to reject on — the binding (recorded from a real play,
-		// or from a reverse-resolve) must stay trusted. Only INFORMATIVE allanime titles
+		// or from a reverse-resolve) must stay trusted. Only INFORMATIVE the provider titles
 		// (≥2 tokens, or one token ≥5 chars) are judged.
 		expect(titlesPlausiblySameShow('1P', ref('One Piece'))).toBe(true);
 		expect(titlesPlausiblySameShow('1P (1161 episodes)', ref('One Piece'))).toBe(true);
@@ -589,7 +589,7 @@ describe('cachedBindingVerdict', () => {
 	});
 
 	it('evicts a binding that is BOTH count-incompatible and provably wrong (music)', () => {
-		// A 12-ep allmanga show poisoned to a 1-ep music video: the count check
+		// A 12-ep the provider show poisoned to a 1-ep music video: the count check
 		// must not short-circuit to 'reresolve' and skip the delete — a provably
 		// wrong row has to be EVICTED so enrichment can't re-read it. Title here is
 		// plausible, isolating the music-vs-count ordering.
@@ -630,7 +630,7 @@ describe('cachedBindingVerdict', () => {
 	});
 
 	it('re-resolves a single-token romaji/typo binding instead of deleting it', () => {
-		// "Burichi" is allmanga's stub for BLEACH — zero literal overlap with the
+		// "Burichi" is the provider's stub for BLEACH — zero literal overlap with the
 		// Kitsu title, but the cached row is correct. The old guard deleted it
 		// every load and depended on a network re-resolve; now a fuzzy title
 		// miss only re-resolves (the title-match cache backstops it).
@@ -853,7 +853,7 @@ describe('long-runners Kitsu has no episode total for', () => {
 	});
 
 	it('does not take an uninformative title as identity evidence', () => {
-		// allmanga's primary name is sometimes a stub — '1P' for One
+		// The provider's primary name is sometimes a stub — '1P' for One
 		// Piece is the documented one. `titlesPlausiblySameShow` answers
 		// true there, but that is "no judgement possible", not proof:
 		// there is nothing in '1P' to compare. This lane has no count

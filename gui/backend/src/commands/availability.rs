@@ -964,10 +964,10 @@ mod tests {
 
     /// Build a minimal AppState backed by an in-memory SQLite pool —
     /// enough for the cache-write / cache-read tests below. Anything
-    /// that touches Kitsu / allmanga / fs would error out (the
+    /// that touches Kitsu / the provider / fs would error out (the
     /// `kitsu_base` is unreachable on purpose), but those paths
     /// aren't exercised here.
-    /// The state-level allanime override has to reach the public
+    /// The state-level the provider override has to reach the public
     /// entry point, not just the `_with_base` one tests call directly.
     /// `check_availability` hard-coded `None` the same way
     /// `pick_title_and_index` did, so an `AppState` pointed at a stub
@@ -1769,7 +1769,7 @@ mod tests {
     /// The home Continue Watching card and the detail page must agree
     /// on what "Continue" means, which means they must derive the same
     /// `defaultEpisode` cap. The detail page reads `playableEpisodeCount`
-    /// (allmanga's true count) via an inline `check_availability` probe;
+    /// (the provider's true count) via an inline `check_availability` probe;
     /// the home strip can't afford a per-card probe, so the cap has to
     /// ride out of the batch lookup it already does. The cache body
     /// already stores `episode_count` per (kitsu_id, mode) — surface
@@ -1847,7 +1847,7 @@ mod tests {
     }
 
     /// A cached count is a snapshot. For an ongoing show it is kept
-    /// for 24 hours, and allmanga adds episodes inside that window —
+    /// for 24 hours, and the provider adds episodes inside that window —
     /// so a user clicking a tile the count says is unavailable is
     /// asking a question the cache cannot answer. Serving the stored
     /// number back is exactly the reply that makes the tile look

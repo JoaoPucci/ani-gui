@@ -139,19 +139,19 @@
 	let watchLaterAutoChecked = false;
 	let heroIndex = $state(0);
 	let heroPaused = $state(false);
-	// Per-history-entry Kitsu match, keyed by allanime id. Populated lazily
+	// Per-history-entry Kitsu match, keyed by the provider id. Populated lazily
 	// after history loads so Continue Watching cards can show posters.
 	let historyMatches = $state<Record<string, KitsuAnimeRef | null>>({});
-	// Per-history-entry Kitsu episode (by ep_no), keyed by allanime id.
+	// Per-history-entry Kitsu episode (by ep_no), keyed by the provider id.
 	// Populated after the matching kitsuEpisodes() call resolves so cards
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
-	// Per-history-entry allmanga playable episode count, keyed by entry.id.
+	// Per-history-entry the provider playable episode count, keyed by entry.id.
 	// Read from the shared availability cache via a single batch lookup
 	// after all matches resolve. Lets the Continue card derive the same
 	// pickNextEpisode cap the detail page uses (`playableEpisodeCount` →
-	// allmanga's truthful count, not Kitsu's sometimes-stale announced
+	// the provider's truthful count, not Kitsu's sometimes-stale announced
 	// total). Falls back to match?.episode_count when absent.
 	let historyPlayableCounts = $state<Record<string, number>>({});
 
@@ -206,7 +206,7 @@
 	};
 
 	// Flipped when the route tears down, so a retry loop that outlives
-	// its page stops probing allmanga for a strip nobody is looking at.
+	// its page stops probing the provider for a strip nobody is looking at.
 	let continueRetryCancelled = false;
 
 	// Continue Watching rows after first-occurrence-wins dedupe by
@@ -351,7 +351,7 @@
 				history = sortByWatchedAt(h, watchedAt);
 				// Per-row load, render-then-refine: each card flips to
 				// its resumable state the moment ITS Kitsu match lands —
-				// the allmanga availability probe never holds a card,
+				// the provider availability probe never holds a card,
 				// it just tightens the playable cap afterward via a
 				// second onRowReady. A slow Kitsu resolution doesn't
 				// gate fast rows, and a slow (or breaker-refused) probe
@@ -372,7 +372,7 @@
 					// in a testable lib so no untestable closure lives on
 					// this page. checkAvailability is already cache-first
 					// on the backend; per-row calls are cheap for cached
-					// rows and only pay the allmanga roundtrip on misses.
+					// rows and only pay the provider roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
 					// Per-row state mutations are routed through the
@@ -426,7 +426,7 @@
 		// The retry loop above sits out breaker cooldowns between
 		// probes, so it comfortably outlives a user who lands on home
 		// and navigates on. Leaving it running would keep asking
-		// allmanga about a strip that is no longer mounted.
+		// the provider about a strip that is no longer mounted.
 		return () => {
 			continueRetryCancelled = true;
 		};

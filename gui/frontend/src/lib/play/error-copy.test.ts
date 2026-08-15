@@ -77,7 +77,7 @@ describe('describePlayFailure', () => {
 	});
 
 	it('surfaces the rate-limit wait when the backend carries one', () => {
-		// allanime answers its throttle with an explicit "try again in
+		// The provider answers its throttle with an explicit "try again in
 		// N seconds" — the backend forwards it as retry_after_secs and
 		// the copy must pass the number on instead of the generic
 		// "couldn't start" shrug.

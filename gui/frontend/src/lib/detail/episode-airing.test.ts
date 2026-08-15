@@ -61,7 +61,7 @@ describe('epAirState', () => {
 	});
 
 	it('keeps released decimal extras playable', () => {
-		// Codex P2 #3565610386: allmanga exposes recaps/specials as
+		// Codex P2 #3565610386: The provider exposes recaps/specials as
 		// decimal tags (2.5 airs between regular eps 2 and 3). AniList
 		// only counts regular episodes, so a strict n <= aired check
 		// would grey a streamable 2.5 until ep 3 airs. Floor-compare:
@@ -132,7 +132,7 @@ describe('airedTargets', () => {
 
 describe('displayCap', () => {
 	it('extends the strip to the announced total when the airing gate can grey the tail', () => {
-		// allmanga lists only released episodes; Kitsu announces the
+		// The provider lists only released episodes; Kitsu announces the
 		// season. With airing data present, the strip pads to the
 		// announced total so the unaired tail renders as greyed dated
 		// tiles instead of not existing at all.
@@ -148,7 +148,7 @@ describe('displayCap', () => {
 	});
 
 	it('keeps allmanga ahead of a stale announced total', () => {
-		// One Piece: allmanga streams past Kitsu's catalogued number.
+		// One Piece: The provider streams past Kitsu's catalogued number.
 		expect(displayCap(1161, 1106, RELEASING)).toBe(1161);
 	});
 
@@ -165,7 +165,7 @@ describe('minCap', () => {
 		// Codex P2 #3566042284: with the padded strip,
 		// knownAvailableEpisodes is usually null, so the download
 		// modal's range clamped only to the aired count (5) even when
-		// allmanga has just 2 catalogued — a 1-5 download starts with
+		// the provider has just 2 catalogued — a 1-5 download starts with
 		// episodes 3-5 doomed. The playable cap must join the clamp.
 		expect(minCap(10, 2)).toBe(2);
 		expect(minCap(2, 10)).toBe(2);
@@ -184,7 +184,7 @@ describe('minCap', () => {
 describe('beyondPlayable', () => {
 	it('gates integer episodes above allmanga playable count', () => {
 		// Codex P2 #3565988141/#3565988143: AniList can report more
-		// aired episodes than allmanga has catalogued (aired=5,
+		// aired episodes than the provider has catalogued (aired=5,
 		// playable=2 during lag). Those tiles are aired per epAirState
 		// but not streamable — clicks and prefetches must not fire.
 		expect(beyondPlayable(3, 2)).toBe(true);
@@ -201,7 +201,7 @@ describe('beyondPlayable', () => {
 	});
 
 	it('floor-compares so decimal extras from allmanga stay playable', () => {
-		// extraEpisodes come from allmanga itself — a streamable "2.5"
+		// extraEpisodes come from the provider itself — a streamable "2.5"
 		// recap must not be gated by a playable count of 2.
 		expect(beyondPlayable(2.5, 2)).toBe(false);
 		expect(beyondPlayable(3.5, 2)).toBe(true);

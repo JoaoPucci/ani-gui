@@ -4,9 +4,9 @@ import { beyondPlayable } from './episode-caps';
  * Re-asking availability when a user clicks a cap-gated episode tile.
  *
  * A tile is cap-gated when the anime database says the episode aired
- * but it sits above the episode count allmanga reported — the
+ * but it sits above the episode count the provider reported — the
  * catalog-lag case `beyondPlayable` describes. That count is a
- * snapshot, cached for 24 hours on an ongoing show, and allmanga adds
+ * snapshot, cached for 24 hours on an ongoing show, and the provider adds
  * episodes inside that window. So the tile can stay dead for most of
  * a day after the episode became streamable, and until now the click
  * returned early: no request, no message, nothing to distinguish it
@@ -85,7 +85,7 @@ export interface CapGateProbeDeps {
 	/** What the answer will be about — read when the click goes out and
 	 *  again when it lands. Everything that changes the meaning of a
 	 *  count belongs in here: the show, because both routes reuse one
-	 *  component across titles, and the audio mode, because allmanga
+	 *  component across titles, and the audio mode, because the provider
 	 *  catalogues sub and dub separately and settings arrive after the
 	 *  page does. */
 	currentContext: () => string;
@@ -130,7 +130,7 @@ export interface CapGateProbeDeps {
  * The count whenever it is confirmed — including when there is no
  * number. A count that can read one high must not replace a real
  * cap, so an unconfirmed one is withheld. But a CONFIRMED answer
- * without a number is itself a fact: allmanga has the show delisted,
+ * without a number is itself a fact: The provider has the show delisted,
  * or its whole episode list is non-integer tags. That is a cap of
  * zero, not an absent cap — null is the routes' word for "unknown",
  * which `beyondPlayable` reads as unbounded.
@@ -196,7 +196,7 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 					//
 					// The refresh goes back either way. A confirmed count
 					// SHORTER than what the page is showing is news:
-					// allmanga pulls episodes and corrects metadata, and
+					// The provider pulls episodes and corrects metadata, and
 					// until the strip hears about it every tile between
 					// the two caps stays enabled on a number that is no
 					// longer true.

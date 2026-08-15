@@ -17,7 +17,7 @@
 //!   hygiene.
 //! - The breaker opens after [`FAILURE_THRESHOLD`] *consecutive*
 //!   scraper failures (transport errors, 429/5xx, or garbage bodies —
-//!   allanime throttles with 200-status HTML pages) and stays open
+//!   the provider throttles with 200-status HTML pages) and stays open
 //!   for [`BREAKER_COOLDOWN`]. While open, background callers skip
 //!   the network instantly instead of deepening the limit; their
 //!   cache rows simply stay unwritten, which every consumer already
@@ -38,7 +38,7 @@ pub use super::outcome::ScrapeOutcome;
 pub const BACKGROUND_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Consecutive failures that open the breaker. Three is enough to
-/// distinguish "allanime is refusing us" from a flaky single request
+/// distinguish "the provider is refusing us" from a flaky single request
 /// without burning hundreds of doomed calls discovering it.
 pub const FAILURE_THRESHOLD: u32 = 3;
 
@@ -113,7 +113,7 @@ pub(super) struct GateState {
 }
 
 /// See the module docs. One instance lives in `AppState`; every
-/// allanime request goes through [`ScraperGate::admit`] first and
+/// provider request goes through [`ScraperGate::admit`] first and
 /// reports back via [`ScraperGate::record_outcome`].
 pub struct ScraperGate {
     inner: Mutex<GateState>,

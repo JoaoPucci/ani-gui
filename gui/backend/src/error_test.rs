@@ -29,7 +29,7 @@ fn rate_limits_block_and_verdicts_do_not() {
 
 #[test]
 fn rate_limited_maps_to_429_and_a_dedicated_key() {
-    // The typed rate-limit answer (allanime's in-band "Too many
+    // The typed rate-limit answer (the provider's in-band "Too many
     // requests" GraphQL payload) must surface as HTTP 429 so the
     // frontend can distinguish "wait a few seconds" from a
     // generic upstream failure, and carry its own i18n key.

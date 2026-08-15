@@ -34,7 +34,7 @@ use crate::error::{AniError, Result};
 /// that gets forwarded to Syncplay's wrapped mpv. Frontend reads the
 /// binary from `Config::syncplay_binary`; the referer is inferred by
 /// `play_syncplay` from the resolved upstream (mirrors the
-/// `play_external` path's fast4speed.rsvp → allmanga.to fallback).
+/// `play_external` path's fast4speed.rsvp → provider-origin fallback).
 #[derive(Debug, Deserialize)]
 pub struct SyncplayLaunchArgs {
     /// The resolved stream URL (mp4 or m3u8). Syncplay's positional
@@ -46,7 +46,7 @@ pub struct SyncplayLaunchArgs {
     /// Optional `Referer:` header value the upstream CDN requires.
     /// Forwarded to Syncplay's wrapped player via the mpv-style
     /// `--referrer=` flag after the `--` separator. fast4speed.rsvp
-    /// 403s without `Referer: https://allmanga.to`, so the same
+    /// 403s without the provider's origin as `Referer:`, so the same
     /// inference logic `play_external` uses applies to Syncplay too.
     /// Old payloads without this field decode as `None`.
     #[serde(default)]

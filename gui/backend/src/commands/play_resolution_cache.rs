@@ -140,7 +140,7 @@ pub struct CachedResolution {
 /// *frontend* asks for — `(title, mode, quality, episode, year,
 /// episode_count)`. alt_titles are intentionally excluded because
 /// the cache is keyed on the request shape, not the title that
-/// ultimately matched allmanga.
+/// ultimately matched the provider.
 ///
 /// `year` + `episode_count` segments distinguish two Kitsu entries
 /// sharing the same canonical title (e.g. franchise remakes); the

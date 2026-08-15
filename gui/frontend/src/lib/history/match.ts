@@ -7,7 +7,7 @@
  *
  * Errors at any layer fall through to the next strategy and ultimately
  * to `null` — the caller (Continue Watching cards) treats null as "no
- * Kitsu data, render the bare allmanga title as a card".
+ * Kitsu data, render the bare provider title as a card".
  */
 
 import {
@@ -24,12 +24,12 @@ import {
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
-	// 0) Reverse-mapping lookup: allmanga show_id → kitsu_id. Recorded
+	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id. Recorded
 	//    by the backend on every successful play, so once the user
 	//    has played a show through the GUI the home-page strip can
 	//    skip every other path. Wins over title-match because the
 	//    show_id is deterministic — the title is sometimes a typo
-	//    (allmanga's "Nato: Shippuuden" for Naruto Shippuuden).
+	//    (the provider's "Nato: Shippuuden" for Naruto Shippuuden).
 	//
 	//    Validate the cached detail's episode_count against the
 	//    user's history courSize before accepting — older sessions
@@ -145,7 +145,7 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    no alias source left, so a stub name there is not recoverable
 	//    by this step — those rows depend on having been mapped.
 	//
-	//    Only fires when there's an allmanga show_id to enrich AND
+	//    Only fires when there's a provider show_id to enrich AND
 	//    earlier paths already failed — title-search hits skip this
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {

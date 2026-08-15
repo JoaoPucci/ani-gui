@@ -386,7 +386,7 @@ export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): strin
  * the result straight to PlayArgs/DownloadArgs/AvailabilityArgs, all
  * of which accept `null` and degrade to ep-count-only disambiguation.
  *
- * Why this matters: allmanga's `airedStart.year` is much more
+ * Why this matters: The provider's `airedStart.year` is much more
  * discriminative than ep-count for franchise overlap (Mobile Suit
  * Gundam 1979 vs Gundam Wing 1995). The backend's
  * `pick_by_ep_count_v2` uses the year as a primary filter — but only
@@ -452,10 +452,10 @@ export interface PlayArgs {
 	mode: 'sub' | 'dub';
 	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
-	 *  disambiguate allanime candidates that share a title — e.g.
+	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
 	 *  1-ep side story. Optional: if missing, the backend falls back
-	 *  to allanime's first match. */
+	 *  to the provider's first match. */
 	episode_count?: number | null;
 	/** Kitsu's start year (parsed from `start_date`, e.g.
 	 *  `"1995-04-07"` → `1995`). The backend uses it as a stronger
@@ -463,7 +463,7 @@ export interface PlayArgs {
 	 *  Suit Gundam Wing 1995 vs Mobile Suit Gundam 1979). */
 	year?: number | null;
 	/** Fallback titles to try when the canonical title returns no
-	 *  allanime hits. Build with {@link altTitlesFromKitsu}. The
+	 *  the provider hits. Build with {@link altTitlesFromKitsu}. The
 	 *  backend walks them in order and stops at the first non-empty
 	 *  search result. Used to recover Stone Ocean Part 6 and similar
 	 *  shows whose Kitsu canonical disagrees with the provider's index. */
@@ -477,10 +477,10 @@ export interface PlayArgs {
 	prefetch?: boolean;
 	/** Kitsu id of the anime the user is playing. Frontend passes the
 	 *  id from `/anime/[kitsu_id]`'s URL so the backend can persist
-	 *  an `(allmanga show_id → kitsu_id)` reverse mapping. The home
+	 *  an `(provider show_id → kitsu_id)` reverse mapping. The home
 	 *  page's Continue Watching strip then looks Kitsu up by show_id
 	 *  instead of fuzzy-text-searching the (sometimes typo'd)
-	 *  allmanga title. Optional; missing on legacy click sites that
+	 *  provider title. Optional; missing on legacy click sites that
 	 *  haven't been updated yet. */
 	kitsu_id?: string;
 	/** Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
@@ -819,10 +819,10 @@ export interface AvailabilityArgs {
 }
 
 /** Response from {@link checkAvailability}. `episode_count` is the
- *  highest INTEGER episode allmanga has streamable in the requested
+ *  highest INTEGER episode the provider has streamable in the requested
  *  mode — authoritative cap for the resume CTA, Download All, and
  *  episode-strip pagination. `extra_episodes` is the list of
- *  non-integer tags allmanga lists (recap / special episodes —
+ *  non-integer tags the provider lists (recap / special episodes —
  *  e.g. `["1061.5"]` for One Piece). The detail/play pages splice
  *  these into the episode strip at their numeric position so the
  *  user can navigate to them. */
@@ -857,7 +857,7 @@ export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityR
  *  cached as `false`. Missing entries in the `cached` map are titles
  *  whose availability is unknown — the caller renders them as-is.
  *
- *  `playable_episode_counts` carries allmanga's truthful per-show
+ *  `playable_episode_counts` carries the provider's truthful per-show
  *  episode cap (same value the detail page reads via inline
  *  checkAvailability). The home Continue Watching strip uses it to
  *  derive its pickNextEpisode cap so home and detail compute the same
@@ -1015,7 +1015,7 @@ export function kitsuTitleMatchPut(title: string, cour: number, kitsuId: string)
 }
 
 /**
- * Reverse-direction mapping: given an allmanga show_id (from
+ * Reverse-direction mapping: given a provider show_id (from
  * history column 2), look up the kitsu_id the user previously
  * played it as. Returns `null` on miss. The mapping is recorded by
  * the backend during `mark-watched` whenever the frontend supplies
@@ -1032,7 +1032,7 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
- * Evict a single `allmanga show_id → kitsu_id` reverse-mapping row.
+ * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
  * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's
  * slug disagrees with the history entry's cour suffix. The cached
@@ -1055,7 +1055,7 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
  *
  * Use this as the LAST step in the Continue Watching resolver, when
  * the reverse cache and the title-search both yield nothing — e.g.
- * fresh-from-cache-clear renders where allmanga's stub `name`
+ * fresh-from-cache-clear renders where the provider's stub `name`
  * (`"1P"` for One Piece, `"Nato: Shippuuden"` for Naruto Shippuuden)
  * has no Kitsu text-search hit. The backend persists the resolved
  * mapping into the reverse cache so subsequent calls short-circuit.

@@ -110,7 +110,7 @@ describe('getOrFire', () => {
 		// backend gate's Background pacing with its SSE already open. A
 		// click attaching to it must not wait for that promise to settle
 		// — it aborts the shared background request (keeping it running
-		// would double allanime traffic for the same episode) and fires
+		// would double the provider traffic for the same episode) and fires
 		// fresh with its own Interactive closure right away.
 		const key = makeKey('show', 5, 'sub', 'best');
 		let bgAborted = false;

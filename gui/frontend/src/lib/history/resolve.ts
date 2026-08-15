@@ -2,7 +2,7 @@
  * History → Kitsu resolver.
  *
  * The provider sometimes splits one Kitsu anime across several
- * shows (Stone Ocean Part 1 / Part 2 / Part 3 in allmanga, where on
+ * shows (Stone Ocean Part 1 / Part 2 / Part 3 in the provider, where on
  * Kitsu the structure varies — sometimes one parent, sometimes three
  * separate entries). The Continue Watching cards for those entries
  * used to render identically; this resolver is the choke point that
@@ -95,7 +95,7 @@ export interface ResumeTarget {
 	/** provider show id from history column 2. Used by the
 	 *  resolver as a deterministic key for the
 	 *  `(show_id → kitsu_id)` reverse-mapping cache, which beats
-	 *  fuzzy-text-searching the (sometimes typo'd) allmanga title. */
+	 *  fuzzy-text-searching the (sometimes typo'd) provider title. */
 	allmangaShowId: string;
 }
 
@@ -257,7 +257,7 @@ export function deriveSlug(s: string): string {
 }
 
 /** Kitsu `subtype` for a music video / song clip. These never exist on
- *  allanime (it indexes anime episodes, not MVs), so a music entry is never a
+ *  The provider (it indexes anime episodes, not MVs), so a music entry is never a
  *  valid history/Continue match nor a playable target — it's filtered wherever
  *  a match is chosen and treated as unavailable on the detail page. The YOASOBI
  *  "Idol" MV (Kitsu `music`) is the canonical offender. Case-insensitive. */
@@ -365,9 +365,9 @@ function titleIsInformative(tokens: Set<string>): boolean {
 }
 
 /**
- * A *tripwire* (not the verdict) for whether an allanime title and a Kitsu ref
+ * A *tripwire* (not the verdict) for whether a provider title and a Kitsu ref
  * plausibly name the same show. Used only to reject a poisoned reverse-map /
- * title-match binding (e.g. the Love Live movie's allanime id bound to the
+ * title-match binding (e.g. the Love Live movie's provider id bound to the
  * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
  * choose the final match, so a false reject costs one extra resolution. A row
  * keyed on a slug recovers from the slug's own words; a row from the retired
@@ -376,11 +376,11 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * never judged at all — see the token rule below — which is what keeps that
  * case from arising in practice.
  *
- * Compares the allanime title's tokens against every Kitsu title (canonical +
+ * Compares the provider title's tokens against every Kitsu title (canonical +
  * localized variants + de-slugged slug), scoring the best alias by the WEAKER
  * of the two coverage directions so a short title being a subset of a long one
  * ("Idol" ⊂ "…School Idol…") doesn't pass. Returns true — don't reject — when
- * the allanime title is an uninformative stub or no Kitsu title is comparable.
+ * the provider title is an uninformative stub or no Kitsu title is comparable.
  */
 export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
 	// Only a REFUTED identity rejects. A binding that carries other
@@ -391,7 +391,7 @@ export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRe
 
 /** Whether the titles say these are the same show, say they are not,
  *  or say nothing at all. The third is a real and distinct outcome:
- *  an allmanga stub like '1P' has no tokens worth comparing, and a
+ *  a provider stub like '1P' has no tokens worth comparing, and a
  *  hit can carry no usable title of its own. Callers with other
  *  evidence treat 'unjudged' as acceptable; a caller relying on
  *  identity ALONE must require 'proven'. */
@@ -425,7 +425,7 @@ export function titleIdentity(allanimeTitle: string, ref: KitsuAnimeRef): TitleI
 export type CachedBindingVerdict = 'trust' | 'evict' | 'reresolve';
 
 /**
- * Validate a cached allmanga→kitsu binding (step 0 reverse-map) or title-match
+ * Validate a cached the provider→kitsu binding (step 0 reverse-map) or title-match
  * (step 1) before trusting it. Shared so both paths apply the same guards in
  * the same order: episode-count compatibility, then the music/title identity
  * tripwire (see {@link titlesPlausiblySameShow}), then the cour-slug suffix.
@@ -441,7 +441,7 @@ export function cachedBindingVerdict(
 	preliminary: ResumeTarget,
 	trustOnAbsentSlug: boolean
 ): CachedBindingVerdict {
-	// Music is the one PROVABLY-wrong case — an allmanga show is never a music
+	// Music is the one PROVABLY-wrong case — a provider show is never a music
 	// video (the original Idol bug) — so it's the only verdict that DELETES the
 	// poisoned reverse-map row. Every other signal (title overlap, episode
 	// count, cour slug) is a fuzzy guess: a wrong guess there must NOT delete a
@@ -470,12 +470,12 @@ export function cachedBindingVerdict(
 export const FINISHED_SHOW_COUR_THRESHOLD = 50;
 
 /** Maximum allowed absolute shortfall in the ongoing-show lane, in
- *  episodes. allmanga lags Kitsu's announced total by at most this
+ *  episodes. The provider lags Kitsu's announced total by at most this
  *  many episodes for the same show — anything wider is almost
  *  certainly an unrelated, much-larger franchise. 50 covers every
  *  realistic catch-up scenario (most cours are 12–13 eps; a year-long
  *  show is 24–26; 50 leaves headroom for double-cour announcements
- *  where allmanga only has ep 1) while cleanly rejecting accidental
+ *  where the provider only has ep 1) while cleanly rejecting accidental
  *  matches like courSize=20 vs Kitsu=400. */
 export const ONGOING_SHORTFALL_MAX_EPISODES = 50;
 
@@ -495,13 +495,13 @@ export function isAiringStatus(status: string | null | undefined): boolean {
  *
  *  Asymmetric tolerance:
  *
- *  - **Lenient lane** (`courSize < kitsu`): allmanga's streamable
+ *  - **Lenient lane** (`courSize < kitsu`): The provider's streamable
  *    count trails Kitsu's announced total — the typical ongoing-show
  *    shape. Accept any absolute shortfall up to
  *    `ONGOING_SHORTFALL_MAX_EPISODES`. Replaces the older ratio cap
  *    (≤ 0.95), which both let through 20-vs-400 nonsense and
  *    rejected fresh-airing ep-1-of-26 cases at 0.962.
- *  - **Strict lane** (`courSize ≥ kitsu`): allmanga reporting more
+ *  - **Strict lane** (`courSize ≥ kitsu`): The provider reporting more
  *    eps than Kitsu announces is almost always a wrong show
  *    (Burichi 366 fuzzy-matched against Doraemon Movie 14). Allow a
  *    25% relative slack here because Kitsu under-counts recaps and
@@ -543,7 +543,7 @@ export function isEpisodeCountCompatible(
  * Whether a search hit may stand as a candidate for this history row.
  *
  * Two of the three tests here reject on evidence the hit itself
- * carries — a music video is never an allmanga show, and a count far
+ * carries — a music video is never a provider show, and a count far
  * from the user's is a different show. The third exists because the
  * countless-airing lane accepts on no count evidence at all: it only
  * says a broadcasting show legitimately has no announced total, which
@@ -587,7 +587,7 @@ export function pickKitsuMatch(
 	if (hits.length === 0) return null;
 
 	// Drop hits that can't be the user's show:
-	//  - music videos (subtype `music`) never exist on allanime, so the
+	//  - music videos (subtype `music`) never exist on the provider, so the
 	//    YOASOBI "Idol" MV must never win over a real entry; and
 	//  - hits whose episode_count is incompatible with the history record
 	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").

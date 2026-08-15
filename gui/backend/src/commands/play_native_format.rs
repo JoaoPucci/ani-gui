@@ -3,7 +3,7 @@
 
 use crate::scraper::anidb::BrowseHit;
 
-/// The layer the allanime picker carried as its type filter, applied
+/// The layer the provider picker carried as its type filter, applied
 /// in BOTH directions: a card badged `Movie` cannot be the
 /// multi-episode series the caller expects — nor the clicked entry
 /// when Kitsu says it is anything but a movie (the special-vs-movie

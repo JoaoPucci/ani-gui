@@ -220,7 +220,7 @@ export function getOrFire(
 		// request may be sleeping behind the backend gate's Background
 		// pacing, or heading into a refusal a click must never see.
 		// Either way the click doesn't wait on it: abort the shared
-		// request (keeping it running would double allanime traffic
+		// request (keeping it running would double the provider traffic
 		// for the same episode) and fire fresh with the click's own
 		// Interactive closure. Fulfilled entries never get here —
 		// reuse is the point of warming.

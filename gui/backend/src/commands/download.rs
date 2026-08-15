@@ -51,7 +51,7 @@ pub struct DownloadArgs {
     #[serde(default)]
     pub subtype: Option<String>,
     /// Fallback titles tried when the canonical title returns no
-    /// allanime hits. Same wire forms as [`PlayArgs::alt_titles`].
+    /// provider hits. Same wire forms as [`PlayArgs::alt_titles`].
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
     pub alt_titles: Vec<String>,
     /// Kitsu id of the show being downloaded; logged for traceability.

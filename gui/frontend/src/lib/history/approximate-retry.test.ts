@@ -274,7 +274,7 @@ describe('retryApproximateCaps', () => {
 		});
 
 		// The home route mounts and unmounts freely; a retry loop that
-		// outlives its page keeps probing allmanga for a strip nobody
+		// outlives its page keeps probing the provider for a strip nobody
 		// is looking at.
 		expect(probes).toEqual(['a']);
 	});
@@ -471,7 +471,7 @@ describe('rowWorthRetrying', () => {
 	});
 
 	it('does not spend an attempt on a probe the pacer refused', async () => {
-		// A refusal is not an answer — nobody asked allmanga anything.
+		// A refusal is not an answer — nobody asked the provider anything.
 		// Spending one of the few attempts on it is worse than wasted:
 		// while the breaker is recovering it admits a single probe at a
 		// time, so the attempt that went to a refusal was a slot taken

@@ -102,7 +102,7 @@
 
 	// Availability probe — runs once after detail loads. null = not
 	// yet checked / network error (lazy fallback handles the click);
-	// true = allmanga has at least one candidate; false = the show
+	// true = the provider has at least one candidate; false = the show
 	// isn't in the provider's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
 	let availability = $state<boolean | null>(null);
@@ -113,13 +113,13 @@
 	// (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
 
-	// allmanga's availableEpisodes for the chosen candidate, populated
+	// The provider's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
-	// airing for ongoing shows (One Piece: Kitsu 1106, allmanga 1161).
+	// airing for ongoing shows (One Piece: Kitsu 1106, the provider 1161).
 	let playableEpisodeCount = $state<number | null>(null);
 	/**
-	 * Clicking a cap-gated tile re-asks allmanga rather than doing
+	 * Clicking a cap-gated tile re-asks the provider rather than doing
 	 * nothing. The playable count is a snapshot — 24h for an ongoing
 	 * show — and the catalogue catches up inside that window, so the
 	 * tile can be dead for an episode that became streamable hours
@@ -225,7 +225,7 @@
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
-				// being questioned and never reaches allmanga.
+				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
 			// The whole row, not one field of it. The controller decides
@@ -273,7 +273,7 @@
 		capGate.request(n);
 	}
 
-	// Non-integer episode tags allmanga has streamable (recap /
+	// Non-integer episode tags the provider has streamable (recap /
 	// special episodes — e.g. ["1061.5"] for One Piece). Spliced
 	// into the episode strip at their numeric position so the user
 	// can navigate to them. Empty when the show has no extras.
@@ -281,12 +281,12 @@
 
 	// The cap used for: resume button (defaultEpisode), Download All
 	// total, Download range max, episode-list tile count. Prefers
-	// allmanga's count; falls back to Kitsu's announced total when
-	// allmanga isn't known yet (cold cache); null when neither is
+	// the provider's count; falls back to Kitsu's announced total when
+	// the provider isn't known yet (cold cache); null when neither is
 	// known and the surface should treat the cap as unbounded.
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
-	// Most-recent history entry (if any) whose allmanga show_id maps
+	// Most-recent history entry (if any) whose provider show_id maps
 	// to this Kitsu id, via the reverse cache stamped by every
 	// successful play. When set, the primary CTA flips from "Play
 	// episode 1" to "Continue · Episode N+1" — N taken from
@@ -379,8 +379,8 @@
 	const cta = $derived(ctaState(availabilityResolved, availability));
 
 	// How far the grid renders tiles: with airing data present the
-	// grid extends past allmanga's playable count to the announced
-	// total, so a season allmanga hasn't fully listed still shows its
+	// grid extends past the provider's playable count to the announced
+	// total, so a season the provider hasn't fully listed still shows its
 	// unaired tail as greyed dated tiles. Actions keep `episodeCap`.
 	const stripCap = $derived(
 		displayCap(playableEpisodeCount, detail?.episode_count ?? null, airing)
@@ -391,8 +391,8 @@
 	 *  fetch lands OR the caps/extras/airing land, so a page fetched
 	 *  before availability or the airing schedule resolves still gets
 	 *  its placeholder and greyed-unaired tiles: placeholders fill
-	 *  episode numbers allmanga has but Kitsu doesn't (One Piece:
-	 *  Kitsu stops at 1106, allmanga has 1161) plus the announced
+	 *  episode numbers the provider has but Kitsu doesn't (One Piece:
+	 *  Kitsu stops at 1106, the provider has 1161) plus the announced
 	 *  unaired tail, and non-integer extras ("1061.5" recaps) splice
 	 *  in — `String(number)` round-trips those to the provider fine. */
 	const episodes: KitsuEpisode[] | null = $derived.by(() => {
@@ -489,7 +489,7 @@
 	}
 
 	/** Synthetic episode record used to fill the gap between Kitsu's
-	 *  catalogued range and allmanga's playable count. The renderer's
+	 *  catalogued range and the provider's playable count. The renderer's
 	 *  null-title / null-thumbnail branches already handle missing
 	 *  metadata — this just gives the each block a keyed id. */
 	function placeholderEpisode(n: number): KitsuEpisode {
@@ -609,10 +609,10 @@
 	// identical ones against a source that rate-limits.
 	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
 
-	// Availability against allmanga. Result gates the Play + Download
+	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
-	// get a calm "Not on allmanga" notice instead of a click → error
-	// overlay, and its episode count caps the tiles.
+	// get the calm `detail_unavailable_message` notice instead of a
+	// click → error overlay, and its episode count caps the tiles.
 	//
 	// Its own effect, reading the mode directly, because the mode
 	// arrives after the page does: settings resolve late, so the first
@@ -665,8 +665,9 @@
 	// recommendations come once AniList wires up (M3+).
 	let similar = $state<KitsuAnimeRef[] | null>(null);
 
-	// Inline status banner when an action isn't wired yet (Play/Download/External
-	// hit allanime, which is M2). Kept tight; not a modal.
+	// Inline status banner for an action that reports something without
+	// navigating — a refused probe, a title the catalogue does not carry.
+	// Kept tight; not a modal.
 	let actionNotice = $state<string | null>(null);
 	/** Separate state from `actionNotice` so the inline status banner
 	 *  (used for transient hints like "downloads land later") doesn't
@@ -845,7 +846,7 @@
 				if (id !== currentId) return; // navigation raced ahead
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
-					// Music videos (a YOASOBI MV, say) never exist on allanime —
+					// Music videos (a YOASOBI MV, say) never exist on the provider —
 					// it indexes anime episodes, not song clips. Mark the show
 					// unavailable up front instead of letting the probe fuzzy-match
 					// an unrelated anime and play the wrong show. The lookup
@@ -935,7 +936,7 @@
 		// (ep 1) falls out of the same loop; if `episodes` hasn't
 		// loaded yet we still warm ep 1 so the hero "Play" button is
 		// instant.
-		// Aired per AniList AND catalogued by allmanga — the grid can
+		// Aired per AniList AND catalogued by the provider — the grid can
 		// render aired-but-uncatalogued tiles (displayCap), and warming
 		// those is the same doomed resolution the availability probe
 		// already capped out (Codex P2 #3565988141).
@@ -967,7 +968,7 @@
 						// actual click. The click handler leaves this false.
 						prefetch: true,
 						// Carry kitsu_id so the backend can record the
-						// (allmanga show_id → kitsu_id) reverse mapping
+						// (provider show_id → kitsu_id) reverse mapping
 						// even if the user only ever prefetches and never
 						// clicks (defense-in-depth; click-side carries it
 						// too via markWatched).
@@ -1360,8 +1361,8 @@
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
 		// `episode_count` must stay Kitsu's announced total — that's
-		// what the backend picker compares against allmanga's planned
-		// `episodeCount`. The modal's range cap (allmanga's released-
+		// what the backend picker compares against the provider's planned
+		// `episodeCount`. The modal's range cap (the provider's released-
 		// so-far count) is a separate concern, passed via DownloadConfirm's
 		// `availableEpisodes` prop. Codex P2 #3243357083.
 		downloadArgs = buildDownloadArgs({
@@ -1863,7 +1864,7 @@
 												// `aria-disabled` is advisory — it does not stop a click, and a
 												// delisting leaves the tile cap-gated because it arrives without
 												// a count. Without this the re-ask branch below would ask
-												// allmanga again about a show it just said it does not have.
+												// the provider again about a show it just said it does not have.
 												if (availability === false) return;
 												if (air.unaired || airingIsPending) return;
 												// Cap-gated is not "disabled": the count is a
@@ -1938,7 +1939,7 @@
 												// `aria-disabled` is advisory — it does not stop a click, and a
 												// delisting leaves the tile cap-gated because it arrives without
 												// a count. Without this the re-ask branch below would ask
-												// allmanga again about a show it just said it does not have.
+												// the provider again about a show it just said it does not have.
 												if (availability === false) return;
 												if (air.unaired || airingIsPending) return;
 												if (capGated) onRecheckEpisode(n);

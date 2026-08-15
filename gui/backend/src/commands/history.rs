@@ -223,7 +223,7 @@ mod tests {
         )
         .unwrap();
 
-        // Prime the (allmanga show_id → kitsu_id) reverse mapping
+        // Prime the (provider show_id → kitsu_id) reverse mapping
         // the play path stamps after a successful play.
         crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
         crate::commands::kitsu::allmanga_kitsu_put(&s, "amB", "K2").unwrap();

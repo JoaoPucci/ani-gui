@@ -44,7 +44,7 @@ pub struct PlayArgs {
     #[serde(default)]
     pub quality: Option<String>,
     /// Kitsu's authoritative episode count. Used to disambiguate
-    /// allanime candidates that share a title (e.g. the 1-ep
+    /// the provider candidates that share a title (e.g. the 1-ep
     /// "Konoha Gakuen Den" side-story vs. the 500-ep main "Naruto:
     /// Shippuuden"). When `None`, we fall back to the legacy `-S 1`
     /// behaviour.
@@ -52,7 +52,7 @@ pub struct PlayArgs {
     pub episode_count: Option<u32>,
     /// Year the show first aired, parsed from Kitsu's `start_date`
     /// (`"1995-04-07"` → `1995`). The disambiguator uses it as the
-    /// primary tie-break against allmanga's `airedStart.year` — much
+    /// primary tie-break against the provider's `airedStart.year` — much
     /// more discriminative than ep-count for franchise-overlap cases
     /// (Mobile Suit Gundam 1979 vs Gundam Wing 1995). `None` when the
     /// caller doesn't know the year (legacy SSE path, prefetch
@@ -67,10 +67,10 @@ pub struct PlayArgs {
     #[serde(default)]
     pub subtype: Option<String>,
     /// Fallback titles to try when the canonical title returns no
-    /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
+    /// provider hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
     /// canonicalTitle is the English form (e.g. "JoJo's Bizarre
-    /// Adventure: Stone Ocean") but allmanga only indexes the
+    /// Adventure: Stone Ocean") but the provider only indexes the
     /// romanized name. Tried in order.
     ///
     /// Wire formats accepted (driven by `deserialize_alt_titles`):
@@ -99,9 +99,9 @@ pub struct PlayArgs {
     /// Kitsu id of the anime the user is playing. The frontend knows
     /// it (the user came from `/anime/[kitsu_id]`); we don't, until
     /// the user passes it in. Recording the
-    /// (allmanga show_id → kitsu_id) pair on every successful play
+    /// (provider show_id → kitsu_id) pair on every successful play
     /// turns the home-page Continue Watching lookup from "fuzzy
-    /// kitsuSearch on a possibly-typo'd allmanga title" into a
+    /// kitsuSearch on a possibly-typo'd provider title" into a
     /// deterministic id-keyed lookup. Empty string when the caller
     /// has no kitsu_id available (e.g. the SSE fallback path or a
     /// direct API user).

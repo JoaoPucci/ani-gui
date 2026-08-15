@@ -12,7 +12,7 @@ describe('createAvailabilityWriteback', () => {
 		const wb = createAvailabilityWriteback(() => 'show-1:dub');
 		const settle = wb.begin();
 
-		// The user re-asked mid-lookup and allmanga answered from the
+		// The user re-asked mid-lookup and the provider answered from the
 		// search hit — listed, but the count off it counts halves as
 		// whole episodes, so it says nothing certain about the cap.
 		const fromRefresh = wb.refresh({ available: true, count: null, extraEpisodes: null });
