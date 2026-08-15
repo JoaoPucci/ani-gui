@@ -57,52 +57,60 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
     );
 }
 
-/// Names that differ only in case take one lock.
+/// The lock file is the target's own name plus a suffix.
 ///
-/// Windows and the default macOS filesystem resolve
-/// `Show Episode 1.mp4` and `show episode 1.mp4` to the same file, so
-/// two downloads whose resolved titles differ only in case contend
-/// for one target while hashing to two different locks — and the
-/// repackage path then removes and replaces the other's output.
+/// This is what makes the lock correct rather than approximately
+/// correct, and it replaces two cases that asserted the mechanism
+/// instead — that case-equivalent names and sigma variants hash to
+/// one path. They were checking a case table this code should never
+/// have been keeping.
 ///
-/// Folded unconditionally rather than per-platform. On a
-/// case-sensitive filesystem those really are two files, and folding
-/// makes them queue behind each other when they need not: a download
-/// waits, which the user may notice and nothing loses. Not folding on
-/// a case-insensitive one loses a finished file, which nobody sees
-/// until it is gone. The costs are not comparable, and a `cfg` on
-/// target_os would be guessing anyway — Linux mounts NTFS, and macOS
-/// can be formatted either way.
+/// Every question about whether two names are one file is the
+/// filesystem's to answer, and it answers about `Show.mp4.lock`
+/// exactly as it answers about `Show.mp4`: same case rules, same
+/// normalization rules, same trailing-dot rules, same anything a
+/// future volume invents. Hashing a folded key threw that away and
+/// substituted a table — which is why case, then final sigma, then
+/// canonical normalization each had to be found separately.
+///
+/// The name is bounded rather than assumed: past what a filesystem
+/// will accept, there is a digest instead, and both contenders reach
+/// that branch on the same input.
 #[test]
-fn case_equivalent_targets_share_one_lock() {
+fn the_lock_name_is_the_targets_name_plus_a_suffix() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
-    assert_eq!(
-        target_lock_path(&dest.join("Show Episode 1.mp4")),
-        target_lock_path(&dest.join("show episode 1.MP4")),
-        "on a case-insensitive filesystem these are one file and must be one lock"
-    );
+    for stem in [
+        "Show Episode 1",
+        "Pokémon Episode 1",
+        "Show σ",
+        "Show ς",
+        "SHOW",
+    ] {
+        let target = dest.join(format!("{stem}.mp4"));
+        let lock = target_lock_path(&target).expect("a lock path");
+        assert_eq!(
+            lock.file_name().and_then(|n| n.to_str()),
+            Some(format!("{stem}.mp4.lock").as_str()),
+            "the lock has to carry the target's name for the filesystem to \
+             answer equivalence about it"
+        );
+    }
 }
 
-/// Case-equivalence the filesystem sees but lowercasing does not.
-///
-/// NTFS compares by uppercasing through the volume's case table, so
-/// Greek `σ` and final-sigma `ς` are one character to it — and one
-/// file. Rust's `to_lowercase` keeps them apart, because lowercasing
-/// `ς` is `ς`; only the uppercase direction collapses the pair.
-///
-/// So the fold goes up and then back down. Every pair either
-/// direction alone would collapse, this collapses too, plus the ones
-/// only uppercasing reaches. It over-folds in places NTFS does not —
-/// `ß` becomes `ss` where the case table leaves it — which is the
-/// direction that costs a wait rather than a file.
+/// Past the name limit the digest takes over, and deterministically —
+/// two instances given one target must not disagree about which
+/// branch they are on.
 #[test]
-fn sigma_variants_that_are_one_file_take_one_lock() {
+fn an_overlong_name_falls_back_to_a_stable_digest() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
-    assert_eq!(
-        target_lock_path(&dest.join("Show σ Episode 1.mp4")),
-        target_lock_path(&dest.join("Show ς Episode 1.mp4")),
-        "NTFS uppercases both to Σ, so these are one file and must be one lock"
+    let target = dest.join(format!("{}.mp4", "n".repeat(300)));
+    let lock = target_lock_path(&target).expect("a lock path");
+    let name = lock.file_name().and_then(|n| n.to_str()).expect("a name");
+    assert!(
+        name.len() < 100,
+        "an unusable name must not be handed to the filesystem: {name}"
     );
+    assert_eq!(Some(lock.clone()), target_lock_path(&target));
 }
 
 proptest::proptest! {
@@ -148,16 +156,12 @@ proptest::proptest! {
     /// Sharing would serialize unrelated episodes — a range download
     /// is the common case — and, worse, make the dock look like it
     /// had stalled for a reason nobody could see.
-    ///
-    /// Distinct up to case, because case-equivalent names are one
-    /// file wherever the filesystem says so and share a lock on
-    /// purpose; that is the case above.
     #[test]
     fn distinct_targets_take_distinct_locks(
         a in "[a-zA-Z0-9 ._-]{1,40}",
         b in "[a-zA-Z0-9 ._-]{1,40}",
     ) {
-        proptest::prop_assume!(a.to_lowercase() != b.to_lowercase());
+        proptest::prop_assume!(a != b);
         let dest = std::path::Path::new("/tmp/ani-gui-prop");
         proptest::prop_assert_ne!(
             target_lock_path(&dest.join(format!("{a}.mp4"))),
