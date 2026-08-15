@@ -317,7 +317,8 @@ where
 /// into deletion: that path removes the target and passes `-y`, so a
 /// late arrival can replace a file the first run already finished.
 ///
-/// Keyed by path rather than by show so a range download's episodes,
+/// Keyed by the target's folded name rather than by show, so a
+/// range download's episodes,
 /// which differ, still run as the loop schedules them. Entries are
 /// kept rather than reaped: one `Arc<Mutex>` per file a session has
 /// downloaded is a few dozen bytes, and reaping introduces the race
@@ -359,11 +360,11 @@ static TARGET_LOCKS: std::sync::Mutex<
 ///
 /// Digested rather than named after the episode because a target
 /// already at the filesystem's name limit leaves no room for a
-/// suffix.
+/// suffix, and case-folded first — see [`lock_key`].
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     use sha2::Digest as _;
     let parent = target.parent()?;
-    let digest = sha2::Sha256::digest(target.file_name()?.as_encoded_bytes());
+    let digest = sha2::Sha256::digest(lock_key(target)?.as_bytes());
     let name = digest[..8].iter().fold(String::new(), |mut s, b| {
         use std::fmt::Write as _;
         let _ = write!(s, "{b:02x}");
@@ -430,11 +431,39 @@ pub(crate) async fn acquire_instance_lock(
     }
 }
 
+/// What both locks are keyed by: the target's file name, case-folded.
+///
+/// Windows and the default macOS filesystem resolve
+/// `Show Episode 1.mp4` and `show episode 1.MP4` to one file, so two
+/// downloads whose resolved titles differ only in case write the same
+/// target. Keyed by the raw name they take different locks and the
+/// repackage path removes the other transfer's output.
+///
+/// Folded unconditionally rather than under a `cfg`. On a
+/// case-sensitive filesystem those are genuinely two files and this
+/// makes them queue behind each other needlessly — a download waits,
+/// the user may notice, nothing is lost. Not folding on a
+/// case-insensitive one destroys a finished file, which nobody sees
+/// until it is gone. Those costs are not comparable, and `target_os`
+/// would be guessing besides: Linux mounts NTFS, and macOS can be
+/// formatted either way.
+fn lock_key(target: &std::path::Path) -> Option<String> {
+    Some(target.file_name()?.to_string_lossy().to_lowercase())
+}
+
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    // Keyed by the same folded name as the file lock. Keyed by the
+    // raw path, two same-process downloads of one case-insensitive
+    // target would pass each other here and only meet at the OS lock,
+    // which is the slower and less obvious of the two.
+    let key = target
+        .parent()
+        .zip(lock_key(target))
+        .map_or_else(|| target.to_path_buf(), |(dir, name)| dir.join(name));
     let mut guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
     guard
         .get_or_insert_with(std::collections::HashMap::new)
-        .entry(target.to_path_buf())
+        .entry(key)
         .or_default()
         .clone()
 }
