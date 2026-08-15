@@ -52,11 +52,11 @@ async function launchAppWithStubsOnce(
 ) {
   // Pinning XDG dirs to fresh tmp paths makes the backend's history,
   // settings, and cache files start empty regardless of the dev
-  // machine's actual state. Without this, the Rust backend reads
-  // the user's real `ani-hsts` file (the GUI shares it with the
-  // CLI) and the Continue Watching strip renders — Playwright's
-  // `route()` only intercepts what the renderer fetches, but the
-  // backend reads history off the filesystem directly.
+  // machine's actual state. Without this the backend reads the
+  // developer's own history — its own file under the state dir, not
+  // the CLI's — and the Continue Watching strip renders: Playwright's
+  // `route()` only intercepts what the renderer fetches, and history
+  // is read off the filesystem by the backend.
   const tmp = path.join(
     os.tmpdir(),
     `ani-gui-e2e-${process.pid}-${Date.now()}`,

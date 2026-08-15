@@ -87,9 +87,10 @@ async fn stub_anidb() -> wiremock::MockServer {
 }
 
 /// Build an `AppState` whose provider base points at the local anidb
-/// stub and whose `ani_cli_path` names a file that does not exist —
-/// the native play path must never spawn the script, and a state
-/// that would try dies loudly.
+/// stub. There is no script path to neutralise any more — the field
+/// went with the subprocess — so what keeps this honest is that the
+/// stub is the only thing serving the walk, and the assertions below
+/// check it was asked for every step.
 fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
     AppState {
         anidb_base: Some(anidb_base.to_string()),
@@ -100,7 +101,7 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: ani_gui::legacy_script::SweepReport::default(),
-        history_path: tmp.join("hist/ani-hsts"),
+        history_path: tmp.join("hist/history"),
         anidb_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
@@ -190,9 +191,9 @@ async fn play_endpoint_resolves_natively_and_returns_session() {
     result.expect("play assertion succeeded");
 
     // The whole resolution was served by the stub: browse, episodes,
-    // and languages were each hit at least once — and ani_cli_path
-    // points at a file that does not exist, so a subprocess spawn
-    // could not have produced the session.
+    // and languages were each hit at least once, which is what says
+    // the session came from the native walk rather than anywhere
+    // else.
     let requests = anidb
         .received_requests()
         .await
