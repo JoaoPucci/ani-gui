@@ -1036,51 +1036,58 @@ async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn ffmpeg_as_the_first_tool_may_not_replace_an_earlier_download() {
-    // Whatever is at the target when ffmpeg is the first tool to run
-    // is an earlier download. The confirm dialog asks the user for a
-    // directory and never for permission to overwrite, so replacing
-    // it silently is a file they did not agree to lose.
+async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
+    // The ffmpeg leg of the scratch rule. Its sibling above covers
+    // yt-dlp, and the two reach the tool by different branches — the
+    // one that only runs when yt-dlp is absent had no coverage of
+    // where it writes.
     //
-    // This used to be enforced by withholding `-y`, which made ffmpeg
-    // itself refuse. ffmpeg now writes to a name this run invented and
-    // always carries `-y`, because there is never anyone's file behind
-    // that name — so the assertion moves from the flag to what the
-    // rule was protecting.
+    // This case used to stage a file at the target and asserted that
+    // ffmpeg was not handed it. That staging no longer runs a tool at
+    // all: a download into a folder that already has the episode now
+    // returns before spawning anything, so the assertion was reading
+    // an argv file the stub never wrote. What it was protecting — an
+    // earlier download surviving — is asserted directly by
+    // `a_file_that_predates_the_download_is_kept` and by
+    // `an_episode_already_in_the_folder_is_not_downloaded_again`. What
+    // is left is the property those two do not reach, staged so the
+    // tool actually runs.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let argv = dest.path().join("argv");
-    let target = dest.path().join("Show Episode 1.mp4");
-    std::fs::write(&target, b"earlier").expect("stage an earlier download");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "printf '%s\\n' \"$@\" > '{argv}'\n{writer}\nexit 0",
-            argv = argv.display(),
-            writer = writes_its_output("replacement")
+            // ffmpeg takes its output as the last positional argument
+            // rather than after `-o`, so the yt-dlp writer would fire
+            // for neither the right path nor at all.
+            "printf '%s\\n' \"$@\" > '{argv}'\n             for a in \"$@\"; do last=\"$a\"; done\n             printf 'video' > \"$last\"\nexit 0",
+            argv = argv.display()
         ),
     );
     spawn_download_tool(
         "https://cdn.example/x/master.m3u8",
         dest.path(),
-        "Show Episode 1",
+        "Ffmpeg Show Episode 1",
         None,
         &bin.path().display().to_string(),
         std::time::Duration::from_secs(10),
         &mut |_l: &str| {},
     )
     .await
-    .expect("finding the episode already there is not a failure");
-    let seen = std::fs::read_to_string(&argv).expect("stub recorded its argv");
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Ffmpeg Show Episode 1.mp4");
+    let seen = std::fs::read_to_string(&argv).expect("the stub recorded its argv");
     assert!(
         !seen.lines().any(|a| a == target.to_string_lossy()),
-        "ffmpeg is never handed the user's own file to write: {seen:?}"
+        "ffmpeg must be handed a scratch path, not the target: {seen}"
     );
     assert_eq!(
         std::fs::read_to_string(&target).ok().as_deref(),
-        Some("earlier"),
-        "and the earlier download is still there afterwards"
+        Some("video"),
+        "and what it wrote has to end up at the target"
     );
 }
 
@@ -1366,6 +1373,99 @@ fn the_cross_instance_lock_lives_beside_the_file_it_guards() {
         "the lock must sit under the target's own directory, or no \
          environment-dependent root can be trusted to match: {}",
         path.display()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
+    // Publication keeps whatever is already at the name, so a transfer
+    // into a folder that has the episode cannot change the outcome. It
+    // can still spend an episode's worth of the user's bandwidth and
+    // most of the hour it is allowed, and then throw the result away.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo ran >> '{ran}'\n{writer}\nexit 0",
+            ran = ran.display(),
+            writer = writes_its_output("replacement")
+        ),
+    );
+    let target = dest.path().join("Owned Show Episode 1.mp4");
+    std::fs::write(&target, b"already here").expect("stage the episode");
+
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Owned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("having the episode already is not a failure");
+
+    assert!(
+        !ran.exists(),
+        "no tool should run for a file that cannot be replaced"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("already here"),
+        "and the episode there is untouched"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("already")),
+        "the dock is told why nothing happened: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
+    // The guard was disarmed before publication rather than after, so
+    // a publish that could not install the file left the finished
+    // transfer sitting in the download folder — a whole episode, under
+    // a hidden name, with nothing that would ever remove it.
+    //
+    // A target name past what the filesystem accepts is the cheap way
+    // to make publication fail: the scratch name is short and gets
+    // written normally, and only the install is impossible.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("a whole episode")),
+    );
+    let stem = "n".repeat(300);
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        &stem,
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "a file that cannot be installed is a failure");
+
+    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a transfer that could not be published must not be left behind: {leftovers:?}"
     );
 }
 
