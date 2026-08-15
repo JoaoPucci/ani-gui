@@ -36,7 +36,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-/** As it reads in the user's ani-cli history, episode tail and all. */
+/** As it reads in the watch history, episode tail and all. */
 const HISTORY_TITLE = 'Meitantei Conan (1150 episodes)';
 /** Kitsu files the same show under its English canonical title. */
 const KITSU_TITLE = 'Detective Conan';
