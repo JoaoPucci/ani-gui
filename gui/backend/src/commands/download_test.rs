@@ -1843,6 +1843,102 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn an_abandoned_claim_is_only_reclaimed_under_the_lock() {
+    // Classifying a claim as abandoned and unlinking it are two
+    // operations, and nothing between them stops a second instance
+    // reaching the same conclusion about the same entry: A removes it
+    // and installs, then B's unlink — decided before any of that —
+    // deletes A's finished episode.
+    //
+    // There is no conditional unlink to reach for, and the atomic
+    // alternatives need a filesystem richer than the one that lacked
+    // hard links in the first place. What does exist is the lock this
+    // download already takes for the target. Only one instance holds
+    // it, so making it the permission to reclaim gives the act the
+    // ownership the filesystem will not.
+    //
+    // Refusing to reclaim costs a transfer. Reclaiming wrongly costs
+    // the file, and the target name carries neither mode nor quality,
+    // so it need not even be the same episode.
+    //
+    // The lock is made untakeable by putting a regular file where its
+    // directory goes, which is the same shape as the deep-destination
+    // case that made the lock best-effort to begin with.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the dub")),
+    );
+    std::fs::write(dest.path().join(".ani-gui-locks"), b"not a directory").expect("block the lock");
+    let target = dest.path().join("Unlocked Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("a claim from an earlier crash");
+    age_it(&target);
+
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Unlocked Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("standing down is not a failure");
+
+    assert_eq!(
+        std::fs::metadata(&target).expect("target").len(),
+        0,
+        "without the lock, nothing here can tell whether another instance \
+         is reclaiming this same claim right now"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
+    // `metadata` follows links, so a dangling one answers NotFound and
+    // the name reads as free. The transfer then runs to completion and
+    // `hard_link` fails with the same `AlreadyExists` an episode gives
+    // — reported as a finished download, with nothing playable at the
+    // path.
+    //
+    // A link that resolves is no better. Publishing through it writes
+    // wherever it points, which is not the folder the user picked in
+    // the confirm dialog. Neither is ours to install over.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the episode")),
+    );
+    std::os::unix::fs::symlink(
+        dest.path().join("gone.mp4"),
+        dest.path().join("Linked Show Episode 1.mp4"),
+    )
+    .expect("a dangling link");
+
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Linked Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(
+        got.is_err(),
+        "nothing playable can be installed at that name"
+    );
+}
+
 #[test]
 fn a_directory_at_the_target_is_a_failure_not_a_download() {
     // `AlreadyExists` from the link is not always another episode.
