@@ -1134,6 +1134,90 @@ async fn two_downloads_of_one_target_do_not_overlap() {
 #[cfg(unix)]
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
+    // The two waits are the same wait as far as the user is concerned:
+    // a queued download sitting behind one that already owns the file.
+    // Only the cross-instance one was charged to the transfer's
+    // ceiling, because the deadline was created between them — so a
+    // duplicate click waited out the first download's whole hour and
+    // then started its own hour, while the same wait against another
+    // app instance ended at the deadline.
+    //
+    // The duplicate here is a second call for the same target with the
+    // first still running. The first stub outlives the second's
+    // deadline; the second must give up at its own, not inherit a
+    // fresh one when the mutex finally hands over.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        // Records the run before sleeping, so a spawn that is later
+        // killed at its deadline still leaves evidence it happened.
+        &format!(
+            "echo ran >> '{ran}'\nsleep 1.5\nexit 0",
+            ran = ran.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let held = {
+        let path_env = path_env.clone();
+        let dir = dir.clone();
+        tokio::spawn(async move {
+            let mut sink = |_l: &str| {};
+            spawn_download_tool(
+                "https://cdn.example/x/master.m3u8",
+                &dir,
+                "Queued Show Episode 1",
+                None,
+                &path_env,
+                std::time::Duration::from_secs(10),
+                &mut sink,
+            )
+            .await
+        })
+    };
+    // Let the first call reach the tool before the duplicate arrives.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let mut sink = |_l: &str| {};
+    let queued = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Queued Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(300),
+            &mut sink,
+        ),
+    )
+    .await;
+    let queued = queued.expect("the queued download must end at its own deadline");
+    assert!(
+        matches!(queued, Err(AniError::Timeout)),
+        "a download that spends its deadline waiting for a same-process holder \
+         has timed out, exactly as it would waiting for another instance: {queued:?}"
+    );
+    held.await.expect("join").expect("the first download runs");
+    // The discriminating assertion. Timeout alone proves nothing here:
+    // a queued call handed a fresh deadline still spawns its tool and
+    // still times out on the transfer. What separates the two is
+    // whether it spawned at all.
+    let runs = std::fs::read_to_string(&ran).expect("the stub logged");
+    assert_eq!(
+        runs.lines().count(),
+        1,
+        "the queued download spent its deadline waiting, so it must never have \
+         reached the tool: {runs:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
     // `flock` parks the thread that calls it, and a parked thread is
     // not a future: cancelling the download drops the JoinHandle while
