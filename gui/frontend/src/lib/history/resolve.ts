@@ -67,7 +67,7 @@ export interface ResumeTarget {
 	 *  (offline-DB lookup) can diverge them without churning call
 	 *  sites. */
 	searchTitle: string;
-	/** The episode number the user remembers (allmanga-relative). */
+	/** The episode number the user remembers (provider-relative). */
 	displayEpisode: number;
 	/** Cour size read from a legacy row's "(N episodes)" tail. Null
 	 *  whenever the tail is absent, which is every row written since
@@ -348,7 +348,7 @@ function titleTokens(s: string): Set<string> {
 	return new Set(raw.filter((_, i) => keep[i] && !STOP_WORDS.has(raw[i])));
 }
 
-/** Whether the allanime/hsts title is specific enough that a near-zero overlap
+/** Whether the provider/hsts title is specific enough that a near-zero overlap
  *  with the Kitsu titles is real evidence of a mismatch. The provider indexes some
  *  shows under terse stubs ("1P" for One Piece) that share no token with the
  *  canonical title yet are correct — those carry no signal, so we never judge

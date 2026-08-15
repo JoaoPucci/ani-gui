@@ -147,7 +147,7 @@ describe('displayCap', () => {
 		expect(displayCap(2, 12, { aired: null, next_episode: null, next_airing_at: null })).toBe(2);
 	});
 
-	it('keeps allmanga ahead of a stale announced total', () => {
+	it('keeps the provider ahead of a stale announced total', () => {
 		// One Piece: The provider streams past Kitsu's catalogued number.
 		expect(displayCap(1161, 1106, RELEASING)).toBe(1161);
 	});
@@ -182,7 +182,7 @@ describe('minCap', () => {
 });
 
 describe('beyondPlayable', () => {
-	it('gates integer episodes above allmanga playable count', () => {
+	it('gates integer episodes above the provider playable count', () => {
 		// Codex P2 #3565988141/#3565988143: AniList can report more
 		// aired episodes than the provider has catalogued (aired=5,
 		// playable=2 during lag). Those tiles are aired per epAirState
@@ -200,7 +200,7 @@ describe('beyondPlayable', () => {
 		expect(beyondPlayable(12, null)).toBe(false);
 	});
 
-	it('floor-compares so decimal extras from allmanga stay playable', () => {
+	it('floor-compares so decimal extras from the provider stay playable', () => {
 		// extraEpisodes come from the provider itself — a streamable "2.5"
 		// recap must not be gated by a playable count of 2.
 		expect(beyondPlayable(2.5, 2)).toBe(false);

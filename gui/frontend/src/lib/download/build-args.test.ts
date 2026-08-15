@@ -30,7 +30,7 @@ function refWithCount(episode_count: number | null): KitsuAnimeRef {
 }
 
 describe('buildDownloadArgs', () => {
-	it("uses Kitsu's announced episode_count, not the allmanga released count", () => {
+	it("uses Kitsu's announced episode_count, not the provider's released count", () => {
 		const args = buildDownloadArgs({
 			detail: refWithCount(12),
 			episode: 1,

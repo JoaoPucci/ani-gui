@@ -503,7 +503,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
             show_title = %show_title,
-            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
+            "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
         return;
     }
@@ -512,7 +512,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
             error = ?e,
-            "play: allmanga→kitsu mapping write failed",
+            "play: provider→kitsu mapping write failed",
         );
     }
 }

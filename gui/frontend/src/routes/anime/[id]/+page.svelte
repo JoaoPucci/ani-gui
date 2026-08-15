@@ -1461,7 +1461,7 @@
 					     a placeholder so we never flash CTAs labeled with
 					     stale Kitsu counts. False → "Not in catalogue"
 					     notice. True → real Play/Download with the
-					     allmanga-truth count threaded through. -->
+					     provider-truth count threaded through. -->
 					<!-- Availability-specific, non-editor content: a loading skeleton
 					     while the probe is in flight; a "not in catalogue" notice when
 					     the show can't be streamed. -->
@@ -1484,7 +1484,7 @@
 					<!-- The actions row: Play/Download (only when the show is streamable)
 					     plus the tracker list editor. The editor needs only the Kitsu id
 					     + provider mapping, so a connected user can manage a list entry
-					     even for a title allmanga can't stream — and it's rendered exactly
+					     even for a title the provider can't stream — and it's rendered exactly
 					     ONCE here, never once per availability branch, so an availability
 					     flip can't remount it and drop an in-flight save or a pending
 					     partial-save retry. -->
@@ -2651,7 +2651,7 @@
 		filter: brightness(1);
 	}
 
-	/* Availability gate — when allmanga doesn't index the show, the
+	/* Availability gate — when the provider doesn't index the show, the
 	   tiles still render (Kitsu metadata) but as read-only thumbs. */
 	.ep-tile-disabled {
 		cursor: not-allowed;
@@ -2659,10 +2659,10 @@
 		filter: saturate(0.6);
 	}
 
-	/* Aired, but above the episode count allmanga last reported. Dimmed
+	/* Aired, but above the episode count the provider last reported. Dimmed
 	   the same amount as an uncatalogued tile — the episode genuinely
 	   is not streamable yet — but it keeps the pointer and the hover
-	   lift, because clicking it re-asks allmanga. `not-allowed` here
+	   lift, because clicking it re-asks the provider. `not-allowed` here
 	   would deny the one affordance the tile exists to offer. */
 	.ep-tile-recheck {
 		cursor: pointer;

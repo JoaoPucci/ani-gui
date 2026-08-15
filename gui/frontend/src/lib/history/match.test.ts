@@ -236,7 +236,7 @@ describe('resolveKitsuMatch', () => {
 	// search. Resolver checks this first; on hit, no kitsuSearch /
 	// title-match round-trip is necessary.
 
-	it('uses allmanga→kitsu reverse mapping when present', async () => {
+	it('uses the provider→kitsu reverse mapping when present', async () => {
 		// Naruto's provider title is typo'd ("Nato: Shippuuden") so
 		// the title-match path mismatches it to Mysterious Girlfriend
 		// X. The reverse mapping recorded on play side-steps that
@@ -435,7 +435,7 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it('falls through to allmanga show enrichment when text search returns 0 hits', async () => {
+	it('falls through to provider show enrichment when text search returns 0 hits', async () => {
 		// Repro: cleared metadata cache + cryptic provider `name`. The
 		// reverse cache miss + title-match cache miss + slug skip + 0-hit
 		// text search should NOT be terminal — the resolver calls the
@@ -462,7 +462,7 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedResolveAllmanga).toHaveBeenCalledWith('ReooPAxPMsHM4KPMY', true);
 	});
 
-	it('returns null when text search and allmanga enrichment both miss', async () => {
+	it('returns null when text search and provider enrichment both miss', async () => {
 		// Worst case: title-search empty AND backend enrichment also
 		// finds no Kitsu match (shows the provider indexes that Kitsu
 		// doesn't carry at all). Resolver returns null; the home page
@@ -545,7 +545,7 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
-	it('keeps a reverse-map binding whose allmanga title is a plausible typo', async () => {
+	it('keeps a reverse-map binding whose provider title is a plausible typo', async () => {
 		// Guard must not over-reject: "Nato: Shippuuden" (the provider typo) shares
 		// the distinctive "Shippuuden" with "Naruto: Shippuuden", so the binding
 		// stays trusted — no eviction, no re-search.
@@ -578,7 +578,7 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it('awaits the reverse-map eviction before reaching allmanga enrichment', async () => {
+	it('awaits the reverse-map eviction before reaching provider enrichment', async () => {
 		// Race guard: the backend enrichment endpoint (resolve_allmanga_show_id)
 		// reads the reverse cache first, so the eviction DELETE must complete
 		// before enrichment runs — otherwise the poisoned id comes straight back.

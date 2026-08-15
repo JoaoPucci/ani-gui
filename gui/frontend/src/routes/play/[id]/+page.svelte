@@ -975,7 +975,7 @@
 	// beyondPlayable reads it as unbounded, so the warm would resolve
 	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
-	/** Whether allmanga has the show at all, as the detail page tracks
+	/** Whether the provider has the show at all, as the detail page tracks
 	 *  it. null until the first answer. Separate from the cap: a
 	 *  delisted show comes back without a count, so the cap alone
 	 *  cannot express "there is nothing here" — it just stays where it
@@ -4745,9 +4745,9 @@
 	.ep-card-unaired .ep-card-thumb-play {
 		display: none;
 	}
-	/* Aired, but above allmanga's last reported count. Dimmed like an
+	/* Aired, but above the provider's last reported count. Dimmed like an
 	   unaired card, but it keeps the pointer and the play icon: the
-	   click re-asks allmanga and, when the count has caught up, plays
+	   click re-asks the provider and, when the count has caught up, plays
 	   the episode. Hiding the icon would advertise the opposite. */
 	.ep-card-recheck {
 		cursor: pointer;

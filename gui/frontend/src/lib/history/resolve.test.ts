@@ -343,7 +343,7 @@ describe('pickKitsuMatch', () => {
 		expect(pickKitsuMatch(hits, r)?.id).toBe('ongoing');
 	});
 
-	it('accepts ongoing shows where allmanga lags behind Kitsu announced count', () => {
+	it('accepts ongoing shows where the provider lags behind Kitsu announced count', () => {
 		// Re:Zero S4: The provider reports 5 streamable episodes, Kitsu's
 		// announced total is 19. Without the asymmetric rule the
 		// strict ratio (14/5 = 2.8) rejected the correct match,
@@ -464,7 +464,7 @@ describe('resumeQueryString', () => {
 });
 
 describe('isMusicSubtype', () => {
-	it('is true for "music" (case-insensitive) — never playable on allanime', () => {
+	it('is true for "music" (case-insensitive) — never playable through the provider', () => {
 		expect(isMusicSubtype('music')).toBe(true);
 		expect(isMusicSubtype('Music')).toBe(true);
 	});
@@ -494,7 +494,7 @@ describe('titlesPlausiblySameShow', () => {
 		).toBe(false);
 	});
 
-	it('accepts the legitimate typo case (allanime stub vs canonical)', () => {
+	it('accepts the legitimate typo case (provider stub vs canonical)', () => {
 		// The reverse-map exists for exactly this: "Nato: Shippuuden" is
 		// the provider's typo for "Naruto: Shippuuden" — they share the
 		// distinctive "Shippuuden", so the binding stays trusted.
@@ -514,7 +514,7 @@ describe('titlesPlausiblySameShow', () => {
 		).toBe(true);
 	});
 
-	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
+	it('trusts a stub provider title even with zero overlap (One Piece is "1P")', () => {
 		// THE extreme case: The provider indexes One Piece as "1P". It shares
 		// no token with "One Piece", but a 1-short-token stub carries no
 		// signal to reject on — the binding (recorded from a real play,

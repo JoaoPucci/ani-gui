@@ -34,7 +34,7 @@ import { beyondPlayable } from './episode-caps';
  *     failed → say so. Silence is indistinguishable from the dead
  *     tile this exists to replace.
  */
-/** What allmanga said, whole. The re-ask replaces the backend's
+/** What the provider said, whole. The re-ask replaces the backend's
  *  entire cached row, so the answer is a row rather than a number. */
 export interface CapGateAnswer {
 	/** Highest integer episode, or null when there is no number. */
@@ -78,7 +78,7 @@ export interface CapGateRefresh {
 }
 
 export interface CapGateProbeDeps {
-	/** Ask allmanga about THIS SHOW, skipping the cached row. Answers
+	/** Ask the provider about THIS SHOW, skipping the cached row. Answers
 	 *  with the whole fresh row; null when it could not answer at all.
 	 *  Takes no episode: the question is show-level. */
 	probe: () => Promise<CapGateAnswer | null>;

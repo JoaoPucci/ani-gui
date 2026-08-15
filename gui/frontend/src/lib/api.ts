@@ -804,7 +804,7 @@ export interface AvailabilityArgs {
 	 *  background probes and skips them while its breaker is open;
 	 *  interactive checks (detail-page CTA) omit it. */
 	background?: boolean;
-	/** Skip the cached count and ask allmanga directly.
+	/** Skip the cached count and ask the provider directly.
 	 *
 	 *  The stored count is a snapshot — 24h for an ongoing show — and
 	 *  the provider catalogues episodes inside that window. A user clicking

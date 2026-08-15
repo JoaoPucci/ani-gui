@@ -1631,7 +1631,7 @@ mod tests {
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
-            "cross-cour mapping (allmanga Part 2 → kitsu Part 1) must not persist"
+            "cross-cour mapping (provider Part 2 → kitsu Part 1) must not persist"
         );
     }
 
@@ -1719,7 +1719,7 @@ mod tests {
         assert_eq!(
             stored,
             Some("99001".to_string()),
-            "one-sided cour evidence (allmanga None / kitsu Some) is not a mismatch"
+            "one-sided cour evidence (provider None / kitsu Some) is not a mismatch"
         );
     }
 
@@ -1802,7 +1802,7 @@ mod tests {
         assert_eq!(
             stored,
             Some("99002".to_string()),
-            "one-sided cour evidence (allmanga Some / kitsu None) is not a mismatch"
+            "one-sided cour evidence (provider Some / kitsu None) is not a mismatch"
         );
     }
 
