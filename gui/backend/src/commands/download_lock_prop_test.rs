@@ -83,6 +83,28 @@ fn case_equivalent_targets_share_one_lock() {
     );
 }
 
+/// Case-equivalence the filesystem sees but lowercasing does not.
+///
+/// NTFS compares by uppercasing through the volume's case table, so
+/// Greek `σ` and final-sigma `ς` are one character to it — and one
+/// file. Rust's `to_lowercase` keeps them apart, because lowercasing
+/// `ς` is `ς`; only the uppercase direction collapses the pair.
+///
+/// So the fold goes up and then back down. Every pair either
+/// direction alone would collapse, this collapses too, plus the ones
+/// only uppercasing reaches. It over-folds in places NTFS does not —
+/// `ß` becomes `ss` where the case table leaves it — which is the
+/// direction that costs a wait rather than a file.
+#[test]
+fn sigma_variants_that_are_one_file_take_one_lock() {
+    let dest = std::path::Path::new("/tmp/ani-gui-prop");
+    assert_eq!(
+        target_lock_path(&dest.join("Show σ Episode 1.mp4")),
+        target_lock_path(&dest.join("Show ς Episode 1.mp4")),
+        "NTFS uppercases both to Σ, so these are one file and must be one lock"
+    );
+}
+
 proptest::proptest! {
     /// The lock never leaves the directory of the file it guards.
     ///
