@@ -363,32 +363,26 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// folding could not: there `Show.mp4` and `show.mp4` really are two
 /// files, and now they take two locks instead of queueing behind one.
 ///
-/// Past what a filesystem will accept as a name there is a digest
-/// instead. Deterministic, so two instances reach that branch on the
-/// same input and still meet.
+/// The name is carried as the enclosing directory, with a constant
+/// leaf inside it, so nothing can overflow: whatever fits as the
+/// target's own name fits as a directory beside it. An earlier
+/// version appended `.lock` to the name and hashed past a byte
+/// threshold, which put back what delegating removes — the threshold
+/// is measured on the spelling, so two spellings of one file can
+/// differ in length, take different branches, and diverge again once
+/// hashed.
 ///
 /// The cost is a directory the user can see in their download folder.
 /// It is dot-prefixed, so hidden on Linux and macOS and visible on
 /// Windows; a lock nobody can rely on would be the worse trade.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
-    let name = target.file_name()?.to_string_lossy();
-    let locks = parent.join(".ani-gui-locks");
-    // 255 bytes is what ext4, NTFS and APFS all take. The exact
-    // ceiling matters less than both contenders computing the same
-    // answer from the same name, which any fixed number gives.
-    let direct = format!("{name}.lock");
-    if direct.len() <= 255 {
-        return Some(locks.join(direct));
-    }
-    use sha2::Digest as _;
-    let digest = sha2::Sha256::digest(name.as_bytes());
-    let hashed = digest[..8].iter().fold(String::new(), |mut s, b| {
-        use std::fmt::Write as _;
-        let _ = write!(s, "{b:02x}");
-        s
-    });
-    Some(locks.join(format!("{hashed}.lock")))
+    Some(
+        parent
+            .join(".ani-gui-locks")
+            .join(target.file_name()?)
+            .join("lock"),
+    )
 }
 
 /// How often a download waiting on another instance re-tries the OS
