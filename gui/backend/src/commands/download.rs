@@ -327,6 +327,39 @@ static TARGET_LOCKS: std::sync::Mutex<
     Option<std::collections::HashMap<std::path::PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>>,
 > = std::sync::Mutex::new(None);
 
+/// Where the lock that crosses app instances lives for `target`.
+///
+/// The map above is per-process, so a second copy of the app shares
+/// none of it. What both instances do share is the filesystem, and a
+/// lock file named the same way by both is enough for the kernel to
+/// order them — including when one is killed mid-download, since it
+/// releases the lock on the dying process's behalf.
+///
+/// Named from the target's path rather than placed beside it: a
+/// `.lock` sibling per episode would accumulate in the user's
+/// download folder, and this is app bookkeeping the user has no
+/// reason to meet. The temp directory is per-user on Windows and
+/// shared on Linux; a hostile local account could hold the file and
+/// stall a download, which is a nuisance with no path to the file
+/// being written.
+///
+/// The parent is canonicalized so two instances configured with
+/// different routes to one directory — a symlink, a trailing `.` —
+/// still agree on the name.
+pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
+    use sha2::Digest as _;
+    let parent = target.parent()?;
+    let dir = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    let full = dir.join(target.file_name()?);
+    let digest = sha2::Sha256::digest(full.as_os_str().as_encoded_bytes());
+    let name = digest[..8].iter().fold(String::new(), |mut s, b| {
+        use std::fmt::Write as _;
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    Some(std::env::temp_dir().join(format!("ani-gui-dl-{name}.lock")))
+}
+
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     let mut guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
     guard

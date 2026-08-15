@@ -1130,3 +1130,73 @@ async fn two_downloads_of_one_target_do_not_overlap() {
         "two writers of one target must take turns, not overlap: {order:?}"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_waits_for_another_app_instance_holding_the_target() {
+    // Nothing stops a second copy of the app running, and it has its
+    // own address space: its own `TARGET_LOCKS` map, its own mutexes.
+    // The in-process lock above cannot see it, so two instances
+    // pointed at one download directory reach the same path together
+    // and the repackage retry deletes and replaces the other's file —
+    // the same loss, one layer out.
+    //
+    // The lock that crosses that boundary is the kernel's, taken on a
+    // file both instances name the same way and released even if the
+    // holder is killed. This test plays the second instance by taking
+    // it on its own handle: the download must wait, and the stub must
+    // not have run while it waited.
+    //
+    // Multi-threaded on purpose. The wait is a blocking `flock`, and
+    // the assertion is that time passes without the tool running —
+    // on a current-thread runtime a test that blocks to let that time
+    // pass also stops the download from progressing, and would read
+    // green with no lock in the code at all.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{ran}'\nexit 0", ran = ran.display()),
+    );
+    let target = dest.path().join("Shared Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path for the target");
+    let foreign = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("lock file");
+    fs4::FileExt::lock(&foreign).expect("foreign lock");
+
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let waiting = tokio::spawn(async move {
+        let mut sink = |_l: &str| {};
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Shared Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut sink,
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        !ran.exists(),
+        "the tool ran while another app instance held the target's lock"
+    );
+    fs4::FileExt::unlock(&foreign).expect("unlock");
+    waiting
+        .await
+        .expect("join")
+        .expect("the download runs once the other instance releases");
+    assert!(
+        ran.exists(),
+        "the download never ran after the lock was released"
+    );
+}
