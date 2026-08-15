@@ -1789,15 +1789,18 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
     std::fs::write(&scratch, b"the dub").expect("a finished transfer");
     std::fs::write(&target, b"").expect("another publisher's live claim");
 
-    assert_eq!(
-        publish(&scratch, &target).expect("publication succeeds"),
-        Published::AlreadyThere,
-        "a claim made moments ago belongs to a publisher still running"
+    // Reporting the episode present would be a guess about someone
+    // else's next syscall. This claim's owner never makes it, and
+    // saying the download succeeded leaves the user with an empty file
+    // the next attempt refuses.
+    assert!(
+        publish(&scratch, &target).is_err(),
+        "a claim that never becomes an episode is not a finished download"
     );
     assert_eq!(
         std::fs::metadata(&target).expect("target").len(),
         0,
-        "and its claim is still standing for it to rename onto"
+        "and it is still not this transfer's to take"
     );
 }
 
@@ -1860,6 +1863,88 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
     assert!(
         said.contains("Abandoned Show Episode 1.mp4") && said.contains("interrupted"),
         "the dock has to name the file and say why, or the user cannot act: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_that_cannot_be_read_is_not_a_path_that_is_free() {
+    // Every error from `symlink_metadata` mapped to "nothing here",
+    // which is right for `NotFound` and wrong for the rest. Permissions
+    // change, a network folder goes away, the volume errors — and the
+    // classifier reports the name free.
+    //
+    // Asked of the scratch path, that becomes a report of success: the
+    // finished-transfer check reads "not an episode" as the tool having
+    // written nothing, which has always ended the download happily. So
+    // an unreadable folder publishes no file and says the download is
+    // done.
+    let dir = tempfile::tempdir().expect("dir");
+    let sealed = dir.path().join("sealed");
+    std::fs::create_dir(&sealed).expect("sealed dir");
+    let inside = sealed.join("Show Episode 1.mp4");
+    std::fs::write(&inside, b"the episode").expect("a file inside it");
+    std::fs::set_permissions(&sealed, std::os::unix::fs::PermissionsExt::from_mode(0o000))
+        .expect("seal it");
+
+    let seen = at_target(&inside);
+
+    // Restored first, so the temp directory can still be cleaned up
+    // whatever the assertion does.
+    std::fs::set_permissions(&sealed, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("unseal");
+    assert_ne!(
+        seen,
+        AtTarget::Nothing,
+        "a path this process cannot look at is not a path it may write to"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_claim_that_never_resolves_is_not_a_finished_download() {
+    // Standing down for a live claim assumes its owner is two syscalls
+    // from installing the episode. Usually true. When it is not — the
+    // owner crashed between creating the claim and renaming onto it —
+    // nothing lands, and this transfer was discarded on the strength of
+    // a promise nobody kept.
+    //
+    // Reporting that as a completed download is the worst of the
+    // options: the user is told the episode is in the folder, and what
+    // is actually there is an empty file that the next attempt will
+    // refuse.
+    //
+    // A claim resolves in microseconds or not at all, so waiting a
+    // moment separates the two without a lock and without guessing.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the episode")),
+    );
+    let target = dest.path().join("Contended Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("a claim whose owner never returns");
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contended Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(30),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+
+    assert!(
+        got.is_err(),
+        "no episode was installed, so this download did not succeed"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("publishing")),
+        "and the dock says another download holds the name: {lines:?}"
     );
 }
 
