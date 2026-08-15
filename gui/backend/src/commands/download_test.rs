@@ -1534,6 +1534,81 @@ async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
 
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_takes_the_tools_own_temporaries_with_it() {
+    // The transfer does not write to the `-o` path while it runs.
+    // yt-dlp's `--part` is on by default — "use .part files instead of
+    // writing directly into output file" — so the bytes land in
+    // `<out>.part`, with `<out>.ytdl` holding fragment-resume state
+    // and a `<out>.part-FragN` per in-flight fragment beside it. A
+    // guard that removes the exact `-o` path removes the one name
+    // nothing was ever written to, and the episode-sized file stays.
+    //
+    // The fix is not to enumerate a tool's naming conventions. That is
+    // the same mistake as reconstructing which spellings are one file,
+    // and it ends the same way: right until the tool adds a suffix. The
+    // scratch name carries a uuid this run generated, so anything
+    // derived from it is ours by construction.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "prev=\"\"\nfor a in \"$@\"; do \
+         if [ \"$prev\" = \"-o\" ]; then \
+         printf 'half an episode' > \"$a.part\"; \
+         printf 'resume state' > \"$a.ytdl\"; \
+         printf 'a fragment' > \"$a.part-Frag7\"; \
+         fi; prev=\"$a\"; done\nsleep 30\nexit 0",
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let running = tokio::spawn(async move {
+        let mut sink = |_l: &str| {};
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Interrupted Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut sink,
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    running.abort();
+    let _ = running.await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let leftovers = ours_in(dest.path());
+    assert!(
+        leftovers.is_empty(),
+        "the tool's own temporaries are the transfer too: {leftovers:?}"
+    );
+}
+
+/// Every file in `dir` this app's transfer could have put there. The
+/// scratch name is `.ani-gui-<pid>-<uuid>…`, and nothing a tool
+/// derives from it loses that prefix.
+///
+/// Files only, because `.ani-gui-locks` shares the prefix and is not
+/// transfer data — it is the lock directory, which has to sit on the
+/// destination's own volume and outlives any one download. The
+/// production sweep is narrower still: it matches the full scratch
+/// file name, which no other entry can begin with.
+#[cfg(unix)]
+fn ours_in(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".ani-gui-"))
+        .collect()
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     // Cancel drops the future mid-transfer. None of the error branches
     // run, so nothing below the await gets to clean up — and what is
