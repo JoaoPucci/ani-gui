@@ -1777,6 +1777,7 @@ async fn an_abandoned_claim_does_not_block_the_episode_forever() {
     );
     let target = dest.path().join("Abandoned Show Episode 1.mp4");
     std::fs::write(&target, b"").expect("stage the claim a crash left");
+    age_it(&target);
 
     spawn_download_tool(
         "https://cdn.example/x/master.m3u8",
@@ -1797,6 +1798,100 @@ async fn an_abandoned_claim_does_not_block_the_episode_forever() {
     );
 }
 
+/// Backdate `path` far enough that the grace period has passed.
+fn age_it(path: &std::path::Path) {
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .expect("open to backdate")
+        .set_modified(old)
+        .expect("backdate");
+}
+
+#[test]
+fn a_claim_another_publisher_is_still_using_is_left_alone() {
+    // The claim is only abandoned once nobody is coming back for it.
+    // Between another publisher's `create_new` and its `rename` the
+    // claim is live, and deleting it there lets both transfers install
+    // — each one's rename replacing the other's file, and the loser's
+    // error cleanup deleting a target it no longer owns.
+    //
+    // That is not two copies of one thing. The target name is
+    // `<title> Episode <n>.mp4` and carries neither mode nor quality,
+    // so the sub and the dub of an episode collide on it, and so do
+    // 1080p and 720p. What is lost is a different file.
+    //
+    // Nothing here can ask who owns a path. What it can ask is how
+    // long the claim has been sitting there: a live one is two
+    // syscalls old, an abandoned one is as old as the crash.
+    let dir = tempfile::tempdir().expect("dir");
+    let scratch = dir.path().join(".ani-gui-test.part.mp4");
+    let target = dir.path().join("Contended Show Episode 1.mp4");
+    std::fs::write(&scratch, b"the dub").expect("a finished transfer");
+    std::fs::write(&target, b"").expect("another publisher's live claim");
+
+    assert_eq!(
+        publish(&scratch, &target).expect("publication succeeds"),
+        Published::AlreadyThere,
+        "a claim made moments ago belongs to a publisher still running"
+    );
+    assert_eq!(
+        std::fs::metadata(&target).expect("target").len(),
+        0,
+        "and its claim is still standing for it to rename onto"
+    );
+}
+
+#[test]
+fn a_directory_at_the_target_is_a_failure_not_a_download() {
+    // `AlreadyExists` from the link is not always another episode.
+    // A directory, a fifo, anything that is not a regular file gives
+    // the same error, and reporting that as a completed download tells
+    // the user their episode is in a folder where there is nothing
+    // playable at all.
+    let dir = tempfile::tempdir().expect("dir");
+    let scratch = dir.path().join(".ani-gui-test.part.mp4");
+    let target = dir.path().join("Blocked Show Episode 1.mp4");
+    std::fs::write(&scratch, b"the episode").expect("a finished transfer");
+    std::fs::create_dir(&target).expect("something else holds the name");
+
+    assert!(
+        publish(&scratch, &target).is_err(),
+        "nothing playable is at the target, so this did not succeed"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_directory_at_the_target_refuses_before_the_transfer() {
+    // And it refuses up front, for the same reason the already-here
+    // case does: the outcome cannot change, so an episode of the
+    // user's bandwidth should not be spent finding that out.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{}'\nexit 0", ran.display()),
+    );
+    std::fs::create_dir(dest.path().join("Blocked Show Episode 1.mp4")).expect("an obstruction");
+
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Blocked Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "the episode cannot land at that name");
+    assert!(!ran.exists(), "and no tool should have run to discover it");
+}
+
 #[test]
 fn publication_takes_over_an_abandoned_claim() {
     // The other half, at the boundary: reaching publication with a
@@ -1809,6 +1904,7 @@ fn publication_takes_over_an_abandoned_claim() {
     let target = dir.path().join("Claimed Show Episode 1.mp4");
     std::fs::write(&scratch, b"the episode").expect("a finished transfer");
     std::fs::write(&target, b"").expect("the claim");
+    age_it(&target);
 
     assert_eq!(
         publish(&scratch, &target).expect("publication succeeds"),
