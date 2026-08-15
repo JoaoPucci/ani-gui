@@ -576,26 +576,6 @@ const ALREADY_HERE: &str = "that episode is already in this folder; keeping the 
 /// costs somebody's file.
 const CLAIM_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Whether this call may take an abandoned claim.
-///
-/// Classifying a claim as abandoned and unlinking it are two
-/// operations, and no filesystem here offers a conditional unlink to
-/// fuse them. Two instances can therefore reach the same conclusion
-/// about the same entry, and the second one's unlink — decided before
-/// the first installed anything — deletes a finished episode.
-///
-/// The lock this download already takes for the target supplies the
-/// ownership the filesystem will not: only one instance holds it, so
-/// only one is ever in the reclaiming path. Where it could not be
-/// taken, the claim is left for whoever can.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Reclaim {
-    /// The target's lock is held for the duration of this publication.
-    Permitted,
-    /// It is not, so an abandoned claim is treated as occupied.
-    Refused,
-}
-
 /// What is sitting at a target path.
 ///
 /// Publication used to ask one boolean of it, and the interesting
@@ -681,28 +661,34 @@ pub(crate) enum Published {
 /// # Errors
 /// [`AniError::Io`] when the finished file cannot be installed and
 /// nothing was already there to explain why.
-pub(crate) fn publish(
-    scratch: &std::path::Path,
-    target: &std::path::Path,
-    reclaim: Reclaim,
-) -> Result<Published> {
+pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Result<Published> {
     match at_target(target) {
-        // Cleared before either mechanism, because both ask the
-        // filesystem for a name nobody holds and a claim holds it.
-        // Here rather than in the link-free branch, since `hard_link`
-        // can fail for its own reasons and drop through to the
-        // fallback, leaving claims possible on a volume with links.
-        AtTarget::AbandonedClaim if reclaim == Reclaim::Permitted => {
-            let _ = std::fs::remove_file(target);
-        }
-        // Without the lock there is nothing to say another instance is
-        // not deciding the same thing about this same claim, and the
-        // loser of that unlinks the winner's finished episode. Leaving
-        // it costs this transfer; taking it can cost a file that need
-        // not even be the same episode.
+        // Renamed onto, not unlinked first. Unlinking and then
+        // claiming the freed name is two operations with a gap, and
+        // the gap is what let a second instance — having classified
+        // the same claim before any of it happened — delete a finished
+        // episode. A rename replaces the claim in one step, on every
+        // filesystem this ships to, so there is no moment where the
+        // name is free and nothing to unlink that may have stopped
+        // being a claim.
+        //
+        // Gating this on the target's lock was the previous answer and
+        // was wrong twice over. The lock file is named for the target,
+        // so two spellings of one name — 8.3 aliases — can take two
+        // different locks and leave both holders believing they are
+        // alone; and where no lock can be made at all, refusing to
+        // reclaim left a crashed download's claim blocking that
+        // episode on every future attempt.
+        //
+        // What remains is narrow and bounded: an episode that arrives
+        // between the classification and the rename is replaced rather
+        // than destroyed, so the folder still ends with one complete
+        // file at that name.
         AtTarget::AbandonedClaim => {
-            let _ = std::fs::remove_file(scratch);
-            return Ok(Published::AlreadyThere);
+            return match std::fs::rename(scratch, target) {
+                Ok(()) => Ok(Published::Installed),
+                Err(_) => Err(AniError::Io),
+            };
         }
         // Someone else is mid-publish. Standing down costs this
         // transfer; taking the claim would let both renames land, each
@@ -810,14 +796,6 @@ where
     // download instead would deny an episode the filesystem was
     // perfectly willing to store.
     let _instance = acquire_instance_lock(&target, deadline).await.ok();
-    // Held for the rest of this call, which is what makes taking an
-    // abandoned claim safe: no second instance can be in that path at
-    // the same time.
-    let reclaim = if _instance.is_some() {
-        Reclaim::Permitted
-    } else {
-        Reclaim::Refused
-    };
     // Nothing at this name can be replaced, so a transfer into a
     // folder that already has the episode cannot change what the user
     // ends up with. It can still spend an episode of their bandwidth
@@ -829,15 +807,8 @@ where
     // while another download is midway through creating that file,
     // and the interesting case is exactly the one where it appears.
     match at_target(&target) {
-        // Free, or holding only a claim this call is allowed to take.
-        AtTarget::Nothing => {}
-        AtTarget::AbandonedClaim if reclaim == Reclaim::Permitted => {}
-        // A claim it may not take will still be there at publication,
-        // so the transfer would be spent to reach the same answer.
-        AtTarget::AbandonedClaim => {
-            on_line(ALREADY_HERE);
-            return Ok(());
-        }
+        // Free, or holding only a claim nobody is coming back for.
+        AtTarget::Nothing | AtTarget::AbandonedClaim => {}
         // Present, or being published right now by someone else. Both
         // end with the episode at that name and neither is this
         // transfer's to change.
@@ -890,7 +861,7 @@ where
         }
         let mut repackage_failed = false;
         match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
-            Ok(()) => return finish(&scratch, &target, reclaim, on_line),
+            Ok(()) => return finish(&scratch, &target, on_line),
             Err(e) => {
                 if repackage_failed {
                     // yt-dlp's own report: what it wrote is raw
@@ -949,7 +920,7 @@ where
         .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
     match run_tool(cmd, deadline, on_line, &mut false).await {
-        Ok(()) => finish(&scratch, &target, reclaim, on_line),
+        Ok(()) => finish(&scratch, &target, on_line),
         Err(e) => Err(e),
     }
 }
@@ -960,12 +931,7 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-fn finish<F>(
-    scratch: &Scratch,
-    target: &std::path::Path,
-    reclaim: Reclaim,
-    on_line: &mut F,
-) -> Result<()>
+fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
 where
     F: FnMut(&str) + Send,
 {
@@ -990,7 +956,7 @@ where
     // Both leave the scratch path empty, so the guard outliving this
     // call costs nothing — and covers the third outcome, where the
     // file could not be installed at all.
-    match publish(&scratch.path, target, reclaim)? {
+    match publish(&scratch.path, target)? {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
             on_line(ALREADY_HERE);
