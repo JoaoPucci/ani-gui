@@ -1072,3 +1072,61 @@ async fn the_repackage_retry_may_replace_the_file_it_condemned() {
         "the retry owns the target and must be allowed to replace it: {seen:?}"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn two_downloads_of_one_target_do_not_overlap() {
+    // The dock permits a second download of an episode already
+    // downloading — `add` mints a fresh row per click without
+    // consulting the ones it has — and both resolve to the same
+    // `<title> Episode <n>.mp4`. Two tools then write one path.
+    //
+    // That was always a lost write. The repackage retry made it worse:
+    // it removes the target and passes `-y`, so the invocation that
+    // arrives second can delete and overwrite a file the first one has
+    // already finished, and the dock reports both as complete.
+    //
+    // The stub brackets its run in a shared log. Serialized, the log
+    // reads start/end/start/end; overlapping, start/start/end/end.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("order");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo start >> '{log}'\nsleep 0.3\necho end >> '{log}'\nexit 0",
+            log = log.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let mut sink_one = |_l: &str| {};
+    let mut sink_two = |_l: &str| {};
+    let one = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Same Show Episode 1",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut sink_one,
+    );
+    let two = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Same Show Episode 1",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut sink_two,
+    );
+    let (a, b) = tokio::join!(one, two);
+    a.expect("first run");
+    b.expect("second run");
+    let order = std::fs::read_to_string(&log).expect("the stub logged");
+    assert_eq!(
+        order.split_whitespace().collect::<Vec<_>>(),
+        vec!["start", "end", "start", "end"],
+        "two writers of one target must take turns, not overlap: {order:?}"
+    );
+}
