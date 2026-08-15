@@ -1753,6 +1753,111 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn an_abandoned_claim_does_not_block_the_episode_forever() {
+    // Where hard links are unsupported, publication claims the name by
+    // creating it empty and then renames onto its own claim. Those are
+    // two calls, and a process that dies between them — a crash, a
+    // power cut, a kill — leaves the empty claim standing.
+    //
+    // Nothing then distinguishes it from a finished download. The
+    // early skip reads it as the episode and every later attempt
+    // reports success without transferring, so the name is unusable
+    // until the user finds a zero-byte file in their downloads and
+    // deletes it by hand.
+    //
+    // A zero-length file is not an episode. Nothing plays it, no
+    // transfer produces it, and it is exactly what this failure
+    // leaves.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the episode")),
+    );
+    let target = dest.path().join("Abandoned Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("stage the claim a crash left");
+
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Abandoned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("the download runs");
+
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("the episode"),
+        "an empty file must not stand in for an episode nobody has"
+    );
+}
+
+#[test]
+fn publication_takes_over_an_abandoned_claim() {
+    // The other half, at the boundary: reaching publication with a
+    // claim already at the target must install rather than report the
+    // episode present. Otherwise the download runs every time and
+    // discards its result every time — the transfer is spent and the
+    // name is still unusable.
+    let dir = tempfile::tempdir().expect("dir");
+    let scratch = dir.path().join(".ani-gui-test.part.mp4");
+    let target = dir.path().join("Claimed Show Episode 1.mp4");
+    std::fs::write(&scratch, b"the episode").expect("a finished transfer");
+    std::fs::write(&target, b"").expect("the claim");
+
+    assert_eq!(
+        publish(&scratch, &target).expect("publication succeeds"),
+        Published::Installed
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("the episode")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_tool_that_writes_an_empty_file_installs_nothing() {
+    // And the app must not create the poison itself. A tool that exits
+    // cleanly having written an empty file has downloaded nothing;
+    // installing that under the episode's name would put a file there
+    // that no later attempt could replace under the old rule, and that
+    // the user would have to delete by hand.
+    //
+    // The neighbouring case for a tool that writes no file at all ends
+    // as a success with nothing installed. This is the same event with
+    // one more syscall in it.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("")),
+    );
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Empty Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("a tool that wrote nothing is not a failure");
+    assert!(
+        !dest.path().join("Empty Show Episode 1.mp4").exists(),
+        "an empty transfer must not take the episode's name"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_file_that_predates_the_download_is_kept() {
     // The other half. I first wrote this asserting the opposite —
     // that re-downloading replaces what is there — and the repository
