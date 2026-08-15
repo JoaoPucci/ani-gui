@@ -363,48 +363,26 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// folding could not: there `Show.mp4` and `show.mp4` really are two
 /// files, and now they take two locks instead of queueing behind one.
 ///
-/// The target's own name IS the lock file's name, in a sibling
-/// directory. Nothing is appended and nothing is hashed, so there is
-/// no length at which the naming changes: a name that fits as the
-/// target fits here too.
+/// The target's own name, in a sibling directory.
 ///
-/// Two earlier versions had one. Appending `.lock` needed a digest
-/// past a byte threshold, and carrying the name as a directory with a
-/// constant leaf needed the path to have room for both. A threshold
-/// is measured on the spelling, and two spellings of one file can
-/// differ in length — so they took different branches and diverged
-/// again once hashed, which is the raw-spelling identity delegating
-/// exists to remove.
+/// This is no longer what makes concurrent downloads safe — publishing
+/// is, by asking the filesystem for the name rather than reproducing
+/// its identity anywhere. The lock is an optimization: it stops two
+/// clicks on one episode both spending the bandwidth, and it is
+/// allowed to be wrong. Where it is fooled, the second transfer runs
+/// and then finds the name taken, which costs a download and loses
+/// nothing.
 ///
-/// The path cost is therefore exactly `/.ani-gui-locks`, once,
-/// whatever the name. That matters where the destination is deep
-/// enough that the target only just fits under the platform's path
-/// limit: overshooting turns the fail-closed refusal into a denial of
-/// every download to a target the filesystem would have taken. No
-/// scheme that carries the name can be shorter, and one that does not
-/// carry it is the case table again.
+/// That reframing is why the naming can stay simple. It carries the
+/// target's name verbatim so the filesystem's own answers about case,
+/// normalization and the rest apply for free; where they do not —
+/// NTFS 8.3 aliases are assigned per directory, so a target and its
+/// lock can alias differently — the consequence is now a wasted
+/// transfer rather than a deleted file.
 ///
 /// The cost the user sees is a directory in their download folder. It
 /// is dot-prefixed, so hidden on Linux and macOS and visible on
-/// Windows; a lock nobody can rely on would be the worse trade.
-///
-/// One equivalence this still cannot see, stated rather than left to
-/// be discovered: NTFS 8.3 aliases are assigned per directory, so a
-/// target aliased `RANGES~2.MP4` in the download folder can have its
-/// lock aliased `RANGES~1.MP4` here. A second download whose name is
-/// literally `RANGES~2.MP4` then addresses the same target through a
-/// different lock. It needs 8.3 enabled on the volume, two titles
-/// colliding in their first six characters, and a provider title that
-/// is literally a generated alias — but it is not nothing.
-///
-/// Closing it means not reproducing identity in another directory at
-/// all: either one lock per destination directory, which serializes
-/// downloads that have no reason to wait for each other, or
-/// publishing through a no-clobber link from a temporary name, which
-/// makes the lock an optimization and the link the guarantee. The
-/// second is the better design and a rework of how this function
-/// writes; neither belongs in a commit that was correcting a
-/// comment.
+/// Windows.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
     Some(parent.join(".ani-gui-locks").join(target.file_name()?))
