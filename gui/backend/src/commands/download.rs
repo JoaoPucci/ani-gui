@@ -363,26 +363,33 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// folding could not: there `Show.mp4` and `show.mp4` really are two
 /// files, and now they take two locks instead of queueing behind one.
 ///
-/// The name is carried as the enclosing directory, with a constant
-/// leaf inside it, so nothing can overflow: whatever fits as the
-/// target's own name fits as a directory beside it. An earlier
-/// version appended `.lock` to the name and hashed past a byte
-/// threshold, which put back what delegating removes — the threshold
-/// is measured on the spelling, so two spellings of one file can
-/// differ in length, take different branches, and diverge again once
-/// hashed.
+/// The target's own name IS the lock file's name, in a sibling
+/// directory. Nothing is appended and nothing is hashed, so there is
+/// no length at which the naming changes: a name that fits as the
+/// target fits here too.
 ///
-/// The cost is a directory the user can see in their download folder.
-/// It is dot-prefixed, so hidden on Linux and macOS and visible on
+/// Two earlier versions had one. Appending `.lock` needed a digest
+/// past a byte threshold, and carrying the name as a directory with a
+/// constant leaf needed the path to have room for both. A threshold
+/// is measured on the spelling, and two spellings of one file can
+/// differ in length — so they took different branches and diverged
+/// again once hashed, which is the raw-spelling identity delegating
+/// exists to remove.
+///
+/// The path cost is therefore exactly `/.ani-gui-locks`, once,
+/// whatever the name. That matters where the destination is deep
+/// enough that the target only just fits under the platform's path
+/// limit: overshooting turns the fail-closed refusal into a denial of
+/// every download to a target the filesystem would have taken. No
+/// scheme that carries the name can be shorter, and one that does not
+/// carry it is the case table again.
+///
+/// The cost the user sees is a directory in their download folder. It
+/// is dot-prefixed, so hidden on Linux and macOS and visible on
 /// Windows; a lock nobody can rely on would be the worse trade.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
-    Some(
-        parent
-            .join(".ani-gui-locks")
-            .join(target.file_name()?)
-            .join("lock"),
-    )
+    Some(parent.join(".ani-gui-locks").join(target.file_name()?))
 }
 
 /// How often a download waiting on another instance re-tries the OS
