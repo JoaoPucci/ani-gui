@@ -65,8 +65,7 @@ export const emptyHistory: unknown[] = [];
 /** App info fixture — minimal shape `getAppInfo` consumers need. */
 export const appInfo = {
 	version: '0.1.0-test',
-	ani_cli_path: '/usr/bin/ani-cli',
-	history_path: '/tmp/ani-hsts',
+	history_path: '/tmp/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:0'
 };
 

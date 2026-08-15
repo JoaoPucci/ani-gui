@@ -13,7 +13,7 @@ timestamp, and SHA-256. Fixtures over 1 MB live in git-LFS.
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id`, `/anime?filter[status]=`, `/anime/:id/relationships/genres`. |
 | `anilist/` | GraphQL responses for `Page.media(sort: TRENDING_DESC)`, `Page.media(season:, seasonYear:)`. |
 | `m3u8/` | Master playlist (multi-bitrate), media playlist with absolute URIs, media playlist with relative URIs, edge cases (`EXT-X-I-FRAME-STREAM-INF`, `EXT-X-BYTERANGE`, encrypted with `EXT-X-KEY`). |
-| `history/` | `ani-hsts` samples: empty, single-entry, multi-entry, duplicate-id, malformed-line. |
+| `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry, duplicate-id, malformed-line. |
 
 ## Refresh flow
 

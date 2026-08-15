@@ -3,7 +3,7 @@
 	"section_app_info": "App info",
 	"section_history_title": "Continue Watching ({count})",
 	"section_history_title_loading": "Continue Watching",
-	"history_empty": "No entries yet. Watch something to populate ani-hsts.",
+	"history_empty": "No entries yet. Watch something and it will show up here.",
 	"refresh_button": "Refresh",
 	"clear_history_button": "Clear history",
 	"section_metadata_cache": "Metadata cache",

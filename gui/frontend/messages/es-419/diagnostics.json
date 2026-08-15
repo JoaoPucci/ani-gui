@@ -3,7 +3,7 @@
 	"section_app_info": "Información de la app",
 	"section_history_title": "Seguir viendo ({count})",
 	"section_history_title_loading": "Seguir viendo",
-	"history_empty": "Aún no hay entradas. Mira algo para poblar ani-hsts.",
+	"history_empty": "Aún no hay entradas. Mira algo y aparecerá aquí.",
 	"refresh_button": "Actualizar",
 	"clear_history_button": "Borrar historial",
 	"section_metadata_cache": "Caché de metadatos",
