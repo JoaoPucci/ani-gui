@@ -77,7 +77,7 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
 /// will accept, there is a digest instead, and both contenders reach
 /// that branch on the same input.
 #[test]
-fn the_lock_carries_the_targets_name_as_a_directory() {
+fn the_lock_is_named_for_the_target_verbatim() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
     for stem in [
         "Show Episode 1",
@@ -89,9 +89,7 @@ fn the_lock_carries_the_targets_name_as_a_directory() {
         let target = dest.join(format!("{stem}.mp4"));
         let lock = target_lock_path(&target).expect("a lock path");
         assert_eq!(
-            lock.parent()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str()),
+            lock.file_name().and_then(|n| n.to_str()),
             Some(format!("{stem}.mp4").as_str()),
             "the target's name has to appear verbatim for the filesystem to \
              answer equivalence about it"
@@ -114,11 +112,31 @@ fn an_overlong_name_is_still_carried_verbatim() {
     let target = dest.join(format!("{stem}.mp4"));
     let lock = target_lock_path(&target).expect("a lock path");
     assert_eq!(
-        lock.parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str()),
+        lock.file_name().and_then(|n| n.to_str()),
         Some(format!("{stem}.mp4").as_str()),
         "no threshold may switch the naming, or the two branches disagree"
+    );
+}
+
+/// The lock adds one fixed directory component and nothing else.
+///
+/// A destination deep enough that the target only just fits under
+/// PATH_MAX leaves very little room, and a lock path that overshoots
+/// refuses every download to an otherwise writable target — the
+/// fail-closed path turning into a denial. Nothing can make the lock
+/// shorter than the target while still carrying its name, so the
+/// bound is that it adds exactly `/.ani-gui-locks`: sixteen bytes,
+/// once, no per-name growth.
+#[test]
+fn the_lock_path_adds_only_its_directory() {
+    let dest = std::path::Path::new("/tmp/ani-gui-prop");
+    let target = dest.join("Show Episode 1.mp4");
+    let lock = target_lock_path(&target).expect("a lock path");
+    assert_eq!(
+        lock.as_os_str().len(),
+        target.as_os_str().len() + "/.ani-gui-locks".len(),
+        "the lock must not grow with the name: {}",
+        lock.display()
     );
 }
 
