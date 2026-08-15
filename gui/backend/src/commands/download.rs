@@ -559,23 +559,68 @@ fn scratch_path(dest: &std::path::Path) -> std::path::PathBuf {
 /// watching the dock, and the same sentence.
 const ALREADY_HERE: &str = "that episode is already in this folder; keeping the existing file";
 
-/// Whether `path` holds an episode.
+/// How long a claim has to sit untouched before it counts as
+/// abandoned.
 ///
-/// Present and non-empty. The emptiness is not fussiness: where hard
-/// links are unsupported, publication claims the name by creating it
-/// and then renames onto its own claim, and a process that dies
-/// between those two calls leaves the empty claim standing. Nothing
-/// distinguishes it from a finished download by name alone, so under
-/// a plain existence test every later attempt reported the episode as
-/// present and the name stayed unusable until the user found a
-/// zero-byte file in their downloads and deleted it.
+/// It separates two things nothing here can tell apart by asking:
+/// another publisher's claim, live between its `create_new` and its
+/// `rename`, and one whose process died in that window. There is no
+/// owner to ask — the path carries no identity — but the two differ
+/// enormously in age. A live claim is two syscalls old. An abandoned
+/// one is as old as the crash and only gets older.
 ///
-/// A zero-length file is not an episode. Nothing plays it, no
-/// transfer produces one, and it is exactly what that failure leaves
-/// — so it is claimable, and every question of the form "is the
-/// episode already here" is asked through this.
-fn holds_an_episode(path: &std::path::Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > 0)
+/// A minute is far above the first and far below any wait a person
+/// would notice, and well clear of FAT's two-second timestamp
+/// granularity. Getting it wrong in the safe direction costs one
+/// download reported as already-here; in the unsafe direction it
+/// costs somebody's file.
+const CLAIM_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// What is sitting at a target path.
+///
+/// Publication used to ask one boolean of it, and the interesting
+/// cases are not two. An empty file is a claim rather than an episode
+/// — that is what publication leaves between creating the name and
+/// renaming onto it — and whether it may be taken depends on whether
+/// anyone is still coming back for it. A directory or a fifo is
+/// neither, and treating it as an episode already there reported a
+/// download that produced nothing playable.
+#[derive(Debug, PartialEq, Eq)]
+enum AtTarget {
+    /// Free.
+    Nothing,
+    /// A file with bytes in it. The user's, and not ours to replace.
+    Episode,
+    /// An empty file young enough that its publisher is still running.
+    LiveClaim,
+    /// An empty file old enough that nobody is coming back for it.
+    AbandonedClaim,
+    /// Something that is not a regular file. No episode can go here.
+    Obstruction,
+}
+
+fn at_target(path: &std::path::Path) -> AtTarget {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return AtTarget::Nothing;
+    };
+    if !meta.is_file() {
+        return AtTarget::Obstruction;
+    }
+    if meta.len() > 0 {
+        return AtTarget::Episode;
+    }
+    // Unreadable or future-dated timestamps count as live, which is
+    // the direction that loses a download rather than a file.
+    let aged = meta
+        .modified()
+        .ok()
+        .and_then(|m| m.elapsed().ok())
+        .is_some_and(|age| age >= CLAIM_GRACE);
+    if aged {
+        AtTarget::AbandonedClaim
+    } else {
+        AtTarget::LiveClaim
+    }
 }
 
 /// What happened when a finished transfer went to take its name.
@@ -610,18 +655,26 @@ pub(crate) enum Published {
 /// [`AniError::Io`] when the finished file cannot be installed and
 /// nothing was already there to explain why.
 pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Result<Published> {
-    // Before either mechanism, because both ask the filesystem for a
-    // name nobody holds and an abandoned claim holds it. Clearing it
-    // here rather than in the link-free branch also covers a claim
-    // left on a volume that supports links — `hard_link` can fail for
-    // its own reasons and drop through to the fallback.
-    //
-    // The concurrent case costs nothing worth avoiding: the window
-    // between another publisher's claim and its rename is two
-    // syscalls wide, and losing it means one complete copy of this
-    // episode replacing another complete copy of it.
-    if target.exists() && !holds_an_episode(target) {
-        let _ = std::fs::remove_file(target);
+    match at_target(target) {
+        // Cleared before either mechanism, because both ask the
+        // filesystem for a name nobody holds and a claim holds it.
+        // Here rather than in the link-free branch, since `hard_link`
+        // can fail for its own reasons and drop through to the
+        // fallback, leaving claims possible on a volume with links.
+        AtTarget::AbandonedClaim => {
+            let _ = std::fs::remove_file(target);
+        }
+        // Someone else is mid-publish. Standing down costs this
+        // transfer; taking the claim would let both renames land, each
+        // replacing the other's file — and the target name carries
+        // neither mode nor quality, so the sub and the dub of one
+        // episode collide on it. What is lost is a different file.
+        AtTarget::LiveClaim => {
+            let _ = std::fs::remove_file(scratch);
+            return Ok(Published::AlreadyThere);
+        }
+        AtTarget::Obstruction => return Err(AniError::Io),
+        AtTarget::Nothing | AtTarget::Episode => {}
     }
     match std::fs::hard_link(scratch, target) {
         Ok(()) => {
@@ -727,9 +780,19 @@ where
     // Below both locks, because above them it would be answering
     // while another download is midway through creating that file,
     // and the interesting case is exactly the one where it appears.
-    if holds_an_episode(&target) {
-        on_line(ALREADY_HERE);
-        return Ok(());
+    match at_target(&target) {
+        // Free, or holding only a claim nobody is coming back for.
+        AtTarget::Nothing | AtTarget::AbandonedClaim => {}
+        // Present, or being published right now by someone else. Both
+        // end with the episode at that name and neither is this
+        // transfer's to change.
+        AtTarget::Episode | AtTarget::LiveClaim => {
+            on_line(ALREADY_HERE);
+            return Ok(());
+        }
+        // Nothing playable can be installed here, and no amount of
+        // transferring changes that.
+        AtTarget::Obstruction => return Err(AniError::Io),
     }
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
@@ -855,7 +918,11 @@ where
     // publishing one would put a name in the user's folder that reads
     // as an episode to everything downstream — the app manufacturing
     // the very claim it now has to recover from.
-    if !holds_an_episode(&scratch.path) {
+    //
+    // Asked of the scratch path, which the classifier reads the same
+    // way it reads a target: anything but bytes in a regular file is
+    // not an episode, wherever it sits.
+    if at_target(&scratch.path) != AtTarget::Episode {
         return Ok(());
     }
     // Publication decides the file's fate from here: installed under
