@@ -1132,6 +1132,36 @@ async fn two_downloads_of_one_target_do_not_overlap() {
 }
 
 #[cfg(unix)]
+#[test]
+fn the_cross_instance_lock_does_not_move_with_the_build_profile() {
+    // Every ani-gui-owned directory resolves under `ani-gui-dev` for a
+    // debug build, so the installed release and a source-built backend
+    // keep separate caches on purpose — the installed binary must never
+    // be handed a database a newer dev build already migrated.
+    //
+    // A lock inherits that split, and there the split is wrong. The two
+    // instances download into the same folder, so they have to contend
+    // for the same file; derived from their own cache roots they take
+    // different locks and both proceed, which is the case the lock
+    // exists for.
+    //
+    // This test binary is itself a debug build, so what it observes is
+    // exactly the divergence: the path must not carry the dev profile's
+    // directory.
+    let target = std::path::Path::new("/tmp/ani-gui-lock-probe/Show Episode 1.mp4");
+    let path = target_lock_path(target).expect("a lock path for the target");
+    let shown = path.display().to_string();
+    assert!(
+        !shown.contains("ani-gui-dev"),
+        "the lock must not move with the build profile, or two instances \
+         sharing a download folder never meet on it: {shown}"
+    );
+    assert!(
+        shown.contains("ani-gui"),
+        "the lock still belongs to this app's own directory: {shown}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_refuses_when_the_cross_instance_lock_cannot_be_taken() {
