@@ -224,8 +224,9 @@ function spawnBackend() {
   return new Promise((resolve, reject) => {
     const bin = resolveBackendBinary();
     // `detached: true` puts the backend in its own process group on
-    // POSIX so we can kill the entire group (backend + ani-cli +
-    // aria2c + ffmpeg) at quit time via `process.kill(-pid, …)`.
+    // POSIX so we can kill the entire group (backend + the transport
+    // it spawns per request + yt-dlp + ffmpeg + aria2c) at quit time
+    // via `process.kill(-pid, …)`.
     // Without it, only the Rust process gets the signal and the
     // download grandchildren get reparented to init and keep
     // running. Windows has no process groups; the tree-kill path
@@ -305,8 +306,9 @@ function spawnBackend() {
 let backendChild = null;
 
 /**
- * Kill the backend AND every download grandchild it spawned
- * (ani-cli, aria2c, ffmpeg, yt-dlp). On POSIX we negate the pid to
+ * Kill the backend AND every grandchild it spawned — the
+ * impersonating transport, yt-dlp, ffmpeg, aria2c. On POSIX we
+ * negate the pid to
  * signal the backend's process group — spawnBackend uses
  * `detached: true` so the cascade works. On Windows there are no
  * process groups, so we shell out to taskkill with /T (kill tree).
@@ -927,9 +929,9 @@ app.on("before-quit", (e) => {
   const focused = BrowserWindow.getFocusedWindow();
   const win = focused || BrowserWindow.getAllWindows()[0];
   if (win) maybePromptOnClose(win, e);
-  // Tree-kill so ani-cli + aria2c + ffmpeg actually stop. A bare
-  // backendChild.kill() only signals the Rust process and orphans
-  // the download grandchildren to init.
+  // Tree-kill so the transport + yt-dlp + ffmpeg + aria2c actually
+  // stop. A bare backendChild.kill() only signals the Rust process
+  // and orphans the grandchildren to init.
   killBackendTree();
 });
 
