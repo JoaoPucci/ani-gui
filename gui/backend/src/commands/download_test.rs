@@ -1284,32 +1284,27 @@ async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
 }
 
 #[test]
-fn the_cross_instance_lock_does_not_move_with_the_build_profile() {
-    // Every ani-gui-owned directory resolves under `ani-gui-dev` for a
-    // debug build, so the installed release and a source-built backend
-    // keep separate caches on purpose — the installed binary must never
-    // be handed a database a newer dev build already migrated.
+fn the_cross_instance_lock_lives_beside_the_file_it_guards() {
+    // A lock is only worth holding if every contender takes the same
+    // one, so its location may not depend on anything a process can be
+    // configured with. Two attempts at this failed that test: the app
+    // cache directory moves with the build profile, and the profile
+    // fix still left it under `$XDG_CACHE_HOME`, which is an
+    // environment variable — an installed release and a source build
+    // launched with different cache roots write the same download
+    // folder and take different locks.
     //
-    // A lock inherits that split, and there the split is wrong. The two
-    // instances download into the same folder, so they have to contend
-    // for the same file; derived from their own cache roots they take
-    // different locks and both proceed, which is the case the lock
-    // exists for.
-    //
-    // This test binary is itself a debug build, so what it observes is
-    // exactly the divergence: the path must not carry the dev profile's
-    // directory.
-    let target = std::path::Path::new("/tmp/ani-gui-lock-probe/Show Episode 1.mp4");
-    let path = target_lock_path(target).expect("a lock path for the target");
-    let shown = path.display().to_string();
+    // The one location that cannot diverge is the one derived from
+    // what they are contending for. Both instances were handed the
+    // same destination directory, or they would not be racing at all.
+    let dest = std::path::Path::new("/tmp/ani-gui-lock-probe");
+    let target = dest.join("Show Episode 1.mp4");
+    let path = target_lock_path(&target).expect("a lock path for the target");
     assert!(
-        !shown.contains("ani-gui-dev"),
-        "the lock must not move with the build profile, or two instances \
-         sharing a download folder never meet on it: {shown}"
-    );
-    assert!(
-        shown.contains("ani-gui"),
-        "the lock still belongs to this app's own directory: {shown}"
+        path.starts_with(dest),
+        "the lock must sit under the target's own directory, or no \
+         environment-dependent root can be trusted to match: {}",
+        path.display()
     );
 }
 
