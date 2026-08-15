@@ -225,7 +225,7 @@ function spawnBackend() {
     const bin = resolveBackendBinary();
     // `detached: true` puts the backend in its own process group on
     // POSIX so we can kill the entire group (backend + the transport
-    // it spawns per request + yt-dlp + ffmpeg + aria2c) at quit time
+    // it spawns per request + yt-dlp + ffmpeg) at quit time
     // via `process.kill(-pid, …)`.
     // Without it, only the Rust process gets the signal and the
     // download grandchildren get reparented to init and keep
@@ -307,7 +307,7 @@ let backendChild = null;
 
 /**
  * Kill the backend AND every grandchild it spawned — the
- * impersonating transport, yt-dlp, ffmpeg, aria2c. On POSIX we
+ * impersonating transport, yt-dlp and ffmpeg. On POSIX we
  * negate the pid to
  * signal the backend's process group — spawnBackend uses
  * `detached: true` so the cascade works. On Windows there are no
@@ -929,7 +929,7 @@ app.on("before-quit", (e) => {
   const focused = BrowserWindow.getFocusedWindow();
   const win = focused || BrowserWindow.getAllWindows()[0];
   if (win) maybePromptOnClose(win, e);
-  // Tree-kill so the transport + yt-dlp + ffmpeg + aria2c actually
+  // Tree-kill so the transport + yt-dlp + ffmpeg actually
   // stop. A bare backendChild.kill() only signals the Rust process
   // and orphans the grandchildren to init.
   killBackendTree();
