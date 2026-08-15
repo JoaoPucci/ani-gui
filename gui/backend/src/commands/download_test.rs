@@ -23,6 +23,21 @@ fn dir_with_a_findable_tool() -> tempfile::TempDir {
 }
 
 #[cfg(unix)]
+/// Shell that writes `body` to whatever path the tool is handed after
+/// `-o`, which is where a real downloader puts its output.
+///
+/// Stubs used to hardcode the target name, which was the same thing
+/// while the tools wrote there directly. It is not any more: a
+/// transfer writes to a scratch name and the finished file is
+/// published afterwards, so a stub that writes to the target is
+/// standing in for something no tool does.
+fn writes_its_output(body: &str) -> String {
+    format!(
+        "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then          printf '{body}' > \"$a\"; fi; prev=\"$a\"; done"
+    )
+}
+
+#[cfg(unix)]
 fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
     use std::os::unix::fs::PermissionsExt;
     let p = dir.join(name);
@@ -86,7 +101,14 @@ fn find_tool_widens_names_with_the_platform_suffix_table() {
 async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"ytdlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"ytdlp $*\" >&2\n{}\nexit 0",
+            writes_its_output("video")
+        ),
+    );
     stage_tool(bin.path(), "ffmpeg", "echo ffmpeg-ran >&2; exit 0");
     let mut lines = Vec::new();
     spawn_download_tool(
@@ -107,8 +129,8 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
         "v5's arguments ride along: {joined}"
     );
     assert!(
-        joined.contains("Show Episode 2.mp4"),
-        "the target name matches the CLI's shape: {joined}"
+        dest.path().join("Show Episode 2.mp4").exists(),
+        "the published file carries the name the CLI would have used"
     );
     assert!(!joined.contains("ffmpeg-ran"), "no fallback on success");
 }
@@ -299,7 +321,11 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Range Show",
@@ -326,14 +352,12 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
         "both iterations announce: {progress:?}"
     );
     assert!(
-        lines[0].contains("Range Show Episode 1.mp4"),
-        "first run targets episode 1: {}",
-        lines[0]
+        dest.path().join("Range Show Episode 1.mp4").exists(),
+        "first run publishes episode 1"
     );
     assert!(
-        lines[1].contains("Range Show Episode 2.mp4"),
-        "second run targets episode 2: {}",
-        lines[1]
+        dest.path().join("Range Show Episode 2.mp4").exists(),
+        "second run publishes episode 2"
     );
 }
 
@@ -392,7 +416,11 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
     stage_tool(
         bundle.path(),
         "yt-dlp",
-        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
     );
     state.bundled_bin = Some(bundle.path().to_path_buf());
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -407,8 +435,12 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
         .expect("the bundled tool downloads");
     let calls = std::fs::read_to_string(&log).expect("the bundled tool ran");
     assert!(
-        calls.contains("Range Show Episode 1.mp4"),
+        calls.contains("master.m3u8"),
         "the bundled yt-dlp carried the transfer: {calls}"
+    );
+    assert!(
+        dest.path().join("Range Show Episode 1.mp4").exists(),
+        "and its output was published under the episode's name"
     );
 }
 
@@ -632,10 +664,10 @@ async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '\\107TSDATA' > '{target}'\n\
+            "{writer}\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            target = target.display()
+            writer = writes_its_output("\\107TSDATA")
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -928,43 +960,45 @@ async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn the_ffmpeg_retry_starts_from_an_absent_target() {
-    // The warning names two conditions and `discard_mislabeled` only
-    // recognizes one: it removes a file whose first byte is the
-    // MPEG-TS sync byte, so the malformed-AAC half leaves a real MP4
-    // sitting under the target name. ffmpeg is spawned without `-y`
-    // and with nothing on stdin, so an existing output is a refusal
-    // rather than an overwrite — the retry would then fail on a
-    // machine where ffmpeg is installed and working, which is the one
-    // case the retry exists for.
+async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
+    // The warning names two conditions and only one leaves MPEG-TS, so
+    // the malformed-AAC half used to leave a real MP4 sitting under the
+    // target name — and ffmpeg, spawned without `-y`, then refused to
+    // write it. The retry failed on exactly the machines it exists for.
     //
-    // The stub stands in for that refusal: it fails if the target is
-    // already there, and writes it otherwise.
+    // Neither half can reach the target now. yt-dlp writes to a name
+    // this run invented, that name is dropped when its own report
+    // condemns it, and the retry gets a fresh one. The case pins that:
+    // the two tools are handed different paths, and neither is the
+    // user's.
     let server = stub_range_show().await;
     let td = tempfile::tempdir().expect("td");
     let state = native_test_state(&td, &server.uri());
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Range Show Episode 1.mp4");
+    let seen = dest.path().join("outputs");
     stage_tool(
         bin.path(),
         "yt-dlp",
         &format!(
-            // A real MP4 header, not MPEG-TS: the file survives the
-            // discard exactly as the AAC-timestamp case does.
-            "printf '\\000\\000\\000\\040ftypmp42' > '{target}'\n\
+            // A real MP4 header, not MPEG-TS: the shape that used to
+            // survive the discard and block the retry.
+            "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then \
+             echo \"$a\" >> '{seen}'; printf '\\000\\000\\000\\040ftypmp42' > \"$a\"; fi; prev=\"$a\"; done\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            target = target.display()
+            seen = seen.display()
         ),
     );
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "if [ -e '{target}' ]; then echo 'File exists. Not overwriting - exiting' >&2; exit 1; fi\n\
-             printf 'GOODMP4' > '{target}'\nexit 0",
-            target = target.display()
+            "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-i\" ]; then :; fi; prev=\"$a\"; done\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\n\
+             echo \"$last\" >> '{seen}'\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            seen = seen.display()
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -975,34 +1009,56 @@ async fn the_ffmpeg_retry_starts_from_an_absent_target() {
     }))
     .expect("args");
     let path_env = bin.path().display().to_string();
-    let got = download_with_tools(&state, &args, &path_env, |_p| {}).await;
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the retry runs and publishes");
+
+    let outputs: Vec<String> = std::fs::read_to_string(&seen)
+        .expect("both tools recorded their output path")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(outputs.len(), 2, "both tools ran: {outputs:?}");
+    assert_ne!(
+        outputs[0], outputs[1],
+        "the retry must start from a name yt-dlp never touched: {outputs:?}"
+    );
     assert!(
-        got.is_ok(),
-        "the retry must not collide with what yt-dlp left: {got:?}"
+        !outputs.iter().any(|o| o == &target.to_string_lossy()),
+        "and neither tool is handed the user's own file: {outputs:?}"
     );
     assert_eq!(
-        std::fs::read(&target).expect("ffmpeg wrote the file"),
-        b"GOODMP4"
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("GOODMP4"),
+        "what ffmpeg produced is what gets published"
     );
 }
 
 #[cfg(unix)]
 #[tokio::test]
 async fn ffmpeg_as_the_first_tool_may_not_replace_an_earlier_download() {
-    // Nothing this invocation wrote can be at the target when ffmpeg
-    // is the first tool to run: whatever is there is an earlier
-    // download. The confirm dialog asks the user for a directory and
-    // never for permission to overwrite, so replacing it silently is
-    // a file they did not agree to lose.
+    // Whatever is at the target when ffmpeg is the first tool to run
+    // is an earlier download. The confirm dialog asks the user for a
+    // directory and never for permission to overwrite, so replacing
+    // it silently is a file they did not agree to lose.
+    //
+    // This used to be enforced by withholding `-y`, which made ffmpeg
+    // itself refuse. ffmpeg now writes to a name this run invented and
+    // always carries `-y`, because there is never anyone's file behind
+    // that name — so the assertion moves from the flag to what the
+    // rule was protecting.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let argv = dest.path().join("argv");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"earlier").expect("stage an earlier download");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "printf '%s\\n' \"$@\" > '{argv}'\nexit 0",
-            argv = argv.display()
+            "printf '%s\\n' \"$@\" > '{argv}'\n{writer}\nexit 0",
+            argv = argv.display(),
+            writer = writes_its_output("replacement")
         ),
     );
     spawn_download_tool(
@@ -1015,11 +1071,16 @@ async fn ffmpeg_as_the_first_tool_may_not_replace_an_earlier_download() {
         &mut |_l: &str| {},
     )
     .await
-    .expect("the stub succeeds");
+    .expect("finding the episode already there is not a failure");
     let seen = std::fs::read_to_string(&argv).expect("stub recorded its argv");
     assert!(
-        !seen.lines().any(|a| a == "-y"),
-        "ffmpeg must not be told to overwrite a file this run did not write: {seen:?}"
+        !seen.lines().any(|a| a == target.to_string_lossy()),
+        "ffmpeg is never handed the user's own file to write: {seen:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("earlier"),
+        "and the earlier download is still there afterwards"
     );
 }
 
@@ -1405,20 +1466,23 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_file_that_predates_the_download_is_replaced() {
-    // The other half, and the reason this is not simply "never
-    // overwrite": a user re-downloading an episode they already have
-    // is asking for exactly that. Only a file that appears DURING the
-    // transfer is somebody else's.
+async fn a_file_that_predates_the_download_is_kept() {
+    // The other half. I first wrote this asserting the opposite —
+    // that re-downloading replaces what is there — and the repository
+    // already said otherwise: the confirm dialog asks for a directory
+    // and never for permission to overwrite, so a file at that name is
+    // one the user did not agree to lose. That rule was enforced on
+    // the ffmpeg path alone, by withholding `-y`, while a yt-dlp run
+    // wrote straight over the same file. Publishing applies it to
+    // both.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Redownloaded Show Episode 1.mp4");
-    std::fs::write(&target, b"stale").expect("stage an earlier download");
+    std::fs::write(&target, b"earlier").expect("stage an earlier download");
     stage_tool(
         bin.path(),
         "yt-dlp",
-        "prev=\"\"\nfor a in \"$@\"; do \
-         if [ \"$prev\" = \"-o\" ]; then printf 'fresh' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+        &format!("{}\nexit 0", writes_its_output("fresh")),
     );
     let mut sink = |_l: &str| {};
     spawn_download_tool(
@@ -1431,11 +1495,11 @@ async fn a_file_that_predates_the_download_is_replaced() {
         &mut sink,
     )
     .await
-    .expect("re-downloading succeeds");
+    .expect("finding the episode already there is not a failure");
     assert_eq!(
         std::fs::read_to_string(&target).ok().as_deref(),
-        Some("fresh"),
-        "a file the download found on arrival is the one it was asked to replace"
+        Some("earlier"),
+        "a file the user already had is not one they agreed to lose"
     );
 }
 
