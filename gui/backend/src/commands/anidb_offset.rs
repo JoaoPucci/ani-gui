@@ -58,8 +58,9 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
 /// The ep_no a listing-less writer (mark-watched, cache-hit) should
 /// store for `episode`: the offset translation, except when the
 /// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the
-/// CLI-greppable slot is written instead.
+/// identity, since the frontend normalizes — in which case the slot
+/// is written instead, because that is what a resume looks the row up
+/// by in the provider listing.
 pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
     let provider = provider_ep_no(episode, offset);
     if let Some((slot, tag)) = display_stamp(state, slug) {

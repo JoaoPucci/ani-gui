@@ -98,13 +98,14 @@ pub async fn resolve_episode<F: AnidbFetch>(
 }
 
 /// A resolved episode: the playable URL plus the matched row's slot
-/// and display tag — the slot is what a history reader
-/// greps, the tag what the GUI displays.
+/// and display tag — the slot is what a resume looks the row up by in
+/// the provider listing, the tag what the GUI displays.
 #[derive(Debug)]
 pub struct ResolvedEpisode {
     /// The validated master-playlist URL.
     pub master_url: String,
-    /// The row's integer `number` — the CLI's episode identity.
+    /// The row's integer `number` — the provider's own position for
+    /// it, which is how a later resume finds this row again.
     pub slot: u32,
     /// The row's display tag, when it carries one.
     pub tag: Option<String>,

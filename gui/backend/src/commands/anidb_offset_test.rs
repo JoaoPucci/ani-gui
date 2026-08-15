@@ -34,7 +34,7 @@ fn make_state() -> crate::app::AppState {
 
 #[test]
 fn display_stamps_round_trip_and_survive_offset_puts() {
-    // The stamp maps the CLI-visible slot to the row's display tag.
+    // The stamp maps the stored slot to the row's display tag.
     // An offset-only re-stamp (every fresh resolve writes one) must
     // not erase it — the last fractional watch stays translatable.
     let state = make_state();
@@ -58,8 +58,8 @@ fn writes_map_a_stamped_display_back_to_its_slot() {
     // The mark-watched and cache-hit writers have no listing at
     // hand: when the requested episode names the stamped display
     // tag — by numeric identity, since the frontend normalizes
-    // "3.50" to "3.5" — the shared file gets the slot the CLI can
-    // grep. Everything else keeps the offset translation.
+    // "3.50" to "3.5" — the stored row gets the slot a resume looks
+    // up. Everything else keeps the offset translation.
     let state = make_state();
     put_display(&state, "the-show-77", 0, 4, "3.50");
     assert_eq!(write_ep_no(&state, "the-show-77", "3.5", 0), "4");
@@ -72,7 +72,7 @@ fn writes_map_a_stamped_display_back_to_its_slot() {
 
 #[test]
 fn reads_present_the_stamped_display_per_entry() {
-    // The read boundary turns the CLI-visible slot back into the
+    // The read boundary turns the stored slot back into the
     // per-entry display the GUI counts in: "4" with stamp (4, "3.5")
     // reads as 3.5; a tagged continuation's slot 2 under (2, "41.5")
     // at offset 40 reads as 1.5; rows not matching the stamp keep

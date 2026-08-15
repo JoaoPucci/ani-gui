@@ -23,8 +23,14 @@ fn lock_path(store: &Path) -> PathBuf {
 
 /// One store row: the slug's offset plus, when the last native
 /// watch landed on a row whose display tag differs from its slot,
-/// that (slot, tag) pair — the bridge that lets the history file speak the
-/// CLI's slot numbers while the GUI keeps the display identity.
+/// that (slot, tag) pair — the bridge that lets the history file
+/// carry the slot a resume looks up while the read boundary presents
+/// the display identity.
+///
+/// The slot is stored for this app and no other. Nothing outside it
+/// reads this file: it sits beside a history the CLI cannot reach,
+/// under a directory that differs between the released build and a
+/// dev one.
 pub(super) struct Row {
     pub(super) slug: String,
     pub(super) offset: u32,

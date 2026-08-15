@@ -394,8 +394,8 @@ mod tests {
     /// separators, and `\r` because Rust's `str::lines()` (which
     /// `parse` uses) strips a trailing `\r` from each line as part
     /// of CRLF normalization — so a title containing `\r` wouldn't
-    /// roundtrip. The bash CLI on Linux writes pure `\n`, so this
-    /// set of constraints matches the format we share with it.
+    /// roundtrip. The writer here emits pure `\n`, so these
+    /// constraints are the ones the format actually imposes.
     fn tsv_field(min_len: usize, max_len: usize) -> impl Strategy<Value = String> {
         proptest::collection::vec(any::<char>(), min_len..=max_len)
             .prop_filter("no tabs, newlines, or carriage returns", |chars| {
@@ -415,7 +415,7 @@ mod tests {
         /// `parse(serialize(entries)) == entries` for any well-formed
         /// vector. The format has no escaping, so the property only
         /// holds when fields are TSV-clean (no embedded tabs/newlines)
-        /// — exactly what the bash CLI produces.
+        /// — which `serialize` is what guarantees.
         #[test]
         fn parse_serialize_roundtrip(
             entries in proptest::collection::vec(entry_strategy(), 0..16),
@@ -426,9 +426,9 @@ mod tests {
         }
 
         /// `upsert` is idempotent on the same entry: applying it twice
-        /// produces the same vector as applying it once. The CLI relies
-        /// on this — replaying the same play action mustn't multiply
-        /// rows.
+        /// produces the same vector as applying it once. Every writer
+        /// here relies on it — replaying the same play action, or
+        /// marking an episode watched twice, mustn't multiply rows.
         #[test]
         fn upsert_is_idempotent(
             initial in proptest::collection::vec(entry_strategy(), 0..8),
