@@ -407,9 +407,9 @@ async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
 
 #[tokio::test]
 async fn a_continuation_resolve_reports_its_numbering_offset() {
-    // The history file speaks the provider's numbering — the script's
-    // process_hist_entry greps the stored ep_no in the provider's
-    // episode list — so the history writers need the shift the
+    // The history file speaks the provider's numbering — a resume
+    // looks the stored ep_no up in the provider's episode list — so
+    // the history writers need the shift the
     // resolver already computed, or a GUI-written continuation row
     // (Kitsu "1" for provider 41) vanishes from its resume list.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
@@ -722,8 +722,8 @@ async fn a_transport_death_in_the_episode_chain_stays_transient() {
 
 #[tokio::test]
 async fn the_resolve_names_the_matched_rows_slot_and_tag() {
-    // The script's history reader greps slot numbers — the integer
-    // `number` field its episode list is built from — so the history
+    // A resume looks up slot numbers — the integer `number` field
+    // the provider's episode list is built from — so the history
     // writer needs the matched row's slot, and the sidecar stamp
     // needs its display tag.
     let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));

@@ -3,9 +3,9 @@
 //!
 //! anidb.app carries a franchise's cumulative episode count into
 //! continuation cours (TYBW's fourth part lists 41 and 42), and
-//! The script's `process_hist_entry` greps the stored `ep_no` in that
-//! provider list — so the history file speaks PROVIDER
-//! numbering. Every GUI surface counts per-entry like Kitsu. The
+//! a resume looks the stored `ep_no` up in that provider list — so
+//! the history file speaks PROVIDER numbering. Every GUI surface
+//! counts per-entry like Kitsu. The
 //! resolver computes the shift once per show; this module persists it
 //! keyed by slug so the history writers can add it and the read
 //! boundary can subtract it.
@@ -32,9 +32,9 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
 
 /// Persist the slug's offset together with the last watch's
 /// (slot, display tag) pair — written when a native resolve lands
-/// on a row whose display differs from its slot, so the shared
-/// history can carry the slot the CLI greps while the GUI translates
-/// it back. Last write wins, like the offset.
+/// on a row whose display differs from its slot, so the history can
+/// carry the slot a resume needs while the read boundary translates
+/// it back for display. Last write wins, like the offset.
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }

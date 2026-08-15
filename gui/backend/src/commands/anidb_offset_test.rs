@@ -227,10 +227,9 @@ fn put_and_get_round_trip_including_updates() {
 fn fractional_episodes_translate_like_integers() {
     // The native resolve translates a clicked per-entry "1.5" to
     // provider tag "41.5"; the history writer must speak the same
-    // provider numbering or the script's process_hist_entry, which
-    // searches the provider list for the stored tag exactly, no
-    // longer recognizes the shared row. The read boundary maps it
-    // back for the GUI.
+    // provider numbering or the resume lookup, which searches the
+    // provider list for the stored tag exactly, no longer recognizes
+    // the row it wrote. The read boundary maps it back for display.
     assert_eq!(provider_ep_no("1.5", 40), "41.5");
     assert_eq!(kitsu_ep_no("41.5", 40), "1.5");
     // At or below the offset the stamp doesn't describe this row —

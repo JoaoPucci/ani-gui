@@ -46,8 +46,9 @@ pub struct NativeResolved {
     /// ([`extra_episode_tags`]) — the availability stamp's
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
-    /// The matched row's slot — the integer the CLI's history
-    /// reader greps, and what the fresh-resolve writer stores.
+    /// The matched row's slot — the integer a resume looks up in
+    /// the provider's listing, and what the fresh-resolve writer
+    /// stores.
     pub resolved_slot: u32,
     /// The matched row's display tag, stamped beside the offset when
     /// it differs from the slot so the read boundary can translate.
