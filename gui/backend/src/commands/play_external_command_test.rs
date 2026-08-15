@@ -52,9 +52,13 @@ async fn stub_provider(mock: &MockServer, query: &str) {
 /// Mount a listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
-/// history row has to carry the slot — the script's reader greps the
-/// stored number against the provider's own listing, where 4 is the
-/// recap.
+/// history row has to carry the slot rather than the tag.
+///
+/// The reader that cares is this app's own resume path: it takes the
+/// stored number back to the provider's listing, where 4 is the
+/// recap. Storing the display tag would resume the wrong episode.
+/// The offset store is what translates between the two when the
+/// strip needs a number to show.
 async fn stub_provider_with_a_recap(mock: &MockServer, query: &str) {
     Mock::given(method("GET"))
         .and(path("/browse"))

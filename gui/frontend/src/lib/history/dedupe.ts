@@ -15,10 +15,12 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * Continue Watching cards for what is logically the same show.
  *
  * The winner is the row with the most-advanced progress (highest
- * `ep_no`), not the sort-earliest row. The original "first wins"
- * rule hid CLI progress when an older GUI-stamped row sorted above
- * an unstamped CLI row that was actually further along — see Codex
- * P2 #3367725631. Ties on `ep_no` fall back to input order
+ * `ep_no`), not the sort-earliest row. "First wins" hid progress
+ * whenever the further-along row sorted lower, which `sortByWatchedAt`
+ * makes routine: it puts stamped rows above unstamped ones, and an
+ * unstamped row is a play that resolved without reaching
+ * `mark-watched` — no less watched for it, and often the later of the
+ * two. Ties on `ep_no` fall back to input order
  * (sortByWatchedAt's most-recent-first), which preserves the
  * intuitive first-wins behaviour for the no-drift case.
  *
