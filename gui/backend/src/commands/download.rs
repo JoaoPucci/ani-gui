@@ -337,40 +337,58 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// releases the lock on the dying process's behalf.
 ///
 /// Placed beside the target, in a `.ani-gui-locks/` directory next to
-/// the file, and named from a digest of the file name.
+/// the file, and named after the file itself.
 ///
 /// The location cannot depend on anything a process is configured
-/// with. Two earlier attempts did and both failed: the app cache
-/// directory moves with the dev profile, and the profile-independent
-/// one still resolved under `$XDG_CACHE_HOME`, which any launcher can
-/// set. An installed release and a source build with different cache
-/// roots write the same download folder and take different locks —
-/// exactly the case the lock exists for.
+/// with. Two earlier attempts did: the app cache directory moves with
+/// the dev profile, and the profile-independent one still resolved
+/// under `$XDG_CACHE_HOME`, which any launcher can set. The
+/// destination is what both contenders provably agree on — they were
+/// handed the same one, or they would not be racing — and it is
+/// writable by construction, since a video is about to land in it,
+/// which is what keeps refusing on a lock failure reasonable.
 ///
-/// The destination directory is the one thing both contenders
-/// provably agree on: they were handed the same one, or they would
-/// not be racing. It is also writable by construction, since the
-/// download is about to put a video in it, which is what makes
-/// refusing on a lock failure reasonable rather than harsh.
+/// The *name* carries the target's own, and that is the part worth
+/// explaining, because it replaced a digest of a case-folded key.
+/// Whether two names are one file is the filesystem's question, and
+/// it answers about `Show.mp4.lock` exactly as it answers about
+/// `Show.mp4`: same case rules, same canonical normalization, same
+/// trailing-dot handling, same anything a volume does that nothing
+/// here knows about. Hashing a folded key substituted a case table
+/// for that, and the table was wrong three times — first on case,
+/// then on final sigma, then on normalization — each found
+/// separately because a table can only be wrong one entry at a time.
+///
+/// Delegating also gets the case-sensitive filesystems right, which
+/// folding could not: there `Show.mp4` and `show.mp4` really are two
+/// files, and now they take two locks instead of queueing behind one.
+///
+/// Past what a filesystem will accept as a name there is a digest
+/// instead. Deterministic, so two instances reach that branch on the
+/// same input and still meet.
 ///
 /// The cost is a directory the user can see in their download folder.
-/// It is dot-prefixed, so it is hidden on Linux and macOS and visible
-/// on Windows; carrying a lock nobody can rely on would be the worse
-/// trade.
-///
-/// Digested rather than named after the episode because a target
-/// already at the filesystem's name limit leaves no room for a
-/// suffix, and case-folded first — see [`lock_key`].
+/// It is dot-prefixed, so hidden on Linux and macOS and visible on
+/// Windows; a lock nobody can rely on would be the worse trade.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
-    use sha2::Digest as _;
     let parent = target.parent()?;
-    let digest = sha2::Sha256::digest(lock_key(target)?.as_bytes());
-    let name = digest[..8].iter().fold(String::new(), |mut s, b| {
+    let name = target.file_name()?.to_string_lossy();
+    let locks = parent.join(".ani-gui-locks");
+    // 255 bytes is what ext4, NTFS and APFS all take. The exact
+    // ceiling matters less than both contenders computing the same
+    // answer from the same name, which any fixed number gives.
+    let direct = format!("{name}.lock");
+    if direct.len() <= 255 {
+        return Some(locks.join(direct));
+    }
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(name.as_bytes());
+    let hashed = digest[..8].iter().fold(String::new(), |mut s, b| {
         use std::fmt::Write as _;
         let _ = write!(s, "{b:02x}");
         s
     });
-    Some(parent.join(".ani-gui-locks").join(format!("{name}.lock")))
+    Some(locks.join(format!("{hashed}.lock")))
 }
 
 /// How often a download waiting on another instance re-tries the OS
@@ -431,56 +449,14 @@ pub(crate) async fn acquire_instance_lock(
     }
 }
 
-/// What both locks are keyed by: the target's file name, case-folded.
-///
-/// Windows and the default macOS filesystem resolve
-/// `Show Episode 1.mp4` and `show episode 1.MP4` to one file, so two
-/// downloads whose resolved titles differ only in case write the same
-/// target. Keyed by the raw name they take different locks and the
-/// repackage path removes the other transfer's output.
-///
-/// Up and then back down, because neither direction alone matches
-/// what the filesystem does. NTFS compares by uppercasing through the
-/// volume's case table, so Greek `σ` and final-sigma `ς` are one
-/// character to it — and lowercasing leaves them apart, since
-/// lowercasing `ς` is `ς`. Going up first collapses that pair; coming
-/// back down keeps everything the lowercase form already collapsed.
-///
-/// The result over-folds relative to any real case table — `ß`
-/// becomes `ss` where NTFS leaves it — and over-folding is the
-/// direction to err in here, for the same reason the fold is
-/// unconditional at all:
-///
-/// On a case-sensitive filesystem these are genuinely distinct files
-/// and folding queues them behind each other needlessly. A download
-/// waits. The user may notice. Nothing is lost. Not folding on a
-/// case-insensitive one destroys a finished file, which nobody sees
-/// until it is gone. Those costs are not comparable, and `target_os`
-/// would be guessing besides: Linux mounts NTFS, and macOS can be
-/// formatted either way.
-///
-/// Exact equivalence would mean asking the filesystem, which cannot
-/// answer about a file that does not exist yet — and the lock is
-/// taken precisely to decide who creates it.
-fn lock_key(target: &std::path::Path) -> Option<String> {
-    Some(
-        target
-            .file_name()?
-            .to_string_lossy()
-            .to_uppercase()
-            .to_lowercase(),
-    )
-}
-
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
-    // Keyed by the same folded name as the file lock. Keyed by the
-    // raw path, two same-process downloads of one case-insensitive
-    // target would pass each other here and only meet at the OS lock,
-    // which is the slower and less obvious of the two.
-    let key = target
-        .parent()
-        .zip(lock_key(target))
-        .map_or_else(|| target.to_path_buf(), |(dir, name)| dir.join(name));
+    // Keyed by the lock path, so this and the file lock share one
+    // notion of identity rather than two that can disagree. It is the
+    // weaker of the pair: two names a case-insensitive filesystem
+    // calls one file get two entries here and meet at the file lock
+    // instead, which is exact. Guessing at that equivalence again to
+    // catch them a layer earlier is what this just stopped doing.
+    let key = target_lock_path(target).unwrap_or_else(|| target.to_path_buf());
     let mut guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
     guard
         .get_or_insert_with(std::collections::HashMap::new)
