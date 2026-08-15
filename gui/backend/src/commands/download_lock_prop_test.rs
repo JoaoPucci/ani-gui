@@ -77,7 +77,7 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
 /// will accept, there is a digest instead, and both contenders reach
 /// that branch on the same input.
 #[test]
-fn the_lock_name_is_the_targets_name_plus_a_suffix() {
+fn the_lock_carries_the_targets_name_as_a_directory() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
     for stem in [
         "Show Episode 1",
@@ -89,28 +89,37 @@ fn the_lock_name_is_the_targets_name_plus_a_suffix() {
         let target = dest.join(format!("{stem}.mp4"));
         let lock = target_lock_path(&target).expect("a lock path");
         assert_eq!(
-            lock.file_name().and_then(|n| n.to_str()),
-            Some(format!("{stem}.mp4.lock").as_str()),
-            "the lock has to carry the target's name for the filesystem to \
+            lock.parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str()),
+            Some(format!("{stem}.mp4").as_str()),
+            "the target's name has to appear verbatim for the filesystem to \
              answer equivalence about it"
         );
     }
 }
 
-/// Past the name limit the digest takes over, and deterministically —
-/// two instances given one target must not disagree about which
-/// branch they are on.
+/// There is no length at which the name stops being carried.
+///
+/// A digest fallback past a byte threshold reintroduced exactly what
+/// the delegation removes: the threshold is measured on the spelling,
+/// so two spellings one file can differ in length and take different
+/// branches — and once hashed, they differ again. Carrying the name
+/// as a directory has no such limit, because the name already fits
+/// where the target itself fits.
 #[test]
-fn an_overlong_name_falls_back_to_a_stable_digest() {
+fn an_overlong_name_is_still_carried_verbatim() {
     let dest = std::path::Path::new("/tmp/ani-gui-prop");
-    let target = dest.join(format!("{}.mp4", "n".repeat(300)));
+    let stem = "n".repeat(300);
+    let target = dest.join(format!("{stem}.mp4"));
     let lock = target_lock_path(&target).expect("a lock path");
-    let name = lock.file_name().and_then(|n| n.to_str()).expect("a name");
-    assert!(
-        name.len() < 100,
-        "an unusable name must not be handed to the filesystem: {name}"
+    assert_eq!(
+        lock.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str()),
+        Some(format!("{stem}.mp4").as_str()),
+        "no threshold may switch the naming, or the two branches disagree"
     );
-    assert_eq!(Some(lock.clone()), target_lock_path(&target));
 }
 
 proptest::proptest! {
