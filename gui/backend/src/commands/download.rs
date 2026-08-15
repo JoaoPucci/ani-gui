@@ -387,6 +387,24 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// The cost the user sees is a directory in their download folder. It
 /// is dot-prefixed, so hidden on Linux and macOS and visible on
 /// Windows; a lock nobody can rely on would be the worse trade.
+///
+/// One equivalence this still cannot see, stated rather than left to
+/// be discovered: NTFS 8.3 aliases are assigned per directory, so a
+/// target aliased `RANGES~2.MP4` in the download folder can have its
+/// lock aliased `RANGES~1.MP4` here. A second download whose name is
+/// literally `RANGES~2.MP4` then addresses the same target through a
+/// different lock. It needs 8.3 enabled on the volume, two titles
+/// colliding in their first six characters, and a provider title that
+/// is literally a generated alias — but it is not nothing.
+///
+/// Closing it means not reproducing identity in another directory at
+/// all: either one lock per destination directory, which serializes
+/// downloads that have no reason to wait for each other, or
+/// publishing through a no-clobber link from a temporary name, which
+/// makes the lock an optimization and the link the guarantee. The
+/// second is the better design and a rework of how this function
+/// writes; neither belongs in a commit that was correcting a
+/// comment.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
     Some(parent.join(".ani-gui-locks").join(target.file_name()?))
