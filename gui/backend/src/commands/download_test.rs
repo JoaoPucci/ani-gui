@@ -1310,6 +1310,137 @@ fn the_cross_instance_lock_lives_beside_the_file_it_guards() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn the_tool_writes_somewhere_other_than_the_target() {
+    // Writing straight to the final name is what made every
+    // concurrency question here a question about names. While the
+    // transfer is in flight the file is incomplete, and it is sitting
+    // at the name the user's file manager, the dock, and any other
+    // download are all looking at.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let argv = dest.path().join("argv");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '%s\n' \"$@\" > '{argv}'\nprev=\"\"\nfor a in \"$@\"; do \
+             if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+            argv = argv.display()
+        ),
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Scratch Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Scratch Show Episode 1.mp4");
+    let seen = std::fs::read_to_string(&argv).expect("the stub recorded its argv");
+    assert!(
+        !seen.lines().any(|a| a == target.to_string_lossy()),
+        "the tool must be handed a scratch path, not the target: {seen}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "and what it wrote has to end up at the target"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_that_appears_mid_transfer_is_not_replaced() {
+    // The race, staged exactly: the stub publishes a rival file at the
+    // target while this transfer is still running, which is what
+    // another download finishing first looks like from in here.
+    // Whoever lands first owns the name; the one that arrives second
+    // discards its own copy rather than deleting a finished file.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Contested Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf 'winner' > '{target}'\nprev=\"\"\nfor a in \"$@\"; do \
+             if [ \"$prev\" = \"-o\" ]; then printf 'loser' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+            target = target.display()
+        ),
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contested Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("losing the race is not a failure — the episode is there");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("winner"),
+        "the file that got there first must survive"
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "the discarded copy must not be left behind: {leftovers:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_that_predates_the_download_is_replaced() {
+    // The other half, and the reason this is not simply "never
+    // overwrite": a user re-downloading an episode they already have
+    // is asking for exactly that. Only a file that appears DURING the
+    // transfer is somebody else's.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Redownloaded Show Episode 1.mp4");
+    std::fs::write(&target, b"stale").expect("stage an earlier download");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "prev=\"\"\nfor a in \"$@\"; do \
+         if [ \"$prev\" = \"-o\" ]; then printf 'fresh' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Redownloaded Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("re-downloading succeeds");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("fresh"),
+        "a file the download found on arrival is the one it was asked to replace"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_download_refuses_when_the_cross_instance_lock_cannot_be_taken() {
     // Degrading to the in-process mutex here would be the worst of the
     // options: the guarantee disappears exactly when nothing says so,
