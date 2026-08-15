@@ -470,19 +470,21 @@ fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()
 /// awaiting, so no branch below that point runs — and the file left
 /// behind is not a marker but most of an episode. A drop runs anyway.
 ///
-/// `keep` is for the one case where the file must survive this scope:
-/// it has been published and the path now names something the user
-/// owns.
+/// There is no disarming it, because there is nothing to disarm for:
+/// every way publication succeeds — the link, the rename, the discard
+/// when someone else got there — ends with the scratch path empty, so
+/// the drop finds nothing and removes nothing. Only a publication that
+/// failed leaves a file here, and that is exactly the one worth taking
+/// away. A flag set before publishing would have been off by one
+/// branch: it disarmed the guard for the failures too.
 struct Scratch {
     path: std::path::PathBuf,
-    keep: bool,
 }
 
 impl Scratch {
     fn new(dest: &std::path::Path) -> Self {
         Self {
             path: scratch_path(dest),
-            keep: false,
         }
     }
 
@@ -497,9 +499,7 @@ impl Scratch {
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        if !self.keep {
-            let _ = std::fs::remove_file(&self.path);
-        }
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -517,6 +517,12 @@ fn scratch_path(dest: &std::path::Path) -> std::path::PathBuf {
         uuid::Uuid::new_v4().simple()
     ))
 }
+
+/// Said when the download ends because the file is already there —
+/// found before starting, or found by publication after another
+/// transfer won the race. The two are the same event to the person
+/// watching the dock, and the same sentence.
+const ALREADY_HERE: &str = "that episode is already in this folder; keeping the existing file";
 
 /// What happened when a finished transfer went to take its name.
 #[derive(Debug, PartialEq, Eq)]
@@ -644,6 +650,20 @@ where
     // download instead would deny an episode the filesystem was
     // perfectly willing to store.
     let _instance = acquire_instance_lock(&target, deadline).await.ok();
+    // Nothing at this name can be replaced, so a transfer into a
+    // folder that already has the episode cannot change what the user
+    // ends up with. It can still spend an episode of their bandwidth
+    // and most of the hour the download is allowed, and then throw the
+    // result away — so the answer is given before a tool is spawned
+    // rather than after one has finished.
+    //
+    // Below both locks, because above them it would be answering
+    // while another download is midway through creating that file,
+    // and the interesting case is exactly the one where it appears.
+    if target.exists() {
+        on_line(ALREADY_HERE);
+        return Ok(());
+    }
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
     let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
@@ -685,7 +705,7 @@ where
         }
         let mut repackage_failed = false;
         match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
-            Ok(()) => return finish(&mut scratch, &target, on_line),
+            Ok(()) => return finish(&scratch, &target, on_line),
             Err(e) => {
                 if repackage_failed {
                     // yt-dlp's own report: what it wrote is raw
@@ -744,7 +764,7 @@ where
         .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
     match run_tool(cmd, deadline, on_line, &mut false).await {
-        Ok(()) => finish(&mut scratch, &target, on_line),
+        Ok(()) => finish(&scratch, &target, on_line),
         Err(e) => Err(e),
     }
 }
@@ -755,7 +775,7 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-fn finish<F>(scratch: &mut Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
+fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
 where
     F: FnMut(&str) + Send,
 {
@@ -768,12 +788,13 @@ where
     }
     // Publication decides the file's fate from here: installed under
     // the episode's name, or removed because someone else got there.
-    // Either way the guard has nothing left to clean up.
-    scratch.keep = true;
+    // Both leave the scratch path empty, so the guard outliving this
+    // call costs nothing — and covers the third outcome, where the
+    // file could not be installed at all.
     match publish(&scratch.path, target)? {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
-            on_line("that episode is already in this folder; keeping the existing file");
+            on_line(ALREADY_HERE);
             Ok(())
         }
     }
