@@ -1752,6 +1752,11 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
 }
 
 /// Backdate `path` far enough that the grace period has passed.
+///
+/// Unix-gated with its caller. The two cases that used it on every
+/// platform asserted the claim could be taken, and went when it
+/// stopped being taken.
+#[cfg(unix)]
 fn age_it(path: &std::path::Path) {
     let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
     std::fs::File::options()
