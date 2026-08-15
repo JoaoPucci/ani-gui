@@ -1767,8 +1767,8 @@ fn age_it(path: &std::path::Path) {
         .expect("backdate");
 }
 
-#[test]
-fn a_claim_another_publisher_is_still_using_is_left_alone() {
+#[tokio::test]
+async fn a_claim_another_publisher_is_still_using_is_left_alone() {
     // The claim is only abandoned once nobody is coming back for it.
     // Between another publisher's `create_new` and its `rename` the
     // claim is live, and deleting it there lets both transfers install
@@ -1794,7 +1794,7 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
     // saying the download succeeded leaves the user with an empty file
     // the next attempt refuses.
     assert!(
-        publish(&scratch, &target).is_err(),
+        publish(&scratch, &target).await.is_err(),
         "a claim that never becomes an episode is not a finished download"
     );
     assert_eq!(
@@ -1989,8 +1989,8 @@ async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
     );
 }
 
-#[test]
-fn a_directory_at_the_target_is_a_failure_not_a_download() {
+#[tokio::test]
+async fn a_directory_at_the_target_is_a_failure_not_a_download() {
     // `AlreadyExists` from the link is not always another episode.
     // A directory, a fifo, anything that is not a regular file gives
     // the same error, and reporting that as a completed download tells
@@ -2003,7 +2003,7 @@ fn a_directory_at_the_target_is_a_failure_not_a_download() {
     std::fs::create_dir(&target).expect("something else holds the name");
 
     assert!(
-        publish(&scratch, &target).is_err(),
+        publish(&scratch, &target).await.is_err(),
         "nothing playable is at the target, so this did not succeed"
     );
 }

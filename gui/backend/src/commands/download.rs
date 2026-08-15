@@ -576,6 +576,20 @@ const ALREADY_HERE: &str = "that episode is already in this folder; keeping the 
 /// costs somebody's file.
 const CLAIM_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How long to wait for another publisher's claim to become an
+/// episode.
+///
+/// A claim exists between a `create_new` and the `rename` after it,
+/// which is two syscalls. Standing down for one is standing down for a
+/// file that is about to be there — unless its owner died in that
+/// window, and then nothing lands at all. Waiting is what tells those
+/// apart, and it needs no lock and no guess: the first resolves
+/// immediately, the second never does.
+const CLAIM_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How often to look while waiting.
+const CLAIM_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
 /// What is sitting at a target path.
 ///
 /// Publication used to ask one boolean of it, and the interesting
@@ -597,6 +611,11 @@ enum AtTarget {
     AbandonedClaim,
     /// Something that is not a regular file. No episode can go here.
     Obstruction,
+    /// The path could not be looked at. Permissions changed, a
+    /// network folder went away, the volume errored — the answer is
+    /// unknown, which is not the same as free and must never be
+    /// mistaken for it.
+    Unreadable,
 }
 
 fn at_target(path: &std::path::Path) -> AtTarget {
@@ -607,8 +626,14 @@ fn at_target(path: &std::path::Path) -> AtTarget {
     // `AlreadyExists` an episode gives. A link that resolves is no
     // better: publishing through it writes wherever it points, which
     // is not the folder the confirm dialog asked about.
-    let Ok(meta) = std::fs::symlink_metadata(path) else {
-        return AtTarget::Nothing;
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(m) => m,
+        // Only a missing path is a free one. Every other error was
+        // read as free too, which turned an unreadable folder into a
+        // finished download: the transfer check reads "not an episode"
+        // as the tool having written nothing, and that ends happily.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return AtTarget::Nothing,
+        Err(_) => return AtTarget::Unreadable,
     };
     if !meta.is_file() {
         return AtTarget::Obstruction;
@@ -627,6 +652,24 @@ fn at_target(path: &std::path::Path) -> AtTarget {
         AtTarget::AbandonedClaim
     } else {
         AtTarget::LiveClaim
+    }
+}
+
+/// Classify `path`, waiting out a claim that is still resolving.
+///
+/// Returns as soon as the answer is not `LiveClaim`, so the common
+/// case — nobody publishing — costs one `stat`. A claim whose owner
+/// completes costs the microseconds it takes them. A claim whose owner
+/// died costs the full wait, once, and then the caller learns that
+/// nothing is coming.
+async fn at_target_settled(path: &std::path::Path) -> AtTarget {
+    let until = tokio::time::Instant::now() + CLAIM_SETTLE;
+    loop {
+        let seen = at_target(path);
+        if seen != AtTarget::LiveClaim || tokio::time::Instant::now() >= until {
+            return seen;
+        }
+        tokio::time::sleep(CLAIM_POLL).await;
     }
 }
 
@@ -661,8 +704,11 @@ pub(crate) enum Published {
 /// # Errors
 /// [`AniError::Io`] when the finished file cannot be installed and
 /// nothing was already there to explain why.
-pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Result<Published> {
-    match at_target(target) {
+pub(crate) async fn publish(
+    scratch: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<Published> {
+    match at_target_settled(target).await {
         // Reported, not taken. Three shapes were tried for taking it
         // and none of them worked, for one reason: deciding a file is
         // abandoned and acting on that decision are separate steps,
@@ -689,16 +735,19 @@ pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Re
             let _ = std::fs::remove_file(scratch);
             return Err(AniError::Io);
         }
-        // Someone else is mid-publish. Standing down costs this
-        // transfer; taking the claim would let both renames land, each
-        // replacing the other's file — and the target name carries
-        // neither mode nor quality, so the sub and the dub of one
-        // episode collide on it. What is lost is a different file.
+        // Still a claim after waiting it out, which means its owner is
+        // not coming back — it died between creating the name and
+        // renaming onto it. Standing down here would discard this
+        // finished transfer and report the episode present, when what
+        // is present is an empty file the next attempt will refuse.
+        //
+        // Taking it is still not allowed, for the reason above. So the
+        // download ends unresolved and says so.
         AtTarget::LiveClaim => {
             let _ = std::fs::remove_file(scratch);
-            return Ok(Published::AlreadyThere);
+            return Err(AniError::Io);
         }
-        AtTarget::Obstruction => return Err(AniError::Io),
+        AtTarget::Obstruction | AtTarget::Unreadable => return Err(AniError::Io),
         AtTarget::Nothing | AtTarget::Episode => {}
     }
     match std::fs::hard_link(scratch, target) {
@@ -805,7 +854,7 @@ where
     // Below both locks, because above them it would be answering
     // while another download is midway through creating that file,
     // and the interesting case is exactly the one where it appears.
-    match at_target(&target) {
+    match at_target_settled(&target).await {
         // Free.
         AtTarget::Nothing => {}
         // An interrupted publication left an empty file at the
@@ -819,16 +868,25 @@ where
             ));
             return Err(AniError::Io);
         }
-        // Present, or being published right now by someone else. Both
-        // end with the episode at that name and neither is this
-        // transfer's to change.
-        AtTarget::Episode | AtTarget::LiveClaim => {
+        // Present. Publication would only discard this transfer, so
+        // the answer is given before one is spent.
+        AtTarget::Episode => {
             on_line(ALREADY_HERE);
             return Ok(());
         }
+        // A claim that outlasted the wait. Its owner is not coming
+        // back, and nothing here may take it, so a transfer would end
+        // in the same refusal an hour later.
+        AtTarget::LiveClaim => {
+            on_line(&format!(
+                "another download is publishing {} and has not finished; try again shortly",
+                target.display()
+            ));
+            return Err(AniError::Io);
+        }
         // Nothing playable can be installed here, and no amount of
         // transferring changes that.
-        AtTarget::Obstruction => return Err(AniError::Io),
+        AtTarget::Obstruction | AtTarget::Unreadable => return Err(AniError::Io),
     }
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
@@ -871,7 +929,7 @@ where
         }
         let mut repackage_failed = false;
         match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
-            Ok(()) => return finish(&scratch, &target, on_line),
+            Ok(()) => return finish(&scratch, &target, on_line).await,
             Err(e) => {
                 if repackage_failed {
                     // yt-dlp's own report: what it wrote is raw
@@ -930,7 +988,7 @@ where
         .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
     match run_tool(cmd, deadline, on_line, &mut false).await {
-        Ok(()) => finish(&scratch, &target, on_line),
+        Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
 }
@@ -941,7 +999,7 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
+async fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
 where
     F: FnMut(&str) + Send,
 {
@@ -958,15 +1016,20 @@ where
     // Asked of the scratch path, which the classifier reads the same
     // way it reads a target: anything but bytes in a regular file is
     // not an episode, wherever it sits.
-    if at_target(&scratch.path) != AtTarget::Episode {
-        return Ok(());
+    match at_target(&scratch.path) {
+        AtTarget::Episode => {}
+        // Not being able to look at the scratch path is not the same
+        // as the tool having written nothing there. Reported as the
+        // latter, it ends the download happily with no file published.
+        AtTarget::Unreadable => return Err(AniError::Io),
+        _ => return Ok(()),
     }
     // Publication decides the file's fate from here: installed under
     // the episode's name, or removed because someone else got there.
     // Both leave the scratch path empty, so the guard outliving this
     // call costs nothing — and covers the third outcome, where the
     // file could not be installed at all.
-    match publish(&scratch.path, target)? {
+    match publish(&scratch.path, target).await? {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
             on_line(ALREADY_HERE);
