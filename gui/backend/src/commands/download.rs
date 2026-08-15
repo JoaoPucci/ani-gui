@@ -439,16 +439,37 @@ pub(crate) async fn acquire_instance_lock(
 /// target. Keyed by the raw name they take different locks and the
 /// repackage path removes the other transfer's output.
 ///
-/// Folded unconditionally rather than under a `cfg`. On a
-/// case-sensitive filesystem those are genuinely two files and this
-/// makes them queue behind each other needlessly — a download waits,
-/// the user may notice, nothing is lost. Not folding on a
+/// Up and then back down, because neither direction alone matches
+/// what the filesystem does. NTFS compares by uppercasing through the
+/// volume's case table, so Greek `σ` and final-sigma `ς` are one
+/// character to it — and lowercasing leaves them apart, since
+/// lowercasing `ς` is `ς`. Going up first collapses that pair; coming
+/// back down keeps everything the lowercase form already collapsed.
+///
+/// The result over-folds relative to any real case table — `ß`
+/// becomes `ss` where NTFS leaves it — and over-folding is the
+/// direction to err in here, for the same reason the fold is
+/// unconditional at all:
+///
+/// On a case-sensitive filesystem these are genuinely distinct files
+/// and folding queues them behind each other needlessly. A download
+/// waits. The user may notice. Nothing is lost. Not folding on a
 /// case-insensitive one destroys a finished file, which nobody sees
 /// until it is gone. Those costs are not comparable, and `target_os`
 /// would be guessing besides: Linux mounts NTFS, and macOS can be
 /// formatted either way.
+///
+/// Exact equivalence would mean asking the filesystem, which cannot
+/// answer about a file that does not exist yet — and the lock is
+/// taken precisely to decide who creates it.
 fn lock_key(target: &std::path::Path) -> Option<String> {
-    Some(target.file_name()?.to_string_lossy().to_lowercase())
+    Some(
+        target
+            .file_name()?
+            .to_string_lossy()
+            .to_uppercase()
+            .to_lowercase(),
+    )
 }
 
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
