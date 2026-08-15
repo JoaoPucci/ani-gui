@@ -1751,53 +1751,6 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
     );
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn an_abandoned_claim_does_not_block_the_episode_forever() {
-    // Where hard links are unsupported, publication claims the name by
-    // creating it empty and then renames onto its own claim. Those are
-    // two calls, and a process that dies between them — a crash, a
-    // power cut, a kill — leaves the empty claim standing.
-    //
-    // Nothing then distinguishes it from a finished download. The
-    // early skip reads it as the episode and every later attempt
-    // reports success without transferring, so the name is unusable
-    // until the user finds a zero-byte file in their downloads and
-    // deletes it by hand.
-    //
-    // A zero-length file is not an episode. Nothing plays it, no
-    // transfer produces it, and it is exactly what this failure
-    // leaves.
-    let bin = tempfile::tempdir().expect("bin");
-    let dest = tempfile::tempdir().expect("dest");
-    stage_tool(
-        bin.path(),
-        "yt-dlp",
-        &format!("{}\nexit 0", writes_its_output("the episode")),
-    );
-    let target = dest.path().join("Abandoned Show Episode 1.mp4");
-    std::fs::write(&target, b"").expect("stage the claim a crash left");
-    age_it(&target);
-
-    spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
-        dest.path(),
-        "Abandoned Show Episode 1",
-        None,
-        &bin.path().display().to_string(),
-        std::time::Duration::from_secs(10),
-        &mut |_l: &str| {},
-    )
-    .await
-    .expect("the download runs");
-
-    assert_eq!(
-        std::fs::read_to_string(&target).ok().as_deref(),
-        Some("the episode"),
-        "an empty file must not stand in for an episode nobody has"
-    );
-}
-
 /// Backdate `path` far enough that the grace period has passed.
 fn age_it(path: &std::path::Path) {
     let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
@@ -1845,55 +1798,63 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn an_abandoned_claim_is_reclaimed_without_a_lock() {
-    // This replaces `an_abandoned_claim_is_only_reclaimed_under_the_lock`,
-    // which asserted the opposite. Gating reclaim on the lock was
-    // wrong in both directions and the two failures arrive together.
+async fn an_abandoned_claim_is_reported_and_never_taken() {
+    // Third shape for this case, and the last, because the first two
+    // were attempts to make taking the claim safe and it cannot be
+    // made safe. Gating on the lock was insufficient and blocking;
+    // renaming onto the claim closed the empty-name gap but still
+    // acted on a classification that could be stale by the time it
+    // acted, so two publishers could each replace the other's
+    // finished file.
     //
-    // It is not sufficient. The lock file is named for the target, so
-    // two spellings of one target — 8.3 aliases on Windows — can take
-    // two different lock files, and both holders then believe they are
-    // alone. The permission bought nothing the unlink needed.
+    // Every version of the fix was trying to hold the same two
+    // guarantees at once: never leave a name blocked, and never
+    // replace a file this app cannot prove is its own. On a filesystem
+    // with no conditional replace, they do not both fit.
     //
-    // And it is not necessary, which is what this case pins. When the
-    // lock cannot be created at all, refusing to reclaim leaves the
-    // claim standing; the same refusal recurs on every attempt, so an
-    // episode a crash blocked stays blocked forever. That is the
-    // failure the recovery was added to fix, reintroduced one layer up.
-    //
-    // What the reclaim actually needed was to stop unlinking. A rename
-    // onto the claim replaces it in one step, on every filesystem this
-    // ships to, with no window where the name is empty and no unlink
-    // of an entry that may have stopped being a claim.
+    // The repository already says which one gives way. The confirm
+    // dialog asks for a directory and never for permission to
+    // overwrite, and the download path has spent this whole branch
+    // making that true. So the claim is reported, not taken: the app
+    // says exactly what is in the way and where, and the file it did
+    // not write stays where it is.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("{}\nexit 0", writes_its_output("the episode")),
+        &format!("echo ran >> '{}'\nexit 0", ran.display()),
     );
-    std::fs::write(dest.path().join(".ani-gui-locks"), b"not a directory").expect("block the lock");
-    let target = dest.path().join("Unlocked Show Episode 1.mp4");
+    let target = dest.path().join("Abandoned Show Episode 1.mp4");
     std::fs::write(&target, b"").expect("a claim from an earlier crash");
     age_it(&target);
 
-    spawn_download_tool(
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
         "https://cdn.example/x/master.m3u8",
         dest.path(),
-        "Unlocked Show Episode 1",
+        "Abandoned Show Episode 1",
         None,
         &bin.path().display().to_string(),
         std::time::Duration::from_secs(10),
-        &mut |_l: &str| {},
+        &mut |l: &str| lines.push(l.to_string()),
     )
-    .await
-    .expect("the download runs");
+    .await;
 
-    assert_eq!(
-        std::fs::read_to_string(&target).ok().as_deref(),
-        Some("the episode"),
-        "an episode a crash blocked must not stay blocked because a lock \
-         file cannot be made"
+    assert!(got.is_err(), "the episode cannot be installed at that name");
+    assert!(
+        !ran.exists(),
+        "and nothing transfers to discover what was knowable first"
+    );
+    assert!(
+        std::fs::metadata(&target).is_ok_and(|m| m.len() == 0),
+        "the file this app did not finish writing is still not its own to delete"
+    );
+    let said = lines.join(" ");
+    assert!(
+        said.contains("Abandoned Show Episode 1.mp4") && said.contains("interrupted"),
+        "the dock has to name the file and say why, or the user cannot act: {lines:?}"
     );
 }
 
@@ -1985,30 +1946,6 @@ async fn a_directory_at_the_target_refuses_before_the_transfer() {
     .await;
     assert!(got.is_err(), "the episode cannot land at that name");
     assert!(!ran.exists(), "and no tool should have run to discover it");
-}
-
-#[test]
-fn publication_takes_over_an_abandoned_claim() {
-    // The other half, at the boundary: reaching publication with a
-    // claim already at the target must install rather than report the
-    // episode present. Otherwise the download runs every time and
-    // discards its result every time — the transfer is spent and the
-    // name is still unusable.
-    let dir = tempfile::tempdir().expect("dir");
-    let scratch = dir.path().join(".ani-gui-test.part.mp4");
-    let target = dir.path().join("Claimed Show Episode 1.mp4");
-    std::fs::write(&scratch, b"the episode").expect("a finished transfer");
-    std::fs::write(&target, b"").expect("the claim");
-    age_it(&target);
-
-    assert_eq!(
-        publish(&scratch, &target).expect("publication succeeds"),
-        Published::Installed
-    );
-    assert_eq!(
-        std::fs::read_to_string(&target).ok().as_deref(),
-        Some("the episode")
-    );
 }
 
 #[cfg(unix)]
