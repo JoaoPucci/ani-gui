@@ -1132,6 +1132,73 @@ async fn two_downloads_of_one_target_do_not_overlap() {
 }
 
 #[cfg(unix)]
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
+    // `flock` parks the thread that calls it, and a parked thread is
+    // not a future: cancelling the download drops the JoinHandle while
+    // the closure stays inside the call. The dock's Cancel then looks
+    // like it worked and the blocking pool is one thread down, so
+    // repeated start-and-cancel walks the pool towards starving every
+    // other blocking caller — and none of it is visible.
+    //
+    // The wait therefore belongs on the async side, where it has to be
+    // bounded by something. The transfer deadline is the obvious
+    // bound: a download blocked on another instance is spending the
+    // same wait the transfer itself was given.
+    //
+    // The case wraps its own timeout around the call so an unbounded
+    // wait fails the assertion instead of hanging the suite with
+    // nothing to read.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{ran}'\nexit 0", ran = ran.display()),
+    );
+    let target = dest.path().join("Contended Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path for the target");
+    std::fs::create_dir_all(lock_path.parent().expect("lock dir")).expect("stage the lock dir");
+    let foreign = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("lock file");
+    fs4::FileExt::lock(&foreign).expect("foreign lock");
+
+    let mut sink = |_l: &str| {};
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "Contended Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_millis(300),
+            &mut sink,
+        ),
+    )
+    .await;
+    fs4::FileExt::unlock(&foreign).expect("unlock");
+
+    let outcome = outcome.expect(
+        "waiting for another instance must end at the transfer deadline, not park a thread \
+         until the holder releases",
+    );
+    assert!(
+        matches!(outcome, Err(AniError::Timeout)),
+        "a wait that runs out of deadline is a timeout: {outcome:?}"
+    );
+    assert!(
+        !ran.exists(),
+        "the tool ran without the cross-instance lock being held"
+    );
+}
+
 #[test]
 fn the_cross_instance_lock_does_not_move_with_the_build_profile() {
     // Every ani-gui-owned directory resolves under `ani-gui-dev` for a
