@@ -373,6 +373,64 @@ pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::Pa
     Some(locks.join(format!("download-{name}.lock")))
 }
 
+/// How often a download waiting on another instance re-tries the OS
+/// lock. Long enough that a queued download is not spinning, short
+/// enough that the handover is not what the user notices.
+const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Take the lock that crosses app instances for `target`, waiting for
+/// a holder until `deadline`.
+///
+/// Polled rather than blocked. `flock` parks the thread that calls it,
+/// and a parked thread is not a future: cancelling the download drops
+/// the `JoinHandle` while the closure stays inside the call, so the
+/// dock reports a cancel that left a blocking-pool thread behind. Do
+/// that a few times and the pool starves every other blocking caller,
+/// invisibly. Waiting between polls on the async side means a
+/// cancelled download lands on an await point and is simply dropped.
+///
+/// Only the open runs on the blocking pool, where it cannot park
+/// indefinitely — it either finds the file or fails.
+///
+/// # Errors
+/// [`AniError::Timeout`] when the deadline passes with another
+/// instance still holding it — the transfer's own ceiling, since a
+/// download blocked on another instance is spending the wait the
+/// transfer was given. [`AniError::Io`] when the lock file cannot be
+/// created or opened at all; see [`target_lock_path`] for why that is
+/// worth refusing over.
+async fn acquire_instance_lock(
+    target: &std::path::Path,
+    deadline: tokio::time::Instant,
+) -> Result<std::fs::File> {
+    let path = target_lock_path(target).ok_or(AniError::Io)?;
+    let file = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
+        }
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .map_err(|_| AniError::Io)
+    })
+    .await
+    .map_err(|_| AniError::Io)??;
+    loop {
+        match fs4::FileExt::try_lock(&file) {
+            Ok(()) => return Ok(file),
+            Err(fs4::TryLockError::WouldBlock) => {}
+            Err(fs4::TryLockError::Error(_)) => return Err(AniError::Io),
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(AniError::Timeout);
+        }
+        tokio::time::sleep_until(deadline.min(now + INSTANCE_LOCK_POLL)).await;
+    }
+}
+
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     let mut guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
     guard
@@ -406,37 +464,12 @@ where
     // — dropping the handle closes the descriptor, which is what
     // releases it.
     //
-    // On the blocking pool because `flock` parks the calling thread:
-    // waiting for it on a runtime worker would stall every other
-    // download, resolve and proxied segment sharing that thread.
-    //
-    // Failing to take it fails the download. Carrying on under the
-    // in-process mutex alone would drop the cross-instance guarantee
-    // at exactly the moment nothing reports it missing, and the case
-    // it protects is the one nobody reproduces on purpose. Because the
-    // lock file sits under a directory this app creates, that failure
-    // is not an ordinary condition: it means the cache directory is
-    // unusable.
-    let lock_path = target_lock_path(&target).ok_or(AniError::Io)?;
-    let _instance = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
-        if let Some(parent) = lock_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
-        }
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&lock_path)
-            .map_err(|_| AniError::Io)?;
-        fs4::FileExt::lock(&file).map_err(|_| AniError::Io)?;
-        Ok(file)
-    })
-    .await
-    .map_err(|_| AniError::Io)??;
     // The ceiling belongs to the transfer, not to each tool inside
     // it: one absolute instant, and every step below runs against
-    // what is left of it.
+    // what is left of it — starting with the wait for another
+    // instance, which is time this transfer is spending.
     let deadline = tokio::time::Instant::now() + timeout;
+    let _instance = acquire_instance_lock(&target, deadline).await?;
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
     let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
