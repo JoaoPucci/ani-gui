@@ -151,7 +151,7 @@ describe('Continue Watching card after a gate-refused probe', () => {
 		await vi.advanceTimersByTimeAsync(PAST_COOLDOWN_MS * 4);
 
 		// The loop outlives the first pass by design; without a
-		// teardown it would keep asking allmanga about a strip nobody
+		// teardown it would keep asking the provider about a strip nobody
 		// is looking at.
 		expect(probes).toHaveLength(1);
 	});

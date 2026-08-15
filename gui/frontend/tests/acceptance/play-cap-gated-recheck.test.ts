@@ -40,9 +40,9 @@ const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 /** The anime database says 5 have aired. */
 const AIRED = 5;
-/** allmanga's remembered answer says it only has 4 — so 5 is dimmed. */
+/** The provider's remembered answer says it only has 4 — so 5 is dimmed. */
 const CACHED_COUNT = 4;
-/** What allmanga says when actually asked. */
+/** What the provider says when actually asked. */
 const FRESH_COUNT = 5;
 
 let target: HTMLElement;
@@ -90,7 +90,7 @@ function kitsuEpisodes(count: number) {
 }
 
 describe('play route — clicking a dimmed aired episode', () => {
-	it('re-asks allmanga and switches to the episode when the count clears', async () => {
+	it('re-asks the provider and switches to the episode when the count clears', async () => {
 		const probes: { bypass_cache?: boolean }[] = [];
 		const played: { episode?: string; prefetch?: boolean }[] = [];
 
@@ -112,7 +112,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				probes.push(body);
-				// The remembered count is short; asking allmanga directly
+				// The remembered count is short; asking the provider directly
 				// gets the episode that landed since.
 				return HttpResponse.json({
 					available: true,
@@ -150,7 +150,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 
 		card(AIRED)!.click();
 
-		// The click has to reach allmanga past the remembered count —
+		// The click has to reach the provider past the remembered count —
 		// asking with the cache still in play answers from the very
 		// number that dimmed the card.
 		await until(() => bypassing().length > 0, 'the click to send a cache-skipping lookup');
@@ -216,7 +216,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 		);
 
 		// And the other direction, which is the one that leaves a dead
-		// card on screen: allmanga pulls the special, and the strip has
+		// card on screen: The provider pulls the special, and the strip has
 		// to stop offering it.
 		recheckExtras = [];
 		card(AIRED)!.click();
@@ -246,7 +246,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
-				// The re-ask finds the show delisted — allmanga dropped
+				// The re-ask finds the show delisted — the provider dropped
 				// it, or the resolver corrected which title it matched.
 				// No count comes with that, so the stale cap survives.
 				if (body.bypass_cache) delisted = true;
@@ -321,7 +321,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 		// state rather than a flicker.
 		await until(
 			() => (target.textContent ?? '').includes(m.detail_ep_recheck_busy()),
-			'the overlay to say it is checking with allmanga'
+			'the overlay to say it is checking with the provider'
 		);
 		release();
 	});
@@ -454,7 +454,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 
 		// `ep-card-unaired` is the styling for an episode that does not
 		// exist yet: default cursor, no play icon. A card that re-asks
-		// allmanga on click is not that, however dim it looks.
+		// the provider on click is not that, however dim it looks.
 		expect(card(AIRED)!.classList.contains('ep-card-unaired')).toBe(false);
 	});
 
@@ -501,7 +501,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 		await until(() => probes.length > 0, 'the page-load availability lookup');
 
 		// Settings confirm the mode the fallback already guessed. The
-		// question did not change, and allmanga rate-limits — asking it
+		// question did not change, and the provider rate-limits — asking it
 		// again spends a slot on an answer already in hand.
 		releaseSettings();
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);

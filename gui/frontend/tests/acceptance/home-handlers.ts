@@ -74,7 +74,7 @@ export interface HomeHandlerOptions {
 
 /**
  * Everything a mounted home route reaches for, answered the way a cold
- * cache would: no stored allanime→Kitsu mapping, no remembered title
+ * cache would: no stored the provider→Kitsu mapping, no remembered title
  * match, no reverse-resolve, empty rails.
  *
  * Scenario-specific handlers go in `overrides`, and this puts them

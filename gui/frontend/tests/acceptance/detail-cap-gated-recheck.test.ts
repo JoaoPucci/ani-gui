@@ -1,7 +1,7 @@
-// Acceptance: clicking a dimmed episode actually asks allmanga again.
+// Acceptance: clicking a dimmed episode actually asks the provider again.
 //
 // A tile dims when the anime database says the episode aired but it
-// sits above the episode count allmanga reported. That count is
+// sits above the episode count the provider reported. That count is
 // cached — 24 hours for an ongoing show — and the provider catalogues
 // episodes inside that window, so the tile can stay dead long after
 // the episode became streamable.
@@ -46,7 +46,7 @@ const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 /** The anime database says 5 have aired. */
 const AIRED = 5;
-/** allmanga's cached answer says it only has 4 — so 5 is dimmed. */
+/** The provider's cached answer says it only has 4 — so 5 is dimmed. */
 const CACHED_COUNT = 4;
 
 let target: HTMLElement;
@@ -82,7 +82,7 @@ const tile = (n: number) =>
 	(target.querySelector(`li[data-ep-num="${n}"] button`) as HTMLButtonElement | null) ?? null;
 
 describe('detail route — clicking a dimmed aired episode', () => {
-	it('asks allmanga again instead of replaying the remembered count', async () => {
+	it('asks the provider again instead of replaying the remembered count', async () => {
 		const probes: { bypass_cache?: boolean }[] = [];
 
 		server.use(
@@ -106,7 +106,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 				return HttpResponse.json({
 					available: true,
 					// Every answer is the stale one. If the click reaches
-					// allmanga the request itself proves it; the count
+					// the provider the request itself proves it; the count
 					// staying short keeps this scenario about the request
 					// rather than about playback starting.
 					episode_count: CACHED_COUNT,
@@ -118,7 +118,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 		app = mount(DetailPage, { target });
 
-		// Episode 5 aired but is past allmanga's count, so it renders
+		// Episode 5 aired but is past the provider's count, so it renders
 		// dimmed — the state this whole feature is about.
 		const bypassing = () => probes.filter((p) => p.bypass_cache === true);
 
@@ -136,7 +136,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// The two defects this pins, together: the click has to produce
 		// a request at all, and that request has to say "not what you
 		// remember" — without which the lookup answers from the very
-		// row that dimmed the tile and reaches allmanga never.
+		// row that dimmed the tile and reaches the provider never.
 		await until(() => bypassing().length > 0, 'the click to send a cache-skipping lookup');
 	});
 
@@ -306,7 +306,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 					available: true,
 					episode_count: CACHED_COUNT,
 					// The page loaded knowing of no specials. Asking
-					// allmanga directly turns up one catalogued since.
+					// the provider directly turns up one catalogued since.
 					extra_episodes: body.bypass_cache ? ['4.5'] : [],
 					episode_count_approximate: false
 				});
@@ -383,7 +383,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// `aria-disabled` is advisory — it does not stop a click. The
 		// tile is still cap-gated too, because a delisting arrives
 		// without a count, so a handler that checks cap-gated first
-		// sends allmanga the same question again about a show it has
+		// sends the provider the same question again about a show it has
 		// just said it does not have.
 		tile(AIRED)!.click();
 
@@ -500,7 +500,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		);
 
 		// Dimmed says "not right now"; not-allowed says "never, stop
-		// trying". The tile is a live control that re-asks allmanga, so
+		// trying". The tile is a live control that re-asks the provider, so
 		// it must not wear the styling reserved for tiles with nothing
 		// behind them — that is precisely the affordance the whole
 		// feature adds.
@@ -701,7 +701,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 		// Settings confirm what the fallback already guessed. The mode
 		// did not change, so nothing about the question did — and
-		// allmanga rate-limits, so asking it twice costs a slot for an
+		// the provider rate-limits, so asking it twice costs a slot for an
 		// answer already in hand.
 		releaseSettings();
 		await until(

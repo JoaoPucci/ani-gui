@@ -13,7 +13,7 @@
  *
  * The backend's IPC endpoints (history, watched-at, settings, kitsu
  * detail/episodes, availability, play) are stubbed via `page.route()`
- * so the assertions don't depend on Kitsu/allmanga reachability.
+ * so the assertions don't depend on Kitsu/the provider reachability.
  *
  * The resolveKitsuMatch path takes the `allmanga-kitsu-map` short-
  * circuit (step 0 in match.ts) — stubbing that endpoint plus the
@@ -57,7 +57,7 @@ test.beforeAll(() => {
 
 interface StubOptions {
 	history: typeof continueHistory | typeof emptyHistory;
-	/** Resolves the allmanga show id to a kitsu id (the short-circuit
+	/** Resolves the provider show id to a kitsu id (the short-circuit
 	 *  path in match.ts step 0). `null` forces the loader to fall
 	 *  through to title-match / kitsuSearch — the orphan case. */
 	allmangaKitsuMap?: string | null;
@@ -95,7 +95,7 @@ interface StubOptions {
 	 *  fetches keep routing, the SSEs silently hit the real backend. */
 	onPlayStream?: (url: URL) => 'hang' | undefined;
 	/** Make the play stream answer with the backend's typed
-	 *  rate-limit envelope (allanime's in-band "Too many requests,
+	 *  rate-limit envelope (the provider's in-band "Too many requests,
 	 *  please try again in N seconds" → kind: 'rate_limited' +
 	 *  retry_after_secs) instead of a done event. */
 	playRateLimited?: boolean;
@@ -323,7 +323,7 @@ test('Continue card shows last+1 and clicking it plays that episode', async () =
 });
 
 test('Rate-limited play surfaces the busy-source copy with the advertised wait', async () => {
-	// The backend types allanime's in-band throttle answer ("Too many
+	// The backend types the provider's in-band throttle answer ("Too many
 	// requests, please try again in N seconds") and forwards
 	// retry_after_secs; the user-visible contract is that a click
 	// during the window names the wait instead of the generic
