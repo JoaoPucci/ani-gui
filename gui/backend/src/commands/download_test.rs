@@ -1845,33 +1845,32 @@ fn a_claim_another_publisher_is_still_using_is_left_alone() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn an_abandoned_claim_is_only_reclaimed_under_the_lock() {
-    // Classifying a claim as abandoned and unlinking it are two
-    // operations, and nothing between them stops a second instance
-    // reaching the same conclusion about the same entry: A removes it
-    // and installs, then B's unlink — decided before any of that —
-    // deletes A's finished episode.
+async fn an_abandoned_claim_is_reclaimed_without_a_lock() {
+    // This replaces `an_abandoned_claim_is_only_reclaimed_under_the_lock`,
+    // which asserted the opposite. Gating reclaim on the lock was
+    // wrong in both directions and the two failures arrive together.
     //
-    // There is no conditional unlink to reach for, and the atomic
-    // alternatives need a filesystem richer than the one that lacked
-    // hard links in the first place. What does exist is the lock this
-    // download already takes for the target. Only one instance holds
-    // it, so making it the permission to reclaim gives the act the
-    // ownership the filesystem will not.
+    // It is not sufficient. The lock file is named for the target, so
+    // two spellings of one target — 8.3 aliases on Windows — can take
+    // two different lock files, and both holders then believe they are
+    // alone. The permission bought nothing the unlink needed.
     //
-    // Refusing to reclaim costs a transfer. Reclaiming wrongly costs
-    // the file, and the target name carries neither mode nor quality,
-    // so it need not even be the same episode.
+    // And it is not necessary, which is what this case pins. When the
+    // lock cannot be created at all, refusing to reclaim leaves the
+    // claim standing; the same refusal recurs on every attempt, so an
+    // episode a crash blocked stays blocked forever. That is the
+    // failure the recovery was added to fix, reintroduced one layer up.
     //
-    // The lock is made untakeable by putting a regular file where its
-    // directory goes, which is the same shape as the deep-destination
-    // case that made the lock best-effort to begin with.
+    // What the reclaim actually needed was to stop unlinking. A rename
+    // onto the claim replaces it in one step, on every filesystem this
+    // ships to, with no window where the name is empty and no unlink
+    // of an entry that may have stopped being a claim.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("{}\nexit 0", writes_its_output("the dub")),
+        &format!("{}\nexit 0", writes_its_output("the episode")),
     );
     std::fs::write(dest.path().join(".ani-gui-locks"), b"not a directory").expect("block the lock");
     let target = dest.path().join("Unlocked Show Episode 1.mp4");
@@ -1888,13 +1887,13 @@ async fn an_abandoned_claim_is_only_reclaimed_under_the_lock() {
         &mut |_l: &str| {},
     )
     .await
-    .expect("standing down is not a failure");
+    .expect("the download runs");
 
     assert_eq!(
-        std::fs::metadata(&target).expect("target").len(),
-        0,
-        "without the lock, nothing here can tell whether another instance \
-         is reclaiming this same claim right now"
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("the episode"),
+        "an episode a crash blocked must not stay blocked because a lock \
+         file cannot be made"
     );
 }
 
