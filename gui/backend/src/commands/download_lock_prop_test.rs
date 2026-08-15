@@ -57,6 +57,32 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
     );
 }
 
+/// Names that differ only in case take one lock.
+///
+/// Windows and the default macOS filesystem resolve
+/// `Show Episode 1.mp4` and `show episode 1.mp4` to the same file, so
+/// two downloads whose resolved titles differ only in case contend
+/// for one target while hashing to two different locks — and the
+/// repackage path then removes and replaces the other's output.
+///
+/// Folded unconditionally rather than per-platform. On a
+/// case-sensitive filesystem those really are two files, and folding
+/// makes them queue behind each other when they need not: a download
+/// waits, which the user may notice and nothing loses. Not folding on
+/// a case-insensitive one loses a finished file, which nobody sees
+/// until it is gone. The costs are not comparable, and a `cfg` on
+/// target_os would be guessing anyway — Linux mounts NTFS, and macOS
+/// can be formatted either way.
+#[test]
+fn case_equivalent_targets_share_one_lock() {
+    let dest = std::path::Path::new("/tmp/ani-gui-prop");
+    assert_eq!(
+        target_lock_path(&dest.join("Show Episode 1.mp4")),
+        target_lock_path(&dest.join("show episode 1.MP4")),
+        "on a case-insensitive filesystem these are one file and must be one lock"
+    );
+}
+
 proptest::proptest! {
     /// The lock never leaves the directory of the file it guards.
     ///
@@ -100,12 +126,16 @@ proptest::proptest! {
     /// Sharing would serialize unrelated episodes — a range download
     /// is the common case — and, worse, make the dock look like it
     /// had stalled for a reason nobody could see.
+    ///
+    /// Distinct up to case, because case-equivalent names are one
+    /// file wherever the filesystem says so and share a lock on
+    /// purpose; that is the case above.
     #[test]
     fn distinct_targets_take_distinct_locks(
         a in "[a-zA-Z0-9 ._-]{1,40}",
         b in "[a-zA-Z0-9 ._-]{1,40}",
     ) {
-        proptest::prop_assume!(a != b);
+        proptest::prop_assume!(a.to_lowercase() != b.to_lowercase());
         let dest = std::path::Path::new("/tmp/ani-gui-prop");
         proptest::prop_assert_ne!(
             target_lock_path(&dest.join(format!("{a}.mp4"))),
