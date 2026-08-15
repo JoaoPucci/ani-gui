@@ -1369,6 +1369,118 @@ fn the_cross_instance_lock_lives_beside_the_file_it_guards() {
     );
 }
 
+#[test]
+fn a_failed_link_free_publish_leaves_no_claim_behind() {
+    // The no-hard-links path claims the name by creating it and then
+    // renames onto its own empty file. If that rename does not happen,
+    // the claim IS the episode as far as everything downstream can
+    // tell: zero bytes at the target, which the next download reads as
+    // somebody else's finished file and stands down from. One failure
+    // poisons that name for good.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    let missing = dest.path().join("never-written.part.mp4");
+    let got = publish_without_links(&missing, &target);
+    assert!(
+        got.is_err(),
+        "a publish with nothing to install is a failure"
+    );
+    assert!(
+        !target.exists(),
+        "and it must not leave its own claim standing as an episode"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
+    // The lock stopped being the thing that makes this safe when
+    // publishing took over. It is an optimization — it saves a second
+    // click the bandwidth — so failing to take one is a reason to skip
+    // the saving, not to refuse a download the filesystem would have
+    // accepted. A destination deep enough that the target fits and the
+    // lock path does not is the case that used to be refused outright.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let target = dest.path().join("Unlockable Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    // A directory where the lock file belongs: it cannot be opened for
+    // writing, which is what an unusable lock location looks like.
+    std::fs::create_dir_all(&lock_path).expect("stage the obstruction");
+
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Unlockable Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("an unusable lock must not refuse the download");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "the episode is published without the lock's help"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_a_download_takes_its_scratch_file_with_it() {
+    // Cancel drops the future mid-transfer. None of the error branches
+    // run, so nothing below the await gets to clean up — and what is
+    // left is not a stray marker but most of an episode, tens or
+    // hundreds of megabytes, hidden in the user's download folder.
+    // Cancel a few times and it is gigabytes.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nsleep 30\nexit 0", writes_its_output("half an episode")),
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let running = tokio::spawn(async move {
+        let mut sink = |_l: &str| {};
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Cancelled Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut sink,
+        )
+        .await
+    });
+    // Long enough for the stub to have written something.
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    running.abort();
+    let _ = running.await;
+    // The drop runs on the task's own thread; give it a moment to land.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a cancelled transfer must not leave its partial file behind: {leftovers:?}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn the_tool_writes_somewhere_other_than_the_target() {

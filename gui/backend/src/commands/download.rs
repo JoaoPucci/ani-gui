@@ -522,10 +522,19 @@ pub(crate) fn publish(scratch: &std::path::Path, target: &std::path::Path) -> Re
         }
         Err(_) => {}
     }
-    // No hard links here. Claiming the name by creating it is the same
-    // question — nobody else can hold it afterwards — and the rename
-    // then lands on this run's own empty file rather than anyone's
-    // episode.
+    publish_without_links(scratch, target)
+}
+
+/// Publication where the filesystem has no hard links (FAT32 or exFAT
+/// on a memory stick).
+///
+/// Claiming the name by creating it asks the same question a link
+/// does — nobody else can hold it afterwards — and the rename then
+/// lands on this run's own empty file rather than anyone's episode.
+pub(crate) fn publish_without_links(
+    scratch: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<Published> {
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
