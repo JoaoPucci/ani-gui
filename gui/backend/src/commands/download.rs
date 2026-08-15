@@ -338,10 +338,17 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// Named from the target's path rather than placed beside it: a
 /// `.lock` sibling per episode would accumulate in the user's
 /// download folder, and this is app bookkeeping the user has no
-/// reason to meet. The temp directory is per-user on Windows and
-/// shared on Linux; a hostile local account could hold the file and
-/// stall a download, which is a nuisance with no path to the file
-/// being written.
+/// reason to meet.
+///
+/// It lives under the app's own cache directory rather than the
+/// system temp directory, which is what lets the caller refuse a
+/// download that cannot take it. Temp is shared between local
+/// accounts on Linux, so another account can hold the file, and
+/// "cannot lock" there is an ordinary condition no download should
+/// hard-fail on. Under a directory this app creates, the same failure
+/// means the cache directory is unusable — which the metadata
+/// database and the image cache are about to discover too — so
+/// refusing is the honest answer.
 ///
 /// The parent is canonicalized so two instances configured with
 /// different routes to one directory — a symlink, a trailing `.` —
@@ -357,7 +364,8 @@ pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::Pa
         let _ = write!(s, "{b:02x}");
         s
     });
-    Some(std::env::temp_dir().join(format!("ani-gui-dl-{name}.lock")))
+    let locks = crate::config::paths::cache_dir()?.join("downloads");
+    Some(locks.join(format!("{name}.lock")))
 }
 
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
@@ -395,26 +403,31 @@ where
     //
     // On the blocking pool because `flock` parks the calling thread:
     // waiting for it on a runtime worker would stall every other
-    // download, resolve and proxied segment sharing that thread. A
-    // failure to take it at all — an unwritable temp directory, a
-    // filesystem without locking — leaves the in-process mutex as the
-    // guarantee rather than refusing a download the user asked for.
-    let _instance = match target_lock_path(&target) {
-        Some(path) => tokio::task::spawn_blocking(move || {
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .write(true)
-                .open(&path)
-                .ok()?;
-            fs4::FileExt::lock(&file).ok()?;
-            Some(file)
-        })
-        .await
-        .ok()
-        .flatten(),
-        None => None,
-    };
+    // download, resolve and proxied segment sharing that thread.
+    //
+    // Failing to take it fails the download. Carrying on under the
+    // in-process mutex alone would drop the cross-instance guarantee
+    // at exactly the moment nothing reports it missing, and the case
+    // it protects is the one nobody reproduces on purpose. Because the
+    // lock file sits under a directory this app creates, that failure
+    // is not an ordinary condition: it means the cache directory is
+    // unusable.
+    let lock_path = target_lock_path(&target).ok_or(AniError::Io)?;
+    let _instance = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
+        }
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .map_err(|_| AniError::Io)?;
+        fs4::FileExt::lock(&file).map_err(|_| AniError::Io)?;
+        Ok(file)
+    })
+    .await
+    .map_err(|_| AniError::Io)??;
     // The ceiling belongs to the transfer, not to each tool inside
     // it: one absolute instant, and every step below runs against
     // what is left of it.
