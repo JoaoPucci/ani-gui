@@ -84,6 +84,32 @@ $(grep -E '^pub const [A-Z_]+: &str' gui/backend/src/i18n.rs)
 EOF
 fi
 
+# 3. No user-facing string names the CLI's history file.
+#
+# The GUI keeps its own watch history at `<state_dir>/history`
+# (`config::paths::gui_history`). It shared the CLI's `ani-hsts` in the
+# allanime era and does not anymore, so a message telling a user to
+# "populate ani-hsts" sends them to a file this app never writes — and
+# four locales said exactly that, long after the code moved.
+#
+# Scoped to the message bundles because there the question is
+# mechanical: those files are nothing but text shown to users, so any
+# mention is a claim made to one. Nowhere else is that true. The same
+# name in `paths.rs` is an accurate note about what the GUI used to do,
+# and in `tests/bash/` it is the CLI's own file under test — telling
+# those from a stale claim means reading for meaning, which is the one
+# thing an architectural check here may not do.
+#
+# So: comments and prose outside the bundles are NOT covered by this
+# check, and a green run says nothing about them.
+if [ -d gui/frontend/messages ]; then
+    hits=$(grep -rl 'ani-hsts' gui/frontend/messages 2>/dev/null || true)
+    if [ -n "$hits" ]; then
+        printf 'arch/i18n FAIL: user-facing message names the CLI history file (the GUI keeps its own at <state_dir>/history):\n%s\n' "$hits" >&2
+        failed=1
+    fi
+fi
+
 if [ "$failed" -eq 0 ]; then
     printf 'arch/i18n PASS (variants checked: %s)\n' "$(printf '%s\n' "$variants" | wc -l | tr -d ' ')"
 fi
