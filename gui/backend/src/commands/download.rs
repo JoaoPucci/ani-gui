@@ -350,6 +350,11 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// database and the image cache are about to discover too — so
 /// refusing is the honest answer.
 ///
+/// [`paths::shared_lock_dir`] rather than [`paths::cache_dir`],
+/// because the latter moves with the dev profile and an installed
+/// release downloading beside a source build would then take a
+/// different lock for the same file.
+///
 /// The parent is canonicalized so two instances configured with
 /// different routes to one directory — a symlink, a trailing `.` —
 /// still agree on the name.
@@ -364,8 +369,8 @@ pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::Pa
         let _ = write!(s, "{b:02x}");
         s
     });
-    let locks = crate::config::paths::cache_dir()?.join("downloads");
-    Some(locks.join(format!("{name}.lock")))
+    let locks = crate::config::paths::shared_lock_dir()?;
+    Some(locks.join(format!("download-{name}.lock")))
 }
 
 fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {

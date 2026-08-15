@@ -82,6 +82,26 @@ pub fn cache_dir() -> Option<PathBuf> {
     project_dirs().map(|d| d.cache_dir().to_path_buf())
 }
 
+/// `$XDG_CACHE_HOME/ani-gui/locks/` — the one ani-gui-owned directory
+/// that does **not** follow the dev-profile split.
+///
+/// [`app_name`] relocates everything else under `ani-gui-dev` for a
+/// debug build so a source-built backend cannot hand the installed
+/// release a database it has already migrated. That reasoning is about
+/// data each profile owns privately, and it inverts for a lock: a lock
+/// is only worth holding if everyone contending for the resource takes
+/// the same one. The resource here is a file in the user's download
+/// folder, which both profiles write to, so a lock that moved with the
+/// profile would let an installed release and a source build delete
+/// and replace each other's output while each held its own.
+///
+/// Nothing but lock files belongs here — they carry no state, so the
+/// two profiles sharing the directory costs nothing.
+#[must_use]
+pub fn shared_lock_dir() -> Option<PathBuf> {
+    ProjectDirs::from(QUALIFIER, ORG, APP).map(|d| d.cache_dir().join("locks"))
+}
+
 /// `$XDG_CACHE_HOME/ani-gui/images/` — backing store for the `image://`
 /// custom protocol.
 #[must_use]
