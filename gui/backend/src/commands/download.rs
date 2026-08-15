@@ -387,6 +387,34 @@ where
     // invocation writing this path.
     let lock = target_lock(&target);
     let _writing = lock.lock().await;
+    // And the other app instance's download. Taken after the
+    // in-process mutex so this process's own tasks queue on the cheap
+    // lock and only one of them contends the file. Held to the return
+    // — dropping the handle closes the descriptor, which is what
+    // releases it.
+    //
+    // On the blocking pool because `flock` parks the calling thread:
+    // waiting for it on a runtime worker would stall every other
+    // download, resolve and proxied segment sharing that thread. A
+    // failure to take it at all — an unwritable temp directory, a
+    // filesystem without locking — leaves the in-process mutex as the
+    // guarantee rather than refusing a download the user asked for.
+    let _instance = match target_lock_path(&target) {
+        Some(path) => tokio::task::spawn_blocking(move || {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(&path)
+                .ok()?;
+            fs4::FileExt::lock(&file).ok()?;
+            Some(file)
+        })
+        .await
+        .ok()
+        .flatten(),
+        None => None,
+    };
     // The ceiling belongs to the transfer, not to each tool inside
     // it: one absolute instant, and every step below runs against
     // what is left of it.
