@@ -492,14 +492,49 @@ impl Scratch {
     /// the retry path, where yt-dlp's output is condemned and ffmpeg
     /// needs a name nothing can confuse with it.
     fn renew(&mut self, dest: &std::path::Path) {
-        let _ = std::fs::remove_file(&self.path);
+        self.discard();
         self.path = scratch_path(dest);
+    }
+
+    /// Remove the scratch file and everything a tool derived from its
+    /// name.
+    ///
+    /// The `-o` path is not where a transfer's bytes are. yt-dlp's
+    /// `--part` is on by default, so they go to `<scratch>.part`, with
+    /// `<scratch>.ytdl` holding fragment-resume state and a
+    /// `<scratch>.part-FragN` per fragment in flight beside it. A kill
+    /// lands among those, and removing only the `-o` path removes the
+    /// one name nothing was written to.
+    ///
+    /// Enumerating that list here would be the same mistake as
+    /// reconstructing which spellings are one file: correct until the
+    /// tool adds a suffix, and unfixable without knowing it had. The
+    /// scratch name carries a uuid this run generated, so a prefix
+    /// sweep of the destination is exact — nothing else can hold that
+    /// prefix, and nothing derived from the path can lose it.
+    fn discard(&self) {
+        let _ = std::fs::remove_file(&self.path);
+        let (Some(dir), Some(prefix)) = (self.path.parent(), self.path.file_name()) else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .as_encoded_bytes()
+                .starts_with(prefix.as_encoded_bytes())
+            {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
     }
 }
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        self.discard();
     }
 }
 
