@@ -398,7 +398,7 @@ const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis
 /// transfer was given. [`AniError::Io`] when the lock file cannot be
 /// created or opened at all; see [`target_lock_path`] for why that is
 /// worth refusing over.
-async fn acquire_instance_lock(
+pub(crate) async fn acquire_instance_lock(
     target: &std::path::Path,
     deadline: tokio::time::Instant,
 ) -> Result<std::fs::File> {
