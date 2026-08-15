@@ -382,11 +382,11 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * ("Idol" ⊂ "…School Idol…") doesn't pass. Returns true — don't reject — when
  * the provider title is an uninformative stub or no Kitsu title is comparable.
  */
-export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRef): boolean {
+export function titlesPlausiblySameShow(providerTitle: string, ref: KitsuAnimeRef): boolean {
 	// Only a REFUTED identity rejects. A binding that carries other
 	// evidence should not be thrown away because the titles could not
 	// be compared — which is what 'unjudged' means.
-	return titleIdentity(allanimeTitle, ref) !== 'refuted';
+	return titleIdentity(providerTitle, ref) !== 'refuted';
 }
 
 /** Whether the titles say these are the same show, say they are not,
@@ -397,8 +397,8 @@ export function titlesPlausiblySameShow(allanimeTitle: string, ref: KitsuAnimeRe
  *  identity ALONE must require 'proven'. */
 export type TitleIdentity = 'proven' | 'refuted' | 'unjudged';
 
-export function titleIdentity(allanimeTitle: string, ref: KitsuAnimeRef): TitleIdentity {
-	const a = titleTokens(allanimeTitle.replace(EPISODE_TAIL_RE, ''));
+export function titleIdentity(providerTitle: string, ref: KitsuAnimeRef): TitleIdentity {
+	const a = titleTokens(providerTitle.replace(EPISODE_TAIL_RE, ''));
 	if (!titleIsInformative(a)) return 'unjudged';
 	const candidates: string[] = [];
 	if (ref.canonical_title) candidates.push(ref.canonical_title);

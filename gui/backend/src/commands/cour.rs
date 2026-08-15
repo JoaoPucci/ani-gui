@@ -105,8 +105,8 @@ pub fn cour_from_slug(slug: &str) -> Option<u32> {
 /// paired with a `-part-1` Kitsu slug agrees, and a `Part 2` provider
 /// title paired with a bare Kitsu slug disagrees.
 #[must_use]
-pub fn cours_agree(allmanga: Option<u32>, kitsu: Option<u32>) -> bool {
-    allmanga.unwrap_or(1) == kitsu.unwrap_or(1)
+pub fn cours_agree(provider: Option<u32>, kitsu: Option<u32>) -> bool {
+    provider.unwrap_or(1) == kitsu.unwrap_or(1)
 }
 
 /// Strip a trailing ` (<digits> episodes)` segment from a title, if

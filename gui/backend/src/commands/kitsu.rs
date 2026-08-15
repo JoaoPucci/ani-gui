@@ -536,12 +536,12 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let allmanga_cour = cour_from_title(show_title);
+    let provider_cour = cour_from_title(show_title);
     let kitsu_cour = detail
         .slug
         .as_deref()
         .map(|slug| cour_from_slug(slug).unwrap_or(1));
-    match (allmanga_cour, kitsu_cour) {
+    match (provider_cour, kitsu_cour) {
         (Some(a), Some(k)) => a != k,
         _ => false,
     }
