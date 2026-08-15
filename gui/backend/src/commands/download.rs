@@ -309,6 +309,33 @@ where
 /// (the typed error the install modal renders);
 /// [`AniError::Scraper`] when the chosen tool exits non-zero;
 /// [`AniError::Timeout`] past the transfer deadline.
+/// One lock per destination file, held for the whole spawn.
+///
+/// Two downloads of the same episode resolve to the same path — the
+/// dock allows the second click — and before this they ran at once,
+/// each writing the other's output. The repackage retry sharpened it
+/// into deletion: that path removes the target and passes `-y`, so a
+/// late arrival can replace a file the first run already finished.
+///
+/// Keyed by path rather than by show so a range download's episodes,
+/// which differ, still run as the loop schedules them. Entries are
+/// kept rather than reaped: one `Arc<Mutex>` per file a session has
+/// downloaded is a few dozen bytes, and reaping introduces the race
+/// this exists to remove — a waiter holding an `Arc` the map has
+/// already dropped locks a mutex nobody else can see.
+static TARGET_LOCKS: std::sync::Mutex<
+    Option<std::collections::HashMap<std::path::PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::Mutex::new(None);
+
+fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    let mut guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .get_or_insert_with(std::collections::HashMap::new)
+        .entry(target.to_path_buf())
+        .or_default()
+        .clone()
+}
+
 pub(crate) async fn spawn_download_tool<F>(
     master_url: &str,
     dest: &std::path::Path,
@@ -322,6 +349,11 @@ where
     F: FnMut(&str) + Send,
 {
     let target = dest.join(format!("{file_stem}.mp4"));
+    // Held until this function returns, so everything below — the
+    // discard, the removal, the `-y` run — happens with no other
+    // invocation writing this path.
+    let lock = target_lock(&target);
+    let _writing = lock.lock().await;
     // The ceiling belongs to the transfer, not to each tool inside
     // it: one absolute instant, and every step below runs against
     // what is left of it.
