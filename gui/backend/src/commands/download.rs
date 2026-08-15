@@ -462,6 +462,47 @@ fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()
         .clone()
 }
 
+/// Owns the scratch file for as long as the transfer might still be
+/// using it, and removes it otherwise.
+///
+/// Cancellation is why this is a type rather than a cleanup call.
+/// Aborting the download drops the future wherever it happens to be
+/// awaiting, so no branch below that point runs — and the file left
+/// behind is not a marker but most of an episode. A drop runs anyway.
+///
+/// `keep` is for the one case where the file must survive this scope:
+/// it has been published and the path now names something the user
+/// owns.
+struct Scratch {
+    path: std::path::PathBuf,
+    keep: bool,
+}
+
+impl Scratch {
+    fn new(dest: &std::path::Path) -> Self {
+        Self {
+            path: scratch_path(dest),
+            keep: false,
+        }
+    }
+
+    /// Point at a fresh file, dropping whatever the last one was —
+    /// the retry path, where yt-dlp's output is condemned and ffmpeg
+    /// needs a name nothing can confuse with it.
+    fn renew(&mut self, dest: &std::path::Path) {
+        let _ = std::fs::remove_file(&self.path);
+        self.path = scratch_path(dest);
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 /// Where a transfer writes before it is anyone's episode.
 ///
 /// Beside the target rather than in a temp directory, because
@@ -540,10 +581,18 @@ pub(crate) fn publish_without_links(
         .create_new(true)
         .open(target)
     {
-        Ok(_) => {
-            std::fs::rename(scratch, target).map_err(|_| AniError::Io)?;
-            Ok(Published::Installed)
-        }
+        Ok(_) => match std::fs::rename(scratch, target) {
+            Ok(()) => Ok(Published::Installed),
+            Err(_) => {
+                // The claim is an empty file at the episode's name.
+                // Left there it reads as a finished download to
+                // everything downstream — including the next attempt,
+                // which would stand down from it — so a publish that
+                // cannot complete takes its claim with it.
+                let _ = std::fs::remove_file(target);
+                Err(AniError::Io)
+            }
+        },
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             let _ = std::fs::remove_file(scratch);
             Ok(Published::AlreadyThere)
@@ -589,7 +638,12 @@ where
     // lock and only one of them contends the file. Held to the return
     // — dropping the handle closes the descriptor, which is what
     // releases it.
-    let _instance = acquire_instance_lock(&target, deadline).await?;
+    // Best-effort, because publishing is what makes this safe. A lock
+    // that cannot be taken costs a duplicate transfer — which then
+    // finds the name taken and discards its copy — and refusing the
+    // download instead would deny an episode the filesystem was
+    // perfectly willing to store.
+    let _instance = acquire_instance_lock(&target, deadline).await.ok();
     let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
     let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
@@ -604,7 +658,7 @@ where
     // Everything below writes here. Nothing is at the target until a
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
-    let mut scratch = scratch_path(dest);
+    let mut scratch = Scratch::new(dest);
     if let Some(exe) = ytdlp {
         let mut cmd = tokio::process::Command::new(exe);
         if let Some(p) = &child_path {
@@ -617,7 +671,7 @@ where
             .arg("-N")
             .arg("16")
             .arg("-o")
-            .arg(&scratch);
+            .arg(&scratch.path);
         // v5 downloads the variant select_quality chose; the same
         // preference expressed through yt-dlp's format sort.
         match quality {
@@ -631,7 +685,7 @@ where
         }
         let mut repackage_failed = false;
         match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
-            Ok(()) => return finish(&scratch, &target, on_line),
+            Ok(()) => return finish(&mut scratch, &target, on_line),
             Err(e) => {
                 if repackage_failed {
                     // yt-dlp's own report: what it wrote is raw
@@ -640,7 +694,6 @@ where
                     // the removal that used to happen here was against
                     // the user's own file, and the `-y` that licensed
                     // the retry to write over it is gone with it.
-                    let _ = std::fs::remove_file(&scratch);
                     // The warning names the condition and suggests
                     // ffmpeg; it is not a report that ffmpeg is
                     // missing. So an install that has one gets the
@@ -652,16 +705,15 @@ where
                     // A fresh name for the retry rather than writing
                     // over the condemned one, so nothing it leaves can
                     // be mistaken for what ffmpeg produces.
-                    scratch = scratch_path(dest);
+                    scratch.renew(dest);
                     on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
                 } else {
                     // v5's && chain: a failing yt-dlp run retries the
                     // whole stream through ffmpeg when one exists.
-                    let _ = std::fs::remove_file(&scratch);
                     if ffmpeg.is_none() {
                         return Err(e);
                     }
-                    scratch = scratch_path(dest);
+                    scratch.renew(dest);
                     on_line("yt-dlp failed; retrying with ffmpeg");
                 }
             }
@@ -689,14 +741,11 @@ where
         .arg(master_url)
         .arg("-c")
         .arg("copy")
-        .arg(&scratch);
+        .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
     match run_tool(cmd, deadline, on_line, &mut false).await {
-        Ok(()) => finish(&scratch, &target, on_line),
-        Err(e) => {
-            let _ = std::fs::remove_file(&scratch);
-            Err(e)
-        }
+        Ok(()) => finish(&mut scratch, &target, on_line),
+        Err(e) => Err(e),
     }
 }
 
@@ -706,7 +755,7 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-fn finish<F>(scratch: &std::path::Path, target: &std::path::Path, on_line: &mut F) -> Result<()>
+fn finish<F>(scratch: &mut Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
 where
     F: FnMut(&str) + Send,
 {
@@ -714,10 +763,14 @@ where
     // to install. That has always ended as a success here, and
     // changing it is a separate argument from where the file gets
     // written.
-    if !scratch.exists() {
+    if !scratch.path.exists() {
         return Ok(());
     }
-    match publish(scratch, target)? {
+    // Publication decides the file's fate from here: installed under
+    // the episode's name, or removed because someone else got there.
+    // Either way the guard has nothing left to clean up.
+    scratch.keep = true;
+    match publish(&scratch.path, target)? {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
             on_line("that episode is already in this folder; keeping the existing file");
