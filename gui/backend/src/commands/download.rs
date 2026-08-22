@@ -317,9 +317,10 @@ where
 /// into deletion: that path removes the target and passes `-y`, so a
 /// late arrival can replace a file the first run already finished.
 ///
-/// Keyed by the target's folded name rather than by show, so a
-/// range download's episodes,
-/// which differ, still run as the loop schedules them. Entries are
+/// Keyed by the target's verbatim lock path rather than by show, so
+/// a range download's episodes, which differ, still run as the loop
+/// schedules them — see `target_lock` for why the key carries the
+/// path as given instead of a folded spelling of it. Entries are
 /// kept rather than reaped: one `Arc<Mutex>` per file a session has
 /// downloaded is a few dozen bytes, and reaping introduces the race
 /// this exists to remove — a waiter holding an `Arc` the map has
