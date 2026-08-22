@@ -14,12 +14,8 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import {
-		downloadStore,
-		terminalReport,
-		type DownloadItem,
-		type ProgressStatus
-	} from '$lib/download/store.svelte';
+	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
+	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -60,41 +56,6 @@
 			document.removeEventListener('keydown', onKey);
 		};
 	});
-
-	/** The backend's own reports arrive as stable `status.download.*`
-	 *  keys — the store parses them — and are rendered through
-	 *  Paraglide here. Thin adapter over the parsed key: the
-	 *  recognition logic lives in the store module. */
-	function reportText(s: ProgressStatus): string {
-		switch (s.key) {
-			case 'already_here':
-				return m.download_status_already_here();
-			case 'abandoned_claim':
-				return m.download_status_abandoned_claim({ path: s.path ?? '' });
-			case 'claim_pending':
-				return m.download_status_claim_pending({ path: s.path ?? '' });
-			case 'repackage_retry':
-				return m.download_status_repackage_retry();
-			case 'retry_ffmpeg':
-				return m.download_status_retry_ffmpeg();
-		}
-	}
-
-	/** Tooltip for an active row's progress bar: the translated report
-	 *  when the latest line is one, the raw tool line otherwise. */
-	function progressTitle(item: DownloadItem): string {
-		const s = item.progressStatus;
-		return s ? reportText(s) : (item.progress ?? '');
-	}
-
-	/** What a finished or failed row still has to say. Only the
-	 *  reports that explain an ended download survive here — the
-	 *  store's classification — so a row that retried mid-flight and
-	 *  then failed for another reason does not claim the retry. */
-	function terminalTitle(item: DownloadItem): string | null {
-		const s = terminalReport(item.progressStatus);
-		return s ? reportText(s) : null;
-	}
 
 	function reveal(dir: string) {
 		const open = typeof window !== 'undefined' ? window.aniGui?.revealInFolder : null;
@@ -199,9 +160,6 @@
 										</svg>
 									</button>
 								{:else if item.status === 'done'}
-									{#if terminalTitle(item)}
-										<span class="dl-row-note" title={terminalTitle(item)}>i</span>
-									{/if}
 									<button
 										type="button"
 										class="dl-row-act"
@@ -238,9 +196,7 @@
 										</svg>
 									</button>
 								{:else}
-									<span
-										class="dl-row-error"
-										title={terminalTitle(item) ?? item.error ?? m.errors_failed_default()}>!</span
+									<span class="dl-row-error" title={item.error ?? m.errors_failed_default()}>!</span
 									>
 									<button
 										type="button"
@@ -259,6 +215,9 @@
 											/>
 										</svg>
 									</button>
+								{/if}
+								{#if (item.status === 'done' || item.status === 'error') && terminalReportText(item)}
+									<span class="dl-row-report">{terminalReportText(item)}</span>
 								{/if}
 							</li>
 						{/each}
@@ -381,6 +340,7 @@
 	   with a thin indeterminate progress bar. */
 	.dl-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-3);
@@ -458,24 +418,16 @@
 			inset-inline-start: 100%;
 		}
 	}
-	/* The quiet counterpart of the error badge: a done row whose
-	   report is worth reading — the episode was already here — gets
-	   an info dot carrying the translated sentence as its tooltip. */
-	.dl-row-note {
-		margin-inline-start: auto;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		inline-size: 1.25rem;
-		block-size: 1.25rem;
-		background: color-mix(in oklab, currentColor 12%, transparent);
-		border-radius: 50%;
-		color: var(--text-dim, #9a9a9a);
-		font-family: var(--font-mono);
+	/* What an ended download still has to say — the already-here
+	   report, the claim refusal with the path to delete — rendered as
+	   the row's second line, visible without hover so touch and
+	   keyboard users read it too. */
+	.dl-row-report {
+		flex-basis: 100%;
+		min-inline-size: 0;
 		font-size: var(--type-micro);
-		font-weight: 700;
-		flex-shrink: 0;
-		cursor: help;
+		color: var(--text-dim, #9a9a9a);
+		overflow-wrap: anywhere;
 	}
 	.dl-row-error {
 		margin-inline-start: auto;
