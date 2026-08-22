@@ -135,7 +135,6 @@ Trigger condition: CI green for 30 days with total CI duration under 8 minutes.
 
 - **Rust**: `cargo-mutants` nightly, scoped to `proxy/`, `cache/`, `history/`, `scraper/`. Target survival rate < 15%.
 - **TS**: `stryker-js` nightly, scoped to `lib/` (DOM mutation noise on components is too high).
-- **Bash**: no mature mutation tool exists. We compensate with property tests on pure functions and high-coverage acceptance tests.
 
 ## Test-discipline expectations for AI agents
 
