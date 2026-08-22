@@ -70,12 +70,12 @@ pub enum AniError {
     ///
     /// The other way in is a yt-dlp run reporting it could not
     /// repackage. With an ffmpeg to retry through, that is not this
-    /// error; without one it is, and the run ends here having discarded
-    /// only what it could identify as the mislabeled output — a file
-    /// whose first byte is the MPEG-TS sync byte. The warning's other
-    /// half leaves a real MP4, and one of those is not provably this
-    /// run's to delete, so it stays. Deleting a download the user
-    /// already had is the worse error of the two.
+    /// error; without one it is, and the run ends here after the
+    /// scratch guard removes what the warning condemned. The output
+    /// is not examined, because it no longer needs to be: the tool
+    /// wrote to this run's own uuid-named scratch, never to the
+    /// user's file, so everything under that prefix is this run's to
+    /// discard and nothing else is touched.
     ///
     /// The name predates yt-dlp becoming an accepted alternative. It
     /// is the key the frontend renders its modal on, so renaming it is
