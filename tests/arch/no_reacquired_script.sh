@@ -83,6 +83,21 @@ if [ -d .github/workflows ]; then
     fi
 fi
 
+# 5. No dependency fetcher may declare the script. The fetch scripts
+# stage into build-resources/{linux,win}/bin, and the packaging
+# manifests carry those directories wholesale — so a fetcher entry
+# bundles the script with no manifest change for rule 3 to see. A
+# declaration needs the name as a quoted string (a name, a URL, an
+# output path); the fetchers' legitimate mentions are prose comments
+# and carry no quotes. Quoted is the syntactic line: a fetcher
+# acquiring the script under another name is not covered, and a
+# green run says nothing about it.
+matches=$(grep -rnE "['\"]([^'\"]*/)?ani-cli[^'\"]*['\"]" gui/electron/scripts/ 2>/dev/null || true)
+if [ -n "$matches" ]; then
+    printf 'arch/no_reacquired_script FAIL: a dependency fetcher declares ani-cli, which the manifests would bundle wholesale:\n%s\n' "$matches" >&2
+    failed=1
+fi
+
 if [ "$failed" -eq 0 ]; then
     printf 'arch/no_reacquired_script PASS\n'
 fi
