@@ -758,19 +758,22 @@ pub(crate) async fn publish(
         AtTarget::Obstruction | AtTarget::Unreadable => return Err(AniError::Io),
         AtTarget::Nothing | AtTarget::Episode => {}
     }
-    match std::fs::hard_link(scratch, target) {
-        Ok(()) => {
-            // The link is the file now; the scratch name is one extra
-            // way to reach it and no longer wanted.
-            let _ = std::fs::remove_file(scratch);
-            return Ok(Published::Installed);
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            let _ = std::fs::remove_file(scratch);
-            return Ok(Published::AlreadyThere);
-        }
-        Err(_) => {}
+    if std::fs::hard_link(scratch, target).is_ok() {
+        // The link is the file now; the scratch name is one extra
+        // way to reach it and no longer wanted.
+        let _ = std::fs::remove_file(scratch);
+        return Ok(Published::Installed);
     }
+    // Any refusal, `AlreadyExists` included, is handed to the
+    // link-free path, whose create-new asks the same question and
+    // knows how to read a collision. Reading `AlreadyExists` here as
+    // the episode being present repeated the fallback's old mistake
+    // on the filesystems the fallback exists for: the kernel answers
+    // it for an occupied name before consulting the filesystem's
+    // link support at all, so on FAT a link attempt sees another
+    // publisher's empty claim exactly as a create-new does — and
+    // stood down from it, discarding a finished transfer for a file
+    // with nothing in it.
     publish_without_links(scratch, target).await
 }
 
