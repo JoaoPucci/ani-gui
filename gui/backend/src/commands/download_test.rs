@@ -1591,6 +1591,80 @@ async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
     );
 }
 
+#[cfg(unix)]
+fn dir_chmod(dir: &std::path::Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(dir).expect("meta").permissions();
+    perms.set_mode(mode);
+    std::fs::set_permissions(dir, perms).expect("chmod");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_retired_scratch_the_retry_could_not_remove_is_swept_at_the_end() {
+    // The retry discards the condemned output and points at a fresh
+    // name — and the discard can fail without saying so, a file still
+    // held open without delete sharing on Windows, a directory gone
+    // read-only here. Forgetting the old prefix at that moment means
+    // the final sweep only knows the new one, and the partial the
+    // failed tool left — most of an episode — hides in the folder
+    // for good. A name this guard condemned stays its to remove
+    // until the end.
+    let dest = tempfile::tempdir().expect("dest");
+    let mut scratch = Scratch::new(dest.path());
+    let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
+    std::fs::write(&old_partial, b"most of an episode").expect("partial");
+
+    dir_chmod(dest.path(), 0o555);
+    scratch.renew(dest.path());
+    dir_chmod(dest.path(), 0o755);
+    assert!(
+        old_partial.exists(),
+        "the retirement's own removal failed, which is the premise"
+    );
+
+    drop(scratch);
+    assert!(
+        !old_partial.exists(),
+        "what the retry could not remove is swept when the guard goes"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn publication_does_not_orphan_what_a_retry_left_behind() {
+    // The success path stands the guard down — and a retry may have
+    // retired a name whose removal failed. Delivered episode or not,
+    // that name was condemned by this download and nothing else will
+    // ever remove it.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Retried Show Episode 1.mp4");
+    let mut scratch = Scratch::new(dest.path());
+    let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
+    std::fs::write(&old_partial, b"the condemned first attempt").expect("partial");
+
+    dir_chmod(dest.path(), 0o555);
+    scratch.renew(dest.path());
+    dir_chmod(dest.path(), 0o755);
+    assert!(old_partial.exists(), "the retirement's removal failed");
+
+    std::fs::write(&scratch.path, b"the whole episode").expect("retry output");
+    let mut sink = |_l: &str| {};
+    finish(&scratch, &target, &mut sink)
+        .await
+        .expect("the retry delivered");
+    assert_eq!(
+        std::fs::read(&target).expect("episode"),
+        b"the whole episode"
+    );
+
+    drop(scratch);
+    assert!(
+        !old_partial.exists(),
+        "a delivered episode does not license orphaning the retired name"
+    );
+}
+
 #[tokio::test]
 async fn the_already_here_report_is_a_stable_key_not_display_copy() {
     // The progress stream reaches the dock verbatim, so a sentence
