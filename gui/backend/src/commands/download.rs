@@ -349,16 +349,17 @@ static TARGET_LOCKS: std::sync::Mutex<
 /// writable by construction, since a video is about to land in it,
 /// which is what keeps refusing on a lock failure reasonable.
 ///
-/// The *name* carries the target's own, and that is the part worth
-/// explaining, because it replaced a digest of a case-folded key.
-/// Whether two names are one file is the filesystem's question, and
-/// it answers about `Show.mp4.lock` exactly as it answers about
-/// `Show.mp4`: same case rules, same canonical normalization, same
-/// trailing-dot handling, same anything a volume does that nothing
-/// here knows about. Hashing a folded key substituted a case table
-/// for that, and the table was wrong three times — first on case,
-/// then on final sigma, then on normalization — each found
-/// separately because a table can only be wrong one entry at a time.
+/// The *name* carries the target's own, verbatim, and that is the
+/// part worth explaining, because it replaced a digest of a
+/// case-folded key. Whether two names are one file is the
+/// filesystem's question, and carrying the name into the lock
+/// directory asks it there: two spellings the volume calls one file
+/// collide on one lock file, under the same case rules, canonical
+/// normalization and trailing-dot handling that made them one
+/// target. Hashing a folded key substituted a case table for that,
+/// and the table was wrong three times — first on case, then on
+/// final sigma, then on normalization — each found separately
+/// because a table can only be wrong one entry at a time.
 ///
 /// Delegating also gets the case-sensitive filesystems right, which
 /// folding could not: there `Show.mp4` and `show.mp4` really are two

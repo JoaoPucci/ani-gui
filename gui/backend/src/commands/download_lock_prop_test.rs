@@ -57,21 +57,26 @@ async fn a_held_lock_excludes_a_second_holder_and_releases() {
     );
 }
 
-/// The lock file is the target's own name plus a suffix.
+/// The lock file carries the target's own name, in a sibling
+/// directory.
 ///
-/// This is what makes the lock correct rather than approximately
-/// correct, and it replaces two cases that asserted the mechanism
-/// instead — that case-equivalent names and sigma variants hash to
-/// one path. They were checking a case table this code should never
-/// have been keeping.
+/// This is what keeps the lock honest, and it replaces two cases
+/// that asserted the mechanism instead — that case-equivalent names
+/// and sigma variants hash to one path. They were checking a case
+/// table this code should never have been keeping.
 ///
-/// Every question about whether two names are one file is the
-/// filesystem's to answer, and it answers about `Show.mp4.lock`
-/// exactly as it answers about `Show.mp4`: same case rules, same
-/// normalization rules, same trailing-dot rules, same anything a
-/// future volume invents. Hashing a folded key threw that away and
-/// substituted a table — which is why case, then final sigma, then
-/// canonical normalization each had to be found separately.
+/// Whether two names are one file is the filesystem's to answer, and
+/// carrying the name verbatim into `.ani-gui-locks/` asks it: two
+/// spellings the volume calls one file collide on one lock file
+/// there, under the same case, normalization and trailing-dot rules
+/// that made them one target. The answer is given per directory,
+/// though — NTFS hands out 8.3 aliases directory by directory, so a
+/// target and its lock can alias differently — and the lock is
+/// allowed to be fooled by that: it is best-effort, and where it is,
+/// the cost is a duplicate transfer that publication then refuses.
+/// Hashing a folded key answered none of this and substituted a
+/// table — which is why case, then final sigma, then canonical
+/// normalization each had to be found separately.
 ///
 /// There is no bound and no fallback. A digest past some byte
 /// threshold was the shape before this, and it put the table back: the
