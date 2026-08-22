@@ -9,8 +9,8 @@ This project is **strictly TDD**. Every code change starts with a failing test.
          │   Mutation (deferred)│  cargo-mutants + stryker, nightly,
          └─────────────────────┘  not gating
        ┌───────────────────────────┐
-       │ Architectural invariants  │  tests/arch/*.sh — boundary,
-       └───────────────────────────┘  i18n, deps, capabilities
+       │ Architectural invariants  │  tests/arch/*.sh + their bats
+       └───────────────────────────┘  harness — i18n, deps, deferrals
      ┌─────────────────────────────────┐
      │           Property              │  proptest (Rust),
      └─────────────────────────────────┘  fast-check (TS)
@@ -18,11 +18,11 @@ This project is **strictly TDD**. Every code change starts with a failing test.
    │              End-to-end              │  Playwright (planned),
    └──────────────────────────────────────┘  ≤5 hermetic scenarios
  ┌──────────────────────────────────────────┐
- │              Acceptance                  │  bats `run`, cargo integration,
+ │              Acceptance                  │  cargo integration,
  └──────────────────────────────────────────┘  vitest + MSW
 ┌──────────────────────────────────────────────┐
-│                  Unit                        │  bats-core, cargo test,
-└──────────────────────────────────────────────┘  vitest, colocated *.test.ts
+│                  Unit                        │  cargo test, vitest,
+└──────────────────────────────────────────────┘  colocated *.test.ts
 ```
 
 ## Test layout
