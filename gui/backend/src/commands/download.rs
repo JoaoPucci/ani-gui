@@ -470,21 +470,25 @@ fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()
 /// awaiting, so no branch below that point runs — and the file left
 /// behind is not a marker but most of an episode. A drop runs anyway.
 ///
-/// There is no disarming it, because there is nothing to disarm for:
-/// every way publication succeeds — the link, the rename, the discard
-/// when someone else got there — ends with the scratch path empty, so
-/// the drop finds nothing and removes nothing. Only a publication that
-/// failed leaves a file here, and that is exactly the one worth taking
-/// away. A flag set before publishing would have been off by one
-/// branch: it disarmed the guard for the failures too.
+/// Publication is the one exit that stands the guard down. Every way
+/// it returns Ok ends with the scratch consumed, and a tool that
+/// handed over a finished file has already cleaned its own derived
+/// names — so the drop's sweep would read every entry in the
+/// destination to find nothing, once per episode of a range download,
+/// on whatever filesystem the user chose. The flag is set after
+/// publication answers, never before it: set ahead of the call, it
+/// disarms the guard for the failures too, which is the off-by-one-
+/// branch this struct once shipped.
 struct Scratch {
     path: std::path::PathBuf,
+    published: std::sync::atomic::AtomicBool,
 }
 
 impl Scratch {
     fn new(dest: &std::path::Path) -> Self {
         Self {
             path: scratch_path(dest),
+            published: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -534,6 +538,9 @@ impl Scratch {
 
 impl Drop for Scratch {
     fn drop(&mut self) {
+        if self.published.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         self.discard();
     }
 }
@@ -1068,7 +1075,14 @@ where
     // Both leave the scratch path empty, so the guard outliving this
     // call costs nothing — and covers the third outcome, where the
     // file could not be installed at all.
-    match publish(&scratch.path, target).await? {
+    let published = publish(&scratch.path, target).await?;
+    // Either Ok consumed the scratch, so the guard has nothing left
+    // to do — and standing it down here, after the answer, is what
+    // keeps it armed for every failure above.
+    scratch
+        .published
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    match published {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
             on_line(ALREADY_HERE);
