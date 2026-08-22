@@ -471,15 +471,19 @@ fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()
 /// awaiting, so no branch below that point runs — and the file left
 /// behind is not a marker but most of an episode. A drop runs anyway.
 ///
-/// Publication is the one exit that stands the guard down. Every way
-/// it returns Ok ends with the scratch consumed, and a tool that
+/// Publication is the one exit that stands the guard down. A
+/// successful one ends with the scratch consumed, and a tool that
 /// handed over a finished file has already cleaned its own derived
 /// names — so the drop's sweep would read every entry in the
 /// destination to find nothing, once per episode of a range download,
 /// on whatever filesystem the user chose. The flag is set after
 /// publication answers, never before it: set ahead of the call, it
 /// disarms the guard for the failures too, which is the off-by-one-
-/// branch this struct once shipped.
+/// branch this struct once shipped. And it is set on the scratch
+/// being gone rather than on the answer, because publication ignores
+/// a failed removal on its success arms — a delivered episode is not
+/// an error — and disarming on the report alone would leave that one
+/// failure's episode-sized file hidden in the folder for good.
 struct Scratch {
     path: std::path::PathBuf,
     published: std::sync::atomic::AtomicBool,
@@ -1080,12 +1084,18 @@ where
     // call costs nothing — and covers the third outcome, where the
     // file could not be installed at all.
     let published = publish(&scratch.path, target).await?;
-    // Either Ok consumed the scratch, so the guard has nothing left
-    // to do — and standing it down here, after the answer, is what
-    // keeps it armed for every failure above.
-    scratch
-        .published
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+    // Either Ok consumed the scratch — unless removing it failed
+    // under the publisher, which reports delivery all the same,
+    // because a delivered episode is not an error. So the guard is
+    // stood down for a scratch that is provably gone, not on the
+    // report: anything else leaves it armed, and the drop pays one
+    // more directory read to try again. Standing down here, after
+    // the answer, is what keeps it armed for every failure above.
+    if at_target(&scratch.path) == AtTarget::Nothing {
+        scratch
+            .published
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     match published {
         Published::Installed => Ok(()),
         Published::AlreadyThere => {
