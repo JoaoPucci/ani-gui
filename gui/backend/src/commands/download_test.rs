@@ -1665,6 +1665,89 @@ async fn publication_does_not_orphan_what_a_retry_left_behind() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it() {
+    // The preflight names an abandoned claim and tells the user what
+    // to delete. The same claim arriving while the transfer runs hit
+    // publication instead, which refused with a bare error — right
+    // refusal, no sentence, so the dock showed a generic failure and
+    // the one line carrying the path never existed. The claim is
+    // never taken, so it is still standing to be looked at when the
+    // refusal comes back.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Ambushed Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "{writer}\n: > '{claim}'\ntouch -d '2 hours ago' '{claim}'\nexit 0",
+            writer = writes_its_output("video"),
+            claim = target.display()
+        ),
+    );
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Ambushed Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "nothing was published, so this is a failure");
+
+    let want = format!("status.download.abandoned_claim {}", target.display());
+    assert!(
+        lines.contains(&want),
+        "the refusal names the file at publication time too, got: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_live_claim_at_publication_time_is_reported_as_pending() {
+    // The fresh variant of the same ambush: the claim is moments old,
+    // publication waits it out, and its owner never comes back. The
+    // preflight's sentence for that state — another download holds
+    // the name, try again shortly — is just as true here.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Contested Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "{writer}\n: > '{claim}'\nexit 0",
+            writer = writes_its_output("video"),
+            claim = target.display()
+        ),
+    );
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contested Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "a claim that never resolves is not a success");
+
+    let want = format!("status.download.claim_pending {}", target.display());
+    assert!(
+        lines.contains(&want),
+        "the pending-claim sentence is said at publication time too, got: {lines:?}"
+    );
+}
+
 #[tokio::test]
 async fn the_already_here_report_is_a_stable_key_not_display_copy() {
     // The progress stream reaches the dock verbatim, so a sentence
