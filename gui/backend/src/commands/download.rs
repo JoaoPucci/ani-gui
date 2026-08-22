@@ -763,7 +763,7 @@ pub(crate) async fn publish(
         }
         Err(_) => {}
     }
-    publish_without_links(scratch, target)
+    publish_without_links(scratch, target).await
 }
 
 /// Publication where the filesystem has no hard links (FAT32 or exFAT
@@ -772,32 +772,71 @@ pub(crate) async fn publish(
 /// Claiming the name by creating it asks the same question a link
 /// does — nobody else can hold it afterwards — and the rename then
 /// lands on this run's own empty file rather than anyone's episode.
-pub(crate) fn publish_without_links(
+///
+/// A refusal answers less than a link's does, though. `AlreadyExists`
+/// from a link means a file with bytes in it holds the name; from a
+/// create-new it means only that the name is taken — and on the one
+/// filesystem this path serves, the taker can be another publisher's
+/// claim, empty and moments old, whose owner may yet die before its
+/// rename. Reporting the episode present on that evidence discards a
+/// finished transfer in favor of an empty file. So a collision looks
+/// at what it actually hit, waiting a claim out the same way the
+/// front door does: bytes are the episode this was assumed to be, a
+/// claim that persists is a failure to report, and a name gone free
+/// again — the claimant failed its rename and cleaned up — is
+/// claimed once more.
+pub(crate) async fn publish_without_links(
     scratch: &std::path::Path,
     target: &std::path::Path,
 ) -> Result<Published> {
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(target)
-    {
-        Ok(_) => match std::fs::rename(scratch, target) {
-            Ok(()) => Ok(Published::Installed),
-            Err(_) => {
-                // The claim is an empty file at the episode's name.
-                // Left there it reads as a finished download to
-                // everything downstream — including the next attempt,
-                // which would stand down from it — so a publish that
-                // cannot complete takes its claim with it.
-                let _ = std::fs::remove_file(target);
-                Err(AniError::Io)
+    let mut reclaimed = false;
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(target)
+        {
+            Ok(_) => {
+                return match std::fs::rename(scratch, target) {
+                    Ok(()) => Ok(Published::Installed),
+                    Err(_) => {
+                        // The claim is an empty file at the episode's name.
+                        // Left there it reads as a finished download to
+                        // everything downstream — including the next attempt,
+                        // which would stand down from it — so a publish that
+                        // cannot complete takes its claim with it.
+                        let _ = std::fs::remove_file(target);
+                        Err(AniError::Io)
+                    }
+                };
             }
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            let _ = std::fs::remove_file(scratch);
-            Ok(Published::AlreadyThere)
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                match at_target_settled(target).await {
+                    AtTarget::Episode => {
+                        let _ = std::fs::remove_file(scratch);
+                        return Ok(Published::AlreadyThere);
+                    }
+                    // The claimant failed its rename and removed its
+                    // claim on the way out, so the name is free again.
+                    // Once, because a name that keeps being claimed and
+                    // abandoned while this publisher watches is a fight
+                    // to report, not a race that resolved.
+                    AtTarget::Nothing if !reclaimed => {
+                        reclaimed = true;
+                    }
+                    // A claim that outlasted the wait — its owner died
+                    // between its create and its rename — or something
+                    // that is not a file at all. Nothing here may take
+                    // it (see `publish`), so the transfer ends
+                    // unresolved rather than reported as the episode.
+                    _ => {
+                        let _ = std::fs::remove_file(scratch);
+                        return Err(AniError::Io);
+                    }
+                }
+            }
+            Err(_) => return Err(AniError::Io),
         }
-        Err(_) => Err(AniError::Io),
     }
 }
 

@@ -1469,8 +1469,8 @@ async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
     );
 }
 
-#[test]
-fn a_failed_link_free_publish_leaves_no_claim_behind() {
+#[tokio::test]
+async fn a_failed_link_free_publish_leaves_no_claim_behind() {
     // The no-hard-links path claims the name by creating it and then
     // renames onto its own empty file. If that rename does not happen,
     // the claim IS the episode as far as everything downstream can
@@ -1480,7 +1480,7 @@ fn a_failed_link_free_publish_leaves_no_claim_behind() {
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Show Episode 1.mp4");
     let missing = dest.path().join("never-written.part.mp4");
-    let got = publish_without_links(&missing, &target);
+    let got = publish_without_links(&missing, &target).await;
     assert!(
         got.is_err(),
         "a publish with nothing to install is a failure"
@@ -1505,7 +1505,7 @@ async fn colliding_with_a_claim_is_not_finding_the_episode() {
     let scratch = dest.path().join("finished.part.mp4");
     std::fs::write(&scratch, b"the whole episode").expect("scratch");
 
-    let got = publish_without_links(&scratch, &target);
+    let got = publish_without_links(&scratch, &target).await;
     assert!(
         got.is_err(),
         "a name held by a claim that never became an episode is not \
@@ -1536,7 +1536,7 @@ async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
         let _ = std::fs::remove_file(&claim);
     });
 
-    let got = publish_without_links(&scratch, &target);
+    let got = publish_without_links(&scratch, &target).await;
     assert!(
         matches!(got, Ok(Published::Installed)),
         "a name that came free again is this publisher's to take: {got:?}"
