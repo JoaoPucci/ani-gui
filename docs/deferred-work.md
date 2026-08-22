@@ -127,6 +127,13 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the singleton
   video that survives navigation — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **A flatpak-only mpv goes undetected by the external-player
+  surface.** Upstream ani-cli fixed exactly this for its own player
+  launch just before the repositories parted (pystardust/ani-cli
+  #1858 and #1863: system-wide installs under `/var/lib/flatpak`,
+  user-level under `~/.local/share/flatpak`, app id `io.mpv.Mpv`) —
+  kept here as a reference for probing the same locations, not as
+  code to port.
 - **Illustrated brand assets** — post-1.0.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
