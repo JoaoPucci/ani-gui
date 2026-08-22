@@ -222,6 +222,22 @@ starting it, and delete it when you find it done.
   know that every scheme layered on top of a plain classify-then-act
   has been tried on this branch.
 
+## A scratch name that overflows where the target does not
+
+- **Publication's scratch file adds ~55 characters to the destination
+  path, so a folder deep enough can accept the episode's own name and
+  reject the scratch's** — the transfer then fails on a target the
+  user was allowed to choose.
+
+  Closing it is not a rename: the spawned tools receive the scratch
+  path as an argument, so the honest fix hands them a name relative
+  to the destination (`current_dir`) — but that alone moves the
+  failure later instead of removing it, because the app's own stat,
+  link and rename still use the full path, and `std` has no
+  `renameat`-style relative operations. The whole of it means
+  directory-handle-relative filesystem work (a `cap-std`-shaped
+  dependency) on Linux and a separate answer for Windows path limits.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
