@@ -1,7 +1,7 @@
 #!/bin/sh
-# Run the entire bash test suite (unit + network + subprocess + acceptance +
-# property) using the vendored bats. CI invokes this. Locally, run it after
-# install-bats.sh.
+# Run the bash test suite — today the arch harness under
+# tests/bash/arch/ — using the vendored bats. CI invokes this.
+# Locally, run it after install-bats.sh.
 
 set -eu
 
@@ -19,7 +19,12 @@ fi
 # non-zero on the first failing suite; we keep going so the developer sees
 # every failure at once, then exit non-zero at the end if any suite failed.
 overall=0
-for suite in unit network subprocess acceptance property arch; do
+# The list holds one entry since the vendored script's suites left
+# with their subject. It stays a loop all the same: the wiring check's
+# sabotage cases operate on this line and the skip inside the body,
+# and adding a suite back is a one-word change.
+# shellcheck disable=SC2043
+for suite in arch; do
     dir="$TESTS_BASH_DIR/$suite"
     if [ ! -d "$dir" ]; then
         continue

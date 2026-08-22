@@ -1,5 +1,5 @@
 {
-	"_comment": "Coverage ratchet baseline. CI fails if any metric below this drops on a PR. The CRAP ceilings (`crap.*`) are FIRM — PRs that would push a file's CRAP above `max_le`, or push the count of high-risk files above `high_risk_le`, MUST refactor (split files, extract helpers, cover more) to bring the code under the ceiling. Do NOT raise the ceiling to fit new code; the historical pattern of bumping on every feature was lenient by accident, and bringing code under a fixed bar is the actual quality signal. The percentage / kcov coverage baselines (`rust.*`, `frontend.*`, `bash.*`) may be refreshed via `node tools/check-coverage-baseline.mjs --update` only when tests were deliberately added or removed — never as a workaround for new code that skipped testing.",
+	"_comment": "Coverage ratchet baseline. CI fails if any metric below this drops on a PR. The CRAP ceilings (`crap.*`) are FIRM — PRs that would push a file's CRAP above `max_le`, or push the count of high-risk files above `high_risk_le`, MUST refactor (split files, extract helpers, cover more) to bring the code under the ceiling. Do NOT raise the ceiling to fit new code; the historical pattern of bumping on every feature was lenient by accident, and bringing code under a fixed bar is the actual quality signal. The percentage / kcov coverage baselines (`rust.*`, `frontend.*`) may be refreshed via `node tools/check-coverage-baseline.mjs --update` only when tests were deliberately added or removed — never as a workaround for new code that skipped testing.",
 	"rust": {
 		"lines_pct": 88.45,
 		"functions_pct": 86.3,
@@ -10,10 +10,6 @@
 		"functions_pct": 100,
 		"statements_pct": 99.17,
 		"branches_pct": 96.51
-	},
-	"bash": {
-		"pure_covered_min": 78,
-		"network_covered_min": 110
 	},
 	"crap": {
 		"_comment": "CRAP = ccn² × (1 − cov)² + ccn, per file. The score floors at ccn (perfect coverage gives CRAP == ccn), so a file with intrinsic ccn > 30 stays in the high-risk bucket no matter how thoroughly tested it is. These three ceilings are firm: a PR that would push a file's CRAP above max_le, or push the count of high-risk files above high_risk_le, must refactor — split files, extract helpers, cover more — instead of raising the ceiling. See the top-level `_comment` for the rationale.",
