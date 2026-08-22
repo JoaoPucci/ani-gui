@@ -1491,6 +1491,63 @@ fn a_failed_link_free_publish_leaves_no_claim_behind() {
     );
 }
 
+#[tokio::test]
+async fn colliding_with_a_claim_is_not_finding_the_episode() {
+    // Another publisher's claim lands between this one's look at the
+    // target and its own attempt to create the name. The collision
+    // proves only that the name is taken — not that an episode holds
+    // it. The claimant can still die before its rename, and standing
+    // down on the collision alone discards a finished transfer in
+    // favor of an empty file, reported as the episode being here.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("the other publisher's claim");
+    let scratch = dest.path().join("finished.part.mp4");
+    std::fs::write(&scratch, b"the whole episode").expect("scratch");
+
+    let got = publish_without_links(&scratch, &target);
+    assert!(
+        got.is_err(),
+        "a name held by a claim that never became an episode is not \
+         an episode already here: {got:?}"
+    );
+    assert_eq!(
+        std::fs::metadata(&target).expect("claim").len(),
+        0,
+        "and the claim is not this publisher's to touch"
+    );
+}
+
+#[tokio::test]
+async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
+    // The claimant's rename can fail, and it takes its claim with it
+    // when that happens. A publisher that collided with the claim and
+    // waited it out then sees the name free — and a free name with a
+    // finished transfer in hand is a download to complete, not one to
+    // surrender.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("the other publisher's claim");
+    let scratch = dest.path().join("finished.part.mp4");
+    std::fs::write(&scratch, b"the whole episode").expect("scratch");
+    let claim = target.clone();
+    let _cleanup = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let _ = std::fs::remove_file(&claim);
+    });
+
+    let got = publish_without_links(&scratch, &target);
+    assert!(
+        matches!(got, Ok(Published::Installed)),
+        "a name that came free again is this publisher's to take: {got:?}"
+    );
+    assert_eq!(
+        std::fs::read(&target).expect("episode"),
+        b"the whole episode",
+        "and the finished transfer is what landed there"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
