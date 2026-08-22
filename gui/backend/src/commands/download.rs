@@ -1132,7 +1132,31 @@ where
     // Both leave the scratch path empty, so the guard outliving this
     // call costs nothing — and covers the third outcome, where the
     // file could not be installed at all.
-    let published = publish(&scratch.path, target).await?;
+    let published = match publish(&scratch.path, target).await {
+        Ok(p) => p,
+        Err(e) => {
+            // A refusal over a claim is still standing to be looked
+            // at — a claim is never taken — so look once more and say
+            // which it was. The preflight speaks these sentences for
+            // a claim found before the transfer; one that arrived
+            // during it earns the same sentence, not a generic
+            // failure with no path in it. Anything else at the name
+            // (or nothing, where the failure was the install itself)
+            // has no sentence to add.
+            match at_target(target) {
+                AtTarget::AbandonedClaim => on_line(&format!(
+                    "status.download.abandoned_claim {}",
+                    target.display()
+                )),
+                AtTarget::LiveClaim => on_line(&format!(
+                    "status.download.claim_pending {}",
+                    target.display()
+                )),
+                _ => {}
+            }
+            return Err(e);
+        }
+    };
     // Either Ok consumed the scratch — unless removing it failed
     // under the publisher, which reports delivery all the same,
     // because a delivered episode is not an error. So the guard is
