@@ -1682,7 +1682,7 @@ async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it(
         bin.path(),
         "yt-dlp",
         &format!(
-            "{writer}\n: > '{claim}'\ntouch -d '2 hours ago' '{claim}'\nexit 0",
+            "{writer}\n: > '{claim}'\ntouch -t 202001010000 '{claim}'\nexit 0",
             writer = writes_its_output("video"),
             claim = target.display()
         ),
