@@ -16,7 +16,7 @@
  * Active downloads also carry an `AbortController` so the topbar
  * dock's cancel button can abort the in-flight fetch — the SSE
  * connection closes, the backend's `kill_on_drop(true)` reaps the
- * ani-cli child.
+ * downloader child.
  */
 
 export type DownloadStatus = 'pending' | 'active' | 'done' | 'error';
@@ -24,7 +24,7 @@ export type DownloadStatus = 'pending' | 'active' | 'done' | 'error';
 export interface DownloadItem {
 	id: string;
 	title: string;
-	/** Episode arg as sent to ani-cli — `"5"` for single, `"5-12"` for range. */
+	/** Episode arg as sent to the backend — `"5"` for single, `"5-12"` for range. */
 	episode: string;
 	mode: string;
 	quality: string;
@@ -42,10 +42,76 @@ export interface DownloadItem {
 	 *  range — drives the dock's "Episode N of M" annotation. Null
 	 *  for single-episode downloads. */
 	rangeTotal: number | null;
-	/** Last episode number ani-cli announced via `Playing episode N…`
-	 *  on stderr. Updated by setProgress as lines arrive. Null until
-	 *  the first such line is parsed. */
+	/** Last episode number seen in a `Playing episode N` line. The
+	 *  backend's range loop emits those itself, before it resolves or
+	 *  spawns anything — no tool prints them. Updated by setProgress as
+	 *  lines arrive; null until the first one is parsed. */
 	currentEp: number | null;
+	/** Parsed from the latest progress line when it is one of the
+	 *  backend's own `status.download.*` reports rather than tool
+	 *  output. The backend sends stable keys — the sentence lives in
+	 *  the message bundles — and the dock renders the translation.
+	 *  Cleared when a later raw line supersedes the report. */
+	progressStatus: ProgressStatus | null;
+}
+
+/** One of the backend's own progress reports, as a stable key the UI
+ *  translates. `path`, where present, follows the key after the first
+ *  space and is kept verbatim — it names the user's file, whatever
+ *  characters the title brought with it. */
+export interface ProgressStatus {
+	key: ProgressStatusKey;
+	path: string | null;
+}
+
+export type ProgressStatusKey =
+	| 'already_here'
+	| 'abandoned_claim'
+	| 'claim_pending'
+	| 'repackage_retry'
+	| 'retry_ffmpeg';
+
+const PROGRESS_STATUS_KEYS: readonly ProgressStatusKey[] = [
+	'already_here',
+	'abandoned_claim',
+	'claim_pending',
+	'repackage_retry',
+	'retry_ffmpeg'
+];
+
+/** The reports that explain an ended download — the last thing the
+ *  backend says before `done` or `error`, and therefore the ones a
+ *  terminal row renders. The retries are deliberately not here: a
+ *  download that retried through ffmpeg and later failed for another
+ *  reason did not fail because of the retry, and a finished row
+ *  claiming "retrying" would be false. */
+export function terminalReport(status: ProgressStatus | null): ProgressStatus | null {
+	if (!status) return null;
+	switch (status.key) {
+		case 'already_here':
+		case 'abandoned_claim':
+		case 'claim_pending':
+			return status;
+		case 'repackage_retry':
+		case 'retry_ffmpeg':
+			return null;
+	}
+}
+
+/** Recognize a backend progress report. Returns null for tool output
+ *  and for `status.download.*` names this build does not know — an
+ *  older frontend against a newer backend then shows the raw line,
+ *  which is still true, rather than nothing. */
+export function parseProgressStatus(line: string): ProgressStatus | null {
+	const prefix = 'status.download.';
+	if (!line.startsWith(prefix)) return null;
+	const rest = line.slice(prefix.length);
+	const space = rest.indexOf(' ');
+	const name = space === -1 ? rest : rest.slice(0, space);
+	const path = space === -1 ? null : rest.slice(space + 1);
+	const key = PROGRESS_STATUS_KEYS.find((k) => k === name);
+	if (!key) return null;
+	return { key, path: path && path.length > 0 ? path : null };
 }
 
 let nextId = 1;
@@ -94,7 +160,8 @@ class DownloadStore {
 				abort: null,
 				unseen: false,
 				rangeTotal,
-				currentEp: null
+				currentEp: null,
+				progressStatus: null
 			},
 			...this.items
 		];
@@ -108,13 +175,19 @@ class DownloadStore {
 	}
 
 	setProgress(id: string, line: string) {
-		// ani-cli prints `Playing episode N...` on each iteration of a
-		// range download (line 448 of upstream). Parse it so the dock
-		// can show "Episode N of M" without surfacing the raw line.
+		// A range download emits `Playing episode N` before it resolves each
+		// episode. That line comes from the backend's own range loop, not
+		// from yt-dlp or ffmpeg — it is a protocol line the orchestrator
+		// mixes into the tool's stderr, so changing its shape means
+		// changing `download_range.rs` and this parse together. Parsed so
+		// the dock can show "Episode N of M" instead of the raw line.
 		const match = line.match(/^Playing episode\s+(\d+(?:\.\d+)?)/i);
 		const currentEp = match ? Number.parseFloat(match[1]) : null;
+		const progressStatus = parseProgressStatus(line);
 		this.items = this.items.map((i) =>
-			i.id === id ? { ...i, progress: line, currentEp: currentEp ?? i.currentEp } : i
+			i.id === id
+				? { ...i, progress: line, currentEp: currentEp ?? i.currentEp, progressStatus }
+				: i
 		);
 	}
 

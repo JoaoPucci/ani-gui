@@ -2,30 +2,30 @@
 ; generated NSIS script via `nsis.include` in package.json.
 ;
 ; Today's only job: fetch ffmpeg.exe at install time so downloads
-; work out of the box. fzf and aria2c are bundled (small enough);
-; ffmpeg's Windows static build is ~80 MB compressed, too heavy
-; to ship in every installer copy when most users are online during
-; install anyway.
+; work out of the box. The package bundles the transport and yt-dlp,
+; which are small; ffmpeg's Windows static build is ~80 MB
+; compressed, too heavy to ship in every installer copy when most
+; users are online during install anyway.
 ;
-; The download lands in $INSTDIR\resources\bin\ alongside the
-; bundled fzf.exe and aria2c.exe — exactly where the Rust backend's
-; AppState::bundled_bin already looks for POSIX-side deps. No
-; runtime code change needed.
+; The download lands in $INSTDIR\resources\bin\ alongside those —
+; exactly where the Rust backend's AppState::bundled_bin already
+; looks. No runtime code change needed.
 ;
 ; Failure modes are non-fatal: if the download fails (offline, host
 ; down, mismatch) the install completes anyway. The user retries by
 ; running the installer again, or installs ffmpeg manually. The
-; runtime then surfaces ani-cli's stderr through the dock's generic
-; error path; we'll wire a friendlier in-app retry once the install-
-; time path has been exercised in the wild.
+; runtime then surfaces the downloader's stderr through the dock's
+; generic error path; we'll wire a friendlier in-app retry once the
+; install-time path has been exercised in the wild.
 
 ; Pinned ffmpeg-essentials build from gyan.dev's official Windows
-; build repo — static single-binary GPL build (compatible with
-; ani-cli's licence). Bump VERSION when refreshing. We skip SHA-256
+; build repo — static single-binary GPL build, which is compatible
+; with the GPL-3.0 this project ships under. Bump VERSION when
+; refreshing. We skip SHA-256
 ; verification here because HTTPS-to-GitHub already protects
 ; integrity end-to-end and PowerShell-quoted Get-FileHash inside
-; nsExec is fragile to escape rules; the bundled deps (fzf, aria2c)
-; still SHA-verify at build time via scripts/fetch-windows-deps.mjs.
+; nsExec is fragile to escape rules; the bundled deps still
+; SHA-verify at build time via scripts/fetch-windows-deps.mjs.
 !define FFMPEG_VERSION "7.1.1"
 !define FFMPEG_URL "https://github.com/GyanD/codexffmpeg/releases/download/${FFMPEG_VERSION}/ffmpeg-${FFMPEG_VERSION}-essentials_build.zip"
 
@@ -86,11 +86,11 @@
         Goto ffmpeg_done
 
     ffmpeg_install:
-        ; resources/bin already contains fzf.exe and aria2c.exe via
-        ; electron-builder's extraResources. CreateDirectory is a
-        ; no-op when the dir is present, and the bash subprocess on
-        ; the runtime side reads PATH literally so adding ffmpeg here
-        ; just works — no code change required.
+        ; resources/bin already holds the binaries electron-builder
+        ; staged via extraResources. CreateDirectory is a no-op when
+        ; the dir is present, and the backend searches that directory
+        ; ahead of PATH when it looks for a download tool, so adding
+        ; ffmpeg here just works — no code change required.
         CreateDirectory "$INSTDIR\resources\bin"
         CopyFiles /SILENT \
             "$PLUGINSDIR\ffmpeg-extract\ffmpeg-${FFMPEG_VERSION}-essentials_build\bin\ffmpeg.exe" \
@@ -106,8 +106,8 @@
 
 !macro customUnInstall
     ; Remove the ffmpeg.exe we dropped at install. The rest of
-    ; resources/bin is electron-builder's own (fzf, aria2c) and gets
-    ; cleaned up by the standard uninstall sequence; ours is the only
+    ; resources/bin came in through electron-builder's manifest and
+    ; gets cleaned up by the standard uninstall sequence; ours is the only
     ; file we have to take care of explicitly because customInstall
     ; brought it in outside the manifest.
     Delete "$INSTDIR\resources\bin\ffmpeg.exe"
@@ -121,7 +121,7 @@
     ${IfNot} ${Silent}
         ; Optional: purge the per-user data dirs the running app writes to
         ; (cache.sqlite with play resolutions + image bytes, config.toml,
-        ; ani-cli history, log dir). NSIS would never touch these on its
+        ; the watch history, log dir). NSIS would never touch these on its
         ; own because they live outside $INSTDIR — they're created at
         ; runtime via the `directories` Rust crate (ProjectDirs::from(
         ; "net", "thirdmovement", "ani-gui")), which on Windows resolves

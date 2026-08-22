@@ -15,8 +15,8 @@ import {
 import type { KitsuAnimeRef } from '$lib/api';
 
 /** Whether an `available: false` verdict may hide this card. Only a
- *  FINISHED show missing from allmanga is confidently gone; upcoming
- *  seasons exist on Kitsu before allmanga catalogs them, and airing
+ *  FINISHED show missing from the provider is confidently gone; upcoming
+ *  seasons exist on Kitsu before the provider catalogs them, and airing
  *  shows can lag the catalog the same way. Those stay visible so the
  *  user can open the page and plan them — the detail page's play
  *  surfaces gate themselves on availability + airing separately.

@@ -17,7 +17,7 @@ describe('ctaState', () => {
 
 	it('falls back to the real actions when the probe settled with an error', () => {
 		// The load-bearing case: check_availability surfaces throttled /
-		// failed allmanga searches as an error (by design — a transient
+		// failed provider searches as an error (by design — a transient
 		// failure must not poison the cache with available:false), and
 		// the old template mapped that null verdict to the same pulsing
 		// skeleton as an in-flight probe. With no retry anywhere, the

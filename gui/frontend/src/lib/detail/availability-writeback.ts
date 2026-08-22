@@ -5,9 +5,9 @@
  * Two questions can be out at once: the one a page asks on load, which
  * reads through the cache, and the one a click on a dimmed tile asks,
  * which skips it. The re-ask wins where they disagree — it is newer and
- * it went to allmanga on purpose.
+ * it went to the provider on purpose.
  *
- * But a re-ask does not always answer everything. When allmanga only
+ * But a re-ask does not always answer everything. When the provider only
  * offers the count off the search hit, that number counts halves as
  * whole episodes, so the re-ask reports the show as listed and reports
  * nothing about the cap. Treating that as a whole answer discards the
@@ -51,7 +51,7 @@ export interface AvailabilityWriteback {
 
 /**
  * `currentContext` names the row being asked about — show and mode
- * together, since allmanga catalogues sub and dub separately and a
+ * together, since the provider catalogues sub and dub separately and a
  * count from one says nothing about the other. A lookup that settles
  * against a different context answers a question nobody is asking any
  * more, so it writes nothing.

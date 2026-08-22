@@ -874,7 +874,7 @@ async fn an_exact_title_match_still_beats_a_year_confirmed_rival() {
 async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
     // The browse card names its format. A Movie cannot be the
     // 12-episode series the caller expects, however well its count
-    // or position scores — the same class of mispick the allanime
+    // or position scores — the same class of mispick the provider
     // picker's type filter used to catch.
     let client = AnidbClient::new(EpisodesTable(&[(1, 12), (2, 12)]));
     let hits = [

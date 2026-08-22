@@ -107,7 +107,7 @@
 			return `1-${Math.max(1, last)}`;
 		}
 		// range — clamp end to the rangeMax so the unknown-count case
-		// can't ask ani-cli for episodes 1-200.
+		// can't ask the provider for episodes 1-200.
 		const s = Math.max(1, Math.floor(startEp));
 		const eRaw = Math.floor(endEp);
 		const e = Math.max(s, Math.min(rangeMax, eRaw));
@@ -174,8 +174,8 @@
 
 	function confirm() {
 		if (!args || !dir.trim()) return;
-		// Build the episode arg as either "5" or "5-12" — ani-cli's
-		// -e accepts both and loops the range sequentially with -d.
+		// Build the episode arg as either "5" or "5-12" — the backend
+		// accepts both and loops a range sequentially.
 		startDownload({
 			...args,
 			episode: episodeArg,

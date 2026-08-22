@@ -175,14 +175,14 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 			onProgress: (l) => labels.push(l),
 			resolvePlay: vi.fn().mockImplementation(async (_args, onProgress) => {
 				onProgress('searching…');
-				onProgress('allanime ✓');
+				onProgress('provider ✓');
 				return { session_id: 's1' };
 			})
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
 		// null on entry (clearing the previous run), then each label.
-		expect(labels).toEqual([null, 'searching…', 'allanime ✓']);
+		expect(labels).toEqual([null, 'searching…', 'provider ✓']);
 	});
 
 	it('still navigates when the watched-history write fails', async () => {

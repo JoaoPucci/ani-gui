@@ -1,23 +1,21 @@
 //! Provider-numbering offset store — the bridge between the two
-//! numbering spaces that share `ani-hsts`.
+//! numbering spaces the history file has to span.
 //!
 //! anidb.app carries a franchise's cumulative episode count into
 //! continuation cours (TYBW's fourth part lists 41 and 42), and
-//! `ani-cli`'s `process_hist_entry` greps the stored `ep_no` in that
-//! provider list — so the shared history file speaks PROVIDER
-//! numbering. Every GUI surface counts per-entry like Kitsu. The
+//! a resume looks the stored `ep_no` up in that provider list — so
+//! the history file speaks PROVIDER numbering. Every GUI surface
+//! counts per-entry like Kitsu. The
 //! resolver computes the shift once per show; this module persists it
 //! keyed by slug so the history writers can add it and the read
-//! boundary can subtract it — for GUI- and CLI-written rows alike.
+//! boundary can subtract it.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
 //!
 //! The store is a TSV file BESIDE the history file, not a cache row:
-//! debug and packaged builds keep separate cache databases while
-//! `ani-hsts` stays shared, and the diagnostics clear (or a deleted
-//! XDG cache dir) wipes the database outright — the translation must
-//! live exactly as long, and exactly as shared, as the rows it makes
-//! readable.
+//! the diagnostics clear (or a deleted XDG cache dir) wipes the
+//! database outright, and the translation has to outlive that — it
+//! must live exactly as long as the rows it makes readable.
 
 use crate::app::AppState;
 
@@ -34,9 +32,9 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
 
 /// Persist the slug's offset together with the last watch's
 /// (slot, display tag) pair — written when a native resolve lands
-/// on a row whose display differs from its slot, so the shared
-/// history can carry the slot the CLI greps while the GUI translates
-/// it back. Last write wins, like the offset.
+/// on a row whose display differs from its slot, so the history can
+/// carry the slot a resume needs while the read boundary translates
+/// it back for display. Last write wins, like the offset.
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }
@@ -60,8 +58,9 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
 /// The ep_no a listing-less writer (mark-watched, cache-hit) should
 /// store for `episode`: the offset translation, except when the
 /// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the
-/// CLI-greppable slot is written instead.
+/// identity, since the frontend normalizes — in which case the slot
+/// is written instead, because that is what a resume looks the row up
+/// by in the provider listing.
 pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
     let provider = provider_ep_no(episode, offset);
     if let Some((slot, tag)) = display_stamp(state, slug) {
@@ -85,7 +84,7 @@ pub fn read_ep_no(state: &AppState, slug: &str, ep_no: &str) -> String {
     kitsu_ep_no(ep_no, offset)
 }
 
-/// Kitsu-relative episode → the provider's number, for ani-hsts
+/// Kitsu-relative episode → the provider's number, for history
 /// writes. Non-numeric input passes through unchanged (defensive —
 /// the play paths only ever see digits).
 #[must_use]

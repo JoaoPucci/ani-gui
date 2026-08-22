@@ -17,6 +17,10 @@ mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
 pub mod download;
+
+#[cfg(test)]
+#[path = "download_lock_prop_test.rs"]
+mod download_lock_prop_tests;
 mod download_range;
 pub(crate) mod download_tool;
 pub mod external_player;

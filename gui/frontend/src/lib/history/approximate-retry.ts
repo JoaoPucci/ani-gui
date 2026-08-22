@@ -3,7 +3,7 @@ import type { KitsuAnimeRef } from '$lib/api';
 /**
  * Second chance for a Continue Watching cap the scraper gate refused.
  *
- * The gate refuses background allmanga traffic while its breaker is
+ * The gate refuses background the provider traffic while its breaker is
  * open. A refused availability probe still answers, but with the
  * count from the search hit rather than the per-show detail fetch —
  * and that number counts half-episodes as whole ones, so it runs one
@@ -180,7 +180,7 @@ export async function retryApproximateCaps(
 		if (deps.cancelled?.()) return;
 		if (skip(deps, job.row.entryId)) continue;
 		// The budget counts ANSWERS. A refusal is not one — nobody
-		// asked allmanga anything — and neither is a probe that never
+		// asked the provider anything — and neither is a probe that never
 		// came back. Charging for either is worse than wasted: while
 		// the breaker recovers it admits one probe at a time, so the
 		// attempt spent here was a slot taken from a row that would

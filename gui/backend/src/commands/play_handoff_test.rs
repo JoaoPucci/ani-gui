@@ -17,7 +17,7 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: td.path().join("ani-hsts"),
+        history_path: td.path().join("history"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
@@ -91,11 +91,11 @@ fn args_for() -> PlayArgs {
 
 #[tokio::test]
 async fn the_handoff_resolves_through_the_native_walk() {
-    // Both handoffs used to shell out to ani-cli for the stream URL.
-    // The provider is anidb now, and the walk that serves the
-    // embedded player serves these too — the state's ani_cli_path
-    // deliberately points at nothing, so a subprocess resolve fails
-    // the test rather than quietly working.
+    // Both handoffs used to shell out to the script for the stream URL.
+    // The provider is anidb now, and the walk that serves the embedded
+    // player serves these too — which is what this asserts: the state's
+    // provider base is the stub below, and the launch args come back
+    // carrying the URL that stub answered with.
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());

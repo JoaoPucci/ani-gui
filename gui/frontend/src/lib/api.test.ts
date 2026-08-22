@@ -166,7 +166,7 @@ describe('historyDelete', () => {
 	});
 
 	it('percent-encodes ids with special characters', async () => {
-		// allmanga show_ids in the wild are alphanumeric, but pin the
+		// The provider show_ids in the wild are alphanumeric, but pin the
 		// contract so a future id shape with `/` or `?` doesn't escape
 		// the /api/history/:id path.
 		const fetchMock = mockFetchOnce(null, 204);
@@ -756,7 +756,7 @@ describe('altTitlesFromKitsu', () => {
 		expect(altTitlesFromKitsu(undefined)).toEqual([]);
 	});
 
-	it('emits en_jp first (allmanga indexes under romanized JP)', () => {
+	it('emits en_jp first (the provider indexes under romanized JP)', () => {
 		const ref = baseRef({
 			canonical_title: "JoJo's Bizarre Adventure: Stone Ocean",
 			titles: {
@@ -814,7 +814,7 @@ describe('altTitlesFromKitsu', () => {
 	});
 
 	it('appends abbreviated_titles after the localized titles', () => {
-		// allmanga's fuzzy search surfaces a 1-ep OVA for every official
+		// The provider's fuzzy search surfaces a 1-ep OVA for every official
 		// Yu-Gi-Oh! 5D's title; only an abbreviated alias resolves the
 		// 154-ep series. Abbreviated aliases must be tried, but AFTER the
 		// official titles so they never outrank a clean canonical hit.
@@ -1045,7 +1045,7 @@ describe('allmangaKitsuMapGet', () => {
 	});
 
 	it('encodes show_ids that contain URL-special characters', async () => {
-		// Defensive — allmanga's ids are alphanum today, but the
+		// Defensive — the provider's ids are alphanum today, but the
 		// endpoint shape commits to encodeURIComponent so future
 		// id-format changes don't crash with double-slash splits.
 		const fetchMock = mockFetchOnce(null);
@@ -1415,7 +1415,7 @@ describe('kitsuByMalIds', () => {
 
 describe('aniskipGet', () => {
 	it('encodes both the kitsu id and the episode in the path', async () => {
-		// Both segments need encodeURIComponent because allmanga's
+		// Both segments need encodeURIComponent because the provider's
 		// half-episode tags ("1061.5") contain a dot that path
 		// matchers would otherwise treat as a separator.
 		const intervals = [{ skip_type: 'op', start_time: 0, end_time: 88 }];

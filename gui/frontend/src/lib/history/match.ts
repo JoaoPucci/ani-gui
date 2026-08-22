@@ -7,7 +7,7 @@
  *
  * Errors at any layer fall through to the next strategy and ultimately
  * to `null` — the caller (Continue Watching cards) treats null as "no
- * Kitsu data, render the bare allmanga title as a card".
+ * Kitsu data, render the bare provider title as a card".
  */
 
 import {
@@ -24,12 +24,12 @@ import {
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
-	// 0) Reverse-mapping lookup: allmanga show_id → kitsu_id. Recorded
+	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id. Recorded
 	//    by the backend on every successful play, so once the user
 	//    has played a show through the GUI the home-page strip can
 	//    skip every other path. Wins over title-match because the
 	//    show_id is deterministic — the title is sometimes a typo
-	//    (allmanga's "Nato: Shippuuden" for Naruto Shippuuden).
+	//    (the provider's "Nato: Shippuuden" for Naruto Shippuuden).
 	//
 	//    Validate the cached detail's episode_count against the
 	//    user's history courSize before accepting — older sessions
@@ -133,23 +133,26 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 		}
 	}
 
-	// 4) Allmanga-aliases enrichment fallback. Reach here when steps
-	//    0-3 all whiff — typically because allmanga's primary `name`
-	//    is a stub the Kitsu text search can't resolve ("1P" for One
-	//    Piece, "Nato: Shippuuden" for Naruto Shippuuden). The backend
-	//    fetches allmanga's Show GraphQL, harvests englishName /
-	//    nativeName / altNames, retries Kitsu search with each, and
-	//    persists the resolved kitsu_id into the reverse cache so
-	//    subsequent calls short-circuit through step 0.
+	// 4) Backend enrichment fallback. Reach here when steps 0-3 all
+	//    whiff — typically because the row's stored `name` is a stub
+	//    the Kitsu text search can't resolve ("1P" for One Piece,
+	//    "Nato: Shippuuden" for Naruto Shippuuden). The backend tries
+	//    the show id rather than the name: a provider slug carries its
+	//    title in its own words, so `one-piece-69` searches Kitsu for
+	//    "one piece" and persists the resolved kitsu_id into the
+	//    reverse cache, and subsequent calls short-circuit through
+	//    step 0. A row from the retired provider has no such words and
+	//    no alias source left, so a stub name there is not recoverable
+	//    by this step — those rows depend on having been mapped.
 	//
-	//    Only fires when there's an allmanga show_id to enrich AND
+	//    Only fires when there's a provider show_id to enrich AND
 	//    earlier paths already failed — title-search hits skip this
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {
 		try {
 			// bypassCache: step 0 already read + rejected this show's reverse-cache
 			// row (count/music/title guard), so the backend must NOT short-circuit
-			// on it again — go straight to the alias walk.
+			// on it again — re-resolve from the show id instead.
 			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId, true);
 		} catch {
 			// Enrichment endpoint failure is non-fatal — fall through

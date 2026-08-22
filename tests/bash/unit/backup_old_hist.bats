@@ -8,9 +8,10 @@
 # stay, every other row moves to ${histfile}.v4, and the rewrite is
 # atomic through ${histfile}.new.
 #
-# The GUI reads the same file (its history rail parses ani-hsts
-# directly), so the split shape here is what the backend will see after
-# a user first runs 5.0's -c.
+# This is the script's own history and nobody else's. The GUI kept its
+# watch history in this file in the allanime era and now keeps its own,
+# so the split shape here is what a terminal user sees and not what the
+# backend reads.
 
 load '../helpers/loader'
 

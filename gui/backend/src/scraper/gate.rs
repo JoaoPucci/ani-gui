@@ -1,10 +1,10 @@
-//! Global admission gate for allanime scraper traffic.
+//! Global admission gate for provider traffic.
 //!
 //! Cold caches make the home page warm every rail entry at once, and
 //! each probe fans out over the primary title plus every alt title.
 //! Ungated, one launch fired hundreds of searches in under a minute,
-//! allanime rate-limited the IP, and the user's very first play click
-//! died inside ani-cli with "No results found!". The gate exists so
+//! the provider rate-limited the IP, and the user's very first play click
+//! died in resolution with "No results found!". The gate exists so
 //! background traffic can never poison the connection the user's next
 //! click depends on:
 //!
@@ -17,7 +17,7 @@
 //!   hygiene.
 //! - The breaker opens after [`FAILURE_THRESHOLD`] *consecutive*
 //!   scraper failures (transport errors, 429/5xx, or garbage bodies —
-//!   allanime throttles with 200-status HTML pages) and stays open
+//!   the provider throttles with 200-status HTML pages) and stays open
 //!   for [`BREAKER_COOLDOWN`]. While open, background callers skip
 //!   the network instantly instead of deepening the limit; their
 //!   cache rows simply stay unwritten, which every consumer already
@@ -38,7 +38,7 @@ pub use super::outcome::ScrapeOutcome;
 pub const BACKGROUND_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Consecutive failures that open the breaker. Three is enough to
-/// distinguish "allanime is refusing us" from a flaky single request
+/// distinguish "the provider is refusing us" from a flaky single request
 /// without burning hundreds of doomed calls discovering it.
 pub const FAILURE_THRESHOLD: u32 = 3;
 
@@ -57,7 +57,7 @@ pub const MAX_ADVERTISED_PAUSE: Duration = Duration::from_secs(600);
 /// trial whose future was dropped (cancelled prefetch) never records
 /// an outcome; after this window a new trial may start instead of
 /// wedging the gate shut. Sized past the longest gated operation —
-/// the 60 s prefetch ani-cli spawn timeout, not just the 30 s meta
+/// the 60 s prefetch resolve timeout, not just the 30 s meta
 /// client — with margin, or a slow spawn-trial still legitimately
 /// running would see a second trial sanctioned beside it.
 pub const HALF_OPEN_TRIAL_STALE: Duration = Duration::from_secs(90);
@@ -113,7 +113,7 @@ pub(super) struct GateState {
 }
 
 /// See the module docs. One instance lives in `AppState`; every
-/// allanime request goes through [`ScraperGate::admit`] first and
+/// provider request goes through [`ScraperGate::admit`] first and
 /// reports back via [`ScraperGate::record_outcome`].
 pub struct ScraperGate {
     inner: Mutex<GateState>,

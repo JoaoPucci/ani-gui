@@ -9,13 +9,21 @@ use futures_util::stream::{Stream, StreamExt};
 /// Wrap an SSE body stream so dropping it aborts the task feeding it.
 /// Axum drops the body when the client disconnects (page unmount,
 /// EventSource.close, the play-cache's click bypass aborting a
-/// prefetch, the download dock's Cancel) — without this, the detached
-/// resolution task keeps its ani-cli child running against allanime
-/// with nobody listening. Aborting the task drops its in-flight
-/// future, and the child is spawned `kill_on_drop`, so the subprocess
-/// is reaped with it. When the stream instead ends naturally (channel
-/// closed after the terminal event), the task has already finished
-/// and the abort is a no-op.
+/// prefetch, the download dock's Cancel) — without this the detached
+/// task runs on with nobody listening.
+///
+/// Both handlers use it and neither has only one thing to stop. A play
+/// stream is resolving: the walk holds a transport child for whichever
+/// request is in flight. A download stream is either resolving the
+/// same way or past that and running yt-dlp or ffmpeg. Aborting drops
+/// the task's in-flight future, and every one of those children is
+/// spawned `kill_on_drop`, so whichever exists goes with it. yt-dlp's
+/// own helpers outlive that signal, which is what the group kill in
+/// `spawn` is for.
+///
+/// When the stream ends naturally instead — channel closed after the
+/// terminal event — the task has already finished and the abort is a
+/// no-op.
 pub(super) fn abort_on_drop<S: Stream>(
     stream: S,
     handle: tokio::task::JoinHandle<()>,

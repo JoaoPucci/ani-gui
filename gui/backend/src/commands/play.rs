@@ -2,15 +2,16 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! The embedded path resolves natively: the anidb client searches,
-//! disambiguates by episode count, and walks episode → languages →
-//! embed → master-playlist URL, which becomes a [`StreamSession`].
-//! The external and download siblings still spawn the vendored
-//! script; they move to the native resolver with the availability
-//! port.
+//! Resolution is native: the anidb client searches, disambiguates by
+//! episode count, and walks episode → languages → embed →
+//! master-playlist URL, which becomes a [`StreamSession`]. The
+//! external and download siblings take the same walk and differ only
+//! in what they do with the result.
 //!
-//! No title-match cache yet — every play hits ani-cli fresh. The cache
-//! is task #51 and lands once the spawn cost actually bites the UX.
+//! Resolved streams are cached. `play_with_progress` consults
+//! `play_resolution_cache` first and returns a hit without touching
+//! the provider; see that module for what the row holds and when it
+//! is evicted.
 
 use serde::Deserialize;
 
@@ -28,8 +29,11 @@ use crate::proxy::MediaKind;
 /// Frontend → backend payload for both play endpoints.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlayArgs {
-    /// Canonical title from the Kitsu metadata. Fed to ani-cli's
-    /// search step (after we've picked the right candidate index).
+    /// Canonical title from the Kitsu metadata. It is the search
+    /// query: the resolver asks the provider with it first, and the
+    /// hits that come back are what the candidate picker then
+    /// disambiguates using the fields below. Nothing selects a
+    /// candidate before the search.
     pub title: String,
     /// Episode number, as a string to match the CLI's positional arg
     /// shape (`-e 5` accepts `"5"` literally).
@@ -40,7 +44,7 @@ pub struct PlayArgs {
     #[serde(default)]
     pub quality: Option<String>,
     /// Kitsu's authoritative episode count. Used to disambiguate
-    /// allanime candidates that share a title (e.g. the 1-ep
+    /// the provider candidates that share a title (e.g. the 1-ep
     /// "Konoha Gakuen Den" side-story vs. the 500-ep main "Naruto:
     /// Shippuuden"). When `None`, we fall back to the legacy `-S 1`
     /// behaviour.
@@ -48,7 +52,7 @@ pub struct PlayArgs {
     pub episode_count: Option<u32>,
     /// Year the show first aired, parsed from Kitsu's `start_date`
     /// (`"1995-04-07"` → `1995`). The disambiguator uses it as the
-    /// primary tie-break against allmanga's `airedStart.year` — much
+    /// primary tie-break against the provider's `airedStart.year` — much
     /// more discriminative than ep-count for franchise-overlap cases
     /// (Mobile Suit Gundam 1979 vs Gundam Wing 1995). `None` when the
     /// caller doesn't know the year (legacy SSE path, prefetch
@@ -63,10 +67,10 @@ pub struct PlayArgs {
     #[serde(default)]
     pub subtype: Option<String>,
     /// Fallback titles to try when the canonical title returns no
-    /// allanime hits. Frontend feeds Kitsu's `titles.en_jp` /
+    /// provider hits. Frontend feeds Kitsu's `titles.en_jp` /
     /// `titles.ja_jp` here so the play flow can recover when Kitsu's
     /// canonicalTitle is the English form (e.g. "JoJo's Bizarre
-    /// Adventure: Stone Ocean") but allmanga only indexes the
+    /// Adventure: Stone Ocean") but the provider only indexes the
     /// romanized name. Tried in order.
     ///
     /// Wire formats accepted (driven by `deserialize_alt_titles`):
@@ -95,9 +99,9 @@ pub struct PlayArgs {
     /// Kitsu id of the anime the user is playing. The frontend knows
     /// it (the user came from `/anime/[kitsu_id]`); we don't, until
     /// the user passes it in. Recording the
-    /// (allmanga show_id → kitsu_id) pair on every successful play
+    /// (provider show_id → kitsu_id) pair on every successful play
     /// turns the home-page Continue Watching lookup from "fuzzy
-    /// kitsuSearch on a possibly-typo'd allmanga title" into a
+    /// kitsuSearch on a possibly-typo'd provider title" into a
     /// deterministic id-keyed lookup. Empty string when the caller
     /// has no kitsu_id available (e.g. the SSE fallback path or a
     /// direct API user).
@@ -107,17 +111,19 @@ pub struct PlayArgs {
 
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
 
-/// Update Continue Watching on a play-cache hit. The cache-miss
-/// path gets history for free via ani-cli's `update_history`; we
-/// don't run ani-cli on a hit, so write the row directly. No-op
-/// on prefetch calls (the page-mount loop fires concurrently and
-/// whichever finishes last would otherwise overwrite the user's
-/// real click) and on legacy rows missing show_id.
+/// Update Continue Watching on a play-cache hit.
+///
+/// A cache miss records the row on its way through
+/// `play_native_record::write_history`. A hit never reaches that
+/// path, so the row is written here instead. No-op on prefetch calls
+/// (the page-mount loop fires concurrently and whichever finishes
+/// last would otherwise overwrite the user's real click) and on
+/// legacy rows missing show_id.
 fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &CachedResolution) {
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
-    // ani-hsts speaks the provider's numbering; the offset was
+    // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
     let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
@@ -276,12 +282,12 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
     }
 }
 
-/// Resolve `args` against ani-cli, register a stream session for the
+/// Resolve `args` against the provider, register a stream session for the
 /// resulting upstream URL, and return the proxy URLs hls.js will
 /// consume.
 ///
 /// # Errors
-/// Inherits from [`run_debug`] (timeout, parse failure, scraper
+/// Inherits from the native resolve (timeout, parse failure, provider
 /// errors) and [`create_session`] (URL-shape validation on the
 /// resolved upstream).
 pub async fn play(state: &AppState, args: &PlayArgs) -> Result<CreateSessionResponse> {
@@ -289,14 +295,14 @@ pub async fn play(state: &AppState, args: &PlayArgs) -> Result<CreateSessionResp
 }
 
 /// Like [`play`], but invokes `on_progress` once for every parsed
-/// `ani-cli` stderr line as the resolution runs. Used by the SSE
+/// progress line as the resolution runs. Used by the SSE
 /// `/api/play/stream` endpoint to forward incremental status to the
 /// renderer's loading overlay.
 ///
-/// The callback runs on the same async task as the resolution; a slow
-/// callback stalls the subprocess. SSE handlers should push events
-/// through an `mpsc` channel inside the callback rather than do work
-/// inline.
+/// The callback runs on the same async task as the resolution, and
+/// there is no other task to absorb it: a slow callback stalls the
+/// provider walk itself. SSE handlers should push events through an
+/// `mpsc` channel inside the callback rather than do work inline.
 ///
 /// # Errors
 /// Same as [`play`].
@@ -314,7 +320,7 @@ where
     // same (title, mode, quality, episode) tuple is replayable for up
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
-    // ~50ms; ani-cli is ~30s. Worth the round-trip.
+    // ~50ms; a full resolve is ~30s. Worth the round-trip.
     let cache_key = play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
@@ -336,15 +342,15 @@ where
             return Ok(resp);
         }
         // HEAD failed — the cached URL is dead. Evict the row and
-        // fall through to ani-cli. Eviction is explicit (not just
-        // overwrite-on-put) because if the fresh ani-cli call ALSO
+        // fall through to a fresh resolve. Eviction is explicit (not
+        // just overwrite-on-put) because if the fresh resolve ALSO
         // fails, we don't want the stale row to linger and bite the
         // next attempt.
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play: cache row stale (HEAD failed), evicted, falling back to ani-cli",
+            "play: cache row stale (HEAD failed), evicted, resolving afresh",
         );
     }
 
@@ -476,9 +482,11 @@ where
 
     // Persist the resolution so the next play of the same episode
     // skips the provider round-trips (subject to TTL + HEAD
-    // validation). show_id is the anidb slug — the id ani-cli 5.0's
-    // own update_history writes — so cache-hit history rows and the
-    // CLI's rows agree.
+    // validation). show_id is the anidb slug, and storing it is what
+    // lets a cache hit write the same history row a fresh resolve
+    // would: `play_native_record::write_history` has the slug in hand
+    // from the walk, `write_history_on_cache_hit` reads it back from
+    // here. Nothing outside this app writes that file.
     let cached_resolution = CachedResolution {
         upstream_url: native.master_url.clone(),
         referer: referer.clone(),
@@ -569,7 +577,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: std::path::PathBuf::from("/tmp/ani-cli/ani-hsts"),
+            history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -755,14 +763,14 @@ mod tests {
 
     #[test]
     fn cache_hit_history_writes_the_providers_numbering() {
-        // ani-hsts speaks the provider's numbering — ani-cli greps
+        // The history file speaks the provider's numbering — a reader greps
         // the stored ep_no in the provider's episode list — so a
         // Kitsu-relative "1" written for a continuation cour (whose
-        // provider list starts at 41) vanishes from `ani-cli -c`.
+        // provider list starts at 41) vanishes from the resume list.
         // The writer adds the offset stamped at resolve time.
         let tmp = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
-        state.history_path = tmp.path().join("ani-hsts");
+        state.history_path = tmp.path().join("history");
         let mut cached = cached_blank(
             "https://cdn.example/x/master.m3u8".into(),
             String::new(),
@@ -792,7 +800,7 @@ mod tests {
     #[tokio::test]
     async fn try_serve_cached_returns_none_when_url_is_unparseable() {
         // A corrupt cache row with garbage in upstream_url shouldn't
-        // crash — fall through to ani-cli.
+        // crash — fall through to a fresh resolve.
         let state = state_with_proxy_origin();
         let cached = cached_blank(
             "not://a valid url at all".into(),
@@ -806,7 +814,7 @@ mod tests {
     async fn try_serve_cached_returns_session_on_2xx_head() {
         // Cache hit happy path: upstream HEAD returns 200 → we register
         // a session and return its CreateSessionResponse. This is the
-        // ~50ms path that replaces the ~30s ani-cli spawn.
+        // ~50ms path that replaces the ~30s resolve.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .and(wiremock::matchers::path("/video.mp4"))
@@ -825,7 +833,7 @@ mod tests {
         assert_eq!(resp.media_kind, MediaKind::Mp4);
         // The cache_hit flag is what tells the renderer whether a
         // player error is silently retryable. Cache-served responses
-        // must set it; the post-ani-cli path must not.
+        // must set it; the post-resolve path must not.
         assert!(
             resp.cache_hit,
             "try_serve_cached must tag the response so the renderer can retry on player error"
@@ -835,7 +843,7 @@ mod tests {
     #[tokio::test]
     async fn try_serve_cached_returns_none_on_404() {
         // Stale wixmp URL — HEAD 404 means the row is dead. Return
-        // None so the caller falls through to ani-cli (which will
+        // None so the caller resolves afresh (which will
         // overwrite the row with a fresh resolution).
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
@@ -948,14 +956,14 @@ mod tests {
     /// A still-valid cache row for a fractional extra can outlive
     /// the sidecar's single (slot, tag) stamp — resolving 1.5 then
     /// 2.5 replaces the stamp, and the 1.5 replay would fall back
-    /// to the display tag ani-cli cannot grep. The cache row itself
+    /// to the display tag a history reader cannot grep. The cache row itself
     /// carries the resolved slot, so the replay writes it directly.
     #[test]
     fn cache_hit_history_writes_the_cached_slot() {
         let state = state_with_proxy_origin();
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = state;
-        state.history_path = td.path().join("ani-hsts");
+        state.history_path = td.path().join("history");
         let args = PlayArgs {
             title: "Recap Show".into(),
             episode: "3.5".into(),
@@ -1005,12 +1013,12 @@ mod tests {
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
         // Non-prefetch click → history must be written. The upsert
-        // target is state.history_path, which is /tmp/ani-cli/ani-hsts
+        // target is state.history_path, which is /tmp/ani-gui/history
         // by default — make it a real tempfile so the write
         // succeeds and we can assert against it.
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = state;
-        state.history_path = td.path().join("ani-hsts");
+        state.history_path = td.path().join("history");
         let _ = play_with_progress(&state, &args, |_| {}).await.expect("ok");
         // The history file must exist with one row referencing the
         // seeded show_id.
@@ -1022,7 +1030,7 @@ mod tests {
     }
 
     /// HEAD failure → cache row evicted, function falls through to
-    /// ani-cli (which fails because the spawn binary path is bogus
+    /// a fresh resolve (which fails because the provider is unreachable
     /// in the test fixture). The test just needs to confirm the
     /// eviction-and-fallthrough branch runs without panicking;
     /// covers lines 288-292 (eviction warn).
@@ -1038,7 +1046,10 @@ mod tests {
         let upstream = format!("{}/dead.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
         let r = play_with_progress(&state, &args, |_| {}).await;
-        assert!(r.is_err(), "ani-cli fallback must error in the test env");
+        assert!(
+            r.is_err(),
+            "the fresh-resolve fallback must error in the test env"
+        );
         // Cache row should be gone.
         let key = play_resolution_cache::cache_key(
             &args.title,
@@ -1071,7 +1082,7 @@ mod tests {
     #[tokio::test]
     async fn try_launch_args_from_cache_returns_launch_args_on_2xx_head() {
         // Happy path — cache hit + HEAD ok → caller can hand the
-        // returned LaunchArgs to mpv without re-running ani-cli.
+        // returned LaunchArgs to mpv without resolving again.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .respond_with(wiremock::ResponseTemplate::new(200))
@@ -1098,7 +1109,7 @@ mod tests {
     #[tokio::test]
     async fn try_launch_args_from_cache_evicts_and_returns_none_on_404() {
         // Stale upstream — HEAD 404. The cache row must be evicted so a
-        // fresh ani-cli run will overwrite, AND we return None so the
+        // fresh resolve will overwrite, AND we return None so the
         // caller falls through to the fresh path.
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))

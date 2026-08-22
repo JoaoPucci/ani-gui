@@ -2,7 +2,7 @@
  * Render state for the detail page's primary CTA area, derived from
  * the availability probe's lifecycle.
  *
- * The probe deliberately surfaces throttled / failed allmanga
+ * The probe deliberately surfaces throttled / failed the provider
  * searches as an error rather than a verdict (a transient failure
  * must not poison the cache with available:false). The template used
  * to map that null verdict to the same pulsing skeleton as an

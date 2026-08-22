@@ -27,17 +27,17 @@ describe('sortByWatchedAt', () => {
 
 	it('puts unstamped entries after stamped, preserving their file order', () => {
 		// Mixed: stamped (sorted by ts desc) on top, unstamped after
-		// in input order. CLI plays don't reach mark-watched, so they
-		// are visible but demoted.
-		const stale = entry('cli-only-1');
+		// in input order. A play that never reached mark-watched has
+		// no stamp, so it is visible but demoted.
+		const stale = entry('unstamped-1');
 		const recent = entry('gui-recent');
 		const older = entry('gui-older');
-		const stale2 = entry('cli-only-2');
+		const stale2 = entry('unstamped-2');
 		const got = sortByWatchedAt([stale, recent, older, stale2], {
 			'gui-recent': 1_800_000_000_000,
 			'gui-older': 1_700_000_000_000
 		});
-		expect(got.map((e) => e.id)).toEqual(['gui-recent', 'gui-older', 'cli-only-1', 'cli-only-2']);
+		expect(got.map((e) => e.id)).toEqual(['gui-recent', 'gui-older', 'unstamped-1', 'unstamped-2']);
 	});
 
 	it('treats explicit zero stamps as still-stamped (sort, not filter)', () => {

@@ -180,13 +180,13 @@ jobs:
         with:
           node-version: 20
       - if: needs.filter.outputs.relevant == 'true'
-        name: Install ani-cli runtime deps
+        name: Install runtime deps
         # Coverage runs `cargo llvm-cov --workspace`, which executes the
-        # same integration test that needs ani-cli's deps. See the matching
-        # comment in the `test` job.
+        # same tests as the `test` job — see the matching comment there
+        # for what resolves each of these.
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl python3-cryptography bsdmainutils xxd fzf mpv ffmpeg aria2
+          sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate lcov
         working-directory: gui/backend

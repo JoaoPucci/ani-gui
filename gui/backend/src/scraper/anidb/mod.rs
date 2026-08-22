@@ -18,7 +18,7 @@
 //!
 //! Query encoding matches the script byte-for-byte (spaces become `+`,
 //! nothing else is touched): the CLI and the GUI must see the same
-//! result list for the same query, or shared history rows resolve to
+//! result list for the same query, or history rows resolve to
 //! different shows.
 
 pub mod fetch;

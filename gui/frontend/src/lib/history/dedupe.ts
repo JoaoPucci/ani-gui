@@ -5,19 +5,22 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * one per group, keeping the row whose `ep_no` is highest. The home
  * page calls this after `sortByWatchedAt`.
  *
- * Why this exists: allmanga catalog drift across ani-cli invocations
- * can produce two `ani-hsts` rows whose alias-walk (see
- * `resolve_allmanga_show_id` in the backend) both land on the same
- * Kitsu entry. Stub-name catalog rows (`1P` for One Piece is the
- * canonical example) and changes in ani-cli's `search_anime`
+ * Why this exists: provider catalogue drift across resolves
+ * can produce two history rows that resolve to the same Kitsu entry
+ * — through the stored mapping for one and a fresh slug-derived
+ * search for the other, say (see `resolve_allmanga_show_id` in the
+ * backend). Stub-name catalog rows (`1P` for One Piece is the
+ * canonical example) and changes in the provider's catalogue
  * ranking are the usual culprits — the user ends up with two
  * Continue Watching cards for what is logically the same show.
  *
  * The winner is the row with the most-advanced progress (highest
- * `ep_no`), not the sort-earliest row. The original "first wins"
- * rule hid CLI progress when an older GUI-stamped row sorted above
- * an unstamped CLI row that was actually further along — see Codex
- * P2 #3367725631. Ties on `ep_no` fall back to input order
+ * `ep_no`), not the sort-earliest row. "First wins" hid progress
+ * whenever the further-along row sorted lower, which `sortByWatchedAt`
+ * makes routine: it puts stamped rows above unstamped ones, and an
+ * unstamped row is a play that resolved without reaching
+ * `mark-watched` — no less watched for it, and often the later of the
+ * two. Ties on `ep_no` fall back to input order
  * (sortByWatchedAt's most-recent-first), which preserves the
  * intuitive first-wins behaviour for the no-drift case.
  *
@@ -30,16 +33,16 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  *   1. Per-row release semantics from PR #50: a card stays visible
  *      as a loading placeholder while its match probe is in flight;
  *      we can't know its Kitsu id yet, so we can't dedupe it.
- *   2. Without a Kitsu id (null match: the alias-walk found nothing)
+ *   2. Without a Kitsu id (null match: resolution found nothing)
  *      we have no equivalence signal between two such rows. They
  *      might be the same show or might not; rendering both lets the
  *      user decide.
  *
  * Position-preservation: the surviving row emits at the position of
  * its group's first occurrence in the input. So if the input is
- * `[stamped-old, other-show, cli-current]` (sortByWatchedAt put the
- * stamped row at index 0 and the unstamped CLI row at index 2), the
- * output is `[cli-current, other-show]` — the dedupe winner takes
+ * `[stamped-old, other-show, unstamped-current]` (sortByWatchedAt
+ * put the stamped row at index 0 and the unstamped one at index 2),
+ * the output is `[unstamped-current, other-show]` — the winner takes
  * the loser's slot and the overall strip ordering is unchanged.
  *
  * One cosmetic side effect when duplicates DO exist: matches arrive

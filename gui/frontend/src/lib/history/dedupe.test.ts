@@ -37,9 +37,9 @@ describe('dedupeHistoryByKitsuId', () => {
 	});
 
 	it('keeps the highest-progress occurrence of each Kitsu id, ties broken by first', () => {
-		// The empirical trigger #116 targets: allmanga catalog drift
-		// across ani-cli runs produces two hsts rows whose alias-walk
-		// both land on the same Kitsu entry. The user's true "where
+		// The empirical trigger #116 targets: provider catalogue drift
+		// across resolves produces two history rows that resolve to
+		// the same Kitsu entry. The user's true "where
 		// am I?" signal is ep_no — pick the most-advanced row so the
 		// surviving card resumes from their actual progress. Ties on
 		// ep_no fall back to input order (most-recent first under
@@ -70,18 +70,19 @@ describe('dedupeHistoryByKitsuId', () => {
 		expect(dedupeHistoryByKitsuId([frac, int], matches)).toEqual([frac]);
 	});
 
-	it('preserves CLI progress over an older GUI-stamped row when ep_no is higher', () => {
-		// Codex P2 #3367725631 — the regression my first cut hit. User
-		// watched via GUI at ep 5 long ago (stamped, sorted to the
-		// top). Allmanga drifted, they continued via ani-cli to ep 12
-		// (unstamped, sorted below). Previous "first occurrence wins"
-		// dropped the CLI row and the strip would resume from the
+	it('preserves the further-along row over an older stamped one when ep_no is higher', () => {
+		// Codex P2 #3367725631 — the regression my first cut hit. The
+		// user watched to ep 5 long ago and it was marked watched, so
+		// it sorts to the top. The catalogue drifted and they
+		// continued to ep 12, whose play never reached mark-watched,
+		// so it sorts below. Previous "first occurrence wins" dropped
+		// the further-along row and the strip would resume from the
 		// stale ep 5. The fix: ep_no comparison wins.
 		const stampedOld = entry('all-stamped-old', '5');
-		const cliCurrent = entry('all-cli-current', '12');
+		const cliCurrent = entry('all-unstamped-current', '12');
 		const matches: Record<string, KitsuAnimeRef | null> = {
 			'all-stamped-old': kitsu('k-shared'),
-			'all-cli-current': kitsu('k-shared')
+			'all-unstamped-current': kitsu('k-shared')
 		};
 		// sortByWatchedAt would land the stamped row first; the
 		// dedupe still picks the row with the actual current progress.
@@ -158,8 +159,7 @@ describe('dedupeHistoryByKitsuId', () => {
 	});
 
 	it('keeps entries with a null match (no Kitsu match found)', () => {
-		// resolveKitsuMatch returned null — the alias-walk found
-		// nothing on Kitsu. Without a Kitsu id we have no equivalence
+		// resolveKitsuMatch returned null — nothing on Kitsu matched. Without a Kitsu id we have no equivalence
 		// signal, so two null-matched rows might be the same show or
 		// might not be. Keep them; the user still wants to see them
 		// and can click them (routes to /search per the page's null-

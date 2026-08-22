@@ -133,7 +133,7 @@ describe('loadContinueWatchingState', () => {
 	it('caps concurrent probes at the configured pool size', async () => {
 		// Codex P2 #3348430790 — bounded probe concurrency: a sizable
 		// CLI-imported history with many cache-miss rows shouldn't
-		// fire N concurrent allmanga probes. The backend's `warm`
+		// fire N concurrent the provider probes. The backend's `warm`
 		// path spaces equivalent probes by 500ms; the search filter
 		// caps inline probes too. Mirror the same default (4) here.
 		const entries = Array.from({ length: 8 }, (_, i) => makeEntry(`h${i}`, '1', `Show ${i}`));

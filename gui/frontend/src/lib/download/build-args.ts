@@ -3,7 +3,7 @@
  * "Download" CTA and the play page's hamburger entry hand the same
  * payload to the backend. Centralising the shape keeps the picker's
  * `episode_count` tied to Kitsu's announced total — Codex
- * P2 #3243357083 surfaced that conflating it with allmanga's
+ * P2 #3243357083 surfaced that conflating it with the provider's
  * released-so-far count (the detail page's `episodeCap`) drops real
  * candidates via the planned-count divergence filter in
  * `pick_by_ep_count_v2`. The modal's range cap is a separate UI

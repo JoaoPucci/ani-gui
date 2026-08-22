@@ -33,7 +33,7 @@ export type EpAirState = { unaired: false } | { unaired: true; airsAt: number | 
  */
 export function epAirState(n: number, airing: AiringStatus | null): EpAirState {
 	if (airing == null || airing.aired == null) return { unaired: false };
-	// Floor: allmanga's decimal extras (a 2.5 recap airs between the
+	// Floor: The provider's decimal extras (a 2.5 recap airs between the
 	// regular eps 2 and 3) aren't counted by AniList's schedule, so a
 	// strict compare would grey a released special until the NEXT
 	// regular episode airs (Codex P2 #3565610386).

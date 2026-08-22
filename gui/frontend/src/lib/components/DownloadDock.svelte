@@ -15,6 +15,7 @@
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
+	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -137,7 +138,7 @@
 									<span
 										class="dl-row-bar dl-row-bar-indet"
 										aria-hidden="true"
-										title={item.progress ?? ''}
+										title={progressTitle(item)}
 									>
 										<span></span>
 									</span>
@@ -214,6 +215,9 @@
 											/>
 										</svg>
 									</button>
+								{/if}
+								{#if (item.status === 'done' || item.status === 'error') && terminalReportText(item)}
+									<span class="dl-row-report">{terminalReportText(item)}</span>
 								{/if}
 							</li>
 						{/each}
@@ -336,6 +340,7 @@
 	   with a thin indeterminate progress bar. */
 	.dl-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-3);
@@ -412,6 +417,17 @@
 		100% {
 			inset-inline-start: 100%;
 		}
+	}
+	/* What an ended download still has to say — the already-here
+	   report, the claim refusal with the path to delete — rendered as
+	   the row's second line, visible without hover so touch and
+	   keyboard users read it too. */
+	.dl-row-report {
+		flex-basis: 100%;
+		min-inline-size: 0;
+		font-size: var(--type-micro);
+		color: var(--text-dim, #9a9a9a);
+		overflow-wrap: anywhere;
 	}
 	.dl-row-error {
 		margin-inline-start: auto;

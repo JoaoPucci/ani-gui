@@ -2,7 +2,7 @@
  * The page-load availability lookup, as a sequence rather than as
  * forty lines inside a component.
  *
- * Both routes run the same one: ask allmanga about this show in this
+ * Both routes run the same one: ask the provider about this show in this
  * mode, hand whatever comes back to the writeback so it can decide
  * which parts are still this lookup's to write, and report the
  * question answered — once, whichever way it went. A lookup that has

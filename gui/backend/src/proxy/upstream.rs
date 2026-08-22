@@ -18,7 +18,7 @@ use url::Url;
 use crate::error::{AniError, Result};
 
 /// User-Agent used by every upstream fetch. Matches what `ani-cli`
-/// presents so allanime CDNs see consistent traffic for one user.
+/// presents so the stream CDNs see consistent traffic for one user.
 pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
 
@@ -38,7 +38,7 @@ pub fn build_client() -> Result<reqwest::Client> {
         .map_err(|_| AniError::Network)
 }
 
-/// Build the metadata HTTP client (Kitsu, AniList, allanime search,
+/// Build the metadata HTTP client (Kitsu, AniList, provider search,
 /// images, GitHub polls). A stalled metadata connection must fail a
 /// probe in seconds, not ride [`build_client`]'s streaming-sized
 /// 120s ceiling. Same UA so CDN HEAD probes keep their accepted

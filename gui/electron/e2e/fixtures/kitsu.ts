@@ -65,8 +65,7 @@ export const emptyHistory: unknown[] = [];
 /** App info fixture — minimal shape `getAppInfo` consumers need. */
 export const appInfo = {
 	version: '0.1.0-test',
-	ani_cli_path: '/usr/bin/ani-cli',
-	history_path: '/tmp/ani-hsts',
+	history_path: '/tmp/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:0'
 };
 
@@ -92,7 +91,7 @@ export const defaultSettings = {
  * Continue Watching fixture — a 12-episode show watched up through
  * episode 5. Used by the home-continue acceptance suite to assert
  * the card displays episode 6 (last+1) and clicking it routes a
- * `play` IPC with `episode=6`. The `id` doubles as the allmanga
+ * `play` IPC with `episode=6`. The `id` doubles as the provider
  * show_id (resolveHistoryEntry maps HistoryEntry.id → ResumeTarget
  * .allmangaShowId), so the short-circuit through `/api/allmanga-
  * kitsu-map/<id>` resolves the match without exercising the live

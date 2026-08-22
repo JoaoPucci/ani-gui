@@ -195,29 +195,48 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## The bundled script's remaining purpose
+## Recovering a download's abandoned claim automatically
 
-- **Comments across the app describe a subprocess that no longer
-  runs.** Well over a hundred sites in `gui/backend/src/` and several
-  dozen in `gui/frontend/src/` say things like "a fresh ani-cli spawn
-  (~30s)", "falling back to ani-cli", or "the data ani-cli produced".
-  Native resolution replaced that subprocess, so they name a component
-  the code has not had for some time.
+- **Take back the empty file an interrupted download left at an
+  episode's name**, instead of asking the user to delete it.
 
-  They are wrong rather than merely dated, which is what makes them
-  worth a pass: a reader following `play_resolution_cache`'s module
-  doc goes looking for a spawn whose result is being cached, and there
-  is none. Some cite allanime, a provider upstream 5.0 deleted. Three
-  — in `history/mod.rs` and `config/paths.rs` — point at
-  `config::paths::ani_cli_history`, a function that no longer exists;
-  they describe a history file shared with the CLI, which stopped
-  being shared when 5.0 re-keyed its numbering.
+  Where the destination has no hard links, publication claims the name
+  by creating it empty and renames onto its own claim. A process that
+  dies between those two calls leaves the empty file, and the app now
+  refuses that name and says so rather than clearing it.
 
-  Not every mention is stale, which is the trap. The history TSV
-  really is the format the script writes, and some error variants
-  really are about a missing external tool. This wants a reading pass
-  where each site gets a decision, not a rename — several also quote
-  timings measured against the old path.
+  Clearing it automatically was tried three ways and each failed
+  differently. Gating on the download's lock does not work: the lock
+  file is named for the target, so two spellings of one name take two
+  lock files, and requiring a lock blocks recovery wherever no lock
+  can be made. Unlinking and re-claiming leaves a window where the
+  name is free. Renaming over the claim closes that window but still
+  acts on a classification that can be stale, so two publishers each
+  replace the other's finished file — and the target name carries
+  neither mode nor quality, so those need not be the same episode.
+
+  What is missing is a conditional replace: swap in a file only if the
+  name still holds exactly what was inspected. Nothing portable to
+  FAT32 and exFAT on both Linux and Windows offers one. Anyone picking
+  this up should start there rather than at the reclaim, and should
+  know that every scheme layered on top of a plain classify-then-act
+  has been tried on this branch.
+
+## A scratch name that overflows where the target does not
+
+- **Publication's scratch file adds ~55 characters to the destination
+  path, so a folder deep enough can accept the episode's own name and
+  reject the scratch's** — the transfer then fails on a target the
+  user was allowed to choose.
+
+  Closing it is not a rename: the spawned tools receive the scratch
+  path as an argument, so the honest fix hands them a name relative
+  to the destination (`current_dir`) — but that alone moves the
+  failure later instead of removing it, because the app's own stat,
+  link and rename still use the full path, and `std` has no
+  `renameat`-style relative operations. The whole of it means
+  directory-handle-relative filesystem work (a `cap-std`-shaped
+  dependency) on Linux and a separate answer for Windows path limits.
 
 ## Housekeeping
 

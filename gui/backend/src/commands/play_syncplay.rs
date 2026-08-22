@@ -15,7 +15,7 @@ use crate::commands::syncplay::{open_syncplay, SyncplayLaunchArgs};
 use crate::config::read_config;
 use crate::error::Result;
 
-/// Resolve `args` against ani-cli and hand the upstream URL to the
+/// Resolve `args` against the provider and hand the upstream URL to the
 /// user's locally-installed Syncplay binary. Behaves like
 /// `play::play_external` (same resolution chain, same cache reuse,
 /// same referer-inference) but the terminal action is a Syncplay
@@ -33,7 +33,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // Reuse the long-term cache the same way play_external does — the
     // embedded player likely just resolved this exact (title, mode,
     // quality, episode) tuple. Without it, the user waits another
-    // ~30s for ani-cli to spin up a fresh fetch.
+    // ~30s for a fresh resolve.
     // Syncplay wraps whichever player the user already configured
     // for "Open in external" — most users have one media player
     // installed, and routing both flows through the same kind keeps

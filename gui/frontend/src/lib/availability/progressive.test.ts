@@ -187,7 +187,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	});
 
 	it('keeps unaired shows visible even when the probe says unavailable', async () => {
-		// An upcoming season allmanga hasn't catalogued yet still
+		// An upcoming season the provider hasn't catalogued yet still
 		// renders so the user can open and plan it.
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockResolvedValue({ available: false });
@@ -203,7 +203,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	it('forwards the Kitsu start year to inline probes', async () => {
 		// Same symmetry rule as the lazy warm path: the probe must
 		// hand the backend picker the year so list-view cards resolve
-		// to the same allmanga show as the detail page.
+		// to the same provider show as the detail page.
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockResolvedValue({ available: true });
 		await filterAvailableProgressive([ref('wing', { start_date: '1995-04-07' })], 'sub', vi.fn());

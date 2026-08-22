@@ -17,15 +17,22 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// The vendored `ani-cli` script reported an internal failure.
+    /// A download tool exited non-zero. The only thing that raises
+    /// this is `spawn_download_tool` when yt-dlp or ffmpeg fails in a
+    /// way that is not a missing tool and not a timeout — provider
+    /// resolution has its own variants and constructs none of these.
+    /// The name is older than that narrowing.
     #[error("scraper error")]
     Scraper {
         /// i18n key under `error.scraper.*`.
         key: &'static str,
     },
 
-    /// The `ani-cli` subprocess didn't finish within its timeout.
-    #[error("scraper timed out")]
+    /// A deadline elapsed. The shared one: a bounded resolve and an
+    /// availability probe both talk to the provider and both end here,
+    /// and so does a download whose transfer ran past its hour, which
+    /// is not the provider's doing at all.
+    #[error("deadline exceeded")]
     Timeout,
 
     /// Search returned zero results.
@@ -44,25 +51,35 @@ pub enum AniError {
         retry_after_secs: Option<u64>,
     },
 
-    /// Stdout from `ani-cli` did not match the expected debug-mode shape.
+    /// Something did not have the shape the code required. Mostly
+    /// upstream bodies — Kitsu, AniList, MAL, the provider's HTML and
+    /// JSON, the proxy's manifests — but also input the app validates
+    /// on its own, like a session's upstream URL or an `image://` URI.
+    /// The shared parse-or-validate variant, not a provider one.
     #[error("parse failed: {detail}")]
     ParseFailed {
         /// Free-text detail for logs only — not surfaced to the user.
         detail: String,
     },
 
-    /// `ani-cli` was not found on PATH or under the bundled resource dir.
-    #[error("missing ani-cli binary")]
-    MissingBinary,
-
-    /// Windows-readiness for downloads: `ffmpeg` isn't on PATH and
-    /// isn't in the bundled-bin directory. ani-cli's `dep_ch
-    /// "ffmpeg" "aria2c"` exits the script the moment downloads start
-    /// without it. Surfaced before the spawn so the frontend can
-    /// render a clear modal pointing the user at the official
-    /// download page. `aria2c` is bundled (commit d6c9992) so its
-    /// absence isn't expected and falls through as a generic
-    /// Scraper error.
+    /// A download has no tool to run: neither yt-dlp nor ffmpeg is on
+    /// PATH or in the bundled-bin directory. Raised on the way in,
+    /// before any provider request, so the frontend's install modal is
+    /// what the user meets rather than a network error from a walk
+    /// that could not have been used.
+    ///
+    /// The other way in is a yt-dlp run reporting it could not
+    /// repackage. With an ffmpeg to retry through, that is not this
+    /// error; without one it is, and the run ends here after the
+    /// scratch guard removes what the warning condemned. The output
+    /// is not examined, because it no longer needs to be: the tool
+    /// wrote to this run's own uuid-named scratch, never to the
+    /// user's file, so everything under that prefix is this run's to
+    /// discard and nothing else is touched.
+    ///
+    /// The name predates yt-dlp becoming an accepted alternative. It
+    /// is the key the frontend renders its modal on, so renaming it is
+    /// a frontend change too.
     #[error("ffmpeg required for downloads")]
     FfmpegMissing,
 
@@ -151,7 +168,6 @@ impl AniError {
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
-            Self::MissingBinary => "error.scraper.missing_binary",
             Self::FfmpegMissing => crate::i18n::keys::DOWNLOAD_FFMPEG_MISSING,
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
             Self::SyncplaySpawnFailed { .. } => "error.syncplay.spawn_failed",
@@ -207,7 +223,6 @@ impl AniError {
             Self::Timeout => 504,
             Self::UnsupportedPkce => 400,
             Self::ParseFailed { .. }
-            | Self::MissingBinary
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }
             | Self::SyncplaySpawnFailed { .. }

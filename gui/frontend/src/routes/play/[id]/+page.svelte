@@ -812,13 +812,13 @@
 		)
 	);
 
-	// allmanga's `availableEpisodes.<mode>` for this show; populated
+	// The provider's `availableEpisodes.<mode>` for this show; populated
 	// alongside detail. Same role as on /anime/[id] — authoritative
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	let playableEpisodeCount = $state<number | null>(null);
 	/**
-	 * Clicking a cap-gated tile re-asks allmanga rather than staying
+	 * Clicking a cap-gated tile re-asks the provider rather than staying
 	 * inert. The count is a snapshot from when the strip loaded and
 	 * the catalogue catches up while the user is watching.
 	 *
@@ -830,7 +830,7 @@
 	 * strip may have replaced.
 	 */
 	/**
-	 * The audio mode the re-ask asks about. allmanga catalogues sub and
+	 * The audio mode the re-ask asks about. The provider catalogues sub and
 	 * dub separately and dub lags, so this is part of the question
 	 * rather than a detail of it: the probe sends it, and the context
 	 * the answer is checked against is keyed on it. Settings land after
@@ -922,7 +922,7 @@
 				status: d.status ?? undefined,
 				background: false,
 				// Without this the lookup answers from the very row
-				// being questioned and never reaches allmanga.
+				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
 			// The whole row, not one field of it. The controller decides
@@ -965,7 +965,7 @@
 		switchBusy = true;
 		// Set, not cleared. `switchToEpisode` leaves its last caption
 		// behind — its finally only resets `switchBusy` — so without
-		// this the block raised for an allmanga lookup would read as a
+		// this the block raised for a provider lookup would read as a
 		// provider tick from whatever ran before it.
 		switchProgress = m.detail_ep_recheck_busy();
 		capGate.request(n);
@@ -975,17 +975,17 @@
 	// beyondPlayable reads it as unbounded, so the warm would resolve
 	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
-	/** Whether allmanga has the show at all, as the detail page tracks
+	/** Whether the provider has the show at all, as the detail page tracks
 	 *  it. null until the first answer. Separate from the cap: a
 	 *  delisted show comes back without a count, so the cap alone
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
 	let showListed = $state<boolean | null>(null);
-	// Non-integer episode tags allmanga has streamable (recaps).
+	// Non-integer episode tags the provider has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
-	// Probe allmanga for the playable episode count IN THE PLAYBACK
+	// Probe the provider for the playable episode count IN THE PLAYBACK
 	// MODE — dub catalogues lag sub, so a sub-mode probe would cap a
 	// dub session too high and Download All could request undubbed
 	// episodes (Codex P2 #3566111944). Re-runs when the mode flips
@@ -1064,7 +1064,7 @@
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 
 	// How far the strip renders tiles: with airing data present it
-	// extends past allmanga's count to the announced total, so the
+	// extends past the provider's count to the announced total, so the
 	// unaired tail shows as greyed dated tiles (same treatment as the
 	// detail page) instead of being absent.
 	const stripCap = $derived(
@@ -1540,8 +1540,8 @@
 		// $lib/play/prefetch-lifecycle for the policy.
 		//
 		//   • PiP not active: cancel immediately like before. Without
-		//     this, abandoned ani-cli spawns keep streaming SSE events
-		//     to a closed page and holding allmanga rate-limit slots.
+		//     this, abandoned resolves keep streaming SSE events
+		//     to a closed page and holding the provider rate-limit slots.
 		//
 		//   • PiP active: defer. The user is still engaged with this
 		//     show via the floating thumbnail; killing the prefetches
@@ -1650,7 +1650,7 @@
 		// (because PiP was keeping its show alive) and the user is
 		// now mounting a *different* show's player, flush the old
 		// show's prefetches now. Otherwise we'd run two shows'
-		// prefetches concurrently against the allmanga rate limit
+		// prefetches concurrently against the provider rate limit
 		// until PiP eventually closes. Same-show remounts are kept;
 		// the new component will take ownership.
 		fireDeferredCancelsExcept(id);
@@ -1707,10 +1707,13 @@
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
-	// Backend will see up to 12 concurrent ani-cli spawns; if allanime
-	// or local CPU complains, wire SCRAPER_CONCURRENCY (already on
-	// AppState) into run_debug. Today the semaphore is allocated but
-	// not acquired — bumping the radius is what surfaces the need.
+	// The backend does not see all of these at once. `play-cache.ts`
+	// caps background warms at PREFETCH_CONCURRENCY (2) and only a
+	// foreground click bypasses that, and the backend paces provider
+	// traffic again through ScraperGate, which spaces background
+	// admits and refuses them outright while its breaker is open.
+	// Widening the radius here changes how many are queued, not how
+	// many are in flight.
 	$effect(() => {
 		if (!detail || !config || !episodes) return;
 		// Wait for the airing answer — warming on mount with airing
@@ -1718,7 +1721,7 @@
 		if (airingIsPending) return;
 		// ...and for the availability probe, or the null playable cap
 		// reads as unbounded and the warm resolves padded tiles
-		// allmanga hasn't catalogued (Codex P2 #3566100686).
+		// the provider hasn't catalogued (Codex P2 #3566100686).
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
@@ -1729,10 +1732,10 @@
 			const targetEp = ep.number ?? ep.relative_number ?? null;
 			if (targetEp === null) continue;
 			// The strip now renders unaired tiles (stripCap) — skip
-			// them, and skip anything past allmanga's playable count:
+			// them, and skip anything past the provider's playable count:
 			// both are doomed resolutions the warm must not spend
 			// scraper slots on. beyondPlayable floor-compares so
-			// allmanga's own decimal extras stay warmable.
+			// the provider's own decimal extras stay warmable.
 			if (epAirState(targetEp, airing).unaired) continue;
 			if (beyondPlayable(targetEp, playableEpisodeCount)) continue;
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
@@ -1769,7 +1772,7 @@
 		// resolution, no matter who asked. While the airing lookup is
 		// in flight everything reads as aired (airing is null), so
 		// switches hold until the answer lands (Codex P2 #3565988145);
-		// aired-but-uncatalogued targets above allmanga's count are
+		// aired-but-uncatalogued targets above the provider's count are
 		// equally doomed (catalog lag).
 		// A delisted show comes back without a count, so the cap check
 		// below cannot catch it — the cap is whatever it already was.
@@ -1822,7 +1825,7 @@
 			// each gets its own shot. Resetting on a same-episode landing
 			// (the auto-recovery path, and the manual Reload path) would
 			// let chronically expired CDN URLs loop unbounded through
-			// eviction + resolve, hammering ani-cli and upstream until a
+			// eviction + resolve, hammering the resolver and upstream until a
 			// non-network error happens. See Codex P1 #3366915811.
 			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
 				hasAutoRetried = false;
@@ -1882,11 +1885,11 @@
 		}
 	}
 
-	/** Hand off to a fresh ani-cli resolve when the player layer fails
+	/** Hand off to a fresh resolve when the player layer fails
 	 *  on what looks like a stale upstream URL (4xx mid-stream, hls.js
 	 *  fatal networkError, <video> MEDIA_ERR_NETWORK). Drops the cache
 	 *  row server-side AND in memory, then re-runs switchToEpisode for
-	 *  the current ep — which cache-misses, runs ani-cli, swaps the
+	 *  the current ep — which cache-misses, resolves, swaps the
 	 *  session URL. LoadingOverlay shows naturally during the retry
 	 *  because switchBusy goes high inside switchToEpisode.
 	 *
@@ -2157,7 +2160,7 @@
 
 	// Download flow — opens the DownloadConfirm modal. The modal lets
 	// the user pick a destination folder (defaulting to the backend's
-	// download_dir resolver) before kicking off ani-cli -d. Once
+	// download_dir resolver) before kicking off the downloader. Once
 	// confirmed, the download lives in the global download store and
 	// surfaces in the topbar dock + bottom progress strip.
 	let downloadModalOpen = $state(false);
@@ -4742,9 +4745,9 @@
 	.ep-card-unaired .ep-card-thumb-play {
 		display: none;
 	}
-	/* Aired, but above allmanga's last reported count. Dimmed like an
+	/* Aired, but above the provider's last reported count. Dimmed like an
 	   unaired card, but it keeps the pointer and the play icon: the
-	   click re-asks allmanga and, when the count has caught up, plays
+	   click re-asks the provider and, when the count has caught up, plays
 	   the episode. Hiding the icon would advertise the opposite. */
 	.ep-card-recheck {
 		cursor: pointer;

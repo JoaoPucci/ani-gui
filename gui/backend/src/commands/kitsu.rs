@@ -423,11 +423,11 @@ pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str)
     )
 }
 
-/// Cache key for the reverse `allmanga show_id → kitsu_id` mapping.
+/// Cache key for the reverse `provider show_id → kitsu_id` mapping.
 /// Recorded on every successful play (where we know both ids) so
 /// the home-page Continue Watching strip can look up the right
 /// Kitsu entry by show_id instead of fuzzy-text-searching the
-/// possibly-typo'd allmanga title.
+/// possibly-typo'd provider title.
 ///
 /// Schema versions:
 /// - v1: original — populated whenever `resolve_allmanga_show_id`
@@ -459,13 +459,13 @@ fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
 }
 
-/// Read the cached `allmanga show_id → kitsu_id` mapping. Returns
+/// Read the cached `provider show_id → kitsu_id` mapping. Returns
 /// `None` on miss; SQLite errors propagate.
 pub fn allmanga_kitsu_get(state: &AppState, show_id: &str) -> Result<Option<String>> {
     meta_cache_get(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
 
-/// Persist an `allmanga show_id → kitsu_id` mapping. Same TTL as
+/// Persist an `provider show_id → kitsu_id` mapping. Same TTL as
 /// `title_match` (30d) — the mapping is as stable as Kitsu's id
 /// space, and re-puts on every successful play keep it fresh.
 pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
@@ -477,7 +477,7 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
-/// Evict a single `allmanga show_id → kitsu_id` mapping. Used by the
+/// Evict a single `provider show_id → kitsu_id` mapping. Used by the
 /// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
 /// row when the cached kitsu detail's slug disagrees with the history
 /// entry's cour suffix. SQLite errors propagate; a missing row is not
@@ -503,7 +503,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
             show_title = %show_title,
-            "play: allmanga→kitsu mapping rejected (cross-cour mismatch)",
+            "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
         return;
     }
@@ -512,13 +512,13 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
             error = ?e,
-            "play: allmanga→kitsu mapping write failed",
+            "play: provider→kitsu mapping write failed",
         );
     }
 }
 
 /// True when both sides carry positive cour evidence AND it
-/// disagrees. Missing evidence (Kitsu fetch failure; an allmanga
+/// disagrees. Missing evidence (Kitsu fetch failure; a provider
 /// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
 /// with `slug = None` entirely) returns false — step 0's frontend
 /// slug guard heals genuinely cross-cour rows on the next read,
@@ -536,21 +536,22 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let allmanga_cour = cour_from_title(show_title);
+    let provider_cour = cour_from_title(show_title);
     let kitsu_cour = detail
         .slug
         .as_deref()
         .map(|slug| cour_from_slug(slug).unwrap_or(1));
-    match (allmanga_cour, kitsu_cour) {
+    match (provider_cour, kitsu_cour) {
         (Some(a), Some(k)) => a != k,
         _ => false,
     }
 }
 
-/// Whether a Kitsu `subtype` is a music video. These never exist on allanime
-/// (it indexes anime episodes, not song clips), so the enrichment alias-walk
-/// skips them — otherwise an alias like "Idol" could resolve to, and persist,
-/// the YOASOBI MV's id. Case-insensitive; an absent subtype is not music.
+/// Whether a Kitsu `subtype` is a music video. A provider that indexes
+/// anime episodes has no song clips, so the reverse resolve's Kitsu
+/// search skips them — otherwise a search term like "Idol" resolves to
+/// the YOASOBI MV and persists its id into the reverse mapping.
+/// Case-insensitive; an absent subtype is not music.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype
         .map(|s| s.eq_ignore_ascii_case("music"))
@@ -662,8 +663,9 @@ async fn first_kitsu_match(
 /// Cache-key prefix for the per-show last-watched timestamp. Stamped
 /// on every GUI-driven `mark-watched` call; the home-page Continue
 /// Watching strip sorts by it descending so the user's most recent
-/// play surfaces first regardless of file position. CLI-only plays
-/// never stamp here, so those rows fall to the bottom of the strip
+/// play surfaces first regardless of file position. A play that
+/// resolved and never reached mark-watched — the user left before it
+/// fired — has no stamp, so its row falls to the bottom of the strip
 /// (still rendered, just demoted).
 const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
 
@@ -671,9 +673,9 @@ fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
 }
 
-/// Read the millis-since-epoch wall-clock timestamp for the last GUI
-/// play of `show_id`. Returns `None` for shows the user has only
-/// played via the CLI (or hasn't played at all).
+/// Read the millis-since-epoch wall-clock timestamp for the last
+/// marked-watched play of `show_id`. Returns `None` for a show whose
+/// plays never reached mark-watched, and for one never played.
 pub fn watched_at_get(state: &AppState, show_id: &str) -> Result<Option<i64>> {
     let body = meta_cache_get(&state.cache_pool, &watched_at_key(show_id))?;
     Ok(body.and_then(|s| s.parse::<i64>().ok()))
@@ -830,7 +832,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/ani-hsts"),
+            history_path: PathBuf::from("/y/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -1091,7 +1093,7 @@ mod tests {
         // Normalization makes "  STONE OCEAN  PART 2  " hash to the
         // same row as "stone ocean  part 2". (Inner whitespace is left
         // alone — only trim + lowercase — but that's enough to soak
-        // up the common variations from ani-cli's hsts.)
+        // up the common variations from the history file.)
         let state = state_with_kitsu_at("http://unused");
         title_match_put(&state, "Stone Ocean", 1, "id-1").expect("put");
         let got_lc = title_match_get(&state, "stone ocean", 1).expect("get lowercased");
@@ -1139,14 +1141,14 @@ mod tests {
         );
     }
 
-    // — allmanga → kitsu reverse mapping ——————————————————————————————
+    // — the provider → kitsu reverse mapping ——————————————————————————————
     //
-    // Forward direction (Kitsu canonical_title → allmanga show) works
-    // through ani-cli's lenient catalog search. The reverse — taking
-    // an allmanga title from `ani-hsts` and finding its Kitsu entry —
-    // is broken when allmanga has typos (e.g. "Nato: Shippuuden" for
+    // Forward direction (Kitsu canonical_title → the provider show) works
+    // through the provider's lenient catalog search. The reverse — taking
+    // a title from the history file and finding its Kitsu entry —
+    // is broken when the provider has typos (e.g. "Nato: Shippuuden" for
     // Naruto), because Kitsu's text search isn't fuzzy and returns
-    // unrelated first hits. So we record the (allmanga show_id →
+    // unrelated first hits. So we record the (provider show_id →
     // kitsu_id) pair on every successful play (where we know both
     // ids) and the home page reads it directly by show_id.
 
@@ -1170,7 +1172,7 @@ mod tests {
     #[test]
     fn allmanga_kitsu_cache_overwrites_on_re_put() {
         // If the user navigates to a different Kitsu entry for the
-        // same allmanga show (e.g. they corrected their pick), the
+        // same provider show (e.g. they corrected their pick), the
         // newer mapping wins.
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "abc", "old-kitsu").expect("put old");
@@ -1198,18 +1200,17 @@ mod tests {
 
     // — resolve_allmanga_show_id: end-to-end orchestration ——————————
     //
-    // The full chain (allmanga `Show` GraphQL → walk aliases → Kitsu
-    // text search → cache result) is exercised against a MockServer
-    // whose URI we stamp into BOTH the Kitsu client base AND the
-    // allanime base override (via state_with_kitsu_at hijacking the
-    // Kitsu client; the allanime call uses state.meta_http with no
-    // override, so production prod plumbing isn't exercised here —
-    // see the green commit for the with_bases helper that threads a
-    // test override into the allanime call too).
+    // The chain is: stored reverse mapping → a Kitsu text search built
+    // from a slug's own words → cache the result. Exercised against a
+    // MockServer whose URI is stamped into the Kitsu client base via
+    // `state_with_kitsu_at`. There is no second upstream to stub: the
+    // step that once fetched the provider's aliases went away with the
+    // provider, so an id that is not slug-shaped now ends the chain
+    // rather than starting a fetch.
 
     #[tokio::test]
     async fn resolve_allmanga_show_id_short_circuits_on_reverse_cache_hit() {
-        // When the reverse mapping already exists, no allmanga or
+        // When the reverse mapping already exists, no provider or
         // Kitsu HTTP fires — the cached kitsu_id resolves through
         // anime_detail and returns. State has no mock servers
         // attached, so the test verifies the pure cache hit by
@@ -1238,19 +1239,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_allmanga_show_id_returns_none_when_no_cache_and_no_aliases() {
-        // No reverse cache entry; allmanga (real) call is presumed to
-        // return nothing meaningful for a synthetic id. The contract
-        // is "fail soft" — Ok(None), not an error, so Continue
-        // Watching can still render the bare allmanga title.
+    async fn an_unmapped_legacy_row_fails_soft_without_searching() {
+        // No reverse mapping, and the id is not slug-shaped — no
+        // numeric tail — so there are no words to search Kitsu with.
+        // That is a row from the retired provider, whose alias source
+        // went away with it, and the contract is to fail soft: Ok(None)
+        // rather than an error, so Continue Watching still renders the
+        // bare history title.
+        //
+        // Kitsu points at a closed port, which is the assertion's other
+        // half: reaching it at all would be a connection error, so
+        // Ok(None) is also evidence that nothing was searched.
         let state = state_with_kitsu_at("http://127.0.0.1:1");
         let got = resolve_allmanga_show_id(&state, "this-id-will-not-resolve", false).await;
-        // Either Ok(None) (no aliases, no Kitsu match) or Ok(Some(_))
-        // is acceptable — we only assert the call doesn't panic and
-        // doesn't surface a network error to the caller. Stub returns
-        // Ok(None); the green-commit impl returns Ok(None) for this
-        // synthetic id too.
-        assert!(got.is_ok(), "resolver must not error: {got:?}");
+        assert!(
+            matches!(got, Ok(None)),
+            "an unmapped legacy row resolves to nothing, quietly: {got:?}"
+        );
     }
 
     #[tokio::test]
@@ -1259,8 +1264,9 @@ mod tests {
         // and REJECTED the reverse row (e.g. a count-incompatible binding). With
         // bypass_cache=true the resolver must NOT short-circuit on that same row,
         // or the just-rejected id round-trips straight back. Cache is seeded and
-        // /anime/12 is mocked; bypass means neither is consulted — the alias-walk
-        // (Kitsu search unmocked) finds nothing and fails soft to Ok(None).
+        // /anime/12 is mocked; bypass means neither is consulted. The id is not
+        // slug-shaped, so no search follows either — it is a row from the retired
+        // provider, whose alias source went with it, and it fails soft to Ok(None).
         let mock = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/anime/12"))
@@ -1318,9 +1324,10 @@ mod tests {
 
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
-        // The enrichment alias-walk must skip music-video hits (a YOASOBI
-        // "Idol" MV) so it never returns or persists one — music can't exist
-        // on allanime. Streamable subtypes and an absent subtype pass.
+        // The reverse resolve's Kitsu search must skip music-video hits
+        // (a YOASOBI "Idol" MV) so it never returns or persists one — the
+        // provider has no song clips. Streamable subtypes and an absent
+        // subtype pass.
         assert!(is_music_subtype(Some("music")));
         assert!(is_music_subtype(Some("Music")));
         assert!(!is_music_subtype(Some("TV")));
@@ -1330,12 +1337,21 @@ mod tests {
 
     // — Watched-at timestamps for Continue Watching ordering ——————————
     //
-    // ani-hsts is keyed by show_id and only stores ep_no/title — no
+    // The history file is keyed by show_id and only stores ep_no/title — no
     // timestamps. The file's row order reflects "first time played"
-    // (in-place updates don't move rows). To render Continue Watching
+    // (in-place updates don't move rows), so to render Continue Watching
     // most-recently-watched-first we record a per-show_id wall-clock
-    // millis timestamp on every GUI play. CLI plays bypass this; their
-    // entries fall to the bottom of the strip ordered by file position.
+    // millis timestamp beside it.
+    //
+    // A row and its stamp are written by different requests. The row
+    // goes in when the stream resolves; the stamp is written by the
+    // click-side mark-watched handler. So an unstamped row is one that
+    // resolved and never reached mark-watched — the user left before it
+    // fired — or one whose stamp write failed, which is logged and
+    // swallowed because the play itself succeeded.
+    //
+    // Not the CLI: its history is a different file and nothing imports
+    // from it, so no CLI play can reach this ordering at all.
 
     #[test]
     fn watched_at_round_trips_for_a_given_show_id() {

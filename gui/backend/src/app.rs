@@ -55,7 +55,7 @@ pub struct AppState {
     /// the diagnostics page so the removal is visible rather than
     /// silent.
     pub legacy_sweep: crate::legacy_script::SweepReport,
-    /// Path of the shared history file.
+    /// Path of the app's watch-history file.
     pub history_path: PathBuf,
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).
@@ -336,8 +336,8 @@ mod tests {
     #[test]
     fn resolve_bundled_bin_returns_some_when_bin_subdir_exists() {
         // Production shape: <resource_dir>/bin holds the bundled
-        // POSIX deps. Helper returns Some(<resource_dir>/bin) so
-        // compose_anicli_path can prepend it.
+        // tools. Helper returns Some(<resource_dir>/bin) so the
+        // spawn paths can put it ahead of the caller's PATH.
         let td = tempfile::tempdir().expect("tempdir");
         let bin = td.path().join("bin");
         std::fs::create_dir(&bin).expect("mkdir bin");

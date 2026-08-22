@@ -58,5 +58,10 @@
 	"error_ffmpeg_missing_body_win32": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установщик обычно загружает его при установке — запустите установщик ещё раз с подключением к Интернету или установите ffmpeg вручную.",
 	"error_ffmpeg_missing_body_linux": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через менеджер пакетов вашего дистрибутива — например `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) или `sudo pacman -S ffmpeg` (Arch).",
 	"error_ffmpeg_missing_body_darwin": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через Homebrew командой `brew install ffmpeg` или загрузите сборку вручную.",
-	"error_ffmpeg_missing_action_label": "Скачать ffmpeg"
+	"error_ffmpeg_missing_action_label": "Скачать ffmpeg",
+	"status_already_here": "Этот эпизод уже есть в этой папке; существующий файл сохранён.",
+	"status_abandoned_claim": "Прерванная загрузка оставила пустой файл: {path}; удалите его и попробуйте снова.",
+	"status_claim_pending": "Другая загрузка ещё записывает {path}; попробуйте снова чуть позже.",
+	"status_repackage_retry": "yt-dlp не смог переупаковать поток; повторная попытка через ffmpeg.",
+	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg."
 }

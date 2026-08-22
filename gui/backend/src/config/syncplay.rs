@@ -14,7 +14,7 @@
 /// - Windows: `"C:\\Program Files\\Syncplay\\Syncplay.exe"`. The
 ///   official NSIS installer doesn't touch %PATH%, so falling back
 ///   to bare `"syncplay"` would fail spawn for the vast majority of
-///   Windows users with a default install. The vendored ani-cli
+///   Windows users with a default install. The vendored script
 ///   script handles this the same way (lines 504-509) by hard-
 ///   coding `C:\Program Files (x86)\Syncplay\`; the 64-bit
 ///   installer landed on the non-(x86) path years ago, so we

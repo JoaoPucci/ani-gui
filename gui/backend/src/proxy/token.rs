@@ -2,7 +2,7 @@
 //!
 //! ## Design
 //!
-//! When the backend resolves a stream URL (via [`crate::anicli::process::run_debug`])
+//! When the backend resolves a stream URL (see `commands::play`)
 //! it creates a [`StreamSession`] and stores it in a process-global table
 //! keyed by [`SessionId`] (a UUID). The session holds the upstream master
 //! URL, the `Referer:` header the CDN requires, and a TTL.
@@ -139,7 +139,7 @@ impl Default for SessionId {
 pub struct StreamSession {
     /// Session identifier (used as the path segment in proxy URLs).
     pub id: SessionId,
-    /// Upstream master playlist or mp4 URL we resolved via ani-cli.
+    /// Upstream master playlist or mp4 URL resolution produced.
     pub upstream_url: url::Url,
     /// What the proxy should do with `upstream_url` — rewrite a manifest
     /// or stream bytes through with `Range` forwarding. The frontend
@@ -322,7 +322,7 @@ mod tests {
         AppSecret::from_bytes([7u8; 32])
     }
 
-    /// ani-cli's "Selected link:" can be either an HLS master playlist
+    /// A selected link can be either an HLS master playlist
     /// (`*.m3u8`) or a direct MP4 (`*.mp4` from wixmp/sharepoint/etc).
     /// The proxy needs to know which so it can either rewrite the
     /// manifest or stream the bytes through with `Range` support; the

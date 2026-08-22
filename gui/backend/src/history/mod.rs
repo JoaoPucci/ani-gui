@@ -1,15 +1,19 @@
-//! Reader and writer for the shared `ani-hsts` history file.
+//! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
 //!     <ep_no>\t<id>\t<title>
 //!
-//! `ani-cli`'s `update_history` function (in the script) reads/writes this
-//! file with atomic semantics: write to `path.new`, then rename. Tests in
-//! `tests/bash/network/update_history.bats` characterize that contract.
-//! The Rust reader/writer here must produce byte-identical output so a
-//! user alternating between CLI and GUI sees a single coherent history.
+//! The line format is the one the script's `update_history` uses, and
+//! so are the atomic semantics: write to `path.new`, then rename. Tests
+//! in `tests/bash/network/update_history.bats` characterize that
+//! contract, and the reader here is written against the same shape.
 //!
-//! Path resolution lives in [`crate::config::paths::ani_cli_history`].
+//! The two no longer share a file. The 5.0 CLI re-keyed its history
+//! onto provider slugs and backs the old one up on its own first run,
+//! so the app keeps its own under its state dir. What is still shared
+//! is the format, which is why the bats characterization stays useful.
+//!
+//! Path resolution lives in [`crate::config::paths::gui_history`].
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -22,20 +26,29 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched. `ani-cli` writes this back
-    /// after each play, so on next launch the GUI's "Continue Watching"
-    /// row knows where to resume.
+    /// Episode number the user last watched, in the provider's
+    /// numbering. Written after each play — by
+    /// `play_native_record::write_history` on a fresh resolve, and
+    /// directly by `play::write_history_on_cache_hit` when the
+    /// resolution came from cache — so on the next launch the
+    /// "Continue Watching" row knows where to resume.
     pub ep_no: String,
-    /// Allanime show id.
+    /// The provider's show id — a slug on every row written since the
+    /// migration. Older rows carry the retired provider's opaque id
+    /// instead, which is why the reverse resolver still has a branch
+    /// for an id it cannot derive a search term from.
     pub id: String,
-    /// Display title (typically `"<name> (<n> episodes)"`).
+    /// Display title, as the provider's own card gives it. Rows
+    /// written before the migration carry a `"(<n> episodes)"` tail
+    /// the writer of the day appended; nothing appends one now, and
+    /// the frontend strips it where it finds it.
     pub title: String,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
 ///
 /// A missing file returns `Ok(vec![])`. Malformed lines are silently
-/// dropped — `ani-cli`'s shell parser does the same when the column count
+/// dropped — the script's shell parser does the same when the column count
 /// doesn't match.
 ///
 /// # Errors
@@ -66,7 +79,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
 }
 
 /// Serialize entries back to the TSV body. Each line ends with `\n`,
-/// including the last one (matches what `ani-cli` writes via its
+/// including the last one (matches what the script writes via its
 /// `printf "%s\t%s\t%s\n"` line in `update_history`).
 #[must_use]
 pub fn serialize(entries: &[HistoryEntry]) -> String {
@@ -85,7 +98,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 /// Insert or update an entry, matching by `id`. If `id` is already in the
 /// vector, that entry's `ep_no` and `title` are replaced; otherwise the
 /// new entry is appended. The vector is mutated in place. Mirrors
-/// `update_history`'s semantics from `ani-cli`.
+/// `update_history`'s semantics from the script.
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
@@ -103,7 +116,7 @@ pub fn remove_by_id(entries: &mut Vec<HistoryEntry>, id: &str) -> bool {
 }
 
 /// Atomically write the entire history file. Implemented as `path.new` +
-/// rename, exactly as `ani-cli`'s `update_history` does. The `.new`
+/// rename, exactly as the script's `update_history` does. The `.new`
 /// sidecar is unlinked before this function returns successfully (the
 /// final `rename` overwrites the original atomically on Unix).
 ///
@@ -288,10 +301,10 @@ mod tests {
 
     #[test]
     fn serialize_byte_identical_to_bash_fixture() {
-        // Cross-stack contract: ani-cli's update_history writes
+        // Format contract: the script's update_history writes
         //     printf "%s\t%s\t%s\n" "$ep_no" "$id" "$title"
         // Our serialize() must produce byte-identical output for the same
-        // logical entries so a user alternating between CLI and GUI sees
+        // logical entries so a reader of either file sees
         // one coherent history file.
         let entries = vec![
             HistoryEntry {
@@ -318,7 +331,7 @@ mod tests {
     #[test]
     fn write_atomic_round_trips_disk_to_memory() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let entries = vec![sample_entry("a", "1"), sample_entry("b", "2")];
         write_atomic(&path, &entries).unwrap();
         let back = read_all(&path).unwrap();
@@ -330,7 +343,7 @@ mod tests {
     #[test]
     fn write_atomic_creates_parent_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("nested/dir/ani-hsts");
+        let path = tmp.path().join("nested/dir/history");
         let entries = vec![sample_entry("a", "1")];
         write_atomic(&path, &entries).unwrap();
         assert!(path.exists());
@@ -339,7 +352,7 @@ mod tests {
     #[test]
     fn upsert_and_write_creates_then_updates() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
 
         upsert_and_write(&path, sample_entry("a", "1")).unwrap();
         upsert_and_write(&path, sample_entry("b", "2")).unwrap();
@@ -364,11 +377,15 @@ mod tests {
 
     // — Properties ────────────────────────────────────────────────────
     //
-    // The TSV format is shared with the bash `ani-cli` script — both
-    // have to agree on what the file means. Roundtripping (serialize
-    // then parse) is the load-bearing invariant: if it ever breaks,
-    // history written by the GUI silently disappears the next time
-    // the CLI loads the file (or vice versa).
+    // The line format is the one the bash script uses, characterized
+    // from it and kept deliberately. The files are separate — the GUI
+    // owns `<state_dir>/history` and the script keeps its own — so
+    // nothing here can make one side's rows vanish from the other's
+    // file. What roundtripping (serialize then parse) protects is this
+    // module against itself: a serializer and parser that disagree
+    // lose the user's own history on the next load, and a format that
+    // drifts from the characterized one loses the reason these rules
+    // are what they are.
     use proptest::prelude::*;
 
     /// Generate a single field that's safe to put in a TSV row.
@@ -377,8 +394,8 @@ mod tests {
     /// separators, and `\r` because Rust's `str::lines()` (which
     /// `parse` uses) strips a trailing `\r` from each line as part
     /// of CRLF normalization — so a title containing `\r` wouldn't
-    /// roundtrip. The bash CLI on Linux writes pure `\n`, so this
-    /// set of constraints matches the format we share with it.
+    /// roundtrip. The writer here emits pure `\n`, so these
+    /// constraints are the ones the format actually imposes.
     fn tsv_field(min_len: usize, max_len: usize) -> impl Strategy<Value = String> {
         proptest::collection::vec(any::<char>(), min_len..=max_len)
             .prop_filter("no tabs, newlines, or carriage returns", |chars| {
@@ -398,7 +415,7 @@ mod tests {
         /// `parse(serialize(entries)) == entries` for any well-formed
         /// vector. The format has no escaping, so the property only
         /// holds when fields are TSV-clean (no embedded tabs/newlines)
-        /// — exactly what the bash CLI produces.
+        /// — which `serialize` is what guarantees.
         #[test]
         fn parse_serialize_roundtrip(
             entries in proptest::collection::vec(entry_strategy(), 0..16),
@@ -409,9 +426,9 @@ mod tests {
         }
 
         /// `upsert` is idempotent on the same entry: applying it twice
-        /// produces the same vector as applying it once. The CLI relies
-        /// on this — replaying the same play action mustn't multiply
-        /// rows.
+        /// produces the same vector as applying it once. Every writer
+        /// here relies on it — replaying the same play action, or
+        /// marking an episode watched twice, mustn't multiply rows.
         #[test]
         fn upsert_is_idempotent(
             initial in proptest::collection::vec(entry_strategy(), 0..8),

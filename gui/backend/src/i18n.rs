@@ -5,7 +5,10 @@
 //!
 //! Keys are organized by surface:
 //!
-//! - `error.scraper.*` — failures from the ani-cli subprocess
+//! - `error.scraper.*` — a malformed body or a deadline, from
+//!   whichever layer hit it. The name says resolution and the grouping
+//!   no longer does: both remaining keys are cross-cutting, and a
+//!   download reaches each of them.
 //! - `error.search.*` — search-specific outcomes
 //! - `error.network.*` — HTTP / TLS / connectivity
 //! - `error.cache.*` — SQLite + on-disk image cache
@@ -25,10 +28,17 @@ pub mod keys {
     pub const CONFIG_PARSE: &str = "error.config.parse";
 
     // --- error.download.* ---
-    /// Download mode requires `ffmpeg` (HLS → MP4 mux). The variant
-    /// surfaces it before the ani-cli spawn so the frontend can
-    /// render a clear modal pointing at ffmpeg.org/download instead
-    /// of a generic failure.
+    /// A download needs yt-dlp or ffmpeg to turn the HLS stream into
+    /// an MP4, and neither is installed. `download_with_tools` refuses
+    /// on this before it resolves anything, so the frontend's install
+    /// modal is what the user meets rather than a generic failure a
+    /// provider walk got to first. A yt-dlp run that cannot repackage
+    /// reaches it by the same test: ffmpeg is tried first, and this is
+    /// what is left when there is none.
+    ///
+    /// The name predates yt-dlp becoming an accepted alternative; the
+    /// key is what the frontend keys its modal on, so renaming it is a
+    /// frontend change too.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
 
     // --- error.io.* ---
@@ -46,22 +56,16 @@ pub mod keys {
     pub const NETWORK_UPSTREAM: &str = "error.network.upstream";
 
     // --- error.scraper.* ---
-    /// `ani-cli` binary not found.
-    pub const SCRAPER_MISSING_BINARY: &str = "error.scraper.missing_binary";
-    /// A tool the app shells out to is missing on this machine. A
-    /// local setup problem that says nothing about the provider's
-    /// health, so the gate's outcome recorders must ignore it
-    /// (unlike the parse-failed catch-all, which counts).
-    pub const SCRAPER_MISSING_DEP: &str = "error.scraper.missing_dep";
-    /// `ani-cli` stdout could not be parsed.
+    /// Something the app read did not have the shape it expected.
+    /// `AniError::ParseFailed` maps here from the metadata clients,
+    /// the provider parsers, the proxy's manifest rewriter and session
+    /// URL parsing; `AniError::Scraper` maps here too, and the only
+    /// thing that constructs it is a download tool exiting non-zero.
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
-    /// ani-cli's "Episode not released" verdict — a content-level
-    /// answer, not infrastructure trouble. Carries its own key so the
-    /// scraper gate's outcome recorder can tell it apart from the
-    /// generic non-zero-exit catch-all (which includes curl transport
-    /// deaths and must count toward the breaker).
-    pub const SCRAPER_EPISODE_NOT_RELEASED: &str = "error.scraper.episode_not_released";
-    /// `ani-cli` subprocess exceeded its timeout.
+    /// A deadline elapsed. `AniError::Timeout` maps here from a
+    /// bounded resolve, an availability probe, and a download whose
+    /// transfer ran past its hour — the last of which has nothing to
+    /// do with a provider.
     pub const SCRAPER_TIMEOUT: &str = "error.scraper.timeout";
 
     // --- error.search.* ---
@@ -90,8 +94,6 @@ mod tests {
             METADATA_SOURCE,
             NETWORK_UNREACHABLE,
             NETWORK_UPSTREAM,
-            SCRAPER_MISSING_BINARY,
-            SCRAPER_MISSING_DEP,
             SCRAPER_PARSE_FAILED,
             SCRAPER_TIMEOUT,
             SEARCH_NO_RESULTS,

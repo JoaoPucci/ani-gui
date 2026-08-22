@@ -7,7 +7,7 @@
 //! one episodes call per considered candidate. The probe set is
 //! bounded: real queries put the right show in the first few hits,
 //! and every probe is an upstream request. Within the probed set the
-//! proven layers from the allanime picker apply — episode-count
+//! proven layers from the provider picker apply — episode-count
 //! distance with the `max(3, 10%)` threshold, then an exact-name
 //! tie-break — minus the year filter, which waits until a live
 //! capture confirms where the browse markup carries a year.
@@ -50,7 +50,7 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
 }
 
 /// Distance tolerance: long-running shows get proportional slack,
-/// short shows a hard floor of 3 — the same rule the allanime picker
+/// short shows a hard floor of 3 — the same rule the provider picker
 /// converged on after the sibling-mispick rounds.
 pub fn ep_count_threshold(expected: u32) -> u32 {
     (expected / 10).max(3)

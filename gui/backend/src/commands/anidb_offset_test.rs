@@ -29,12 +29,12 @@ fn make_state() -> crate::app::AppState {
     // Leak the tempdir so the per-test history path stays alive; the
     // OS reclaims it after the test process exits.
     let dir = Box::leak(Box::new(tmp));
-    make_state_at(dir.path().join("ani-hsts"))
+    make_state_at(dir.path().join("history"))
 }
 
 #[test]
 fn display_stamps_round_trip_and_survive_offset_puts() {
-    // The stamp maps the CLI-visible slot to the row's display tag.
+    // The stamp maps the stored slot to the row's display tag.
     // An offset-only re-stamp (every fresh resolve writes one) must
     // not erase it — the last fractional watch stays translatable.
     let state = make_state();
@@ -58,8 +58,8 @@ fn writes_map_a_stamped_display_back_to_its_slot() {
     // The mark-watched and cache-hit writers have no listing at
     // hand: when the requested episode names the stamped display
     // tag — by numeric identity, since the frontend normalizes
-    // "3.50" to "3.5" — the shared file gets the slot the CLI can
-    // grep. Everything else keeps the offset translation.
+    // "3.50" to "3.5" — the stored row gets the slot a resume looks
+    // up. Everything else keeps the offset translation.
     let state = make_state();
     put_display(&state, "the-show-77", 0, 4, "3.50");
     assert_eq!(write_ep_no(&state, "the-show-77", "3.5", 0), "4");
@@ -72,7 +72,7 @@ fn writes_map_a_stamped_display_back_to_its_slot() {
 
 #[test]
 fn reads_present_the_stamped_display_per_entry() {
-    // The read boundary turns the CLI-visible slot back into the
+    // The read boundary turns the stored slot back into the
     // per-entry display the GUI counts in: "4" with stamp (4, "3.5")
     // reads as 3.5; a tagged continuation's slot 2 under (2, "41.5")
     // at offset 40 reads as 1.5; rows not matching the stamp keep
@@ -88,17 +88,24 @@ fn reads_present_the_stamped_display_per_entry() {
 }
 
 #[test]
-fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
-    // config/paths.rs gives debug and packaged builds separate cache
-    // databases while ani-hsts stays shared. An offset persisted in
-    // the profile-local cache is invisible to the other profile: the
-    // packaged app writes provider episode 41 with offset 40, the
-    // source-built GUI reads the same shared history row, finds no
-    // stamp, and shows episode 41 — and deleting the XDG cache has
-    // the same effect. The translation lives beside the history file
-    // it makes readable.
+fn offsets_follow_the_history_file_they_translate() {
+    // Why the store is a file beside the history rather than a cache
+    // row: it has to reach whoever reads that history, and last as
+    // long as the rows do. An offset kept in the cache database is
+    // scoped to the cache instead — a different profile's database, or
+    // a cleared one — and a row it cannot reach shows the provider's
+    // episode 41 where the user expects 1.
+    //
+    // Two states are given the same history path here, which is the
+    // whole property: the store is keyed to that file and nothing
+    // else. Not a claim about profiles — `paths::app_name` puts a
+    // debug build under `ani-gui-dev`, so a source build and a
+    // packaged one have different history files and share nothing by
+    // default. What makes them meet is being pointed at one file,
+    // which `ANI_GUI_DEV` does across builds and two instances of one
+    // build do by existing.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let packaged = make_state_at(history.clone());
     let dev = make_state_at(history);
     put(&packaged, "the-sequel-88", 40);
@@ -107,13 +114,13 @@ fn offsets_are_shared_across_profiles_like_the_history_they_translate() {
 
 #[test]
 fn puts_create_the_store_directory_on_a_fresh_profile() {
-    // On a fresh profile $XDG_STATE_HOME/ani-cli does not exist yet:
+    // On a fresh profile the state dir does not exist yet:
     // the first continuation-cour resolve reaches the offset write
     // BEFORE the history writer creates the directory, so a put that
     // assumes the parent silently loses the stamp — and the cached
     // resolution keeps the loss alive for the row's whole TTL.
     let tmp = tempfile::tempdir().expect("tmp");
-    let state = make_state_at(tmp.path().join("ani-cli").join("ani-hsts"));
+    let state = make_state_at(tmp.path().join("ani-gui").join("history"));
     put(&state, "the-sequel-88", 40);
     assert_eq!(get(&state, "the-sequel-88"), 40);
 }
@@ -125,7 +132,7 @@ fn concurrent_puts_keep_every_stamp() {
     // consume its temp file), and the lost show's history starts
     // exposing provider numbering. The whole sequence holds a lock.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let state = std::sync::Arc::new(make_state_at(history));
     let mut handles = Vec::new();
     for t in 0..16u32 {
@@ -163,7 +170,7 @@ fn puts_exclude_each_other_across_processes_via_the_file_lock() {
     // plays the second process by taking that lock on its own
     // handle: the put must wait for it.
     let tmp = tempfile::tempdir().expect("tmp");
-    let history = tmp.path().join("ani-hsts");
+    let history = tmp.path().join("history");
     let state = make_state_at(history.clone());
     let lock_path = history.with_file_name("ani-gui-offsets.lock");
     let foreign = std::fs::OpenOptions::new()
@@ -220,10 +227,9 @@ fn put_and_get_round_trip_including_updates() {
 fn fractional_episodes_translate_like_integers() {
     // The native resolve translates a clicked per-entry "1.5" to
     // provider tag "41.5"; the history writer must speak the same
-    // provider numbering or ani-cli's process_hist_entry, which
-    // searches the provider list for the stored tag exactly, no
-    // longer recognizes the shared row. The read boundary maps it
-    // back for the GUI.
+    // provider numbering or the resume lookup, which searches the
+    // provider list for the stored tag exactly, no longer recognizes
+    // the row it wrote. The read boundary maps it back for display.
     assert_eq!(provider_ep_no("1.5", 40), "41.5");
     assert_eq!(kitsu_ep_no("41.5", 40), "1.5");
     // At or below the offset the stamp doesn't describe this row —

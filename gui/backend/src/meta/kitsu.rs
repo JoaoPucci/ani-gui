@@ -45,14 +45,14 @@ pub struct KitsuAnimeRef {
     pub canonical_title: String,
     /// Localized title variants Kitsu serves under `attributes.titles`.
     /// Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp` (kana).
-    /// Used by the play flow to retry allmanga lookups under the romanized
+    /// Used by the play flow to retry provider lookups under the romanized
     /// form when the canonical (often English) name doesn't match its
     /// index — see `commands/play.rs`. Always present, possibly empty.
     pub titles: HashMap<String, String>,
     /// Romanized mashup aliases Kitsu serves under
     /// `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
     /// 5DS"`). Separate from the localized `titles` map and often the
-    /// ONLY string allmanga's fuzzy index resolves to the right show
+    /// ONLY string the provider's fuzzy index resolves to the right show
     /// when the canonical/localized names surface a wrong sibling — so
     /// the play/availability resolver appends them as last-resort
     /// fallback queries (see `altTitlesFromKitsu`). Always present,
@@ -243,7 +243,7 @@ where
     }
 }
 
-/// allanime / ani-cli never index music videos, so a Kitsu `subtype ==
+/// The provider never indexes music videos, so a Kitsu `subtype ==
 /// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
 /// to playback. Drop these from every list surface so they never appear
 /// as a pickable card. Detail-by-id (`parse_anime_response`) is
@@ -277,7 +277,7 @@ fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
             .filter_map(|(k, v)| v.map(|s| (k, s)))
             .collect(),
         // Drop empty / whitespace-only aliases so the resolver never
-        // fires a junk allanime query.
+        // fires a junk provider query.
         abbreviated_titles: r
             .attributes
             .abbreviated_titles
@@ -838,7 +838,7 @@ mod tests {
     fn parse_search_extracts_abbreviated_titles() {
         // Kitsu carries romanized mashup aliases under `abbreviatedTitles`
         // (separate from the localized `titles` map). For some shows —
-        // Yu-Gi-Oh! 5D's — one of these is the ONLY string allmanga's
+        // Yu-Gi-Oh! 5D's — one of these is the ONLY string the provider's
         // fuzzy search resolves to the right series, so the resolver needs
         // them as fallback queries. Parse them through to the ref.
         let body = r#"{"data":[
@@ -874,7 +874,7 @@ mod tests {
 
     #[test]
     fn parse_search_drops_music_subtype_entries() {
-        // ani-cli / allanime never indexes music videos (the YOASOBI
+        // The provider never indexes music videos (the YOASOBI
         // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
         // resolve to playback. It must not appear in ANY list surface —
         // search, trending, and top-rated all route through here.
@@ -938,8 +938,8 @@ mod tests {
     fn parse_search_surfaces_titles_map_with_localized_variants() {
         // Kitsu serves `attributes.titles: { en, en_jp, ja_jp[, en_us] }`
         // alongside `canonicalTitle`. The play flow needs the romanized
-        // (`en_jp`) variant to retry allmanga searches when the canonical
-        // (often English) title doesn't appear in allmanga's index —
+        // (`en_jp`) variant to retry provider searches when the canonical
+        // (often English) title doesn't appear in the provider's index —
         // Stone Ocean Part 6 reproduces this. Without the titles map
         // surfaced on the public ref, the retry has nothing to fall back
         // to and the user sees an empty results list.
@@ -1192,7 +1192,7 @@ mod tests {
         // The MAL→Kitsu bridge (lookup_by_mal_id) feeds both the AniList
         // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
         // mapping to a Kitsu `subtype: music` item must not surface there —
-        // music can never resolve on allanime — so the mappings parser
+        // music can never resolve on the provider — so the mappings parser
         // returns None for it (the single chokepoint for every bridge).
         let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
             "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;

@@ -299,9 +299,9 @@ describe('pickKitsuMatch', () => {
 		// picker locks onto Doraemon, persists the title-match cache,
 		// and Continue Watching renders the wrong show forever. With
 		// the filter Doraemon is rejected (1 vs 366 — way outside
-		// tolerance) and the picker falls through; the alias
-		// enrichment path (englishName "Bleach") then resolves
-		// correctly.
+		// tolerance) and the picker falls through; the enrichment step,
+		// which resolves from the show id rather than the title, then
+		// gets its turn.
 		const r = resolveHistoryEntry(entry('Burichi - (366 episodes)', '2'), null);
 		const hits = [
 			titledCountedHit('doraemon14', 'Doraemon Movie 14: Nobita to Buriki no Labyrinth', 1),
@@ -312,7 +312,7 @@ describe('pickKitsuMatch', () => {
 
 	it('passes hits whose episode count is close to courSize', () => {
 		// Off-by-one episode-count differences are common (Kitsu
-		// counts a recap, allmanga doesn't). Accept those.
+		// counts a recap, the provider doesn't). Accept those.
 		const r = resolveHistoryEntry(entry('Bleach (366 episodes)', '2'), null);
 		const hits = [
 			titledCountedHit('right', 'BLEACH', 367),
@@ -343,13 +343,12 @@ describe('pickKitsuMatch', () => {
 		expect(pickKitsuMatch(hits, r)?.id).toBe('ongoing');
 	});
 
-	it('accepts ongoing shows where allmanga lags behind Kitsu announced count', () => {
-		// Re:Zero S4: allmanga reports 5 streamable episodes, Kitsu's
+	it('accepts ongoing shows where the provider lags behind Kitsu announced count', () => {
+		// Re:Zero S4: The provider reports 5 streamable episodes, Kitsu's
 		// announced total is 19. Without the asymmetric rule the
 		// strict ratio (14/5 = 2.8) rejected the correct match,
-		// forcing the resolver into alias enrichment where Kitsu's
-		// text-search for the englishName returned an unrelated
-		// fuzzy hit (Genjitsu Shugi). The asymmetric branch lets
+		// forcing the resolver into enrichment, where a Kitsu text
+		// search returned an unrelated fuzzy hit (Genjitsu Shugi). The asymmetric branch lets
 		// the legitimate ongoing match through.
 		const r = resolveHistoryEntry(
 			entry('Re:Zero kara Hajimeru Isekai Seikatsu Season 4 (5 episodes)', '1'),
@@ -384,11 +383,11 @@ describe('pickKitsuMatch', () => {
 
 	it('rejects huge-gap ongoing-shape mismatches (20 vs 400)', () => {
 		// Pre-refactor the 0.95 ratio cap let this through: courSize
-		// 20 vs kitsu 400 = 380/400 = 0.95 → accepted as "allmanga
+		// 20 vs kitsu 400 = 380/400 = 0.95 → accepted as "the provider
 		// catching up." That's a 20× franchise gap and almost
 		// certainly the wrong show. The absolute-cap rule (diff ≤ 50)
 		// rejects cleanly; the resolver then falls through to the
-		// alias-enrichment path. Pin to lock in the upper bound.
+		// enrichment step. Pin to lock in the upper bound.
 		const r = resolveHistoryEntry(entry('Some Cour (20 episodes)', '1'), null);
 		const hits = [
 			titledCountedHit('wrong-huge', 'Unrelated Long Franchise', 400),
@@ -415,15 +414,15 @@ describe('pickKitsuMatch', () => {
 		// almost certainly has a known Kitsu episode_count, so a
 		// null-count match for courSize > 50 is overwhelmingly a
 		// poisoned mapping pointing at an unrelated short entry.
-		// Reject so resolveKitsuMatch falls through to the alias-
-		// enrichment path and re-resolves correctly.
+		// Reject so resolveKitsuMatch falls through to the enrichment
+		// step and re-resolves correctly.
 		const r = resolveHistoryEntry(entry('Naruto (220 episodes)', '1'), null);
 		const hits = [titledCountedHit('duan-nao-2', 'Duan Nao 2', null)];
 		expect(pickKitsuMatch(hits, r)).toBeNull();
 	});
 
 	it('accepts within ±25% tolerance for long-running shows', () => {
-		// Long shows (Naruto, One Piece) have wide allmanga ↔ Kitsu
+		// Long shows (Naruto, One Piece) have wide the provider ↔ Kitsu
 		// drift because Kitsu sometimes splits filler arcs into
 		// separate entries. 220 vs 200 should still match.
 		const r = resolveHistoryEntry(entry('Naruto (220 episodes)', '1'), null);
@@ -465,7 +464,7 @@ describe('resumeQueryString', () => {
 });
 
 describe('isMusicSubtype', () => {
-	it('is true for "music" (case-insensitive) — never playable on allanime', () => {
+	it('is true for "music" (case-insensitive) — never playable through the provider', () => {
 		expect(isMusicSubtype('music')).toBe(true);
 		expect(isMusicSubtype('Music')).toBe(true);
 	});
@@ -485,8 +484,8 @@ describe('titlesPlausiblySameShow', () => {
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
-		// hsts/allanime title vs the YOASOBI "Idol" music video Kitsu entry:
-		// they share only "Idol", which is 1 of 9 allanime tokens → reject.
+		// hsts/the provider title vs the YOASOBI "Idol" music video Kitsu entry:
+		// they share only "Idol", which is 1 of 9 the provider tokens → reject.
 		expect(
 			titlesPlausiblySameShow(
 				'Love Live! Nijigasaki Gakuen School Idol Doukoukai: Kanketsu-hen',
@@ -495,9 +494,9 @@ describe('titlesPlausiblySameShow', () => {
 		).toBe(false);
 	});
 
-	it('accepts the legitimate typo case (allanime stub vs canonical)', () => {
+	it('accepts the legitimate typo case (provider stub vs canonical)', () => {
 		// The reverse-map exists for exactly this: "Nato: Shippuuden" is
-		// allanime's typo for "Naruto: Shippuuden" — they share the
+		// the provider's typo for "Naruto: Shippuuden" — they share the
 		// distinctive "Shippuuden", so the binding stays trusted.
 		expect(titlesPlausiblySameShow('Nato: Shippuuden', ref('Naruto: Shippuuden'))).toBe(true);
 	});
@@ -515,11 +514,11 @@ describe('titlesPlausiblySameShow', () => {
 		).toBe(true);
 	});
 
-	it('trusts a stub allanime title even with zero overlap (One Piece is "1P")', () => {
-		// THE extreme case: allanime indexes One Piece as "1P". It shares
+	it('trusts a stub provider title even with zero overlap (One Piece is "1P")', () => {
+		// THE extreme case: The provider indexes One Piece as "1P". It shares
 		// no token with "One Piece", but a 1-short-token stub carries no
-		// signal to reject on — the binding (recorded from a real play /
-		// alias-walk) must stay trusted. Only INFORMATIVE allanime titles
+		// signal to reject on — the binding (recorded from a real play,
+		// or from a reverse-resolve) must stay trusted. Only INFORMATIVE the provider titles
 		// (≥2 tokens, or one token ≥5 chars) are judged.
 		expect(titlesPlausiblySameShow('1P', ref('One Piece'))).toBe(true);
 		expect(titlesPlausiblySameShow('1P (1161 episodes)', ref('One Piece'))).toBe(true);
@@ -590,7 +589,7 @@ describe('cachedBindingVerdict', () => {
 	});
 
 	it('evicts a binding that is BOTH count-incompatible and provably wrong (music)', () => {
-		// A 12-ep allmanga show poisoned to a 1-ep music video: the count check
+		// A 12-ep the provider show poisoned to a 1-ep music video: the count check
 		// must not short-circuit to 'reresolve' and skip the delete — a provably
 		// wrong row has to be EVICTED so enrichment can't re-read it. Title here is
 		// plausible, isolating the music-vs-count ordering.
@@ -631,9 +630,9 @@ describe('cachedBindingVerdict', () => {
 	});
 
 	it('re-resolves a single-token romaji/typo binding instead of deleting it', () => {
-		// "Burichi" is allmanga's stub for BLEACH — zero literal overlap with the
+		// "Burichi" is the provider's stub for BLEACH — zero literal overlap with the
 		// Kitsu title, but the cached row is correct. The old guard deleted it
-		// every load and depended on the network alias walk; now a fuzzy title
+		// every load and depended on a network re-resolve; now a fuzzy title
 		// miss only re-resolves (the title-match cache backstops it).
 		const p = resolveHistoryEntry(entry('Burichi (366 episodes)', '5'), null);
 		expect(
@@ -854,13 +853,13 @@ describe('long-runners Kitsu has no episode total for', () => {
 	});
 
 	it('does not take an uninformative title as identity evidence', () => {
-		// allmanga's primary name is sometimes a stub — '1P' for One
+		// The provider's primary name is sometimes a stub — '1P' for One
 		// Piece is the documented one. `titlesPlausiblySameShow` answers
 		// true there, but that is "no judgement possible", not proof:
 		// there is nothing in '1P' to compare. This lane has no count
 		// evidence either, so accepting an unjudged title accepts on
-		// nothing at all, and the row never reaches the alias
-		// enrichment that exists to resolve exactly these stubs.
+		// nothing at all, and the row never reaches the enrichment step,
+		// which resolves from the show id and is what places a stub.
 		const r = resolveHistoryEntry(entry('1P (1100 episodes)', '1050'), null);
 		const unrelated = hit({
 			id: '210',

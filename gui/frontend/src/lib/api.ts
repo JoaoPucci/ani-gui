@@ -191,7 +191,7 @@ export interface AppInfo {
 	removed_legacy_paths: string[];
 }
 
-/** One row from the shared `ani-hsts` file. */
+/** One row from the watch-history file. */
 export interface HistoryEntry {
 	ep_no: string;
 	id: string;
@@ -219,7 +219,7 @@ export interface CreateSessionResponse {
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
 	/** True when this play resolution came from the long-term cache
-	 *  (no fresh ani-cli spawn). The play page uses it to decide
+	 *  (no fresh resolve). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
 	 *  be evicted + re-resolved; fresh fetches already exhausted the
 	 *  resolve path so the user should see the error. Optional for
@@ -317,8 +317,8 @@ export interface KitsuAnimeRef {
 	/** Localized title variants Kitsu serves under `attributes.titles`.
 	 *  Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp`
 	 *  (kana). Missing keys are absent from the map entirely. The play
-	 *  flow uses these to retry allanime lookups when the canonical
-	 *  title (often English) doesn't match allmanga's index — see
+	 *  flow uses these to retry provider lookups when the canonical
+	 *  title (often English) doesn't match the provider's index — see
 	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
 	 *  produced before titles were surfaced; treat as `?:`. */
 	titles?: Record<string, string>;
@@ -326,7 +326,7 @@ export interface KitsuAnimeRef {
 	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
 	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
 	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
-	 *  the right series on allmanga, so {@link altTitlesFromKitsu} appends
+	 *  the right series on the provider, so {@link altTitlesFromKitsu} appends
 	 *  them as last-resort fallback queries. May be missing on cached
 	 *  responses produced before the field was surfaced; treat as `?:`. */
 	abbreviated_titles?: string[];
@@ -348,17 +348,17 @@ export interface KitsuAnimeRef {
  * Build the fallback-title list for a play call from a Kitsu ref.
  * Returns the localized variants (`en_jp`, `ja_jp`, `en`, `en_us`)
  * that aren't already the canonical, in priority order: romanized
- * Japanese first because allmanga indexes shows under that form, then
+ * Japanese first because the provider indexes shows under that form, then
  * raw kana, then English alternates. The romanized mashup aliases
  * Kitsu carries under `abbreviated_titles` come LAST: they're noisier,
  * but for some shows (Yu-Gi-Oh! 5D's) one of them is the only string
- * allmanga resolves to the right series, so they're a genuine
+ * the provider resolves to the right series, so they're a genuine
  * last-resort recovery path. Ordering them after the official titles
  * means the resolver only reaches them when the clean names produced
  * no accepted candidate — so a clean canonical hit is never displaced.
  *
  * Empty / null-ish titles are dropped. The output is deduped so the
- * backend never makes redundant allanime queries.
+ * backend never makes redundant provider queries.
  */
 export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): string[] {
 	if (!ref) return [];
@@ -386,7 +386,7 @@ export function altTitlesFromKitsu(ref: KitsuAnimeRef | null | undefined): strin
  * the result straight to PlayArgs/DownloadArgs/AvailabilityArgs, all
  * of which accept `null` and degrade to ep-count-only disambiguation.
  *
- * Why this matters: allmanga's `airedStart.year` is much more
+ * Why this matters: The provider's `airedStart.year` is much more
  * discriminative than ep-count for franchise overlap (Mobile Suit
  * Gundam 1979 vs Gundam Wing 1995). The backend's
  * `pick_by_ep_count_v2` uses the year as a primary filter — but only
@@ -415,21 +415,21 @@ export function historyClear(): Promise<void> {
 	return deleteJson<void>('/api/history');
 }
 
-/** Remove one history row by its allmanga `show_id`. Backend rewrites
- *  ani-hsts atomically without that row; idempotent on unknown / empty
+/** Remove one history row by its `show_id`. Backend rewrites
+ *  the history file atomically without that row; idempotent on unknown / empty
  *  ids (always 204), so client retries during transient errors are
  *  safe. The Continue Watching rail uses this for per-card delete. */
 export function historyDelete(id: string): Promise<void> {
 	return deleteJson<void>(`/api/history/${encodeURIComponent(id)}`);
 }
 
-/** Find the most-recent history entry whose allmanga show_id maps to
- *  this Kitsu id, via the (allmanga show_id → kitsu_id) reverse cache
- *  the play path stamps on each successful resolve. Used by the detail
- *  page to swap "Play episode 1" for "Continue · Episode N+1" when
- *  the user has watched this show before. Returns `null` when there's
- *  no such mapped entry — including the case where the mapping cache
- *  is cold (CLI-only history rows the GUI hasn't played yet). */
+/** Find the most-recent history entry whose show id maps to this Kitsu
+ *  id, via the (show id → kitsu_id) reverse cache the play path stamps
+ *  on each successful resolve. Used by the detail page to swap "Play
+ *  episode 1" for "Continue · Episode N+1" when the user has watched
+ *  this show before. Returns `null` when there's no such mapped entry,
+ *  which includes a row the cache has never been stamped for — a play
+ *  made without a Kitsu id, or a row older than the mapping. */
 export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
 }
@@ -444,7 +444,7 @@ export function openExternalPlayer(args: LaunchExternalPlayerArgs): Promise<void
 
 /** Body for the play endpoints — same shape on both `/api/play` and
  *  `/api/play/external`. The backend takes the canonical title (from
- *  Kitsu metadata), resolves it through ani-cli, and either wraps the
+ *  Kitsu metadata), resolves it through the provider, and either wraps the
  *  result in a session or hands it to the OS player. */
 export interface PlayArgs {
 	title: string;
@@ -452,10 +452,10 @@ export interface PlayArgs {
 	mode: 'sub' | 'dub';
 	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
-	 *  disambiguate allanime candidates that share a title — e.g.
+	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
 	 *  1-ep side story. Optional: if missing, the backend falls back
-	 *  to allanime's first match. */
+	 *  to the provider's first match. */
 	episode_count?: number | null;
 	/** Kitsu's start year (parsed from `start_date`, e.g.
 	 *  `"1995-04-07"` → `1995`). The backend uses it as a stronger
@@ -463,10 +463,10 @@ export interface PlayArgs {
 	 *  Suit Gundam Wing 1995 vs Mobile Suit Gundam 1979). */
 	year?: number | null;
 	/** Fallback titles to try when the canonical title returns no
-	 *  allanime hits. Build with {@link altTitlesFromKitsu}. The
+	 *  the provider hits. Build with {@link altTitlesFromKitsu}. The
 	 *  backend walks them in order and stops at the first non-empty
 	 *  search result. Used to recover Stone Ocean Part 6 and similar
-	 *  shows whose Kitsu canonical disagrees with allmanga's index. */
+	 *  shows whose Kitsu canonical disagrees with the provider's index. */
 	alt_titles?: string[];
 	/** `true` when the call is a background prefetch (warming the
 	 *  cache for an episode the user hasn't clicked yet). The backend
@@ -477,10 +477,10 @@ export interface PlayArgs {
 	prefetch?: boolean;
 	/** Kitsu id of the anime the user is playing. Frontend passes the
 	 *  id from `/anime/[kitsu_id]`'s URL so the backend can persist
-	 *  an `(allmanga show_id → kitsu_id)` reverse mapping. The home
+	 *  an `(provider show_id → kitsu_id)` reverse mapping. The home
 	 *  page's Continue Watching strip then looks Kitsu up by show_id
 	 *  instead of fuzzy-text-searching the (sometimes typo'd)
-	 *  allmanga title. Optional; missing on legacy click sites that
+	 *  provider title. Optional; missing on legacy click sites that
 	 *  haven't been updated yet. */
 	kitsu_id?: string;
 	/** Kitsu's subtype (`TV`, `movie`, `special`, `OVA`, `ONA`).
@@ -515,7 +515,7 @@ export function playSyncplay(args: PlayArgs): Promise<void> {
 }
 
 /** Drop the cached play resolution for `args` so the next play call
- *  cache-misses and re-runs ani-cli. Used by the player error path:
+ *  cache-misses and resolves afresh. Used by the player error path:
  *  if the cached upstream URL 4xx'd (rotated *after* our HEAD said
  *  it was alive), the renderer evicts and silently retries. */
 export function evictPlayCache(args: PlayArgs): Promise<void> {
@@ -547,10 +547,13 @@ export type PlayProgress =
 	| { kind: 'links_fetched'; provider: string };
 
 /** Streaming variant of {@link play}: opens an SSE connection so the
- *  caller hears `<provider> Links Fetched` events as ani-cli emits
- *  them. Resolves with the same `CreateSessionResponse` `play()`
- *  returns; rejects on server-side errors or when the stream closes
- *  without a `done` event.
+ *  caller hears resolution progress as it happens. `onProgress`
+ *  receives every {@link PlayProgress} variant — `searching`,
+ *  `matched` and `links_fetched` — in whatever order the resolve
+ *  emits them, so a caller that renders only one of the three goes
+ *  quiet for the stages it ignores. Resolves with the same
+ *  `CreateSessionResponse` `play()` returns; rejects on server-side
+ *  errors or when the stream closes without a `done` event.
  *
  *  Falls back to a plain `play()` POST when `EventSource` isn't
  *  available — e.g. server-side rendering or older webviews. The
@@ -670,9 +673,12 @@ export interface DownloadArgs {
 	download_dir?: string;
 }
 
-/** SSE progress event body — one raw stderr line from aria2c / yt-dlp /
- *  ffmpeg. The renderer stores the latest line and the dock surfaces it
- *  under the active row. */
+/** SSE progress event body — one line of the download's progress
+ *  stream. Not only tool output: the backend resolves the stream
+ *  before either tool runs and reports that here too, and a range
+ *  download adds a line per episode from the loop driving it. The
+ *  renderer stores the latest line and the dock surfaces it under the
+ *  active row. */
 export interface DownloadProgress {
 	line: string;
 }
@@ -685,10 +691,10 @@ export interface DownloadResponse {
 
 /** Streaming download. Same shape as {@link playStream}: opens an SSE
  *  connection to GET /api/download/stream, fires `onProgress` for every
- *  forwarded ani-cli stderr line, resolves with the destination dir on
+ *  forwarded progress line, resolves with the destination dir on
  *  the `done` event, rejects on `error` or close-before-done. The
  *  `signal` lets callers cancel mid-download — closing the SSE drops
- *  the spawned ani-cli child via Tokio's `kill_on_drop(true)`. */
+ *  the spawned downloader via Tokio's `kill_on_drop(true)`. */
 export function downloadStream(
 	args: DownloadArgs,
 	onProgress: (p: DownloadProgress) => void,
@@ -798,10 +804,10 @@ export interface AvailabilityArgs {
 	 *  background probes and skips them while its breaker is open;
 	 *  interactive checks (detail-page CTA) omit it. */
 	background?: boolean;
-	/** Skip the cached count and ask allmanga directly.
+	/** Skip the cached count and ask the provider directly.
 	 *
 	 *  The stored count is a snapshot — 24h for an ongoing show — and
-	 *  allmanga catalogues episodes inside that window. A user clicking
+	 *  the provider catalogues episodes inside that window. A user clicking
 	 *  a tile the stored count calls unavailable is asking something
 	 *  the cache cannot answer, so replaying it back confirms the
 	 *  tile's own claim without anyone having checked.
@@ -813,10 +819,10 @@ export interface AvailabilityArgs {
 }
 
 /** Response from {@link checkAvailability}. `episode_count` is the
- *  highest INTEGER episode allmanga has streamable in the requested
+ *  highest INTEGER episode the provider has streamable in the requested
  *  mode — authoritative cap for the resume CTA, Download All, and
  *  episode-strip pagination. `extra_episodes` is the list of
- *  non-integer tags allmanga lists (recap / special episodes —
+ *  non-integer tags the provider lists (recap / special episodes —
  *  e.g. `["1061.5"]` for One Piece). The detail/play pages splice
  *  these into the episode strip at their numeric position so the
  *  user can navigate to them. */
@@ -839,7 +845,7 @@ export interface AvailabilityResponse {
 	gate_refused?: boolean;
 }
 
-/** "Is this title in allmanga's catalog?" probe. The detail page hits
+/** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a
  *  click instead of letting the user discover the gap by clicking. */
 export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityResponse> {
@@ -851,7 +857,7 @@ export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityR
  *  cached as `false`. Missing entries in the `cached` map are titles
  *  whose availability is unknown — the caller renders them as-is.
  *
- *  `playable_episode_counts` carries allmanga's truthful per-show
+ *  `playable_episode_counts` carries the provider's truthful per-show
  *  episode cap (same value the detail page reads via inline
  *  checkAvailability). The home Continue Watching strip uses it to
  *  derive its pickNextEpisode cap so home and detail compute the same
@@ -1009,15 +1015,15 @@ export function kitsuTitleMatchPut(title: string, cour: number, kitsuId: string)
 }
 
 /**
- * Reverse-direction mapping: given an allmanga show_id (from
- * ani-hsts column 2), look up the kitsu_id the user previously
+ * Reverse-direction mapping: given a provider show_id (from
+ * history column 2), look up the kitsu_id the user previously
  * played it as. Returns `null` on miss. The mapping is recorded by
  * the backend during `mark-watched` whenever the frontend supplies
  * `kitsu_id` in PlayArgs — so any past click on `/anime/[id]/play`
  * has already populated it.
  *
  * Continue Watching's resolver hits this BEFORE the legacy title-
- * match path because allmanga's catalog has typos (e.g. "Nato:
+ * match path because the provider's catalog has typos (e.g. "Nato:
  * Shippuuden" for Naruto Shippuuden) that Kitsu's text search
  * can't recover from. Show_id is unambiguous; the title isn't.
  */
@@ -1026,7 +1032,7 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
- * Evict a single `allmanga show_id → kitsu_id` reverse-mapping row.
+ * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
  * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's
  * slug disagrees with the history entry's cour suffix. The cached
@@ -1040,14 +1046,16 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
 }
 
 /**
- * Resolve an allmanga show_id to its full Kitsu entry by walking
- * allmanga's `Show` GraphQL aliases (englishName / nativeName /
- * altNames) through Kitsu's text search. Returns null when no Kitsu
- * match is found OR when the upstream HTTP fails.
+ * Resolve a history row's show id to its full Kitsu entry: the stored
+ * reverse mapping first, then — when the id is a provider slug — a
+ * Kitsu text search built from the slug's own words. An id from the
+ * retired provider has neither, and resolves only if something already
+ * mapped it. Returns null when no Kitsu match is found OR when the
+ * upstream HTTP fails.
  *
  * Use this as the LAST step in the Continue Watching resolver, when
  * the reverse cache and the title-search both yield nothing — e.g.
- * fresh-from-cache-clear renders where allmanga's stub `name`
+ * fresh-from-cache-clear renders where the provider's stub `name`
  * (`"1P"` for One Piece, `"Nato: Shippuuden"` for Naruto Shippuuden)
  * has no Kitsu text-search hit. The backend persists the resolved
  * mapping into the reverse cache so subsequent calls short-circuit.
@@ -1057,7 +1065,7 @@ export function kitsuResolveAllmangaShowId(
 	bypassCache = false
 ): Promise<KitsuAnimeRef | null> {
 	// bypassCache: the resolver already read + rejected the reverse-cache row, so
-	// tell the backend to skip its fast path and go straight to the alias walk —
+	// tell the backend to skip its fast path and re-resolve from the show id —
 	// otherwise it hands back the very id the caller just rejected.
 	// `=true`/`=false`, not `=1`: the backend deserializes this into a Rust bool
 	// and axum's query parser rejects "1" (400), which would silently null the
@@ -1071,7 +1079,7 @@ export function kitsuResolveAllmangaShowId(
 /**
  * Per-show last-watched millis-since-epoch map. Populated by the
  * backend's `mark-watched` handler whenever the user clicks an
- * episode through the GUI; CLI plays bypass it. Drives the home
+ * episode; a play that never reaches it leaves no stamp. Drives the home
  * page Continue Watching sort: stamped rows on top (most recent
  * first), unstamped rows at the bottom in original file order.
  */

@@ -4,9 +4,9 @@
 //! `$XDG_STATE_HOME`. On macOS: uses `~/Library/Application Support` and
 //! friends per `directories-next`. On Windows: `%APPDATA%`.
 //!
-//! `ani_cli_history` is intentionally pinned to the same path the CLI
-//! writes to (`$XDG_STATE_HOME/ani-cli/ani-hsts`) so the GUI and CLI
-//! share a single history file.
+//! The watch history is the GUI's own, under its state dir. It used
+//! to be pinned to the path the CLI writes; see `gui_history` for why
+//! that stopped being worth doing.
 
 use std::path::PathBuf;
 
@@ -54,9 +54,8 @@ const fn is_dev_profile(env_dev: bool, debug_build: bool) -> bool {
 /// installed binary would otherwise be handed a DB a newer dev build
 /// had already migrated forward and refuse to open it.
 ///
-/// The CLI-shared history (`ani_cli_history`, under `ani-cli`) is
-/// deliberately NOT relocated — it carries no schema/migrations and is
-/// meant to stay shared with the actual `ani-cli`.
+/// Nothing is left outside that relocation: the history moved under
+/// the GUI's own state dir when the CLI re-keyed its own.
 fn app_name() -> &'static str {
     let env_dev = std::env::var_os("ANI_GUI_DEV").is_some_and(|v| !v.is_empty());
     if is_dev_profile(env_dev, cfg!(debug_assertions)) {
@@ -132,7 +131,7 @@ pub fn state_dir() -> Option<PathBuf> {
 }
 
 /// The GUI's own watch-history file: `<state_dir>/history`. The
-/// allanime-era GUI shared ani-cli's ani-hsts; the 5.0 CLI re-keyed
+/// allanime-era GUI shared the CLI's `ani-hsts`; the 5.0 CLI re-keyed
 /// its history onto provider slugs and backs the old file up on its
 /// own first run, so a shared file buys no continuity in either
 /// direction anymore. The GUI keeps its own — same line format the
@@ -200,7 +199,7 @@ mod tests {
     /// `ANI_GUI_DEV` must relocate every ani-gui-owned dir under
     /// `ani-gui-dev`, so a dev build never reads or migrates the
     /// installed app's config / cache / state / metadata.sqlite. The
-    /// CLI-shared history (`ani-cli`) is deliberately NOT relocated.
+    /// history moves with them, being the GUI's own file.
     #[test]
     fn dev_profile_relocates_ani_gui_owned_dirs() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -239,7 +238,7 @@ mod tests {
     #[test]
     fn gui_history_lives_in_the_gui_state_dir_only() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // Decoupled from the CLI: no ani-cli path segment, no
+        // Decoupled from the CLI: no CLI path segment, no
         // ANI_CLI_HIST_DIR override — the 5.0 CLI re-keyed and backs
         // up its own file, so sharing buys no continuity in either
         // direction, and the GUI's history starts (and stays) its

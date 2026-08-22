@@ -170,7 +170,7 @@ async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Remove one history row by its allmanga show_id. 204 whether or
+/// Remove one history row by its show id. 204 whether or
 /// not a row was actually removed — idempotent semantics keep client
 /// retries safe.
 async fn delete_history_entry(
@@ -325,7 +325,7 @@ struct TitleMatchQuery {
 struct ResolveAllmangaQuery {
     /// Skip the reverse-cache fast path. The Continue Watching resolver sets
     /// this once it has already read + rejected the reverse row, so enrichment
-    /// goes straight to the alias walk instead of returning the rejected id.
+    /// re-resolves from the show id instead of handing back the rejected one.
     #[serde(default)]
     bypass_cache: bool,
 }
@@ -420,7 +420,7 @@ async fn delete_image_cache(State(state): State<Arc<AppState>>) -> Result<Status
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Resolve a Kitsu-titled episode through ani-cli and wrap the
+/// Resolve a Kitsu-titled episode through the provider and wrap the
 /// upstream URL in a stream session for the embedded player. The
 /// renderer navigates to `/play?session=<id>` with the response.
 async fn post_play(
@@ -432,7 +432,8 @@ async fn post_play(
 
 /// SSE variant of `/api/play`. Same resolution chain, but the body is
 /// a `text/event-stream` that emits a `progress` event for every
-/// parsed `<provider> Links Fetched` line on ani-cli's stderr, then a
+/// [`ProgressLine`] the resolve reports — `Searching`, `Matched` and
+/// `LinksFetched`, each serialized as it arrives — then a
 /// final `done` event with the resolved CreateSessionResponse. Errors
 /// are sent as a single `error` event before the stream closes.
 ///
@@ -478,9 +479,16 @@ async fn get_play_stream(
 }
 
 /// SSE entry point for the Download action. Mirrors get_play_stream:
-/// `progress` events for each ani-cli stderr line (aria2c / yt-dlp /
-/// ffmpeg progress), then a final `done` event with the destination
+/// `progress` events, then a final `done` event with the destination
 /// directory, or an `error` event before close.
+///
+/// A `progress` event is one line of text and carries three kinds of
+/// thing, which a consumer cannot tell apart except by their content.
+/// Resolution reports arrive first — `Searching …`, `Matched …`,
+/// `… links fetched` — because the stream opens before either tool
+/// runs. A range download adds its own `Matched …` and one
+/// `Playing episode N` per episode from the loop that drives them.
+/// Only then does the downloader's own stderr start, ANSI-stripped.
 ///
 /// EventSource is GET-only, so DownloadArgs comes through query
 /// params; the frontend uses fetch + ReadableStream rather than the
@@ -494,7 +502,7 @@ async fn get_download_stream(
 
     // abort_on_drop is what makes the dock's Cancel real: the
     // frontend cancels the fetch, the connection closes, and the
-    // aria2c / yt-dlp / ffmpeg pipeline dies with the task instead of
+    // yt-dlp / ffmpeg pipeline dies with the task instead of
     // finishing a download nobody asked to keep.
     let handle = tokio::spawn(async move {
         let result = download_inner::download_with_progress(&state, &args, move |progress| {
@@ -529,7 +537,7 @@ async fn post_availability(
     ))
 }
 
-/// Cached-only batch lookup. No fresh allmanga queries are issued —
+/// Cached-only batch lookup. Nothing is asked of the provider —
 /// the caller (home / search) just reads what's already in the cache
 /// to filter known-unavailable cards out of list views.
 async fn post_availability_batch(
@@ -578,13 +586,13 @@ async fn post_play_external(
 
 /// Stamp Continue Watching for the just-clicked episode. Frontend
 /// calls this after a click resolves a play, regardless of whether
-/// the play came from cache or fresh ani-cli — covers the
+/// the play came from cache or a fresh resolve — covers the
 /// `getOrFire` reuse case where the click subscribes to an in-flight
 /// prefetch promise (so the backend never saw `prefetch=false`).
 ///
 /// Idempotent: looks up the cache row, writes a history line keyed
 /// on the cached `show_id`, and (when `args.kitsu_id` is supplied)
-/// records the (allmanga show_id → kitsu_id) reverse mapping so the
+/// records the (provider show_id → kitsu_id) reverse mapping so the
 /// home-page strip can resolve the right Kitsu match without a
 /// fuzzy text search. No-op when the cache row is missing or has
 /// no captured metadata (legacy / pre-resolve states).
@@ -604,7 +612,7 @@ async fn post_play_mark_watched(
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // ani-hsts speaks the provider's numbering; the offset
+            // the history file speaks the provider's numbering; the offset
             // was stamped by the resolve that wrote this cache row.
             let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             let entry = crate::history::HistoryEntry {
@@ -643,14 +651,14 @@ async fn post_play_mark_watched(
                     "play: watched-at stamp write failed",
                 );
             }
-            // Reverse mapping — store (allmanga show_id → kitsu_id)
+            // Reverse mapping — store (provider show_id → kitsu_id)
             // when the frontend supplied kitsu_id. Errors are
             // swallowed (logged) because the play already succeeded;
             // the mapping is opportunistic.
             //
             // Cross-cour integrity guard: the play picker
             // (`pick_by_ep_count_v2`) can land on a sibling cour's
-            // allmanga show_id when ep-count and year tie (e.g.
+            // provider show_id when ep-count and year tie (e.g.
             // Stone Ocean Parts 1/2/3 all 12 eps, 2021–2022). The
             // frontend supplies kitsu_id from the URL or Continue
             // Watching context, which then doesn't match the chosen
@@ -694,12 +702,12 @@ async fn delete_allmanga_kitsu_map(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Resolve a history-recorded allmanga show_id to its full
-/// [`KitsuAnimeRef`] by walking allmanga's `Show` aliases through
-/// Kitsu's text search. Wraps
+/// Resolve a history-recorded show id to its full [`KitsuAnimeRef`]:
+/// the stored reverse mapping first, then a Kitsu text search built
+/// from a provider slug's own words. Wraps
 /// [`kitsu_inner::resolve_allmanga_show_id`]; returns `null` JSON when
 /// no Kitsu match is found so the renderer can fall back to the raw
-/// allmanga label.
+/// history label.
 async fn get_kitsu_resolve_allmanga(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
@@ -723,7 +731,7 @@ async fn get_watched_at_all(
 /// upstream URL (URL rotated *after* our HEAD validated, or the CDN
 /// throttled), the renderer calls this to drop the row before
 /// retrying the play call. The retry then cache-misses and runs
-/// ani-cli fresh.
+/// resolved afresh.
 async fn post_play_cache_evict(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
@@ -796,7 +804,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: td.path().join("ani-hsts"),
+            history_path: td.path().join("history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -825,7 +833,7 @@ mod tests {
     /// terminal `error` event and close the stream. Forcing the
     /// breaker open and asking for a prefetch makes the whole path
     /// run without touching the network: every gate admit is refused
-    /// before any allanime request is built, so the handler's spawn,
+    /// before any provider request is built, so the handler's spawn,
     /// terminal-event send, and abort_on_drop passthrough (natural
     /// completion) are all exercised hermetically.
     #[tokio::test]
@@ -833,7 +841,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         // The native play admits through the anidb gate since the
-        // provider split; priming the allanime gate no longer
+        // provider split; priming the provider gate no longer
         // refuses anything on this path.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
@@ -1262,12 +1270,14 @@ mod tests {
     }
 
     /// Detail-page episode clicks call `POST /api/play`. The handler
-    /// resolves the title via the ani-cli driver, wraps the resolved
+    /// resolves the title through the provider, wraps the resolved
     /// upstream URL in a session, and returns a `CreateSessionResponse`
     /// the renderer uses to navigate to `/play?session=<id>`. This
-    /// test pins only the route's existence + body validation contract
-    /// — the full subprocess behavior is exercised by the curl-shim
-    /// integration test in `tests/api_play.rs`.
+    /// test pins only the route's existence + body validation contract.
+    /// The resolution behaviour behind it is exercised by
+    /// `tests/api_play.rs`, which points `AppState::anidb_base` at a
+    /// local wiremock server and drives the real provider walk against
+    /// stubbed responses.
     #[tokio::test]
     async fn play_route_rejects_request_without_json_content_type() {
         // axum's Json extractor returns 415 (Unsupported Media Type)
@@ -1526,7 +1536,7 @@ mod tests {
     }
 
     /// The reverse-mapping write must REJECT cross-cour pairings.
-    /// The backend's allmanga picker can land on a sibling cour when
+    /// The backend's provider picker can land on a sibling cour when
     /// ep-count and year tie (Stone Ocean parts 1/2/3 all 12 eps,
     /// 2021–2022) and persist the wrong (show_id → kitsu_id)
     /// pairing. Once persisted, the home-page strip serves the wrong
@@ -1546,7 +1556,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // Cached resolution: allmanga's Part 2 show, derived from
+        // Cached resolution: The provider's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
         let key = cache_key(
@@ -1621,12 +1631,12 @@ mod tests {
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
-            "cross-cour mapping (allmanga Part 2 → kitsu Part 1) must not persist"
+            "cross-cour mapping (provider Part 2 → kitsu Part 1) must not persist"
         );
     }
 
     /// One-sided cour evidence must not be treated as disagreement.
-    /// When the allmanga `show_title` has no parseable cour suffix
+    /// When the provider `show_title` has no parseable cour suffix
     /// (the title format the picker writes for shows without a clean
     /// `Part N` / `Cour N` / `Season N` token) but Kitsu's slug DOES
     /// carry one, we have no proof the pairing is wrong — only one
@@ -1709,11 +1719,11 @@ mod tests {
         assert_eq!(
             stored,
             Some("99001".to_string()),
-            "one-sided cour evidence (allmanga None / kitsu Some) is not a mismatch"
+            "one-sided cour evidence (provider None / kitsu Some) is not a mismatch"
         );
     }
 
-    /// Symmetric: allmanga title says Part 2 but Kitsu detail's slug
+    /// Symmetric: The provider title says Part 2 but Kitsu detail's slug
     /// is absent or doesn't carry a parseable cour suffix. Still
     /// one-sided; still not proof of disagreement.
     #[tokio::test]
@@ -1726,7 +1736,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // allmanga title carries Part 2 → cour_from_title=Some(2).
+        // The provider title carries Part 2 → cour_from_title=Some(2).
         let key = cache_key(
             "Some Sequel",
             "sub",
@@ -1792,7 +1802,7 @@ mod tests {
         assert_eq!(
             stored,
             Some("99002".to_string()),
-            "one-sided cour evidence (allmanga Some / kitsu None) is not a mismatch"
+            "one-sided cour evidence (provider Some / kitsu None) is not a mismatch"
         );
     }
 
@@ -1814,7 +1824,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
 
-        // Allmanga show_title carries a trailing "Part 2" (cour 2).
+        // The provider show_title carries a trailing "Part 2" (cour 2).
         // Crucially, we do NOT pre-populate the kitsu detail cache —
         // the in-process Kitsu client points at 127.0.0.1:1 (an
         // unreachable port), so `kitsu_anime_detail` returns Err.
@@ -1871,7 +1881,7 @@ mod tests {
     }
 
     /// Watched-at endpoint: returns the SQLite-stamped per-show_id
-    /// last-watched-millis map (GUI-only; CLI plays don't update this).
+    /// last-watched-millis map (only mark-watched writes it).
     /// Home-page Continue Watching strip uses it to sort the strip
     /// most-recent-first; untimestamped rows stay in file order at the
     /// bottom.
@@ -1972,14 +1982,14 @@ mod tests {
         );
     }
 
-    /// Reverse-mapping endpoint: given an allmanga show_id (the id
-    /// in column 2 of `ani-hsts`), return the kitsu_id that the user
-    /// played it as — when we've recorded it. The home-page Continue
-    /// Watching strip uses this to render the right Kitsu metadata
-    /// for shows whose allmanga title is typo'd (e.g. "Nato:
-    /// Shippuuden" → Naruto Shippuuden), bypassing Kitsu text search.
-    /// Returns `null` body on miss so the frontend can fall through
-    /// to the legacy title-match path.
+    /// Reverse-mapping endpoint: given a show id from column 2 of the
+    /// history file — a provider slug on rows written since the
+    /// migration — return the kitsu_id the user played it as, when one
+    /// was recorded. The home-page Continue Watching strip uses it to
+    /// render the right Kitsu metadata without a text search, which
+    /// matters most when the stored title is a stub or a typo the
+    /// search would miss. Returns a `null` body on a miss so the
+    /// frontend can fall through to the title-match path.
     #[tokio::test]
     async fn allmanga_kitsu_map_get_returns_null_when_unmapped() {
         let td = TempDir::new().expect("tempdir");
@@ -2121,14 +2131,13 @@ mod tests {
 
     #[tokio::test]
     async fn ani_error_internal_variants_map_to_500() {
-        // ParseFailed / MissingBinary / PlayerSpawnFailed / Cache / Io
+        // ParseFailed / PlayerSpawnFailed / Cache / Io
         // / Config / Metadata / Scraper all collapse to the same 500
         // — they're backend-side bugs the frontend can't usefully
         // discriminate at the HTTP layer (it still discriminates on
         // the JSON body's kind/key for i18n).
         for err in [
             AniError::ParseFailed { detail: "x".into() },
-            AniError::MissingBinary,
             AniError::PlayerSpawnFailed {
                 binary: "vlc".into(),
             },
@@ -2206,7 +2215,7 @@ mod tests {
     }
 
     /// `/api/sessions` requires a valid CreateSessionArgs body. We
-    /// don't have allmanga to satisfy a fully-shaped session, so
+    /// don't have the provider to satisfy a fully-shaped session, so
     /// drive a malformed one and assert the route rejects it without
     /// panicking. Covers the post_session decode branch.
     #[tokio::test]

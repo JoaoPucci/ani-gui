@@ -246,7 +246,7 @@ describe('createCapGateProbe', () => {
 		d.release(7);
 		await flush();
 
-		// allmanga catalogues sub and dub separately and dub lags, so a
+		// the provider catalogues sub and dub separately and dub lags, so a
 		// sub count of 7 unlocking dub episode 5 resolves something the
 		// dub catalogue does not have. Same show, different question.
 		expect(cleared).toEqual([]);
@@ -258,7 +258,7 @@ describe('createCapGateProbe', () => {
 		const { gate, stillGated, stillGatedCounts } = harness(d.probe);
 
 		gate.request(9);
-		// LOWER than what the page is showing — allmanga pulled an
+		// LOWER than what the page is showing — the provider pulled an
 		// episode, or corrected its metadata. The tiles between the two
 		// caps are enabled on a number that is no longer true, and
 		// clicking one resolves nothing.
@@ -274,7 +274,7 @@ describe('createCapGateProbe', () => {
 		const { gate, refreshes } = harness(d.probe);
 
 		gate.request(5);
-		// allmanga delisted the show, or the resolver corrected which
+		// The provider delisted the show, or the resolver corrected which
 		// title it had matched. A false verdict is always definite —
 		// a search that could not be completed is an error, not a no.
 		d.release(null, false, { available: false });

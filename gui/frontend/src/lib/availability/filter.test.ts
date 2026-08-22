@@ -63,7 +63,7 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	});
 
 	it('keeps unaired and airing shows visible even when unavailable', async () => {
-		// Upcoming seasons routinely exist on Kitsu before allmanga
+		// Upcoming seasons routinely exist on Kitsu before the provider
 		// catalogs them (and airing shows can lag). Hiding them blocks
 		// planning; only a FINISHED show missing from the catalog is
 		// confidently gone. Play surfaces stay gated separately.

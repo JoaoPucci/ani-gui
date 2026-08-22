@@ -52,9 +52,13 @@ async fn stub_provider(mock: &MockServer, query: &str) {
 /// Mount a listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
-/// history row has to carry the slot — ani-cli's reader greps the
-/// stored number against the provider's own listing, where 4 is the
-/// recap.
+/// history row has to carry the slot rather than the tag.
+///
+/// The reader that cares is this app's own resume path: it takes the
+/// stored number back to the provider's listing, where 4 is the
+/// recap. Storing the display tag would resume the wrong episode.
+/// The offset store is what translates between the two when the
+/// strip needs a number to show.
 async fn stub_provider_with_a_recap(mock: &MockServer, query: &str) {
     Mock::given(method("GET"))
         .and(path("/browse"))
@@ -178,7 +182,7 @@ async fn wait_for(argv_file: &std::path::Path) -> String {
 #[tokio::test]
 async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master_url() {
     // Cache is empty, so the fresh path runs. Everything the walk
-    // needs is stubbed on the provider origin; ani_cli_path points at
+    // needs is stubbed on the provider origin; the provider base points at
     // a nonexistent binary, so an Ok can only come from the native
     // resolution — a subprocess attempt would fail the play.
     let mock = MockServer::start().await;
@@ -210,7 +214,7 @@ async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master
 
 #[tokio::test]
 async fn an_external_play_lands_in_history_under_the_provider_slug() {
-    // The subprocess used to write ani-hsts itself; the native path
+    // The subprocess used to write the history file itself; the native path
     // owns that write now, keyed on the slug like embedded play.
     let mock = MockServer::start().await;
     stub_provider(&mock, "the show").await;
@@ -235,7 +239,7 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
 
 #[tokio::test]
 async fn an_external_play_records_the_provider_slot_not_the_display_number() {
-    // The history file speaks the provider's numbering: ani-cli's
+    // The history file speaks the provider's numbering: the script's
     // reader greps the stored number against the show's own listing.
     // On a show with a recap, display episode 4 is slot 5 — storing
     // the display number points the row at the recap instead, and

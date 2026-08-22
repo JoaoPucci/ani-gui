@@ -64,7 +64,7 @@ export type PlayLabelState =
  * in scope when the user is about to click play.
  *
  *   - `isSingleVideo` is the boolean from {@link isSingleVideo}.
- *   - `resumeEntry` is the ani-cli history row for this show, or
+ *   - `resumeEntry` is the history row for this show, or
  *     null when the user has never played it.
  *   - `defaultEpisode` is the episode the play button would
  *     dispatch to — already capped at the show's known

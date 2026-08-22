@@ -1,6 +1,6 @@
 //! Tests for the spawn plumbing: the platform teardown command and
 //! output cleaning. Moved here with their subject — they never
-//! tested ani-cli, only how a spawned tool is taken down.
+//! tested the resolver, only how a spawned tool is taken down.
 
 use super::*;
 
@@ -15,7 +15,8 @@ fn tree_kill_args_unix_addresses_the_process_group() {
 fn tree_kill_args_windows_kills_the_tree_by_parent_pid() {
     // Windows is a shipped target (package:win) and kill_on_drop
     // only terminates the Git Bash parent there — cancelling a
-    // download must take aria2c / ffmpeg / yt-dlp down with it.
+    // download must take yt-dlp and the ffmpeg it spawns for merges
+    // down with it.
     // taskkill /T walks the child tree by parent pid; /F because
     // the transfer tools ignore the graceful signal mid-write.
     let (prog, args) = tree_kill_args(1234, true).expect("windows tree kill");

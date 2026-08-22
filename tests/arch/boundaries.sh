@@ -97,6 +97,31 @@ if [ -f ani-cli ]; then
     fi
 fi
 
+# 5. No workflow may put the script on a test runner's PATH.
+#
+# AGENTS.md §4 says nothing in `gui/**` may name the script in a
+# packaging manifest. A workflow is not a manifest, and the end-to-end
+# job installed the vendored script into /usr/local/bin anyway — for a
+# reason its own comment gave, that `AppState::build` resolves it
+# through `find_in_path`. That stopped being true, and the step
+# outlived it.
+#
+# The cost is not the false comment. A runner carrying a binary the
+# packages deliberately do not means an accidental dependency on it
+# passes there and fails on a user's machine, which is the one failure
+# end-to-end coverage exists to catch.
+#
+# Syntactic: an installing command that names the script, in a
+# workflow. It does not read the workflows for meaning, and a job that
+# arranges the same thing some other way is not covered.
+if [ -d .github/workflows ]; then
+    matches=$(grep -rnE '(install|cp|ln|mv)[^|]*[[:space:]]ani-cli' .github/workflows || true)
+    if [ -n "$matches" ]; then
+        printf 'arch/boundaries FAIL: a workflow puts ani-cli on the runner, which the packages do not ship:\n%s\n' "$matches" >&2
+        failed=1
+    fi
+fi
+
 if [ "$failed" -eq 0 ]; then
     printf 'arch/boundaries PASS\n'
 fi

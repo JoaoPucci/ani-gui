@@ -1,10 +1,10 @@
 //! Cour-detection helpers shared by the mark-watched integrity guard.
 //!
-//! The reverse cache (`allmanga show_id → kitsu_id`) used to record
-//! cross-cour mappings — e.g. Stone Ocean Part 2's allmanga show_id
+//! The reverse cache (`provider show_id → kitsu_id`) used to record
+//! cross-cour mappings — e.g. Stone Ocean Part 2's provider show_id
 //! paired with Part 1's Kitsu id — because the picker can pick a
 //! sibling cour when ep-count and year tie. The guard reads the
-//! allmanga show's title (cour from trailing "Part N" / "Cour N" /
+//! provider show's title (cour from trailing "Part N" / "Cour N" /
 //! "Season N") and compares it against the Kitsu slug's trailing
 //! "-part-N" / "-cour-N" / "-season-N". Mismatch → reject the write.
 //!
@@ -20,16 +20,17 @@
 const COUR_KEYWORDS: &[&str] = &["part", "cour", "season"];
 
 /// Extract the cour number from a trailing `Part N` / `Cour N` /
-/// `Season N` suffix on an allmanga show name. Returns `None` for
+/// `Season N` suffix on a provider show name. Returns `None` for
 /// bare titles or when the only "Part N" / etc. is mid-title (parent
 /// series name).
 #[must_use]
 pub fn cour_from_title(name: &str) -> Option<u32> {
     let trimmed = name.trim_end();
-    // `play_resolution_cache::put` writes show_title as
-    // "<name> (<N> episodes)" (see commands/play.rs). Strip that
-    // bookkeeping suffix first; otherwise the trailing chars are
-    // "episodes)" and every production cache row returns None.
+    // Legacy cache rows carry show_title as "<name> (<N> episodes)";
+    // the native writer stores the provider's card title verbatim and
+    // appends nothing. Strip the suffix when it is there — on a row
+    // that has one the trailing chars are otherwise "episodes)" and
+    // the cour never parses.
     let trimmed = strip_trailing_episode_count(trimmed);
     // Walk back from the end to read a trailing decimal number.
     let (digits_start, _) = trailing_digits(trimmed)?;
@@ -98,14 +99,14 @@ pub fn cour_from_slug(slug: &str) -> Option<u32> {
     })
 }
 
-/// Whether the allmanga-derived cour and the Kitsu-slug-derived cour
+/// Whether the provider-derived cour and the Kitsu-slug-derived cour
 /// refer to the same cour of the same franchise. `None` on either
-/// side normalizes to cour 1 (the parent), so a bare allmanga title
-/// paired with a `-part-1` Kitsu slug agrees, and a `Part 2` allmanga
+/// side normalizes to cour 1 (the parent), so a bare provider title
+/// paired with a `-part-1` Kitsu slug agrees, and a `Part 2` provider
 /// title paired with a bare Kitsu slug disagrees.
 #[must_use]
-pub fn cours_agree(allmanga: Option<u32>, kitsu: Option<u32>) -> bool {
-    allmanga.unwrap_or(1) == kitsu.unwrap_or(1)
+pub fn cours_agree(provider: Option<u32>, kitsu: Option<u32>) -> bool {
+    provider.unwrap_or(1) == kitsu.unwrap_or(1)
 }
 
 /// Strip a trailing ` (<digits> episodes)` segment from a title, if

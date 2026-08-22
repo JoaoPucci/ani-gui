@@ -1,9 +1,9 @@
 //! Long-term cache for play resolutions.
 //!
-//! Caches the *result* of running ani-cli (upstream URL, referer,
+//! Caches the *result* of a resolve (upstream URL, referer,
 //! media kind) keyed by `(canonical_title, mode, quality,
 //! episode)`. A subsequent click on the same episode skips the 30s
-//! ani-cli spawn entirely — we just register a fresh proxy session
+//! provider walk entirely — we just register a fresh proxy session
 //! around the cached upstream and return immediately.
 //!
 //! Two safeties:
@@ -12,21 +12,21 @@
 //! 2. **HEAD validation on read** — a quick HEAD with the captured
 //!    Referer confirms the upstream is still alive before we serve it.
 //!    On any failure (network / 4xx / 5xx) we evict the entry and let
-//!    the caller fall through to ani-cli.
+//!    the caller resolve afresh.
 //!
 //! ### Why we don't cache pre-session
 //!
 //! `session_id` is generated per-call and lives in the proxy's
 //! [`SessionTable`]. Caching the session itself would require
 //! invalidating sessions on cache eviction and ensuring TTLs match.
-//! Easier to cache the raw resolution (the data ani-cli produced) and
+//! Easier to cache the raw resolution (the data the walk produced) and
 //! rebuild the session on every play. The session's own TTL (4h)
 //! handles GC of the proxy table.
 //!
 //! ### Why this doesn't cover the first-visit slow click
 //!
 //! The cache only helps subsequent plays of the same episode — first
-//! play is still a fresh ani-cli spawn (~30s). The prefetch in
+//! play is still a full resolve (~30s). The prefetch in
 //! `play-cache.ts` warms the cache for nearby episodes in the
 //! background; this cache then makes the *next* visit to the same
 //! show instant.
@@ -44,7 +44,7 @@ use crate::proxy::MediaKind;
 /// Bump history:
 /// - v1: original (upstream_url, referer, subtitle_url, media_kind).
 /// - v2: added `show_id` + `show_title` so cache hits can also update
-///   `ani-hsts` / Continue Watching. v1 rows had no metadata to write
+///   the history file / Continue Watching. v1 rows had no metadata to write
 ///   the history line with — bumping forces a re-resolve so the new
 ///   fields populate naturally.
 /// - v3: disambiguator started using allmanga's `airedStart.year` as a
@@ -140,7 +140,7 @@ pub struct CachedResolution {
 /// *frontend* asks for — `(title, mode, quality, episode, year,
 /// episode_count)`. alt_titles are intentionally excluded because
 /// the cache is keyed on the request shape, not the title that
-/// ultimately matched allmanga.
+/// ultimately matched the provider.
 ///
 /// `year` + `episode_count` segments distinguish two Kitsu entries
 /// sharing the same canonical title (e.g. franchise remakes); the
@@ -200,7 +200,7 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
 
 /// Drop a single cached resolution. Two callers feed this:
 /// 1. The play flow's HEAD-fail branch — the cached URL is dead so
-///    the row should not linger if the fresh ani-cli call also fails.
+///    the row should not linger if the fresh resolve also fails.
 /// 2. The frontend's player-error feedback path — the player tried
 ///    the cached upstream and got a 4xx/5xx, so the URL has rotated
 ///    even though our HEAD said it was alive.
@@ -485,7 +485,7 @@ mod tests {
     fn get_treats_corrupt_payload_as_miss() {
         // A migrated payload from a future version, or an externally
         // edited row, shouldn't permanently mask the show — the play
-        // flow should fall through to ani-cli and overwrite the row.
+        // flow should resolve afresh and overwrite the row.
         let pool = pool();
         let key = "play:v4:Garbage:sub:best:1:-:-";
         meta_cache_put(&pool, key, "{ not valid json", 60).unwrap();

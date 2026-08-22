@@ -7,7 +7,7 @@
  * ongoing TV that briefly reports a single aired episode).
  *
  * computePlayLabel: given the single-video flag, an optional resume
- * entry from ani-cli history, and the defaultEpisode the play
+ * entry from the history file, and the defaultEpisode the play
  * button would dispatch to, returns a discriminated state the
  * Svelte derived value maps to one of five i18n message keys.
  */

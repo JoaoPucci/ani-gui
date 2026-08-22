@@ -3,9 +3,9 @@ import type { KitsuAnimeRef } from '$lib/api';
 import { buildDownloadArgs } from './build-args';
 
 // Codex P2 #3243357083: the detail page was conflating Kitsu's
-// announced total with allmanga's currently-released count when
+// announced total with the provider's currently-released count when
 // composing DownloadArgs. The backend picker now compares `expected`
-// against allmanga's planned `episodeCount` (b629127), so passing
+// against the provider's planned `episodeCount` (b629127), so passing
 // the released-so-far number here drops the real candidate by
 // planned-count divergence. Extracted to a pure helper so both the
 // detail page and the play page share one (correct) path.
@@ -30,7 +30,7 @@ function refWithCount(episode_count: number | null): KitsuAnimeRef {
 }
 
 describe('buildDownloadArgs', () => {
-	it("uses Kitsu's announced episode_count, not the allmanga released count", () => {
+	it("uses Kitsu's announced episode_count, not the provider's released count", () => {
 		const args = buildDownloadArgs({
 			detail: refWithCount(12),
 			episode: 1,

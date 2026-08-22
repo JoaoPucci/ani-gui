@@ -98,7 +98,7 @@ fn slug_cour_returns_none_for_bare_slugs() {
 
 #[test]
 fn mappings_agree_treats_both_none_as_cour_one() {
-    // Bare allmanga name + bare kitsu slug → both default to cour 1 → agree.
+    // Bare provider name + bare kitsu slug → both default to cour 1 → agree.
     assert!(cours_agree(None, None));
 }
 
@@ -111,7 +111,7 @@ fn mappings_agree_treats_explicit_one_as_default() {
 
 #[test]
 fn mappings_agree_rejects_cross_cour_pairing() {
-    // The user's actual poison: Part 2 allmanga name (cour 2) paired
+    // The user's actual poison: Part 2 the provider name (cour 2) paired
     // with Part 1 kitsu slug (no -part-N suffix, defaults to cour 1).
     assert!(!cours_agree(Some(2), None));
     assert!(!cours_agree(Some(2), Some(1)));

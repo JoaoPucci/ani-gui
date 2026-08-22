@@ -7,7 +7,7 @@
 // `$.async_mode_flag` against `globalThis` and asserts a Document
 // is available even outside components.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { downloadStore } from './store.svelte';
+import { downloadStore, parseProgressStatus, terminalReport } from './store.svelte';
 
 describe('downloadStore', () => {
 	beforeEach(() => {
@@ -207,5 +207,76 @@ describe('downloadStore', () => {
 		// Explicitly do NOT call markActive — abort stays null.
 		expect(() => downloadStore.cancel(id)).not.toThrow();
 		expect(downloadStore.items.find((i) => i.id === id)).toBeUndefined();
+	});
+});
+
+describe('parseProgressStatus', () => {
+	it('recognizes a bare report key', () => {
+		expect(parseProgressStatus('status.download.already_here')).toEqual({
+			key: 'already_here',
+			path: null
+		});
+		expect(parseProgressStatus('status.download.repackage_retry')).toEqual({
+			key: 'repackage_retry',
+			path: null
+		});
+		expect(parseProgressStatus('status.download.retry_ffmpeg')).toEqual({
+			key: 'retry_ffmpeg',
+			path: null
+		});
+	});
+
+	it('keeps the path after the first space verbatim, spaces and all', () => {
+		expect(
+			parseProgressStatus('status.download.abandoned_claim /dl/My Show Episode 1.mp4')
+		).toEqual({ key: 'abandoned_claim', path: '/dl/My Show Episode 1.mp4' });
+		expect(parseProgressStatus('status.download.claim_pending C:\\dl\\Show Episode 2.mp4')).toEqual(
+			{ key: 'claim_pending', path: 'C:\\dl\\Show Episode 2.mp4' }
+		);
+	});
+
+	it('leaves tool output and unknown report names to the raw line', () => {
+		// An older frontend against a newer backend shows the raw
+		// line — still true — rather than pretending to know the key.
+		expect(parseProgressStatus('[download]  42.0% of 310MiB')).toBeNull();
+		expect(parseProgressStatus('status.download.brand_new_report')).toBeNull();
+		expect(parseProgressStatus('Playing episode 3')).toBeNull();
+	});
+
+	it('setProgress carries the parsed report and a later raw line clears it', () => {
+		const id = downloadStore.add({
+			title: 'Demon Slayer',
+			episode: '5',
+			mode: 'sub',
+			quality: '1080',
+			destDir: '/tmp/dl'
+		});
+		downloadStore.setProgress(id, 'status.download.already_here');
+		expect(downloadStore.items[0].progressStatus).toEqual({ key: 'already_here', path: null });
+		downloadStore.setProgress(id, '[download] 100%');
+		expect(downloadStore.items[0].progressStatus).toBeNull();
+		expect(downloadStore.items[0].progress).toBe('[download] 100%');
+	});
+});
+
+describe('terminalReport', () => {
+	it('keeps the reports that explain an ended download', () => {
+		// already_here, abandoned_claim and claim_pending are the last
+		// thing the backend says before done or error — the row they
+		// belong on is the terminal one, where the user can still read
+		// them and, for a claim, act on the path.
+		for (const key of ['already_here', 'abandoned_claim', 'claim_pending'] as const) {
+			const s = { key, path: key === 'already_here' ? null : '/dl/Show Episode 1.mp4' };
+			expect(terminalReport(s)).toEqual(s);
+		}
+	});
+
+	it('drops the transient retries a terminal row must not claim', () => {
+		// A download that retried through ffmpeg and later failed for
+		// another reason did not fail because of the retry — showing
+		// "retrying" as a finished row's explanation would be false.
+		expect(terminalReport({ key: 'repackage_retry', path: null })).toBeNull();
+		expect(terminalReport({ key: 'retry_ffmpeg', path: null })).toBeNull();
+		expect(terminalReport(null)).toBeNull();
 	});
 });

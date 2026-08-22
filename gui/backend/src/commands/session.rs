@@ -2,8 +2,10 @@
 //! upstream HLS URL (with referer) and gets back the
 //! proxy URL hls.js / `<video>` should fetch.
 //!
-//! In M1.5 the upstream URL comes from a manual paste field; in M2+ it'll
-//! come from the scraper output. The IPC contract is the same either way.
+//! The URL comes from the resolver: the play path walks the provider
+//! and hands the master playlist here. The contract predates that — it
+//! was written against a paste field — and is unchanged by it, which is
+//! the point of taking a URL rather than a show.
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -38,7 +40,7 @@ pub struct CreateSessionResponse {
     /// on the renderer. Wire form is "hls" / "mp4" (lowercase).
     pub media_kind: MediaKind,
     /// `true` when the play resolution came from the long-term cache
-    /// (no fresh ani-cli spawn). The renderer uses this to decide
+    /// (no fresh resolve). The renderer uses this to decide
     /// whether to silently evict + retry on a player error: a cache
     /// hit can be evicted and re-resolved, while a fresh-fetch failure
     /// already exhausted the resolve path and the user should see a
@@ -133,7 +135,7 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", port),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/ani-hsts"),
+            history_path: PathBuf::from("/y/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),

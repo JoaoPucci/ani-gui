@@ -139,7 +139,7 @@ describe('home Continue Watching', () => {
 			// but by way of its failure fallbacks rather than the
 			// cold-cache resolution this scenario describes.
 			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-			// Cold caches: no stored allanime→Kitsu mapping and no
+			// Cold caches: no stored the provider→Kitsu mapping and no
 			// remembered title match, so resolution goes through the
 			// Kitsu search above and writes its result back.
 			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),

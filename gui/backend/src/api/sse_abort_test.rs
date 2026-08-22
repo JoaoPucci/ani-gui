@@ -11,7 +11,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 /// unmount, EventSource.close, the play-cache's click bypass
 /// aborting a prefetch, the download dock's Cancel) must abort the
 /// resolution task driving it. A detached task would keep its
-/// ani-cli child hitting allanime with nobody listening — the
+/// transport child hitting the provider with nobody listening — the
 /// renderer-side abort would be a lie.
 #[tokio::test]
 async fn dropping_the_sse_stream_aborts_the_resolution_task() {
@@ -33,7 +33,7 @@ async fn dropping_the_sse_stream_aborts_the_resolution_task() {
     drop(stream);
     // Abortion lands asynchronously — yield until the runtime reaps
     // the task and drops its future (and with it, in production, the
-    // kill_on_drop ani-cli child).
+    // kill_on_drop transport child).
     for _ in 0..100 {
         if reaped.load(Ordering::SeqCst) {
             break;

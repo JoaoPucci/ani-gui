@@ -66,8 +66,8 @@ bytes = "1.7"
 futures-util = "0.3"
 
 # tokio_stream::wrappers::UnboundedReceiverStream feeds the mpsc channel
-# into axum's Sse handler so progress events from run_debug_streaming
-# stream to the renderer as they happen.
+# into axum's Sse handler so the play and download progress routes
+# reach the renderer as their lines arrive rather than at the end.
 tokio-stream = "0.1"
 
 # UUID for stream session ids
@@ -76,10 +76,6 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # DashMap for concurrent stream-session table
 dashmap = "6.1"
 
-# tempfile: prefetch path uses a per-call TempDir to redirect ani-cli's
-# ANI_CLI_HIST_DIR away from the user's real ani-hsts so prefetches
-# don't bump Continue Watching.
-tempfile = "3.13"
 
 # shlex: parses the user's "Custom" external-player args template into
 # argv tokens, with shell-style quoting/escaping. Already in the lock

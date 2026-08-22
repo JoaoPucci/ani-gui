@@ -32,7 +32,7 @@ export interface ConfirmDeleteResult {
  *      Kitsu group, so a dedupe-hidden sibling can't immediately
  *      become the new visible card (Codex P2 #3369138821).
  *   2. Serialize the backend `historyDelete` calls — they
- *      read-modify-write `ani-hsts` with an atomic rename and no
+ *      read-modify-write the history file with an atomic rename and no
  *      shared lock, so a parallel `Promise.all` can leave a
  *      sibling behind (Codex P2 #3369156513).
  *

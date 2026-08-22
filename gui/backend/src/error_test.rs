@@ -29,7 +29,7 @@ fn rate_limits_block_and_verdicts_do_not() {
 
 #[test]
 fn rate_limited_maps_to_429_and_a_dedicated_key() {
-    // The typed rate-limit answer (allanime's in-band "Too many
+    // The typed rate-limit answer (the provider's in-band "Too many
     // requests" GraphQL payload) must surface as HTTP 429 so the
     // frontend can distinguish "wait a few seconds" from a
     // generic upstream failure, and carry its own i18n key.
@@ -52,7 +52,6 @@ fn every_variant_has_a_stable_key() {
         AniError::Timeout,
         AniError::NoResults,
         AniError::ParseFailed { detail: "x".into() },
-        AniError::MissingBinary,
         AniError::FfmpegMissing,
         AniError::PlayerSpawnFailed {
             binary: "vlc".into(),
@@ -89,12 +88,12 @@ fn serializes_with_kind_discriminator() {
 
 #[test]
 fn ffmpeg_missing_serializes_with_a_dedicated_kind_and_key() {
-    // ani-cli's download path runs `dep_ch "ffmpeg" "aria2c"` at
-    // startup — without ffmpeg it exits the shell instantly, and
-    // the user previously saw a generic "Download failed" tooltip
-    // with no actionable info. The dedicated variant lets the
-    // frontend render a clear modal pointing at the official
-    // ffmpeg download page.
+    // A download with no usable tool used to reach the user as a
+    // generic "Download failed" tooltip with nothing actionable in
+    // it. The dedicated variant is what lets the frontend render a
+    // modal pointing at the official download page instead, so its
+    // serialized shape is part of that contract rather than an
+    // implementation detail.
     let err = AniError::FfmpegMissing;
     let s = serde_json::to_string(&err).expect("serializes");
     assert!(
@@ -150,7 +149,11 @@ fn player_spawn_failed_carries_the_configured_binary_name() {
 /// so a stray `#[error("…")]` rewrite gets caught.
 #[test]
 fn display_messages_match_thiserror_attributes() {
-    assert_eq!(format!("{}", AniError::Timeout), "scraper timed out");
+    // Renamed off "scraper timed out": a download transfer that ran
+    // past its hour ends in this variant too, and a log line naming a
+    // provider sends whoever reads it to the wrong subsystem. Display
+    // is log-only — the frontend renders from `kind` and `key`.
+    assert_eq!(format!("{}", AniError::Timeout), "deadline exceeded");
     assert_eq!(format!("{}", AniError::NoResults), "no results");
     assert_eq!(format!("{}", AniError::Network), "network error");
     assert_eq!(

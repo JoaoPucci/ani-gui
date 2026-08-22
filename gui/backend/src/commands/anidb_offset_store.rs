@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
-/// The offsets file: a sibling of `ani-hsts`, one `slug\toffset` row
+/// The offsets file: a sibling of the history file, one `slug\toffset` row
 /// per stamped show.
 pub(super) fn store_path(history_path: &Path) -> PathBuf {
     history_path.with_file_name("ani-gui-offsets")
@@ -23,8 +23,14 @@ fn lock_path(store: &Path) -> PathBuf {
 
 /// One store row: the slug's offset plus, when the last native
 /// watch landed on a row whose display tag differs from its slot,
-/// that (slot, tag) pair — the bridge that lets ani-hsts speak the
-/// CLI's slot numbers while the GUI keeps the display identity.
+/// that (slot, tag) pair — the bridge that lets the history file
+/// carry the slot a resume looks up while the read boundary presents
+/// the display identity.
+///
+/// The slot is stored for this app and no other. Nothing outside it
+/// reads this file: it sits beside a history the CLI cannot reach,
+/// under a directory that differs between the released build and a
+/// dev one.
 pub(super) struct Row {
     pub(super) slug: String,
     pub(super) offset: u32,
@@ -80,7 +86,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
         // A fresh profile reaches this write before anything has
-        // created $XDG_STATE_HOME/ani-cli — the history writer only
+        // created the state dir — the history writer only
         // runs afterwards.
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -131,7 +137,9 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
 /// same old file, independently merge their row, and overwrite one
 /// another (or consume each other's temp file) — a lost stamp
 /// exposes provider numbering on the home rail. Cross-process
-/// exclusion — the store is shared by the packaged and dev profiles,
-/// which can run at once — is the OS file lock taken inside `put`;
-/// this mutex keeps the process's own threads from contending it.
+/// exclusion — two processes resolving the same history path, whether
+/// two instances of one build or a packaged binary run with
+/// `ANI_GUI_DEV` set, which lands it on the dev profile's files — is
+/// the OS file lock taken inside `put`; this mutex keeps the process's
+/// own threads from contending it.
 static PUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

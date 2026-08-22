@@ -3,7 +3,7 @@
 	"section_app_info": "О приложении",
 	"section_history_title": "Продолжить просмотр ({count})",
 	"section_history_title_loading": "Продолжить просмотр",
-	"history_empty": "Записей пока нет. Посмотрите что-нибудь, чтобы заполнить ani-hsts.",
+	"history_empty": "Записей пока нет. Посмотрите что-нибудь — и они появятся здесь.",
 	"refresh_button": "Обновить",
 	"clear_history_button": "Очистить историю",
 	"section_metadata_cache": "Кэш метаданных",

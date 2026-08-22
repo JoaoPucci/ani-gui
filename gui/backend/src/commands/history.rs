@@ -1,13 +1,16 @@
 //! History commands — `history_list`, `history_delete`, `history_clear`.
 //!
-//! Reads/writes the same `ani-hsts` file the CLI uses, so a user
-//! alternating between CLI and GUI sees one coherent history.
+//! Reads/writes the app's own history file. Its line format is
+//! characterized from the script's and deliberately kept compatible;
+//! the file itself is not shared with the script, which keeps its own
+//! under a different path and has since it re-keyed onto provider
+//! slugs.
 
 use crate::error::Result;
 use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
 
 /// Translate a row's on-disk `ep_no` — the provider's numbering,
-/// which `ani-cli` keys on — back to the per-entry (Kitsu) numbering
+/// which the history file keys on — back to the per-entry (Kitsu) numbering
 /// every GUI surface counts in, using the offset the resolver
 /// stamped for the row's slug. Rows without a stamp pass through
 /// unchanged: that is the no-shift case, and the pre-stamp behavior
@@ -18,10 +21,10 @@ fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> 
 }
 
 /// Returns every history entry as the frontend would render the
-/// "Continue Watching" row. Most-recent-first order is the GUI's choice;
-/// the on-disk order from the CLI is "append-only with in-place updates",
-/// so we return entries in the order they appear on disk and let the
-/// frontend reverse if it wants newest-first. Episode numbers are
+/// "Continue Watching" row. On-disk order is append-only with in-place
+/// updates — the format's own rule, kept because the format is — so
+/// entries come back in the order they appear on disk and the frontend
+/// reverses if it wants newest-first. Episode numbers are
 /// translated to the per-entry (Kitsu) numbering at this boundary.
 ///
 /// # Errors
@@ -34,21 +37,21 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
         .collect())
 }
 
-/// Find the history entry (if any) whose allmanga show_id maps to
-/// the supplied `kitsu_id`. Walks the on-disk TSV, resolving each
-/// entry's `id` through the `(allmanga show_id → kitsu_id)` reverse
-/// cache stamped by every successful play. Returns the first match
-/// or `None` when:
+/// Find the history entry (if any) whose show id maps to the supplied
+/// `kitsu_id`. Walks the on-disk TSV, resolving each entry's `id` —
+/// a provider slug on rows written since the migration — through the
+/// `(show id → kitsu_id)` reverse cache a successful play stamps.
+/// Returns the first match or `None` when:
 ///   - The history file is missing or empty.
-///   - No entry's allmanga id has a cached mapping.
+///   - No entry's show id has a cached mapping.
 ///   - None of the cached mappings equal `kitsu_id`.
 ///
-/// The reverse cache is the same surface Continue Watching uses; if
-/// it has no entry for a given allmanga id (the user hasn't played
-/// that show through the GUI yet), that history row is skipped here.
-/// CLI-only history rows therefore won't surface a Resume affordance
-/// until the user plays the show once via the GUI — by design, since
-/// otherwise we'd need to round-trip Kitsu search per row.
+/// The reverse cache is the same surface Continue Watching uses. A row
+/// can be in the file without being in it: a play that had no Kitsu id
+/// to record, a mapping the cross-cour guard refused, or a row older
+/// than the mapping itself. Those rows are skipped here and show no
+/// Resume affordance until a play stamps them — by design, since the
+/// alternative is a Kitsu search per row.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file
@@ -93,7 +96,7 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     Ok(true)
 }
 
-/// Truncate the history file to zero length. Mirrors `ani-cli -D`.
+/// Truncate the history file to zero length. Mirrors the script's `-D`.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] if the file cannot be written.
@@ -144,14 +147,14 @@ mod tests {
 
     #[test]
     fn list_translates_provider_numbering_back_to_kitsu() {
-        // ani-hsts speaks the provider's numbering (ani-cli greps the
+        // The history file speaks the provider's numbering (a reader greps the
         // stored ep_no in the provider's episode list), while every
         // GUI surface counts per-entry like Kitsu. The read boundary
         // subtracts the offset stamped at resolve time; rows without
         // a stamp pass through unchanged — that's today's behavior
         // for shows the GUI has never resolved.
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -179,7 +182,7 @@ mod tests {
     #[test]
     fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -200,7 +203,7 @@ mod tests {
     #[test]
     fn by_kitsu_returns_the_matching_entry() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
 
         write_atomic(
@@ -220,7 +223,7 @@ mod tests {
         )
         .unwrap();
 
-        // Prime the (allmanga show_id → kitsu_id) reverse mapping
+        // Prime the (provider show_id → kitsu_id) reverse mapping
         // the play path stamps after a successful play.
         crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
         crate::commands::kitsu::allmanga_kitsu_put(&s, "amB", "K2").unwrap();
@@ -233,7 +236,7 @@ mod tests {
     #[test]
     fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
 
         write_atomic(
@@ -260,7 +263,7 @@ mod tests {
 
     // — history_delete ————————————————————————————————————————————
     //
-    // Per-row delete operates on the same TSV file the CLI shares.
+    // Per-row delete operates on the app's own TSV file.
     // Pins: removes the matching id, preserves others byte-identically,
     // is idempotent (no-op delete of an unknown id returns false), and
     // handles a missing file as "nothing to delete" rather than erroring.
@@ -268,7 +271,7 @@ mod tests {
     #[test]
     fn delete_removes_matching_row_and_preserves_others() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -306,7 +309,7 @@ mod tests {
         // Per-card double-clicks and bad client retries must be safe.
         // No-op delete returns false; the file stays byte-identical.
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -339,7 +342,7 @@ mod tests {
         // accidentally wipe rows with id="" (parser already drops
         // those at read, but pin the contract anyway).
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         write_atomic(
             &path,
@@ -359,7 +362,7 @@ mod tests {
     #[test]
     fn list_then_clear_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ani-hsts");
+        let path = tmp.path().join("history");
         let s = make_state(path.clone());
         // Pre-populate with a known fixture.
         write_atomic(

@@ -1,5 +1,42 @@
 use super::*;
 
+/// A directory `find_tool` accepts as holding an installed yt-dlp.
+///
+/// For cases whose subject is the provider walk rather than the
+/// transfer: `download_with_tools` refuses before it resolves anything
+/// when no tool is installed, so a walk case with an empty search path
+/// never reaches the walk. Nothing here is ever spawned — these cases
+/// end before a tool would run — which is why a file is enough.
+/// Portable because `is_executable` reduces to `is_file` off unix.
+fn dir_with_a_findable_tool() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("bin");
+    let p = dir.path().join("yt-dlp");
+    std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write stub");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&p).expect("meta").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+    }
+    dir
+}
+
+#[cfg(unix)]
+/// Shell that writes `body` to whatever path the tool is handed after
+/// `-o`, which is where a real downloader puts its output.
+///
+/// Stubs used to hardcode the target name, which was the same thing
+/// while the tools wrote there directly. It is not any more: a
+/// transfer writes to a scratch name and the finished file is
+/// published afterwards, so a stub that writes to the target is
+/// standing in for something no tool does.
+fn writes_its_output(body: &str) -> String {
+    format!(
+        "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then          printf '{body}' > \"$a\"; fi; prev=\"$a\"; done"
+    )
+}
+
 #[cfg(unix)]
 fn stage_tool(dir: &std::path::Path, name: &str, script: &str) {
     use std::os::unix::fs::PermissionsExt;
@@ -64,7 +101,14 @@ fn find_tool_widens_names_with_the_platform_suffix_table() {
 async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"ytdlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"ytdlp $*\" >&2\n{}\nexit 0",
+            writes_its_output("video")
+        ),
+    );
     stage_tool(bin.path(), "ffmpeg", "echo ffmpeg-ran >&2; exit 0");
     let mut lines = Vec::new();
     spawn_download_tool(
@@ -85,8 +129,8 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
         "v5's arguments ride along: {joined}"
     );
     assert!(
-        joined.contains("Show Episode 2.mp4"),
-        "the target name matches the CLI's shape: {joined}"
+        dest.path().join("Show Episode 2.mp4").exists(),
+        "the published file carries the name the CLI would have used"
     );
     assert!(!joined.contains("ffmpeg-ran"), "no fallback on success");
 }
@@ -192,7 +236,7 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: td.path().join("ani-hsts"),
+        history_path: td.path().join("history"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
@@ -263,7 +307,7 @@ async fn stub_range_show() -> wiremock::MockServer {
 #[tokio::test]
 async fn a_range_download_resolves_and_spawns_per_episode() {
     // The Download All/Range UI sends "1-12"-shaped episode
-    // values; ani-cli's own `-e 1-12` looped over episodes. The
+    // values; the script's own `-e 1-12` looped over episodes. The
     // native path must do the same: one pick, then per-episode
     // resolution and one tool run per episode — not hand the
     // whole range to the episode resolver, which matches a single
@@ -277,7 +321,11 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Range Show",
@@ -304,14 +352,12 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
         "both iterations announce: {progress:?}"
     );
     assert!(
-        lines[0].contains("Range Show Episode 1.mp4"),
-        "first run targets episode 1: {}",
-        lines[0]
+        dest.path().join("Range Show Episode 1.mp4").exists(),
+        "first run publishes episode 1"
     );
     assert!(
-        lines[1].contains("Range Show Episode 2.mp4"),
-        "second run targets episode 2: {}",
-        lines[1]
+        dest.path().join("Range Show Episode 2.mp4").exists(),
+        "second run publishes episode 2"
     );
 }
 
@@ -370,7 +416,11 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
     stage_tool(
         bundle.path(),
         "yt-dlp",
-        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
     );
     state.bundled_bin = Some(bundle.path().to_path_buf());
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -385,8 +435,12 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
         .expect("the bundled tool downloads");
     let calls = std::fs::read_to_string(&log).expect("the bundled tool ran");
     assert!(
-        calls.contains("Range Show Episode 1.mp4"),
+        calls.contains("master.m3u8"),
         "the bundled yt-dlp carried the transfer: {calls}"
+    );
+    assert!(
+        dest.path().join("Range Show Episode 1.mp4").exists(),
+        "and its output was published under the episode's name"
     );
 }
 
@@ -418,7 +472,8 @@ async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
-    let got = download_with_tools(&state, &args, "", |_p| {}).await;
+    let bin = dir_with_a_findable_tool();
+    let got = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {}).await;
     assert!(
         matches!(got, Err(AniError::Timeout)),
         "a stalled pick ends as a timeout: {got:?}"
@@ -609,10 +664,10 @@ async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '\\107TSDATA' > '{target}'\n\
+            "{writer}\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            target = target.display()
+            writer = writes_its_output("\\107TSDATA")
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -660,7 +715,8 @@ async fn a_range_download_surfaces_the_walks_clean_miss() {
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
-    let err = download_with_tools(&state, &args, "", |_p| {})
+    let bin = dir_with_a_findable_tool();
+    let err = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
         .await
         .expect_err("nothing matches");
     assert!(matches!(err, AniError::NoResults));
@@ -801,4 +857,1638 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));
+}
+
+#[tokio::test]
+async fn a_missing_tool_refuses_before_the_provider_is_touched() {
+    // With neither yt-dlp nor ffmpeg installed the resolution cannot
+    // be used for anything, so spending it is spending the user's
+    // time and the provider's patience to arrive at an answer that
+    // was knowable at the click. The install modal should be the
+    // first thing that happens, not the thing that happens after a
+    // walk — or instead of the walk's own failure, which is worse
+    // still: a network error then hides the real cause.
+    // A bare server with nothing mounted: the assertion is that it was
+    // never asked, so a fixture that answers would only add a way for
+    // the case to be about something else. wiremock records unmatched
+    // requests too, which is what makes the empty log mean anything.
+    let server = wiremock::MockServer::start().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let err = download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect_err("no tool means no download");
+    assert!(
+        matches!(err, AniError::FfmpegMissing),
+        "the absent tool is what the user is told about: {err:?}"
+    );
+    let hits = server
+        .received_requests()
+        .await
+        .expect("the mock server records requests");
+    assert!(
+        hits.is_empty(),
+        "the provider was walked before the tool check: {} request(s)",
+        hits.len()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
+    // yt-dlp's warning names the condition — MPEG-TS left under the
+    // .mp4 name — and suggests ffmpeg as the fix. It is not a report
+    // that ffmpeg is absent, and the run condemns itself on the
+    // warning alone, so an install with a working ffmpeg reached the
+    // install modal and was told to install what it already had.
+    //
+    // The mislabeled file still goes: whatever ffmpeg writes must not
+    // land on top of half a transfer in the wrong container.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '\\107TSDATA' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "printf 'GOODMP4' > '{target}'\nexit 0",
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    let got = download_with_tools(&state, &args, &path_env, |_p| {}).await;
+    assert!(
+        got.is_ok(),
+        "an installed ffmpeg must get the retry rather than the install modal: {got:?}"
+    );
+    assert_eq!(
+        std::fs::read(&target).expect("ffmpeg wrote the file"),
+        b"GOODMP4",
+        "the retry's output replaces the mislabeled file"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
+    // The warning names two conditions and only one leaves MPEG-TS, so
+    // the malformed-AAC half used to leave a real MP4 sitting under the
+    // target name — and ffmpeg, spawned without `-y`, then refused to
+    // write it. The retry failed on exactly the machines it exists for.
+    //
+    // Neither half can reach the target now. yt-dlp writes to a name
+    // this run invented, that name is dropped when its own report
+    // condemns it, and the retry gets a fresh one. The case pins that:
+    // the two tools are handed different paths, and neither is the
+    // user's.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    let seen = dest.path().join("outputs");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            // A real MP4 header, not MPEG-TS: the shape that used to
+            // survive the discard and block the retry.
+            "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then \
+             echo \"$a\" >> '{seen}'; printf '\\000\\000\\000\\040ftypmp42' > \"$a\"; fi; prev=\"$a\"; done\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            seen = seen.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-i\" ]; then :; fi; prev=\"$a\"; done\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\n\
+             echo \"$last\" >> '{seen}'\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            seen = seen.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the retry runs and publishes");
+
+    let outputs: Vec<String> = std::fs::read_to_string(&seen)
+        .expect("both tools recorded their output path")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(outputs.len(), 2, "both tools ran: {outputs:?}");
+    assert_ne!(
+        outputs[0], outputs[1],
+        "the retry must start from a name yt-dlp never touched: {outputs:?}"
+    );
+    assert!(
+        !outputs.iter().any(|o| o == &target.to_string_lossy()),
+        "and neither tool is handed the user's own file: {outputs:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("GOODMP4"),
+        "what ffmpeg produced is what gets published"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
+    // The ffmpeg leg of the scratch rule. Its sibling above covers
+    // yt-dlp, and the two reach the tool by different branches — the
+    // one that only runs when yt-dlp is absent had no coverage of
+    // where it writes.
+    //
+    // This case used to stage a file at the target and asserted that
+    // ffmpeg was not handed it. That staging no longer runs a tool at
+    // all: a download into a folder that already has the episode now
+    // returns before spawning anything, so the assertion was reading
+    // an argv file the stub never wrote. What it was protecting — an
+    // earlier download surviving — is asserted directly by
+    // `a_file_that_predates_the_download_is_kept` and by
+    // `an_episode_already_in_the_folder_is_not_downloaded_again`. What
+    // is left is the property those two do not reach, staged so the
+    // tool actually runs.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let argv = dest.path().join("argv");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            // ffmpeg takes its output as the last positional argument
+            // rather than after `-o`, so the yt-dlp writer would fire
+            // for neither the right path nor at all.
+            "printf '%s\\n' \"$@\" > '{argv}'\n             for a in \"$@\"; do last=\"$a\"; done\n             printf 'video' > \"$last\"\nexit 0",
+            argv = argv.display()
+        ),
+    );
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Ffmpeg Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Ffmpeg Show Episode 1.mp4");
+    let seen = std::fs::read_to_string(&argv).expect("the stub recorded its argv");
+    assert!(
+        !seen.lines().any(|a| a == target.to_string_lossy()),
+        "ffmpeg must be handed a scratch path, not the target: {seen}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "and what it wrote has to end up at the target"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_repackage_retry_may_replace_the_file_it_condemned() {
+    // The other half. Here yt-dlp wrote the target during this run and
+    // reported it unusable, so the retry owns that path — and the
+    // removal ahead of it is best-effort, which is why the flag has to
+    // carry the case where the file could not be unlinked.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Range Show Episode 1.mp4");
+    let argv = dest.path().join("argv");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '\\000\\000\\000\\040ftypmp42' > '{target}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             exit 0",
+            target = target.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "printf '%s\\n' \"$@\" > '{argv}'\nprintf 'OK' > '{target}'\nexit 0",
+            argv = argv.display(),
+            target = target.display()
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("the retry runs");
+    let seen = std::fs::read_to_string(&argv).expect("stub recorded its argv");
+    assert!(
+        seen.lines().any(|a| a == "-y"),
+        "the retry owns the target and must be allowed to replace it: {seen:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn two_downloads_of_one_target_do_not_overlap() {
+    // The dock permits a second download of an episode already
+    // downloading — `add` mints a fresh row per click without
+    // consulting the ones it has — and both resolve to the same
+    // `<title> Episode <n>.mp4`. Two tools then write one path.
+    //
+    // That was always a lost write. The repackage retry made it worse:
+    // it removes the target and passes `-y`, so the invocation that
+    // arrives second can delete and overwrite a file the first one has
+    // already finished, and the dock reports both as complete.
+    //
+    // The stub brackets its run in a shared log. Serialized, the log
+    // reads start/end/start/end; overlapping, start/start/end/end.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("order");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo start >> '{log}'\nsleep 0.3\necho end >> '{log}'\nexit 0",
+            log = log.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let mut sink_one = |_l: &str| {};
+    let mut sink_two = |_l: &str| {};
+    let one = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Same Show Episode 1",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut sink_one,
+    );
+    let two = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Same Show Episode 1",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut sink_two,
+    );
+    let (a, b) = tokio::join!(one, two);
+    a.expect("first run");
+    b.expect("second run");
+    let order = std::fs::read_to_string(&log).expect("the stub logged");
+    assert_eq!(
+        order.split_whitespace().collect::<Vec<_>>(),
+        vec!["start", "end", "start", "end"],
+        "two writers of one target must take turns, not overlap: {order:?}"
+    );
+}
+
+#[cfg(unix)]
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
+    // The two waits are the same wait as far as the user is concerned:
+    // a queued download sitting behind one that already owns the file.
+    // Only the cross-instance one was charged to the transfer's
+    // ceiling, because the deadline was created between them — so a
+    // duplicate click waited out the first download's whole hour and
+    // then started its own hour, while the same wait against another
+    // app instance ended at the deadline.
+    //
+    // The duplicate here is a second call for the same target with the
+    // first still running. The first stub outlives the second's
+    // deadline; the second must give up at its own, not inherit a
+    // fresh one when the mutex finally hands over.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        // Records the run before sleeping, so a spawn that is later
+        // killed at its deadline still leaves evidence it happened.
+        &format!(
+            "echo ran >> '{ran}'\nsleep 1.5\nexit 0",
+            ran = ran.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let held = {
+        let path_env = path_env.clone();
+        let dir = dir.clone();
+        tokio::spawn(async move {
+            let mut sink = |_l: &str| {};
+            spawn_download_tool(
+                "https://cdn.example/x/master.m3u8",
+                &dir,
+                "Queued Show Episode 1",
+                None,
+                &path_env,
+                std::time::Duration::from_secs(10),
+                &mut sink,
+            )
+            .await
+        })
+    };
+    // Let the first call reach the tool before the duplicate arrives.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let mut sink = |_l: &str| {};
+    let queued = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Queued Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(300),
+            &mut sink,
+        ),
+    )
+    .await;
+    let queued = queued.expect("the queued download must end at its own deadline");
+    assert!(
+        matches!(queued, Err(AniError::Timeout)),
+        "a download that spends its deadline waiting for a same-process holder \
+         has timed out, exactly as it would waiting for another instance: {queued:?}"
+    );
+    held.await.expect("join").expect("the first download runs");
+    // The discriminating assertion. Timeout alone proves nothing here:
+    // a queued call handed a fresh deadline still spawns its tool and
+    // still times out on the transfer. What separates the two is
+    // whether it spawned at all.
+    let runs = std::fs::read_to_string(&ran).expect("the stub logged");
+    assert_eq!(
+        runs.lines().count(),
+        1,
+        "the queued download spent its deadline waiting, so it must never have \
+         reached the tool: {runs:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
+    // `flock` parks the thread that calls it, and a parked thread is
+    // not a future: cancelling the download drops the JoinHandle while
+    // the closure stays inside the call. The dock's Cancel then looks
+    // like it worked and the blocking pool is one thread down, so
+    // repeated start-and-cancel walks the pool towards starving every
+    // other blocking caller — and none of it is visible.
+    //
+    // The wait therefore belongs on the async side, where it has to be
+    // bounded by something. The transfer deadline is the obvious
+    // bound: a download blocked on another instance is spending the
+    // same wait the transfer itself was given.
+    //
+    // The case wraps its own timeout around the call so an unbounded
+    // wait fails the assertion instead of hanging the suite with
+    // nothing to read.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{ran}'\nexit 0", ran = ran.display()),
+    );
+    let target = dest.path().join("Contended Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path for the target");
+    std::fs::create_dir_all(lock_path.parent().expect("lock dir")).expect("stage the lock dir");
+    let foreign = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("lock file");
+    fs4::FileExt::lock(&foreign).expect("foreign lock");
+
+    let mut sink = |_l: &str| {};
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            dest.path(),
+            "Contended Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_millis(300),
+            &mut sink,
+        ),
+    )
+    .await;
+    fs4::FileExt::unlock(&foreign).expect("unlock");
+
+    let outcome = outcome.expect(
+        "waiting for another instance must end at the transfer deadline, not park a thread \
+         until the holder releases",
+    );
+    assert!(
+        matches!(outcome, Err(AniError::Timeout)),
+        "a wait that runs out of deadline is a timeout: {outcome:?}"
+    );
+    assert!(
+        !ran.exists(),
+        "the tool ran without the cross-instance lock being held"
+    );
+}
+
+#[test]
+fn the_cross_instance_lock_lives_beside_the_file_it_guards() {
+    // A lock is only worth holding if every contender takes the same
+    // one, so its location may not depend on anything a process can be
+    // configured with. Two attempts at this failed that test: the app
+    // cache directory moves with the build profile, and the profile
+    // fix still left it under `$XDG_CACHE_HOME`, which is an
+    // environment variable — an installed release and a source build
+    // launched with different cache roots write the same download
+    // folder and take different locks.
+    //
+    // The one location that cannot diverge is the one derived from
+    // what they are contending for. Both instances were handed the
+    // same destination directory, or they would not be racing at all.
+    let dest = std::path::Path::new("/tmp/ani-gui-lock-probe");
+    let target = dest.join("Show Episode 1.mp4");
+    let path = target_lock_path(&target).expect("a lock path for the target");
+    assert!(
+        path.starts_with(dest),
+        "the lock must sit under the target's own directory, or no \
+         environment-dependent root can be trusted to match: {}",
+        path.display()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
+    // Publication keeps whatever is already at the name, so a transfer
+    // into a folder that has the episode cannot change the outcome. It
+    // can still spend an episode's worth of the user's bandwidth and
+    // most of the hour it is allowed, and then throw the result away.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo ran >> '{ran}'\n{writer}\nexit 0",
+            ran = ran.display(),
+            writer = writes_its_output("replacement")
+        ),
+    );
+    let target = dest.path().join("Owned Show Episode 1.mp4");
+    std::fs::write(&target, b"already here").expect("stage the episode");
+
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Owned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("having the episode already is not a failure");
+
+    assert!(
+        !ran.exists(),
+        "no tool should run for a file that cannot be replaced"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("already here"),
+        "and the episode there is untouched"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("already")),
+        "the dock is told why nothing happened: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
+    // The guard was disarmed before publication rather than after, so
+    // a publish that could not install the file left the finished
+    // transfer sitting in the download folder — a whole episode, under
+    // a hidden name, with nothing that would ever remove it.
+    //
+    // A target name past what the filesystem accepts is the cheap way
+    // to make publication fail: the scratch name is short and gets
+    // written normally, and only the install is impossible.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("a whole episode")),
+    );
+    let stem = "n".repeat(300);
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        &stem,
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "a file that cannot be installed is a failure");
+
+    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a transfer that could not be published must not be left behind: {leftovers:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_failed_link_free_publish_leaves_no_claim_behind() {
+    // The no-hard-links path claims the name by creating it and then
+    // renames onto its own empty file. If that rename does not happen,
+    // the claim IS the episode as far as everything downstream can
+    // tell: zero bytes at the target, which the next download reads as
+    // somebody else's finished file and stands down from. One failure
+    // poisons that name for good.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    let missing = dest.path().join("never-written.part.mp4");
+    let got = publish_without_links(&missing, &target).await;
+    assert!(
+        got.is_err(),
+        "a publish with nothing to install is a failure"
+    );
+    assert!(
+        !target.exists(),
+        "and it must not leave its own claim standing as an episode"
+    );
+}
+
+#[tokio::test]
+async fn colliding_with_a_claim_is_not_finding_the_episode() {
+    // Another publisher's claim lands between this one's look at the
+    // target and its own attempt to create the name. The collision
+    // proves only that the name is taken — not that an episode holds
+    // it. The claimant can still die before its rename, and standing
+    // down on the collision alone discards a finished transfer in
+    // favor of an empty file, reported as the episode being here.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("the other publisher's claim");
+    let scratch = dest.path().join("finished.part.mp4");
+    std::fs::write(&scratch, b"the whole episode").expect("scratch");
+
+    let got = publish_without_links(&scratch, &target).await;
+    assert!(
+        got.is_err(),
+        "a name held by a claim that never became an episode is not \
+         an episode already here: {got:?}"
+    );
+    assert_eq!(
+        std::fs::metadata(&target).expect("claim").len(),
+        0,
+        "and the claim is not this publisher's to touch"
+    );
+}
+
+#[tokio::test]
+async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
+    // The claimant's rename can fail, and it takes its claim with it
+    // when that happens. A publisher that collided with the claim and
+    // waited it out then sees the name free — and a free name with a
+    // finished transfer in hand is a download to complete, not one to
+    // surrender.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("the other publisher's claim");
+    let scratch = dest.path().join("finished.part.mp4");
+    std::fs::write(&scratch, b"the whole episode").expect("scratch");
+    let claim = target.clone();
+    let _cleanup = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let _ = std::fs::remove_file(&claim);
+    });
+
+    let got = publish_without_links(&scratch, &target).await;
+    assert!(
+        matches!(got, Ok(Published::Installed)),
+        "a name that came free again is this publisher's to take: {got:?}"
+    );
+    assert_eq!(
+        std::fs::read(&target).expect("episode"),
+        b"the whole episode",
+        "and the finished transfer is what landed there"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
+    // Publication can deliver while the scratch's removal fails —
+    // on Windows another process holding the file open without
+    // delete sharing, here a directory whose permissions changed
+    // under it. The download has still delivered, so it does not
+    // become an error; but standing the guard down on the report
+    // alone leaves an episode-sized hidden file behind forever,
+    // under a download that said success. The guard stands down
+    // only for a scratch that is provably gone.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"the episode").expect("episode");
+    let scratch = Scratch::new(dest.path());
+    std::fs::write(&scratch.path, b"the whole episode").expect("scratch");
+    let scratch_path = scratch.path.clone();
+    // A directory nothing can unlink from: every read inside
+    // publication succeeds and the removal fails.
+    let chmod = |mode: u32| {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dest.path()).expect("meta").permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(dest.path(), perms).expect("chmod");
+    };
+    chmod(0o555);
+
+    let mut sink = |_l: &str| {};
+    let got = finish(&scratch, &target, &mut sink).await;
+    chmod(0o755);
+    assert!(got.is_ok(), "the episode is delivered: {got:?}");
+    assert!(
+        scratch_path.exists(),
+        "the removal failed inside publication, so the scratch is still here"
+    );
+
+    drop(scratch);
+    assert!(
+        !scratch_path.exists(),
+        "a scratch the publisher could not remove is still the guard's to take"
+    );
+}
+
+#[cfg(unix)]
+fn dir_chmod(dir: &std::path::Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(dir).expect("meta").permissions();
+    perms.set_mode(mode);
+    std::fs::set_permissions(dir, perms).expect("chmod");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_retired_scratch_the_retry_could_not_remove_is_swept_at_the_end() {
+    // The retry discards the condemned output and points at a fresh
+    // name — and the discard can fail without saying so, a file still
+    // held open without delete sharing on Windows, a directory gone
+    // read-only here. Forgetting the old prefix at that moment means
+    // the final sweep only knows the new one, and the partial the
+    // failed tool left — most of an episode — hides in the folder
+    // for good. A name this guard condemned stays its to remove
+    // until the end.
+    let dest = tempfile::tempdir().expect("dest");
+    let mut scratch = Scratch::new(dest.path());
+    let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
+    std::fs::write(&old_partial, b"most of an episode").expect("partial");
+
+    dir_chmod(dest.path(), 0o555);
+    scratch.renew(dest.path());
+    dir_chmod(dest.path(), 0o755);
+    assert!(
+        old_partial.exists(),
+        "the retirement's own removal failed, which is the premise"
+    );
+
+    drop(scratch);
+    assert!(
+        !old_partial.exists(),
+        "what the retry could not remove is swept when the guard goes"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn publication_does_not_orphan_what_a_retry_left_behind() {
+    // The success path stands the guard down — and a retry may have
+    // retired a name whose removal failed. Delivered episode or not,
+    // that name was condemned by this download and nothing else will
+    // ever remove it.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Retried Show Episode 1.mp4");
+    let mut scratch = Scratch::new(dest.path());
+    let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
+    std::fs::write(&old_partial, b"the condemned first attempt").expect("partial");
+
+    dir_chmod(dest.path(), 0o555);
+    scratch.renew(dest.path());
+    dir_chmod(dest.path(), 0o755);
+    assert!(old_partial.exists(), "the retirement's removal failed");
+
+    std::fs::write(&scratch.path, b"the whole episode").expect("retry output");
+    let mut sink = |_l: &str| {};
+    finish(&scratch, &target, &mut sink)
+        .await
+        .expect("the retry delivered");
+    assert_eq!(
+        std::fs::read(&target).expect("episode"),
+        b"the whole episode"
+    );
+
+    drop(scratch);
+    assert!(
+        !old_partial.exists(),
+        "a delivered episode does not license orphaning the retired name"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it() {
+    // The preflight names an abandoned claim and tells the user what
+    // to delete. The same claim arriving while the transfer runs hit
+    // publication instead, which refused with a bare error — right
+    // refusal, no sentence, so the dock showed a generic failure and
+    // the one line carrying the path never existed. The claim is
+    // never taken, so it is still standing to be looked at when the
+    // refusal comes back.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Ambushed Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "{writer}\n: > '{claim}'\ntouch -t 202001010000 '{claim}'\nexit 0",
+            writer = writes_its_output("video"),
+            claim = target.display()
+        ),
+    );
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Ambushed Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "nothing was published, so this is a failure");
+
+    let want = format!("status.download.abandoned_claim {}", target.display());
+    assert!(
+        lines.contains(&want),
+        "the refusal names the file at publication time too, got: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_live_claim_at_publication_time_is_reported_as_pending() {
+    // The fresh variant of the same ambush: the claim is moments old,
+    // publication waits it out, and its owner never comes back. The
+    // preflight's sentence for that state — another download holds
+    // the name, try again shortly — is just as true here.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Contested Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "{writer}\n: > '{claim}'\nexit 0",
+            writer = writes_its_output("video"),
+            claim = target.display()
+        ),
+    );
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contested Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "a claim that never resolves is not a success");
+
+    let want = format!("status.download.claim_pending {}", target.display());
+    assert!(
+        lines.contains(&want),
+        "the pending-claim sentence is said at publication time too, got: {lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_already_here_report_is_a_stable_key_not_display_copy() {
+    // The progress stream reaches the dock verbatim, so a sentence
+    // composed here is UI copy smuggled past Paraglide — three
+    // locales would read English. The backend's side of that line is
+    // a stable dotted key; the sentence lives in the message bundles,
+    // once per locale, where every other user-visible string lives.
+    let bin = dir_with_a_findable_tool();
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Owned Show Episode 1.mp4");
+    std::fs::write(&target, b"already here").expect("stage the episode");
+
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Owned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("having the episode already is not a failure");
+
+    assert!(
+        lines.iter().any(|l| l == "status.download.already_here"),
+        "the report is the key the frontend translates, got: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_refusal_names_the_file_after_a_stable_key() {
+    // The abandoned-claim refusal is the one line whose content the
+    // user acts on — it carries the path to delete. The path rides
+    // after the key, separated by the first space, so the frontend
+    // can translate the sentence and keep the path verbatim,
+    // whatever characters the title brought with it.
+    let bin = dir_with_a_findable_tool();
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Stalled Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("stage the claim");
+    age_it(&target);
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Stalled Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "an abandoned claim still refuses");
+
+    let want = format!("status.download.abandoned_claim {}", target.display());
+    assert!(
+        lines.contains(&want),
+        "the refusal is a key with the path after the first space, got: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
+    // The sweep exists for the kill and the failure, where the tool's
+    // derived files sit orphaned beside a scratch nothing will rename.
+    // A publication that succeeded already consumed the scratch, so
+    // the sweep has nothing to find — but finding nothing still reads
+    // every entry in the destination, once per episode of a range
+    // download, on whatever filesystem the user chose. The walk is
+    // observable by what it removes: a file the tool derived from the
+    // scratch name must survive a download that ended with the
+    // episode published.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        concat!(
+            "prev=\"\"\n",
+            "for a in \"$@\"; do\n",
+            "  if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; : > \"$a.probe\"; fi\n",
+            "  prev=\"$a\"\n",
+            "done\n",
+            "exit 0"
+        ),
+    );
+
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Swept Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Swept Show Episode 1.mp4");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "the episode is published"
+    );
+    let probes = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".probe"))
+        .count();
+    assert_eq!(
+        probes, 1,
+        "a download that ended published does not go back over the \
+         destination — what the tool derived from the scratch name is \
+         the proof the walk did not happen"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
+    // The lock stopped being the thing that makes this safe when
+    // publishing took over. It is an optimization — it saves a second
+    // click the bandwidth — so failing to take one is a reason to skip
+    // the saving, not to refuse a download the filesystem would have
+    // accepted. A destination deep enough that the target fits and the
+    // lock path does not is the case that used to be refused outright.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let target = dest.path().join("Unlockable Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    // A directory where the lock file belongs: it cannot be opened for
+    // writing, which is what an unusable lock location looks like.
+    std::fs::create_dir_all(&lock_path).expect("stage the obstruction");
+
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Unlockable Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("an unusable lock must not refuse the download");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "the episode is published without the lock's help"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_takes_the_tools_own_temporaries_with_it() {
+    // The transfer does not write to the `-o` path while it runs.
+    // yt-dlp's `--part` is on by default — "use .part files instead of
+    // writing directly into output file" — so the bytes land in
+    // `<out>.part`, with `<out>.ytdl` holding fragment-resume state
+    // and a `<out>.part-FragN` per in-flight fragment beside it. A
+    // guard that removes the exact `-o` path removes the one name
+    // nothing was ever written to, and the episode-sized file stays.
+    //
+    // The fix is not to enumerate a tool's naming conventions. That is
+    // the same mistake as reconstructing which spellings are one file,
+    // and it ends the same way: right until the tool adds a suffix. The
+    // scratch name carries a uuid this run generated, so anything
+    // derived from it is ours by construction.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "prev=\"\"\nfor a in \"$@\"; do \
+         if [ \"$prev\" = \"-o\" ]; then \
+         printf 'half an episode' > \"$a.part\"; \
+         printf 'resume state' > \"$a.ytdl\"; \
+         printf 'a fragment' > \"$a.part-Frag7\"; \
+         fi; prev=\"$a\"; done\nsleep 30\nexit 0",
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let running = tokio::spawn(async move {
+        let mut sink = |_l: &str| {};
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Interrupted Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut sink,
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    running.abort();
+    let _ = running.await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let leftovers = ours_in(dest.path());
+    assert!(
+        leftovers.is_empty(),
+        "the tool's own temporaries are the transfer too: {leftovers:?}"
+    );
+}
+
+/// Every file in `dir` this app's transfer could have put there. The
+/// scratch name is `.ani-gui-<pid>-<uuid>…`, and nothing a tool
+/// derives from it loses that prefix.
+///
+/// Files only, because `.ani-gui-locks` shares the prefix and is not
+/// transfer data — it is the lock directory, which has to sit on the
+/// destination's own volume and outlives any one download. The
+/// production sweep is narrower still: it matches the full scratch
+/// file name, which no other entry can begin with.
+#[cfg(unix)]
+fn ours_in(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".ani-gui-"))
+        .collect()
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_a_download_takes_its_scratch_file_with_it() {
+    // Cancel drops the future mid-transfer. None of the error branches
+    // run, so nothing below the await gets to clean up — and what is
+    // left is not a stray marker but most of an episode, tens or
+    // hundreds of megabytes, hidden in the user's download folder.
+    // Cancel a few times and it is gigabytes.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nsleep 30\nexit 0", writes_its_output("half an episode")),
+    );
+    let path_env = bin.path().display().to_string();
+    let dir = dest.path().to_path_buf();
+    let running = tokio::spawn(async move {
+        let mut sink = |_l: &str| {};
+        spawn_download_tool(
+            "https://cdn.example/x/master.m3u8",
+            &dir,
+            "Cancelled Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut sink,
+        )
+        .await
+    });
+    // Long enough for the stub to have written something.
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    running.abort();
+    let _ = running.await;
+    // The drop runs on the task's own thread; give it a moment to land.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a cancelled transfer must not leave its partial file behind: {leftovers:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_tool_writes_somewhere_other_than_the_target() {
+    // Writing straight to the final name is what made every
+    // concurrency question here a question about names. While the
+    // transfer is in flight the file is incomplete, and it is sitting
+    // at the name the user's file manager, the dock, and any other
+    // download are all looking at.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let argv = dest.path().join("argv");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf '%s\n' \"$@\" > '{argv}'\nprev=\"\"\nfor a in \"$@\"; do \
+             if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+            argv = argv.display()
+        ),
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Scratch Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Scratch Show Episode 1.mp4");
+    let seen = std::fs::read_to_string(&argv).expect("the stub recorded its argv");
+    assert!(
+        !seen.lines().any(|a| a == target.to_string_lossy()),
+        "the tool must be handed a scratch path, not the target: {seen}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "and what it wrote has to end up at the target"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_that_appears_mid_transfer_is_not_replaced() {
+    // The race, staged exactly: the stub publishes a rival file at the
+    // target while this transfer is still running, which is what
+    // another download finishing first looks like from in here.
+    // Whoever lands first owns the name; the one that arrives second
+    // discards its own copy rather than deleting a finished file.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Contested Show Episode 1.mp4");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "printf 'winner' > '{target}'\nprev=\"\"\nfor a in \"$@\"; do \
+             if [ \"$prev\" = \"-o\" ]; then printf 'loser' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
+            target = target.display()
+        ),
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contested Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("losing the race is not a failure — the episode is there");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("winner"),
+        "the file that got there first must survive"
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "the discarded copy must not be left behind: {leftovers:?}"
+    );
+}
+
+/// Backdate `path` far enough that the grace period has passed.
+///
+/// Unix-gated with its caller. The two cases that used it on every
+/// platform asserted the claim could be taken, and went when it
+/// stopped being taken.
+#[cfg(unix)]
+fn age_it(path: &std::path::Path) {
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .expect("open to backdate")
+        .set_modified(old)
+        .expect("backdate");
+}
+
+#[tokio::test]
+async fn a_claim_another_publisher_is_still_using_is_left_alone() {
+    // The claim is only abandoned once nobody is coming back for it.
+    // Between another publisher's `create_new` and its `rename` the
+    // claim is live, and deleting it there lets both transfers install
+    // — each one's rename replacing the other's file, and the loser's
+    // error cleanup deleting a target it no longer owns.
+    //
+    // That is not two copies of one thing. The target name is
+    // `<title> Episode <n>.mp4` and carries neither mode nor quality,
+    // so the sub and the dub of an episode collide on it, and so do
+    // 1080p and 720p. What is lost is a different file.
+    //
+    // Nothing here can ask who owns a path. What it can ask is how
+    // long the claim has been sitting there: a live one is two
+    // syscalls old, an abandoned one is as old as the crash.
+    let dir = tempfile::tempdir().expect("dir");
+    let scratch = dir.path().join(".ani-gui-test.part.mp4");
+    let target = dir.path().join("Contended Show Episode 1.mp4");
+    std::fs::write(&scratch, b"the dub").expect("a finished transfer");
+    std::fs::write(&target, b"").expect("another publisher's live claim");
+
+    // Reporting the episode present would be a guess about someone
+    // else's next syscall. This claim's owner never makes it, and
+    // saying the download succeeded leaves the user with an empty file
+    // the next attempt refuses.
+    assert!(
+        publish(&scratch, &target).await.is_err(),
+        "a claim that never becomes an episode is not a finished download"
+    );
+    assert_eq!(
+        std::fs::metadata(&target).expect("target").len(),
+        0,
+        "and it is still not this transfer's to take"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_abandoned_claim_is_reported_and_never_taken() {
+    // Third shape for this case, and the last, because the first two
+    // were attempts to make taking the claim safe and it cannot be
+    // made safe. Gating on the lock was insufficient and blocking;
+    // renaming onto the claim closed the empty-name gap but still
+    // acted on a classification that could be stale by the time it
+    // acted, so two publishers could each replace the other's
+    // finished file.
+    //
+    // Every version of the fix was trying to hold the same two
+    // guarantees at once: never leave a name blocked, and never
+    // replace a file this app cannot prove is its own. On a filesystem
+    // with no conditional replace, they do not both fit.
+    //
+    // The repository already says which one gives way. The confirm
+    // dialog asks for a directory and never for permission to
+    // overwrite, and the download path has spent this whole branch
+    // making that true. So the claim is reported, not taken: the app
+    // says exactly what is in the way and where, and the file it did
+    // not write stays where it is.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{}'\nexit 0", ran.display()),
+    );
+    let target = dest.path().join("Abandoned Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("a claim from an earlier crash");
+    age_it(&target);
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Abandoned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+
+    assert!(got.is_err(), "the episode cannot be installed at that name");
+    assert!(
+        !ran.exists(),
+        "and nothing transfers to discover what was knowable first"
+    );
+    assert!(
+        std::fs::metadata(&target).is_ok_and(|m| m.len() == 0),
+        "the file this app did not finish writing is still not its own to delete"
+    );
+    let said = lines.join(" ");
+    assert!(
+        said.contains("Abandoned Show Episode 1.mp4") && said.contains("abandoned_claim"),
+        "the dock has to name the file and say why, or the user cannot act: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_that_cannot_be_read_is_not_a_path_that_is_free() {
+    // Every error from `symlink_metadata` mapped to "nothing here",
+    // which is right for `NotFound` and wrong for the rest. Permissions
+    // change, a network folder goes away, the volume errors — and the
+    // classifier reports the name free.
+    //
+    // Asked of the scratch path, that becomes a report of success: the
+    // finished-transfer check reads "not an episode" as the tool having
+    // written nothing, which has always ended the download happily. So
+    // an unreadable folder publishes no file and says the download is
+    // done.
+    let dir = tempfile::tempdir().expect("dir");
+    let sealed = dir.path().join("sealed");
+    std::fs::create_dir(&sealed).expect("sealed dir");
+    let inside = sealed.join("Show Episode 1.mp4");
+    std::fs::write(&inside, b"the episode").expect("a file inside it");
+    std::fs::set_permissions(&sealed, std::os::unix::fs::PermissionsExt::from_mode(0o000))
+        .expect("seal it");
+
+    let seen = at_target(&inside);
+
+    // Restored first, so the temp directory can still be cleaned up
+    // whatever the assertion does.
+    std::fs::set_permissions(&sealed, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("unseal");
+    assert_ne!(
+        seen,
+        AtTarget::Nothing,
+        "a path this process cannot look at is not a path it may write to"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_claim_that_never_resolves_is_not_a_finished_download() {
+    // Standing down for a live claim assumes its owner is two syscalls
+    // from installing the episode. Usually true. When it is not — the
+    // owner crashed between creating the claim and renaming onto it —
+    // nothing lands, and this transfer was discarded on the strength of
+    // a promise nobody kept.
+    //
+    // Reporting that as a completed download is the worst of the
+    // options: the user is told the episode is in the folder, and what
+    // is actually there is an empty file that the next attempt will
+    // refuse.
+    //
+    // A claim resolves in microseconds or not at all, so waiting a
+    // moment separates the two without a lock and without guessing.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the episode")),
+    );
+    let target = dest.path().join("Contended Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("a claim whose owner never returns");
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Contended Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(30),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+
+    assert!(
+        got.is_err(),
+        "no episode was installed, so this download did not succeed"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("claim_pending")),
+        "and the dock says another download holds the name: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
+    // `metadata` follows links, so a dangling one answers NotFound and
+    // the name reads as free. The transfer then runs to completion and
+    // `hard_link` fails with the same `AlreadyExists` an episode gives
+    // — reported as a finished download, with nothing playable at the
+    // path.
+    //
+    // A link that resolves is no better. Publishing through it writes
+    // wherever it points, which is not the folder the user picked in
+    // the confirm dialog. Neither is ours to install over.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("the episode")),
+    );
+    std::os::unix::fs::symlink(
+        dest.path().join("gone.mp4"),
+        dest.path().join("Linked Show Episode 1.mp4"),
+    )
+    .expect("a dangling link");
+
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Linked Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(
+        got.is_err(),
+        "nothing playable can be installed at that name"
+    );
+}
+
+#[tokio::test]
+async fn a_directory_at_the_target_is_a_failure_not_a_download() {
+    // `AlreadyExists` from the link is not always another episode.
+    // A directory, a fifo, anything that is not a regular file gives
+    // the same error, and reporting that as a completed download tells
+    // the user their episode is in a folder where there is nothing
+    // playable at all.
+    let dir = tempfile::tempdir().expect("dir");
+    let scratch = dir.path().join(".ani-gui-test.part.mp4");
+    let target = dir.path().join("Blocked Show Episode 1.mp4");
+    std::fs::write(&scratch, b"the episode").expect("a finished transfer");
+    std::fs::create_dir(&target).expect("something else holds the name");
+
+    assert!(
+        publish(&scratch, &target).await.is_err(),
+        "nothing playable is at the target, so this did not succeed"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_directory_at_the_target_refuses_before_the_transfer() {
+    // And it refuses up front, for the same reason the already-here
+    // case does: the outcome cannot change, so an episode of the
+    // user's bandwidth should not be spent finding that out.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("echo ran >> '{}'\nexit 0", ran.display()),
+    );
+    std::fs::create_dir(dest.path().join("Blocked Show Episode 1.mp4")).expect("an obstruction");
+
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Blocked Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "the episode cannot land at that name");
+    assert!(!ran.exists(), "and no tool should have run to discover it");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_tool_that_writes_an_empty_file_installs_nothing() {
+    // And the app must not create the poison itself. A tool that exits
+    // cleanly having written an empty file has downloaded nothing;
+    // installing that under the episode's name would put a file there
+    // that no later attempt could replace under the old rule, and that
+    // the user would have to delete by hand.
+    //
+    // The neighbouring case for a tool that writes no file at all ends
+    // as a success with nothing installed. This is the same event with
+    // one more syscall in it.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("")),
+    );
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Empty Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("a tool that wrote nothing is not a failure");
+    assert!(
+        !dest.path().join("Empty Show Episode 1.mp4").exists(),
+        "an empty transfer must not take the episode's name"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_that_predates_the_download_is_kept() {
+    // The other half. I first wrote this asserting the opposite —
+    // that re-downloading replaces what is there — and the repository
+    // already said otherwise: the confirm dialog asks for a directory
+    // and never for permission to overwrite, so a file at that name is
+    // one the user did not agree to lose. That rule was enforced on
+    // the ffmpeg path alone, by withholding `-y`, while a yt-dlp run
+    // wrote straight over the same file. Publishing applies it to
+    // both.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Redownloaded Show Episode 1.mp4");
+    std::fs::write(&target, b"earlier").expect("stage an earlier download");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("fresh")),
+    );
+    let mut sink = |_l: &str| {};
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Redownloaded Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut sink,
+    )
+    .await
+    .expect("finding the episode already there is not a failure");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("earlier"),
+        "a file the user already had is not one they agreed to lose"
+    );
 }

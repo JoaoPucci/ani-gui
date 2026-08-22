@@ -13,7 +13,7 @@
 //!     for the external-player flow: walks the same cache, HEAD-
 //!     validates, and returns ready-to-launch [`LaunchArgs`] (or
 //!     `None`) so `play_external` can hand mpv a cached URL without
-//!     re-spawning ani-cli.
+//!     resolving again.
 //!
 //! All three are async and depend on `AppState`'s reqwest client +
 //! cache pool, so the fixtures in play.rs's test module
@@ -52,7 +52,7 @@ pub(crate) async fn upstream_head_ok(
 /// HEAD-validate a cached upstream URL. Returns a fresh
 /// CreateSessionResponse on success, or `None` if the URL is dead /
 /// unreachable / returns an error status — caller should fall through
-/// to a fresh ani-cli spawn.
+/// to a fresh resolve.
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
@@ -75,7 +75,7 @@ pub(crate) async fn try_serve_cached(
 
 /// Cache-hit branch of `play_external`: returns ready-to-launch
 /// `LaunchArgs` when the play_resolution_cache has a live row,
-/// otherwise `None` (caller falls through to a fresh ani-cli spawn).
+/// otherwise `None` (caller falls through to a fresh resolve).
 /// HEAD-fail evicts the row before returning None so the next
 /// attempt isn't bitten by the same dead URL.
 pub(crate) async fn try_launch_args_from_cache(
@@ -100,7 +100,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row stale (HEAD failed), evicted, falling back to ani-cli",
+            "play_external: cache row stale (HEAD failed), evicted, resolving afresh",
         );
         return None;
     }

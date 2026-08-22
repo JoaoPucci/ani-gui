@@ -10,12 +10,12 @@
 import { epAirState, type AiringStatus } from './episode-airing';
 
 /**
- * True when episode `n` sits above allmanga's playable count — aired
+ * True when episode `n` sits above the provider's playable count — aired
  * per AniList, but not streamable yet (catalog lag: aired=5 while
- * allmanga lists 2). `displayCap` renders such tiles; clicks and
+ * the provider lists 2). `displayCap` renders such tiles; clicks and
  * prefetches must not fire on them (Codex P2 #3565988141/#3565988143).
  * Floor-compare mirrors `epAirState`: decimal extras come from
- * allmanga itself, so a streamable "2.5" recap isn't gated by a
+ * the provider itself, so a streamable "2.5" recap isn't gated by a
  * playable count of 2. Unknown count never gates.
  */
 export function beyondPlayable(n: number, playable: number | null): boolean {
@@ -27,7 +27,7 @@ export function beyondPlayable(n: number, playable: number | null): boolean {
  * How far the episode strip should render tiles. Actions (play,
  * download, prefetch, next/prev) keep the playable-first cap; this
  * governs *display only*. With airing data present, extend to the
- * announced total so a season allmanga hasn't fully listed renders
+ * announced total so a season the provider hasn't fully listed renders
  * its unaired tail as greyed dated tiles instead of not existing at
  * all. Without airing data nothing could grey that tail — padded
  * extras would be interactive doomed tiles — so stick to the
@@ -46,10 +46,10 @@ export function displayCap(
 
 /**
  * Null-tolerant min of two caps. The download modal's range ceiling
- * must respect BOTH what Kitsu indexed and what allmanga has
+ * must respect BOTH what Kitsu indexed and what the provider has
  * catalogued: with the padded strip, `knownAvailableEpisodes` is
  * usually null, and clamping only to the aired count let a default
- * "All" download start a range whose tail allmanga doesn't carry yet
+ * "All" download start a range whose tail the provider doesn't carry yet
  * (Codex P2 #3566042284).
  */
 export function minCap(a: number | null, b: number | null): number | null {

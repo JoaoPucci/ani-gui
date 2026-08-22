@@ -229,15 +229,15 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSlug).not.toHaveBeenCalled();
 	});
 
-	// — allmanga show_id → kitsu_id reverse mapping ————————————————
+	// — the provider show_id → kitsu_id reverse mapping ————————————————
 	//
 	// Once the user has played a show through the GUI, the backend
 	// has a deterministic id-keyed mapping that beats fuzzy text
 	// search. Resolver checks this first; on hit, no kitsuSearch /
 	// title-match round-trip is necessary.
 
-	it('uses allmanga→kitsu reverse mapping when present', async () => {
-		// Naruto's allmanga title is typo'd ("Nato: Shippuuden") so
+	it('uses the provider→kitsu reverse mapping when present', async () => {
+		// Naruto's provider title is typo'd ("Nato: Shippuuden") so
 		// the title-match path mismatches it to Mysterious Girlfriend
 		// X. The reverse mapping recorded on play side-steps that
 		// failure mode entirely.
@@ -309,7 +309,7 @@ describe('resolveKitsuMatch', () => {
 	});
 
 	it('cour > 1 reverse-map hit with slug mismatch re-resolves (no delete) + falls through', async () => {
-		// The production poisoning case: Stone Ocean Part 2's allmanga
+		// The production poisoning case: Stone Ocean Part 2's provider
 		// show_id (D5ksnsKtYAzzFXeSp) was mapped to Stone Ocean Part 1's
 		// Kitsu id (44294) by a play through Part 1's detail page where
 		// the backend's picker landed on the Part 2 sibling. Step 0's
@@ -435,12 +435,12 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it('falls through to allmanga show enrichment when text search returns 0 hits', async () => {
-		// Repro: cleared metadata cache + cryptic allmanga `name`. The
+	it('falls through to provider show enrichment when text search returns 0 hits', async () => {
+		// Repro: cleared metadata cache + cryptic provider `name`. The
 		// reverse cache miss + title-match cache miss + slug skip + 0-hit
 		// text search should NOT be terminal — the resolver calls the
-		// new enrichment IPC, which fetches allmanga's Show GraphQL and
-		// retries Kitsu search with englishName / altNames.
+		// enrichment IPC, which resolves from the show id rather than
+		// from the stub name.
 		const preliminary = resolveHistoryEntry(
 			{ id: 'ReooPAxPMsHM4KPMY', ep_no: '1', title: '1P (1161 episodes)' },
 			null
@@ -462,11 +462,11 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedResolveAllmanga).toHaveBeenCalledWith('ReooPAxPMsHM4KPMY', true);
 	});
 
-	it('returns null when text search and allmanga enrichment both miss', async () => {
+	it('returns null when text search and provider enrichment both miss', async () => {
 		// Worst case: title-search empty AND backend enrichment also
-		// finds no Kitsu match (shows allmanga indexes that Kitsu
+		// finds no Kitsu match (shows the provider indexes that Kitsu
 		// doesn't carry at all). Resolver returns null; the home page
-		// renders the bare allmanga title and routes the resume card
+		// renders the bare provider title and routes the resume card
 		// to /search.
 		const preliminary = resolveHistoryEntry(
 			{ id: 'unknown-show', ep_no: '1', title: 'mystery (1 episodes)' },
@@ -499,9 +499,9 @@ describe('resolveKitsuMatch', () => {
 	// — identity guard: music subtype + gross title mismatch ————————————
 
 	it('evicts a music-subtype reverse-map binding and re-resolves (the Idol bug)', async () => {
-		// The Love Live movie's allmanga show_id was poisoned to point at the
+		// The Love Live movie's provider show_id was poisoned to point at the
 		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). Music never
-		// exists on allanime, so step 0 must drop the row and re-resolve — the
+		// exists on the provider, so step 0 must drop the row and re-resolve — the
 		// card stops showing "Idol" for a Love Live entry.
 		const preliminary = resolveHistoryEntry(
 			{
@@ -545,8 +545,8 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
-	it('keeps a reverse-map binding whose allmanga title is a plausible typo', async () => {
-		// Guard must not over-reject: "Nato: Shippuuden" (allmanga typo) shares
+	it('keeps a reverse-map binding whose provider title is a plausible typo', async () => {
+		// Guard must not over-reject: "Nato: Shippuuden" (the provider typo) shares
 		// the distinctive "Shippuuden" with "Naruto: Shippuuden", so the binding
 		// stays trusted — no eviction, no re-search.
 		const preliminary = resolveHistoryEntry(
@@ -578,7 +578,7 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it('awaits the reverse-map eviction before reaching allmanga enrichment', async () => {
+	it('awaits the reverse-map eviction before reaching provider enrichment', async () => {
 		// Race guard: the backend enrichment endpoint (resolve_allmanga_show_id)
 		// reads the reverse cache first, so the eviction DELETE must complete
 		// before enrichment runs — otherwise the poisoned id comes straight back.

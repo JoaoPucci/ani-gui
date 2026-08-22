@@ -129,7 +129,7 @@ describe('shouldResetStaleStreamBudget', () => {
 		// next stale URL trigger another silent retry, unbounded — if
 		// the resolver keeps handing back expired CDN URLs (provider
 		// down, regional block, etc.), it spins forever hammering
-		// ani-cli + upstream until a non-network error happens.
+		// the resolver and upstream until a non-network error happens.
 		expect(shouldResetStaleStreamBudget({ currentEpisode: 5, targetEpisode: 5 })).toBe(false);
 	});
 });

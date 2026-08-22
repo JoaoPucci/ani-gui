@@ -24,7 +24,7 @@ export interface ContinueWatchingLoaderDeps {
 	/**
 	 * Per-row availability lookup — same `checkAvailability` the detail
 	 * page issues for `playableEpisodeCount`. Already cache-first on
-	 * the backend (SQLite hit → fast; cache miss → live allmanga
+	 * the backend (SQLite hit → fast; cache miss → live the provider
 	 * probe). Drop-in replacement for what was a batch + probe split:
 	 * the per-row contract removes the slowest-match gate that the
 	 * batch previously introduced.
@@ -61,11 +61,11 @@ export interface ContinueWatchingLoaderDeps {
 		approximate?: boolean
 	) => void;
 	/**
-	 * Max concurrent live probes. allmanga is rate-limited, and the
+	 * Max concurrent live probes. The provider is rate-limited, and the
 	 * backend's `warm` path spaces equivalent probes by 500ms while
 	 * `filterAvailableProgressive` caps inline probes at 4. Default 4
 	 * here matches both. Bumping it speeds up reveal for users with
-	 * many cards at the cost of higher allmanga load.
+	 * many cards at the cost of higher the provider load.
 	 */
 	probeConcurrency?: number;
 }
@@ -74,7 +74,7 @@ export interface ContinueWatchingLoaderDeps {
  * Loads the home page's Continue Watching state with render-then-
  * refine semantics: the video site is never on the rendering path.
  * A card needs only its Kitsu match to draw and be clickable, so
- * each row releases the moment resolveMatch lands; the allmanga
+ * each row releases the moment resolveMatch lands; the provider
  * probe runs behind it and only refines the playable cap. Click
  * safety doesn't depend on the probe — pressing play runs its own
  * live resolution with real error feedback, which is the only

@@ -30,7 +30,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // Long-term cache reuse — same shape as play_with_progress. The
     // embedded player likely just resolved this exact (title, mode,
     // quality, episode) tuple seconds ago; without this the user
-    // would wait another 30s for ani-cli to spin up a fresh fetch.
+    // would wait another 30s for a fresh resolve.
     // HEAD-validate so a stale/dead URL falls through to the fresh
     // path instead of handing mpv a 403.
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {

@@ -3,7 +3,7 @@
 	"section_app_info": "Informações do app",
 	"section_history_title": "Continuar assistindo ({count})",
 	"section_history_title_loading": "Continuar assistindo",
-	"history_empty": "Nenhuma entrada ainda. Assista algo para popular o ani-hsts.",
+	"history_empty": "Nenhuma entrada ainda. Assista algo e aparecerá aqui.",
 	"refresh_button": "Atualizar",
 	"clear_history_button": "Limpar histórico",
 	"section_metadata_cache": "Cache de metadados",

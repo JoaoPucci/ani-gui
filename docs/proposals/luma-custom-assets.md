@@ -105,7 +105,7 @@ These are not blocking the proposal; they should be answered before any code com
 1. **M-illustration-1** — character bible + setting bible. Two markdown documents in `docs/illustration/`, plus 6-8 reference images bundled under git-LFS. No Luma yet — drafted by hand or commissioned from a human illustrator if the budget allows. The bibles must be settled before generation begins.
 2. **M-illustration-2** — bake pipeline. `pnpm run assets:bake` script, MANIFEST.json discipline, critic-agent review harness adapted from the M3.1 design-critic pattern.
 3. **M-illustration-3** — bake the first 25 stills (empty states + onboarding + error frames). Hand-edit pass. Commit under git-LFS.
-4. **M-illustration-4** — wire into existing routes. Empty states get illustrations. Onboarding ships if `ani-hsts` is empty on first launch. Error states upgrade. Settings page gets vignette dividers.
+4. **M-illustration-4** — wire into existing routes. Empty states get illustrations. Onboarding ships if the watch history is empty on first launch. Error states upgrade. Settings page gets vignette dividers.
 5. **M-illustration-5** — the 5 looping vignettes. Player end-card, between-episode pause, one onboarding hero. Optional; only if M-illustration-4 ships well and the cost model holds.
 
 Steps 1 and 2 are the load-bearing ones. Once those exist, steps 3-5 are mostly content production with a stable pipeline.
