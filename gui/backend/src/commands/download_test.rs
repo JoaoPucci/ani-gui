@@ -1550,6 +1550,49 @@ async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
+    // Publication can deliver while the scratch's removal fails —
+    // on Windows another process holding the file open without
+    // delete sharing, here a directory whose permissions changed
+    // under it. The download has still delivered, so it does not
+    // become an error; but standing the guard down on the report
+    // alone leaves an episode-sized hidden file behind forever,
+    // under a download that said success. The guard stands down
+    // only for a scratch that is provably gone.
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&target, b"the episode").expect("episode");
+    let scratch = Scratch::new(dest.path());
+    std::fs::write(&scratch.path, b"the whole episode").expect("scratch");
+    let scratch_path = scratch.path.clone();
+    // A directory nothing can unlink from: every read inside
+    // publication succeeds and the removal fails.
+    let chmod = |mode: u32| {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dest.path()).expect("meta").permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(dest.path(), perms).expect("chmod");
+    };
+    chmod(0o555);
+
+    let mut sink = |_l: &str| {};
+    let got = finish(&scratch, &target, &mut sink).await;
+    chmod(0o755);
+    assert!(got.is_ok(), "the episode is delivered: {got:?}");
+    assert!(
+        scratch_path.exists(),
+        "the removal failed inside publication, so the scratch is still here"
+    );
+
+    drop(scratch);
+    assert!(
+        !scratch_path.exists(),
+        "a scratch the publisher could not remove is still the guard's to take"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
     // The sweep exists for the kill and the failure, where the tool's
     // derived files sit orphaned beside a scratch nothing will rename.
