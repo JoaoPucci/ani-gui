@@ -184,7 +184,7 @@ ani-gui only exists because of the projects it builds on:
 
 ## Disclaimer
 
-ani-gui is a tool. Like any tool, the responsibility for how it's used lies with the user. The app makes no claim on the content it surfaces — it talks to the same providers you'd reach in a browser and routes their output through your machine. The full project disclaimer applies: see [`disclaimer.md`](./disclaimer.md).
+ani-gui is a tool. Like any tool, the responsibility for how it's used lies with the user. The app makes no claim on the content it surfaces — it hosts nothing, talks to the same providers you'd reach in a browser, and routes their output through your machine.
 
 ## License
 
