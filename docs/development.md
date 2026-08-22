@@ -150,9 +150,7 @@ against throwaway data).
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.
 - **TS / Svelte**: `prettier` for formatting; `eslint` (svelte plugin + custom rules) for behavior.
-- **Bash**: `shfmt -i 4 -ci -d` matches upstream `pystardust/ani-cli`. Apply identically to the CLI script and `tests/bash/`.
-
-The project's hard rule on the CLI script: it is vendored from upstream and must never be reformatted. See `AGENTS.md` §3.
+- **Bash**: `shfmt -i 4 -ci -d` across `tests/bash/` and `tests/arch/`.
 
 ## Frequently asked
 

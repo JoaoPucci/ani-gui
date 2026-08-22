@@ -171,7 +171,7 @@ For the long version — diagrams, cache TTLs, the title-resolution bridge, the 
 
 ## Contributing
 
-See [`docs/development.md`](./docs/development.md). The script at the repository root carries one patch — a single source-guard line for testability — and otherwise mirrors `pystardust/ani-cli`.
+See [`docs/development.md`](./docs/development.md).
 
 ## Acknowledgements
 

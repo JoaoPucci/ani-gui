@@ -4,10 +4,9 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 
 ## 1. Project map
 
-`ani-gui` is a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that adds a desktop GUI on top of the existing CLI. The repo holds **two peer artifacts**:
+`ani-gui` is a desktop app: an Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively.
 
-- `ani-cli` (root) — the original 666-line POSIX-shell anime scraper, vendored from upstream and intentionally kept untouched.
-- `gui/` — the desktop app. Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively. It does not touch the script at all: the packages stopped carrying it, and `gui/backend/src/legacy_script.rs` exists only to delete the copy earlier versions left in the user's cache.
+The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `gui/backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
 
 Read first:
 
@@ -28,7 +27,7 @@ Every change starts red:
 
 A PR with a `feat`/`fix` commit lacking a paired `test(red)` predecessor will be rejected. `git log --format='%s' master..<branch-head> | grep '^test(red): '` reconstructs the spec.
 
-The contract binds the fork's own commits. A sync PR imports upstream's history verbatim through a merge (§3), so upstream `feat` commits arrive with no red of ours preceding them — and cannot acquire one without rewriting the vendored history the merge exists to preserve. Whether a commit is upstream's is a provenance question with a mechanical answer: it is reachable from the sync merge's second parent (`git merge-base --is-ancestor <sha> <merge>^2`). The fork's obligation on a sync is the suite rewrite that re-covers upstream's changed behavior, and that is a `test:` commit, not a `test(red):` one — the behavior it pins already ships, so there is no failing state to commit.
+The contract binds this repository's own commits. History still carries sync merges from the vendoring era, whose upstream `feat` commits arrived with no red of ours preceding them; whether a commit is upstream's is a provenance question with a mechanical answer — it is reachable from a sync merge's second parent (`git merge-base --is-ancestor <sha> <merge>^2`). No new sync will be made.
 
 **Verify that ordering against the branch, never against a squash preview.** GitHub synthesizes a preview object for every PR: master's head as its sole parent, carrying the entire PR diff. Read as history it always looks like tests and production code landed in one commit, so it manufactures this exact violation for branches that are correctly ordered. Before filing (or accepting) a missing-`test(red)` finding:
 
@@ -50,7 +49,7 @@ Both outcomes are real. A green-before-red defect has been confirmed this way; s
 
 Per layer:
 
-- Bash changes require bats-core coverage (unit, network-mocked, or acceptance as appropriate). This covers the shell *product* — the vendored `ani-cli` script — and any shell with a **subject under test**, including under `tests/arch/`. The question is not how much logic a file contains but whether something else is being exercised: a file that builds fixtures, drives a subject through cases and compares results needs a runner that names the failing case, and hand-rolling that is how you end up with an assertion harness nobody reviews. A file that inspects this repository and reports the invariant it found broken is not in that position however many checks it performs — its output *is* the report, and `tests/arch/run-all.sh` already names which check failed. The existing architectural checks stay standalone on that basis.
+- Shell with a **subject under test** requires bats-core coverage — today that is the arch harness under `tests/bash/arch/`, which drives the checks in `tests/arch/` through their cases. The question is not how much logic a file contains but whether something else is being exercised: a file that builds fixtures, drives a subject through cases and compares results needs a runner that names the failing case, and hand-rolling that is how you end up with an assertion harness nobody reviews. A file that inspects this repository and reports the invariant it found broken is not in that position however many checks it performs — its output *is* the report, and `tests/arch/run-all.sh` already names which check failed. The existing architectural checks stay standalone on that basis.
 - Rust changes require `cargo test`, plus a `proptest` if the function under change is pure.
 - Frontend changes require a `vitest` test (component or store) and an acceptance test if a user-visible flow changes.
 
@@ -111,23 +110,15 @@ Known test debt (extract + unit-test next time you touch them):
 - Detail-page URL `$effect`s in `routes/anime/[id]/+page.svelte` (`?page=` → `episodesPage`, `?ep=` → `highlightEp` + scrollIntoView, `consumedEp` guard against re-firing).
 - Hero rotation timer in `routes/+page.svelte` (3-item cycle, pause on hover/focus, `prefers-reduced-motion` skip).
 
-## 3. CLI script formatting parity (hard rule)
+## 3. Provenance
 
-`ani-cli` (the root script) is vendored from upstream `pystardust/ani-cli`. Touching it requires:
-
-- The change must be a behavior change we also intend to upstream — not a stylistic preference.
-- Formatting must match upstream's settings byte-for-byte:
-  - `shellcheck -s sh -o all -e 2250`
-  - `shfmt -i 4 -ci -d`
-- Never reformat the script. Never add lint rules to it.
-
-Carried fork patches are the exception, not the rule. Every patch beyond the `__ANI_CLI_LIB__` source-guard line (which lets tests `source` the script as a library) must be marked in-file with an `# ani-gui patch:` comment explaining why it exists. Patches are carried for as long as the bundled script lives — we do not submit them upstream and do not plan around upstream acceptance. The native resolver has since replaced the subprocess, so the script ships only for people who want the terminal flow; the whole carried set retires whenever it stops shipping. Current set beyond the guard: none. The 5.0 sync retired the whole 4.15 set — the greedy name capture and the portable base64 lived in allanime functions 5.0 deleted, upstream absorbed the flatpak directory acceptance, and 5.0's `process_hist_entry` dropped the fallback the history guard existed to guard.
+The repository no longer vendors the `ani-cli` script, and there is nothing to sync. What this section used to govern — byte-for-byte formatting parity with upstream, carried fork patches marked in-file, merge-based sync PRs — governed the vendored copy, and retired with it. The history keeps the sync merges of that era; §2 describes how their commits read against the TDD contract. The project's remaining relationship to upstream is its origin and its license.
 
 ## 4. Layer boundaries
 
-Mechanical rules enforced by `tests/arch/boundaries.sh` and `tests/arch/i18n.sh`:
+Mechanical rules, enforced by `tests/arch/i18n.sh` where a grep can carry them:
 
-- `gui/**` does not depend on `ani-cli`. Nothing may source it, carry its `__ANI_CLI_LIB__` test guard, or name it in a packaging manifest. The one path that mentions the script by name is the boot sweep that removes an old copy from the cache.
+- Nothing depends on the retired `ani-cli` script, and nothing may start to: reacquiring it means re-vendoring it, which is a deliberate, review-visible act. The one path that mentions the script by name is the boot sweep that removes the copy earlier versions kept in the user's cache.
 - The frontend never fetches an upstream URL directly. All stream traffic flows through the local proxy at `http://127.0.0.1:<port>/s/<token>/...`.
 - SQLite holds metadata only. Image bytes live on the filesystem under `$XDG_CACHE_HOME/ani-gui/images/`.
 - The backend never returns localized strings. It returns stable error keys (`error.search.no_results`); the frontend resolves them via Paraglide.
