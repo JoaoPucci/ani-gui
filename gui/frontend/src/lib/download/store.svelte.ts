@@ -79,6 +79,25 @@ const PROGRESS_STATUS_KEYS: readonly ProgressStatusKey[] = [
 	'retry_ffmpeg'
 ];
 
+/** The reports that explain an ended download — the last thing the
+ *  backend says before `done` or `error`, and therefore the ones a
+ *  terminal row renders. The retries are deliberately not here: a
+ *  download that retried through ffmpeg and later failed for another
+ *  reason did not fail because of the retry, and a finished row
+ *  claiming "retrying" would be false. */
+export function terminalReport(status: ProgressStatus | null): ProgressStatus | null {
+	if (!status) return null;
+	switch (status.key) {
+		case 'already_here':
+		case 'abandoned_claim':
+		case 'claim_pending':
+			return status;
+		case 'repackage_retry':
+		case 'retry_ffmpeg':
+			return null;
+	}
+}
+
 /** Recognize a backend progress report. Returns null for tool output
  *  and for `status.download.*` names this build does not know — an
  *  older frontend against a newer backend then shows the raw line,
