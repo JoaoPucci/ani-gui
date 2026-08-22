@@ -3,15 +3,15 @@
 //! Format (TSV, one record per line):
 //!     <ep_no>\t<id>\t<title>
 //!
-//! The line format is the one the script's `update_history` uses, and
-//! so are the atomic semantics: write to `path.new`, then rename. Tests
-//! in `tests/bash/network/update_history.bats` characterize that
-//! contract, and the reader here is written against the same shape.
+//! The line format is the one the CLI's `update_history` used, and so
+//! are the atomic semantics: write to `path.new`, then rename. The
+//! tests below and the samples under `tests/fixtures/history/` pin
+//! that contract — including byte-identity against a fixture the
+//! script's writer produced.
 //!
-//! The two no longer share a file. The 5.0 CLI re-keyed its history
-//! onto provider slugs and backs the old one up on its own first run,
-//! so the app keeps its own under its state dir. What is still shared
-//! is the format, which is why the bats characterization stays useful.
+//! The two never shared a file after the 5.0 CLI re-keyed its history
+//! onto provider slugs; the app keeps its own under its state dir.
+//! The format is inherited, not shared.
 //!
 //! Path resolution lives in [`crate::config::paths::gui_history`].
 

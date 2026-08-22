@@ -20,8 +20,8 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 Group these by what subsystem you intend to work on. You only need a group's tools when you're building or testing in that subsystem.
 
 ```sh
-# Bash subsystem (the vendored CLI script + its test suite)
-sudo apt install -y shellcheck kcov
+# Bash subsystem (the arch checks + their bats harness)
+sudo apt install -y shellcheck python3-yaml
 # shfmt is not in 24.04 apt; install the static binary:
 sudo curl -sSL -o /usr/local/bin/shfmt \
   https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64 \
