@@ -486,6 +486,13 @@ fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()
 /// failure's episode-sized file hidden in the folder for good.
 struct Scratch {
     path: std::path::PathBuf,
+    /// Names a retry retired. Their removal was attempted at
+    /// retirement, and that attempt can fail without saying so — a
+    /// file still held open without delete sharing on Windows — so
+    /// the guard owns them until the end. A prefix forgotten is a
+    /// partial hidden in the destination for good, because nothing
+    /// else will ever know to remove it.
+    retired: Vec<std::path::PathBuf>,
     published: std::sync::atomic::AtomicBool,
 }
 
@@ -493,16 +500,19 @@ impl Scratch {
     fn new(dest: &std::path::Path) -> Self {
         Self {
             path: scratch_path(dest),
+            retired: Vec::new(),
             published: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     /// Point at a fresh file, dropping whatever the last one was —
     /// the retry path, where yt-dlp's output is condemned and ffmpeg
-    /// needs a name nothing can confuse with it.
+    /// needs a name nothing can confuse with it. The condemned name
+    /// is retired, not forgotten: the discard here is an attempt.
     fn renew(&mut self, dest: &std::path::Path) {
         self.discard();
-        self.path = scratch_path(dest);
+        let old = std::mem::replace(&mut self.path, scratch_path(dest));
+        self.retired.push(old);
     }
 
     /// Remove the scratch file and everything a tool derived from its
@@ -522,18 +532,43 @@ impl Scratch {
     /// sweep of the destination is exact — nothing else can hold that
     /// prefix, and nothing derived from the path can lose it.
     fn discard(&self) {
-        let _ = std::fs::remove_file(&self.path);
-        let (Some(dir), Some(prefix)) = (self.path.parent(), self.path.file_name()) else {
+        self.sweep(true);
+    }
+
+    /// One pass over the destination, removing every entry that
+    /// carries a prefix this guard owns: the retired names always,
+    /// and the current one unless publication already consumed it.
+    /// Costs nothing when there is nothing owned — the common
+    /// published case, where `retired` is empty and the read is
+    /// skipped entirely.
+    fn sweep(&self, include_current: bool) {
+        let mut prefixes: Vec<&std::ffi::OsStr> = Vec::new();
+        if include_current {
+            let _ = std::fs::remove_file(&self.path);
+            if let Some(name) = self.path.file_name() {
+                prefixes.push(name);
+            }
+        }
+        for old in &self.retired {
+            let _ = std::fs::remove_file(old);
+            if let Some(name) = old.file_name() {
+                prefixes.push(name);
+            }
+        }
+        if prefixes.is_empty() {
+            return;
+        }
+        let Some(dir) = self.path.parent() else {
             return;
         };
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
         for entry in entries.flatten() {
-            if entry
-                .file_name()
-                .as_encoded_bytes()
-                .starts_with(prefix.as_encoded_bytes())
+            let name = entry.file_name();
+            if prefixes
+                .iter()
+                .any(|p| name.as_encoded_bytes().starts_with(p.as_encoded_bytes()))
             {
                 let _ = std::fs::remove_file(entry.path());
             }
@@ -544,6 +579,12 @@ impl Scratch {
 impl Drop for Scratch {
     fn drop(&mut self) {
         if self.published.load(std::sync::atomic::Ordering::Relaxed) {
+            // The episode is delivered and the current scratch is
+            // provably gone — but a retry may have retired a name
+            // whose removal failed, and delivery does not license
+            // orphaning it. Free when no retry happened, which is
+            // nearly every download.
+            self.sweep(false);
             return;
         }
         self.discard();
