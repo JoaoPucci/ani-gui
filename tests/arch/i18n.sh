@@ -95,10 +95,9 @@ fi
 # Scoped to the message bundles because there the question is
 # mechanical: those files are nothing but text shown to users, so any
 # mention is a claim made to one. Nowhere else is that true. The same
-# name in `paths.rs` is an accurate note about what the GUI used to do,
-# and in `tests/bash/` it is the CLI's own file under test — telling
-# those from a stale claim means reading for meaning, which is the one
-# thing an architectural check here may not do.
+# name in `paths.rs` is an accurate note about what the GUI used to do
+# — telling that from a stale claim means reading for meaning, which
+# is the one thing an architectural check here may not do.
 #
 # So: comments and prose outside the bundles are NOT covered by this
 # check, and a green run says nothing about them.

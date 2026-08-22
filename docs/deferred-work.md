@@ -127,6 +127,13 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the singleton
   video that survives navigation — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **A flatpak-only mpv goes undetected by the external-player
+  surface.** Upstream ani-cli fixed exactly this for its own player
+  launch just before the repositories parted (pystardust/ani-cli
+  #1858 and #1863: system-wide installs under `/var/lib/flatpak`,
+  user-level under `~/.local/share/flatpak`, app id `io.mpv.Mpv`) —
+  kept here as a reference for probing the same locations, not as
+  code to port.
 - **Illustrated brand assets** — post-1.0.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
@@ -194,6 +201,22 @@ starting it, and delete it when you find it done.
   of per-episode audio, or a budget for the full scan on listings
   small enough to afford it — not a smarter search over the same
   requests.
+
+## Retiring the required-check stubs
+
+- **Four required-check names outlived their subject and are carried
+  by success-only reporters**: `No Awk Allowed`, `Executable Bit` and
+  `Version Bump` are stubs, and `Shellcheck + Shfmt` scans the repo's
+  remaining POSIX shell. They exist because branch protection blocks
+  every pull request whose required names never report, and the
+  required list lives in the repository settings, which only the
+  maintainer can edit.
+
+  The work: trim those names from the required checks, then delete
+  the stub workflow, the mirror file's script half, and this entry in
+  the same change. Left undone, the stubs report green forever for
+  checks that check nothing — which is the state this log exists to
+  keep visible.
 
 ## Recovering a download's abandoned claim automatically
 

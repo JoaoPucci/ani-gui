@@ -1,7 +1,7 @@
 # Enforce LF line endings across all platforms — Git on Windows would
 # otherwise check out shell scripts and our fixtures with CRLF, which
 # breaks byte-identity checks (e.g. tests::serialize_byte_identical_to_bash_fixture)
-# and POSIX shell parsing of the vendored ani-cli.
+# and POSIX shell parsing of the test helpers.
 
 # Default: text files are normalized to LF in the working tree.
 * text=auto eol=lf
@@ -10,8 +10,6 @@
 *.sh        text eol=lf
 *.bash      text eol=lf
 *.bats      text eol=lf
-ani-cli     text eol=lf
-ani-cli.1   text eol=lf
 
 # TSV / JSON / Markdown / TOML / YAML — all source files we author.
 *.tsv       text eol=lf

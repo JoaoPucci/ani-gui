@@ -152,6 +152,12 @@ function summarizeKcov(indexJs) {
 }
 
 function checkBash(baseline) {
+	// The layer leaves the baseline when its subject leaves the repo;
+	// a stale local coverage/bash/ must not read as a floor to check.
+	if (!baseline) {
+		console.warn(`[skip] bash: layer absent from baseline`);
+		return;
+	}
 	const sets = [
 		['pure', 'pure_covered_min'],
 		['network', 'network_covered_min']

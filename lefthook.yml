@@ -66,8 +66,8 @@ pre-commit:
     # documented there — same noise (unused globals, subshell-scoped
     # exports) the bats / sourced-script pattern legitimately produces.
     shellcheck-sh:
-      # ani-cli and the POSIX-sh helpers run under /bin/sh.
-      glob: "{ani-cli,tests/bash/helpers/**/*.sh,tests/arch/*.sh,tools/*.sh}"
+      # The POSIX-sh helpers and arch checks run under /bin/sh.
+      glob: "{tests/bash/helpers/**/*.sh,tests/arch/*.sh,tools/*.sh}"
       run: shellcheck -s sh -o all -e 2250 -e SC2034 -e SC2086 -e SC2312 {staged_files}
 
     shellcheck-bash:

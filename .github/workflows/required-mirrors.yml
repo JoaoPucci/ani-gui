@@ -1,38 +1,18 @@
 name: 'required-check mirrors (zero-diff safe)'
-# Mirrors four required-check names whose owning workflows are
-# upstream-vendored from pystardust/ani-cli and gate themselves
-# with `pull_request.paths:` / `paths-ignore:`:
+# Reports required-check names unconditionally, so no combination of
+# path filters can leave branch protection waiting on a status that
+# never arrives (see PR #23 for the original symptom, a zero-diff
+# ancestry merge that matched no filter anywhere).
 #
-#   - markdown.yml         → Dead Link Checker, Find Trailing Whitespace
-#                            (fires only when **.md changes)
-#   - inverse-md.yml       → same names, stub no-ops
-#                            (fires only when **.md does NOT change)
-#   - ani-cli.yml          → Shellcheck + Shfmt, Executable Bit
-#                            (fires only when **ani-cli changes)
-#   - inverse-ani.yml      → same names, stub no-ops
-#                            (fires only when /ani-cli is NOT changed)
-#
-# Both halves of each pair use file-based path filtering. A pull
-# request with zero file changes (e.g. a `git merge -s ours`
-# ancestry-only sync, or any other no-op merge) matches neither
-# the "real" nor the "inverse" path predicate, so neither workflow
-# fires and the required check name never gets a status report.
-# Branch protection then blocks the PR forever, waiting on a
-# check-run that will never arrive — see PR #23 for the symptom.
-#
-# We can't edit the upstream-vendored workflow files (they would
-# conflict on every sync from pystardust/ani-cli, defeating the
-# vendor model). This ours-owned workflow runs on every PR (and
-# push to master) with no path filter, registers the four required
-# check names unconditionally, and runs the same real checks
-# upstream's pair runs. When upstream's also fires (a PR that
-# does touch the matching paths), both workflows report the same
-# check name on the same SHA with the same outcome — same
-# duplicate-report tradeoff already accepted by no-awk-required.yml.
-#
-# Going forward: if any new required check is added through an
-# upstream workflow gated by `paths:` / `paths-ignore:`, add it
-# here too.
+# The mirrors used to shadow upstream-vendored workflows this fork
+# could not edit. Those workflows retired with the vendored script;
+# what remains here is the reporter for each required name until the
+# name itself leaves branch protection — that half lives in the
+# repository settings, which only the maintainer can edit. The
+# markdown pair (markdown.yml / inverse-md.yml) is still real and
+# path-gated, so its two names keep genuine mirrors; the script's
+# names are stubs, and this file shrinks to the markdown mirrors in
+# the same change that trims the required list.
 
 on:
   pull_request:
@@ -44,20 +24,18 @@ permissions:
   contents: read
 
 jobs:
-  # Mirrors ani-cli.yml::check-exec.
+  # The subject — the vendored script's executable bit — is gone;
+  # the required name still needs a reporter.
   exec-bit:
     name: Executable Bit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: test exec bit
-        run: test -x "./ani-cli"
+      - run: 'echo "Not required: the vendored script this checked is gone"'
 
-  # Mirrors ani-cli.yml::sh-checker (the sh-dialect Shellcheck +
-  # Shfmt pass on the vendored ani-cli script). bash.yml's
-  # "Shellcheck + Shfmt (per-file dialect)" is a separate
-  # check covering tests/bash/ — unrelated and already fires
-  # unconditionally via the bash.yml filter pattern.
+  # Was the sh-dialect pass on the vendored script; what it scans
+  # now is the repo's remaining POSIX shell outside tests/ and gui/
+  # (the tools/ scripts), which keeps the required name earning its
+  # report rather than stubbing it.
   shellcheck-shfmt:
     name: Shellcheck + Shfmt
     runs-on: ubuntu-latest
@@ -69,7 +47,7 @@ jobs:
           SHELLCHECK_OPTS: -s sh -o all -e 2250
           SHFMT_OPTS: -i 4 -ci -d
         with:
-          sh_checker_exclude: "_ani-cli-bash _ani-cli-zsh tests gui"
+          sh_checker_exclude: "tests gui"
 
   # Mirrors markdown.yml::trailing-ws.
   trailing-ws:
@@ -94,20 +72,12 @@ jobs:
           command: file
           target: "**.md"
 
-  # Mirrors inverse-ani.yml::version-bump (the stub-pass variant —
-  # the "real" version.yml has a `paths: "/ani-cli"` typo that
-  # matches nothing and so never fires anywhere). The stub is what
-  # branch protection actually sees on a normal PR: it fires
-  # whenever `paths-ignore: "/ani-cli"` matches, which — because
-  # of the same typo — is "any PR with at least one changed file".
-  # On a zero-diff PR (e.g. a `-s ours` ancestry merge) neither
-  # half of the pair fires and the required `Version Bump` check
-  # name never gets reported. This unconditional stub matches the
-  # established no-op semantics; when an actual ani-cli version
-  # check is wanted in the future, fix version.yml's typo and
-  # decide what behaviour to mirror here.
+  # The script's version-bump pair never fired anywhere (its filter
+  # carried a typo that matched nothing); this stub was always what
+  # branch protection actually saw, and it stays until the name
+  # leaves the required list.
   version-bump:
     name: Version Bump
     runs-on: ubuntu-latest
     steps:
-      - run: 'echo "Not required: zero-diff PR or did not modify ani-cli"'
+      - run: 'echo "Not required: the vendored script this versioned is gone"'
