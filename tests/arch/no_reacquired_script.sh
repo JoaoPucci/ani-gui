@@ -87,12 +87,15 @@ fi
 # stage into build-resources/{linux,win}/bin, and the packaging
 # manifests carry those directories wholesale — so a fetcher entry
 # bundles the script with no manifest change for rule 3 to see. A
-# declaration needs the name as a quoted string (a name, a URL, an
-# output path); the fetchers' legitimate mentions are prose comments
-# and carry no quotes. Quoted is the syntactic line: a fetcher
-# acquiring the script under another name is not covered, and a
-# green run says nothing about it.
-matches=$(grep -rnE "['\"]([^'\"]*/)?ani-cli[^'\"]*['\"]" gui/electron/scripts/ 2>/dev/null || true)
+# declaration needs the name as a string (a name, a URL, an output
+# path) in one of JavaScript's three quote syntaxes — single, double,
+# or template backticks. That is the syntactic line, which means a
+# prose comment putting ani-cli in markdown backticks trips it too:
+# write the name bare in comments there, the way both fetchers
+# already do. A fetcher acquiring the script under another name is
+# not covered, and a green run says nothing about it.
+qc="'"'"`'
+matches=$(grep -rnE "[$qc]([^$qc]*/)?ani-cli[^$qc]*[$qc]" gui/electron/scripts/ 2>/dev/null || true)
 if [ -n "$matches" ]; then
     printf 'arch/no_reacquired_script FAIL: a dependency fetcher declares ani-cli, which the manifests would bundle wholesale:\n%s\n' "$matches" >&2
     failed=1
