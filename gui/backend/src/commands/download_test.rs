@@ -1591,6 +1591,71 @@ async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
     );
 }
 
+#[tokio::test]
+async fn the_already_here_report_is_a_stable_key_not_display_copy() {
+    // The progress stream reaches the dock verbatim, so a sentence
+    // composed here is UI copy smuggled past Paraglide — three
+    // locales would read English. The backend's side of that line is
+    // a stable dotted key; the sentence lives in the message bundles,
+    // once per locale, where every other user-visible string lives.
+    let bin = dir_with_a_findable_tool();
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Owned Show Episode 1.mp4");
+    std::fs::write(&target, b"already here").expect("stage the episode");
+
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Owned Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("having the episode already is not a failure");
+
+    assert!(
+        lines.iter().any(|l| l == "status.download.already_here"),
+        "the report is the key the frontend translates, got: {lines:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_refusal_names_the_file_after_a_stable_key() {
+    // The abandoned-claim refusal is the one line whose content the
+    // user acts on — it carries the path to delete. The path rides
+    // after the key, separated by the first space, so the frontend
+    // can translate the sentence and keep the path verbatim,
+    // whatever characters the title brought with it.
+    let bin = dir_with_a_findable_tool();
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Stalled Show Episode 1.mp4");
+    std::fs::write(&target, b"").expect("stage the claim");
+    age_it(&target);
+
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Stalled Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "an abandoned claim still refuses");
+
+    let want = format!("status.download.abandoned_claim {}", target.display());
+    assert!(
+        lines.iter().any(|l| *l == want),
+        "the refusal is a key with the path after the first space, got: {lines:?}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
