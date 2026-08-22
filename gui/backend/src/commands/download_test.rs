@@ -1651,7 +1651,7 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
 
     let want = format!("status.download.abandoned_claim {}", target.display());
     assert!(
-        lines.iter().any(|l| *l == want),
+        lines.contains(&want),
         "the refusal is a key with the path after the first space, got: {lines:?}"
     );
 }
@@ -2084,7 +2084,7 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
     );
     let said = lines.join(" ");
     assert!(
-        said.contains("Abandoned Show Episode 1.mp4") && said.contains("interrupted"),
+        said.contains("Abandoned Show Episode 1.mp4") && said.contains("abandoned_claim"),
         "the dock has to name the file and say why, or the user cannot act: {lines:?}"
     );
 }
@@ -2166,7 +2166,7 @@ async fn a_claim_that_never_resolves_is_not_a_finished_download() {
         "no episode was installed, so this download did not succeed"
     );
     assert!(
-        lines.iter().any(|l| l.contains("publishing")),
+        lines.iter().any(|l| l.contains("claim_pending")),
         "and the dock says another download holds the name: {lines:?}"
     );
 }

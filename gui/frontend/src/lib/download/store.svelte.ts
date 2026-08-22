@@ -47,6 +47,52 @@ export interface DownloadItem {
 	 *  spawns anything — no tool prints them. Updated by setProgress as
 	 *  lines arrive; null until the first one is parsed. */
 	currentEp: number | null;
+	/** Parsed from the latest progress line when it is one of the
+	 *  backend's own `status.download.*` reports rather than tool
+	 *  output. The backend sends stable keys — the sentence lives in
+	 *  the message bundles — and the dock renders the translation.
+	 *  Cleared when a later raw line supersedes the report. */
+	progressStatus: ProgressStatus | null;
+}
+
+/** One of the backend's own progress reports, as a stable key the UI
+ *  translates. `path`, where present, follows the key after the first
+ *  space and is kept verbatim — it names the user's file, whatever
+ *  characters the title brought with it. */
+export interface ProgressStatus {
+	key: ProgressStatusKey;
+	path: string | null;
+}
+
+export type ProgressStatusKey =
+	| 'already_here'
+	| 'abandoned_claim'
+	| 'claim_pending'
+	| 'repackage_retry'
+	| 'retry_ffmpeg';
+
+const PROGRESS_STATUS_KEYS: readonly ProgressStatusKey[] = [
+	'already_here',
+	'abandoned_claim',
+	'claim_pending',
+	'repackage_retry',
+	'retry_ffmpeg'
+];
+
+/** Recognize a backend progress report. Returns null for tool output
+ *  and for `status.download.*` names this build does not know — an
+ *  older frontend against a newer backend then shows the raw line,
+ *  which is still true, rather than nothing. */
+export function parseProgressStatus(line: string): ProgressStatus | null {
+	const prefix = 'status.download.';
+	if (!line.startsWith(prefix)) return null;
+	const rest = line.slice(prefix.length);
+	const space = rest.indexOf(' ');
+	const name = space === -1 ? rest : rest.slice(0, space);
+	const path = space === -1 ? null : rest.slice(space + 1);
+	const key = PROGRESS_STATUS_KEYS.find((k) => k === name);
+	if (!key) return null;
+	return { key, path: path && path.length > 0 ? path : null };
 }
 
 let nextId = 1;
@@ -95,7 +141,8 @@ class DownloadStore {
 				abort: null,
 				unseen: false,
 				rangeTotal,
-				currentEp: null
+				currentEp: null,
+				progressStatus: null
 			},
 			...this.items
 		];
@@ -117,8 +164,11 @@ class DownloadStore {
 		// the dock can show "Episode N of M" instead of the raw line.
 		const match = line.match(/^Playing episode\s+(\d+(?:\.\d+)?)/i);
 		const currentEp = match ? Number.parseFloat(match[1]) : null;
+		const progressStatus = parseProgressStatus(line);
 		this.items = this.items.map((i) =>
-			i.id === id ? { ...i, progress: line, currentEp: currentEp ?? i.currentEp } : i
+			i.id === id
+				? { ...i, progress: line, currentEp: currentEp ?? i.currentEp, progressStatus }
+				: i
 		);
 	}
 

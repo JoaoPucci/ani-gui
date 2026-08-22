@@ -568,8 +568,16 @@ fn scratch_path(dest: &std::path::Path) -> std::path::PathBuf {
 /// Said when the download ends because the file is already there —
 /// found before starting, or found by publication after another
 /// transfer won the race. The two are the same event to the person
-/// watching the dock, and the same sentence.
-const ALREADY_HERE: &str = "that episode is already in this folder; keeping the existing file";
+/// watching the dock, and the same line.
+///
+/// A key rather than a sentence, like every report this backend
+/// composes for the progress stream: the dock shows these lines
+/// verbatim, so a sentence written here is UI copy that bypasses
+/// Paraglide and reaches three locales in English. The frontend
+/// resolves the key; the sentence lives in the message bundles.
+/// Where a report carries a path, the path follows the key after
+/// the first space, verbatim, whatever the title brought with it.
+const ALREADY_HERE: &str = "status.download.already_here";
 
 /// How long a claim has to sit untouched before it counts as
 /// abandoned.
@@ -917,7 +925,7 @@ where
         // rather than after, since the answer cannot change.
         AtTarget::AbandonedClaim => {
             on_line(&format!(
-                "an interrupted download left an empty file at {}; delete it and try again",
+                "status.download.abandoned_claim {}",
                 target.display()
             ));
             return Err(AniError::Io);
@@ -933,7 +941,7 @@ where
         // in the same refusal an hour later.
         AtTarget::LiveClaim => {
             on_line(&format!(
-                "another download is publishing {} and has not finished; try again shortly",
+                "status.download.claim_pending {}",
                 target.display()
             ));
             return Err(AniError::Io);
@@ -1004,7 +1012,7 @@ where
                     // over the condemned one, so nothing it leaves can
                     // be mistaken for what ffmpeg produces.
                     scratch.renew(dest);
-                    on_line("yt-dlp could not repackage the stream; retrying with ffmpeg");
+                    on_line("status.download.repackage_retry");
                 } else {
                     // v5's && chain: a failing yt-dlp run retries the
                     // whole stream through ffmpeg when one exists.
@@ -1012,7 +1020,7 @@ where
                         return Err(e);
                     }
                     scratch.renew(dest);
-                    on_line("yt-dlp failed; retrying with ffmpeg");
+                    on_line("status.download.retry_ffmpeg");
                 }
             }
         }

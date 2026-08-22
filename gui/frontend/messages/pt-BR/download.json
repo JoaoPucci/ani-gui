@@ -58,5 +58,10 @@
 	"error_ffmpeg_missing_body_win32": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. O instalador normalmente baixa-o durante a configuração — execute o instalador novamente com uma conexão de internet, ou instale o ffmpeg manualmente.",
 	"error_ffmpeg_missing_body_linux": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. Instale-o pelo gerenciador de pacotes da sua distribuição — por exemplo `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) ou `sudo pacman -S ffmpeg` (Arch).",
 	"error_ffmpeg_missing_body_darwin": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. Instale-o pelo Homebrew com `brew install ffmpeg`, ou baixe um build manualmente.",
-	"error_ffmpeg_missing_action_label": "Baixar ffmpeg"
+	"error_ffmpeg_missing_action_label": "Baixar ffmpeg",
+	"status_already_here": "Esse episódio já está nesta pasta; mantendo o arquivo existente.",
+	"status_abandoned_claim": "Um download interrompido deixou um arquivo vazio em {path}; exclua-o e tente novamente.",
+	"status_claim_pending": "Outro download está publicando {path} e ainda não terminou; tente novamente em instantes.",
+	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream; tentando novamente com o ffmpeg.",
+	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg."
 }

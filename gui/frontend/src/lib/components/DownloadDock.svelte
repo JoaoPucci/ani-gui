@@ -56,6 +56,28 @@
 		};
 	});
 
+	/** Tooltip for a row's progress bar. The backend's own reports
+	 *  arrive as stable `status.download.*` keys — the store parses
+	 *  them — and are rendered through Paraglide here; anything else
+	 *  is tool output, shown raw. Thin adapter over the parsed key:
+	 *  the recognition logic lives in the store module. */
+	function progressTitle(item: DownloadItem): string {
+		const s = item.progressStatus;
+		if (!s) return item.progress ?? '';
+		switch (s.key) {
+			case 'already_here':
+				return m.download_status_already_here();
+			case 'abandoned_claim':
+				return m.download_status_abandoned_claim({ path: s.path ?? '' });
+			case 'claim_pending':
+				return m.download_status_claim_pending({ path: s.path ?? '' });
+			case 'repackage_retry':
+				return m.download_status_repackage_retry();
+			case 'retry_ffmpeg':
+				return m.download_status_retry_ffmpeg();
+		}
+	}
+
 	function reveal(dir: string) {
 		const open = typeof window !== 'undefined' ? window.aniGui?.revealInFolder : null;
 		if (open) void open(dir);
@@ -137,7 +159,7 @@
 									<span
 										class="dl-row-bar dl-row-bar-indet"
 										aria-hidden="true"
-										title={item.progress ?? ''}
+										title={progressTitle(item)}
 									>
 										<span></span>
 									</span>
