@@ -1550,6 +1550,64 @@ async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
+    // The sweep exists for the kill and the failure, where the tool's
+    // derived files sit orphaned beside a scratch nothing will rename.
+    // A publication that succeeded already consumed the scratch, so
+    // the sweep has nothing to find — but finding nothing still reads
+    // every entry in the destination, once per episode of a range
+    // download, on whatever filesystem the user chose. The walk is
+    // observable by what it removes: a file the tool derived from the
+    // scratch name must survive a download that ended with the
+    // episode published.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        concat!(
+            "prev=\"\"\n",
+            "for a in \"$@\"; do\n",
+            "  if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; : > \"$a.probe\"; fi\n",
+            "  prev=\"$a\"\n",
+            "done\n",
+            "exit 0"
+        ),
+    );
+
+    spawn_download_tool(
+        "https://cdn.example/x/master.m3u8",
+        dest.path(),
+        "Swept Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await
+    .expect("the download succeeds");
+
+    let target = dest.path().join("Swept Show Episode 1.mp4");
+    assert_eq!(
+        std::fs::read_to_string(&target).ok().as_deref(),
+        Some("video"),
+        "the episode is published"
+    );
+    let probes = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".probe"))
+        .count();
+    assert_eq!(
+        probes, 1,
+        "a download that ended published does not go back over the \
+         destination — what the tool derived from the scratch name is \
+         the proof the walk did not happen"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
     // The lock stopped being the thing that makes this safe when
     // publishing took over. It is an optimization — it saves a second
