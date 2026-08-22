@@ -30,7 +30,9 @@ fixtures that property tests depend on.
 ## Capture conventions
 
 - Responses are captured with the same User-Agent the production code uses.
-- For allanime, the same `Referer:` and `Origin:` headers ani-cli sends.
+- For anidb.app, capture through the same impersonating transport the
+  resolver spawns — a plain client is answered with the cloudflare
+  interstitial, which is itself one of the recorded shapes.
 - Personally-identifying fields (none expected for these APIs, but worth
   checking) are scrubbed before commit.
 - Binary fixtures (the `tobeparsed` blobs) are committed as base64 text in
