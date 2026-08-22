@@ -76,7 +76,7 @@ fi
 # command that names the script; a job arranging the same thing some
 # other way is not covered, and a green run says nothing about it.
 if [ -d .github/workflows ]; then
-    matches=$(grep -rnE '(install|cp|ln|mv)[^|]*[[:space:]]ani-cli' .github/workflows || true)
+    matches=$(grep -rnE '(install|cp|ln|mv)[^|]*[[:space:]]([^[:space:]|]*/)?ani-cli' .github/workflows || true)
     if [ -n "$matches" ]; then
         printf 'arch/no_reacquired_script FAIL: a workflow puts ani-cli on the runner, which the packages do not ship:\n%s\n' "$matches" >&2
         failed=1
