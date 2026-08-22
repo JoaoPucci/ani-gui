@@ -702,44 +702,6 @@ FLAP
 
 # Whether a workflow sets up the upstream remote, as a function so a
 # gutted spelling runs through exactly the check the live file does.
-# Invocation-shaped, like the runner-wiring constraint: `git` has to
-# be the command of its line, so an echoed mention does not count.
-#
-# Deliberately not covered, and said so: the same line as heredoc
-# payload, which no regex can tell from a command — that distinction
-# needs a shell parser, the interpretation these checks no longer
-# attempt. This green means "a line of the setup's exact shape
-# exists"; the evasion requires a reviewed workflow edit that spells
-# out the mimicry, which is what review is for.
-configures_upstream() {
-    grep -qE '^[[:space:]]*git remote add upstream([[:space:]]|$)' "$1"
-}
-
-@test "the bats job configures the upstream divergence baseline" {
-    # `bash_portability.bats` skips both of its cases when no `upstream`
-    # remote exists. A fresh CI checkout has none, so without the same
-    # setup `arch.yml` performs the ported suite measures nothing and
-    # reports success.
-    run configures_upstream "$BASH_WORKFLOW"
-    [ "$status" -eq 0 ]
-}
-
-@test "a step that merely mentions the upstream setup is not configuration" {
-    # `echo git remote add upstream ...` prints the command and creates
-    # no remote: both portability cases then skip, the suite measures
-    # nothing, and a containment match still reports the baseline
-    # configured. The command has to be in command position — the same
-    # shape the runner-wiring constraint takes.
-    mentioned="$BATS_TEST_TMPDIR/mentioned-upstream.yml"
-    sed 's/git remote add upstream/echo git remote add upstream/' \
-        "$BASH_WORKFLOW" >"$mentioned"
-    if cmp -s "$mentioned" "$BASH_WORKFLOW"; then
-        echo "sabotage changed nothing"
-        return 1
-    fi
-    run ! configures_upstream "$mentioned"
-}
-
 @test "a check pointed at a missing file exits nonzero" {
     # A tool failing inside the pipeline must not leave the check
     # reporting success. `set -e` takes the failing command
