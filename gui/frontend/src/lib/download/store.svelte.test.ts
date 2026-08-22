@@ -8,6 +8,7 @@
 // is available even outside components.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { downloadStore, parseProgressStatus } from './store.svelte';
+import * as storeModule from './store.svelte';
 
 describe('downloadStore', () => {
 	beforeEach(() => {
@@ -256,5 +257,33 @@ describe('parseProgressStatus', () => {
 		downloadStore.setProgress(id, '[download] 100%');
 		expect(downloadStore.items[0].progressStatus).toBeNull();
 		expect(downloadStore.items[0].progress).toBe('[download] 100%');
+	});
+});
+
+describe('terminalReport', () => {
+	// The red reaches for the export defensively: the module does not
+	// carry it yet, and this file must stay type-clean so the check
+	// and lint gates still run against the red commit.
+	const terminalReport = (storeModule as unknown as { terminalReport?: (s: unknown) => unknown })
+		.terminalReport;
+
+	it('keeps the reports that explain an ended download', () => {
+		// already_here, abandoned_claim and claim_pending are the last
+		// thing the backend says before done or error — the row they
+		// belong on is the terminal one, where the user can still read
+		// them and, for a claim, act on the path.
+		for (const key of ['already_here', 'abandoned_claim', 'claim_pending']) {
+			const s = { key, path: key === 'already_here' ? null : '/dl/Show Episode 1.mp4' };
+			expect(terminalReport?.(s)).toEqual(s);
+		}
+	});
+
+	it('drops the transient retries a terminal row must not claim', () => {
+		// A download that retried through ffmpeg and later failed for
+		// another reason did not fail because of the retry — showing
+		// "retrying" as a finished row's explanation would be false.
+		expect(terminalReport?.({ key: 'repackage_retry', path: null })).toBeNull();
+		expect(terminalReport?.({ key: 'retry_ffmpeg', path: null })).toBeNull();
+		expect(terminalReport?.(null)).toBeNull();
 	});
 });
