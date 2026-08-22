@@ -116,9 +116,9 @@ The repository no longer vendors the `ani-cli` script, and there is nothing to s
 
 ## 4. Layer boundaries
 
-Mechanical rules, enforced by `tests/arch/i18n.sh` where a grep can carry them:
+Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/arch/i18n.sh` where a grep can carry them:
 
-- Nothing depends on the retired `ani-cli` script, and nothing may start to: reacquiring it means re-vendoring it, which is a deliberate, review-visible act. The one path that mentions the script by name is the boot sweep that removes the copy earlier versions kept in the user's cache.
+- Nothing depends on the retired `ani-cli` script, and nothing may start to. Re-vendoring the file itself is loud, but reacquisition has silent routes — a manifest staging a fetched copy, a workflow installing one onto a runner — and those are what the check greps for. The one path that mentions the script by name is the boot sweep that removes the copy earlier versions kept in the user's cache.
 - The frontend never fetches an upstream URL directly. All stream traffic flows through the local proxy at `http://127.0.0.1:<port>/s/<token>/...`.
 - SQLite holds metadata only. Image bytes live on the filesystem under `$XDG_CACHE_HOME/ani-gui/images/`.
 - The backend never returns localized strings. It returns stable error keys (`error.search.no_results`); the frontend resolves them via Paraglide.
