@@ -59,11 +59,11 @@ cd ani-gui
 # Frontend + Electron deps. The frontend `pnpm install` also installs
 # Lefthook and writes the `pre-commit` / `pre-push` git hooks. To skip
 # the hooks for a single command set `LEFTHOOK=0`.
-cd frontend && pnpm install && cd ../..
-cd electron  && pnpm install && cd ../..
+(cd frontend && pnpm install)
+(cd electron && pnpm install)
 
 # Verify Rust toolchain
-cd backend   && cargo --version && cd ../..
+(cd backend && cargo --version)
 ```
 
 ### Other distros
