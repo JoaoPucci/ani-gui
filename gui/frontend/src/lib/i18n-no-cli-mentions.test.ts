@@ -4,8 +4,13 @@
 // row that names the retired script and then explains it is gone is
 // a ledger entry, and this is an app, not a ledger.
 //
-// Swept at the message-source layer, where every user-visible string
-// lives, so the rule covers all locales and any surface at once.
+// Swept at the message-source layer: the localized copy, the words
+// the app authors. That is the deliberate scope. Runtime data can
+// still carry the old name — the boot sweep reports the paths it
+// deleted verbatim, and on one launch per upgraded install one of
+// those paths ends in the script's filename — and that is a fact
+// about the user's disk, not the app narrating. A green run says
+// nothing about rendered data, only about the copy.
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
