@@ -57,9 +57,9 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: pnpm install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
       - name: stryker (lib/ only)
         run: pnpm exec stryker run
       - name: Upload stryker report

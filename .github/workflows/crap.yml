@@ -38,7 +38,7 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|frontend/|tools/|coverage-baseline\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|frontend/|tools/|coverage-baseline\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -83,12 +83,12 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (frontend)
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Install runtime deps

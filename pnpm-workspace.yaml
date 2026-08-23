@@ -1,0 +1,10 @@
+packages:
+  - frontend
+  - electron
+
+# Build scripts an install may run. electron's downloads the runtime
+# binary — without it a fresh install has no electron to launch.
+# lefthook's and msw's were never approved per-package and everything
+# worked, so they stay unapproved here too.
+onlyBuiltDependencies:
+  - electron

@@ -676,6 +676,25 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the workspace inputs select every job that installs from them" {
+    # The lockfile, the workspace file and the root manifest are the
+    # dependency graph every pnpm-installing job builds from. A change
+    # touching only them — a dependency bump is exactly that — must
+    # select those jobs, or the changed graph ships certified by
+    # no-op successes. The root manifest is matched exactly; the unit
+    # manifests keep their own routes through their directories.
+    for wf in frontend e2e crap; do
+        pattern=$(relevance_pattern "$REPO_ROOT/.github/workflows/$wf.yml")
+        [ -n "$pattern" ]
+        for input in pnpm-lock.yaml pnpm-workspace.yaml package.json; do
+            grep -qE "^($pattern)" <<<"$input" || {
+                echo "$wf.yml does not select on $input"
+                return 1
+            }
+        done
+    done
+}
+
 @test "the bats job runs when the snapshot generator changes" {
     # workflows_match_snapshot executes tools/workflow-snapshot.py,
     # which makes the generator a subject under test: a change touching
