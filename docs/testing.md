@@ -44,12 +44,12 @@ tests/
     ├── linux_deps.sh / windows_deps.sh
     └── run-all.sh         # executes every check
 
-gui/backend/
+backend/
 ├── src/                   # #[cfg(test)] mod tests inline
 ├── tests/                 # cargo integration tests (acceptance)
 └── proptests/             # proptest-only suites
 
-gui/frontend/
+frontend/
 ├── src/                   # *.test.ts colocated with units
 ├── tests/acceptance/      # vitest + MSW
 └── e2e/                   # Playwright (planned)
@@ -63,12 +63,12 @@ tests/bash/helpers/install-bats.sh    # one-time, pins bats-core + plugins
 tests/bash/helpers/run-suite.sh
 
 # Rust backend
-cd gui/backend && cargo test --workspace
-cd gui/backend && cargo test --test proptests
+cd backend && cargo test --workspace
+cd backend && cargo test --test proptests
 
 # Frontend
-cd gui/frontend && pnpm test
-cd gui/frontend && pnpm test:acceptance
+cd frontend && pnpm test
+cd frontend && pnpm test:acceptance
 
 # Architectural invariants (always fast; the workflow-certification
 # self-test parses CI config with PyYAML — python3-yaml on Debian/Ubuntu)
@@ -98,8 +98,8 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | Workflow | Triggers | Gating |
 |---|---|---|
 | `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, or a workflow | yes |
-| `rust.yml` | PR touches `gui/backend/**` or `Cargo.lock` | yes |
-| `frontend.yml` | PR touches `gui/frontend/**` | yes |
+| `rust.yml` | PR touches `backend/**` or `Cargo.lock` | yes |
+| `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
 

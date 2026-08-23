@@ -25,7 +25,7 @@
               "name": "Run the sh-checker",
               "uses": "luizm/action-sh-checker@master",
               "with": {
-                "sh_checker_exclude": "tests/bash tests/fixtures tests/tools gui"
+                "sh_checker_exclude": "tests/bash tests/fixtures tests/tools backend frontend electron"
               }
             }
           ]

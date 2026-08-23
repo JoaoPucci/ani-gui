@@ -44,7 +44,7 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
 Three layers, in lockstep:
 
 - **Renderer** — SvelteKit static SPA running inside the desktop shell's web view. Renders the discovery surface, search results, detail pages, and the embedded player (`<video>` + hls.js). Stateless beyond UI state; talks only to the backend.
-- **Backend** — Rust crate inside `gui/backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the provider, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
+- **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the provider, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
 - **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
 ## Data flow: searching and playing an episode
@@ -171,7 +171,7 @@ The deferred entry can be discharged in three ways:
 
 Closing PiP via X **while still on `/play/[id]`** doesn't kill prefetch — the page never unmounted, no listener was registered, and `onDestroy` hasn't run.
 
-The pure decision helpers and the registry live in [`gui/frontend/src/lib/play/prefetch-lifecycle.ts`](../gui/frontend/src/lib/play/prefetch-lifecycle.ts) and are unit-tested next to the file.
+The pure decision helpers and the registry live in [`frontend/src/lib/play/prefetch-lifecycle.ts`](../frontend/src/lib/play/prefetch-lifecycle.ts) and are unit-tested next to the file.
 
 ## User settings
 
@@ -199,7 +199,7 @@ The backend never returns localized text. Errors are stable keys (`error.scraper
 
 ## The retired CLI
 
-The project spent its first releases as a desktop shell over the vendored `ani-cli` script, then replaced the subprocess with native resolution and, release by release, retired everything that carried the script: the spawn, the packaged copy, the boot-time updater, and finally the vendored file itself. The repository holds only the GUI now. Users who want a terminal flow install upstream's script; the two share an origin and nothing at runtime. What remains in the tree is the boot sweep (`gui/backend/src/legacy_script.rs`) that deletes the copy earlier versions maintained in the user's cache, and reports having done so.
+The project spent its first releases as a desktop shell over the vendored `ani-cli` script, then replaced the subprocess with native resolution and, release by release, retired everything that carried the script: the spawn, the packaged copy, the boot-time updater, and finally the vendored file itself. The repository holds only the GUI now. Users who want a terminal flow install upstream's script; the two share an origin and nothing at runtime. What remains in the tree is the boot sweep (`backend/src/legacy_script.rs`) that deletes the copy earlier versions maintained in the user's cache, and reports having done so.
 
 ## Design direction (UI as a first-class surface)
 

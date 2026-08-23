@@ -30,7 +30,7 @@ setup() {
 # to find itself, and an empty backend tree for it to walk.
 planted_repo() {
     root=$(mktemp -d "$BATS_TEST_TMPDIR/repo-XXXXXX")
-    mkdir -p "$root/tests/arch" "$root/gui/backend/src"
+    mkdir -p "$root/tests/arch" "$root/backend/src"
     cp "$CHECK" "$root/tests/arch/dep_direction.sh"
     printf '%s\n' "$root"
 }
@@ -39,8 +39,8 @@ planted_repo() {
 # creating the directory on the way. Body arrives on stdin so a case
 # can spell the import exactly as rustfmt would leave it.
 layer_file() {
-    mkdir -p "$1/gui/backend/src/$2"
-    cat >"$1/gui/backend/src/$2/$3"
+    mkdir -p "$1/backend/src/$2"
+    cat >"$1/backend/src/$2/$3"
 }
 
 @test "the repository as it stands satisfies every rule" {
@@ -148,9 +148,9 @@ RS
 
 @test "the frontend reaching outside its own src/ is caught" {
     root=$(planted_repo)
-    mkdir -p "$root/gui/frontend/src/lib"
+    mkdir -p "$root/frontend/src/lib"
     printf "import { thing } from '../../../backend/thing';\n" \
-        >"$root/gui/frontend/src/lib/thing.ts"
+        >"$root/frontend/src/lib/thing.ts"
     run sh "$root/tests/arch/dep_direction.sh"
     [ "$status" -ne 0 ]
     [[ "$output" == *'may not relative-import outside'* ]]

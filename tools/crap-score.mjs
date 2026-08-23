@@ -15,7 +15,7 @@
 //   - lcov.info path via `--lcov=<path>[:<prefix>]` (one or more times).
 //     The optional `:prefix` is prepended to every relative SF: path
 //     in that lcov so paths line up across the repo. Frontend lcov
-//     uses relative paths (under gui/frontend/); Rust lcov uses
+//     uses relative paths (under frontend/); Rust lcov uses
 //     absolute paths (handled separately).
 //   - --root=<repoRoot> to make file paths comparable across inputs
 //

@@ -57,8 +57,8 @@ function stageFixtureRepo() {
 		'FNH:19',
 		'end_of_record'
 	].join('\n');
-	fs.mkdirSync(path.join(tmpDir, 'gui/backend'), { recursive: true });
-	fs.writeFileSync(path.join(tmpDir, 'gui/backend/lcov.info'), lcov);
+	fs.mkdirSync(path.join(tmpDir, 'backend'), { recursive: true });
+	fs.writeFileSync(path.join(tmpDir, 'backend/lcov.info'), lcov);
 
 	// Frontend coverage-summary.json: also above baseline.
 	const summary = {
@@ -69,9 +69,9 @@ function stageFixtureRepo() {
 			branches: { pct: 80 }
 		}
 	};
-	fs.mkdirSync(path.join(tmpDir, 'gui/frontend/coverage'), { recursive: true });
+	fs.mkdirSync(path.join(tmpDir, 'frontend/coverage'), { recursive: true });
 	fs.writeFileSync(
-		path.join(tmpDir, 'gui/frontend/coverage/coverage-summary.json'),
+		path.join(tmpDir, 'frontend/coverage/coverage-summary.json'),
 		JSON.stringify(summary)
 	);
 
@@ -227,8 +227,8 @@ test('a high_risk regression names the offending files', () => {
 			p95: 40,
 			high_risk: 7, // baseline is 5 — a regression
 			high_risk_files: [
-				{ file: 'gui/backend/src/scraper/gate.rs', crap: 30.4 },
-				{ file: 'gui/frontend/src/lib/play/global-video.ts', crap: 30.1 }
+				{ file: 'backend/src/scraper/gate.rs', crap: 30.4 },
+				{ file: 'frontend/src/lib/play/global-video.ts', crap: 30.1 }
 			]
 		})
 	);
@@ -243,10 +243,10 @@ test('a high_risk regression names the offending files', () => {
 
 	assert.match(
 		output,
-		/gui\/backend\/src\/scraper\/gate\.rs/,
+		/backend\/src\/scraper\/gate\.rs/,
 		'the report must name the high-risk files, not just their count'
 	);
-	assert.match(output, /gui\/frontend\/src\/lib\/play\/global-video\.ts/);
+	assert.match(output, /frontend\/src\/lib\/play\/global-video\.ts/);
 	assert.match(output, /30\.4/, 'each file should carry its CRAP value');
 });
 
@@ -279,9 +279,9 @@ test('a summary without high_risk_files still ratchets', () => {
 // and that is exactly the case where the operator has the least to go
 // on.
 const RANKING = [
-	{ file: 'gui/backend/src/anicli/process.rs', ccn: 41, cov: 74.2, crap: 298.11 },
-	{ file: 'gui/backend/src/scraper/allanime.rs', ccn: 33, cov: 81.0, crap: 229.4 },
-	{ file: 'gui/frontend/src/lib/history/resolve.ts', ccn: 22, cov: 88.5, crap: 80.1 }
+	{ file: 'backend/src/anicli/process.rs', ccn: 41, cov: 74.2, crap: 298.11 },
+	{ file: 'backend/src/scraper/allanime.rs', ccn: 33, cov: 81.0, crap: 229.4 },
+	{ file: 'frontend/src/lib/history/resolve.ts', ccn: 22, cov: 88.5, crap: 80.1 }
 ];
 
 function runAgainstSummary(summary) {
@@ -309,7 +309,7 @@ test('a max regression names the file that set it', () => {
 
 	assert.match(
 		output,
-		/gui\/backend\/src\/anicli\/process\.rs/,
+		/backend\/src\/anicli\/process\.rs/,
 		'a max failure must name the file at the top of the ranking'
 	);
 	assert.match(output, /298\.11/, 'and carry its CRAP value');
@@ -327,10 +327,10 @@ test('a p95 regression names the ranking that moved', () => {
 
 	assert.match(
 		output,
-		/gui\/backend\/src\/anicli\/process\.rs/,
+		/backend\/src\/anicli\/process\.rs/,
 		'a p95 failure must show the ranking it is computed over'
 	);
-	assert.match(output, /gui\/backend\/src\/scraper\/allanime\.rs/);
+	assert.match(output, /backend\/src\/scraper\/allanime\.rs/);
 });
 
 // Reading a ranking does not tell you which row IS the percentile —
@@ -343,10 +343,10 @@ test('a p95 regression marks which row sits at the boundary', () => {
 		high_risk: 3,
 		high_risk_files: [],
 		top: RANKING,
-		p95_file: 'gui/backend/src/scraper/allanime.rs'
+		p95_file: 'backend/src/scraper/allanime.rs'
 	});
 
-	const marked = output.split('\n').find((l) => l.includes('gui/backend/src/scraper/allanime.rs'));
+	const marked = output.split('\n').find((l) => l.includes('backend/src/scraper/allanime.rs'));
 	assert.ok(marked, 'the p95 row must appear in the report at all');
 	assert.match(marked, /p95/, 'and must be marked as the percentile boundary');
 	const unmarked = output.split('\n').find((l) => l.includes('anicli/process.rs'));

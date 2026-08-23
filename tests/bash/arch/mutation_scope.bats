@@ -31,7 +31,7 @@ workflow_globbing() {
     {
         printf 'jobs:\n  cargo-mutants:\n    steps:\n'
         printf '      - name: Run cargo-mutants on scoped modules\n'
-        printf '        working-directory: gui/backend\n'
+        printf '        working-directory: backend\n'
         printf '        run: |\n          cargo mutants \\\n'
         for glob in "$@"; do
             printf "            -f '%s' \\\\\n" "$glob"

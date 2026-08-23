@@ -91,24 +91,24 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows;
 4. **Clone and install JS deps**:
    ```sh
    git clone https://github.com/JoaoPucci/ani-gui.git && cd ani-gui
-   (cd gui/frontend && pnpm install)
-   (cd gui/electron && pnpm install)
+   (cd frontend && pnpm install)
+   (cd electron && pnpm install)
    ```
 5. **Build the backend binary** (required before the first run, and after every Rust change):
    ```sh
-   cd gui/backend && cargo build --bin ani-gui-backend
+   cd backend && cargo build --bin ani-gui-backend
    ```
 6. **Run the dev app** — two terminals, started in this order:
    ```sh
    # Terminal A — Vite dev server, HMR on :5173
-   cd gui/frontend && pnpm dev
+   cd frontend && pnpm dev
 
    # Terminal B — Electron shell, spawns the backend binary from step 5
-   cd gui/electron && pnpm dev
+   cd electron && pnpm dev
    ```
 7. **Build a distributable bundle**:
    ```sh
-   cd gui/electron
+   cd electron
 
    # Linux host
    pnpm package           # .AppImage — fast iteration

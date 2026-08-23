@@ -18,8 +18,8 @@
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-ROUTES_DIR="$REPO_ROOT/gui/frontend/src/routes"
-COMPONENTS_DIR="$REPO_ROOT/gui/frontend/src/lib/components"
+ROUTES_DIR="$REPO_ROOT/frontend/src/routes"
+COMPONENTS_DIR="$REPO_ROOT/frontend/src/lib/components"
 
 if [ ! -d "$ROUTES_DIR" ]; then
     printf 'arch/frontend_i18n: routes/ not present yet — skipping\n'

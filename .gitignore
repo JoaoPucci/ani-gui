@@ -7,27 +7,27 @@ target/
 Cargo.lock.bak
 
 # Tauri
-gui/backend/target/
-gui/backend/gen/
-gui/backend/WixTools/
+backend/target/
+backend/gen/
+backend/WixTools/
 
 # Electron packaging output (electron-builder + manual --appimage-extract)
-gui/electron/dist/
-gui/electron/squashfs-root/
-gui/electron/.appimage-cache/
-gui/electron/.win-deps-cache/
-gui/electron/.linux-deps-cache/
+electron/dist/
+electron/squashfs-root/
+electron/.appimage-cache/
+electron/.win-deps-cache/
+electron/.linux-deps-cache/
 
 # POSIX deps fetched at build time by `fetch-windows-deps.mjs` and
 # `fetch-linux-deps.mjs` (today: fzf, aria2c on both platforms).
 # Staged for electron-builder to pack into the per-platform payload.
-gui/electron/build-resources/win/bin/
-gui/electron/build-resources/linux/bin/
+electron/build-resources/win/bin/
+electron/build-resources/linux/bin/
 
 # Playwright outputs
-gui/electron/test-results/
-gui/electron/playwright-report/
-gui/electron/playwright/.cache/
+electron/test-results/
+electron/playwright-report/
+electron/playwright/.cache/
 
 # Node / pnpm / npm
 node_modules/
@@ -36,16 +36,16 @@ node_modules/
 
 # SvelteKit / Vite
 .svelte-kit/
-gui/frontend/.svelte-kit/
-gui/frontend/build/
-gui/frontend/dist/
+frontend/.svelte-kit/
+frontend/build/
+frontend/dist/
 .vite/
 
 # Test coverage & artifacts
 coverage/
-gui/frontend/coverage/
-gui/backend/lcov.info
-gui/backend/target/llvm-cov-target/
+frontend/coverage/
+backend/lcov.info
+backend/target/llvm-cov-target/
 .nyc_output/
 lcov.info
 *.lcov
@@ -76,7 +76,7 @@ logs/
 .env.*.local
 
 # Generated bindings
-gui/frontend/src/lib/bindings/
+frontend/src/lib/bindings/
 
 # mpv ad-hoc screenshots (`s` key in player). Land in cwd, easy to
 # accidentally pick up via `git add -A` from the wrong directory.

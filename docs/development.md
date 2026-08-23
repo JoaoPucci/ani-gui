@@ -59,11 +59,11 @@ cd ani-gui
 # Frontend + Electron deps. The frontend `pnpm install` also installs
 # Lefthook and writes the `pre-commit` / `pre-push` git hooks. To skip
 # the hooks for a single command set `LEFTHOOK=0`.
-cd gui/frontend && pnpm install && cd ../..
-cd gui/electron  && pnpm install && cd ../..
+cd frontend && pnpm install && cd ../..
+cd electron  && pnpm install && cd ../..
 
 # Verify Rust toolchain
-cd gui/backend   && cargo --version && cd ../..
+cd backend   && cargo --version && cd ../..
 ```
 
 ### Other distros
@@ -76,26 +76,26 @@ Three terminals:
 
 ```sh
 # Terminal 1 — Vite dev server with HMR
-cd gui/frontend && pnpm dev          # http://localhost:5173
+cd frontend && pnpm dev          # http://localhost:5173
 
 # Terminal 2 — build the Rust sidecar (one-shot per Rust change)
-cd gui/backend && cargo build --bin ani-gui-backend
+cd backend && cargo build --bin ani-gui-backend
 
 # Terminal 3 — Electron shell (spawns the sidecar, points at Vite)
-cd gui/electron && pnpm dev
+cd electron && pnpm dev
 ```
 
-The Electron main process resolves the backend binary (`gui/backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout `ANI_GUI_LISTENING <url>` handshake to discover the loopback port. The renderer reads that URL from `window.aniGui.apiBase` (set by the Electron preload script) and uses it for every `fetch()` call.
+The Electron main process resolves the backend binary (`backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout `ANI_GUI_LISTENING <url>` handshake to discover the loopback port. The renderer reads that URL from `window.aniGui.apiBase` (set by the Electron preload script) and uses it for every `fetch()` call.
 
 ## Build for distribution
 
 ```sh
-cd gui/electron
+cd electron
 pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
-Artifacts land in `gui/electron/dist/`. CI builds all targets on every release tag:
+Artifacts land in `electron/dist/`. CI builds all targets on every release tag:
 
 | Target | Runner | Output |
 |---|---|---|
@@ -110,7 +110,7 @@ Artifacts land in `gui/electron/dist/`. CI builds all targets on every release t
 The backend uses [`tracing`](https://docs.rs/tracing). Adjust verbosity by setting `RUST_LOG` before launching the backend (or the Electron shell that spawns it):
 
 ```sh
-RUST_LOG=ani_gui=debug,axum=info pnpm --dir gui/electron dev
+RUST_LOG=ani_gui=debug,axum=info pnpm --dir electron dev
 ```
 
 Logs also tee to `$XDG_DATA_HOME/ani-gui/logs/ani-gui.log` (daily rotation, 7-day retention).

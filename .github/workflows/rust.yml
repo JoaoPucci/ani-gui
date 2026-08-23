@@ -46,7 +46,7 @@ jobs:
           # gets killed by SIGPIPE, the pipeline exits non-zero, and the
           # if-condition wrongly takes the else branch on relevant PRs.
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(gui/backend/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -67,7 +67,7 @@ jobs:
           components: rustfmt
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo fmt --check
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo fmt --all --check
 
   clippy:
@@ -86,10 +86,10 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo clippy
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   deny:
@@ -106,7 +106,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
           shared-key: cargo-deny
       - if: needs.filter.outputs.relevant == 'true'
         name: Install cargo-deny
@@ -116,7 +116,7 @@ jobs:
         run: cargo install cargo-deny --locked --version ^0.18
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo deny check
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo deny check
 
   test:
@@ -137,7 +137,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
       - name: Install runtime deps (Linux only)
         # The provider transport resolves a curl binary before it can
         # issue a request, and the player / download surfaces probe for
@@ -152,7 +152,7 @@ jobs:
           sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo test --workspace --all-features
 
   coverage:
@@ -169,7 +169,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
           shared-key: llvm-cov
       - if: needs.filter.outputs.relevant == 'true'
         uses: taiki-e/install-action@v2
@@ -189,7 +189,7 @@ jobs:
           sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate lcov
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - if: needs.filter.outputs.relevant == 'true'
         name: Ratchet — fail if coverage drops
@@ -199,5 +199,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rust-lcov
-          path: gui/backend/lcov.info
+          path: backend/lcov.info
           retention-days: 7

@@ -39,4 +39,4 @@ jobs:
           # bats suites linted by bash.yml under a bash dialect;
           # fixtures and tools are not lint subjects. `tests/arch` is
           # ordinary POSIX sh and is what this workflow exists for.
-          sh_checker_exclude: "tests/bash tests/fixtures tests/tools gui"
+          sh_checker_exclude: "tests/bash tests/fixtures tests/tools backend frontend electron"
