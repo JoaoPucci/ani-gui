@@ -59,7 +59,7 @@ import { needsExtraction, assertDepShape, retiredStagedBinaries } from '../lib/d
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(electronDir, '..', '..');
+const repoRoot = path.resolve(electronDir, '..');
 
 // Each dep declares: pinned version, download URL, archive name +
 // SHA-256, binary name (what gets dropped in build-resources), and
@@ -155,8 +155,8 @@ const stagedBinDir = path.join(electronDir, 'build-resources', 'linux', 'bin');
 // `backend/target/<profile>/`, so dropping the deps there makes
 // the dev loop work without polluting global PATH.
 const devTargetBinDirs = [
-	path.join(repoRoot, 'gui', 'backend', 'target', 'debug', 'bin'),
-	path.join(repoRoot, 'gui', 'backend', 'target', 'release', 'bin'),
+	path.join(repoRoot, 'backend', 'target', 'debug', 'bin'),
+	path.join(repoRoot, 'backend', 'target', 'release', 'bin'),
 ];
 
 async function sha256(filePath) {

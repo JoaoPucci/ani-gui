@@ -32,7 +32,7 @@ import { needsExtraction, assertDepShape, retiredStagedBinaries } from '../lib/d
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(electronDir, '..', '..');
+const repoRoot = path.resolve(electronDir, '..');
 
 // Each dep declares: pinned version, GitHub-releases URL, archive
 // name + SHA-256, binary name (what gets dropped in build-resources),
@@ -99,8 +99,8 @@ const stagedBinDir = path.join(electronDir, 'build-resources', 'win', 'bin');
 // winget store. Both profiles get a copy so the user can switch
 // between `cargo build` and `cargo build --release`.
 const devTargetBinDirs = [
-	path.join(repoRoot, 'gui', 'backend', 'target', 'debug', 'bin'),
-	path.join(repoRoot, 'gui', 'backend', 'target', 'release', 'bin'),
+	path.join(repoRoot, 'backend', 'target', 'debug', 'bin'),
+	path.join(repoRoot, 'backend', 'target', 'release', 'bin'),
 ];
 
 async function sha256(filePath) {
