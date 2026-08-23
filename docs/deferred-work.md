@@ -202,22 +202,6 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## Retiring the required-check stubs
-
-- **Four required-check names outlived their subject and are carried
-  by success-only reporters**: `No Awk Allowed`, `Executable Bit` and
-  `Version Bump` are stubs, and `Shellcheck + Shfmt` scans the repo's
-  remaining POSIX shell. They exist because branch protection blocks
-  every pull request whose required names never report, and the
-  required list lives in the repository settings, which only the
-  maintainer can edit.
-
-  The work: trim those names from the required checks, then delete
-  the stub workflow, the mirror file's script half, and this entry in
-  the same change. Left undone, the stubs report green forever for
-  checks that check nothing — which is the state this log exists to
-  keep visible.
-
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an

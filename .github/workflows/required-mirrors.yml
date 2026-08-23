@@ -4,15 +4,11 @@ name: 'required-check mirrors (zero-diff safe)'
 # never arrives (see PR #23 for the original symptom, a zero-diff
 # ancestry merge that matched no filter anywhere).
 #
-# The mirrors used to shadow upstream-vendored workflows this fork
-# could not edit. Those workflows retired with the vendored script;
-# what remains here is the reporter for each required name until the
-# name itself leaves branch protection — that half lives in the
-# repository settings, which only the maintainer can edit. The
-# markdown pair (markdown.yml / inverse-md.yml) is still real and
-# path-gated, so its two names keep genuine mirrors; the script's
-# names are stubs, and this file shrinks to the markdown mirrors in
-# the same change that trims the required list.
+# What remains is the markdown pair: markdown.yml / inverse-md.yml
+# are path-gated halves, and a zero-diff pull request matches
+# neither, so these two names need the unconditional reporters
+# below. The script-era mirrors left with their names when the
+# required list was trimmed.
 
 on:
   pull_request:
@@ -24,31 +20,6 @@ permissions:
   contents: read
 
 jobs:
-  # The subject — the vendored script's executable bit — is gone;
-  # the required name still needs a reporter.
-  exec-bit:
-    name: Executable Bit
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo "Not required: the vendored script this checked is gone"'
-
-  # Was the sh-dialect pass on the vendored script; what it scans
-  # now is the repo's remaining POSIX shell outside tests/ and gui/
-  # (the tools/ scripts), which keeps the required name earning its
-  # report rather than stubbing it.
-  shellcheck-shfmt:
-    name: Shellcheck + Shfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run the sh-checker
-        uses: luizm/action-sh-checker@master
-        env:
-          SHELLCHECK_OPTS: -s sh -o all -e 2250
-          SHFMT_OPTS: -i 4 -ci -d
-        with:
-          sh_checker_exclude: "tests gui"
-
   # Mirrors markdown.yml::trailing-ws.
   trailing-ws:
     name: Find Trailing Whitespace
@@ -71,13 +42,3 @@ jobs:
         with:
           command: file
           target: "**.md"
-
-  # The script's version-bump pair never fired anywhere (its filter
-  # carried a typo that matched nothing); this stub was always what
-  # branch protection actually saw, and it stays until the name
-  # leaves the required list.
-  version-bump:
-    name: Version Bump
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo "Not required: the vendored script this versioned is gone"'
