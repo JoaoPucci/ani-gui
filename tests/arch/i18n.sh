@@ -32,7 +32,7 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-if [ ! -f gui/backend/src/error.rs ]; then
+if [ ! -f backend/src/error.rs ]; then
     printf 'arch/i18n: error.rs not present yet — skipping\n'
     exit 0
 fi
@@ -56,18 +56,18 @@ variants=$(awk '
             if ($0 != "") print $0
         }
     }
-' gui/backend/src/error.rs)
+' backend/src/error.rs)
 
 for v in $variants; do
     # Must appear in key() match (Self::Variant ... => "...")
-    if ! grep -q "Self::$v" gui/backend/src/error.rs; then
+    if ! grep -q "Self::$v" backend/src/error.rs; then
         printf 'arch/i18n FAIL: AniError::%s has no arm in key()\n' "$v" >&2
         failed=1
     fi
 done
 
 # 2. i18n.rs constants must be well-formed.
-if [ -f gui/backend/src/i18n.rs ]; then
+if [ -f backend/src/i18n.rs ]; then
     while IFS= read -r line; do
         # Match e.g.: pub const NAME: &str = "error.scope.thing";
         value=$(printf '%s\n' "$line" | sed -nE 's/.*"([^"]*)".*/\1/p')
@@ -80,7 +80,7 @@ if [ -f gui/backend/src/i18n.rs ]; then
                 ;;
         esac
     done <<EOF
-$(grep -E '^pub const [A-Z_]+: &str' gui/backend/src/i18n.rs)
+$(grep -E '^pub const [A-Z_]+: &str' backend/src/i18n.rs)
 EOF
 fi
 
@@ -101,8 +101,8 @@ fi
 #
 # So: comments and prose outside the bundles are NOT covered by this
 # check, and a green run says nothing about them.
-if [ -d gui/frontend/messages ]; then
-    hits=$(grep -rl 'ani-hsts' gui/frontend/messages 2>/dev/null || true)
+if [ -d frontend/messages ]; then
+    hits=$(grep -rl 'ani-hsts' frontend/messages 2>/dev/null || true)
     if [ -n "$hits" ]; then
         printf 'arch/i18n FAIL: user-facing message names the CLI history file (the GUI keeps its own at <state_dir>/history):\n%s\n' "$hits" >&2
         failed=1

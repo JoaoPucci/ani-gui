@@ -34,7 +34,7 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(gui/frontend/|\.github/workflows/frontend\.yml$)' <<<"$changed"; then
+          if grep -qE '^(frontend/|\.github/workflows/frontend\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: gui/frontend
+        working-directory: frontend
     steps:
       - if: needs.filter.outputs.relevant != 'true'
         working-directory: ${{ github.workspace }}
@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: gui/frontend/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install --frozen-lockfile
@@ -106,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-lcov
-          path: gui/frontend/coverage/lcov.info
+          path: frontend/coverage/lcov.info
           retention-days: 7
 
       - if: needs.filter.outputs.relevant == 'true'

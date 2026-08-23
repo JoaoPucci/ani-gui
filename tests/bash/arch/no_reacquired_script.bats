@@ -24,7 +24,8 @@ setup() {
 # A synthetic repository with the directories the check walks.
 planted_repo() {
     root=$(mktemp -d "$BATS_TEST_TMPDIR/repo-XXXXXX")
-    mkdir -p "$root/gui/electron/scripts" "$root/.github/workflows"
+    mkdir -p "$root/backend" "$root/frontend" "$root/electron/scripts" \
+        "$root/.github/workflows"
     printf '%s\n' "$root"
 }
 
@@ -34,29 +35,29 @@ planted_repo() {
     [ "$status" -eq 0 ]
 }
 
-@test "a tree with no gui directory is a skip, not a pass about nothing" {
+@test "a tree with no app directories is a skip, not a pass about nothing" {
     root=$(mktemp -d "$BATS_TEST_TMPDIR/repo-XXXXXX")
     ARCH_REPO_ROOT="$root" run sh "$CHECK"
     [ "$status" -eq 0 ]
     [[ "$output" == *skipping* ]]
 }
 
-@test "sourcing the script under gui/ is caught" {
+@test "sourcing the script inside the app is caught" {
     root=$(planted_repo)
-    printf 'source ./ani-cli\n' >"$root/gui/launch.sh"
+    printf 'source ./ani-cli\n' >"$root/frontend/launch.sh"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 }
 
-@test "reviving the library seam under gui/ is caught" {
+@test "reviving the library seam inside the app is caught" {
     root=$(planted_repo)
-    printf 'let guard = "__ANI_CLI_LIB__";\n' >"$root/gui/seam.rs"
+    printf 'let guard = "__ANI_CLI_LIB__";\n' >"$root/backend/seam.rs"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 }
 
 @test "a manifest staging the script is caught" {
     root=$(planted_repo)
     printf '{"extraResources": [{"from": "vendor/ani-cli"}]}\n' \
-        >"$root/gui/package.json"
+        >"$root/electron/package.json"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 }
 
@@ -74,25 +75,25 @@ planted_repo() {
     # including the template literal the pattern once missed.
     root=$(planted_repo)
     printf "export const DEPS = [{ name: 'ani-cli' }];\n" \
-        >"$root/gui/electron/scripts/fetch-linux-deps.mjs"
+        >"$root/electron/scripts/fetch-linux-deps.mjs"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 
     root=$(planted_repo)
     printf 'const u = "https://host/x/ani-cli";\n' \
-        >"$root/gui/electron/scripts/fetch-linux-deps.mjs"
+        >"$root/electron/scripts/fetch-linux-deps.mjs"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 
     root=$(planted_repo)
     # shellcheck disable=SC2016
     printf 'const u = `https://host/${version}/ani-cli`;\n' \
-        >"$root/gui/electron/scripts/fetch-windows-deps.mjs"
+        >"$root/electron/scripts/fetch-windows-deps.mjs"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
 }
 
 @test "a bare prose mention in a fetcher comment is not a declaration" {
     root=$(planted_repo)
     printf '// the transport ani-cli 5.0 prefers\nexport const DEPS = [];\n' \
-        >"$root/gui/electron/scripts/fetch-windows-deps.mjs"
+        >"$root/electron/scripts/fetch-windows-deps.mjs"
     ARCH_REPO_ROOT="$root" run sh "$CHECK"
     [ "$status" -eq 0 ]
 }

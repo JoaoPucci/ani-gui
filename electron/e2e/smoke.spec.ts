@@ -1,0 +1,286 @@
+/**
+ * Smoke test: launches the packaged Electron app from
+ * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
+ * output), stubs the Rust backend's HTTP API so the renderer doesn't
+ * depend on Kitsu being reachable, and asserts the home page reaches
+ * a recognizable rendered state.
+ *
+ * Targeting the packaged artifact rather than running unpacked
+ * Electron directly tests the production code path: the `app://`
+ * protocol handler, the bundled SvelteKit static assets, and the
+ * sidecar backend at `process.resourcesPath/ani-gui-backend`. None
+ * of those wire correctly when `electron .` is run from source.
+ *
+ * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
+ * produced `dist/linux-unpacked/`.
+ */
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+} from "@playwright/test";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import fs, { existsSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
+
+const electronDir = path.resolve(__dirname, "..");
+const packagedBinary = path.join(electronDir, "dist/linux-unpacked/ani-gui");
+
+test.beforeAll(() => {
+  if (!existsSync(packagedBinary)) {
+    throw new Error(
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+    );
+  }
+});
+
+/**
+ * Wire all the API stubs the home page consumes onto a freshly-
+ * launched Electron app, BEFORE its first window starts loading —
+ * critical because the renderer fires its initial `fetch()` calls
+ * (history, trending, top-rated) immediately on mount. Routes set
+ * via `page.route()` after `firstWindow()` resolves race those
+ * requests and miss the first batch, leaving real-network responses
+ * visible to the page. Setting them on `context.route()` (visible to
+ * any page in the context) avoids the race.
+ */
+async function launchAppWithStubsOnce(
+  onLaunch: (app: ElectronApplication) => void,
+) {
+  // Pinning XDG dirs to fresh tmp paths makes the backend's history,
+  // settings, and cache files start empty regardless of the dev
+  // machine's actual state. Without this the backend reads the
+  // developer's own history — its own file under the state dir, not
+  // the CLI's — and the Continue Watching strip renders: Playwright's
+  // `route()` only intercepts what the renderer fetches, and history
+  // is read off the filesystem by the backend.
+  const tmp = path.join(
+    os.tmpdir(),
+    `ani-gui-e2e-${process.pid}-${Date.now()}`,
+  );
+  fs.mkdirSync(tmp, { recursive: true });
+  const cleanEnv = {
+    ...process.env,
+    XDG_STATE_HOME: path.join(tmp, "state"),
+    XDG_CONFIG_HOME: path.join(tmp, "config"),
+    XDG_CACHE_HOME: path.join(tmp, "cache"),
+    XDG_DATA_HOME: path.join(tmp, "data"),
+  };
+
+  const app = await electron.launch({
+    executablePath: packagedBinary,
+    // `--no-sandbox` because chrome-sandbox in the unpackaged
+    // linux-unpacked dir isn't SUID. The .deb's postinst fixes
+    // that for installed copies; this test runs against the
+    // pre-install artifact.
+    args: ["--no-sandbox"],
+    env: cleanEnv,
+  });
+  onLaunch(app);
+
+  const context = app.context();
+  await context.route("**/api/app-info", (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(appInfo),
+    }),
+  );
+  await context.route("**/api/history", (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(emptyHistory),
+    }),
+  );
+  await context.route("**/api/kitsu/trending", (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(trending),
+    }),
+  );
+  await context.route("**/api/kitsu/top-rated", (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(topRated),
+    }),
+  );
+  // Block image fetches; the renderer's placeholder takes over.
+  await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
+
+  const page = await app.firstWindow();
+  return { app, page, context };
+}
+
+async function launchAppWithStubs() {
+  // A cold launch can lose its first window before any assertion
+  // runs — the closed-target flake. The harness relaunches once,
+  // closing the dead app in between; every other failure propagates
+  // untouched. See lib/cold-launch.cjs.
+  let pending: ElectronApplication | null = null;
+  return withColdLaunchRetry(
+    async () => {
+      const launched = await launchAppWithStubsOnce((app) => {
+        pending = app;
+      });
+      pending = null;
+      return launched;
+    },
+    {
+      cleanup: async () => {
+        const dead = pending;
+        pending = null;
+        if (dead) await dead.close();
+      },
+    },
+  );
+}
+
+test("app launches, hero renders, no unexpected console errors", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    // Capture renderer console errors so the test fails on any
+    // thrown exception in the SPA's boot path.
+    const errors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") errors.push(msg.text());
+    });
+    page.on("pageerror", (err) => errors.push(String(err)));
+
+    // "Trending now" eyebrow is the first DOM signal the stubs
+    // were consumed and the page is past the loading state.
+    // "Top rated" eyebrow is the load signal we use across e2e —
+    // it renders for every trending-result count, including 1 (a
+    // single-entry fixture leaves "Trending now" without a Strip
+    // because that single entry becomes the hero, which uses a
+    // different eyebrow).
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Allow a tick for any async errors to fire after render.
+    await page.waitForTimeout(250);
+
+    // Filter out:
+    //  - DevTools Autofill probe noise (Chromium internal)
+    //  - 503s from our own /api/image stub (the renderer logs
+    //    `<img onerror>` as a resource-load error; expected).
+    const meaningful = errors.filter(
+      (e) =>
+        !/Autofill\.(enable|setAddresses)/.test(e) &&
+        !/^DevTools/i.test(e) &&
+        !/Failed to load resource.*503/.test(e),
+    );
+    expect(
+      meaningful,
+      `unexpected console errors:\n${meaningful.join("\n")}`,
+    ).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("clicking a poster card navigates to a detail route", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    // The first window starts loading before `context.route()`
+    // can fully register, so the trending/top-rated stubs may
+    // race the renderer's initial fetches. We stub them anyway
+    // (in case the timing wins on faster machines), but the
+    // assertion only checks that *some* /anime/<id> URL lands —
+    // not the specific id from our fixture. The point of this
+    // test is to exercise the route+navigation path, not the
+    // network stubbing.
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    const topRatedRegion = page.getByRole("region", { name: /top rated/i });
+    const card = topRatedRegion.locator("a").first();
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await card.click();
+
+    // SvelteKit's client router updates the URL to `/anime/<id>`
+    // without a full reload. Under the `app://` protocol that
+    // becomes `app://localhost/anime/<id>`.
+    await expect
+      .poll(() => page.url(), { timeout: 10_000 })
+      .toMatch(/\/anime\/\w+/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("settings locale picker is wired to a reloading change handler", async () => {
+  // Verifies the picker surface — the `<select>` is on the page,
+  // exposes every shipped locale, and selecting a non-default one
+  // fires a full page reload (paraglideSetLocale's default). The
+  // *post-reload locale resolution* depends on Electron's storage
+  // semantics under `_electron.launch()` and is flaky in CI's
+  // headless xvfb runner; assert only the integration wiring.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page
+      .getByRole("link", { name: /settings/i })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/settings\/?$/);
+
+    // All four shipped locales must be in the dropdown's option set.
+    const langSelect = page.getByRole("combobox", { name: /locale/i });
+    const optionValues = await langSelect.evaluate((el) =>
+      Array.from((el as HTMLSelectElement).options).map((o) => o.value),
+    );
+    expect(optionValues).toEqual(
+      expect.arrayContaining(["en", "pt-BR", "es-419", "ru"]),
+    );
+
+    // selectOption("pt-BR") triggers onchange → setLocale →
+    // persist().then(paraglideSetLocale()). The reload is the
+    // observable side effect we can pin down deterministically;
+    // wait for it explicitly so the post-selectOption assertions
+    // don't race the reload.
+    const reloaded = page.waitForEvent("load");
+    await langSelect.selectOption("pt-BR");
+    await reloaded;
+
+    // After the reload we're still on /settings — the URL is
+    // preserved across paraglideSetLocale's reload, which is the
+    // core behavior users rely on.
+    await expect(page).toHaveURL(/\/settings\/?$/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("home page hides the Continue Watching strip when history is empty", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    // With XDG_STATE_HOME pinned to a fresh tmp dir (see
+    // `launchAppWithStubs`), the backend's history file doesn't
+    // exist, the renderer gets an empty list, and the Continue
+    // Watching strip's `{#if history && history.length > 0}`
+    // guard keeps the heading out of the DOM.
+    // "Top rated" eyebrow is the load signal we use across e2e —
+    // it renders for every trending-result count, including 1 (a
+    // single-entry fixture leaves "Trending now" without a Strip
+    // because that single entry becomes the hero, which uses a
+    // different eyebrow).
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByRole("heading", { name: /continue watching/i }),
+    ).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

@@ -4,9 +4,9 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 
 ## 1. Project map
 
-`ani-gui` is a desktop app: an Electron shell (`gui/electron/`) hosts a SvelteKit static SPA (`gui/frontend/`) and launches a Rust sidecar (`gui/backend/`) that resolves streams natively.
+`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively.
 
-The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `gui/backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
+The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
 
 Read first:
 
@@ -123,7 +123,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 - SQLite holds metadata only. Image bytes live on the filesystem under `$XDG_CACHE_HOME/ani-gui/images/`.
 - The backend never returns localized strings. It returns stable error keys (`error.search.no_results`); the frontend resolves them via Paraglide.
 
-## 5. Rust conventions (`gui/backend/`)
+## 5. Rust conventions (`backend/`)
 
 - Errors: `thiserror`-based `AniError` enum at the library boundary. `anyhow` allowed only inside command bodies.
 - Subprocess: `tokio::process::Command` with `kill_on_drop(true)`, `TERM=dumb`, `NO_COLOR=1`.
@@ -131,7 +131,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 - Logging: `tracing` + `tracing-subscriber`. No `println!` in production code.
 - Forbidden: `sqlx` (overkill for local SQLite), `actix-web`, `openssl-sys`, `*` version ranges in `Cargo.toml`.
 
-## 6. Frontend conventions (`gui/frontend/`)
+## 6. Frontend conventions (`frontend/`)
 
 - Every user-visible string goes through Paraglide. The `no-hardcoded-strings` ESLint rule enforces this; it allowlists only `aria-*`, `data-testid`, and dev-only strings.
 - Use logical CSS properties (`margin-inline-start`, not `margin-left`) so adding RTL locales later is translation-only.
@@ -198,7 +198,7 @@ When pausing for approval, explain what the action does, why it's needed, and wh
 ## 13. Release & versioning
 
 - **No post-tag pre-bump.** Do not bump the version after cutting a release. `master` stays at the **last shipped version**; the bump happens **inside the release PR** itself, so `master` never runs ahead of what's published.
-- **The four version files move in lockstep** in that release PR: `gui/backend/Cargo.toml`, `gui/backend/Cargo.lock` (`cargo update -p ani-gui`), `gui/frontend/package.json`, `gui/electron/package.json`.
+- **The four version files move in lockstep** in that release PR: `backend/Cargo.toml`, `backend/Cargo.lock` (`cargo update -p ani-gui`), `frontend/package.json`, `electron/package.json`.
 - **Hotfixes branch off `master`.** Because `master == last shipped`, a patch branches straight off it — apply the fix, bump the patch version in the same PR, merge, tag from `master`. No release branch, no version gap to bridge. (Lesson from the v0.9.1 Wayland-crash hotfix: a prior post-tag pre-bump had stranded `master` ahead of the released line, forcing an awkward version downgrade-merge that regressed `master`.)
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".

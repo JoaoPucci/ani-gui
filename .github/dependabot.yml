@@ -1,13 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: "cargo"
-    directory: "/gui/src-tauri"
+    directory: "/backend"
     schedule:
       interval: "weekly"
     groups:
-      tauri:
-        patterns:
-          - "tauri*"
       tokio-stack:
         patterns:
           - "tokio*"
@@ -25,7 +22,7 @@ updates:
       include: "scope"
 
   - package-ecosystem: "npm"
-    directory: "/gui/frontend"
+    directory: "/frontend"
     schedule:
       interval: "weekly"
     groups:
@@ -46,6 +43,15 @@ updates:
           - "minor"
           - "patch"
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/electron"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
       include: "scope"

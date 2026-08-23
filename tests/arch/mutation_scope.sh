@@ -26,7 +26,7 @@
 #
 # Deliberately not covered, and said so rather than left to be assumed:
 #
-#   - That the crate the globs resolve against really is `gui/backend`.
+#   - That the crate the globs resolve against really is `backend`.
 #     The step's `working-directory:` is what makes them crate-relative,
 #     and reading that back out means parsing YAML, so the root is a
 #     parameter instead. A step moved to another crate would leave this
@@ -44,7 +44,7 @@ REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
 WORKFLOW="${1:-$REPO_ROOT/.github/workflows/mutation.yml}"
-CRATE_ROOT="${2:-$REPO_ROOT/gui/backend}"
+CRATE_ROOT="${2:-$REPO_ROOT/backend}"
 
 if [ ! -f "$WORKFLOW" ]; then
     printf 'arch/mutation_scope FAIL: %s is missing — the run this check scopes does not exist\n' \

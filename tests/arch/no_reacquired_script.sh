@@ -26,12 +26,16 @@ set -eu
 REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
-if [ ! -d gui ]; then
-    printf 'arch/no_reacquired_script: gui/ does not exist yet — skipping\n'
+if [ ! -d backend ]; then
+    printf 'arch/no_reacquired_script: the app tree does not exist yet — skipping\n'
     exit 0
 fi
 
 failed=0
+
+# The three units the app is made of, at the repository root since
+# the gui/ wrapper flattened away with the CLI it distinguished from.
+APP_DIRS='backend frontend electron'
 
 # Build artifacts (target/, node_modules/, bundles) are gitignored but
 # may sit on disk and contain stale copies. Skip them.
@@ -40,9 +44,9 @@ GREP_EXCLUDE='--exclude-dir=target --exclude-dir=node_modules --exclude-dir=buil
 # 1. No sourcing. The cheapest way to reacquire the dependency is to
 # pull the script's functions into a shell the app runs.
 # shellcheck disable=SC2086
-matches=$(grep -rnE $GREP_EXCLUDE '(^|[[:space:]])((source|\.)[[:space:]]+["'"'"']?[^"'"'"' ]*ani-cli)' gui/ 2>/dev/null || true)
+matches=$(grep -rnE $GREP_EXCLUDE '(^|[[:space:]])((source|\.)[[:space:]]+["'"'"']?[^"'"'"' ]*ani-cli)' $APP_DIRS 2>/dev/null || true)
 if [ -n "$matches" ]; then
-    printf 'arch/no_reacquired_script FAIL: gui/ sources ani-cli (forbidden):\n%s\n' "$matches" >&2
+    printf 'arch/no_reacquired_script FAIL: the app sources ani-cli (forbidden):\n%s\n' "$matches" >&2
     failed=1
 fi
 
@@ -51,9 +55,9 @@ fi
 # reads or writes it anywhere now; an occurrence means a layer
 # started treating the script as a library again.
 # shellcheck disable=SC2086
-matches=$(grep -rn $GREP_EXCLUDE '__ANI_CLI_LIB__' gui/ 2>/dev/null || true)
+matches=$(grep -rn $GREP_EXCLUDE '__ANI_CLI_LIB__' $APP_DIRS 2>/dev/null || true)
 if [ -n "$matches" ]; then
-    printf 'arch/no_reacquired_script FAIL: the retired __ANI_CLI_LIB__ seam appears in gui/:\n%s\n' "$matches" >&2
+    printf 'arch/no_reacquired_script FAIL: the retired __ANI_CLI_LIB__ seam appears in the app:\n%s\n' "$matches" >&2
     failed=1
 fi
 
@@ -63,9 +67,9 @@ fi
 # The pattern does not need the file in the tree — a manifest can
 # stage a copy a build step fetched.
 # shellcheck disable=SC2086
-matches=$(grep -rnE $GREP_EXCLUDE '"from"[[:space:]]*:[[:space:]]*"([^"]*/)?ani-cli"' gui/ 2>/dev/null || true)
+matches=$(grep -rnE $GREP_EXCLUDE '"from"[[:space:]]*:[[:space:]]*"([^"]*/)?ani-cli"' $APP_DIRS 2>/dev/null || true)
 if [ -n "$matches" ]; then
-    printf 'arch/no_reacquired_script FAIL: a gui/ packaging manifest stages ani-cli as a resource:\n%s\n' "$matches" >&2
+    printf 'arch/no_reacquired_script FAIL: a packaging manifest stages ani-cli as a resource:\n%s\n' "$matches" >&2
     failed=1
 fi
 
@@ -95,7 +99,7 @@ fi
 # already do. A fetcher acquiring the script under another name is
 # not covered, and a green run says nothing about it.
 qc="'"'"`'
-matches=$(grep -rnE "[$qc]([^$qc]*/)?ani-cli[^$qc]*[$qc]" gui/electron/scripts/ 2>/dev/null || true)
+matches=$(grep -rnE "[$qc]([^$qc]*/)?ani-cli[^$qc]*[$qc]" electron/scripts/ 2>/dev/null || true)
 if [ -n "$matches" ]; then
     printf 'arch/no_reacquired_script FAIL: a dependency fetcher declares ani-cli, which the manifests would bundle wholesale:\n%s\n' "$matches" >&2
     failed=1

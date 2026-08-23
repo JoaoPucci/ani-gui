@@ -22,8 +22,8 @@
 // it can only tighten the gate, not loosen it.
 //
 // Layers checked:
-//   - rust:     gui/backend/lcov.info  (cargo-llvm-cov --lcov)
-//   - frontend: gui/frontend/coverage/coverage-summary.json (vitest --coverage)
+//   - rust:     backend/lcov.info  (cargo-llvm-cov --lcov)
+//   - frontend: frontend/coverage/coverage-summary.json (vitest --coverage)
 //   - bash:     coverage/bash/{pure,network}/index.js (kcov)
 //   - crap:     coverage/crap-summary.json (tools/crap-score.mjs --json)
 //
@@ -87,7 +87,7 @@ function summarizeLcov(file) {
 }
 
 function checkRust(baseline) {
-	const lcov = path.join(repoRoot, 'gui/backend/lcov.info');
+	const lcov = path.join(repoRoot, 'backend/lcov.info');
 	if (!fs.existsSync(lcov)) {
 		console.warn(`[skip] rust: ${lcov} not found`);
 		return;
@@ -109,7 +109,7 @@ function checkRust(baseline) {
 }
 
 function checkFrontend(baseline) {
-	const summaryPath = path.join(repoRoot, 'gui/frontend/coverage/coverage-summary.json');
+	const summaryPath = path.join(repoRoot, 'frontend/coverage/coverage-summary.json');
 	if (!fs.existsSync(summaryPath)) {
 		console.warn(`[skip] frontend: ${summaryPath} not found`);
 		return;

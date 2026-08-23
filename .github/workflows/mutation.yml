@@ -17,11 +17,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
       - name: Run cargo-mutants on scoped modules
-        working-directory: gui/backend
+        working-directory: backend
         run: |
           cargo mutants \
             --in-place \
@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cargo-mutants-report
-          path: gui/backend/mutants.json
+          path: backend/mutants.json
           retention-days: 30
 
   stryker:
@@ -47,7 +47,7 @@ jobs:
     continue-on-error: true
     defaults:
       run:
-        working-directory: gui/frontend
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
-          cache-dependency-path: gui/frontend/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - name: pnpm install
         run: pnpm install --frozen-lockfile
       - name: stryker (lib/ only)
@@ -67,5 +67,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stryker-report
-          path: gui/frontend/reports/mutation/
+          path: frontend/reports/mutation/
           retention-days: 30

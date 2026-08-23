@@ -38,7 +38,7 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(gui/backend/|gui/frontend/|tools/|coverage-baseline\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|frontend/|tools/|coverage-baseline\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -67,7 +67,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui/backend
+          workspaces: backend
           shared-key: llvm-cov
       - if: needs.filter.outputs.relevant == 'true'
         uses: taiki-e/install-action@v2
@@ -83,11 +83,11 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: gui/frontend/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (frontend)
-        working-directory: gui/frontend
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'
@@ -101,12 +101,12 @@ jobs:
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate Rust lcov
-        working-directory: gui/backend
+        working-directory: backend
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate frontend lcov
-        working-directory: gui/frontend
+        working-directory: frontend
         # Through the script, not `pnpm exec vitest` — the merged locale
         # bundles are generated and uncommitted, so the runner has to
         # compile i18n before the suite can call any message function.
@@ -124,14 +124,14 @@ jobs:
           # artifact (one switch arm per message key, regenerated at
           # i18n:compile time) and inflates max/p95 wildly without
           # representing handwritten complexity.
-          lizard --xml -x "*paraglide*" gui/backend/src gui/frontend/src > coverage/lizard.xml
+          lizard --xml -x "*paraglide*" backend/src frontend/src > coverage/lizard.xml
           node tools/crap-score.mjs \
-              --lcov=gui/backend/lcov.info \
-              --lcov=gui/frontend/coverage/lcov.info:gui/frontend \
+              --lcov=backend/lcov.info \
+              --lcov=frontend/coverage/lcov.info:frontend \
               --root=. < coverage/lizard.xml
           node tools/crap-score.mjs \
-              --lcov=gui/backend/lcov.info \
-              --lcov=gui/frontend/coverage/lcov.info:gui/frontend \
+              --lcov=backend/lcov.info \
+              --lcov=frontend/coverage/lcov.info:frontend \
               --root=. --json < coverage/lizard.xml > coverage/crap-summary.json
           cat coverage/crap-summary.json
 
@@ -149,7 +149,7 @@ jobs:
         with:
           name: ratchet-lcov
           path: |
-            gui/backend/lcov.info
-            gui/frontend/coverage/lcov.info
+            backend/lcov.info
+            frontend/coverage/lcov.info
             coverage/crap-summary.json
           retention-days: 3

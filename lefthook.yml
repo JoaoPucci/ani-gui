@@ -7,7 +7,7 @@
 #   pre-push    — heavier checks (clippy, cargo test, bash tests). Skipped
 #                 when nothing in that subtree changed.
 #
-# Setup: `pnpm install` from gui/frontend/ runs `lefthook install` via the
+# Setup: `pnpm install` from frontend/ runs `lefthook install` via the
 # package.json `prepare` script, which writes the hooks to .git/hooks.
 #
 # Override / skip: `LEFTHOOK=0 git commit ...` disables all hooks for one
@@ -43,22 +43,22 @@ pre-commit:
 
     frontend-test:
       glob: "**/*.{ts,svelte}"
-      root: "gui/frontend/"
+      root: "frontend/"
       run: pnpm test
 
     frontend-check:
       glob: "**/*.{ts,svelte}"
-      root: "gui/frontend/"
+      root: "frontend/"
       run: pnpm run check
 
     frontend-lint:
       glob: "**/*.{ts,svelte,js,mjs,cjs,json,css,html}"
-      root: "gui/frontend/"
+      root: "frontend/"
       run: pnpm run lint
 
     rust-fmt:
       glob: "**/*.rs"
-      root: "gui/backend/"
+      root: "backend/"
       run: cargo fmt --all -- --check
 
     # Two shellcheck passes mirror .github/workflows/bash.yml so local
@@ -84,10 +84,10 @@ pre-push:
   commands:
     rust-clippy:
       glob: "**/*.{rs,toml}"
-      root: "gui/backend/"
+      root: "backend/"
       run: cargo clippy --all-targets --all-features -- -D warnings
 
     rust-test:
       glob: "**/*.{rs,toml}"
-      root: "gui/backend/"
+      root: "backend/"
       run: cargo test --all-features

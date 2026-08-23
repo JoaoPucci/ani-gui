@@ -15,9 +15,9 @@
 # than none — its green run reads as coverage of both.
 #
 # Specifically:
-#   - `gui/electron/scripts/fetch-windows-deps.mjs` must exist as the
+#   - `electron/scripts/fetch-windows-deps.mjs` must exist as the
 #     fetch driver (mirror of fetch-linux-deps.mjs).
-#   - `gui/electron/package.json` must list `build-resources/win/bin`
+#   - `electron/package.json` must list `build-resources/win/bin`
 #     under `build.win.extraResources` so electron-builder copies the
 #     staged binaries into the NSIS payload.
 #   - `dist:win` must chain `fetch:win-deps`, so invoking it directly
@@ -37,17 +37,17 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-if [ ! -d gui/electron ]; then
-    printf 'arch/windows_deps: gui/electron does not exist yet — skipping\n'
+if [ ! -d electron ]; then
+    printf 'arch/windows_deps: electron does not exist yet — skipping\n'
     exit 0
 fi
 
 failed=0
-PKG=gui/electron/package.json
+PKG=electron/package.json
 
 # 1. The fetch driver script must exist alongside its Linux sibling.
-if [ ! -f gui/electron/scripts/fetch-windows-deps.mjs ]; then
-    printf 'arch/windows_deps FAIL: missing gui/electron/scripts/fetch-windows-deps.mjs\n' >&2
+if [ ! -f electron/scripts/fetch-windows-deps.mjs ]; then
+    printf 'arch/windows_deps FAIL: missing electron/scripts/fetch-windows-deps.mjs\n' >&2
     failed=1
 fi
 
@@ -89,8 +89,8 @@ esac
 #    parser — node imports the module and reports what it declares.
 #    The fetchers guard their own entry point, so importing one costs
 #    nothing and downloads nothing.
-LINUX_FETCH=gui/electron/scripts/fetch-linux-deps.mjs
-WINDOWS_FETCH=gui/electron/scripts/fetch-windows-deps.mjs
+LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
+WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
 # The distinct dependencies a fetcher declares, one per line. An entry
 # with no `dep` is an error rather than an anonymous member of the set:
@@ -135,7 +135,7 @@ fi
 #    spawn cannot treat as curl. The binary carries its fingerprint via
 #    `--impersonate` instead, which is why the failover list pairs a
 #    target with it (fetch.rs CURL_FAILOVER).
-FETCH=gui/electron/scripts/fetch-windows-deps.mjs
+FETCH=electron/scripts/fetch-windows-deps.mjs
 if [ -f "$FETCH" ]; then
     if ! grep -q "binary: 'curl-impersonate.exe'" "$FETCH"; then
         printf "arch/windows_deps FAIL: %s does not stage 'curl-impersonate.exe' — the native transport falls back to plain curl, which the provider 403s\n" "$FETCH" >&2

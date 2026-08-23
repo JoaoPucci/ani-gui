@@ -29,9 +29,9 @@
 # that side only the configuration.
 #
 # Specifically:
-#   - `gui/electron/scripts/fetch-linux-deps.mjs` must exist as the
+#   - `electron/scripts/fetch-linux-deps.mjs` must exist as the
 #     fetch driver (mirror of fetch-windows-deps.mjs).
-#   - `gui/electron/package.json` must list `build-resources/linux/bin`
+#   - `electron/package.json` must list `build-resources/linux/bin`
 #     under `build.linux.extraResources` so electron-builder copies
 #     the staged binaries into both AppImage and .deb payloads.
 #   - `build.deb.recommends` must include "ffmpeg".
@@ -44,17 +44,17 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-if [ ! -d gui/electron ]; then
-    printf 'arch/linux_deps: gui/electron does not exist yet — skipping\n'
+if [ ! -d electron ]; then
+    printf 'arch/linux_deps: electron does not exist yet — skipping\n'
     exit 0
 fi
 
 failed=0
-PKG=gui/electron/package.json
+PKG=electron/package.json
 
 # 1. The fetch driver script must exist alongside its Windows sibling.
-if [ ! -f gui/electron/scripts/fetch-linux-deps.mjs ]; then
-    printf 'arch/linux_deps FAIL: missing gui/electron/scripts/fetch-linux-deps.mjs\n' >&2
+if [ ! -f electron/scripts/fetch-linux-deps.mjs ]; then
+    printf 'arch/linux_deps FAIL: missing electron/scripts/fetch-linux-deps.mjs\n' >&2
     failed=1
 fi
 
@@ -96,7 +96,7 @@ done
 #    failover names (fetch.rs CURL_FAILOVER) through the bundled bin
 #    dir first, so the staged set must carry the patched binary plus
 #    at least the first failover wrapper.
-FETCH=gui/electron/scripts/fetch-linux-deps.mjs
+FETCH=electron/scripts/fetch-linux-deps.mjs
 if [ -f "$FETCH" ]; then
     for needed in "'curl-impersonate'" "'curl_firefox135'"; do
         if ! grep -q "binary: $needed" "$FETCH"; then

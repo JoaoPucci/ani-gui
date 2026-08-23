@@ -150,21 +150,21 @@ resolution_python() {
 }
 
 # Whether a workflow directory equals the blessed snapshot. The
-# projection lives in one place — tests/tools/workflow-snapshot.py,
+# projection lives in one place — tools/workflow-snapshot.py,
 # which both this comparison and the regeneration run — so the two
 # sides cannot drift apart into disagreeing about what is recorded.
 # Regenerating is deliberately a human act with no seam here: no
 # environment variable makes this rewrite its own expectations, which
 # is the defect it exists to catch in other checks.
 #
-#   python3 tests/tools/workflow-snapshot.py .github/workflows \
+#   python3 tools/workflow-snapshot.py .github/workflows \
 #       > tests/arch/workflows.snapshot.json
 workflows_match_snapshot() {
     _snap_py=$(resolution_python) || {
         printf 'snapshot gate unavailable: no python3 with PyYAML\n' >&2
         return 1
     }
-    _generated=$("$_snap_py" "$REPO_ROOT/tests/tools/workflow-snapshot.py" "$1" 2>&1) || {
+    _generated=$("$_snap_py" "$REPO_ROOT/tools/workflow-snapshot.py" "$1" 2>&1) || {
         printf '%s\n' "$_generated" >&2
         return 1
     }
@@ -661,7 +661,7 @@ FLAP
     # A pattern that selects any path at all would satisfy the case
     # above while saying nothing about arch coverage.
     pattern=$(relevance_pattern "$BASH_WORKFLOW")
-    run ! grep -qE "^($pattern)" <<<'gui/frontend/src/routes/+page.svelte'
+    run ! grep -qE "^($pattern)" <<<'frontend/src/routes/+page.svelte'
 }
 
 @test "the bats job runs when the workflow these tests inspect changes" {
@@ -677,14 +677,14 @@ FLAP
 }
 
 @test "the bats job runs when the snapshot generator changes" {
-    # workflows_match_snapshot executes tests/tools/workflow-snapshot.py,
+    # workflows_match_snapshot executes tools/workflow-snapshot.py,
     # which makes the generator a subject under test: a change touching
     # only it must select the bats job, or a broken projection lands
     # with the case that runs it skipped as irrelevant — and the
     # snapshot gate certifies workflows against a generator nobody ran.
     pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
-    run grep -qE "^($pattern)" <<<'tests/tools/workflow-snapshot.py'
+    run grep -qE "^($pattern)" <<<'tools/workflow-snapshot.py'
     [ "$status" -eq 0 ]
 }
 
