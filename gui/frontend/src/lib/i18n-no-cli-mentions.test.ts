@@ -11,9 +11,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MESSAGES = path.resolve(__dirname, '../../messages');
-const LOCALES = ['en', 'es-419', 'pt-BR', 'ru'];
+// Derived, so a locale added later is swept without anyone editing
+// this file. The compiled per-locale bundles beside these directories
+// are generated from them and gitignored, so the sources are the
+// whole surface.
+const LOCALES = fs
+	.readdirSync(MESSAGES, { withFileTypes: true })
+	.filter((e) => e.isDirectory())
+	.map((e) => e.name)
+	.sort();
 
 describe('no user-visible string names the retired CLI', () => {
+	it('the locale enumeration found the known locales', () => {
+		// An empty or partial listing must not read as a clean sweep.
+		expect(LOCALES).toEqual(expect.arrayContaining(['en', 'es-419', 'pt-BR', 'ru']));
+	});
+
 	for (const locale of LOCALES) {
 		it(`${locale} bundles carry no ani-cli or pystardust mention`, () => {
 			const dir = path.join(MESSAGES, locale);
