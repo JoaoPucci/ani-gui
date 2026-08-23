@@ -10,7 +10,7 @@
 
 ani-gui is a Rust + SvelteKit desktop application for browsing and watching anime — discovery, search, an embedded player, downloads, persistent watch history, Picture-in-Picture, and OP/ED skip. It began as a graphical front end over [pystardust/ani-cli](https://github.com/pystardust/ani-cli) and resolves streams itself now, in Rust.
 
-The script still lives in this repository for anyone who wants the terminal flow, but the desktop bundle no longer carries or runs it. See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
+The repository no longer carries the script; anyone who wants the terminal flow installs [upstream's](https://github.com/pystardust/ani-cli). See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Features
 
@@ -171,7 +171,7 @@ For the long version — diagrams, cache TTLs, the title-resolution bridge, the 
 
 ## Contributing
 
-See [`docs/development.md`](./docs/development.md). The script at the repository root carries one patch — a single source-guard line for testability — and otherwise mirrors `pystardust/ani-cli`.
+See [`docs/development.md`](./docs/development.md).
 
 ## Acknowledgements
 
@@ -184,7 +184,7 @@ ani-gui only exists because of the projects it builds on:
 
 ## Disclaimer
 
-ani-gui is a tool. Like any tool, the responsibility for how it's used lies with the user. The app makes no claim on the content it surfaces — it talks to the same providers you'd reach in a browser and routes their output through your machine. The full project disclaimer applies: see [`disclaimer.md`](./disclaimer.md).
+ani-gui is a tool. Like any tool, the responsibility for how it's used lies with the user. The app makes no claim on the content it surfaces — it hosts nothing, talks to the same providers you'd reach in a browser, and routes their output through your machine.
 
 ## License
 

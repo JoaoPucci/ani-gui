@@ -1,34 +1,34 @@
 {
   "browse_cloudflare.html": {
     "sha256": "108176ddf99863dda290bcc98652828145cd9f73c3b881e308e2fdbc9e7d24bd",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "browse_empty.html": {
     "sha256": "139477be17c8215eb013c973b5d2dbbfa333f1123e534e4ac9b933d987ec9478",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "browse_one_piece.html": {
     "sha256": "f7f8afd67967caef00f208965beafe7be8bff148073dc77ccb7e085a37c7e6e0",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "detail_one_piece.html": {
     "sha256": "e5f0b139b46da2fc5e8703ec716aa1b0442ac5429cf45a1733f5701c9a87852a",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "embed_op.html": {
     "sha256": "4d2202c573a27ce0cea01c5e4be45153cad435fddf87720bf39bd6fa7a438ab9",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "episodes_one_piece.json": {
     "sha256": "bcdb5d161819cc9acaaf49d04e51dac1eedefa7334b874d6b2c56c00d07ccfba",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "languages_op.json": {
     "sha256": "0f63ebde8e7b953df9805e8f6c12f9f0850b69427c079f093d71ec0bb3f41c77",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   },
   "master_op.m3u8": {
     "sha256": "1224c9b6620cb1bef9beb616d87cfc0837dc792467a68c80106d9c4054afed1d",
-    "source": "synthesized for tests (anidb.app response shapes, ani-cli 5.0 pipeline)"
+    "source": "synthesized for tests (anidb.app response shapes)"
   }
 }

@@ -20,8 +20,8 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 Group these by what subsystem you intend to work on. You only need a group's tools when you're building or testing in that subsystem.
 
 ```sh
-# Bash subsystem (the vendored CLI script + its test suite)
-sudo apt install -y shellcheck kcov
+# Bash subsystem (the arch checks + their bats harness)
+sudo apt install -y shellcheck python3-yaml
 # shfmt is not in 24.04 apt; install the static binary:
 sudo curl -sSL -o /usr/local/bin/shfmt \
   https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64 \
@@ -150,9 +150,7 @@ against throwaway data).
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.
 - **TS / Svelte**: `prettier` for formatting; `eslint` (svelte plugin + custom rules) for behavior.
-- **Bash**: `shfmt -i 4 -ci -d` matches upstream `pystardust/ani-cli`. Apply identically to the CLI script and `tests/bash/`.
-
-The project's hard rule on the CLI script: it is vendored from upstream and must never be reformatted. See `AGENTS.md` §3.
+- **Bash**: `shfmt -i 4 -ci -d` across `tests/bash/` and `tests/arch/`.
 
 ## Frequently asked
 

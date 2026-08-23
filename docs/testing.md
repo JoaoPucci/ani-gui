@@ -1,6 +1,6 @@
 # Testing
 
-This project is **strictly TDD**. Every code change starts with a failing test, including the first commit retrofitting tests onto the existing CLI script.
+This project is **strictly TDD**. Every code change starts with a failing test.
 
 ## The pyramid
 
@@ -9,33 +9,29 @@ This project is **strictly TDD**. Every code change starts with a failing test, 
          │   Mutation (deferred)│  cargo-mutants + stryker, nightly,
          └─────────────────────┘  not gating
        ┌───────────────────────────┐
-       │ Architectural invariants  │  tests/arch/*.sh — boundary,
-       └───────────────────────────┘  i18n, deps, capabilities
+       │ Architectural invariants  │  tests/arch/*.sh + their bats
+       └───────────────────────────┘  harness — i18n, deps, deferrals
      ┌─────────────────────────────────┐
-     │           Property              │  proptest (Rust), fast-check (TS),
-     └─────────────────────────────────┘  bash generator harness
+     │           Property              │  proptest (Rust),
+     └─────────────────────────────────┘  fast-check (TS)
    ┌──────────────────────────────────────┐
    │              End-to-end              │  Playwright (planned),
    └──────────────────────────────────────┘  ≤5 hermetic scenarios
  ┌──────────────────────────────────────────┐
- │              Acceptance                  │  bats `run`, cargo integration,
+ │              Acceptance                  │  cargo integration,
  └──────────────────────────────────────────┘  vitest + MSW
 ┌──────────────────────────────────────────────┐
-│                  Unit                        │  bats-core, cargo test,
-└──────────────────────────────────────────────┘  vitest, colocated *.test.ts
+│                  Unit                        │  cargo test, vitest,
+└──────────────────────────────────────────────┘  colocated *.test.ts
 ```
 
 ## Test layout
 
 ```
 tests/
-├── bash/                  # bats-core suites for ani-cli
-│   ├── helpers/           # loader, curl/mpv stubs, common assertions
-│   ├── unit/              # one .bats per pure function
-│   ├── network/           # curl-mocked tests
-│   ├── subprocess/        # mpv/ffmpeg/aria2c stubs
-│   ├── acceptance/        # full-CLI-run scenarios
-│   └── property/          # generator harness for pure functions
+├── bash/                  # bats harness for the arch checks
+│   ├── helpers/           # loader, vendored-bats runner
+│   └── arch/              # drives tests/arch/ through its cases
 ├── fixtures/              # shared goldens (bash + rust + ts)
 │   ├── anidb/             # synthesized anidb.app response shapes
 │   ├── kitsu/             # JSON:API responses
@@ -43,11 +39,10 @@ tests/
 │   ├── m3u8/              # master + media playlists, edge cases
 │   └── history/           # watch-history samples
 └── arch/                  # cross-cutting architectural invariants
-    ├── boundaries.sh
     ├── i18n.sh
-    ├── bash_portability.sh
-    ├── capabilities.sh
-    └── deps.toml          # cargo-deny config
+    ├── deferral_record.sh
+    ├── linux_deps.sh / windows_deps.sh
+    └── run-all.sh         # executes every check
 
 gui/backend/
 ├── src/                   # #[cfg(test)] mod tests inline
@@ -63,9 +58,9 @@ gui/frontend/
 ## Running tests locally
 
 ```sh
-# Bash (CLI retrofit + new bash code)
+# Bash (the arch harness)
 tests/bash/helpers/install-bats.sh    # one-time, pins bats-core + plugins
-bats tests/bash/
+tests/bash/helpers/run-suite.sh
 
 # Rust backend
 cd gui/backend && cargo test --workspace
@@ -86,12 +81,10 @@ Layer-specific. CI fails on regression below the baseline in `coverage-baseline.
 
 The CRAP ceilings (`crap.*` in `coverage-baseline.json`) are a separate, firm gate. A PR that would push a file's CRAP score above `max_le`, or push the count of high-risk files above `high_risk_le`, must refactor (split files, extract helpers, cover more) to bring the code under the ceiling — raising the ceiling to fit new code is not allowed. The tool deliberately leaves `crap.*` untouched on `--update` so the policy is enforced mechanically, not just by reading discipline. A separate `--update-crap` opt-in lets a deliberate cleanup *tighten* the CRAP ceilings (it refuses to write any value looser than the current baseline).
 
-The percentage / kcov baselines (`rust.*`, `frontend.*`, `bash.*`) are tighten-only by the same mechanism: `node tools/check-coverage-baseline.mjs --update` will *raise* a floor when the measurement is higher than the baseline, but refuses to lower it. A PR that drops coverage has to restore it (or write the missing tests at a different layer) rather than re-baseline. The CRAP rule says "you can't loosen the ceiling for new code"; this is the symmetric rule for the floor.
+The percentage baselines (`rust.*`, `frontend.*`) are tighten-only by the same mechanism: `node tools/check-coverage-baseline.mjs --update` will *raise* a floor when the measurement is higher than the baseline, but refuses to lower it. A PR that drops coverage has to restore it (or write the missing tests at a different layer) rather than re-baseline. The CRAP rule says "you can't loosen the ceiling for new code"; this is the symmetric rule for the floor.
 
 | Layer | Tool | Line | Branch |
 |---|---|---|---|
-| Bash pure functions | bashcov / kcov | 95% | 90% |
-| Bash network/subprocess | bashcov | 70% | — |
 | Rust core (proxy, cache, scraper, history) | `cargo llvm-cov` | 85% | 75% |
 | Rust glue (HTTP API handlers) | `cargo llvm-cov` | 60% | — |
 | Frontend lib/stores | vitest + c8 | 80% | — |
@@ -104,8 +97,7 @@ Every PR runs all gating workflows; merge blocks until they're green:
 
 | Workflow | Triggers | Gating |
 |---|---|---|
-| `ani-cli.yml` (upstream-aligned) | PR touches `**ani-cli` | yes |
-| `bash.yml` | PR touches `tests/bash/**` or `ani-cli` | yes |
+| `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, or a workflow | yes |
 | `rust.yml` | PR touches `gui/backend/**` or `Cargo.lock` | yes |
 | `frontend.yml` | PR touches `gui/frontend/**` | yes |
 | `arch.yml` | always | yes |
@@ -125,7 +117,6 @@ Targets:
 
 - **Rust**: `select_quality` invariants, m3u8 rewriter idempotency, URL token roundtrip, history file parse/serialize roundtrip, cache TTL monotonicity.
 - **TypeScript**: episode range parser (`"5-7"`, `"-1"`, `"5 6"`), search query sanitizer idempotency, Paraglide message-key existence in every locale.
-- **Bash**: `nth`, `select_quality`, `b64url_to_hex` — emulated property tests via a 200-iteration generator harness in `tests/bash/property/` since bats has no native shrinking.
 
 ## Architectural invariants
 
@@ -133,21 +124,17 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 | Invariant | Tool |
 |---|---|
-| `gui/**` may not source `ani-cli`, carry its test guard, or stage it as a packaged resource | grep |
-| `ani-cli` must not contain `gui/`, `axum`, etc. | grep |
 | Frontend imports no Rust types except generated `bindings/*.ts` | custom ESLint rule |
 | Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
 | No hardcoded English in `.svelte` files (must go through `m.<key>()`) | regex test, allowlist for `aria-*`, `data-testid` |
 | Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `cargo-deny` + `cargo-modules` |
-| Forbidden APIs in bash: `awk`, GNU-only flags | grep |
 
 ## Mutation testing (deferred)
 
-Trigger condition: after the Bash retrofit and the first GUI feature slice are green on CI for 30 days and total CI duration stays under 8 minutes.
+Trigger condition: CI green for 30 days with total CI duration under 8 minutes.
 
 - **Rust**: `cargo-mutants` nightly, scoped to `proxy/`, `cache/`, `history/`, `scraper/`. Target survival rate < 15%.
 - **TS**: `stryker-js` nightly, scoped to `lib/` (DOM mutation noise on components is too high).
-- **Bash**: no mature mutation tool exists. We compensate with property tests on pure functions and high-coverage acceptance tests.
 
 ## Test-discipline expectations for AI agents
 

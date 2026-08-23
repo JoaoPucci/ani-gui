@@ -32,14 +32,12 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          # `ani-cli.yml` is here because the arch bats suite reads it and
-          # asserts about its path filter. That makes it a subject under
-          # test: a change touching only it has to run the suite, or the
-          # regression the suite exists to catch lands unexamined.
           # `tests/tools/` carries scripts the bats suites execute
           # (the snapshot generator); a change there must run the
-          # suite that runs them.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|ani-cli$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          # suite that runs them. Workflows are included because the
+          # invocation harness pins their resolved shape against the
+          # recorded snapshot.
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -51,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - if: needs.filter.outputs.relevant != 'true'
-        run: 'echo "Not required: no bash test or ani-cli changes in this PR"'
+        run: 'echo "Not required: no bash test changes in this PR"'
       - if: needs.filter.outputs.relevant == 'true'
         uses: actions/checkout@v4
       - if: needs.filter.outputs.relevant == 'true'
@@ -64,20 +62,20 @@ jobs:
             https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64
           sudo chmod +x /usr/local/bin/shfmt
       - if: needs.filter.outputs.relevant == 'true'
-        name: shfmt (formatting parity with ani-cli, all test sources)
+        name: shfmt (all test sources)
         run: |
-          # Same formatter settings ani-cli upstream uses, applied repo-wide
-          # to the new test sources. .bats-vendor/ is gitignored and absent
-          # in CI checkouts.
+          # The formatter settings the repo has always applied to its
+          # test sources. .bats-vendor/ is gitignored and absent in CI
+          # checkouts.
           find tests/bash tests/arch -type f \
             \( -name '*.bats' -o -name '*.bash' -o -name '*.sh' \) \
             -print0 | xargs -0 shfmt -i 4 -ci -d
       - if: needs.filter.outputs.relevant == 'true'
         name: shellcheck (sh dialect for *.sh helpers)
         run: |
-          # POSIX-sh helpers and arch checks. ani-cli upstream uses
-          # `-s sh -o all -e 2250`; we additionally exclude:
-          #   SC2034 — unused variables (often used via sourced ani-cli)
+          # POSIX-sh helpers and arch checks, under `-s sh -o all
+          # -e 2250` plus:
+          #   SC2034 — variables set for a consumer the linter can't see
           #   SC2086 — intentional word-splitting on $files for shfmt batches
           #   SC2312 — `-o all` enables a check that flags every command
           #            substitution; too noisy for scripts where $() is
@@ -88,11 +86,10 @@ jobs:
         name: shellcheck (bash dialect for *.bash helpers and *.bats files)
         run: |
           # bats files run under bash. Disabled checks (test-context noise):
-          #   SC2034 — unused vars set as ani-cli globals via source
+          #   SC2034 — vars set for a sourced consumer the linter can't see
           #   SC2086 — intentional word-splitting on batched filename lists
           #   SC2154 — referenced-but-not-assigned (set in loader.bash)
-          #   SC2317 — "unreachable" function defs that override ani-cli's
-          #            external calls (curl, mpv, etc.) inside sourced flow
+          #   SC2317 — "unreachable" function defs bats invokes by name
           #   SC2030/2031 — bats runs each @test in a subshell; export
           #            scoping is intentional (per-test-only)
           #   SC2163 — dynamic `export -f "$cmd"` in process_stub: $cmd
@@ -114,96 +111,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - if: needs.filter.outputs.relevant != 'true'
-        run: 'echo "Not required: no bash test or ani-cli changes in this PR"'
+        run: 'echo "Not required: no bash test changes in this PR"'
       - if: needs.filter.outputs.relevant == 'true'
         uses: actions/checkout@v4
-      # `bash_portability.bats` measures the vendored script against
-      # upstream and skips when no `upstream` remote exists — which, on
-      # a bare checkout, is always. Without this the ported cases run,
-      # report skipped, and the job goes green having measured nothing.
-      #
-      # Pinned to the tag the vendored script came from, matching
-      # arch.yml. Against upstream's moving master the count changes
-      # when upstream commits, so CI could go red on a branch that
-      # touched nothing.
-      - if: needs.filter.outputs.relevant == 'true'
-        name: Configure the upstream divergence baseline
-        run: |
-          git remote add upstream https://github.com/pystardust/ani-cli.git
-          git fetch --depth=1 upstream tag v4.15 --no-tags
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bash test dependencies
         run: |
           sudo apt-get update
-          # Acceptance tests run the real ./ani-cli, which dep_ch's curl,
-          # sed, grep, a botan binary, and fzf at the top of every run,
-          # plus ffmpeg and aria2c when ANI_CLI_PLAYER=download. The
-          # botan requirement is satisfied by the harness's
-          # fake_botan.sh, whose AES-256-GCM comes from
-          # python3-cryptography. xxd is needed by blob_builder.sh. kcov
-          # is not in Ubuntu 24.04 apt; coverage.sh skips gracefully
-          # when it's missing.
-          sudo apt-get install -y \
-            curl \
-            python3-cryptography \
-            bsdmainutils \
-            xxd \
-            python3-yaml \
-            fzf \
-            mpv \
-            ffmpeg \
-            aria2
-      - if: needs.filter.outputs.relevant == 'true'
-        name: Install kcov runtime deps
-        # kcov needs libdw + libcurl shared libs at runtime. apt-get
-        # picks these up cleanly even though the kcov package itself
-        # was dropped from Ubuntu 24.04.
-        run: |
-          sudo apt-get install -y \
-            libdw1 libcurl4 libstdc++6 zlib1g binutils
-      - if: needs.filter.outputs.relevant == 'true'
-        id: cache-kcov
-        name: Cache kcov binary
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/bin/kcov
-          key: kcov-v43-${{ runner.os }}
-      - if: needs.filter.outputs.relevant == 'true' && steps.cache-kcov.outputs.cache-hit != 'true'
-        name: Build kcov from source (cache miss)
-        # Ubuntu 24.04 dropped the `kcov` apt package. Build from
-        # source against pinned tag v43 (latest non-pre-release in
-        # SimonKagstrom/kcov as of writing); the resulting binary
-        # is cached so subsequent runs skip this step entirely.
-        run: |
-          sudo apt-get install -y \
-            cmake binutils-dev libcurl4-openssl-dev zlib1g-dev \
-            libdw-dev libiberty-dev libssl-dev g++
-          git clone --depth 1 --branch v43 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
-          cd /tmp/kcov-src
-          mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-          make -j"$(nproc)"
-          sudo make install
+          # The invocation harness runs the workflow-snapshot
+          # projection, which reads the workflows through PyYAML.
+          sudo apt-get install -y python3-yaml
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bats-core and plugins
         run: ./tests/bash/helpers/install-bats.sh
       - if: needs.filter.outputs.relevant == 'true'
-        name: Run bats suites (unit, network, subprocess, acceptance, property) — gating
+        name: Run bats suites — gating
         run: ./tests/bash/helpers/run-suite.sh
-      - if: needs.filter.outputs.relevant == 'true'
-        name: Coverage with kcov
-        run: ./tests/bash/helpers/coverage.sh
-      - if: needs.filter.outputs.relevant == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - if: needs.filter.outputs.relevant == 'true'
-        name: Ratchet — fail if coverage drops
-        run: node tools/check-coverage-baseline.mjs
-      - if: always() && needs.filter.outputs.relevant == 'true'
-        name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bash-coverage
-          path: coverage/bash/
-          retention-days: 14

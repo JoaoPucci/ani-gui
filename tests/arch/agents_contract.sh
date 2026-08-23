@@ -10,8 +10,8 @@
 #   SC2312 — command substitutions are read for their text, and a
 #       failure arrives as an empty result that the assertion then catches
 #
-# Scoped to this file rather than widened in SHELLCHECK_OPTS, which
-# would also relax the checks guarding the `ani-cli` script itself.
+# Scoped to this file rather than widened in SHELLCHECK_OPTS, so the
+# relaxation stays with the reporting scripts it is argued for.
 # shellcheck disable=SC1091,SC2016,SC2312
 # Architectural invariant: the working contract is actually loaded.
 #

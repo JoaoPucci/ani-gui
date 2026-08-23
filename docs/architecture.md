@@ -1,6 +1,6 @@
 # Architecture
 
-`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. It began as a front end over the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper and now resolves streams itself in Rust. The script still lives at the repository root, unmodified, for people who want the terminal flow — but the desktop bundle no longer carries it.
+`ani-gui` is a desktop app that lets you browse and watch anime through a graphical interface. It began as a front end over the [`ani-cli`](https://github.com/pystardust/ani-cli) Bash scraper and now resolves streams itself in Rust. The repository no longer carries the script; the terminal flow is upstream's to provide.
 
 ## What gets shipped
 
@@ -39,7 +39,6 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
  │                                              image cache     │
  └──────────────────────────────────────────────────────────────┘
 
- sibling: pystardust/ani-cli (vendored, untouched — not bundled)
 ```
 
 Three layers, in lockstep:
@@ -198,16 +197,9 @@ Four MVP locales: English (`en`), Brazilian Portuguese (`pt-BR`), Latin American
 
 The backend never returns localized text. Errors are stable keys (`error.scraper.timeout`, `error.search.no_results`, etc.); the frontend resolves them via Paraglide. Anime titles themselves are not translated by the app — they come from Kitsu/AniList per a user-chosen title-language preference.
 
-## Why a separate CLI still exists
+## The retired CLI
 
-The `ani-cli` script at the repository root is a fully functional, separately installable artifact. The GUI does not replace it. The two coexist:
-
-- Users who want a terminal flow run `ani-cli` directly. The GUI is not installed and not required.
-- Users who want a graphical experience install the desktop bundle.
-
-The script is mergeable from upstream `pystardust/ani-cli` without conflict because the GUI lives entirely under `gui/` and never edits the script. The single carried patch is a `__ANI_CLI_LIB__` source guard added near the bottom of the script for testability.
-
-The desktop bundle does not include the script, and the app never invokes it. `tests/arch/boundaries.sh` holds that: nothing under `gui/` may source it, carry its test guard, or stage it as a packaged resource.
+The project spent its first releases as a desktop shell over the vendored `ani-cli` script, then replaced the subprocess with native resolution and, release by release, retired everything that carried the script: the spawn, the packaged copy, the boot-time updater, and finally the vendored file itself. The repository holds only the GUI now. Users who want a terminal flow install upstream's script; the two share an origin and nothing at runtime. What remains in the tree is the boot sweep (`gui/backend/src/legacy_script.rs`) that deletes the copy earlier versions maintained in the user's cache, and reports having done so.
 
 ## Design direction (UI as a first-class surface)
 

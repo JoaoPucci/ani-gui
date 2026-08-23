@@ -9,7 +9,7 @@ timestamp, and SHA-256. Fixtures over 1 MB live in git-LFS.
 
 | Path | Contents |
 |---|---|
-| `anidb/` | Synthesized anidb.app response shapes for ani-cli 5.0: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
+| `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id`, `/anime?filter[status]=`, `/anime/:id/relationships/genres`. |
 | `anilist/` | GraphQL responses for `Page.media(sort: TRENDING_DESC)`, `Page.media(season:, seasonYear:)`. |
 | `m3u8/` | Master playlist (multi-bitrate), media playlist with absolute URIs, media playlist with relative URIs, edge cases (`EXT-X-I-FRAME-STREAM-INF`, `EXT-X-BYTERANGE`, encrypted with `EXT-X-KEY`). |
