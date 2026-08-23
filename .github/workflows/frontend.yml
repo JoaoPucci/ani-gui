@@ -69,7 +69,7 @@ jobs:
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install --frozen-lockfile
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
 
       # `pnpm run lint` = prettier --check + eslint.
       - if: needs.filter.outputs.relevant == 'true'

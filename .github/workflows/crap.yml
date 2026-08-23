@@ -88,7 +88,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (frontend)
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Install runtime deps
