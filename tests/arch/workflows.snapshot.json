@@ -73,15 +73,9 @@
       "cargo-mutants": "cargo-mutants (Rust)",
       "stryker": "stryker-js (TS lib only)"
     },
-    "no-awk-required.yml": {
-      "check-no-awk": "No Awk Allowed"
-    },
     "required-mirrors.yml": {
       "dead-links": "Dead Link Checker",
-      "exec-bit": "Executable Bit",
-      "shellcheck-shfmt": "Shellcheck + Shfmt",
-      "trailing-ws": "Find Trailing Whitespace",
-      "version-bump": "Version Bump"
+      "trailing-ws": "Find Trailing Whitespace"
     },
     "rust.yml": {
       "clippy": "cargo clippy (-D warnings)",
