@@ -26,5 +26,5 @@
 	"cache_clear_success": "Caché de metadatos borrada.",
 	"cache_clear_error": "No se pudo borrar la caché.",
 	"section_legacy_sweep": "Eliminado al actualizar",
-	"legacy_sweep_description": "Una versión anterior mantenía su propia copia del script ani-cli y la actualizaba al iniciar. Ahora las fuentes se resuelven sin ella, así que se eliminó:"
+	"legacy_sweep_description": "Estos archivos ya no se usan, así que se eliminaron:"
 }
