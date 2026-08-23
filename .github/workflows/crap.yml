@@ -83,7 +83,7 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (frontend)

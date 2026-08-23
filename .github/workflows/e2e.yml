@@ -71,9 +71,7 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: |
-            frontend/pnpm-lock.yaml
-            electron/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Linux deps for Electron + Xvfb
@@ -91,13 +89,7 @@ jobs:
             libcairo2 libasound2t64
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: pnpm install (frontend)
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile
-
-      - if: needs.filter.outputs.relevant == 'true'
-        name: pnpm install (electron)
-        working-directory: electron
+        name: pnpm install (workspace)
         run: pnpm install --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'

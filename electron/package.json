@@ -32,11 +32,6 @@
 		"electron": "^33.2.0",
 		"electron-builder": "^25.1.8"
 	},
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"electron"
-		]
-	},
 	"build": {
 		"appId": "net.thirdmovement.ani-gui",
 		"productName": "ani-gui",
