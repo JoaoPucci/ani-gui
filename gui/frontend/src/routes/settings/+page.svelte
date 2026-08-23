@@ -734,20 +734,6 @@
 					<dd class="mono">{info?.version ?? '—'}</dd>
 				</div>
 				<div class="about-row">
-					<dt>{m.settings_about_built_label()}</dt>
-					<dd>
-						<a
-							class="inline-link"
-							href="https://github.com/pystardust/ani-cli"
-							target="_blank"
-							rel="noreferrer"
-						>
-							{m.settings_about_origin_link()}
-						</a>
-						<span class="about-foot">{m.settings_about_origin_description()}</span>
-					</dd>
-				</div>
-				<div class="about-row">
 					<dt>{m.settings_about_license_label()}</dt>
 					<dd>
 						{m.settings_about_license_text()}

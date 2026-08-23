@@ -26,5 +26,5 @@
 	"cache_clear_success": "Metadata cache cleared.",
 	"cache_clear_error": "Couldn't clear cache.",
 	"section_legacy_sweep": "Removed on upgrade",
-	"legacy_sweep_description": "An earlier version kept its own copy of the ani-cli script and refreshed it on launch. Streams resolve without it now, so it was deleted:"
+	"legacy_sweep_description": "These files are no longer used, so they were deleted:"
 }
