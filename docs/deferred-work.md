@@ -202,6 +202,22 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+## Retiring the legacy-script sweep — the v1.0 marker
+
+- **Remove the boot sweep that cleans the retired script from old
+  installs**, and everything that exists to report it: the sweep
+  module, the field it carries onto app-info, and the diagnostics
+  notice that renders it. The maintainer has tied this removal to
+  v1.0 — it is the last piece of the app that exists because of what
+  the app used to be, and shipping without it is what 1.0 means here.
+
+  Why it waits: the sweep serves installs upgrading from before 0.12,
+  which kept a maintained copy of the script in the cache. Removing
+  it orphans that copy for anyone who jumps straight from an old
+  version to a post-removal one — the file just stays, unreported.
+  The judgment of when that cost is acceptable is the whole decision,
+  which is why it is a version call and not a cleanup.
+
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an
