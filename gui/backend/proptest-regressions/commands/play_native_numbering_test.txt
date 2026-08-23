@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 36dceb66a076073dffb15b9e99caf02bb33a0a626e539fe8cf9aad4895a2df09 # shrinks to numbers = [1], tags = ["0.0"]
+cc d5bd506592d089c0eb569be90ca00dcffa823dec83f4abbf65c52c310f1d72f8 # shrinks to slots = [Some((true, "76.0")), None]
+cc 55fa94f4c41845e499dc65e91283caa6c13a0694271dc239e7836f30f0e4c982 # shrinks to slots = [Some((true, "01.0"))]
