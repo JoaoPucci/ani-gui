@@ -135,14 +135,20 @@ starting it, and delete it when you find it done.
   kept here as a reference for probing the same locations, not as
   code to port.
 - **Illustrated brand assets** — post-1.0.
-- **A notification center.** The app's notices are scattered today:
-  the update prompt is a transient banner, download outcomes live on
-  the dock's terminal rows, and the diagnostics page holds boot-time
-  notices. A single surface that collects them — and whatever later
-  features emit, such as new-episode alerts for followed shows —
-  would give notices somewhere to go when the user was not looking.
-  Which signals feed it and what persistence they get is the design
-  work; the existing three are the inventory to start from.
+- **A notification center.** Two jobs, and the second is the reason
+  the feature exists. The first is aggregation: the app's notices are
+  scattered today — the update prompt is a transient banner, download
+  outcomes live on the dock's terminal rows, and the diagnostics page
+  holds boot-time notices — and a single surface would give them, and
+  whatever later features emit, somewhere to go when the user was not
+  looking. The second is telling users about outages like the
+  provider failure of 2026-08-27 (see "Additional providers" below):
+  every play failed as unreachable and the app had nowhere to say the
+  problem was the provider's, not their setup's. That job needs a
+  notice source that does not exist yet — the app inferring an outage
+  from its own failures, or fetching announcements from somewhere it
+  trusts — and choosing one is the design work, along with which
+  signals feed the surface and what persistence they get.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
