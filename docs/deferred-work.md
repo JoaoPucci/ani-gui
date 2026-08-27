@@ -92,6 +92,25 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
+- **A day-one resolve pins its quality for 24 hours.** Play
+  resolution caches the resolved upstream URL keyed by the
+  *requested* quality — "best" by default — so on an episode's
+  launch day the cache stores whatever "best" meant at that moment.
+  If the source gains a better encode hours later, the row keeps
+  serving the old one: the hit path revalidates that the cached URL
+  is alive (HEAD), not that it is still the best on offer, and the
+  nearby-episode prefetch warms the same cache before the user ever
+  clicks. Reported with a day-one Bleach episode: poor quality at
+  launch, unchanged on a retry hours later, good immediately after
+  clearing the cache — exactly the failure this construction
+  produces.
+
+  Start the investigation a level up rather than at the symptom. The
+  cache's stated justification is the previous provider's ~30-second
+  resolve walk, and a resolve against the current provider is one
+  search page and a couple of JSON calls. Measure what a resolve
+  actually costs now; the answer decides between a much shorter TTL,
+  revalidating quality on a hit, and not caching resolutions at all.
 
 ## Testing and CI
 
