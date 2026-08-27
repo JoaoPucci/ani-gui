@@ -101,21 +101,24 @@ starting it, and delete it when you find it done.
   play, so an encode the provider adds to that same master shows up
   immediately even on a hit; the pin happens when the provider
   publishes the better encode under a *different* master URL while
-  leaving the cached one alive. A reported day-one Bleach episode
-  fits that shape exactly: poor quality at launch, unchanged on a
-  retry hours later, good immediately after clearing the cache — and
-  since "best" rows are always validated HLS masters, the old master
-  must still have been answering while the better one existed
-  elsewhere. The nearby-episode prefetch warms the same cache before
-  the user ever clicks.
+  leaving the cached one alive. A reported day-one Bleach episode is
+  consistent with that: poor quality at launch, unchanged on a retry
+  hours later, good immediately after clearing the cache. The
+  replaced-master reading is a hypothesis, though, not a finding:
+  the clear wipes the entire metadata cache, so the fresh resolve
+  also reran search and candidate selection, a changed candidate
+  could equally explain the better stream, and nobody captured the
+  two master URLs to compare. The nearby-episode prefetch warms the
+  same cache before the user ever clicks.
 
   Start the investigation a level up rather than at the symptom. The
   cache's stated justification is the previous provider's ~30-second
-  resolve walk, and a resolve against the current provider is one
-  search page and a couple of JSON calls. Measure what a resolve
-  actually costs now; the answer decides between a shorter TTL,
-  re-resolving the master on a hit, and not caching resolutions at
-  all.
+  resolve walk; the current provider's walk has a different,
+  still multi-request shape — search, detail pages for year
+  filtering, an episode listing, then the episode's languages, embed
+  page and master validation. Measure what it actually costs; the
+  answer decides between a shorter TTL, re-resolving the master on a
+  hit, and not caching resolutions at all.
 
 ## Testing and CI
 
