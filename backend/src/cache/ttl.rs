@@ -45,8 +45,9 @@ pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); //
 /// generous because the *real* validity gate is the per-read HEAD
 /// check + an evict-on-player-failure feedback loop — a stale row
 /// survives until the next access, where HEAD or playback failure
-/// kicks it out. The TTL is just a backstop for rows nobody touches
-/// for a week (probably abandoned shows).
+/// kicks it out. The TTL is a coarse absolute bound on top of that:
+/// reads do not renew it, so every row expires seven days after it
+/// was written, however often it is replayed.
 pub const PLAY_RESOLUTION_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 7d
 
 #[cfg(test)]

@@ -94,9 +94,11 @@ starting it, and delete it when you find it done.
 
 - **A day-one resolve can pin its quality for up to a week.** Play
   resolution caches the resolved upstream URL keyed by the
-  *requested* quality, and a hit is served for as long as that URL
-  answers a HEAD — the seven-day TTL is only a backstop for rows
-  nobody touches. For the default "best" the cached URL is the
+  *requested* quality, and a hit is served whenever the row is
+  younger than seven days and its URL still answers a HEAD. The
+  seven days are absolute — reads do not renew the clock — so a row
+  replayed daily still dies a week after it was written. For the
+  default "best" the cached URL is the
   adaptive master playlist, which the player re-fetches on every
   play, so an encode the provider adds to that same master shows up
   immediately even on a hit; the pin happens when the provider
