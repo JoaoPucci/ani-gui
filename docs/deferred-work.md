@@ -92,25 +92,30 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
-- **A day-one resolve pins its quality for 24 hours.** Play
+- **A day-one resolve can pin its quality for up to a week.** Play
   resolution caches the resolved upstream URL keyed by the
-  *requested* quality — "best" by default — so on an episode's
-  launch day the cache stores whatever "best" meant at that moment.
-  If the source gains a better encode hours later, the row keeps
-  serving the old one: the hit path revalidates that the cached URL
-  is alive (HEAD), not that it is still the best on offer, and the
-  nearby-episode prefetch warms the same cache before the user ever
-  clicks. Reported with a day-one Bleach episode: poor quality at
-  launch, unchanged on a retry hours later, good immediately after
-  clearing the cache — exactly the failure this construction
-  produces.
+  *requested* quality, and a hit is served for as long as that URL
+  answers a HEAD — the seven-day TTL is only a backstop for rows
+  nobody touches. For the default "best" the cached URL is the
+  adaptive master playlist, which the player re-fetches on every
+  play, so an encode the provider adds to that same master shows up
+  immediately even on a hit; the pin happens when the provider
+  publishes the better encode under a *different* master URL while
+  leaving the cached one alive. A reported day-one Bleach episode
+  fits that shape exactly: poor quality at launch, unchanged on a
+  retry hours later, good immediately after clearing the cache — and
+  since "best" rows are always validated HLS masters, the old master
+  must still have been answering while the better one existed
+  elsewhere. The nearby-episode prefetch warms the same cache before
+  the user ever clicks.
 
   Start the investigation a level up rather than at the symptom. The
   cache's stated justification is the previous provider's ~30-second
   resolve walk, and a resolve against the current provider is one
   search page and a couple of JSON calls. Measure what a resolve
-  actually costs now; the answer decides between a much shorter TTL,
-  revalidating quality on a hit, and not caching resolutions at all.
+  actually costs now; the answer decides between a shorter TTL,
+  re-resolving the master on a hit, and not caching resolutions at
+  all.
 
 ## Testing and CI
 
