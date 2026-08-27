@@ -137,14 +137,15 @@ starting it, and delete it when you find it done.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
-  scattered today — the update prompt is a transient banner, download
-  outcomes live on the dock's terminal rows, and the diagnostics page
-  holds boot-time notices — and a single surface would give them, and
-  whatever later features emit, somewhere to go when the user was not
-  looking. The second is telling users about outages like the
-  provider failure of 2026-08-27 (see "Additional providers" below):
-  every play failed as unreachable and the app had nowhere to say the
-  problem was the provider's, not their setup's. That job needs a
+  scattered today — update availability is a topbar badge with its
+  dialog, download outcomes live on the dock's terminal rows, and the
+  diagnostics page holds boot-time notices — and a single surface
+  would give them, and whatever later features emit, somewhere to go
+  when the user was not looking. The second is telling users about
+  outages like the provider failure of 2026-08-27 (see "Additional
+  providers" below): every uncached play failed as unreachable and
+  the app had nowhere to say the problem was the provider's, not
+  their setup's. That job needs a
   notice source that does not exist yet — the app inferring an outage
   from its own failures, or fetching announcements from somewhere it
   trusts — and choosing one is the design work, along with which
@@ -223,8 +224,10 @@ starting it, and delete it when you find it done.
   resolution rides a single provider today, and on 2026-08-27 its
   server-rendered routes stalled globally for hours (TLS completed,
   then zero bytes until timeout) while its JSON routes kept answering
-  — the app had no playback path at all, correctly reporting every
-  play as unreachable. pystardust/ani-cli#1877 records the same
+  — nothing new could be resolved, and every uncached play was
+  correctly reported as unreachable. Plays whose resolution was still
+  in the 24-hour cache kept working, which softens the blow without
+  changing the lesson. pystardust/ani-cli#1877 records the same
   outage from the outside.
 
   The investigation half is the real work: which providers are worth
