@@ -135,6 +135,14 @@ starting it, and delete it when you find it done.
   kept here as a reference for probing the same locations, not as
   code to port.
 - **Illustrated brand assets** — post-1.0.
+- **A notification center.** The app's notices are scattered today:
+  the update prompt is a transient banner, download outcomes live on
+  the dock's terminal rows, and the diagnostics page holds boot-time
+  notices. A single surface that collects them — and whatever later
+  features emit, such as new-episode alerts for followed shows —
+  would give notices somewhere to go when the user was not looking.
+  Which signals feed it and what persistence they get is the design
+  work; the existing three are the inventory to start from.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
@@ -201,6 +209,25 @@ starting it, and delete it when you find it done.
   of per-episode audio, or a budget for the full scan on listings
   small enough to afford it — not a smarter search over the same
   requests.
+
+## Additional providers
+
+- **Investigate alternative stream providers and add the viable ones**,
+  so playback survives the current provider having a bad day. All
+  resolution rides a single provider today, and on 2026-08-27 its
+  server-rendered routes stalled globally for hours (TLS completed,
+  then zero bytes until timeout) while its JSON routes kept answering
+  — the app had no playback path at all, correctly reporting every
+  play as unreachable. pystardust/ani-cli#1877 records the same
+  outage from the outside.
+
+  The investigation half is the real work: which providers are worth
+  scraping, what their catalogues and rate limits look like, and how a
+  second provider slots into resolution (fallback when the first is
+  unreachable, or a per-title choice). The title-resolution bridge
+  (`docs/title-resolution.md`) is keyed by provider ids, so every
+  cache stamped by provider output is part of the answer, not an
+  afterthought.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
