@@ -225,8 +225,10 @@ starting it, and delete it when you find it done.
   server-rendered routes stalled globally for hours (TLS completed,
   then zero bytes until timeout) while its JSON routes kept answering
   — nothing new could be resolved, and every uncached play was
-  correctly reported as unreachable. Plays whose resolution was still
-  in the 24-hour cache kept working, which softens the blow without
+  correctly reported as unreachable. Plays kept working only where a
+  cached resolution sat inside its 24-hour window *and* its stream
+  URL still answered validation — a dead URL evicts the row and falls
+  through to the unreachable provider. That softens the blow without
   changing the lesson. pystardust/ani-cli#1877 records the same
   outage from the outside.
 
