@@ -59,6 +59,14 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'F' })).toEqual({ kind: 'fullscreen' });
 	});
 
+	it('maps m / M to mute', () => {
+		// YouTube / Netflix convention: `m` toggles mute. The action
+		// carries no payload — the page owns the current muted state
+		// and flips it, the same way the volume button does.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'm' })).toEqual({ kind: 'mute' });
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'M' })).toEqual({ kind: 'mute' });
+	});
+
 	it('returns null for unmapped keys', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'a' })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'Enter' })).toBeNull();
@@ -78,6 +86,7 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', inField: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'n', inField: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', inField: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'm', inField: true })).toBeNull();
 	});
 
 	it('returns null when a modifier key is held', () => {
@@ -88,6 +97,7 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowUp', modifier: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'ArrowDown', modifier: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', modifier: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'm', modifier: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: ' ', modifier: true })).toBeNull();
 	});
 
@@ -133,9 +143,12 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', inButton: true })).toEqual({
 			kind: 'fullscreen'
 		});
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'm', inButton: true })).toEqual({
+			kind: 'mute'
+		});
 	});
 
-	it('suppresses auto-repeat for toggle-style actions (Space / n / p / f)', () => {
+	it('suppresses auto-repeat for toggle-style actions (Space / n / p / f / m)', () => {
 		// Codex P2 (PR #20 review): KeyboardEvent.keydown auto-repeats
 		// while the key is held. Without a `repeat` gate, holding
 		// Space would flip play/pause every few ms; holding `f`
@@ -146,8 +159,11 @@ describe('decidePlayerKeyAction', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'n', repeat: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'p', repeat: true })).toBeNull();
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'f', repeat: true })).toBeNull();
+		// Holding `m` would otherwise strobe mute on and off.
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'm', repeat: true })).toBeNull();
 		// Capitals share the same suppression.
 		expect(decidePlayerKeyAction({ ...baseCtx, key: 'F', repeat: true })).toBeNull();
+		expect(decidePlayerKeyAction({ ...baseCtx, key: 'M', repeat: true })).toBeNull();
 	});
 
 	it('still seeks on auto-repeat for arrow keys (continuous scrub)', () => {
