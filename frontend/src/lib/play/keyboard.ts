@@ -5,7 +5,7 @@
  * handler reads the active element, hands the relevant context to
  * `decidePlayerKeyAction`, and dispatches to the existing
  * `togglePlay` / `seekToFraction` / `onNext` / `onPrev` /
- * `toggleFullscreen` callbacks.
+ * `toggleFullscreen` / `toggleMute` callbacks.
  *
  * Shortcut surface (sighted-user, page-level — the screen-reader
  * slider role on the scrubber stays independent):
@@ -18,6 +18,7 @@
  *   n / N             → next episode
  *   p / P             → previous episode
  *   f / F             → toggle fullscreen
+ *   m / M             → toggle mute
  *
  * Suppression rules (return null, let the browser handle the key):
  *
@@ -32,7 +33,7 @@
  *     Arrow keys are safe to intercept here because buttons don't
  *     react to arrows by default.
  *   - The `KeyboardEvent.repeat` auto-repeat firings for the
- *     toggle-style actions (`Space`, `n`, `p`, `f`) — holding the
+ *     toggle-style actions (`Space`, `n`, `p`, `f`, `m`) — holding the
  *     key would otherwise flicker the state every few ms. Arrow
  *     seeks intentionally still fire on repeat so holding `→`
  *     scrubs forward continuously, matching the YouTube habit.
@@ -44,7 +45,8 @@ export type PlayerKeyAction =
 	| { kind: 'volume'; delta: number }
 	| { kind: 'next' }
 	| { kind: 'prev' }
-	| { kind: 'fullscreen' };
+	| { kind: 'fullscreen' }
+	| { kind: 'mute' };
 
 /** Seconds the arrow keys seek by — matches the previous scrubber-
  *  focused inline handler so muscle memory carries over. */
@@ -111,6 +113,11 @@ export function decidePlayerKeyAction(ctx: PlayerKeyContext): PlayerKeyAction | 
 		case 'F':
 			if (ctx.repeat) return null;
 			return { kind: 'fullscreen' };
+		case 'm':
+		case 'M':
+			// Toggle, like `f`: a held key would strobe mute on and off.
+			if (ctx.repeat) return null;
+			return { kind: 'mute' };
 		default:
 			return null;
 	}

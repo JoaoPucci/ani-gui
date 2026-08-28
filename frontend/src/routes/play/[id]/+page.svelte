@@ -2220,7 +2220,7 @@
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
-			//   Space → page scroll; arrows → page scroll; n/p/f → none.
+			//   Space → page scroll; arrows → page scroll; n/p/f/m → none.
 			e.preventDefault();
 			switch (action.kind) {
 				case 'togglePlay':
@@ -2253,6 +2253,15 @@
 					break;
 				case 'fullscreen':
 					toggleFullscreen();
+					break;
+				case 'mute':
+					toggleMute();
+					// Same feedback as an arrow nudge: the pill opens so
+					// the slider is seen dropping to (or returning from)
+					// zero, and in fullscreen the bar stays up long
+					// enough to show the icon flip.
+					volumeReveal.trigger();
+					if (isFullscreen) resetIdleTimer();
 					break;
 			}
 		};
