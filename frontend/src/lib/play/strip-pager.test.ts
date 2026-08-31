@@ -174,6 +174,17 @@ describe('StripPager', () => {
 		});
 	});
 
+	describe('before the strip has opened', () => {
+		it('decides against the default rendered page', () => {
+			// No fetch has been issued yet, so decisions fall back to
+			// the initial rendered page (1): an episode on it re-latches
+			// without a fetch, one past it follows.
+			expect(new StripPager(5).episodeChanged(3)).toEqual({ fetch: false });
+			expect(new StripPager(5).episodeChanged(6)).toEqual({ fetch: true, page: 2, gen: 1 });
+			expect(new StripPager(5).userGoto(1, 3)).toEqual({ fetch: false });
+		});
+	});
+
 	describe('invalid inputs', () => {
 		it('declines invalid episodes and pages', () => {
 			const pager = settledAt(5);
