@@ -185,6 +185,17 @@ describe('StripPager', () => {
 		});
 	});
 
+	describe('outcomes with no fetch issued', () => {
+		it('reports nothing to apply and nothing to surface', () => {
+			// gen starts at 0, so a stray completed(0)/failed(0) matches
+			// the "newest generation" check on a pager that never issued
+			// a fetch. There is no request whose data could be applied
+			// or whose error could be surfaced — both must decline.
+			expect(new StripPager(5).completed(0)).toBe(false);
+			expect(new StripPager(5).failed(0)).toBe(false);
+		});
+	});
+
 	describe('invalid inputs', () => {
 		it('declines invalid episodes and pages', () => {
 			const pager = settledAt(5);
