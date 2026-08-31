@@ -1182,14 +1182,23 @@
 		return eps;
 	}
 
+	// Monotonic generation for strip fetches. The mount-time request
+	// and a follow fired while it is still in flight race each other;
+	// only the latest generation may assign state on completion, so a
+	// slow stale response cannot overwrite the page the strip already
+	// moved to. Same guard shape as the scrubber's drag generation.
+	let episodesFetchGen = 0;
+
 	async function fetchEpisodesPage(p: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
 		const wantPage = Math.max(1, p);
+		const gen = ++episodesFetchGen;
 		episodesLoading = true;
 		try {
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
 			const end = wantPage * UI_PAGE_SIZE;
 			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
+			if (gen !== episodesFetchGen) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
@@ -1198,10 +1207,13 @@
 			episodesError = null;
 			void prefetchAdjacent(wantPage);
 		} catch (e) {
+			if (gen !== episodesFetchGen) return;
 			if (opts.initial) rawWindowed = [];
 			episodesError = describeError(e);
 		} finally {
-			episodesLoading = false;
+			// The stale generation's finally must not clear the flag out
+			// from under the fetch that superseded it.
+			if (gen === episodesFetchGen) episodesLoading = false;
 		}
 	}
 
