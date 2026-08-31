@@ -107,10 +107,13 @@ export class StripPager {
 			this.tracking = true;
 			// A fetch still on its way to this page absorbs the change;
 			// remember the episode so the fetch failing can hand back
-			// the follow this change would otherwise have issued.
-			if (this.requestedPage !== null && this.requestedPage !== this.renderedPage) {
-				this.unreflectedEpisode = episode;
-			}
+			// the follow this change would otherwise have issued. With
+			// nothing pending the displayed page already reflects
+			// playback: any earlier ignored change is satisfied, and
+			// replaying it later would move the strip away from the
+			// playing episode.
+			this.unreflectedEpisode =
+				this.requestedPage !== null && this.requestedPage !== this.renderedPage ? episode : null;
 			return { fetch: false };
 		}
 		if (!this.tracking) {
