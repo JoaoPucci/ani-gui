@@ -221,4 +221,43 @@ describe('play route — the episode strip follows navigation', () => {
 		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
 		expect(tile(1)).toBeNull();
 	});
+
+	it('discards a stale mount-time fetch that resolves after a follow', async () => {
+		// The mount-time strip request and a follow triggered while it
+		// is still in flight race each other: both assign the strip's
+		// window on completion. The slower initial response must not
+		// overwrite the follow that already landed — that would strand
+		// the strip on the stale page with the current episode
+		// highlighted nowhere.
+		let releaseFirst!: () => void;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let episodesRequests = 0;
+		useShowHandlers();
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () => {
+				episodesRequests += 1;
+				if (episodesRequests === 1) await firstBlocked;
+				return HttpResponse.json(kitsuEpisodes(12));
+			})
+		);
+
+		await mountAtEpisode(5);
+
+		// The initial page-1 request is held open; the follow to page 2
+		// fires its own request, which resolves immediately.
+		landOnEpisode(6);
+		await until(() => currentCardIn(6) != null, 'the follow onto page 2 to land');
+		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
+		expect(episodesRequests).toBe(2);
+
+		// Now the stale mount-time response arrives. Nothing observable
+		// may change, so give its completion a beat to (wrongly) land
+		// before asserting the strip still shows the followed page.
+		releaseFirst();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
+		expect(currentCardIn(6)).not.toBeNull();
+	});
 });
