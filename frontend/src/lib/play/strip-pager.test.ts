@@ -268,6 +268,39 @@ describe('StripPager', () => {
 				expect(pager.failed(follow.gen)).toEqual({ surface: true, retry: { fetch: false } });
 		});
 
+		it('a newer follow supersedes the absorbed change', () => {
+			// 20 → 21 starts page 5; 21 → 22 is absorbed; 22 → 26
+			// crosses to page 6 and issues its own follow. Playback has
+			// moved past the absorbed episode — the page-6 failure must
+			// not replay it and drag the strip to page 5 while episode
+			// 26 plays. An issued follow is represented by its fetch;
+			// only a swallowed change earns a replay.
+			const pager = settledAt(20);
+			pager.episodeChanged(21);
+			pager.episodeChanged(22);
+			const newer = pager.episodeChanged(26);
+			expect(newer).toEqual({ fetch: true, page: 6, gen: 3 });
+			if (newer.fetch)
+				expect(pager.failed(newer.gen)).toEqual({ surface: true, retry: { fetch: false } });
+		});
+
+		it('the absorbed change survives an interleaved browse', () => {
+			// Follow to page 5 in flight, 21 → 22 absorbed, user clicks
+			// toward page 9. Playback is still at the absorbed episode,
+			// so the browse failing reverts to a tracking strip whose
+			// replay is still the right follow.
+			const pager = settledAt(20);
+			pager.episodeChanged(21);
+			pager.episodeChanged(22);
+			const browse = pager.userGoto(9, 22);
+			expect(browse).toEqual({ fetch: true, page: 9, gen: 3 });
+			if (browse.fetch)
+				expect(pager.failed(browse.gen)).toEqual({
+					surface: false,
+					retry: { fetch: true, page: 5, gen: 4 }
+				});
+		});
+
 		it('declines the absorbed replay when the revert restored a browsing strip', () => {
 			// Browsing page 7, a further browse toward page 8 is met by
 			// playback jumping onto page 8 mid-flight (absorbed, and
