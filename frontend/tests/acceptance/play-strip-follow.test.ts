@@ -108,21 +108,28 @@ function kitsuEpisodes(count: number) {
 	}));
 }
 
-function useShowHandlers() {
+function useShowHandlers(episodeCount = 12) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, episodeCount), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json({
+				aired: episodeCount,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json(kitsuEpisodes(episodeCount))
+		),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({
 				available: true,
-				episode_count: 12,
+				episode_count: episodeCount,
 				extra_episodes: [],
 				episode_count_approximate: false
 			})
@@ -259,5 +266,56 @@ describe('play route — the episode strip follows navigation', () => {
 		await new Promise((resolve) => setTimeout(resolve, 200));
 		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
 		expect(currentCardIn(6)).not.toBeNull();
+	});
+
+	it('supersedes an in-flight follow when navigation returns to the rendered page', async () => {
+		// Follow 20 → 21 starts fetching page 5; Prev returns to 20
+		// before it resolves. The strip still RENDERS page 4, so a
+		// decision fed the rendered page sees nothing to do and arms no
+		// superseding fetch — and the generation guard is idle because
+		// no new generation exists. The page-5 response must not land
+		// under episode 20. (Ep 21 crosses a backing-API page boundary,
+		// which is what makes the follow's fetch actually leave the
+		// cache and stay in flight.)
+		let releasePageTwo!: () => void;
+		const pageTwoBlocked = new Promise<void>((resolve) => {
+			releasePageTwo = resolve;
+		});
+		useShowHandlers(30);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async ({ request }) => {
+				if (new URL(request.url).searchParams.get('page') === '2') await pageTwoBlocked;
+				return HttpResponse.json(kitsuEpisodes(30));
+			})
+		);
+
+		await mountAtEpisode(20);
+		await until(() => currentCardIn(20) != null, 'the strip on page 4 with ep 20 current');
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+
+		// Next: the follow to page 5 hangs on the blocked request while
+		// the strip keeps rendering page 4.
+		landOnEpisode(21);
+		await until(
+			() =>
+				target.textContent?.includes(m.play_episode_nav_current_label({ episode: '21' })) === true,
+			'the switch to ep 21 to land'
+		);
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+
+		// Prev, back to the page the strip never stopped rendering.
+		landOnEpisode(20);
+		await until(
+			() =>
+				target.textContent?.includes(m.play_episode_nav_current_label({ episode: '20' })) === true,
+			'the switch back to ep 20 to land'
+		);
+
+		// The stale page-5 response arrives. Nothing observable may
+		// change, so give its completion a beat to (wrongly) land.
+		releasePageTwo();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+		expect(currentCardIn(20)).not.toBeNull();
 	});
 });
