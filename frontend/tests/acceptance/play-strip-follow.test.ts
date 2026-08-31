@@ -394,4 +394,56 @@ describe('play route — the episode strip follows navigation', () => {
 		await until(() => currentCardIn(21) != null, 'the follow onto page 5');
 		expect(tileNumbers()).toEqual([21, 22, 23, 24, 25]);
 	});
+
+	it('recovers an episode change absorbed by a follow that then fails', async () => {
+		// 20 → 21 starts the page-5 fetch; 21 → 22 lands while it is
+		// pending and is absorbed ("page 5 is already on its way").
+		// The fetch then fails — but the URL already sits at 22, so no
+		// further event fires. The failure itself must re-issue the
+		// follow, or the strip sits on page 4 with episode 22 missing
+		// until the next episode change.
+		let releaseFollow!: () => void;
+		const followGate = new Promise<void>((resolve) => {
+			releaseFollow = resolve;
+		});
+		let pageTwoRequests = 0;
+		useShowHandlers(30);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async ({ request }) => {
+				if (new URL(request.url).searchParams.get('page') === '2') {
+					pageTwoRequests += 1;
+					// 1st: the mount-time neighbour prefetch — fail it
+					// fast and silently. 2nd: the follow — held open by
+					// the gate, then failed. 3rd: the retry — succeeds.
+					if (pageTwoRequests === 1) return new HttpResponse(null, { status: 500 });
+					if (pageTwoRequests === 2) {
+						await followGate;
+						return new HttpResponse(null, { status: 500 });
+					}
+				}
+				return HttpResponse.json(kitsuEpisodes(30));
+			})
+		);
+
+		await mountAtEpisode(20);
+		await until(() => currentCardIn(20) != null, 'the strip on page 4 with ep 20 current');
+
+		// The follow hangs on the gated request; the next episode
+		// change is absorbed while it is pending.
+		landOnEpisode(21);
+		await until(() => pageTwoRequests >= 2, 'the follow fetch to be in flight');
+		landOnEpisode(22);
+		await until(
+			() =>
+				target.textContent?.includes(m.play_episode_nav_current_label({ episode: '22' })) === true,
+			'the switch to ep 22 to land'
+		);
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+
+		// The held follow now fails; its failure must hand the retry
+		// on, landing the strip on episode 22's page.
+		releaseFollow();
+		await until(() => currentCardIn(22) != null, 'the recovered follow onto page 5');
+		expect(tileNumbers()).toEqual([21, 22, 23, 24, 25]);
+	});
 });

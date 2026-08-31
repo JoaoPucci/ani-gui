@@ -30,6 +30,11 @@
  */
 export type StripPagerFetch = { fetch: true; page: number; gen: number } | { fetch: false };
 
+/** Outcome of a failed fetch: whether the error should be surfaced,
+ *  and a follow retry to run when the failure recovered an episode
+ *  change the fetch had absorbed (the retry supersedes the error). */
+export type StripPagerFailure = { surface: boolean; retry: StripPagerFetch };
+
 export class StripPager {
 	private readonly pageSize: number;
 	private gen = 0;
@@ -115,11 +120,12 @@ export class StripPager {
 	 *  follow failed transiently keeps following (the next episode
 	 *  change retries), and a failed browse does not pin
 	 *  browsed-away intent to a page that never rendered. */
-	failed(gen: number): boolean {
-		if (this.requestedPage === null || gen !== this.gen) return false;
+	failed(gen: number): StripPagerFailure {
+		if (this.requestedPage === null || gen !== this.gen)
+			return { surface: false, retry: { fetch: false } };
 		this.requestedPage = this.renderedPage;
 		this.tracking = this.trackingBeforeRequest;
-		return true;
+		return { surface: true, retry: { fetch: false } };
 	}
 
 	/** Is this generation still the newest? The component keys its

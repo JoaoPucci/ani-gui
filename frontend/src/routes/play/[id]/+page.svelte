@@ -1204,7 +1204,7 @@
 			episodesError = null;
 			void prefetchAdjacent(page);
 		} catch (e) {
-			if (!stripPager.failed(gen)) return;
+			if (!stripPager.failed(gen).surface) return;
 			if (opts.initial) rawWindowed = [];
 			episodesError = describeError(e);
 		} finally {

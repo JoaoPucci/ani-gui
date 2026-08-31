@@ -146,7 +146,8 @@ describe('StripPager', () => {
 			const pager = new StripPager(5);
 			const mount = pager.open(1);
 			const follow = pager.episodeChanged(6);
-			if (mount.fetch) expect(pager.failed(mount.gen)).toBe(false);
+			if (mount.fetch)
+				expect(pager.failed(mount.gen)).toEqual({ surface: false, retry: { fetch: false } });
 			if (follow.fetch) expect(pager.completed(follow.gen)).toBe(true);
 		});
 
@@ -158,7 +159,8 @@ describe('StripPager', () => {
 			const pager = settledAt(20);
 			const follow = pager.episodeChanged(21);
 			expect(follow).toEqual({ fetch: true, page: 5, gen: 2 });
-			if (follow.fetch) expect(pager.failed(follow.gen)).toBe(true);
+			if (follow.fetch)
+				expect(pager.failed(follow.gen)).toEqual({ surface: true, retry: { fetch: false } });
 			expect(pager.episodeChanged(22)).toEqual({ fetch: true, page: 5, gen: 3 });
 		});
 
@@ -171,7 +173,8 @@ describe('StripPager', () => {
 			const pager = settledAt(20);
 			const browse = pager.userGoto(5, 20);
 			expect(browse).toEqual({ fetch: true, page: 5, gen: 2 });
-			if (browse.fetch) expect(pager.failed(browse.gen)).toBe(true);
+			if (browse.fetch)
+				expect(pager.failed(browse.gen)).toEqual({ surface: true, retry: { fetch: false } });
 			expect(pager.episodeChanged(21)).toEqual({ fetch: true, page: 5, gen: 3 });
 		});
 
@@ -183,7 +186,8 @@ describe('StripPager', () => {
 			if (away.fetch) pager.completed(away.gen);
 			const further = pager.userGoto(8, 12);
 			expect(further).toEqual({ fetch: true, page: 8, gen: 3 });
-			if (further.fetch) expect(pager.failed(further.gen)).toBe(true);
+			if (further.fetch)
+				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
 			expect(pager.episodeChanged(13)).toEqual({ fetch: false });
 		});
 
@@ -196,8 +200,72 @@ describe('StripPager', () => {
 			if (away.fetch) pager.completed(away.gen);
 			const back = pager.userGoto(3, 12);
 			expect(back).toEqual({ fetch: true, page: 3, gen: 3 });
-			if (back.fetch) expect(pager.failed(back.gen)).toBe(true);
+			if (back.fetch)
+				expect(pager.failed(back.gen)).toEqual({ surface: true, retry: { fetch: false } });
 			expect(pager.episodeChanged(13)).toEqual({ fetch: false });
+		});
+
+		it('retries an episode change absorbed by the failing fetch', () => {
+			// Page 4 rendered, 20 → 21 starts the page-5 fetch, 21 → 22
+			// lands while it is pending: the change is absorbed ("page 5
+			// is already on its way"). If the fetch then fails, the URL
+			// already sits at 22 and nothing re-fires the effect — the
+			// failure itself must hand back the follow retry, and it is
+			// not surfaced as an error because the retry supersedes it.
+			const pager = settledAt(20);
+			const follow = pager.episodeChanged(21);
+			expect(follow).toEqual({ fetch: true, page: 5, gen: 2 });
+			expect(pager.episodeChanged(22)).toEqual({ fetch: false });
+			if (follow.fetch)
+				expect(pager.failed(follow.gen)).toEqual({
+					surface: false,
+					retry: { fetch: true, page: 5, gen: 3 }
+				});
+			expect(pager.completed(3)).toBe(true);
+		});
+
+		it('retries an absorbed change once — the retry failing surfaces', () => {
+			// The absorbed intent is consumed by the retry, so a
+			// persistently failing page gets exactly one extra attempt,
+			// not a loop; the next attempt waits for a real event.
+			const pager = settledAt(20);
+			const follow = pager.episodeChanged(21);
+			pager.episodeChanged(22);
+			const outcome = follow.fetch
+				? pager.failed(follow.gen)
+				: { surface: false as const, retry: { fetch: false as const } };
+			expect(outcome.retry).toEqual({ fetch: true, page: 5, gen: 3 });
+			if (outcome.retry.fetch)
+				expect(pager.failed(outcome.retry.gen)).toEqual({
+					surface: true,
+					retry: { fetch: false }
+				});
+		});
+
+		it('a completed fetch satisfies the absorbed change', () => {
+			// The absorbed marker is recovery state for the in-flight
+			// window only: once the fetch lands, a later unrelated
+			// failure must not replay it.
+			const pager = settledAt(20);
+			const follow = pager.episodeChanged(21);
+			pager.episodeChanged(22);
+			if (follow.fetch) expect(pager.completed(follow.gen)).toBe(true);
+			const next = pager.episodeChanged(26);
+			expect(next).toEqual({ fetch: true, page: 6, gen: 3 });
+			if (next.fetch)
+				expect(pager.failed(next.gen)).toEqual({ surface: true, retry: { fetch: false } });
+		});
+
+		it('an episode change with nothing in flight absorbs nothing', () => {
+			// A same-page change while the strip is settled is just
+			// "already visible" — a later failure has no absorbed
+			// intent to replay.
+			const pager = settledAt(20);
+			expect(pager.episodeChanged(19)).toEqual({ fetch: false });
+			const follow = pager.episodeChanged(21);
+			expect(follow).toEqual({ fetch: true, page: 5, gen: 2 });
+			if (follow.fetch)
+				expect(pager.failed(follow.gen)).toEqual({ surface: true, retry: { fetch: false } });
 		});
 
 		it('lets the user re-attempt the failed page immediately', () => {
@@ -207,7 +275,8 @@ describe('StripPager', () => {
 			const pager = settledAt(20);
 			const browse = pager.userGoto(5, 20);
 			expect(browse).toEqual({ fetch: true, page: 5, gen: 2 });
-			if (browse.fetch) expect(pager.failed(browse.gen)).toBe(true);
+			if (browse.fetch)
+				expect(pager.failed(browse.gen)).toEqual({ surface: true, retry: { fetch: false } });
 			expect(pager.userGoto(5, 20)).toEqual({ fetch: true, page: 5, gen: 3 });
 		});
 	});
@@ -230,7 +299,7 @@ describe('StripPager', () => {
 			// a fetch. There is no request whose data could be applied
 			// or whose error could be surfaced — both must decline.
 			expect(new StripPager(5).completed(0)).toBe(false);
-			expect(new StripPager(5).failed(0)).toBe(false);
+			expect(new StripPager(5).failed(0)).toEqual({ surface: false, retry: { fetch: false } });
 		});
 	});
 
