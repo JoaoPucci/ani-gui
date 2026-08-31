@@ -268,6 +268,22 @@ describe('StripPager', () => {
 				expect(pager.failed(follow.gen)).toEqual({ surface: true, retry: { fetch: false } });
 		});
 
+		it('declines the absorbed replay when the revert restored a browsing strip', () => {
+			// Browsing page 7, a further browse toward page 8 is met by
+			// playback jumping onto page 8 mid-flight (absorbed, and
+			// tracking re-latches). The fetch failing reverts to the
+			// browsing strip the user still sees — the replayed change
+			// declines, and the failure surfaces as an ordinary error.
+			const pager = settledAt(12);
+			const away = pager.userGoto(7, 12);
+			if (away.fetch) pager.completed(away.gen);
+			const further = pager.userGoto(8, 12);
+			expect(further).toEqual({ fetch: true, page: 8, gen: 3 });
+			expect(pager.episodeChanged(38)).toEqual({ fetch: false });
+			if (further.fetch)
+				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
+		});
+
 		it('lets the user re-attempt the failed page immediately', () => {
 			// Failure reverts the requested page to the rendered one, so
 			// the already-there guard cannot swallow a manual retry
