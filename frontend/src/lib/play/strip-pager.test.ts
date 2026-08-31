@@ -301,6 +301,40 @@ describe('StripPager', () => {
 				});
 		});
 
+		it('replays an episode change discarded during a failed browse', () => {
+			// From ep 20 / page 4 the user jumps the strip to page 9;
+			// auto-play reaches 21 (page 5) while that browse is still
+			// pending — discarded, since a browsing strip ignores
+			// playback. The browse then fails and the revert restores a
+			// tracking strip on page 4, but the URL effect for 21 has
+			// already run: the failure must replay the discarded change
+			// or the strip strands until the next episode change.
+			const pager = settledAt(20);
+			const browse = pager.userGoto(9, 20);
+			expect(browse).toEqual({ fetch: true, page: 9, gen: 2 });
+			expect(pager.episodeChanged(21)).toEqual({ fetch: false });
+			if (browse.fetch)
+				expect(pager.failed(browse.gen)).toEqual({
+					surface: false,
+					retry: { fetch: true, page: 5, gen: 3 }
+				});
+		});
+
+		it('does not resurrect changes a settled browsing strip discarded', () => {
+			// Browsing page 7 with nothing in flight, playback advances
+			// (discarded, correctly). A later browse failing reverts to
+			// the same browsing strip — the old discard must not come
+			// back as a fetch.
+			const pager = settledAt(12);
+			const away = pager.userGoto(7, 12);
+			if (away.fetch) pager.completed(away.gen);
+			expect(pager.episodeChanged(13)).toEqual({ fetch: false });
+			const further = pager.userGoto(8, 13);
+			expect(further).toEqual({ fetch: true, page: 8, gen: 3 });
+			if (further.fetch)
+				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
+		});
+
 		it('declines the absorbed replay when the revert restored a browsing strip', () => {
 			// Browsing page 7, a further browse toward page 8 is met by
 			// playback jumping onto page 8 mid-flight (absorbed, and
