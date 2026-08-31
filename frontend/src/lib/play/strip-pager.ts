@@ -96,8 +96,8 @@ export class StripPager {
 	 *  generation; the pager records its page as rendered. A stale
 	 *  completion returns false and must be discarded. */
 	completed(gen: number): boolean {
-		if (gen !== this.gen) return false;
-		this.renderedPage = this.requestedPage ?? this.renderedPage;
+		if (this.requestedPage === null || gen !== this.gen) return false;
+		this.renderedPage = this.requestedPage;
 		return true;
 	}
 
@@ -109,7 +109,7 @@ export class StripPager {
 	 *  browsing one, or the next episode change would decline the
 	 *  retry and strand the strip. */
 	failed(gen: number): boolean {
-		if (gen !== this.gen) return false;
+		if (this.requestedPage === null || gen !== this.gen) return false;
 		this.requestedPage = this.renderedPage;
 		return true;
 	}
