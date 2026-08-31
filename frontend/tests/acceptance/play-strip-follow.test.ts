@@ -318,4 +318,41 @@ describe('play route — the episode strip follows navigation', () => {
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 		expect(currentCardIn(20)).not.toBeNull();
 	});
+
+	it('retries a follow that failed transiently on the next episode change', async () => {
+		// The follow 20 → 21 fails (its backing-API page 500s). The
+		// strip was still TRACKING playback — the failure must not
+		// reclassify it as browsed-away, or 21 → 22 would decline the
+		// retry and the strip would strand on page 4 for the rest of
+		// the session.
+		let failPageTwo = true;
+		let pageTwoRequests = 0;
+		useShowHandlers(30);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, ({ request }) => {
+				if (new URL(request.url).searchParams.get('page') === '2') {
+					pageTwoRequests += 1;
+					if (failPageTwo) return new HttpResponse(null, { status: 500 });
+				}
+				return HttpResponse.json(kitsuEpisodes(30));
+			})
+		);
+
+		await mountAtEpisode(20);
+		await until(() => currentCardIn(20) != null, 'the strip on page 4 with ep 20 current');
+		const requestsBeforeFollow = pageTwoRequests;
+
+		// Next: the follow to page 5 hits the failing request.
+		landOnEpisode(21);
+		await until(() => pageTwoRequests > requestsBeforeFollow, 'the follow fetch to be attempted');
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+
+		// The transient failure clears; the next episode change must
+		// retry the follow.
+		failPageTwo = false;
+		landOnEpisode(22);
+		await until(() => currentCardIn(22) != null, 'the retried follow onto page 5');
+		expect(tileNumbers()).toEqual([21, 22, 23, 24, 25]);
+	});
 });
