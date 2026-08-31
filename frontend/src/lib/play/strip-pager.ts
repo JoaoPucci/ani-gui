@@ -36,6 +36,10 @@ export class StripPager {
 	private requestedPage: number | null = null;
 	private renderedPage = 1;
 	private tracking = true;
+	/** `tracking` as it stood before the newest request was issued —
+	 *  what a failure restores, so a failed request reverts the whole
+	 *  machine as if it never happened. */
+	private trackingBeforeRequest = true;
 
 	constructor(pageSize: number) {
 		this.pageSize = pageSize;
@@ -54,7 +58,9 @@ export class StripPager {
 		return this.requestedPage ?? this.renderedPage;
 	}
 
-	private issue(page: number): StripPagerFetch {
+	private issue(page: number, tracking: boolean): StripPagerFetch {
+		this.trackingBeforeRequest = this.tracking;
+		this.tracking = tracking;
 		this.requestedPage = page;
 		this.gen += 1;
 		return { fetch: true, page, gen: this.gen };
@@ -63,7 +69,7 @@ export class StripPager {
 	/** Mount-time open at the page holding the current episode. */
 	open(page: number): StripPagerFetch {
 		if (!Number.isFinite(page) || page < 1) return { fetch: false };
-		return this.issue(page);
+		return this.issue(page, true);
 	}
 
 	/** User pagination: the pager arrows and the jump form. Moving to
@@ -73,8 +79,7 @@ export class StripPager {
 	userGoto(page: number, currentEpisode: number): StripPagerFetch {
 		if (!Number.isFinite(page) || page < 1) return { fetch: false };
 		if (page === this.current()) return { fetch: false };
-		this.tracking = page === this.pageOf(currentEpisode);
-		return this.issue(page);
+		return this.issue(page, page === this.pageOf(currentEpisode));
 	}
 
 	/** The URL's episode changed (prev/next buttons, auto-play). */
@@ -89,7 +94,7 @@ export class StripPager {
 			return { fetch: false };
 		}
 		if (!this.tracking) return { fetch: false };
-		return this.issue(target);
+		return this.issue(target, true);
 	}
 
 	/** A fetch resolved. True means apply its data — it is the newest
@@ -102,15 +107,18 @@ export class StripPager {
 	}
 
 	/** A fetch failed. True means surface the error (newest
-	 *  generation); the requested page reverts to the rendered one so
-	 *  a later attempt at the failed page is not swallowed by the
-	 *  already-there guard. `tracking` deliberately survives: a
-	 *  transient failure must not turn a following strip into a
-	 *  browsing one, or the next episode change would decline the
-	 *  retry and strand the strip. */
+	 *  generation). The machine reverts to its pre-request state, as
+	 *  if the failed request never happened: the requested page back
+	 *  to the rendered one so a later attempt at the failed page is
+	 *  not swallowed by the already-there guard, and `tracking` back
+	 *  to what held before the request. A following strip whose
+	 *  follow failed transiently keeps following (the next episode
+	 *  change retries), and a failed browse does not pin
+	 *  browsed-away intent to a page that never rendered. */
 	failed(gen: number): boolean {
 		if (this.requestedPage === null || gen !== this.gen) return false;
 		this.requestedPage = this.renderedPage;
+		this.tracking = this.trackingBeforeRequest;
 		return true;
 	}
 
