@@ -335,6 +335,24 @@ describe('StripPager', () => {
 				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
 		});
 
+		it('re-latching on a settled page clears stale playback intent', () => {
+			// Browsing page 7 while playback crosses page 6 (recorded as
+			// unreflected), then playback enters the browsed page and
+			// the strip re-latches: the displayed page now reflects
+			// playback, so the earlier intent is satisfied. A later
+			// browse failing must not replay episode 30 and move the
+			// strip away from the playing episode 31.
+			const pager = settledAt(29);
+			const browse = pager.userGoto(7, 29);
+			if (browse.fetch) pager.completed(browse.gen);
+			expect(pager.episodeChanged(30)).toEqual({ fetch: false });
+			expect(pager.episodeChanged(31)).toEqual({ fetch: false });
+			const further = pager.userGoto(8, 31);
+			expect(further).toEqual({ fetch: true, page: 8, gen: 3 });
+			if (further.fetch)
+				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
+		});
+
 		it('declines the absorbed replay when the revert restored a browsing strip', () => {
 			// Browsing page 7, a further browse toward page 8 is met by
 			// playback jumping onto page 8 mid-flight (absorbed, and
