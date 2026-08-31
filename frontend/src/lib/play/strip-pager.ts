@@ -45,12 +45,15 @@ export class StripPager {
 	 *  what a failure restores, so a failed request reverts the whole
 	 *  machine as if it never happened. */
 	private trackingBeforeRequest = true;
-	/** Episode whose change a pending fetch absorbed ("that page is
-	 *  already on its way"). Recovery state for the in-flight window
-	 *  only: satisfied by a completion, consumed by the one retry a
-	 *  failure hands back — the URL already sits at that episode, so
-	 *  no further event would re-fire the follow. */
-	private absorbedEpisode: number | null = null;
+	/** Playback's latest position that an in-flight request kept the
+	 *  strip from reflecting — a change absorbed by a fetch already on
+	 *  its way to its page, or one discarded while a browse was
+	 *  pending. Recovery state: satisfied by a completion, superseded
+	 *  by an issued follow, and consumed by the one replay a failure
+	 *  hands back — the URL already sits at that episode, so no
+	 *  further event would re-fire the follow. The reverted state
+	 *  decides whether the replay is actionable. */
+	private unreflectedEpisode: number | null = null;
 
 	constructor(pageSize: number) {
 		this.pageSize = pageSize;
@@ -106,15 +109,23 @@ export class StripPager {
 			// remember the episode so the fetch failing can hand back
 			// the follow this change would otherwise have issued.
 			if (this.requestedPage !== null && this.requestedPage !== this.renderedPage) {
-				this.absorbedEpisode = episode;
+				this.unreflectedEpisode = episode;
 			}
 			return { fetch: false };
 		}
-		if (!this.tracking) return { fetch: false };
+		if (!this.tracking) {
+			// A browsing strip ignores playback — but remember where it
+			// went: a pending browse failing reverts to a state that may
+			// track playback again, and the URL effect for this episode
+			// will not re-fire. (Harmless for a settled browsing strip:
+			// a failure reverting to it replays into the same decline.)
+			this.unreflectedEpisode = episode;
+			return { fetch: false };
+		}
 		// This follow embodies playback's newest position: an older
-		// absorbed change is superseded, not queued behind it — its
+		// unreflected change is superseded, not queued behind it — its
 		// replay would drag the strip to a page playback already left.
-		this.absorbedEpisode = null;
+		this.unreflectedEpisode = null;
 		return this.issue(target, true);
 	}
 
@@ -124,7 +135,7 @@ export class StripPager {
 	completed(gen: number): boolean {
 		if (this.requestedPage === null || gen !== this.gen) return false;
 		this.renderedPage = this.requestedPage;
-		this.absorbedEpisode = null;
+		this.unreflectedEpisode = null;
 		return true;
 	}
 
@@ -142,14 +153,14 @@ export class StripPager {
 			return { surface: false, retry: { fetch: false } };
 		this.requestedPage = this.renderedPage;
 		this.tracking = this.trackingBeforeRequest;
-		const absorbed = this.absorbedEpisode;
-		this.absorbedEpisode = null;
-		if (absorbed !== null) {
-			// Replay the absorbed change through the ordinary decision;
-			// with the machine reverted it either issues the follow the
-			// change would have issued, or correctly declines (e.g. the
-			// revert restored a browsing strip).
-			const retry = this.episodeChanged(absorbed);
+		const unreflected = this.unreflectedEpisode;
+		this.unreflectedEpisode = null;
+		if (unreflected !== null) {
+			// Replay the unreflected change through the ordinary
+			// decision; with the machine reverted it either issues the
+			// follow the change would have issued, or correctly
+			// declines (e.g. the revert restored a browsing strip).
+			const retry = this.episodeChanged(unreflected);
 			if (retry.fetch) return { surface: false, retry };
 		}
 		return { surface: true, retry: { fetch: false } };
