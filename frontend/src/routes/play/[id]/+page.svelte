@@ -92,6 +92,7 @@
 		setCurrentSession
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
+	import { decideStripFollow } from '$lib/play/strip-follow';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -1224,6 +1225,29 @@
 		if (next === episodesPage) return;
 		void fetchEpisodesPage(next);
 	}
+
+	// Prev/next and auto-play swap episodes with a same-route goto, so
+	// this page never remounts — the strip has to follow the URL's
+	// episode across its page boundary on its own. The decision is
+	// pure (see strip-follow.ts): follow only when the strip was
+	// showing the page the episode just left; a strip the user
+	// paginated away to browse stays where they put it. `episodesPage`
+	// is read untracked so the user's own pagination doesn't re-fire
+	// the effect.
+	let stripEpisode: number | null = null;
+	$effect(() => {
+		const ep = episodeNum;
+		const prev = stripEpisode;
+		stripEpisode = ep;
+		if (prev === null || prev === ep) return;
+		const decision = decideStripFollow({
+			prevEpisode: prev,
+			episode: ep,
+			currentPage: untrack(() => episodesPage),
+			pageSize: UI_PAGE_SIZE
+		});
+		if (decision.follow) gotoPage(decision.page);
+	});
 
 	// Episode tile to scroll-to + briefly highlight after a Jump-to-ep
 	// submit. Mirrors the detail page's spotlight effect: targeted card

@@ -24,6 +24,12 @@ export interface StripFollowInput {
 export type StripFollowDecision = { follow: true; page: number } | { follow: false };
 
 export function decideStripFollow(input: StripFollowInput): StripFollowDecision {
-	void input;
-	return { follow: false };
+	const { prevEpisode, episode, currentPage, pageSize } = input;
+	if (!Number.isFinite(episode) || episode < 1) return { follow: false };
+	if (!Number.isFinite(pageSize) || pageSize < 1) return { follow: false };
+	const targetPage = Math.ceil(episode / pageSize);
+	if (targetPage === currentPage) return { follow: false };
+	const prevPage = Math.ceil(prevEpisode / pageSize);
+	if (prevPage !== currentPage) return { follow: false };
+	return { follow: true, page: targetPage };
 }
