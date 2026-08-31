@@ -15,7 +15,9 @@ export interface StripFollowInput {
 	prevEpisode: number;
 	/** Episode now playing, from the fresh URL. */
 	episode: number;
-	/** UI page the strip currently displays (1-based). */
+	/** UI page the strip displays — or is already fetching, when a
+	 *  request is in flight; the caller passes whichever is newest
+	 *  (1-based). */
 	currentPage: number;
 	/** Tiles per strip page. */
 	pageSize: number;

@@ -1188,11 +1188,20 @@
 	// slow stale response cannot overwrite the page the strip already
 	// moved to. Same guard shape as the scrubber's drag generation.
 	let episodesFetchGen = 0;
+	// The page the newest fetch is bringing in, which `episodesPage`
+	// (the RENDERED page) lags while that fetch is in flight. The
+	// follow decision and gotoPage's already-there guard compare
+	// against this, not the rendered page: navigation that returns to
+	// the rendered page while a follow is still loading must arm a
+	// superseding fetch, or the in-flight response lands under the
+	// wrong episode with no newer generation to discard it.
+	let episodesRequestedPage: number | null = null;
 
 	async function fetchEpisodesPage(p: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
 		const wantPage = Math.max(1, p);
 		const gen = ++episodesFetchGen;
+		episodesRequestedPage = wantPage;
 		episodesLoading = true;
 		try {
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
@@ -1208,6 +1217,10 @@
 			void prefetchAdjacent(wantPage);
 		} catch (e) {
 			if (gen !== episodesFetchGen) return;
+			// The request failed, so the rendered page is the truth
+			// again — a later follow toward the failed page must not be
+			// swallowed by the already-there guard.
+			episodesRequestedPage = episodesPage;
 			if (opts.initial) rawWindowed = [];
 			episodesError = describeError(e);
 		} finally {
@@ -1234,7 +1247,7 @@
 	function gotoPage(p: number) {
 		const cap = totalEpisodePages ?? p;
 		const next = Math.min(Math.max(1, p), cap);
-		if (next === episodesPage) return;
+		if (next === (episodesRequestedPage ?? episodesPage)) return;
 		void fetchEpisodesPage(next);
 	}
 
@@ -1255,7 +1268,7 @@
 		const decision = decideStripFollow({
 			prevEpisode: prev,
 			episode: ep,
-			currentPage: untrack(() => episodesPage),
+			currentPage: untrack(() => episodesRequestedPage ?? episodesPage),
 			pageSize: UI_PAGE_SIZE
 		});
 		if (decision.follow) gotoPage(decision.page);
