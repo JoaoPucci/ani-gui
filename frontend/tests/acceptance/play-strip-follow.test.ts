@@ -355,4 +355,43 @@ describe('play route — the episode strip follows navigation', () => {
 		await until(() => currentCardIn(22) != null, 'the retried follow onto page 5');
 		expect(tileNumbers()).toEqual([21, 22, 23, 24, 25]);
 	});
+
+	it('follows onto a page whose manual browse failed once playback reaches it', async () => {
+		// From ep 20 / page 4 the user clicks the pager toward page 5
+		// and the fetch fails. The strip never stopped showing page 4 —
+		// the failed click must not leave browsed-away intent behind,
+		// or auto-play onto 21 (page 5) would decline to follow and the
+		// current episode would go missing from the strip.
+		let failPageTwo = true;
+		let pageTwoRequests = 0;
+		useShowHandlers(30);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, ({ request }) => {
+				if (new URL(request.url).searchParams.get('page') === '2') {
+					pageTwoRequests += 1;
+					if (failPageTwo) return new HttpResponse(null, { status: 500 });
+				}
+				return HttpResponse.json(kitsuEpisodes(30));
+			})
+		);
+
+		await mountAtEpisode(20);
+		await until(() => currentCardIn(20) != null, 'the strip on page 4 with ep 20 current');
+		const requestsBeforeBrowse = pageTwoRequests;
+
+		// The user pages toward 5; the fetch fails and the strip keeps
+		// rendering page 4.
+		await until(() => pagerNext() != null && !pagerNext()!.disabled, 'the pager to be ready');
+		pagerNext()!.click();
+		await until(() => pageTwoRequests > requestsBeforeBrowse, 'the browse fetch to be attempted');
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
+
+		// The failure clears; auto-play advances onto the page the
+		// browse never reached. The strip follows playback there.
+		failPageTwo = false;
+		landOnEpisode(21);
+		await until(() => currentCardIn(21) != null, 'the follow onto page 5');
+		expect(tileNumbers()).toEqual([21, 22, 23, 24, 25]);
+	});
 });

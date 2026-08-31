@@ -162,6 +162,44 @@ describe('StripPager', () => {
 			expect(pager.episodeChanged(22)).toEqual({ fetch: true, page: 5, gen: 3 });
 		});
 
+		it('reverts a failed browse entirely, so playback reaching that page follows', () => {
+			// From ep 20 / page 4, the user paginates to page 5 and the
+			// fetch fails: the strip never stopped showing page 4, which
+			// was tracking playback. The failed request must not leave
+			// its browsed-away intent behind — auto-play onto 21 (page
+			// 5) follows, exactly as if the failed click never happened.
+			const pager = settledAt(20);
+			const browse = pager.userGoto(5, 20);
+			expect(browse).toEqual({ fetch: true, page: 5, gen: 2 });
+			if (browse.fetch) expect(pager.failed(browse.gen)).toBe(true);
+			expect(pager.episodeChanged(21)).toEqual({ fetch: true, page: 5, gen: 3 });
+		});
+
+		it('keeps a browsing strip browsing when a further browse fails', () => {
+			// Browsing page 7, a failed click toward page 8 reverts to
+			// the browsed page — playback stays ignored.
+			const pager = settledAt(12);
+			const away = pager.userGoto(7, 12);
+			if (away.fetch) pager.completed(away.gen);
+			const further = pager.userGoto(8, 12);
+			expect(further).toEqual({ fetch: true, page: 8, gen: 3 });
+			if (further.fetch) expect(pager.failed(further.gen)).toBe(true);
+			expect(pager.episodeChanged(13)).toEqual({ fetch: false });
+		});
+
+		it('keeps a browsed view browsing when the return to the playing page fails', () => {
+			// Browsing page 7, the user heads back to the playing page
+			// and the fetch fails: page 7 is still what they see, so an
+			// episode change within the playing page must not yank it.
+			const pager = settledAt(12);
+			const away = pager.userGoto(7, 12);
+			if (away.fetch) pager.completed(away.gen);
+			const back = pager.userGoto(3, 12);
+			expect(back).toEqual({ fetch: true, page: 3, gen: 3 });
+			if (back.fetch) expect(pager.failed(back.gen)).toBe(true);
+			expect(pager.episodeChanged(13)).toEqual({ fetch: false });
+		});
+
 		it('lets the user re-attempt the failed page immediately', () => {
 			// Failure reverts the requested page to the rendered one, so
 			// the already-there guard cannot swallow a manual retry
