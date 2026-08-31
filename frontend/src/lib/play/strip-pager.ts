@@ -32,6 +32,10 @@ export type StripPagerFetch = { fetch: true; page: number; gen: number } | { fet
 
 export class StripPager {
 	private readonly pageSize: number;
+	private gen = 0;
+	private requestedPage: number | null = null;
+	private renderedPage = 1;
+	private tracking = true;
 
 	constructor(pageSize: number) {
 		this.pageSize = pageSize;
@@ -39,45 +43,81 @@ export class StripPager {
 
 	/** 1-based strip page holding `episode`; page 1 for invalid input. */
 	pageOf(episode: number): number {
-		void episode;
-		void this.pageSize;
-		return 1;
+		if (!Number.isFinite(this.pageSize) || this.pageSize < 1) return 1;
+		if (!Number.isFinite(episode) || episode < 1) return 1;
+		return Math.ceil(episode / this.pageSize);
+	}
+
+	/** Page decisions compare against: requested while a fetch is in
+	 *  flight (or after one settled), rendered before the first. */
+	private current(): number {
+		return this.requestedPage ?? this.renderedPage;
+	}
+
+	private issue(page: number): StripPagerFetch {
+		this.requestedPage = page;
+		this.gen += 1;
+		return { fetch: true, page, gen: this.gen };
 	}
 
 	/** Mount-time open at the page holding the current episode. */
 	open(page: number): StripPagerFetch {
-		void page;
-		return { fetch: false };
+		if (!Number.isFinite(page) || page < 1) return { fetch: false };
+		return this.issue(page);
 	}
 
-	/** User pagination: the pager arrows and the jump form. */
+	/** User pagination: the pager arrows and the jump form. Moving to
+	 *  the current episode's page keeps the strip tracking playback;
+	 *  moving anywhere else is browsing, and follows stop until
+	 *  playback enters the browsed page. */
 	userGoto(page: number, currentEpisode: number): StripPagerFetch {
-		void page;
-		void currentEpisode;
-		return { fetch: false };
+		if (!Number.isFinite(page) || page < 1) return { fetch: false };
+		if (page === this.current()) return { fetch: false };
+		this.tracking = page === this.pageOf(currentEpisode);
+		return this.issue(page);
 	}
 
 	/** The URL's episode changed (prev/next buttons, auto-play). */
 	episodeChanged(episode: number): StripPagerFetch {
-		void episode;
-		return { fetch: false };
+		if (!Number.isFinite(episode) || episode < 1) return { fetch: false };
+		const target = this.pageOf(episode);
+		if (target === this.current()) {
+			// Playback entered the page the strip already shows (or is
+			// fetching) — including a browsed page: the strip re-latches
+			// onto playback the moment they meet.
+			this.tracking = true;
+			return { fetch: false };
+		}
+		if (!this.tracking) return { fetch: false };
+		return this.issue(target);
 	}
 
-	/** A fetch resolved; true means apply its data. */
+	/** A fetch resolved. True means apply its data — it is the newest
+	 *  generation; the pager records its page as rendered. A stale
+	 *  completion returns false and must be discarded. */
 	completed(gen: number): boolean {
-		void gen;
-		return false;
+		if (gen !== this.gen) return false;
+		this.renderedPage = this.requestedPage ?? this.renderedPage;
+		return true;
 	}
 
-	/** A fetch failed; true means surface the error. */
+	/** A fetch failed. True means surface the error (newest
+	 *  generation); the requested page reverts to the rendered one so
+	 *  a later attempt at the failed page is not swallowed by the
+	 *  already-there guard. `tracking` deliberately survives: a
+	 *  transient failure must not turn a following strip into a
+	 *  browsing one, or the next episode change would decline the
+	 *  retry and strand the strip. */
 	failed(gen: number): boolean {
-		void gen;
-		return false;
+		if (gen !== this.gen) return false;
+		this.requestedPage = this.renderedPage;
+		return true;
 	}
 
-	/** Is this generation still the newest? */
+	/** Is this generation still the newest? The component keys its
+	 *  loading flag off this so a superseded fetch's settling cannot
+	 *  clear the flag out from under its superseder. */
 	isCurrent(gen: number): boolean {
-		void gen;
-		return false;
+		return gen === this.gen;
 	}
 }
