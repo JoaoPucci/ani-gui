@@ -111,6 +111,10 @@ export class StripPager {
 			return { fetch: false };
 		}
 		if (!this.tracking) return { fetch: false };
+		// This follow embodies playback's newest position: an older
+		// absorbed change is superseded, not queued behind it — its
+		// replay would drag the strip to a page playback already left.
+		this.absorbedEpisode = null;
 		return this.issue(target, true);
 	}
 
