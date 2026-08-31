@@ -45,6 +45,12 @@ export class StripPager {
 	 *  what a failure restores, so a failed request reverts the whole
 	 *  machine as if it never happened. */
 	private trackingBeforeRequest = true;
+	/** Episode whose change a pending fetch absorbed ("that page is
+	 *  already on its way"). Recovery state for the in-flight window
+	 *  only: satisfied by a completion, consumed by the one retry a
+	 *  failure hands back — the URL already sits at that episode, so
+	 *  no further event would re-fire the follow. */
+	private absorbedEpisode: number | null = null;
 
 	constructor(pageSize: number) {
 		this.pageSize = pageSize;
@@ -96,6 +102,12 @@ export class StripPager {
 			// fetching) — including a browsed page: the strip re-latches
 			// onto playback the moment they meet.
 			this.tracking = true;
+			// A fetch still on its way to this page absorbs the change;
+			// remember the episode so the fetch failing can hand back
+			// the follow this change would otherwise have issued.
+			if (this.requestedPage !== null && this.requestedPage !== this.renderedPage) {
+				this.absorbedEpisode = episode;
+			}
 			return { fetch: false };
 		}
 		if (!this.tracking) return { fetch: false };
@@ -108,6 +120,7 @@ export class StripPager {
 	completed(gen: number): boolean {
 		if (this.requestedPage === null || gen !== this.gen) return false;
 		this.renderedPage = this.requestedPage;
+		this.absorbedEpisode = null;
 		return true;
 	}
 
@@ -125,6 +138,16 @@ export class StripPager {
 			return { surface: false, retry: { fetch: false } };
 		this.requestedPage = this.renderedPage;
 		this.tracking = this.trackingBeforeRequest;
+		const absorbed = this.absorbedEpisode;
+		this.absorbedEpisode = null;
+		if (absorbed !== null) {
+			// Replay the absorbed change through the ordinary decision;
+			// with the machine reverted it either issues the follow the
+			// change would have issued, or correctly declines (e.g. the
+			// revert restored a browsing strip).
+			const retry = this.episodeChanged(absorbed);
+			if (retry.fetch) return { surface: false, retry };
+		}
 		return { surface: true, retry: { fetch: false } };
 	}
 

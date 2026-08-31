@@ -1204,7 +1204,14 @@
 			episodesError = null;
 			void prefetchAdjacent(page);
 		} catch (e) {
-			if (!stripPager.failed(gen).surface) return;
+			const failure = stripPager.failed(gen);
+			if (failure.retry.fetch) {
+				// The failure recovered an episode change its fetch had
+				// absorbed; the retry supersedes the error.
+				void fetchEpisodesPage(failure.retry.page, failure.retry.gen);
+				return;
+			}
+			if (!failure.surface) return;
 			if (opts.initial) rawWindowed = [];
 			episodesError = describeError(e);
 		} finally {
