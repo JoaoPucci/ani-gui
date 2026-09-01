@@ -761,6 +761,20 @@ mod tests {
         );
     }
 
+    /// `state_with_proxy_origin` with resolution caching opted in:
+    /// a config file carrying `cache_resolutions = true`, kept alive
+    /// by the returned tempdir. The cache-hit tests exercise the
+    /// opt-in path, so they declare the opt-in instead of relying on
+    /// the old unconditional caching.
+    fn state_with_caching_on() -> (tempfile::TempDir, AppState) {
+        let td = tempfile::tempdir().expect("tempdir");
+        let cfg = td.path().join("config.toml");
+        std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
+        let mut state = state_with_proxy_origin();
+        state.config_path = cfg;
+        (td, state)
+    }
+
     /// Mount the full native resolution surface for one show on
     /// `mock` — browse, a one-episode listing, its jpn languages row,
     /// the embed page and the master playlist — so `play_with_progress`
@@ -1147,7 +1161,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Cached Show", "5");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
@@ -1216,7 +1230,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Show With History", "3");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
@@ -1249,7 +1263,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Stale Show", "1");
         let upstream = format!("{}/dead.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
