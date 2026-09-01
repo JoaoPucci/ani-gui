@@ -263,6 +263,11 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
 #[async_trait::async_trait]
 impl AnidbFetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
+        // Timed so a debug run shows what each leg of the resolve
+        // walk costs — the number the resolution cache's TTL-versus-
+        // re-resolve decision needs, and the first thing to read
+        // when the provider has a slow day.
+        let started = std::time::Instant::now();
         let mut cmd = tokio::process::Command::new(&self.exe);
         // §5's subprocess environment: nothing the child prints may
         // depend on the terminal that launched the backend.
@@ -322,6 +327,13 @@ impl AnidbFetch for CurlImpersonateFetch {
             tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "anidb transport reported 000");
             return Err(AniError::Network);
         }
+        tracing::debug!(
+            url = %redacted_url(url),
+            status,
+            ms = started.elapsed().as_millis(),
+            bytes = body.len(),
+            "anidb transport fetch"
+        );
         Ok(FetchResponse {
             status,
             body: body.to_string(),
