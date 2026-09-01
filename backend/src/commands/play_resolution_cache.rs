@@ -2,9 +2,20 @@
 //!
 //! Caches the *result* of a resolve (upstream URL, referer,
 //! media kind) keyed by `(canonical_title, mode, quality,
-//! episode)`. A subsequent click on the same episode skips the 30s
+//! episode)`. A subsequent click on the same episode skips the
 //! provider walk entirely — we just register a fresh proxy session
 //! around the cached upstream and return immediately.
+//!
+//! What the walk actually costs (measured 2026-09-01 against the
+//! live provider, debug build, one residential connection): a clean
+//! resolve is ~4.7s over 7 requests, a franchise-heavy title needing
+//! sibling probes ~6.8s over 10, and a cache hit ~0.5s (HEAD
+//! validation plus session registration). The dominant share is
+//! candidate disambiguation (search + per-candidate detail pages,
+//! ~2–3s); the episode leg after the pick (listing, languages,
+//! embed, master validation) is ~1.8–2.4s. The 30-second figure the
+//! cache was originally sized for belonged to the previous
+//! provider's walk and no longer describes this one.
 //!
 //! Two safeties:
 //! 1. **TTL**: 7 days ([`PLAY_RESOLUTION_TTL`]) — an absolute bound,
@@ -28,7 +39,7 @@
 //! ### Why this doesn't cover the first-visit slow click
 //!
 //! The cache only helps subsequent plays of the same episode — first
-//! play is still a full resolve (~30s). The prefetch in
+//! play is still a full resolve (~5–7s, measured above). The prefetch in
 //! `play-cache.ts` warms the cache for nearby episodes in the
 //! background; this cache then makes the *next* visit to the same
 //! show instant.
