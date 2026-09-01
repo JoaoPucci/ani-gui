@@ -353,6 +353,26 @@ describe('StripPager', () => {
 				expect(pager.failed(further.gen)).toEqual({ surface: true, retry: { fetch: false } });
 		});
 
+		it('a superseding follow failing restores the tracking paired with the rendered page', () => {
+			// Browsing page 7, the user starts returning to the playing
+			// page (a tracking request, pending); playback then crosses
+			// a boundary and issues a newer follow that supersedes it.
+			// The newer follow failing must restore the tracking state
+			// of what is actually rendered — the browsed page — not the
+			// superseded request's never-rendered intent. Otherwise the
+			// next episode change yanks the browsed view away.
+			const pager = settledAt(12);
+			const away = pager.userGoto(7, 12);
+			if (away.fetch) pager.completed(away.gen);
+			const back = pager.userGoto(3, 12);
+			expect(back).toEqual({ fetch: true, page: 3, gen: 3 });
+			const newer = pager.episodeChanged(16);
+			expect(newer).toEqual({ fetch: true, page: 4, gen: 4 });
+			if (newer.fetch)
+				expect(pager.failed(newer.gen)).toEqual({ surface: true, retry: { fetch: false } });
+			expect(pager.episodeChanged(17)).toEqual({ fetch: false });
+		});
+
 		it('declines the absorbed replay when the revert restored a browsing strip', () => {
 			// Browsing page 7, a further browse toward page 8 is met by
 			// playback jumping onto page 8 mid-flight (absorbed, and
