@@ -89,6 +89,16 @@ pub struct Config {
     /// the first stable cut. Users who want only stable releases can
     /// flip it off in Settings.
     pub update_include_prereleases: bool,
+    /// When `true`, successful play resolutions are persisted and
+    /// replayed for up to seven days (subject to a liveness HEAD),
+    /// making a repeat play ~0.5s instead of the ~5–7s walk. Opt-in —
+    /// defaults to `false` (every play resolves fresh) because a
+    /// cached row can pin a day-one master URL, and so its worse
+    /// encode, for up to a week when the provider republishes under a
+    /// different URL. Turning it off ignores existing rows rather
+    /// than clearing them: opting back in revives whatever is still
+    /// inside the TTL.
+    pub cache_resolutions: bool,
     /// Which connected tracker is the "primary" one — drives the
     /// topbar chip/avatar and the Watch Later rail's lead provider
     /// when more than one account is connected. Empty string (the
@@ -115,6 +125,7 @@ impl Default for Config {
             syncplay_binary: default_syncplay_binary(),
             image_cache_cap_mb: 500,
             auto_play_next: false,
+            cache_resolutions: false,
             download_bottom_bar_enabled: true,
             auto_skip_op: false,
             auto_skip_ed: false,

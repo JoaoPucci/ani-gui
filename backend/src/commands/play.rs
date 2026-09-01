@@ -316,11 +316,22 @@ where
 {
     let quality = args.quality.as_deref().unwrap_or("best");
 
+    // Resolution caching is the user's call (Config::cache_resolutions,
+    // default off): a cached row can pin a day-one master URL — and so
+    // its worse encode — for up to the TTL, so fresh-every-play is the
+    // default and the ~0.5s replays are the opt-in. Read per call so a
+    // settings flip applies without a restart. Off means rows are
+    // neither read nor written; existing rows are left to age out so
+    // opting back in loses nothing still inside the TTL.
+    let cache_resolutions = crate::config::read_config(&state.config_path)
+        .unwrap_or_default()
+        .cache_resolutions;
+
     // Long-term cache check. A successful prior resolution under the
     // same (title, mode, quality, episode) tuple is replayable for up
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
-    // ~50ms; a full resolve is ~30s. Worth the round-trip.
+    // ~50ms; a full resolve is ~5–7s. Worth the round-trip.
     let cache_key = play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
@@ -330,28 +341,30 @@ where
         args.episode_count,
         args.subtype.as_deref(),
     );
-    if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-        if let Some(resp) = try_serve_cached(state, &cached).await {
+    if cache_resolutions {
+        if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
+            if let Some(resp) = try_serve_cached(state, &cached).await {
+                tracing::info!(
+                    title = %args.title,
+                    episode = %args.episode,
+                    upstream = cached.upstream_url.as_str(),
+                    "play: cache hit (HEAD ok)",
+                );
+                write_history_on_cache_hit(state, args, &cached);
+                return Ok(resp);
+            }
+            // HEAD failed — the cached URL is dead. Evict the row and
+            // fall through to a fresh resolve. Eviction is explicit (not
+            // just overwrite-on-put) because if the fresh resolve ALSO
+            // fails, we don't want the stale row to linger and bite the
+            // next attempt.
+            play_resolution_cache::evict(&state.cache_pool, &cache_key);
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                upstream = cached.upstream_url.as_str(),
-                "play: cache hit (HEAD ok)",
+                "play: cache row stale (HEAD failed), evicted, resolving afresh",
             );
-            write_history_on_cache_hit(state, args, &cached);
-            return Ok(resp);
         }
-        // HEAD failed — the cached URL is dead. Evict the row and
-        // fall through to a fresh resolve. Eviction is explicit (not
-        // just overwrite-on-put) because if the fresh resolve ALSO
-        // fails, we don't want the stale row to linger and bite the
-        // next attempt.
-        play_resolution_cache::evict(&state.cache_pool, &cache_key);
-        tracing::info!(
-            title = %args.title,
-            episode = %args.episode,
-            "play: cache row stale (HEAD failed), evicted, resolving afresh",
-        );
     }
 
     // Resolve natively against anidb: alias walk, bounded probing,
@@ -495,7 +508,9 @@ where
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
     };
-    play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
+    if cache_resolutions {
+        play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
+    }
 
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
