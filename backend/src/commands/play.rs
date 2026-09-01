@@ -917,11 +917,16 @@ mod tests {
         assert!(r.cache_hit, "the served session reports the cache hit");
     }
 
-    /// A successful fresh resolve leaves nothing behind while
-    /// resolutions are uncached — flipping the setting on later must
-    /// not resurface a row written during the uncached trial.
+    /// An uncached resolve still records its row — the row carries
+    /// the watch metadata mark-watched reads back (show identity and
+    /// title; the numbering offset was stamped by this resolve) — it
+    /// just never REPLAYS it: the second play resolves fresh. This
+    /// replaces the earlier no-row spec on this branch, which review
+    /// showed would sever Continue Watching: /api/play/mark-watched
+    /// resolves show identity through exactly this row, so the write
+    /// must survive the opt-out and only the replay reads are gated.
     #[tokio::test]
-    async fn a_fresh_resolve_writes_no_row_while_uncached() {
+    async fn an_uncached_resolve_records_watch_metadata_without_replay() {
         let mock = wiremock::MockServer::start().await;
         stub_provider_one_episode(&mock, "the show").await;
         let td = tempfile::tempdir().unwrap();
@@ -930,14 +935,82 @@ mod tests {
         state.config_path = td.path().join("config.toml");
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");
-        play_with_progress(&state, &args, |_| {})
+        let first = play_with_progress(&state, &args, |_| {})
             .await
             .expect("the stubbed provider resolves");
+        assert!(!first.cache_hit);
         let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
-            .expect("cache readable");
+            .expect("cache readable")
+            .expect("the resolve records its row for the watch bookkeeping");
+        assert_eq!(row.show_id, "the-show-77");
+        let second = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the second play resolves fresh");
         assert!(
-            row.is_none(),
-            "uncached mode must not persist the resolution"
+            !second.cache_hit,
+            "uncached mode records the row but never replays it"
+        );
+    }
+
+    /// The opt-out covers every playback surface: the external and
+    /// Syncplay handoffs share try_launch_args_from_cache, which must
+    /// refuse a warm row — even one whose upstream answers HEAD —
+    /// while resolutions are uncached.
+    #[tokio::test]
+    async fn an_external_launch_ignores_the_row_while_uncached() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let cfg = crate::config::Config::default();
+        assert!(
+            try_launch_args_from_cache(&state, &args, &cfg)
+                .await
+                .is_none(),
+            "the default config must not hand an external player the cached URL"
+        );
+    }
+
+    /// Opting in restores the external cache-hit branch.
+    #[tokio::test]
+    async fn an_external_launch_replays_the_row_when_caching_is_enabled() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let cfg = crate::config::Config {
+            cache_resolutions: true,
+            ..crate::config::Config::default()
+        };
+        assert!(
+            try_launch_args_from_cache(&state, &args, &cfg)
+                .await
+                .is_some(),
+            "the opt-in keeps the external cache-hit branch"
         );
     }
 
