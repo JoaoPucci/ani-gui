@@ -92,6 +92,7 @@
 		setCurrentSession
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
+	import { StripPager } from '$lib/play/strip-pager';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -1181,26 +1182,42 @@
 		return eps;
 	}
 
-	async function fetchEpisodesPage(p: number, opts: { initial?: boolean } = {}) {
+	// The strip's pagination state machine: tracking-vs-browsing,
+	// the requested-vs-rendered page, and the fetch generation that
+	// races are decided against. This component only runs the fetches
+	// the pager asks for and reports back how they went.
+	const stripPager = new StripPager(UI_PAGE_SIZE);
+
+	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
-		const wantPage = Math.max(1, p);
 		episodesLoading = true;
 		try {
-			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
-			const end = wantPage * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
+			const start = (page - 1) * UI_PAGE_SIZE + 1;
+			const end = page * UI_PAGE_SIZE;
+			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
 			});
-			episodesPage = wantPage;
+			episodesPage = page;
 			episodesError = null;
-			void prefetchAdjacent(wantPage);
+			void prefetchAdjacent(page);
 		} catch (e) {
+			const failure = stripPager.failed(gen);
+			if (failure.retry.fetch) {
+				// The failure recovered an episode change its fetch had
+				// absorbed; the retry supersedes the error.
+				void fetchEpisodesPage(failure.retry.page, failure.retry.gen);
+				return;
+			}
+			if (!failure.surface) return;
 			if (opts.initial) rawWindowed = [];
 			episodesError = describeError(e);
 		} finally {
-			episodesLoading = false;
+			// A superseded fetch's settling must not clear the flag out
+			// from under the fetch that superseded it.
+			if (stripPager.isCurrent(gen)) episodesLoading = false;
 		}
 	}
 
@@ -1221,9 +1238,26 @@
 	function gotoPage(p: number) {
 		const cap = totalEpisodePages ?? p;
 		const next = Math.min(Math.max(1, p), cap);
-		if (next === episodesPage) return;
-		void fetchEpisodesPage(next);
+		const req = stripPager.userGoto(next, episodeNum);
+		if (req.fetch) void fetchEpisodesPage(req.page, req.gen);
 	}
+
+	// Prev/next and auto-play swap episodes with a same-route goto, so
+	// this page never remounts — the strip has to follow the URL's
+	// episode across its page boundary on its own. The pager decides:
+	// it follows while tracking playback, and a strip the user
+	// paginated away to browse stays where they put it. The first run
+	// only records the mount episode — the mount path already opens
+	// the strip on the right page.
+	let stripEpisode: number | null = null;
+	$effect(() => {
+		const ep = episodeNum;
+		const prev = stripEpisode;
+		stripEpisode = ep;
+		if (prev === null || prev === ep) return;
+		const req = stripPager.episodeChanged(ep);
+		if (req.fetch) void fetchEpisodesPage(req.page, req.gen);
+	});
 
 	// Episode tile to scroll-to + briefly highlight after a Jump-to-ep
 	// submit. Mirrors the detail page's spotlight effect: targeted card
@@ -1677,8 +1711,8 @@
 		// Open the ep grid at the page containing the current episode
 		// so the user lands on their session, not page 1 of a long
 		// show. Pagination is local — URL drives session/ep, not page.
-		const startPage = Math.max(1, Math.ceil(episodeNum / UI_PAGE_SIZE));
-		void fetchEpisodesPage(startPage, { initial: true });
+		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
+		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
 		void settingsGet()
 			.then((c) => (config = c))
