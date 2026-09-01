@@ -1117,6 +1117,39 @@ fn a_candidate_without_a_target_gets_no_impersonate_flag() {
     );
 }
 
+/// The Windows impersonate builds link BoringSSL, which carries no
+/// default CA bundle path on Windows and does not consult the system
+/// certificate store on its own — every TLS verify fails (curl exit
+/// 60) and each fetch surfaces as Network. `--ca-native` points the
+/// child at the Windows store.
+#[cfg(windows)]
+#[test]
+fn the_windows_child_reads_the_native_certificate_store() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "--ca-native"),
+            "without the flag a BoringSSL child on Windows fails every TLS verify"
+        );
+    }
+}
+
+/// Elsewhere the builds find the platform's CA store by their own
+/// defaults, and the Linux packages' wrapper scripts predate the
+/// flag — passing it would be at best redundant and at worst an
+/// unknown-option failure.
+#[cfg(not(windows))]
+#[test]
+fn other_platforms_keep_the_builds_own_verification_defaults() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            !args.iter().any(|a| a == "--ca-native"),
+            "the flag is a Windows accommodation, not a default"
+        );
+    }
+}
+
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
