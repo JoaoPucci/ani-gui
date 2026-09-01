@@ -746,6 +746,199 @@ mod tests {
         );
     }
 
+    /// Mount the full native resolution surface for one show on
+    /// `mock` — browse, a one-episode listing, its jpn languages row,
+    /// the embed page and the master playlist — so `play_with_progress`
+    /// can run a complete successful resolve against wiremock. Mirrors
+    /// `play_external_command_test::stub_provider`, trimmed to one
+    /// episode.
+    async fn stub_provider_one_episode(mock: &wiremock::MockServer, query: &str) {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+        Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", query))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
+            )
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/77/episodes"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"episodes":[{"id":701,"number":1}]}"#),
+            )
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/701/languages"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
+                mock.uri()
+            )))
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/e/x"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "player.setup({{ file: '{}/x/master.m3u8' }});",
+                mock.uri()
+            )))
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/x/master.m3u8"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+            .mount(mock)
+            .await;
+    }
+
+    fn uncached_args(title: &str) -> PlayArgs {
+        PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        }
+    }
+
+    fn setting_cache_key(args: &PlayArgs) -> String {
+        play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+            args.subtype.as_deref(),
+        )
+    }
+
+    /// With no config file (the documented default), resolutions are
+    /// uncached: a warm row that WOULD serve — its upstream answers
+    /// HEAD — must be ignored, so the play falls through to a fresh
+    /// resolve, which the unroutable provider base fails fast.
+    #[tokio::test]
+    async fn a_seeded_row_is_ignored_while_resolutions_are_uncached() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let td = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.config_path = td.path().join("config.toml");
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let r = play_with_progress(&state, &args, |_| {}).await;
+        assert!(
+            r.is_err(),
+            "uncached mode must not serve the seeded row — the fresh resolve fails on the unroutable provider"
+        );
+    }
+
+    /// Opting back in restores the previous behaviour: the same
+    /// seeded row serves, reported as a cache hit.
+    #[tokio::test]
+    async fn the_seeded_row_serves_again_when_caching_is_enabled() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let td = tempfile::tempdir().unwrap();
+        let cfg = td.path().join("config.toml");
+        std::fs::write(
+            &cfg,
+            "cache_resolutions = true
+",
+        )
+        .unwrap();
+        let mut state = state_with_proxy_origin();
+        state.config_path = cfg;
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let r = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the warm row serves when caching is on");
+        assert!(r.cache_hit, "the served session reports the cache hit");
+    }
+
+    /// A successful fresh resolve leaves nothing behind while
+    /// resolutions are uncached — flipping the setting on later must
+    /// not resurface a row written during the uncached trial.
+    #[tokio::test]
+    async fn a_fresh_resolve_writes_no_row_while_uncached() {
+        let mock = wiremock::MockServer::start().await;
+        stub_provider_one_episode(&mock, "the show").await;
+        let td = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(mock.uri());
+        state.config_path = td.path().join("config.toml");
+        state.history_path = td.path().join("history");
+        let args = uncached_args("the show");
+        play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the stubbed provider resolves");
+        let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
+            .expect("cache readable");
+        assert!(
+            row.is_none(),
+            "uncached mode must not persist the resolution"
+        );
+    }
+
+    /// With caching enabled the same resolve persists its row, so the
+    /// next play can serve it.
+    #[tokio::test]
+    async fn a_fresh_resolve_writes_the_row_when_caching_is_enabled() {
+        let mock = wiremock::MockServer::start().await;
+        stub_provider_one_episode(&mock, "the show").await;
+        let td = tempfile::tempdir().unwrap();
+        let cfg = td.path().join("config.toml");
+        std::fs::write(
+            &cfg,
+            "cache_resolutions = true
+",
+        )
+        .unwrap();
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(mock.uri());
+        state.config_path = cfg;
+        state.history_path = td.path().join("history");
+        let args = uncached_args("the show");
+        play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the stubbed provider resolves");
+        let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
+            .expect("cache readable");
+        assert!(row.is_some(), "enabled caching persists the resolution");
+    }
+
     /// Build a CachedResolution with the new show_id/show_title fields
     /// defaulted to empty (so try_serve_cached's history-write skip
     /// branch fires). Tests that want history-write coverage override
