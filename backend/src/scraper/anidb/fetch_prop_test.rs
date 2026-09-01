@@ -3,7 +3,7 @@
 //! Its own file rather than an append to `anidb_test.rs`, matching
 //! the other property modules on this branch.
 
-use super::{candidate_names, fetch_args};
+use super::{candidate_names, fetch_args, redacted_url};
 
 proptest::proptest! {
     /// Expansion is exactly the suffix table applied in order: one
@@ -94,5 +94,51 @@ proptest::proptest! {
             .map(|(_, a)| a.clone())
             .collect();
         proptest::prop_assert_eq!(stripped, plain);
+    }
+}
+
+proptest::proptest! {
+    /// Redaction never emits a query, a fragment, or any path
+    /// segment past the keep threshold — whatever shape the URL
+    /// takes. The signed stream tokens are the long segments; the
+    /// query is where providers put signatures. Host and scheme
+    /// survive so the log still names the failing endpoint.
+    #[test]
+    fn redaction_never_leaks_long_segments_or_queries(
+        host in r"[a-z]{1,10}\.[a-z]{2,3}",
+        segs in proptest::collection::vec("[a-zA-Z0-9_-]{1,80}", 0..6),
+        query in proptest::option::of("[a-zA-Z0-9=&_-]{1,40}"),
+        fragment in proptest::option::of("[a-zA-Z0-9_-]{1,20}"),
+    ) {
+        let mut url = format!("https://{host}/{}", segs.join("/"));
+        if let Some(q) = &query {
+            url.push('?');
+            url.push_str(q);
+        }
+        if let Some(f) = &fragment {
+            url.push('#');
+            url.push_str(f);
+        }
+        let red = redacted_url(&url);
+        proptest::prop_assert!(!red.contains('?') && !red.contains('#'));
+        proptest::prop_assert!(red.starts_with("https://"));
+        proptest::prop_assert!(red.contains(&host));
+        for seg in &segs {
+            if seg.len() > 32 {
+                proptest::prop_assert!(
+                    !red.contains(seg.as_str()),
+                    "credential-length segment survived: {red}"
+                );
+            }
+        }
+    }
+
+    /// Total on arbitrary input: anything unparseable comes back as
+    /// the placeholder rather than passing through verbatim, and
+    /// nothing panics.
+    #[test]
+    fn redaction_is_total_and_never_echoes_unparseable_input(any in "[^:]*") {
+        // No scheme separator → not a parseable absolute URL.
+        proptest::prop_assert_eq!(redacted_url(&any), "<unparseable url>");
     }
 }
