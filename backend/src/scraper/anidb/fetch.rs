@@ -212,8 +212,7 @@ pub(crate) fn redacted_url(url: &str) -> String {
 /// verbatim — signed query and all — which would reopen through the
 /// stderr field the leak the url field closes.
 pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
-    let _ = (stderr, url);
-    todo!("replace URL echoes before logging")
+    stderr.replace(url, &redacted_url(url))
 }
 
 /// The child's argv, without the executable. Pure so the flag set is
@@ -230,6 +229,10 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     // -S keeps curl's error line on stderr despite -s, so the
     // failure log below has text to capture, not just an exit code.
     args.push("-sSL".into());
+    // No URL globbing: the client never builds {}/[] sequences, and
+    // a stray bracket would otherwise make curl echo the whole
+    // operand — signed query included — into the captured stderr.
+    args.push("-g".into());
     // Ahead of the header and cipher flags, so a target's own
     // defaults are in place before anything overrides them.
     if let Some(target) = impersonate {
@@ -303,7 +306,7 @@ impl AnidbFetch for CurlImpersonateFetch {
                 url = %redacted_url(url),
                 exe = %self.exe.display(),
                 code = ?output.status.code(),
-                stderr = %String::from_utf8_lossy(&output.stderr),
+                stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url),
                 "anidb transport child failed"
             );
             return Err(AniError::Network);
@@ -316,7 +319,7 @@ impl AnidbFetch for CurlImpersonateFetch {
         })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
-            tracing::debug!(url = %redacted_url(url), stderr = %String::from_utf8_lossy(&output.stderr), "anidb transport reported 000");
+            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "anidb transport reported 000");
             return Err(AniError::Network);
         }
         Ok(FetchResponse {
