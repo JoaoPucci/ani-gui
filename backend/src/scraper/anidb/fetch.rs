@@ -173,6 +173,48 @@ const CIPHER_ARGS: &[&str] = &[
 #[cfg(not(target_os = "macos"))]
 const CIPHER_ARGS: &[&str] = &[];
 
+/// Windows' impersonate builds link BoringSSL, which carries no
+/// default CA bundle path on Windows and does not consult the system
+/// certificate store on its own: every TLS verify fails with curl
+/// exit 60. `--ca-native` (curl ≥ 8.2, feature `NativeCA`) turns the
+/// Windows store on — and inherits its updates and any
+/// enterprise-injected roots. Elsewhere the builds locate the
+/// platform's CA store by default and the flag stays off.
+#[cfg(windows)]
+const CA_ARGS: &[&str] = &["--ca-native"];
+#[cfg(not(windows))]
+const CA_ARGS: &[&str] = &[];
+
+/// `url` reduced to what a failure log may say: scheme, host, and
+/// the path with credential-shaped segments elided. The signed
+/// stream URLs this transport fetches carry their token in the path
+/// and sometimes the query; printing either shares a usable stream
+/// link with whoever reads the log.
+pub(crate) fn redacted_url(url: &str) -> String {
+    // Long enough for every route and slug segment the client
+    // builds; the signed stream tokens are 64.
+    const SEGMENT_KEEP: usize = 32;
+    let Ok(parsed) = url::Url::parse(url) else {
+        return "<unparseable url>".into();
+    };
+    let host = parsed.host_str().unwrap_or("");
+    let path = parsed
+        .path()
+        .split('/')
+        .map(|seg| if seg.len() > SEGMENT_KEEP { "…" } else { seg })
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("{}://{host}{path}", parsed.scheme())
+}
+
+/// `stderr` with any echo of the request URL replaced by its
+/// redaction. curl's error lines can print the failing operand
+/// verbatim — signed query and all — which would reopen through the
+/// stderr field the leak the url field closes.
+pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
+    stderr.replace(url, &redacted_url(url))
+}
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
@@ -184,7 +226,13 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     // First, where curl honors it: a user's ~/.curlrc can redirect
     // the output or append transfers, and this code parses the body.
     args.push("-q".into());
-    args.push("-sL".into());
+    // -S keeps curl's error line on stderr despite -s, so the
+    // failure log below has text to capture, not just an exit code.
+    args.push("-sSL".into());
+    // No URL globbing: the client never builds {}/[] sequences, and
+    // a stray bracket would otherwise make curl echo the whole
+    // operand — signed query included — into the captured stderr.
+    args.push("-g".into());
     // Ahead of the header and cipher flags, so a target's own
     // defaults are in place before anything overrides them.
     if let Some(target) = impersonate {
@@ -193,9 +241,17 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     }
     args.push("-A".into());
     args.push(IMPERSONATE_AGENT.into());
+    // The impersonated fingerprint advertises the browser's
+    // Accept-Encoding (gzip, br, zstd) and the provider answers
+    // compressed; without this flag curl hands the raw frame through
+    // and the page parsers downstream see bytes, not HTML. The
+    // upstream wrapper scripts carry it themselves — the bare build
+    // the Windows package stages is the argv's responsibility.
+    args.push("--compressed".into());
     args.push("--max-time".into());
     args.push("10".into());
     args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
+    args.extend(CA_ARGS.iter().map(|s| (*s).to_string()));
     args.push("-w".into());
     args.push("\n%{http_code}".into());
     // The URL stays last: curl reads it as the operand, and a flag
@@ -215,7 +271,7 @@ impl AnidbFetch for CurlImpersonateFetch {
             .args(fetch_args(url, self.impersonate))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             // §5's subprocess rule: when the deadline drops the
             // output() future, the child goes with it instead of
             // surviving as an orphan for its full hang.
@@ -236,20 +292,34 @@ impl AnidbFetch for CurlImpersonateFetch {
                     busy_retries += 1;
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
-                Ok(Err(_)) => return Err(AniError::Network),
+                Ok(Err(e)) => {
+                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
+                    return Err(AniError::Network);
+                }
             }
         };
         // The -w trailer reports the last HTTP status even when the
         // transfer then failed, so a nonzero exit means the body is
         // not to be trusted whatever the trailer parses to.
         if !output.status.success() {
+            tracing::debug!(
+                url = %redacted_url(url),
+                exe = %self.exe.display(),
+                code = ?output.status.code(),
+                stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url),
+                "anidb transport child failed"
+            );
             return Err(AniError::Network);
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
-        let status: u16 = status_line.trim().parse().map_err(|_| AniError::Network)?;
+        let status: u16 = status_line.trim().parse().map_err(|_| {
+            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "anidb transport trailer unparseable");
+            AniError::Network
+        })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
+            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "anidb transport reported 000");
             return Err(AniError::Network);
         }
         Ok(FetchResponse {

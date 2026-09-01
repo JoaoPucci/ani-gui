@@ -1117,6 +1117,147 @@ fn a_candidate_without_a_target_gets_no_impersonate_flag() {
     );
 }
 
+/// The Windows impersonate builds link BoringSSL, which carries no
+/// default CA bundle path on Windows and does not consult the system
+/// certificate store on its own — every TLS verify fails (curl exit
+/// 60) and each fetch surfaces as Network. `--ca-native` points the
+/// child at the Windows store.
+#[cfg(windows)]
+#[test]
+fn the_windows_child_reads_the_native_certificate_store() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "--ca-native"),
+            "without the flag a BoringSSL child on Windows fails every TLS verify"
+        );
+    }
+}
+
+/// Elsewhere the builds find the platform's CA store by their own
+/// defaults, and the Linux packages' wrapper scripts predate the
+/// flag — passing it would be at best redundant and at worst an
+/// unknown-option failure.
+#[cfg(not(windows))]
+#[test]
+fn other_platforms_keep_the_builds_own_verification_defaults() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            !args.iter().any(|a| a == "--ca-native"),
+            "the flag is a Windows accommodation, not a default"
+        );
+    }
+}
+
+/// The signed stream URLs the transport also fetches carry their
+/// credential in the path (`/stream/<token>/…`) and sometimes in the
+/// query; a failure log that prints them verbatim hands out a usable
+/// stream link to anyone the log is shared with. The log line keeps
+/// scheme, host and the path's short segments — enough to name the
+/// failing endpoint — and elides everything credential-shaped.
+#[test]
+fn transport_logs_elide_credential_shaped_url_parts() {
+    let signed = fetch::redacted_url(
+        "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
+    );
+    assert!(
+        !signed.contains("lCu4egwqaEzu"),
+        "a path segment that long is a token, not a name: {signed}"
+    );
+    assert!(
+        signed.contains("hls.anidb.app") && signed.contains("master.m3u8"),
+        "host and the failing endpoint must survive redaction: {signed}"
+    );
+
+    let with_query = fetch::redacted_url("https://anidb.app/browse?q=some+title");
+    assert!(
+        !with_query.contains("some") && !with_query.contains('?'),
+        "queries carry signatures and search text; they never reach the log: {with_query}"
+    );
+    assert!(
+        with_query.contains("/browse"),
+        "the endpoint survives: {with_query}"
+    );
+
+    let ordinary = fetch::redacted_url("https://anidb.app/api/frontend/anime/1234/episodes");
+    assert_eq!(
+        ordinary, "https://anidb.app/api/frontend/anime/1234/episodes",
+        "short-segment paths carry no credential and stay legible"
+    );
+
+    assert_eq!(
+        fetch::redacted_url("not a url"),
+        "<unparseable url>",
+        "an unparseable input must not pass through verbatim"
+    );
+}
+
+/// curl's own error lines can echo the failing operand — a glob
+/// parse error prints the whole URL, signed query included — so the
+/// captured stderr is the same leak the url field just closed.
+/// Globbing is disabled (the client never builds `{}`/`[]`
+/// sequences), and any URL echo that still reaches stderr is
+/// replaced with its redaction before logging.
+#[test]
+fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "-g"),
+            "an unmatched bracket in a URL makes curl print the whole operand to stderr"
+        );
+    }
+    let url = "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
+    let scrubbed = fetch::scrub_stderr(&format!("curl: (3) URL rejected: {url}"), url);
+    assert!(
+        !scrubbed.contains("lCu4egwqaEzu"),
+        "the echoed operand must leave scrubbed stderr: {scrubbed}"
+    );
+    assert!(
+        scrubbed.contains("URL rejected"),
+        "curl's own diagnosis must survive the scrub: {scrubbed}"
+    );
+    let unrelated = fetch::scrub_stderr("curl: (6) Could not resolve host", url);
+    assert_eq!(
+        unrelated, "curl: (6) Could not resolve host",
+        "stderr without the operand passes through untouched"
+    );
+}
+
+/// `-s` alone suppresses curl's own error text along with the
+/// progress meter, so the transport's failure log would capture an
+/// empty stderr exactly when it matters. `-S` restores the error
+/// line while keeping silent mode.
+#[test]
+fn the_child_reports_its_error_text_despite_silent_mode() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "-sSL"),
+            "silent mode without show-error logs an empty stderr on every transfer failure"
+        );
+    }
+}
+
+/// An impersonating build advertises the browser's Accept-Encoding
+/// (gzip, br, zstd) as part of the fingerprint, so the provider
+/// answers compressed. Without `--compressed` curl hands the raw
+/// bytes through and the page parser sees a zstd frame instead of
+/// HTML — "zero hits in an unrecognized page shape" on every search.
+/// The upstream wrapper scripts pass the flag themselves; the bare
+/// build the Windows package stages does not, so the argv must.
+#[test]
+fn the_child_decodes_the_content_encoding_it_advertises() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "--compressed"),
+            "an advertised encoding the child does not decode is a parse failure downstream"
+        );
+    }
+}
+
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
