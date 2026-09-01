@@ -1,4 +1,6 @@
+import { epAirState } from '$lib/detail/episode-airing';
 import type { AiringStatus } from '$lib/detail/episode-airing';
+import { airedTargets, beyondPlayable } from '$lib/detail/episode-caps';
 
 /**
  * Which episodes a page-mount warm should resolve.
@@ -48,8 +50,15 @@ export function playPageWarmTargets(
 		currentEpisode: number;
 	}
 ): number[] {
-	void input;
-	return [];
+	const warmable = (n: number) =>
+		!epAirState(n, input.airing).unaired && !beyondPlayable(n, input.playableCount);
+	const candidates = input.visible.filter((n): n is number => n !== null && warmable(n));
+	const next = input.currentEpisode + 1;
+	return planWarm({
+		cacheResolutions: input.cacheResolutions,
+		candidates,
+		next: warmable(next) ? next : null
+	});
 }
 
 /** The detail page's warm targets: candidates are the visible grid
@@ -61,6 +70,11 @@ export function detailWarmTargets(
 		heroEpisode: number;
 	}
 ): number[] {
-	void input;
-	return [];
+	const playable = (targets: number[]) =>
+		airedTargets(targets, input.airing).filter((n) => !beyondPlayable(n, input.playableCount));
+	const candidates = playable(
+		input.visible ? input.visible.filter((n): n is number => n !== null) : [input.heroEpisode]
+	);
+	const hero = playable([input.heroEpisode])[0] ?? null;
+	return planWarm({ cacheResolutions: input.cacheResolutions, candidates, next: hero });
 }
