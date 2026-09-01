@@ -129,44 +129,33 @@ function useShowHandlers(config: Record<string, unknown>) {
 	);
 }
 
-async function mountAndResolve() {
-	setUrl(`/play/${KITSU_ID}`, { episode: '1' });
-	app = mount(PlayPage, { target });
-	await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
-	FakeEventSource.instances[0].dispatch(
-		'done',
-		JSON.stringify({
-			id: 'session-1',
-			kind: 'mp4',
-			has_subtitles: false,
-			quality: '1080',
-			mode: 'sub'
-		})
-	);
-	// The page carries the session in the URL and gets there by
-	// `goto`, which this tier stubs out — so the stub is moved by
-	// hand to where the real navigation would have landed.
+async function mountWithSession() {
+	// The session rides the URL (the navigation that puts it there is
+	// stubbed in this tier), so every resolve stream the page opens
+	// afterwards is a background warm — the thing under test.
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+	app = mount(PlayPage, { target });
 }
 
 describe('play route — background warm width follows the caching setting', () => {
 	it('warms only the next episode with resolution caching off', async () => {
 		useShowHandlers(appConfig());
-		await mountAndResolve();
+		await mountWithSession();
 
-		// The page resolve plus exactly one warm, for episode 2.
-		await until(() => FakeEventSource.instances.length >= 2, 'the narrow warm to fire');
+		// Exactly one warm, for the next episode.
+		await until(() => FakeEventSource.instances.length >= 1, 'the narrow warm to fire');
 		await new Promise((r) => setTimeout(r, 250));
-		expect(FakeEventSource.instances.length).toBe(2);
-		expect(FakeEventSource.instances[1].url).toContain('episode=2');
+		expect(FakeEventSource.instances.length).toBe(1);
+		expect(FakeEventSource.instances[0].url).toContain('episode=2');
+		expect(FakeEventSource.instances[0].url).toContain('prefetch=1');
 	});
 
 	it('keeps the wide strip fan-out when the user opted into caching', async () => {
 		useShowHandlers({ ...appConfig(), cache_resolutions: true });
-		await mountAndResolve();
+		await mountWithSession();
 
 		// The strip's visible episodes queue behind the concurrency
 		// cap; more than one warm stream proves the fan-out survived.
-		await until(() => FakeEventSource.instances.length >= 3, 'the wide warms to fire');
+		await until(() => FakeEventSource.instances.length >= 2, 'the wide warms to fire');
 	});
 });

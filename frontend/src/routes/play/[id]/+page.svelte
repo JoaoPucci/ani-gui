@@ -93,6 +93,7 @@
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
+	import { planWarm } from '$lib/play/warm-plan';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -1762,16 +1763,27 @@
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 		const altTitles = altTitlesFromKitsu(detail);
-		for (const ep of episodes) {
-			const targetEp = ep.number ?? ep.relative_number ?? null;
-			if (targetEp === null) continue;
-			// The strip now renders unaired tiles (stripCap) — skip
-			// them, and skip anything past the provider's playable count:
-			// both are doomed resolutions the warm must not spend
-			// scraper slots on. beyondPlayable floor-compares so
-			// the provider's own decimal extras stay warmable.
-			if (epAirState(targetEp, airing).unaired) continue;
-			if (beyondPlayable(targetEp, playableEpisodeCount)) continue;
+		// The strip now renders unaired tiles (stripCap) — skip
+		// them, and skip anything past the provider's playable count:
+		// both are doomed resolutions the warm must not spend
+		// scraper slots on. beyondPlayable floor-compares so
+		// the provider's own decimal extras stay warmable.
+		const warmable = (n: number) =>
+			!epAirState(n, airing).unaired && !beyondPlayable(n, playableEpisodeCount);
+		const candidates = episodes
+			.map((ep) => ep.number ?? ep.relative_number ?? null)
+			.filter((n): n is number => n !== null && warmable(n));
+		// The one warm worth a full walk when resolutions are
+		// uncached: the next episode, whether or not its tile is on
+		// the visible strip page — it is what keeps auto-play
+		// seamless across the boundary.
+		const next = warmable(episodeNum + 1) ? episodeNum + 1 : null;
+		const targets = planWarm({
+			cacheResolutions: config.cache_resolutions,
+			candidates,
+			next
+		});
+		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
 				playStream(
 					{

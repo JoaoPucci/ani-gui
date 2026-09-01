@@ -23,5 +23,6 @@ export interface WarmPlanInput {
 }
 
 export function planWarm(input: WarmPlanInput): number[] {
-	return input.candidates;
+	if (input.cacheResolutions) return input.candidates;
+	return input.next === null ? [] : [input.next];
 }

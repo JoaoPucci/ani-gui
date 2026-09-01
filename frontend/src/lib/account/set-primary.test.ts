@@ -13,6 +13,7 @@ function cfg(primary = ''): Config {
 		syncplay_binary: 'syncplay',
 		image_cache_cap_mb: 500,
 		auto_play_next: false,
+		cache_resolutions: false,
 		download_bottom_bar_enabled: true,
 		auto_skip_op: false,
 		auto_skip_ed: false,

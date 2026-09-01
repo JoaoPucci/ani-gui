@@ -63,6 +63,7 @@
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { planWarm } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
@@ -940,7 +941,7 @@
 		// render aired-but-uncatalogued tiles (displayCap), and warming
 		// those is the same doomed resolution the availability probe
 		// already capped out (Codex P2 #3565988141).
-		const targets = airedTargets(
+		const candidates = airedTargets(
 			episodes
 				? episodes.flatMap((e) => {
 						const n = e.number ?? e.relative_number ?? null;
@@ -949,6 +950,17 @@
 				: [defaultEpisode()],
 			airing
 		).filter((n) => !beyondPlayable(n, playableEpisodeCount));
+		// The one warm worth a full walk when resolutions are
+		// uncached: the hero Play button's target, validated by the
+		// same aired + playable guards as the fan-out.
+		const heroTarget = airedTargets([defaultEpisode()], airing).filter(
+			(n) => !beyondPlayable(n, playableEpisodeCount)
+		)[0];
+		const targets = planWarm({
+			cacheResolutions: config.cache_resolutions,
+			candidates,
+			next: heroTarget ?? null
+		});
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>

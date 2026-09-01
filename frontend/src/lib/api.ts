@@ -280,6 +280,7 @@ export interface Config {
 	syncplay_binary: string;
 	image_cache_cap_mb: number;
 	auto_play_next: boolean;
+	cache_resolutions: boolean;
 	download_bottom_bar_enabled: boolean;
 	auto_skip_op: boolean;
 	auto_skip_ed: boolean;
