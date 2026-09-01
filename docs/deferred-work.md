@@ -113,14 +113,19 @@ starting it, and delete it when you find it done.
   two master URLs to compare. The nearby-episode prefetch warms the
   same cache before the user ever clicks.
 
-  Start the investigation a level up rather than at the symptom. The
-  cache's stated justification is the previous provider's ~30-second
-  resolve walk; the current provider's walk has a different,
-  still multi-request shape — search, detail pages for year
-  filtering, an episode listing, then the episode's languages, embed
-  page and master validation. Measure what it actually costs; the
-  answer decides between a shorter TTL, re-resolving the master on a
-  hit, and not caching resolutions at all.
+  The walk's cost is measured now (2026-09-01, live provider, debug
+  build, one residential connection; per-request timings land in the
+  transport's debug log): a clean resolve is ~4.7s over 7 requests, a
+  franchise-heavy title needing sibling probes ~6.8s over 10, and a
+  cache hit ~0.5s. Candidate disambiguation (search plus one detail
+  page per candidate probed) dominates at ~2–3s; the episode leg
+  after the pick — listing, languages, embed, master validation, the
+  part a re-resolve-on-hit would redo — is ~1.8–2.4s. The ~30-second
+  figure the cache was sized for belonged to the previous provider.
+  What remains is the decision the numbers frame: a hit at ~0.5s
+  against a guaranteed-fresh master at ~2–2.5s against a cacheless
+  ~5–7s every play — a shorter TTL, re-resolving the master on a
+  hit, or not caching resolutions at all.
 
 ## Testing and CI
 
