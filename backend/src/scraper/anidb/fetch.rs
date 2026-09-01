@@ -205,6 +205,13 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     }
     args.push("-A".into());
     args.push(IMPERSONATE_AGENT.into());
+    // The impersonated fingerprint advertises the browser's
+    // Accept-Encoding (gzip, br, zstd) and the provider answers
+    // compressed; without this flag curl hands the raw frame through
+    // and the page parsers downstream see bytes, not HTML. The
+    // upstream wrapper scripts carry it themselves — the bare build
+    // the Windows package stages is the argv's responsibility.
+    args.push("--compressed".into());
     args.push("--max-time".into());
     args.push("10".into());
     args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
