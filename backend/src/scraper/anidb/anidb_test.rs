@@ -1150,6 +1150,49 @@ fn other_platforms_keep_the_builds_own_verification_defaults() {
     }
 }
 
+/// The signed stream URLs the transport also fetches carry their
+/// credential in the path (`/stream/<token>/…`) and sometimes in the
+/// query; a failure log that prints them verbatim hands out a usable
+/// stream link to anyone the log is shared with. The log line keeps
+/// scheme, host and the path's short segments — enough to name the
+/// failing endpoint — and elides everything credential-shaped.
+#[test]
+fn transport_logs_elide_credential_shaped_url_parts() {
+    let signed = fetch::redacted_url(
+        "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
+    );
+    assert!(
+        !signed.contains("lCu4egwqaEzu"),
+        "a path segment that long is a token, not a name: {signed}"
+    );
+    assert!(
+        signed.contains("hls.anidb.app") && signed.contains("master.m3u8"),
+        "host and the failing endpoint must survive redaction: {signed}"
+    );
+
+    let with_query = fetch::redacted_url("https://anidb.app/browse?q=some+title");
+    assert!(
+        !with_query.contains("some") && !with_query.contains('?'),
+        "queries carry signatures and search text; they never reach the log: {with_query}"
+    );
+    assert!(
+        with_query.contains("/browse"),
+        "the endpoint survives: {with_query}"
+    );
+
+    let ordinary = fetch::redacted_url("https://anidb.app/api/frontend/anime/1234/episodes");
+    assert_eq!(
+        ordinary, "https://anidb.app/api/frontend/anime/1234/episodes",
+        "short-segment paths carry no credential and stay legible"
+    );
+
+    assert_eq!(
+        fetch::redacted_url("not a url"),
+        "<unparseable url>",
+        "an unparseable input must not pass through verbatim"
+    );
+}
+
 /// `-s` alone suppresses curl's own error text along with the
 /// progress meter, so the transport's failure log would capture an
 /// empty stderr exactly when it matters. `-S` restores the error

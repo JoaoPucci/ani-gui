@@ -185,6 +185,16 @@ const CA_ARGS: &[&str] = &["--ca-native"];
 #[cfg(not(windows))]
 const CA_ARGS: &[&str] = &[];
 
+/// `url` reduced to what a failure log may say: scheme, host, and
+/// the path with credential-shaped segments elided. The signed
+/// stream URLs this transport fetches carry their token in the path
+/// and sometimes the query; printing either shares a usable stream
+/// link with whoever reads the log.
+pub(crate) fn redacted_url(url: &str) -> String {
+    let _ = url;
+    todo!("elide credential-shaped parts before logging")
+}
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
