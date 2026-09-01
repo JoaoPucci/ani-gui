@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planWarm } from './warm-plan';
+import { detailWarmTargets, planWarm, playPageWarmTargets } from './warm-plan';
+import type { AiringStatus } from '$lib/detail/episode-airing';
 
 describe('planWarm', () => {
 	it('keeps the wide fan-out when resolution caching is on', () => {
@@ -35,5 +36,155 @@ describe('planWarm', () => {
 
 	it('an empty candidate list stays empty in wide mode', () => {
 		expect(planWarm({ cacheResolutions: true, candidates: [], next: null })).toEqual([]);
+	});
+});
+
+const aired = (n: number): AiringStatus => ({
+	aired: n,
+	next_episode: n + 1,
+	next_airing_at: null,
+	upcoming: []
+});
+
+describe('playPageWarmTargets', () => {
+	it('narrows to the validated next episode when caching is off', () => {
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3, 4, 5],
+				currentEpisode: 1,
+				airing: aired(12),
+				playableCount: 12
+			})
+		).toEqual([2]);
+	});
+
+	it('the next target crosses the strip-page boundary', () => {
+		// Current episode is the last visible tile; ep 6 lives on the
+		// next strip page and must still warm — auto-play lands there.
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3, 4, 5],
+				currentEpisode: 5,
+				airing: aired(12),
+				playableCount: 12
+			})
+		).toEqual([6]);
+	});
+
+	it('an unaired or cap-gated next episode warms nothing', () => {
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3],
+				currentEpisode: 3,
+				airing: aired(3),
+				playableCount: 12
+			})
+		).toEqual([]);
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3],
+				currentEpisode: 3,
+				airing: aired(12),
+				playableCount: 3
+			})
+		).toEqual([]);
+	});
+
+	it('wide mode keeps every aired, playable visible tile', () => {
+		// Tile 5 is past the aired count and tile 4 past the playable
+		// cap — both stay out; null tile numbers are dropped.
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: true,
+				visible: [1, 2, null, 4, 5],
+				currentEpisode: 1,
+				airing: aired(4),
+				playableCount: 3
+			})
+		).toEqual([1, 2]);
+	});
+
+	it('unknown airing leaves validation to the playable cap alone', () => {
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2],
+				currentEpisode: 2,
+				airing: null,
+				playableCount: 12
+			})
+		).toEqual([3]);
+	});
+});
+
+describe('detailWarmTargets', () => {
+	it('narrows to the hero target when caching is off', () => {
+		expect(
+			detailWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3, 4, 5],
+				heroEpisode: 3,
+				airing: aired(12),
+				playableCount: 12
+			})
+		).toEqual([3]);
+	});
+
+	it('an unaired or cap-gated hero target warms nothing', () => {
+		expect(
+			detailWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3],
+				heroEpisode: 4,
+				airing: aired(3),
+				playableCount: 12
+			})
+		).toEqual([]);
+		expect(
+			detailWarmTargets({
+				cacheResolutions: false,
+				visible: [1, 2, 3],
+				heroEpisode: 4,
+				airing: aired(12),
+				playableCount: 3
+			})
+		).toEqual([]);
+	});
+
+	it('wide mode fans out over the aired, playable grid tiles', () => {
+		expect(
+			detailWarmTargets({
+				cacheResolutions: true,
+				visible: [1, 2, null, 4, 5],
+				heroEpisode: 1,
+				airing: aired(4),
+				playableCount: 4
+			})
+		).toEqual([1, 2, 4]);
+	});
+
+	it('the hero target stands in while the grid has not loaded', () => {
+		expect(
+			detailWarmTargets({
+				cacheResolutions: true,
+				visible: null,
+				heroEpisode: 7,
+				airing: aired(12),
+				playableCount: 12
+			})
+		).toEqual([7]);
+		expect(
+			detailWarmTargets({
+				cacheResolutions: false,
+				visible: null,
+				heroEpisode: 7,
+				airing: aired(12),
+				playableCount: 12
+			})
+		).toEqual([7]);
 	});
 });

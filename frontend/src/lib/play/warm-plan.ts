@@ -1,3 +1,5 @@
+import type { AiringStatus } from '$lib/detail/episode-airing';
+
 /**
  * Which episodes a page-mount warm should resolve.
  *
@@ -25,4 +27,40 @@ export interface WarmPlanInput {
 export function planWarm(input: WarmPlanInput): number[] {
 	if (input.cacheResolutions) return input.candidates;
 	return input.next === null ? [] : [input.next];
+}
+
+/** Inputs both page derivations share: the user's setting, the
+ *  airing schedule and the provider's playable cap that validate
+ *  every target. */
+interface WarmDerivationInput {
+	cacheResolutions: boolean;
+	airing: AiringStatus | null;
+	playableCount: number | null;
+}
+
+/** The play page's warm targets: candidates are the strip's visible
+ *  tile numbers; the narrow target is current+1, whether or not its
+ *  tile is on the visible strip page — warming it is what keeps
+ *  auto-play seamless across the boundary. */
+export function playPageWarmTargets(
+	input: WarmDerivationInput & {
+		visible: readonly (number | null)[];
+		currentEpisode: number;
+	}
+): number[] {
+	void input;
+	return [];
+}
+
+/** The detail page's warm targets: candidates are the visible grid
+ *  tiles (the hero target stands in until the grid loads); the
+ *  narrow target is the hero Play button's episode. */
+export function detailWarmTargets(
+	input: WarmDerivationInput & {
+		visible: readonly (number | null)[] | null;
+		heroEpisode: number;
+	}
+): number[] {
+	void input;
+	return [];
 }
