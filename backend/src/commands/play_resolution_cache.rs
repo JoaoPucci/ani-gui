@@ -7,8 +7,10 @@
 //! around the cached upstream and return immediately.
 //!
 //! Two safeties:
-//! 1. **TTL**: 24h ([`PLAY_RESOLUTION_TTL`]) — wixmp / sharepoint URLs
-//!    rotate, so caching longer means more dead links on hit.
+//! 1. **TTL**: 7 days ([`PLAY_RESOLUTION_TTL`]) — an absolute bound,
+//!    checked before any HEAD: reads do not renew it, so a row
+//!    expires seven days after it was written however often it is
+//!    replayed.
 //! 2. **HEAD validation on read** — a quick HEAD with the captured
 //!    Referer confirms the upstream is still alive before we serve it.
 //!    On any failure (network / 4xx / 5xx) we evict the entry and let

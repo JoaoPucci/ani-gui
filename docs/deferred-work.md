@@ -92,6 +92,35 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
+- **A day-one resolve can pin its quality for up to a week.** Play
+  resolution caches the resolved upstream URL keyed by the
+  *requested* quality, and a hit is served whenever the row is
+  younger than seven days and its URL still answers a HEAD. The
+  seven days are absolute — reads do not renew the clock — so a row
+  replayed daily still dies a week after it was written. For the
+  default "best" the cached URL is the
+  adaptive master playlist, which the player re-fetches on every
+  play, so an encode the provider adds to that same master shows up
+  immediately even on a hit; the pin happens when the provider
+  publishes the better encode under a *different* master URL while
+  leaving the cached one alive. A reported day-one Bleach episode is
+  consistent with that: poor quality at launch, unchanged on a retry
+  hours later, good immediately after clearing the cache. The
+  replaced-master reading is a hypothesis, though, not a finding:
+  the clear wipes the entire metadata cache, so the fresh resolve
+  also reran search and candidate selection, a changed candidate
+  could equally explain the better stream, and nobody captured the
+  two master URLs to compare. The nearby-episode prefetch warms the
+  same cache before the user ever clicks.
+
+  Start the investigation a level up rather than at the symptom. The
+  cache's stated justification is the previous provider's ~30-second
+  resolve walk; the current provider's walk has a different,
+  still multi-request shape — search, detail pages for year
+  filtering, an episode listing, then the episode's languages, embed
+  page and master validation. Measure what it actually costs; the
+  answer decides between a shorter TTL, re-resolving the master on a
+  hit, and not caching resolutions at all.
 
 ## Testing and CI
 
@@ -135,6 +164,21 @@ starting it, and delete it when you find it done.
   kept here as a reference for probing the same locations, not as
   code to port.
 - **Illustrated brand assets** — post-1.0.
+- **A notification center.** Two jobs, and the second is the reason
+  the feature exists. The first is aggregation: the app's notices are
+  scattered today — update availability is a topbar badge with its
+  dialog, download outcomes live on the dock's terminal rows, and the
+  diagnostics page holds boot-time notices — and a single surface
+  would give them, and whatever later features emit, somewhere to go
+  when the user was not looking. The second is telling users about
+  outages like the provider failure of 2026-08-27 (see "Additional
+  providers" below): every uncached play failed as unreachable and
+  the app had nowhere to say the problem was the provider's, not
+  their setup's. That job needs a
+  notice source that does not exist yet — the app inferring an outage
+  from its own failures, or fetching announcements from somewhere it
+  trusts — and choosing one is the design work, along with which
+  signals feed the surface and what persistence they get.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
@@ -201,6 +245,29 @@ starting it, and delete it when you find it done.
   of per-episode audio, or a budget for the full scan on listings
   small enough to afford it — not a smarter search over the same
   requests.
+
+## Additional providers
+
+- **Investigate alternative stream providers and add the viable ones**,
+  so playback survives the current provider having a bad day. All
+  resolution rides a single provider today, and on 2026-08-27 its
+  server-rendered routes stalled globally for hours (TLS completed,
+  then zero bytes until timeout) while its JSON routes kept answering
+  — nothing new could be resolved, and every uncached play was
+  correctly reported as unreachable. Plays kept working only where a
+  cached resolution sat inside its 24-hour window *and* its stream
+  URL still answered validation — a dead URL evicts the row and falls
+  through to the unreachable provider. That softens the blow without
+  changing the lesson. pystardust/ani-cli#1877 records the same
+  outage from the outside.
+
+  The investigation half is the real work: which providers are worth
+  scraping, what their catalogues and rate limits look like, and how a
+  second provider slots into resolution (fallback when the first is
+  unreachable, or a per-title choice). The title-resolution bridge
+  (`docs/title-resolution.md`) is keyed by provider ids, so every
+  cache stamped by provider output is part of the answer, not an
+  afterthought.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
