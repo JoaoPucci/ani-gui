@@ -196,7 +196,9 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     // First, where curl honors it: a user's ~/.curlrc can redirect
     // the output or append transfers, and this code parses the body.
     args.push("-q".into());
-    args.push("-sL".into());
+    // -S keeps curl's error line on stderr despite -s, so the
+    // failure log below has text to capture, not just an exit code.
+    args.push("-sSL".into());
     // Ahead of the header and cipher flags, so a target's own
     // defaults are in place before anything overrides them.
     if let Some(target) = impersonate {
