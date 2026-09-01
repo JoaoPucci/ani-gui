@@ -508,9 +508,12 @@ where
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
     };
-    if cache_resolutions {
-        play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
-    }
+    // Written unconditionally: the row doubles as the watch metadata
+    // /api/play/mark-watched reads back (show identity, title, the
+    // numbering slot this resolve stamped) — only the REPLAY reads
+    // are the user's cache_resolutions call. Every fresh resolve
+    // overwriting the row also keeps that metadata current.
+    play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
@@ -1190,9 +1193,14 @@ mod tests {
         }
     }
 
+    /// The external cache-hit specs exercise the opt-in replay
+    /// branch, so their config declares it — with resolutions
+    /// uncached (the default) try_launch_args_from_cache refuses the
+    /// row before any of the behaviour under test runs.
     fn external_cfg() -> crate::config::Config {
         crate::config::Config {
             external_player: "test-player".into(),
+            cache_resolutions: true,
             ..Default::default()
         }
     }

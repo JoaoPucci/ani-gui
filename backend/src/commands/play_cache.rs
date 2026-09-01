@@ -83,6 +83,12 @@ pub(crate) async fn try_launch_args_from_cache(
     args: &super::play::PlayArgs,
     cfg: &crate::config::Config,
 ) -> Option<LaunchArgs> {
+    // The replay opt-out covers this surface too: with caching off
+    // the row still exists (it carries the watch metadata), but no
+    // playback path may replay its URL.
+    if !cfg.cache_resolutions {
+        return None;
+    }
     let quality = args.quality.as_deref().unwrap_or("best");
     let cache_key = play_resolution_cache::cache_key(
         &args.title,
