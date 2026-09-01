@@ -41,10 +41,15 @@ export class StripPager {
 	private requestedPage: number | null = null;
 	private renderedPage = 1;
 	private tracking = true;
-	/** `tracking` as it stood before the newest request was issued —
-	 *  what a failure restores, so a failed request reverts the whole
-	 *  machine as if it never happened. */
-	private trackingBeforeRequest = true;
+	/** The tracking state paired with `renderedPage` — what a failure
+	 *  restores. Snapshotting per request would let a request that is
+	 *  superseded before it renders donate its never-rendered intent
+	 *  to the newer request's rollback; pairing the snapshot with the
+	 *  rendered content keeps failure meaning "back to what the user
+	 *  actually sees". Updated when a fetch completes, and by a
+	 *  settled re-latch, which changes what the rendered view means
+	 *  without a fetch. */
+	private renderedTracking = true;
 	/** Playback's latest position that an in-flight request kept the
 	 *  strip from reflecting — a change absorbed by a fetch already on
 	 *  its way to its page, or one discarded while a browse was
@@ -73,7 +78,6 @@ export class StripPager {
 	}
 
 	private issue(page: number, tracking: boolean): StripPagerFetch {
-		this.trackingBeforeRequest = this.tracking;
 		this.tracking = tracking;
 		this.requestedPage = page;
 		this.gen += 1;
@@ -103,8 +107,13 @@ export class StripPager {
 		if (target === this.current()) {
 			// Playback entered the page the strip already shows (or is
 			// fetching) — including a browsed page: the strip re-latches
-			// onto playback the moment they meet.
+			// onto playback the moment they meet. When that page is the
+			// settled, rendered one the re-latch changes what the
+			// rendered view means, so its paired tracking updates too.
 			this.tracking = true;
+			if (this.requestedPage === null || this.requestedPage === this.renderedPage) {
+				this.renderedTracking = true;
+			}
 			// A fetch still on its way to this page absorbs the change;
 			// remember the episode so the fetch failing can hand back
 			// the follow this change would otherwise have issued. With
@@ -138,24 +147,26 @@ export class StripPager {
 	completed(gen: number): boolean {
 		if (this.requestedPage === null || gen !== this.gen) return false;
 		this.renderedPage = this.requestedPage;
+		this.renderedTracking = this.tracking;
 		this.unreflectedEpisode = null;
 		return true;
 	}
 
 	/** A fetch failed. True means surface the error (newest
-	 *  generation). The machine reverts to its pre-request state, as
-	 *  if the failed request never happened: the requested page back
-	 *  to the rendered one so a later attempt at the failed page is
-	 *  not swallowed by the already-there guard, and `tracking` back
-	 *  to what held before the request. A following strip whose
-	 *  follow failed transiently keeps following (the next episode
-	 *  change retries), and a failed browse does not pin
-	 *  browsed-away intent to a page that never rendered. */
+	 *  generation). The machine reverts to the state paired with what
+	 *  is actually rendered: the requested page back to the rendered
+	 *  one so a later attempt at the failed page is not swallowed by
+	 *  the already-there guard, and `tracking` back to the rendered
+	 *  page's own state. A following strip whose follow failed
+	 *  transiently keeps following (the next episode change retries),
+	 *  a failed browse does not pin browsed-away intent to a page
+	 *  that never rendered, and a request superseded before rendering
+	 *  leaves no trace in the rollback. */
 	failed(gen: number): StripPagerFailure {
 		if (this.requestedPage === null || gen !== this.gen)
 			return { surface: false, retry: { fetch: false } };
 		this.requestedPage = this.renderedPage;
-		this.tracking = this.trackingBeforeRequest;
+		this.tracking = this.renderedTracking;
 		const unreflected = this.unreflectedEpisode;
 		this.unreflectedEpisode = null;
 		if (unreflected !== null) {
