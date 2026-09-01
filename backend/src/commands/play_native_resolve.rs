@@ -252,7 +252,8 @@ where
                     Err(AniError::Upstream { .. }) => {
                         any_answered_dead_end = true;
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::debug!(error = ?e, "anidb walk: pick failed transiently");
                         any_search_errored = true;
                         last_failure_at = Some(
                             client
@@ -281,7 +282,8 @@ where
                     failed_at: None,
                 });
             }
-            Err(_) => {
+            Err(e) => {
+                tracing::debug!(error = ?e, "anidb walk: search failed transiently");
                 any_search_errored = true;
                 last_failure_at = Some(
                     client

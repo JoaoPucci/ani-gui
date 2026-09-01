@@ -235,7 +235,7 @@ impl AnidbFetch for CurlImpersonateFetch {
             .args(fetch_args(url, self.impersonate))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             // §5's subprocess rule: when the deadline drops the
             // output() future, the child goes with it instead of
             // surviving as an orphan for its full hang.
@@ -256,20 +256,34 @@ impl AnidbFetch for CurlImpersonateFetch {
                     busy_retries += 1;
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
-                Ok(Err(_)) => return Err(AniError::Network),
+                Ok(Err(e)) => {
+                    tracing::debug!(url, exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
+                    return Err(AniError::Network);
+                }
             }
         };
         // The -w trailer reports the last HTTP status even when the
         // transfer then failed, so a nonzero exit means the body is
         // not to be trusted whatever the trailer parses to.
         if !output.status.success() {
+            tracing::debug!(
+                url,
+                exe = %self.exe.display(),
+                code = ?output.status.code(),
+                stderr = %String::from_utf8_lossy(&output.stderr),
+                "anidb transport child failed"
+            );
             return Err(AniError::Network);
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
-        let status: u16 = status_line.trim().parse().map_err(|_| AniError::Network)?;
+        let status: u16 = status_line.trim().parse().map_err(|_| {
+            tracing::debug!(url, status_line = %status_line.trim(), "anidb transport trailer unparseable");
+            AniError::Network
+        })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
+            tracing::debug!(url, stderr = %String::from_utf8_lossy(&output.stderr), "anidb transport reported 000");
             return Err(AniError::Network);
         }
         Ok(FetchResponse {
