@@ -173,6 +173,18 @@ const CIPHER_ARGS: &[&str] = &[
 #[cfg(not(target_os = "macos"))]
 const CIPHER_ARGS: &[&str] = &[];
 
+/// Windows' impersonate builds link BoringSSL, which carries no
+/// default CA bundle path on Windows and does not consult the system
+/// certificate store on its own: every TLS verify fails with curl
+/// exit 60. `--ca-native` (curl ≥ 8.2, feature `NativeCA`) turns the
+/// Windows store on — and inherits its updates and any
+/// enterprise-injected roots. Elsewhere the builds locate the
+/// platform's CA store by default and the flag stays off.
+#[cfg(windows)]
+const CA_ARGS: &[&str] = &["--ca-native"];
+#[cfg(not(windows))]
+const CA_ARGS: &[&str] = &[];
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
@@ -196,6 +208,7 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     args.push("--max-time".into());
     args.push("10".into());
     args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
+    args.extend(CA_ARGS.iter().map(|s| (*s).to_string()));
     args.push("-w".into());
     args.push("\n%{http_code}".into());
     // The URL stays last: curl reads it as the operand, and a flag
