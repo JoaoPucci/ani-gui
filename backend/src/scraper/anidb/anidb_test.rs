@@ -1193,6 +1193,38 @@ fn transport_logs_elide_credential_shaped_url_parts() {
     );
 }
 
+/// curl's own error lines can echo the failing operand — a glob
+/// parse error prints the whole URL, signed query included — so the
+/// captured stderr is the same leak the url field just closed.
+/// Globbing is disabled (the client never builds `{}`/`[]`
+/// sequences), and any URL echo that still reaches stderr is
+/// replaced with its redaction before logging.
+#[test]
+fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "-g"),
+            "an unmatched bracket in a URL makes curl print the whole operand to stderr"
+        );
+    }
+    let url = "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
+    let scrubbed = fetch::scrub_stderr(&format!("curl: (3) URL rejected: {url}"), url);
+    assert!(
+        !scrubbed.contains("lCu4egwqaEzu"),
+        "the echoed operand must leave scrubbed stderr: {scrubbed}"
+    );
+    assert!(
+        scrubbed.contains("URL rejected"),
+        "curl's own diagnosis must survive the scrub: {scrubbed}"
+    );
+    let unrelated = fetch::scrub_stderr("curl: (6) Could not resolve host", url);
+    assert_eq!(
+        unrelated, "curl: (6) Could not resolve host",
+        "stderr without the operand passes through untouched"
+    );
+}
+
 /// `-s` alone suppresses curl's own error text along with the
 /// progress meter, so the transport's failure log would capture an
 /// empty stderr exactly when it matters. `-S` restores the error

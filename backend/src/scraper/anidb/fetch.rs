@@ -207,6 +207,15 @@ pub(crate) fn redacted_url(url: &str) -> String {
     format!("{}://{host}{path}", parsed.scheme())
 }
 
+/// `stderr` with any echo of the request URL replaced by its
+/// redaction. curl's error lines can print the failing operand
+/// verbatim — signed query and all — which would reopen through the
+/// stderr field the leak the url field closes.
+pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
+    let _ = (stderr, url);
+    todo!("replace URL echoes before logging")
+}
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
