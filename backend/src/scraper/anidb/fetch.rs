@@ -191,8 +191,20 @@ const CA_ARGS: &[&str] = &[];
 /// and sometimes the query; printing either shares a usable stream
 /// link with whoever reads the log.
 pub(crate) fn redacted_url(url: &str) -> String {
-    let _ = url;
-    todo!("elide credential-shaped parts before logging")
+    // Long enough for every route and slug segment the client
+    // builds; the signed stream tokens are 64.
+    const SEGMENT_KEEP: usize = 32;
+    let Ok(parsed) = url::Url::parse(url) else {
+        return "<unparseable url>".into();
+    };
+    let host = parsed.host_str().unwrap_or("");
+    let path = parsed
+        .path()
+        .split('/')
+        .map(|seg| if seg.len() > SEGMENT_KEEP { "…" } else { seg })
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("{}://{host}{path}", parsed.scheme())
 }
 
 /// The child's argv, without the executable. Pure so the flag set is
@@ -269,7 +281,7 @@ impl AnidbFetch for CurlImpersonateFetch {
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!(url, exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
+                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
                     return Err(AniError::Network);
                 }
             }
@@ -279,7 +291,7 @@ impl AnidbFetch for CurlImpersonateFetch {
         // not to be trusted whatever the trailer parses to.
         if !output.status.success() {
             tracing::debug!(
-                url,
+                url = %redacted_url(url),
                 exe = %self.exe.display(),
                 code = ?output.status.code(),
                 stderr = %String::from_utf8_lossy(&output.stderr),
@@ -290,12 +302,12 @@ impl AnidbFetch for CurlImpersonateFetch {
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
         let status: u16 = status_line.trim().parse().map_err(|_| {
-            tracing::debug!(url, status_line = %status_line.trim(), "anidb transport trailer unparseable");
+            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "anidb transport trailer unparseable");
             AniError::Network
         })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
-            tracing::debug!(url, stderr = %String::from_utf8_lossy(&output.stderr), "anidb transport reported 000");
+            tracing::debug!(url = %redacted_url(url), stderr = %String::from_utf8_lossy(&output.stderr), "anidb transport reported 000");
             return Err(AniError::Network);
         }
         Ok(FetchResponse {
