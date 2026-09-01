@@ -1150,6 +1150,24 @@ fn other_platforms_keep_the_builds_own_verification_defaults() {
     }
 }
 
+/// An impersonating build advertises the browser's Accept-Encoding
+/// (gzip, br, zstd) as part of the fingerprint, so the provider
+/// answers compressed. Without `--compressed` curl hands the raw
+/// bytes through and the page parser sees a zstd frame instead of
+/// HTML — "zero hits in an unrecognized page shape" on every search.
+/// The upstream wrapper scripts pass the flag themselves; the bare
+/// build the Windows package stages does not, so the argv must.
+#[test]
+fn the_child_decodes_the_content_encoding_it_advertises() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "--compressed"),
+            "an advertised encoding the child does not decode is a parse failure downstream"
+        );
+    }
+}
+
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
