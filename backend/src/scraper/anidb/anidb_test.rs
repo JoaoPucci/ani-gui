@@ -1150,6 +1150,21 @@ fn other_platforms_keep_the_builds_own_verification_defaults() {
     }
 }
 
+/// `-s` alone suppresses curl's own error text along with the
+/// progress meter, so the transport's failure log would capture an
+/// empty stderr exactly when it matters. `-S` restores the error
+/// line while keeping silent mode.
+#[test]
+fn the_child_reports_its_error_text_despite_silent_mode() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch::fetch_args("https://anidb.app/anime/x", target);
+        assert!(
+            args.iter().any(|a| a == "-sSL"),
+            "silent mode without show-error logs an empty stderr on every transfer failure"
+        );
+    }
+}
+
 /// An impersonating build advertises the browser's Accept-Encoding
 /// (gzip, br, zstd) as part of the fingerprint, so the provider
 /// answers compressed. Without `--compressed` curl hands the raw
