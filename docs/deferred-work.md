@@ -92,40 +92,28 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
-- **A day-one resolve can pin its quality for up to a week.** Play
-  resolution caches the resolved upstream URL keyed by the
-  *requested* quality, and a hit is served whenever the row is
-  younger than seven days and its URL still answers a HEAD. The
-  seven days are absolute — reads do not renew the clock — so a row
-  replayed daily still dies a week after it was written. For the
-  default "best" the cached URL is the
-  adaptive master playlist, which the player re-fetches on every
-  play, so an encode the provider adds to that same master shows up
-  immediately even on a hit; the pin happens when the provider
-  publishes the better encode under a *different* master URL while
-  leaving the cached one alive. A reported day-one Bleach episode is
-  consistent with that: poor quality at launch, unchanged on a retry
-  hours later, good immediately after clearing the cache. The
-  replaced-master reading is a hypothesis, though, not a finding:
-  the clear wipes the entire metadata cache, so the fresh resolve
-  also reran search and candidate selection, a changed candidate
-  could equally explain the better stream, and nobody captured the
-  two master URLs to compare. The nearby-episode prefetch warms the
-  same cache before the user ever clicks.
+- **Decide the resolution cache's final shape after the opt-in
+  trial.** Caching play resolutions is a setting now
+  (`cache_resolutions`), default off: every play resolves fresh, the
+  page-mount warm narrows to the single next episode, and the
+  day-one quality pin — a cached master URL replaying a release-day
+  encode for up to seven days — cannot bite unless the user opts in.
+  Rows written while the setting was on are ignored when it is off,
+  never cleared, so toggling is lossless.
 
-  The walk's cost is measured now (2026-09-01, live provider, debug
-  build, one residential connection; per-request timings land in the
-  transport's debug log): a clean resolve is ~4.7s over 7 requests, a
-  franchise-heavy title needing sibling probes ~6.8s over 10, and a
-  cache hit ~0.5s. Candidate disambiguation (search plus one detail
-  page per candidate probed) dominates at ~2–3s; the episode leg
-  after the pick — listing, languages, embed, master validation, the
-  part a re-resolve-on-hit would redo — is ~1.8–2.4s. The ~30-second
-  figure the cache was sized for belonged to the previous provider.
-  What remains is the decision the numbers frame: a hit at ~0.5s
-  against a guaranteed-fresh master at ~2–2.5s against a cacheless
-  ~5–7s every play — a shorter TTL, re-resolving the master on a
-  hit, or not caching resolutions at all.
+  What remains is the decision the trial informs: keep the setting,
+  reshape the cache (re-resolve only the master on a hit, keeping
+  the disambiguation — ~2–2.5s per play, closes the pin with the
+  cache on), or remove resolution caching outright. The measured
+  frame (2026-09-01, live provider, debug build, one residential
+  connection; per-request timings land in the transport's debug
+  log): a clean resolve is ~4.7s over 7 requests, a franchise-heavy
+  title needing sibling probes ~6.8s over 10, a cache hit ~0.5s;
+  candidate disambiguation dominates at ~2–3s, the post-pick episode
+  leg is ~1.8–2.4s. The pin itself was only ever confirmed as a
+  hypothesis — a day-one Bleach episode improved after a full cache
+  clear, which also reran candidate selection; nobody captured the
+  two master URLs to compare.
 
 ## Testing and CI
 
