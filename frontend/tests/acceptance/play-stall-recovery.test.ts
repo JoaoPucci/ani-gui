@@ -186,6 +186,68 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		await until(() => video.currentTime === 720, 'playback to resume where it stalled');
 	});
 
+	it('the captured position survives a play-page remount', async () => {
+		// A recovery can begin while the route is unmounted — PiP keeps
+		// the singleton video and its callbacks alive — and the landing
+		// then navigates back into a FRESH play-page mount. The pending
+		// position rides the singleton's side, not the destroyed
+		// component, so the remounted attach still seeks back.
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		const video = getGlobalVideo();
+		await until(
+			() => video.parentElement?.classList.contains('player-video-slot') === true,
+			'the video in its slot'
+		);
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+
+		// The stream dies twelve minutes in; the recovery captures the
+		// position…
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		const streamsBefore = FakeEventSource.instances.length;
+		video.dispatchEvent(new Event('error'));
+		await until(
+			() => FakeEventSource.instances.length > streamsBefore,
+			'the recovery resolve stream'
+		);
+
+		// …and the page is gone before the landing (the PiP shape).
+		unmount(app);
+		app = null;
+
+		// The landing navigates back into a fresh mount.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => video.src.includes('session-2'), 'the fresh mount to attach');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		await until(() => video.currentTime === 720, 'playback to resume where it stalled');
+	});
+
 	it('a superseded attach cancels its pending resume seek', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
