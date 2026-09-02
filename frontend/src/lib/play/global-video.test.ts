@@ -7,6 +7,7 @@
 // nicely with its DOM-bound siblings.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+	replaceSourceScopedCleanup,
 	attachGlobalVideoTo,
 	canReuseSession,
 	detachGlobalVideo,
@@ -198,5 +199,20 @@ describe('singleton lifecycle (happy-dom)', () => {
 		// quality re-resolves instead of resuming the old stream.
 		expect(reuseSessionIfMatching('kid-1', 1, 'worst', 'sub')).toBeNull();
 		expect(reuseSessionIfMatching('kid-1', 1, 'best', 'dub')).toBeNull();
+	});
+});
+
+describe('replaceSourceScopedCleanup', () => {
+	it('registering runs and replaces the previous registration', () => {
+		const ran: string[] = [];
+		replaceSourceScopedCleanup(() => ran.push('first'));
+		expect(ran).toEqual([]);
+		replaceSourceScopedCleanup(() => ran.push('second'));
+		expect(ran).toEqual(['first']);
+		// null clears: the previous runs, nothing new is armed.
+		replaceSourceScopedCleanup(null);
+		expect(ran).toEqual(['first', 'second']);
+		replaceSourceScopedCleanup(null);
+		expect(ran).toEqual(['first', 'second']);
 	});
 });

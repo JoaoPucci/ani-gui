@@ -89,6 +89,7 @@
 		attachGlobalVideoTo,
 		detachGlobalVideo,
 		getGlobalVideo,
+		replaceSourceScopedCleanup,
 		setCurrentSession
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
@@ -100,7 +101,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
-	import { HlsStallMachine } from '$lib/play/stall-machine';
+	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -162,10 +163,6 @@
 	// the policy that uses it. The manual Reload button on the player-
 	// error overlay bypasses this guard — manual is always allowed.
 	let hasAutoRetried = $state(false);
-	// The hls stall lifecycle — burst counting, the one-toast rule,
-	// the main-rendition burst boundary — lives in the machine; the
-	// handlers below adapt hls.js events to it.
-	const stallMachine = new HlsStallMachine();
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1356,10 +1353,6 @@
 
 		const onTime = () => {
 			currentTime = v.currentTime;
-			// Crossing the running threshold proves the CURRENT stream
-			// to the stall machine; it stays proven until the machine
-			// resets with the next attach, whatever the seek bar does.
-			if (v.currentTime >= 1) stallMachine.progressed();
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
@@ -1496,22 +1489,34 @@
 			return;
 		}
 
+		// Source-scoped listeners: they belong to the stream attaching
+		// here, which outlives this component in PiP — so their removal
+		// keys on the NEXT source attaching (the registry runs the
+		// previous registration), never on route unmount. That is also
+		// what cancels a superseded attach's pending seek.
+		//
 		// A recovery landing seeks back to where playback stalled once
 		// the fresh session's metadata is in; any other attach consumes
-		// nothing (the module clears itself either way). The listener
-		// is cancelled by this effect's cleanup: an attach superseded
-		// before its metadata lands must not seek its position into
-		// whatever attaches next on the shared singleton.
+		// nothing (the module clears itself either way). Progress marks
+		// the machine once playback crosses the running threshold and
+		// keeps marking harmlessly after.
 		const resumeAt = recoveryResume.consume(id, episodeNum);
-		let cancelResumeSeek: (() => void) | null = null;
-		if (videoEl && resumeAt !== null) {
-			const el = videoEl;
-			const seekBack = () => {
-				el.currentTime = resumeAt;
-			};
-			el.addEventListener('loadedmetadata', seekBack, { once: true });
-			cancelResumeSeek = () => el.removeEventListener('loadedmetadata', seekBack);
-		}
+		const el = videoEl;
+		const markProgress = () => {
+			if (el.currentTime >= 1) stallMachine.progressed();
+		};
+		const seekBack =
+			resumeAt !== null
+				? () => {
+						el.currentTime = resumeAt;
+					}
+				: null;
+		replaceSourceScopedCleanup(() => {
+			el.removeEventListener('timeupdate', markProgress);
+			if (seekBack) el.removeEventListener('loadedmetadata', seekBack);
+		});
+		el.addEventListener('timeupdate', markProgress);
+		if (seekBack) el.addEventListener('loadedmetadata', seekBack, { once: true });
 		// A new media source is attaching — whatever burst state the
 		// previous stream accumulated is its own. Runs on every real
 		// re-attach, so history and direct-URL navigation get fresh
@@ -1628,7 +1633,6 @@
 		});
 
 		return () => {
-			cancelResumeSeek?.();
 			videoEl?.removeEventListener('error', onVideoError);
 		};
 	});

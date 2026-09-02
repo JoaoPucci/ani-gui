@@ -182,6 +182,9 @@ export function reuseSessionIfMatching(
  *  unmount (PiP keeps the source playing) and die only when a new
  *  source actually attaches. Registering runs and replaces the
  *  previous registration; null clears without replacing. */
+let sourceScopedCleanup: (() => void) | null = null;
+
 export function replaceSourceScopedCleanup(fn: (() => void) | null): void {
-	void fn;
+	sourceScopedCleanup?.();
+	sourceScopedCleanup = fn;
 }
