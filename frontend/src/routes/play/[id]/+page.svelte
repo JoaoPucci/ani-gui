@@ -100,6 +100,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { RecoveryResume } from '$lib/play/resume-after-recovery';
+	import { HlsStallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -120,7 +121,6 @@
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
 		canRecoverFromStaleStream,
-		decideStreamFailureResponse,
 		shouldAttemptStaleStreamRetry,
 		shouldResetStaleStreamBudget
 	} from '$lib/play/stale-stream';
@@ -162,10 +162,10 @@
 	// the policy that uses it. The manual Reload button on the player-
 	// error overlay bypasses this guard — manual is always allowed.
 	let hasAutoRetried = $state(false);
-	// Same-stream retries spent on the current stall burst; reset
-	// when a recovery replaces the session or the user switches
-	// episodes, so each stream gets its own STALL_NUDGE_BUDGET.
-	let nudgesUsed = 0;
+	// The hls stall lifecycle — burst counting, the one-toast rule,
+	// the main-rendition burst boundary — lives in the machine; the
+	// handlers below adapt hls.js events to it.
+	const stallMachine = new HlsStallMachine();
 	// Carries the playback position across a stale-stream recovery's
 	// session swap; see resume-after-recovery.ts.
 	const recoveryResume = new RecoveryResume();
@@ -1565,32 +1565,24 @@
 			hls = new Hls({ lowLatencyMode: false });
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
-			// A fragment landing is the end of a stall burst: the
-			// network recovered, so the next stall starts its own nudge
-			// budget instead of inheriting a spent one and escalating
-			// into the disruptive re-resolve. (Playback progress is NOT
-			// this signal — a stalled network with buffered media keeps
-			// the clock moving.)
-			hls.on(Hls.Events.FRAG_LOADED, () => {
-				nudgesUsed = 0;
+			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+				stallMachine.fragmentLoaded(data as { frag?: { type?: string } });
 			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				const err = { source: 'hls', type: data.type, details: data.details } as const;
-				const response = decideStreamFailureResponse({
+				const action = stallMachine.failure({
 					err,
 					hasAutoRetried,
-					nudgesUsed,
 					playbackProgressed: (videoEl?.currentTime ?? 0) >= 1
 				});
 				// A host-slow stall on a stream that was playing: retry
 				// the SAME stream. startLoad keeps the buffer and the
 				// position — no session swap, no loading overlay; a
 				// re-resolve would return the same crawling URL at the
-				// price of a full interruption. Toast once per burst.
-				if (response === 'nudge' && hls) {
-					nudgesUsed += 1;
-					if (nudgesUsed === 1) toastStore.push(stallNudgeToast());
+				// price of a full interruption.
+				if (action.act === 'nudge' && hls) {
+					if (action.toast) toastStore.push(stallNudgeToast());
 					hls.startLoad();
 					return;
 				}
@@ -1598,7 +1590,7 @@
 				// fast initial fatal errors can land before detail/config
 				// populate; surface the overlay instead of consuming the
 				// budget on a no-op recovery.
-				if (response === 'recover' && canRecoverFromStaleStream({ detail, switchBusy })) {
+				if (action.act === 'recover' && canRecoverFromStaleStream({ detail, switchBusy })) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
@@ -1931,7 +1923,7 @@
 			// non-network error happens. See Codex P1 #3366915811.
 			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
 				hasAutoRetried = false;
-				nudgesUsed = 0;
+				stallMachine.reset();
 			}
 			// goto navigates within the same route, so the page doesn't
 			// fully unmount — `$effect` above re-fires with the new
@@ -2013,7 +2005,7 @@
 		// made recoveries read as the app breaking).
 		recoveryResume.capture(episodeNum, videoEl?.currentTime ?? 0);
 		// The fresh session gets its own same-stream retry budget.
-		nudgesUsed = 0;
+		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);
 		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;

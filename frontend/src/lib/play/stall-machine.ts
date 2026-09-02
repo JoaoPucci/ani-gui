@@ -23,6 +23,8 @@ export type StallAction =
 	| { act: 'surface' };
 
 export class HlsStallMachine {
+	private nudgesUsed = 0;
+
 	/** A fatal error arrived; decide the response. A nudge counts
 	 *  against the burst budget and asks for the toast only when it
 	 *  opens the burst. */
@@ -31,17 +33,22 @@ export class HlsStallMachine {
 		hasAutoRetried: boolean;
 		playbackProgressed: boolean;
 	}): StallAction {
-		void input;
-		void decideStreamFailureResponse;
-		return { act: 'surface' };
+		const response = decideStreamFailureResponse({ ...input, nudgesUsed: this.nudgesUsed });
+		if (response === 'nudge') {
+			this.nudgesUsed += 1;
+			return { act: 'nudge', toast: this.nudgesUsed === 1 };
+		}
+		return { act: response };
 	}
 
 	/** A fragment landed. Only the main rendition ends the burst. */
 	fragmentLoaded(data: { frag?: { type?: string } }): void {
-		void data;
+		if (data.frag?.type === 'main') this.nudgesUsed = 0;
 	}
 
 	/** A recovery replaced the session, or the user switched
 	 *  episodes: the next stream gets a fresh budget. */
-	reset(): void {}
+	reset(): void {
+		this.nudgesUsed = 0;
+	}
 }
