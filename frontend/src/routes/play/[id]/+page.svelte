@@ -86,7 +86,9 @@
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import {
+		addSourceScopedCleanup,
 		attachGlobalVideoTo,
+		flushSourceScopedCleanups,
 		detachGlobalVideo,
 		getGlobalVideo,
 		setCurrentSession
@@ -1320,10 +1322,10 @@
 	});
 
 	function teardown() {
-		if (hls) {
-			hls.destroy();
-			hls = null;
-		}
+		// The engine's destroy rides the source-scoped flush (it must
+		// outlive this component for PiP); here the local handle just
+		// drops so the hls branch below builds a fresh one.
+		hls = null;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1489,16 +1491,21 @@
 			return;
 		}
 
-		// Source-scoped listeners — the resume seek and the progress
-		// marking — belong to the stream attaching here, which outlives
-		// this component in PiP; the module owns the arrangement.
-		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
 		// A new media source is attaching — whatever burst state the
 		// previous stream accumulated is its own. Runs on every real
 		// re-attach, so history and direct-URL navigation get fresh
 		// budgets exactly like switchToEpisode and the recovery flow.
+		// The flush retires the previous source's listeners AND its
+		// engine, whichever mount created them — teardown can only
+		// reach this mount's own handle.
 		stallMachine.reset();
+		flushSourceScopedCleanups();
 		teardown();
+		// Source-scoped listeners — the resume seek and the progress
+		// marking — belong to the stream attaching here, which outlives
+		// this component in PiP; the module owns the arrangement. Armed
+		// AFTER the flush, which retires the previous source's.
+		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
 		playerError = null;
 
 		// Native <video> error events fire for HTTP 4xx/5xx and codec
@@ -1550,6 +1557,13 @@
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
 			hls = new Hls({ lowLatencyMode: false });
+			// The engine retires with its source: a route unmount keeps
+			// it alive for PiP, so its destruction belongs to the next
+			// attach's flush, not to any component's lifetime.
+			const engine = hls;
+			addSourceScopedCleanup(() => {
+				engine.destroy();
+			});
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
