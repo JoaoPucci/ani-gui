@@ -17,6 +17,19 @@
 
 import { decideStreamFailureResponse, type StreamFailure } from '$lib/play/stale-stream';
 
+/** Rendition named by a no-fragment failure's details: side-playlist
+ *  errors (audioTrackLoadTimeOut, subtitleTrackLoadTimeOut, their
+ *  Error twins) carry no frag but say which rendition's playlist is
+ *  failing. Null means the details name nothing — the caller falls
+ *  back to main. */
+function renditionFromDetails(err: StreamFailure): string | null {
+	if (err.source !== 'hls') return null;
+	const details = err.details ?? '';
+	if (/^audio/i.test(details)) return 'audio';
+	if (/^subtitle/i.test(details)) return 'subtitle';
+	return null;
+}
+
 export type StallAction =
 	| { act: 'nudge'; toast: boolean }
 	| { act: 'recover' }
@@ -36,7 +49,7 @@ export class HlsStallMachine {
 	 *  only when no stall was active — one "host is slow" notice per
 	 *  trouble window, however many renditions join it. */
 	failure(input: { err: StreamFailure; hasAutoRetried: boolean; rendition?: string }): StallAction {
-		const rendition = input.rendition ?? 'main';
+		const rendition = input.rendition ?? renditionFromDetails(input.err) ?? 'main';
 		const used = this.nudges.get(rendition) ?? 0;
 		const response = decideStreamFailureResponse({
 			...input,
