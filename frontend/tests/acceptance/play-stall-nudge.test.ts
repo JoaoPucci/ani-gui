@@ -211,6 +211,30 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		expect(toastStore.items.length).toBe(toastsBefore + 1);
 	});
 
+	it('a successful fragment ends the burst — later stalls get fresh nudges', async () => {
+		// Three isolated timeouts separated by hours of healthy
+		// playback are three bursts of one, not one burst of three: a
+		// fragment landing proves the network recovered, so the next
+		// stall must start its own budget instead of inheriting a
+		// nearly-spent one and escalating into the disruptive
+		// re-resolve.
+		const hls = await mountPlayingHls();
+		const streamsBefore = FakeEventSource.instances.length;
+		const events = (Hls as unknown as { Events: { ERROR: string; FRAG_LOADED: string } }).Events;
+
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(1);
+		// The nudge worked: media flows again.
+		hls.emit(events.FRAG_LOADED, {});
+
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(4);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
 	it('an exhausted burst escalates to the real recovery', async () => {
 		const hls = await mountPlayingHls();
 		const streamsBefore = FakeEventSource.instances.length;
