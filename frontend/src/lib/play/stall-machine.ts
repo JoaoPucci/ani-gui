@@ -29,20 +29,20 @@ export class HlsStallMachine {
 	 *  Failures without frag data stall the main rendition (the
 	 *  common case — hls.js fatals do not always carry a frag). */
 	private nudges = new Map<string, number>();
+	private hasProgressed = false;
 
 	/** A fatal error arrived; decide the response. A nudge counts
 	 *  against ITS rendition's burst budget and asks for the toast
 	 *  only when no stall was active — one "host is slow" notice per
 	 *  trouble window, however many renditions join it. */
-	failure(input: {
-		err: StreamFailure;
-		hasAutoRetried: boolean;
-		playbackProgressed: boolean;
-		rendition?: string;
-	}): StallAction {
+	failure(input: { err: StreamFailure; hasAutoRetried: boolean; rendition?: string }): StallAction {
 		const rendition = input.rendition ?? 'main';
 		const used = this.nudges.get(rendition) ?? 0;
-		const response = decideStreamFailureResponse({ ...input, nudgesUsed: used });
+		const response = decideStreamFailureResponse({
+			...input,
+			nudgesUsed: used,
+			playbackProgressed: this.hasProgressed
+		});
 		if (response === 'nudge') {
 			const anyActive = [...this.nudges.values()].some((n) => n > 0);
 			this.nudges.set(rendition, used + 1);
@@ -59,9 +59,18 @@ export class HlsStallMachine {
 		if (type !== undefined) this.nudges.delete(type);
 	}
 
+	/** Playback crossed the running threshold on the CURRENT stream:
+	 *  the URL is proven, and stays proven for this stream's lifetime
+	 *  — a viewer seeking back to the first second must not turn a
+	 *  proven stream's stall into the disruptive re-resolve. Cleared
+	 *  only by reset(). */
+	progressed(): void {}
+
 	/** A recovery replaced the session, or the user switched
-	 *  episodes: the next stream gets fresh budgets. */
+	 *  episodes: the next stream gets fresh budgets and must prove
+	 *  itself again. */
 	reset(): void {
 		this.nudges.clear();
+		this.hasProgressed = false;
 	}
 }

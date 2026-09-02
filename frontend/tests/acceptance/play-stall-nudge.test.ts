@@ -184,8 +184,11 @@ async function mountPlayingHls(): Promise<FakeHlsT> {
 	);
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
-	// Minutes into a working stream — the URL has proven itself.
+	// Minutes into a working stream — the URL has proven itself. The
+	// page learns of progress from timeupdate, which happy-dom never
+	// fires on its own.
 	video.currentTime = 300;
+	video.dispatchEvent(new Event('timeupdate'));
 	return hlsInstances()[hlsInstances().length - 1];
 }
 
@@ -282,6 +285,22 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		fresh.emit(ERROR, HOST_SLOW_FATAL);
 		expect(fresh.startLoadCalls).toBe(1);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
+	it('a backward seek does not turn a proven stream into the startup case', async () => {
+		// Minutes in, the viewer seeks back into the first second and
+		// the host stalls. The stream already proved itself — the
+		// stall must nudge in place, not evict and re-resolve.
+		const hls = await mountPlayingHls();
+		const video = getGlobalVideo();
+		video.currentTime = 0.5;
+		video.dispatchEvent(new Event('timeupdate'));
+		const streamsBefore = FakeEventSource.instances.length;
+
+		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(1);
 		await new Promise((r) => setTimeout(r, 100));
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
