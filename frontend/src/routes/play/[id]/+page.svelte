@@ -1574,7 +1574,8 @@
 				const action = stallMachine.failure({
 					err,
 					hasAutoRetried,
-					playbackProgressed: (videoEl?.currentTime ?? 0) >= 1
+					playbackProgressed: (videoEl?.currentTime ?? 0) >= 1,
+					rendition: (data as { frag?: { type?: string } }).frag?.type
 				});
 				// A host-slow stall on a stream that was playing: retry
 				// the SAME stream. startLoad keeps the buffer and the

@@ -24,6 +24,10 @@ export type StallAction =
 
 export class HlsStallMachine {
 	private nudgesUsed = 0;
+	/** Which rendition the current burst is stalling on; failures
+	 *  without frag data stall the main rendition (the common case —
+	 *  hls.js fatals do not always carry a frag). */
+	private stalledRendition = 'main';
 
 	/** A fatal error arrived; decide the response. A nudge counts
 	 *  against the burst budget and asks for the toast only when it
@@ -37,14 +41,17 @@ export class HlsStallMachine {
 		const response = decideStreamFailureResponse({ ...input, nudgesUsed: this.nudgesUsed });
 		if (response === 'nudge') {
 			this.nudgesUsed += 1;
+			this.stalledRendition = input.rendition ?? 'main';
 			return { act: 'nudge', toast: this.nudgesUsed === 1 };
 		}
 		return { act: response };
 	}
 
-	/** A fragment landed. Only the main rendition ends the burst. */
+	/** A fragment landed. Only the STALLED rendition landing ends the
+	 *  burst — a side rendition proves nothing about a video stall,
+	 *  and arriving video proves nothing about an audio stall. */
 	fragmentLoaded(data: { frag?: { type?: string } }): void {
-		if (data.frag?.type === 'main') this.nudgesUsed = 0;
+		if (data.frag?.type === this.stalledRendition) this.nudgesUsed = 0;
 	}
 
 	/** A recovery replaced the session, or the user switched
