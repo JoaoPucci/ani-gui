@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	classifyStallCause,
 	exhaustedStallOverlayMessage,
+	stallNudgeToast,
 	stallRecoveryToast
 } from './stall-notice';
 import { m } from '$lib/paraglide/messages';
@@ -71,5 +72,16 @@ describe('exhaustedStallOverlayMessage', () => {
 		).toBeNull();
 		expect(exhaustedStallOverlayMessage({ source: 'hls', type: 'mediaError' }, true)).toBeNull();
 		expect(exhaustedStallOverlayMessage({ source: 'video', code: 2 }, true)).toBeNull();
+	});
+});
+
+describe('stallNudgeToast', () => {
+	it('says the host is slow and the SAME stream is being retried', () => {
+		// The recovery toasts promise a fresh link; a nudge retries
+		// the stream it already has, so that wording would lie.
+		expect(stallNudgeToast()).toEqual({
+			kind: 'info',
+			message: m.play_stall_toast_nudge()
+		});
 	});
 });

@@ -53,6 +53,13 @@ export function stallRecoveryToast(reason: string): PushArgs | null {
 	};
 }
 
+/** The toast for a same-stream nudge burst starting: the host is
+ *  slow, the app is retrying the stream it already has — no fresh
+ *  link involved, so the recovery toasts' wording would lie. */
+export function stallNudgeToast(): PushArgs {
+	return { kind: 'info', message: m.play_stall_toast_link_stale() };
+}
+
 /** Cause-naming overlay copy once the retry budget is spent and the
  *  failure still carries the host-slow signature; null keeps the
  *  caller's generic message. */
