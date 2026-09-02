@@ -280,7 +280,11 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		await until(() => hlsInstances().length > 1, 'the new session to attach');
 		const fresh = hlsInstances()[hlsInstances().length - 1];
 		const video = getGlobalVideo();
+		// The fresh stream proves itself: the machine reset with the
+		// re-attach, so progress must be re-marked (timeupdate never
+		// fires on its own in happy-dom).
 		video.currentTime = 120;
+		video.dispatchEvent(new Event('timeupdate'));
 		const streamsBefore = FakeEventSource.instances.length;
 
 		fresh.emit(ERROR, HOST_SLOW_FATAL);
