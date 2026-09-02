@@ -57,7 +57,7 @@ export function stallRecoveryToast(reason: string): PushArgs | null {
  *  slow, the app is retrying the stream it already has — no fresh
  *  link involved, so the recovery toasts' wording would lie. */
 export function stallNudgeToast(): PushArgs {
-	return { kind: 'info', message: m.play_stall_toast_link_stale() };
+	return { kind: 'info', message: m.play_stall_toast_nudge() };
 }
 
 /** Cause-naming overlay copy once the retry budget is spent and the

@@ -56,8 +56,7 @@ export function shouldAttemptStaleStreamRetry(args: {
  *  hls.js got far enough to time out on media — while segments
  *  crawl; the URL is not the problem, the host serving it is. */
 export function isHostSlowStreamError(err: StreamFailure): boolean {
-	void err;
-	return false;
+	return err.source === 'hls' && /timeout|stalled/i.test(err.details ?? '');
 }
 
 /** Same-stream retries granted per stall burst before escalating to
@@ -87,6 +86,13 @@ export function decideStreamFailureResponse(args: {
 	nudgesUsed: number;
 	playbackProgressed: boolean;
 }): StreamFailureResponse {
+	if (
+		isHostSlowStreamError(args.err) &&
+		args.playbackProgressed &&
+		args.nudgesUsed < STALL_NUDGE_BUDGET
+	) {
+		return 'nudge';
+	}
 	return shouldAttemptStaleStreamRetry(args) ? 'recover' : 'surface';
 }
 
