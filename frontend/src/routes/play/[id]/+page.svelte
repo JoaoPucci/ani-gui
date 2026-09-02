@@ -1466,17 +1466,19 @@
 		// PiP-leave navigation knows where to land next time.
 		// A recovery landing seeks back to where playback stalled once
 		// the fresh session's metadata is in; any other attach consumes
-		// nothing (the module clears itself either way).
+		// nothing (the module clears itself either way). The listener
+		// is cancelled by this effect's cleanup: an attach superseded
+		// before its metadata lands must not seek its position into
+		// whatever attaches next on the shared singleton.
 		const resumeAt = recoveryResume.consume(episodeNum);
+		let cancelResumeSeek: (() => void) | null = null;
 		if (videoEl && resumeAt !== null) {
 			const el = videoEl;
-			el.addEventListener(
-				'loadedmetadata',
-				() => {
-					el.currentTime = resumeAt;
-				},
-				{ once: true }
-			);
+			const seekBack = () => {
+				el.currentTime = resumeAt;
+			};
+			el.addEventListener('loadedmetadata', seekBack, { once: true });
+			cancelResumeSeek = () => el.removeEventListener('loadedmetadata', seekBack);
 		}
 		const same = videoEl.src === mediaUrl || videoEl.currentSrc === mediaUrl;
 		if (same) {
@@ -1609,6 +1611,7 @@
 		});
 
 		return () => {
+			cancelResumeSeek?.();
 			videoEl?.removeEventListener('error', onVideoError);
 		};
 	});
