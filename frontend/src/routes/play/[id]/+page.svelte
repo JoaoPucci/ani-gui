@@ -99,7 +99,7 @@
 		stallNudgeToast,
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
-	import { RecoveryResume } from '$lib/play/resume-after-recovery';
+	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { HlsStallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
@@ -166,9 +166,6 @@
 	// the main-rendition burst boundary — lives in the machine; the
 	// handlers below adapt hls.js events to it.
 	const stallMachine = new HlsStallMachine();
-	// Carries the playback position across a stale-stream recovery's
-	// session swap; see resume-after-recovery.ts.
-	const recoveryResume = new RecoveryResume();
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
 	let detail = $state<KitsuAnimeRef | null>(null);

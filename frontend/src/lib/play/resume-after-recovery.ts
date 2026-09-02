@@ -38,3 +38,9 @@ export class RecoveryResume {
 			: null;
 	}
 }
+
+/** The shared carrier, module-level like the singleton video whose
+ *  playback it describes: a recovery can begin while the play route
+ *  is unmounted (PiP) and land in a fresh mount, so the pending
+ *  position must not die with a component instance. */
+export const recoveryResume = new RecoveryResume();
