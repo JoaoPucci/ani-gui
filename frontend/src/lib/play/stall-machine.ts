@@ -64,7 +64,9 @@ export class HlsStallMachine {
 	 *  — a viewer seeking back to the first second must not turn a
 	 *  proven stream's stall into the disruptive re-resolve. Cleared
 	 *  only by reset(). */
-	progressed(): void {}
+	progressed(): void {
+		this.hasProgressed = true;
+	}
 
 	/** A recovery replaced the session, or the user switched
 	 *  episodes: the next stream gets fresh budgets and must prove

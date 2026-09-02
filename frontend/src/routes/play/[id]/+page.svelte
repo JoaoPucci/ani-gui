@@ -1359,6 +1359,10 @@
 
 		const onTime = () => {
 			currentTime = v.currentTime;
+			// Crossing the running threshold proves the CURRENT stream
+			// to the stall machine; it stays proven until the machine
+			// resets with the next attach, whatever the seek bar does.
+			if (v.currentTime >= 1) stallMachine.progressed();
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
