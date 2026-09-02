@@ -94,6 +94,8 @@
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
+	import { exhaustedStallOverlayMessage, stallRecoveryToast } from '$lib/play/stall-notice';
+	import { RecoveryResume } from '$lib/play/resume-after-recovery';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -155,6 +157,9 @@
 	// the policy that uses it. The manual Reload button on the player-
 	// error overlay bypasses this guard — manual is always allowed.
 	let hasAutoRetried = $state(false);
+	// Carries the playback position across a stale-stream recovery's
+	// session swap; see resume-after-recovery.ts.
+	const recoveryResume = new RecoveryResume();
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1450,6 +1455,20 @@
 		// playback from 0 and tear down a working HLS pipeline for
 		// no reason. We still update the session pointer so the
 		// PiP-leave navigation knows where to land next time.
+		// A recovery landing seeks back to where playback stalled once
+		// the fresh session's metadata is in; any other attach consumes
+		// nothing (the module clears itself either way).
+		const resumeAt = recoveryResume.consume(episodeNum);
+		if (videoEl && resumeAt !== null) {
+			const el = videoEl;
+			el.addEventListener(
+				'loadedmetadata',
+				() => {
+					el.currentTime = resumeAt;
+				},
+				{ once: true }
+			);
+		}
 		const same = videoEl.src === mediaUrl || videoEl.currentSrc === mediaUrl;
 		if (same) {
 			setCurrentSession({
@@ -1509,7 +1528,9 @@
 				void recoverFromStaleStream(`video ${reason}`);
 				return;
 			}
-			playerError = `Playback error: ${reason}`;
+			playerError =
+				exhaustedStallOverlayMessage({ source: 'video', code }, hasAutoRetried) ??
+				`Playback error: ${reason}`;
 		};
 		videoEl.addEventListener('error', onVideoError);
 
@@ -1540,7 +1561,11 @@
 					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
 				}
-				playerError = `Playback error: ${data.type} / ${data.details}`;
+				playerError =
+					exhaustedStallOverlayMessage(
+						{ source: 'hls', type: data.type, details: data.details },
+						hasAutoRetried
+					) ?? `Playback error: ${data.type} / ${data.details}`;
 			});
 		} else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
 			videoEl.src = mediaUrl;
@@ -1940,6 +1965,13 @@
 		// into a blank frame. The user keeps the Reload button to try
 		// again once the metadata lands.
 		playerError = null;
+		// The session swap restarts the element at zero; remember the
+		// place so the fresh attach can seek back, and tell the user
+		// what the upcoming loading overlay is (silence here is what
+		// made recoveries read as the app breaking).
+		recoveryResume.capture(episodeNum, videoEl?.currentTime ?? 0);
+		const toast = stallRecoveryToast(reason);
+		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
 		// sub/best matches switchToEpisode's pattern. A permanently null

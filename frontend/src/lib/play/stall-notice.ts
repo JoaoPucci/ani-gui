@@ -24,22 +24,33 @@
  */
 
 import type { PushArgs } from '$lib/toasts/store.svelte';
-import type { StreamFailure } from '$lib/play/stale-stream';
+import { isNetworkClassStreamError, type StreamFailure } from '$lib/play/stale-stream';
+import { m } from '$lib/paraglide/messages';
+
+/** The host-struggling signature: hls.js timeout / stall details.
+ *  The playlists loaded (hls.js got far enough to time out on
+ *  media) while segments crawl — the provider shard, not the link. */
+const HOST_SLOW = /timeout|stalled/i;
 
 export type StallCause = 'host-slow' | 'link-stale';
 
 /** Classify a recovery reason string (`hls fragLoadTimeOut`,
  *  `video MEDIA_ERR_NETWORK (…)`, …). */
 export function classifyStallCause(reason: string): StallCause {
-	void reason;
-	return 'link-stale';
+	return HOST_SLOW.test(reason) ? 'host-slow' : 'link-stale';
 }
 
 /** The toast announcing a silent recovery — or null when the user
  *  started it themselves (manual reload: they already know). */
 export function stallRecoveryToast(reason: string): PushArgs | null {
-	void reason;
-	return null;
+	if (reason === 'manual reload') return null;
+	return {
+		kind: 'info',
+		message:
+			classifyStallCause(reason) === 'host-slow'
+				? m.play_stall_toast_host_slow()
+				: m.play_stall_toast_link_stale()
+	};
 }
 
 /** Cause-naming overlay copy once the retry budget is spent and the
@@ -49,7 +60,7 @@ export function exhaustedStallOverlayMessage(
 	err: StreamFailure,
 	hasAutoRetried: boolean
 ): string | null {
-	void err;
-	void hasAutoRetried;
-	return null;
+	if (!hasAutoRetried || !isNetworkClassStreamError(err)) return null;
+	if (err.source !== 'hls') return null;
+	return HOST_SLOW.test(err.details ?? '') ? m.play_error_host_slow() : null;
 }

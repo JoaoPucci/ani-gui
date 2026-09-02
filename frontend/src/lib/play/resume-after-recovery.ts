@@ -16,18 +16,22 @@
  * worth carrying: the restart the user resents is losing minutes,
  * not a second.
  */
+const MIN_CARRY_SECONDS = 1;
+
 export class RecoveryResume {
+	private pending: { episode: number; at: number } | null = null;
+
 	/** Remember where playback stood when a recovery began. */
 	capture(episode: number, currentTime: number): void {
-		void episode;
-		void currentTime;
+		this.pending = currentTime >= MIN_CARRY_SECONDS ? { episode, at: currentTime } : null;
 	}
 
 	/** The position the media attach for `episode` should seek to, or
 	 *  null. Consuming clears the capture either way: a match hands
 	 *  the position over once, a mismatch discards stale intent. */
 	consume(episode: number): number | null {
-		void episode;
-		return null;
+		const pending = this.pending;
+		this.pending = null;
+		return pending !== null && pending.episode === episode ? pending.at : null;
 	}
 }
