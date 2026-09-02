@@ -140,27 +140,18 @@ function useShowHandlers(episodeCount = 12) {
 }
 
 async function mountAtEpisode(episode: number) {
-	setUrl(`/play/${KITSU_ID}`, { episode: String(episode) });
-	app = mount(PlayPage, { target });
-	await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
-	FakeEventSource.instances[0].dispatch(
-		'done',
-		JSON.stringify({
-			id: 'session-1',
-			kind: 'mp4',
-			has_subtitles: false,
-			quality: '1080',
-			mode: 'sub'
-		})
-	);
-	// The page carries the session in the URL and gets there by
-	// `goto`, which this tier stubs out — so the stub is moved by
-	// hand to where the real navigation would have landed.
+	// The page reads its session straight from the URL — the real
+	// navigation that puts it there is stubbed in this tier, so the
+	// stub starts where that navigation would have landed. (An older
+	// version of this scaffold waited for a resolve stream first;
+	// that stream was always the background warm fan-out, which the
+	// caching setting now narrows, so nothing here may depend on it.)
 	setUrl(`/play/${KITSU_ID}`, {
 		session: 'session-1',
 		episode: String(episode),
 		kind: 'mp4'
 	});
+	app = mount(PlayPage, { target });
 }
 
 /** The episode switch as the page lands it: same route, new episode

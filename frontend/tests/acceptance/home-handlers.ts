@@ -55,6 +55,7 @@ export function appConfig(mode: 'sub' | 'dub' = 'sub') {
 		syncplay_binary: '',
 		image_cache_cap_mb: 100,
 		auto_play_next: false,
+		cache_resolutions: false,
 		download_bottom_bar_enabled: true,
 		auto_skip_op: false,
 		auto_skip_ed: false,

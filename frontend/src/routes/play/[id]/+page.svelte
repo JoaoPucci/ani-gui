@@ -93,6 +93,7 @@
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
+	import { playPageWarmTargets } from '$lib/play/warm-plan';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -1762,16 +1763,17 @@
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 		const altTitles = altTitlesFromKitsu(detail);
-		for (const ep of episodes) {
-			const targetEp = ep.number ?? ep.relative_number ?? null;
-			if (targetEp === null) continue;
-			// The strip now renders unaired tiles (stripCap) — skip
-			// them, and skip anything past the provider's playable count:
-			// both are doomed resolutions the warm must not spend
-			// scraper slots on. beyondPlayable floor-compares so
-			// the provider's own decimal extras stay warmable.
-			if (epAirState(targetEp, airing).unaired) continue;
-			if (beyondPlayable(targetEp, playableEpisodeCount)) continue;
+		// Which tiles to warm — and how wide, given the caching
+		// setting — is the module's decision; the page only feeds it
+		// the runtime inputs.
+		const targets = playPageWarmTargets({
+			cacheResolutions: config.cache_resolutions,
+			visible: episodes.map((ep) => ep.number ?? ep.relative_number ?? null),
+			currentEpisode: episodeNum,
+			airing,
+			playableCount: playableEpisodeCount
+		});
+		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
 				playStream(
 					{

@@ -387,32 +387,34 @@ test('Continue row whose match is unresolvable renders as a /search fallback lin
 });
 
 test('Episode click takes over a started background prefetch instead of waiting behind it', async () => {
-	// The play-cache's click bypass: a detail-page mount warms visible
-	// episodes in the background (prefetch=1 on the wire); a click on
-	// one of those episodes must NOT wait behind that request — it
-	// aborts the shared background fire and issues its own interactive
-	// replacement. Acceptance shape: the episode-6 background stream
-	// hangs open, the click still resolves promptly via a fresh
-	// request without the prefetch flag, and episode 6 sees exactly
-	// two stream requests — the takeover pair, no duplicate traffic.
+	// The play-cache's click bypass: a detail-page mount warms the
+	// hero Play target in the background (prefetch=1 on the wire —
+	// with resolution caching off, the default, that single warm is
+	// the whole fan-out); a click on that episode must NOT wait
+	// behind the request — it aborts the shared background fire and
+	// issues its own interactive replacement. Acceptance shape: the
+	// episode-1 background stream hangs open, the click still
+	// resolves promptly via a fresh request without the prefetch
+	// flag, and episode 1 sees exactly two stream requests — the
+	// takeover pair, no duplicate traffic.
 	const streamUrls: string[] = [];
-	const ep6 = (prefetch: boolean) =>
+	const ep1 = (prefetch: boolean) =>
 		streamUrls
 			.map((s) => new URL(s))
 			.filter(
 				(u) =>
-					u.searchParams.get('episode') === '6' &&
+					u.searchParams.get('episode') === '1' &&
 					(u.searchParams.get('prefetch') === '1') === prefetch
 			).length;
 	const { app, page } = await launchAppWithContinueStubs({
 		history: continueHistory,
 		onPlayStream: (u) => {
 			streamUrls.push(u.toString());
-			// Pin the episode-6 warm in flight — the takeover target.
+			// Pin the episode-1 warm in flight — the takeover target.
 			// Only the renderer's own abort releases it; if the click
 			// waited behind it, the test would time out instead of
-			// navigating. Other episodes' warms resolve instantly.
-			if (u.searchParams.get('episode') === '6' && u.searchParams.get('prefetch') === '1') {
+			// navigating.
+			if (u.searchParams.get('episode') === '1' && u.searchParams.get('prefetch') === '1') {
 				return 'hang';
 			}
 			return undefined;
@@ -428,22 +430,22 @@ test('Episode click takes over a started background prefetch instead of waiting 
 		await expect(card).toBeVisible({ timeout: 10_000 });
 		await card.click();
 
-		// The mount-time warm fans out over the visible tiles once
-		// airing + availability settle. Waiting for the episode-6
-		// prefetch on the wire ALSO guarantees its fire has started —
-		// the precondition for the click bypass (a queued-not-started
+		// The mount-time warm fires for the hero target once airing +
+		// availability settle. Waiting for the episode-1 prefetch on
+		// the wire ALSO guarantees its fire has started — the
+		// precondition for the click bypass (a queued-not-started
 		// entry takes the promote path instead).
-		await expect.poll(() => ep6(true), { timeout: 15_000 }).toBe(1);
+		await expect.poll(() => ep1(true), { timeout: 15_000 }).toBe(1);
 
 		// Click the episode the hung warm is holding.
-		const tile = page.locator('li[data-ep-num="6"] button.ep-tile');
+		const tile = page.locator('li[data-ep-num="1"] button.ep-tile');
 		await expect(tile).toBeVisible({ timeout: 10_000 });
 		await tile.click();
 
 		// Takeover: one fresh interactive request replaces the hung
 		// background one — same episode, no prefetch flag, exactly one.
-		await expect.poll(() => ep6(false), { timeout: 10_000 }).toBe(1);
-		expect(ep6(true)).toBe(1);
+		await expect.poll(() => ep1(false), { timeout: 10_000 }).toBe(1);
+		expect(ep1(true)).toBe(1);
 
 		// ...and it, not the hung warm, delivers the session — the app
 		// reaches the player page instead of spinning on the overlay.

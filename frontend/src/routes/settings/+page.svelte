@@ -198,6 +198,10 @@
 		if (!cfg) return;
 		void persist({ ...cfg, auto_play_next: value });
 	}
+	function setCacheResolutions(value: boolean) {
+		if (!cfg) return;
+		void persist({ ...cfg, cache_resolutions: value });
+	}
 	function setDownloadBottomBar(value: boolean) {
 		if (!cfg) return;
 		void persist({ ...cfg, download_bottom_bar_enabled: value });
@@ -475,6 +479,29 @@
 					</span>
 					<span class="switch-state"
 						>{cfg.auto_play_next
+							? m.settings_switch_state_on()
+							: m.settings_switch_state_off()}</span
+					>
+				</label>
+			</div>
+
+			<div class="field">
+				<div class="field-label">
+					<span class="field-key">{m.settings_field_cache_resolutions_key()}</span>
+					<span class="field-hint">{m.settings_field_cache_resolutions_hint()}</span>
+				</div>
+				<label class="switch">
+					<input
+						type="checkbox"
+						checked={cfg.cache_resolutions}
+						onchange={(e) => setCacheResolutions((e.currentTarget as HTMLInputElement).checked)}
+						aria-label={m.settings_cache_resolutions_aria_label()}
+					/>
+					<span class="switch-track" aria-hidden="true">
+						<span class="switch-thumb"></span>
+					</span>
+					<span class="switch-state"
+						>{cfg.cache_resolutions
 							? m.settings_switch_state_on()
 							: m.settings_switch_state_off()}</span
 					>

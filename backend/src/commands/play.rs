@@ -316,11 +316,22 @@ where
 {
     let quality = args.quality.as_deref().unwrap_or("best");
 
+    // Resolution caching is the user's call (Config::cache_resolutions,
+    // default off): a cached row can pin a day-one master URL — and so
+    // its worse encode — for up to the TTL, so fresh-every-play is the
+    // default and the ~0.5s replays are the opt-in. Read per call so a
+    // settings flip applies without a restart. Off means rows are
+    // neither read nor written; existing rows are left to age out so
+    // opting back in loses nothing still inside the TTL.
+    let cache_resolutions = crate::config::read_config(&state.config_path)
+        .unwrap_or_default()
+        .cache_resolutions;
+
     // Long-term cache check. A successful prior resolution under the
     // same (title, mode, quality, episode) tuple is replayable for up
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
-    // ~50ms; a full resolve is ~30s. Worth the round-trip.
+    // ~50ms; a full resolve is ~5–7s. Worth the round-trip.
     let cache_key = play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
@@ -330,28 +341,30 @@ where
         args.episode_count,
         args.subtype.as_deref(),
     );
-    if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-        if let Some(resp) = try_serve_cached(state, &cached).await {
+    if cache_resolutions {
+        if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
+            if let Some(resp) = try_serve_cached(state, &cached).await {
+                tracing::info!(
+                    title = %args.title,
+                    episode = %args.episode,
+                    upstream = cached.upstream_url.as_str(),
+                    "play: cache hit (HEAD ok)",
+                );
+                write_history_on_cache_hit(state, args, &cached);
+                return Ok(resp);
+            }
+            // HEAD failed — the cached URL is dead. Evict the row and
+            // fall through to a fresh resolve. Eviction is explicit (not
+            // just overwrite-on-put) because if the fresh resolve ALSO
+            // fails, we don't want the stale row to linger and bite the
+            // next attempt.
+            play_resolution_cache::evict(&state.cache_pool, &cache_key);
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                upstream = cached.upstream_url.as_str(),
-                "play: cache hit (HEAD ok)",
+                "play: cache row stale (HEAD failed), evicted, resolving afresh",
             );
-            write_history_on_cache_hit(state, args, &cached);
-            return Ok(resp);
         }
-        // HEAD failed — the cached URL is dead. Evict the row and
-        // fall through to a fresh resolve. Eviction is explicit (not
-        // just overwrite-on-put) because if the fresh resolve ALSO
-        // fails, we don't want the stale row to linger and bite the
-        // next attempt.
-        play_resolution_cache::evict(&state.cache_pool, &cache_key);
-        tracing::info!(
-            title = %args.title,
-            episode = %args.episode,
-            "play: cache row stale (HEAD failed), evicted, resolving afresh",
-        );
     }
 
     // Resolve natively against anidb: alias walk, bounded probing,
@@ -495,6 +508,11 @@ where
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
     };
+    // Written unconditionally: the row doubles as the watch metadata
+    // /api/play/mark-watched reads back (show identity, title, the
+    // numbering slot this resolve stamped) — only the REPLAY reads
+    // are the user's cache_resolutions call. Every fresh resolve
+    // overwriting the row also keeps that metadata current.
     play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {
@@ -746,6 +764,286 @@ mod tests {
         );
     }
 
+    /// `state_with_proxy_origin` with resolution caching opted in:
+    /// a config file carrying `cache_resolutions = true`, kept alive
+    /// by the returned tempdir. The cache-hit tests exercise the
+    /// opt-in path, so they declare the opt-in instead of relying on
+    /// the old unconditional caching.
+    fn state_with_caching_on() -> (tempfile::TempDir, AppState) {
+        let td = tempfile::tempdir().expect("tempdir");
+        let cfg = td.path().join("config.toml");
+        std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
+        let mut state = state_with_proxy_origin();
+        state.config_path = cfg;
+        (td, state)
+    }
+
+    /// Mount the full native resolution surface for one show on
+    /// `mock` — browse, a one-episode listing, its jpn languages row,
+    /// the embed page and the master playlist — so `play_with_progress`
+    /// can run a complete successful resolve against wiremock. Mirrors
+    /// `play_external_command_test::stub_provider`, trimmed to one
+    /// episode.
+    async fn stub_provider_one_episode(mock: &wiremock::MockServer, query: &str) {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+        Mock::given(method("GET"))
+            .and(path("/browse"))
+            .and(query_param("q", query))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
+            )
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/77/episodes"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"episodes":[{"id":701,"number":1}]}"#),
+            )
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/frontend/episode/701/languages"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
+                mock.uri()
+            )))
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/e/x"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "player.setup({{ file: '{}/x/master.m3u8' }});",
+                mock.uri()
+            )))
+            .mount(mock)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/x/master.m3u8"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+            .mount(mock)
+            .await;
+    }
+
+    fn uncached_args(title: &str) -> PlayArgs {
+        PlayArgs {
+            title: title.into(),
+            episode: "1".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        }
+    }
+
+    fn setting_cache_key(args: &PlayArgs) -> String {
+        play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+            args.subtype.as_deref(),
+        )
+    }
+
+    /// With no config file (the documented default), resolutions are
+    /// uncached: a warm row that WOULD serve — its upstream answers
+    /// HEAD — must be ignored, so the play falls through to a fresh
+    /// resolve, which the unroutable provider base fails fast.
+    #[tokio::test]
+    async fn a_seeded_row_is_ignored_while_resolutions_are_uncached() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let td = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.config_path = td.path().join("config.toml");
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let r = play_with_progress(&state, &args, |_| {}).await;
+        assert!(
+            r.is_err(),
+            "uncached mode must not serve the seeded row — the fresh resolve fails on the unroutable provider"
+        );
+    }
+
+    /// Opting back in restores the previous behaviour: the same
+    /// seeded row serves, reported as a cache hit.
+    #[tokio::test]
+    async fn the_seeded_row_serves_again_when_caching_is_enabled() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let td = tempfile::tempdir().unwrap();
+        let cfg = td.path().join("config.toml");
+        std::fs::write(
+            &cfg,
+            "cache_resolutions = true
+",
+        )
+        .unwrap();
+        let mut state = state_with_proxy_origin();
+        state.config_path = cfg;
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let r = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the warm row serves when caching is on");
+        assert!(r.cache_hit, "the served session reports the cache hit");
+    }
+
+    /// An uncached resolve still records its row — the row carries
+    /// the watch metadata mark-watched reads back (show identity and
+    /// title; the numbering offset was stamped by this resolve) — it
+    /// just never REPLAYS it: the second play resolves fresh. This
+    /// replaces the earlier no-row spec on this branch, which review
+    /// showed would sever Continue Watching: /api/play/mark-watched
+    /// resolves show identity through exactly this row, so the write
+    /// must survive the opt-out and only the replay reads are gated.
+    #[tokio::test]
+    async fn an_uncached_resolve_records_watch_metadata_without_replay() {
+        let mock = wiremock::MockServer::start().await;
+        stub_provider_one_episode(&mock, "the show").await;
+        let td = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(mock.uri());
+        state.config_path = td.path().join("config.toml");
+        state.history_path = td.path().join("history");
+        let args = uncached_args("the show");
+        let first = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the stubbed provider resolves");
+        assert!(!first.cache_hit);
+        let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
+            .expect("cache readable")
+            .expect("the resolve records its row for the watch bookkeeping");
+        assert_eq!(row.show_id, "the-show-77");
+        let second = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the second play resolves fresh");
+        assert!(
+            !second.cache_hit,
+            "uncached mode records the row but never replays it"
+        );
+    }
+
+    /// The opt-out covers every playback surface: the external and
+    /// Syncplay handoffs share try_launch_args_from_cache, which must
+    /// refuse a warm row — even one whose upstream answers HEAD —
+    /// while resolutions are uncached.
+    #[tokio::test]
+    async fn an_external_launch_ignores_the_row_while_uncached() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let cfg = crate::config::Config::default();
+        assert!(
+            try_launch_args_from_cache(&state, &args, &cfg)
+                .await
+                .is_none(),
+            "the default config must not hand an external player the cached URL"
+        );
+    }
+
+    /// Opting in restores the external cache-hit branch.
+    #[tokio::test]
+    async fn an_external_launch_replays_the_row_when_caching_is_enabled() {
+        let upstream = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&upstream)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = uncached_args("some show");
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &setting_cache_key(&args),
+            &cached_blank(
+                format!("{}/x/master.m3u8", upstream.uri()),
+                upstream.uri(),
+                MediaKind::Hls,
+            ),
+        );
+        let cfg = crate::config::Config {
+            cache_resolutions: true,
+            ..crate::config::Config::default()
+        };
+        assert!(
+            try_launch_args_from_cache(&state, &args, &cfg)
+                .await
+                .is_some(),
+            "the opt-in keeps the external cache-hit branch"
+        );
+    }
+
+    /// With caching enabled the same resolve persists its row, so the
+    /// next play can serve it.
+    #[tokio::test]
+    async fn a_fresh_resolve_writes_the_row_when_caching_is_enabled() {
+        let mock = wiremock::MockServer::start().await;
+        stub_provider_one_episode(&mock, "the show").await;
+        let td = tempfile::tempdir().unwrap();
+        let cfg = td.path().join("config.toml");
+        std::fs::write(
+            &cfg,
+            "cache_resolutions = true
+",
+        )
+        .unwrap();
+        let mut state = state_with_proxy_origin();
+        state.anidb_base = Some(mock.uri());
+        state.config_path = cfg;
+        state.history_path = td.path().join("history");
+        let args = uncached_args("the show");
+        play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("the stubbed provider resolves");
+        let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
+            .expect("cache readable");
+        assert!(row.is_some(), "enabled caching persists the resolution");
+    }
+
     /// Build a CachedResolution with the new show_id/show_title fields
     /// defaulted to empty (so try_serve_cached's history-write skip
     /// branch fires). Tests that want history-write coverage override
@@ -895,9 +1193,14 @@ mod tests {
         }
     }
 
+    /// The external cache-hit specs exercise the opt-in replay
+    /// branch, so their config declares it — with resolutions
+    /// uncached (the default) try_launch_args_from_cache refuses the
+    /// row before any of the behaviour under test runs.
     fn external_cfg() -> crate::config::Config {
         crate::config::Config {
             external_player: "test-player".into(),
+            cache_resolutions: true,
             ..Default::default()
         }
     }
@@ -939,7 +1242,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Cached Show", "5");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
@@ -1008,7 +1311,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Show With History", "3");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
@@ -1041,7 +1344,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        let state = state_with_proxy_origin();
+        let (_cfg_dir, state) = state_with_caching_on();
         let args = external_args("Stale Show", "1");
         let upstream = format!("{}/dead.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");

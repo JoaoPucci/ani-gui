@@ -62,6 +62,34 @@ fn disable_auto_pip_on_leave_defaults_to_true() {
 }
 
 #[test]
+fn cache_resolutions_defaults_to_false() {
+    // Clean resolve is the default: a cached row can pin a day-one
+    // master URL, and its worse encode, for up to a week. Users who
+    // want ~0.5s replays opt in and take that trade knowingly —
+    // including everyone upgrading from a build where caching was
+    // unconditional.
+    assert!(!Config::default().cache_resolutions);
+}
+
+#[test]
+fn cache_resolutions_round_trips_through_toml() {
+    let c = Config {
+        cache_resolutions: true,
+        ..Config::default()
+    };
+    let s = toml::to_string(&c).unwrap();
+    let parsed: Config = toml::from_str(&s).unwrap();
+    assert!(parsed.cache_resolutions);
+}
+
+#[test]
+fn cache_resolutions_absent_in_old_config_decodes_as_false() {
+    let body = "mode = \"sub\"\nquality = \"best\"\n";
+    let cfg: Config = toml::from_str(body).unwrap();
+    assert!(!cfg.cache_resolutions);
+}
+
+#[test]
 fn auto_play_next_round_trips_through_toml() {
     let c = Config {
         auto_play_next: true,

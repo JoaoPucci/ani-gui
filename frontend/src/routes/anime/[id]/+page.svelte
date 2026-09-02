@@ -47,13 +47,7 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
-	import {
-		airedCap,
-		airedTargets,
-		beyondPlayable,
-		displayCap,
-		minCap
-	} from '$lib/detail/episode-caps';
+	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { settle, settleOut } from '$lib/transitions/settle';
@@ -63,6 +57,7 @@
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
@@ -940,15 +935,16 @@
 		// render aired-but-uncatalogued tiles (displayCap), and warming
 		// those is the same doomed resolution the availability probe
 		// already capped out (Codex P2 #3565988141).
-		const targets = airedTargets(
-			episodes
-				? episodes.flatMap((e) => {
-						const n = e.number ?? e.relative_number ?? null;
-						return n === null ? [] : [n];
-					})
-				: [defaultEpisode()],
-			airing
-		).filter((n) => !beyondPlayable(n, playableEpisodeCount));
+		// Which tiles to warm — and how wide, given the caching
+		// setting — is the module's decision; the page only feeds it
+		// the runtime inputs.
+		const targets = detailWarmTargets({
+			cacheResolutions: config.cache_resolutions,
+			visible: episodes ? episodes.map((e) => e.number ?? e.relative_number ?? null) : null,
+			heroEpisode: defaultEpisode(),
+			airing,
+			playableCount: playableEpisodeCount
+		});
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
