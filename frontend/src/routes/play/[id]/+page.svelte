@@ -1565,6 +1565,15 @@
 			hls = new Hls({ lowLatencyMode: false });
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
+			// A fragment landing is the end of a stall burst: the
+			// network recovered, so the next stall starts its own nudge
+			// budget instead of inheriting a spent one and escalating
+			// into the disruptive re-resolve. (Playback progress is NOT
+			// this signal — a stalled network with buffered media keeps
+			// the clock moving.)
+			hls.on(Hls.Events.FRAG_LOADED, () => {
+				nudgesUsed = 0;
+			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				const err = { source: 'hls', type: data.type, details: data.details } as const;
