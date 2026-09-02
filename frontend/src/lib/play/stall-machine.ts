@@ -23,40 +23,45 @@ export type StallAction =
 	| { act: 'surface' };
 
 export class HlsStallMachine {
-	private nudgesUsed = 0;
-	/** Which rendition the current burst is stalling on; failures
-	 *  without frag data stall the main rendition (the common case —
-	 *  hls.js fatals do not always carry a frag). */
-	private stalledRendition = 'main';
+	/** Outstanding nudges per rendition. Budgets are independent:
+	 *  interleaved failures must not leak budget across renditions,
+	 *  and one rendition recovering clears only its own burst.
+	 *  Failures without frag data stall the main rendition (the
+	 *  common case — hls.js fatals do not always carry a frag). */
+	private nudges = new Map<string, number>();
 
 	/** A fatal error arrived; decide the response. A nudge counts
-	 *  against the burst budget and asks for the toast only when it
-	 *  opens the burst. */
+	 *  against ITS rendition's burst budget and asks for the toast
+	 *  only when no stall was active — one "host is slow" notice per
+	 *  trouble window, however many renditions join it. */
 	failure(input: {
 		err: StreamFailure;
 		hasAutoRetried: boolean;
 		playbackProgressed: boolean;
 		rendition?: string;
 	}): StallAction {
-		const response = decideStreamFailureResponse({ ...input, nudgesUsed: this.nudgesUsed });
+		const rendition = input.rendition ?? 'main';
+		const used = this.nudges.get(rendition) ?? 0;
+		const response = decideStreamFailureResponse({ ...input, nudgesUsed: used });
 		if (response === 'nudge') {
-			this.nudgesUsed += 1;
-			this.stalledRendition = input.rendition ?? 'main';
-			return { act: 'nudge', toast: this.nudgesUsed === 1 };
+			const anyActive = [...this.nudges.values()].some((n) => n > 0);
+			this.nudges.set(rendition, used + 1);
+			return { act: 'nudge', toast: !anyActive };
 		}
 		return { act: response };
 	}
 
-	/** A fragment landed. Only the STALLED rendition landing ends the
-	 *  burst — a side rendition proves nothing about a video stall,
-	 *  and arriving video proves nothing about an audio stall. */
+	/** A fragment landed: its own rendition's burst is over. A side
+	 *  rendition proves nothing about a video stall, and arriving
+	 *  video proves nothing about an audio stall. */
 	fragmentLoaded(data: { frag?: { type?: string } }): void {
-		if (data.frag?.type === this.stalledRendition) this.nudgesUsed = 0;
+		const type = data.frag?.type;
+		if (type !== undefined) this.nudges.delete(type);
 	}
 
 	/** A recovery replaced the session, or the user switched
-	 *  episodes: the next stream gets a fresh budget. */
+	 *  episodes: the next stream gets fresh budgets. */
 	reset(): void {
-		this.nudgesUsed = 0;
+		this.nudges.clear();
 	}
 }
