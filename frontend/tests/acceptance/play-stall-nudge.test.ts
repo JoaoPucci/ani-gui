@@ -224,8 +224,8 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(1);
-		// The nudge worked: media flows again.
-		hls.emit(events.FRAG_LOADED, {});
+		// The nudge worked: VIDEO media flows again.
+		hls.emit(events.FRAG_LOADED, { frag: { type: 'main' } });
 
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
@@ -233,6 +233,30 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		expect(hls.startLoadCalls).toBe(4);
 		await new Promise((r) => setTimeout(r, 100));
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
+	it('side-rendition fragments do not refill the burst', async () => {
+		// Subtitle and audio fragments keep landing while the video
+		// rendition times out — they prove nothing about the stall,
+		// and resetting on them would keep the burst from ever
+		// escalating to the fresh-link recovery.
+		const hls = await mountPlayingHls();
+		const streamsBefore = FakeEventSource.instances.length;
+		const events = (Hls as unknown as { Events: { ERROR: string; FRAG_LOADED: string } }).Events;
+
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		hls.emit(events.FRAG_LOADED, { frag: { type: 'subtitle' } });
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		hls.emit(events.FRAG_LOADED, { frag: { type: 'audio' } });
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(3);
+
+		hls.emit(events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(3);
+		await until(
+			() => FakeEventSource.instances.length > streamsBefore,
+			'the recovery resolve stream'
+		);
 	});
 
 	it('an exhausted burst escalates to the real recovery', async () => {
