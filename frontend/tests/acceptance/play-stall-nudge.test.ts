@@ -259,6 +259,33 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		);
 	});
 
+	it('a URL-driven session change starts the new stream with fresh budgets', async () => {
+		// Browser history or a pasted URL swaps the session while the
+		// component is reused — no switchToEpisode, no recovery, so
+		// neither existing reset fires. The new stream must not
+		// inherit the old one's spent burst and escalate on its first
+		// stall.
+		const hls = await mountPlayingHls();
+		const ERROR = (Hls as unknown as { Events: { ERROR: string } }).Events.ERROR;
+		hls.emit(ERROR, HOST_SLOW_FATAL);
+		hls.emit(ERROR, HOST_SLOW_FATAL);
+		hls.emit(ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(3);
+
+		// History navigation lands a different session and episode.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-9', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the new session to attach');
+		const fresh = hlsInstances()[hlsInstances().length - 1];
+		const video = getGlobalVideo();
+		video.currentTime = 120;
+		const streamsBefore = FakeEventSource.instances.length;
+
+		fresh.emit(ERROR, HOST_SLOW_FATAL);
+		expect(fresh.startLoadCalls).toBe(1);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
 	it('an exhausted burst escalates to the real recovery', async () => {
 		const hls = await mountPlayingHls();
 		const streamsBefore = FakeEventSource.instances.length;
