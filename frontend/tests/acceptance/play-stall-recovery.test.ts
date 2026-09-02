@@ -185,4 +185,72 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		video.dispatchEvent(new Event('loadedmetadata'));
 		await until(() => video.currentTime === 720, 'playback to resume where it stalled');
 	});
+
+	it('a superseded attach cancels its pending resume seek', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+
+		const video = getGlobalVideo();
+		await until(
+			() => video.parentElement?.classList.contains('player-video-slot') === true,
+			'the video in its slot'
+		);
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+
+		// A recovery captures the position and its fresh session
+		// attaches, arming the pending seek…
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		const streamsBefore = FakeEventSource.instances.length;
+		video.dispatchEvent(new Event('error'));
+		await until(
+			() => FakeEventSource.instances.length > streamsBefore,
+			'the recovery resolve stream'
+		);
+		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
+			'done',
+			JSON.stringify({
+				id: 'session-2',
+				kind: 'mp4',
+				has_subtitles: false,
+				quality: '1080',
+				mode: 'sub'
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
+		await until(() => video.src.includes('session-2'), 'the recovered session to attach');
+
+		// …but before its metadata lands, the user moves on and a
+		// different session attaches. The armed seek belongs to the
+		// superseded attach and must not fire into this one.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-3', episode: '2', kind: 'mp4' });
+		await until(() => video.src.includes('session-3'), 'the superseding session to attach');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		await new Promise((r) => setTimeout(r, 100));
+		expect(video.currentTime).toBe(0);
+	});
 });
