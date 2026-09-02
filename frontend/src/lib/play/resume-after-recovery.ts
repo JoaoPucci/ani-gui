@@ -19,12 +19,11 @@
 const MIN_CARRY_SECONDS = 1;
 
 export class RecoveryResume {
-	private pending: { episode: number; at: number } | null = null;
+	private pending: { showId: string; episode: number; at: number } | null = null;
 
 	/** Remember where playback stood when a recovery began. */
 	capture(showId: string, episode: number, currentTime: number): void {
-		void showId;
-		this.pending = currentTime >= MIN_CARRY_SECONDS ? { episode, at: currentTime } : null;
+		this.pending = currentTime >= MIN_CARRY_SECONDS ? { showId, episode, at: currentTime } : null;
 	}
 
 	/** The position the media attach for `episode` of `showId` should
@@ -32,9 +31,10 @@ export class RecoveryResume {
 	 *  match hands the position over once, a mismatch discards stale
 	 *  intent. */
 	consume(showId: string, episode: number): number | null {
-		void showId;
 		const pending = this.pending;
 		this.pending = null;
-		return pending !== null && pending.episode === episode ? pending.at : null;
+		return pending !== null && pending.showId === showId && pending.episode === episode
+			? pending.at
+			: null;
 	}
 }
