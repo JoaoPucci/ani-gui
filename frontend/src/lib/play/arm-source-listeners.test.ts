@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { armSourceScopedListeners } from './arm-source-listeners';
 import { recoveryResume } from './resume-after-recovery';
 import { stallMachine } from './stall-machine';
-import { replaceSourceScopedCleanup } from './global-video';
+import { flushSourceScopedCleanups } from './global-video';
 
 const hostSlow = {
 	err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' } as const,
@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	replaceSourceScopedCleanup(null);
+	flushSourceScopedCleanups();
 	stallMachine.reset();
 });
 
@@ -58,10 +58,13 @@ describe('armSourceScopedListeners', () => {
 		expect(stallMachine.failure(hostSlow)).toEqual({ act: 'nudge', toast: true });
 	});
 
-	it('arming the next source removes the previous listeners', () => {
+	it('the next attach flushes the previous listeners away', () => {
+		// The attach path flushes the source-scoped cleanups before
+		// arming its own — the registry is additive now, because a
+		// source owns more than one cleanup (its engine too).
 		recoveryResume.capture('show-a', 6, 432.5);
 		armSourceScopedListeners({ video, showId: 'show-a', episode: 6 });
-		// The next source attaches before the first's metadata landed.
+		flushSourceScopedCleanups();
 		armSourceScopedListeners({ video, showId: 'show-a', episode: 7 });
 		video.currentTime = 0;
 		video.dispatchEvent(new Event('loadedmetadata'));

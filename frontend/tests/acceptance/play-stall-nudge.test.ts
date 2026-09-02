@@ -57,7 +57,10 @@ vi.mock('hls.js', () => {
 		startLoad() {
 			this.startLoadCalls += 1;
 		}
-		destroy() {}
+		destroyed = false;
+		destroy() {
+			this.destroyed = true;
+		}
 		emit(event: string, data: unknown) {
 			for (const h of this.handlers[event] ?? []) h(event, data);
 		}
@@ -72,6 +75,7 @@ import { getGlobalVideo } from '../../src/lib/play/global-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
+	destroyed: boolean;
 	emit: (event: string, data: unknown) => void;
 };
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
@@ -336,6 +340,23 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		expect(hls.startLoadCalls).toBe(1);
 		await new Promise((r) => setTimeout(r, 100));
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
+	it("a remount retires the previous mount's engine with its source", async () => {
+		// The engine handle lives in the component, so after an
+		// unmount + remount the old engine was nobody's to destroy —
+		// and its late FRAG_LOADED / error callbacks kept feeding the
+		// shared machine for a source no longer attached. Destruction
+		// rides the source-scoped lifecycle now: the remount's attach
+		// retires the old engine.
+		const old = await mountPlayingHls();
+		unmount(app!);
+		app = null;
+
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-9', episode: '2', kind: 'hls' });
+		app = mount(PlayPage, { target });
+		await until(() => hlsInstances().length > 1, 'the new engine to attach');
+		expect(old.destroyed).toBe(true);
 	});
 
 	it('an exhausted burst escalates to the real recovery', async () => {

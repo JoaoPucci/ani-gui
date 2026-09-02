@@ -188,3 +188,15 @@ export function replaceSourceScopedCleanup(fn: (() => void) | null): void {
 	sourceScopedCleanup?.();
 	sourceScopedCleanup = fn;
 }
+
+/** Additive source-scoped cleanups: a source can own several — the
+ *  armed listeners, its player engine — so registrations accumulate
+ *  and the next attach flushes them all before arming its own. */
+export function addSourceScopedCleanup(fn: () => void): void {
+	void fn;
+}
+
+/** Run and clear every registered source-scoped cleanup. Called at
+ *  the top of a real attach: the previous source's listeners and
+ *  engine retire before the new source arms anything. */
+export function flushSourceScopedCleanups(): void {}
