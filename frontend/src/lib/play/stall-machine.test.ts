@@ -50,10 +50,14 @@ describe('HlsStallMachine', () => {
 		expect(m.failure(hostSlow)).toEqual({ act: 'recover' });
 	});
 
-	it('reset gives the next stream a fresh budget and a fresh toast', () => {
+	it('reset gives the next stream a fresh budget — and it proves itself again', () => {
 		const m = progressedMachine();
 		for (let i = 0; i < STALL_NUDGE_BUDGET; i++) m.failure(hostSlow);
 		m.reset();
+		// The fresh stream has not progressed yet: a stall on it is
+		// the startup case and recovers rather than nudging.
+		expect(m.failure(hostSlow)).toEqual({ act: 'recover' });
+		m.progressed();
 		expect(m.failure(hostSlow)).toEqual({ act: 'nudge', toast: true });
 	});
 
