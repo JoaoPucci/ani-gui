@@ -89,7 +89,6 @@
 		attachGlobalVideoTo,
 		detachGlobalVideo,
 		getGlobalVideo,
-		replaceSourceScopedCleanup,
 		setCurrentSession
 	} from '$lib/play/global-video';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
@@ -100,6 +99,7 @@
 		stallNudgeToast,
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
+	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -1489,34 +1489,10 @@
 			return;
 		}
 
-		// Source-scoped listeners: they belong to the stream attaching
-		// here, which outlives this component in PiP — so their removal
-		// keys on the NEXT source attaching (the registry runs the
-		// previous registration), never on route unmount. That is also
-		// what cancels a superseded attach's pending seek.
-		//
-		// A recovery landing seeks back to where playback stalled once
-		// the fresh session's metadata is in; any other attach consumes
-		// nothing (the module clears itself either way). Progress marks
-		// the machine once playback crosses the running threshold and
-		// keeps marking harmlessly after.
-		const resumeAt = recoveryResume.consume(id, episodeNum);
-		const el = videoEl;
-		const markProgress = () => {
-			if (el.currentTime >= 1) stallMachine.progressed();
-		};
-		const seekBack =
-			resumeAt !== null
-				? () => {
-						el.currentTime = resumeAt;
-					}
-				: null;
-		replaceSourceScopedCleanup(() => {
-			el.removeEventListener('timeupdate', markProgress);
-			if (seekBack) el.removeEventListener('loadedmetadata', seekBack);
-		});
-		el.addEventListener('timeupdate', markProgress);
-		if (seekBack) el.addEventListener('loadedmetadata', seekBack, { once: true });
+		// Source-scoped listeners — the resume seek and the progress
+		// marking — belong to the stream attaching here, which outlives
+		// this component in PiP; the module owns the arrangement.
+		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
 		// A new media source is attaching — whatever burst state the
 		// previous stream accumulated is its own. Runs on every real
 		// re-attach, so history and direct-URL navigation get fresh

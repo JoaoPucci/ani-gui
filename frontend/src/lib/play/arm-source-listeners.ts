@@ -18,8 +18,21 @@ export function armSourceScopedListeners(input: {
 	showId: string;
 	episode: number;
 }): void {
-	void input;
-	void recoveryResume;
-	void stallMachine;
-	void replaceSourceScopedCleanup;
+	const { video } = input;
+	const resumeAt = recoveryResume.consume(input.showId, input.episode);
+	const markProgress = () => {
+		if (video.currentTime >= 1) stallMachine.progressed();
+	};
+	const seekBack =
+		resumeAt !== null
+			? () => {
+					video.currentTime = resumeAt;
+				}
+			: null;
+	replaceSourceScopedCleanup(() => {
+		video.removeEventListener('timeupdate', markProgress);
+		if (seekBack) video.removeEventListener('loadedmetadata', seekBack);
+	});
+	video.addEventListener('timeupdate', markProgress);
+	if (seekBack) video.addEventListener('loadedmetadata', seekBack, { once: true });
 }
