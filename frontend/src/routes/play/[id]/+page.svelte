@@ -1501,7 +1501,7 @@
 		// is cancelled by this effect's cleanup: an attach superseded
 		// before its metadata lands must not seek its position into
 		// whatever attaches next on the shared singleton.
-		const resumeAt = recoveryResume.consume(episodeNum);
+		const resumeAt = recoveryResume.consume(id, episodeNum);
 		let cancelResumeSeek: (() => void) | null = null;
 		if (videoEl && resumeAt !== null) {
 			const el = videoEl;
@@ -2004,7 +2004,7 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(episodeNum, videoEl?.currentTime ?? 0);
+		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);

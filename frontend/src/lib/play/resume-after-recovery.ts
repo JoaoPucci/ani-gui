@@ -22,14 +22,17 @@ export class RecoveryResume {
 	private pending: { episode: number; at: number } | null = null;
 
 	/** Remember where playback stood when a recovery began. */
-	capture(episode: number, currentTime: number): void {
+	capture(showId: string, episode: number, currentTime: number): void {
+		void showId;
 		this.pending = currentTime >= MIN_CARRY_SECONDS ? { episode, at: currentTime } : null;
 	}
 
-	/** The position the media attach for `episode` should seek to, or
-	 *  null. Consuming clears the capture either way: a match hands
-	 *  the position over once, a mismatch discards stale intent. */
-	consume(episode: number): number | null {
+	/** The position the media attach for `episode` of `showId` should
+	 *  seek to, or null. Consuming clears the capture either way: a
+	 *  match hands the position over once, a mismatch discards stale
+	 *  intent. */
+	consume(showId: string, episode: number): number | null {
+		void showId;
 		const pending = this.pending;
 		this.pending = null;
 		return pending !== null && pending.episode === episode ? pending.at : null;
