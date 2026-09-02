@@ -174,3 +174,62 @@ describe('HlsStallMachine — progress is remembered, not derived', () => {
 		).toEqual({ act: 'nudge', toast: true });
 	});
 });
+
+describe('HlsStallMachine — no-fragment failures find their rendition', () => {
+	it('a side-playlist timeout charges its own budget, not main', () => {
+		// audioTrackLoadTimeOut carries no frag; attributing it to main
+		// lets normally arriving video fragments clear the budget while
+		// the audio playlist stays unavailable — the failures never
+		// escalate. The details name the rendition; use it.
+		const m = new HlsStallMachine();
+		m.progressed();
+		const audioPlaylistStall = {
+			err: {
+				source: 'hls',
+				type: 'networkError',
+				details: 'audioTrackLoadTimeOut'
+			} as const,
+			hasAutoRetried: false
+		};
+		for (let i = 0; i < STALL_NUDGE_BUDGET; i++) {
+			m.failure(audioPlaylistStall);
+			m.fragmentLoaded({ frag: { type: 'main' } });
+		}
+		expect(m.failure(audioPlaylistStall)).toEqual({ act: 'recover' });
+	});
+
+	it('subtitle playlist failures charge the subtitle budget', () => {
+		const m = new HlsStallMachine();
+		m.progressed();
+		const subStall = {
+			err: {
+				source: 'hls',
+				type: 'networkError',
+				details: 'subtitleTrackLoadTimeOut'
+			} as const,
+			hasAutoRetried: false
+		};
+		m.failure(subStall);
+		// The subtitle playlist recovering ends ITS burst.
+		m.fragmentLoaded({ frag: { type: 'subtitle' } });
+		expect(m.failure(subStall)).toEqual({ act: 'nudge', toast: true });
+	});
+
+	it('an explicit fragment rendition still wins over the details', () => {
+		const m = new HlsStallMachine();
+		m.progressed();
+		m.failure({
+			err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' },
+			hasAutoRetried: false,
+			rendition: 'audio'
+		});
+		m.fragmentLoaded({ frag: { type: 'audio' } });
+		expect(
+			m.failure({
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' },
+				hasAutoRetried: false,
+				rendition: 'audio'
+			})
+		).toEqual({ act: 'nudge', toast: true });
+	});
+});
