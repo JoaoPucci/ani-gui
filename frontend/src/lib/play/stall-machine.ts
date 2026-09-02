@@ -32,6 +32,7 @@ export class HlsStallMachine {
 		err: StreamFailure;
 		hasAutoRetried: boolean;
 		playbackProgressed: boolean;
+		rendition?: string;
 	}): StallAction {
 		const response = decideStreamFailureResponse({ ...input, nudgesUsed: this.nudgesUsed });
 		if (response === 'nudge') {

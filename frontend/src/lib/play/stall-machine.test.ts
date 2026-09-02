@@ -69,3 +69,51 @@ describe('HlsStallMachine', () => {
 		).toEqual({ act: 'surface' });
 	});
 });
+
+describe('HlsStallMachine — rendition correlation', () => {
+	const audioStall = {
+		err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' } as const,
+		hasAutoRetried: false,
+		playbackProgressed: true,
+		rendition: 'audio'
+	};
+
+	it('main fragments do not end an audio-rendition stall', () => {
+		// The inverse of the side-rendition case: video keeps landing
+		// while the audio rendition times out. Those main fragments
+		// prove nothing about the stalled rendition — resetting on
+		// them would keep the audio burst from ever escalating.
+		const m = new HlsStallMachine();
+		for (let i = 0; i < STALL_NUDGE_BUDGET; i++) {
+			m.failure(audioStall);
+			m.fragmentLoaded({ frag: { type: 'main' } });
+		}
+		expect(m.failure(audioStall)).toEqual({ act: 'recover' });
+	});
+
+	it('the stalled rendition landing ends its own burst', () => {
+		const m = new HlsStallMachine();
+		m.failure(audioStall);
+		m.fragmentLoaded({ frag: { type: 'audio' } });
+		expect(m.failure(audioStall)).toEqual({ act: 'nudge', toast: true });
+	});
+
+	it('a failure without rendition data stalls the main rendition', () => {
+		// hls.js fatals do not always carry a frag; the default keeps
+		// the common case — the video rendition — correct.
+		const m = new HlsStallMachine();
+		m.failure({
+			err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' },
+			hasAutoRetried: false,
+			playbackProgressed: true
+		});
+		m.fragmentLoaded({ frag: { type: 'main' } });
+		expect(
+			m.failure({
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' },
+				hasAutoRetried: false,
+				playbackProgressed: true
+			})
+		).toEqual({ act: 'nudge', toast: true });
+	});
+});
