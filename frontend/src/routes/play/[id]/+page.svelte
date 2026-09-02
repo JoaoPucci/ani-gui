@@ -1511,6 +1511,11 @@
 			el.addEventListener('loadedmetadata', seekBack, { once: true });
 			cancelResumeSeek = () => el.removeEventListener('loadedmetadata', seekBack);
 		}
+		// A new media source is attaching — whatever burst state the
+		// previous stream accumulated is its own. Runs on every real
+		// re-attach, so history and direct-URL navigation get fresh
+		// budgets exactly like switchToEpisode and the recovery flow.
+		stallMachine.reset();
 		teardown();
 		playerError = null;
 
