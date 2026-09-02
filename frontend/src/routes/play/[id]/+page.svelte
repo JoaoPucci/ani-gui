@@ -1464,22 +1464,15 @@
 		// playback from 0 and tear down a working HLS pipeline for
 		// no reason. We still update the session pointer so the
 		// PiP-leave navigation knows where to land next time.
-		// A recovery landing seeks back to where playback stalled once
-		// the fresh session's metadata is in; any other attach consumes
-		// nothing (the module clears itself either way). The listener
-		// is cancelled by this effect's cleanup: an attach superseded
-		// before its metadata lands must not seek its position into
-		// whatever attaches next on the shared singleton.
-		const resumeAt = recoveryResume.consume(episodeNum);
-		let cancelResumeSeek: (() => void) | null = null;
-		if (videoEl && resumeAt !== null) {
-			const el = videoEl;
-			const seekBack = () => {
-				el.currentTime = resumeAt;
-			};
-			el.addEventListener('loadedmetadata', seekBack, { once: true });
-			cancelResumeSeek = () => el.removeEventListener('loadedmetadata', seekBack);
-		}
+		//
+		// Checked BEFORE the resume-seek arms: an already-loaded
+		// source keeps playing and may never emit loadedmetadata
+		// again, and this path returns without the effect's cleanup —
+		// a listener armed here would survive until an unrelated
+		// later attach and seek it to the old position. It must also
+		// not consume the pending capture: a recovery in flight lands
+		// on a NEW session URL, and that landing is what the capture
+		// is for.
 		const same = videoEl.src === mediaUrl || videoEl.currentSrc === mediaUrl;
 		if (same) {
 			setCurrentSession({
@@ -1500,6 +1493,23 @@
 			// frozen frame.
 			if (videoEl.paused) void videoEl.play().catch(() => {});
 			return;
+		}
+
+		// A recovery landing seeks back to where playback stalled once
+		// the fresh session's metadata is in; any other attach consumes
+		// nothing (the module clears itself either way). The listener
+		// is cancelled by this effect's cleanup: an attach superseded
+		// before its metadata lands must not seek its position into
+		// whatever attaches next on the shared singleton.
+		const resumeAt = recoveryResume.consume(episodeNum);
+		let cancelResumeSeek: (() => void) | null = null;
+		if (videoEl && resumeAt !== null) {
+			const el = videoEl;
+			const seekBack = () => {
+				el.currentTime = resumeAt;
+			};
+			el.addEventListener('loadedmetadata', seekBack, { once: true });
+			cancelResumeSeek = () => el.removeEventListener('loadedmetadata', seekBack);
 		}
 		teardown();
 		playerError = null;
