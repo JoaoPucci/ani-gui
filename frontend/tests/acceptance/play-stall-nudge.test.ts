@@ -173,7 +173,7 @@ function useShowHandlers() {
 
 const HOST_SLOW_FATAL = { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' };
 
-async function mountPlayingHls(): Promise<FakeHlsT> {
+async function mountPlayingHls(opts: { proven?: boolean } = {}): Promise<FakeHlsT> {
 	useShowHandlers();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
@@ -184,11 +184,13 @@ async function mountPlayingHls(): Promise<FakeHlsT> {
 	);
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
-	// Minutes into a working stream — the URL has proven itself. The
-	// page learns of progress from timeupdate, which happy-dom never
-	// fires on its own.
-	video.currentTime = 300;
-	video.dispatchEvent(new Event('timeupdate'));
+	if (opts.proven !== false) {
+		// Minutes into a working stream — the URL has proven itself.
+		// The page learns of progress from timeupdate, which happy-dom
+		// never fires on its own.
+		video.currentTime = 300;
+		video.dispatchEvent(new Event('timeupdate'));
+	}
 	return hlsInstances()[hlsInstances().length - 1];
 }
 
@@ -303,6 +305,33 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		video.dispatchEvent(new Event('timeupdate'));
 		const streamsBefore = FakeEventSource.instances.length;
 
+		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
+		expect(hls.startLoadCalls).toBe(1);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(FakeEventSource.instances.length).toBe(streamsBefore);
+	});
+
+	it('progress earned off-route still makes a stall nudge', async () => {
+		// The viewer leaves for PiP before playback crosses the running
+		// threshold; the route unmounts but the singleton keeps
+		// playing. Minutes later the host stalls. Progress tracking
+		// rides the SOURCE, not the page, so the surviving player
+		// callbacks see a proven stream and nudge in place instead of
+		// taking the disruptive re-resolve.
+		const hls = await mountPlayingHls({ proven: false });
+		const video = getGlobalVideo();
+		// Not yet proven at unmount time.
+		video.currentTime = 0.2;
+		video.dispatchEvent(new Event('timeupdate'));
+		unmount(app!);
+		app = null;
+
+		// Off-route playback runs for minutes…
+		video.currentTime = 300;
+		video.dispatchEvent(new Event('timeupdate'));
+		const streamsBefore = FakeEventSource.instances.length;
+
+		// …then the host stalls.
 		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(1);
 		await new Promise((r) => setTimeout(r, 100));

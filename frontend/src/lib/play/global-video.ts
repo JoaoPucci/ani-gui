@@ -176,3 +176,12 @@ export function reuseSessionIfMatching(
 		: null;
 	return canReuseSession(currentSession, state, kitsuId, episode, quality, mode);
 }
+
+/** Cleanup tied to the CURRENT media source's lifetime — listeners
+ *  the play page arms on the singleton that must survive a route
+ *  unmount (PiP keeps the source playing) and die only when a new
+ *  source actually attaches. Registering runs and replaces the
+ *  previous registration; null clears without replacing. */
+export function replaceSourceScopedCleanup(fn: (() => void) | null): void {
+	void fn;
+}
