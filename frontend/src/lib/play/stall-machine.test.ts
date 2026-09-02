@@ -117,3 +117,38 @@ describe('HlsStallMachine — rendition correlation', () => {
 		).toEqual({ act: 'nudge', toast: true });
 	});
 });
+
+describe('HlsStallMachine — budgets are per rendition', () => {
+	const stall = (rendition: string) => ({
+		err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' } as const,
+		hasAutoRetried: false,
+		playbackProgressed: true,
+		rendition
+	});
+
+	it("one rendition's success cannot replenish another's budget", () => {
+		// Audio and main failures interleave; the main rendition
+		// recovering clears MAIN's burst only. The audio rendition's
+		// accumulated failures survive, so its budget still exhausts
+		// and escalates.
+		const m = new HlsStallMachine();
+		expect(m.failure(stall('audio'))).toEqual({ act: 'nudge', toast: true });
+		expect(m.failure(stall('main'))).toEqual({ act: 'nudge', toast: false });
+		m.fragmentLoaded({ frag: { type: 'main' } });
+		expect(m.failure(stall('audio'))).toEqual({ act: 'nudge', toast: false });
+		expect(m.failure(stall('audio'))).toEqual({ act: 'nudge', toast: false });
+		expect(m.failure(stall('audio'))).toEqual({ act: 'recover' });
+	});
+
+	it('the toast marks the first active stall, not every rendition', () => {
+		// One "host is slow" notice per trouble window: a second
+		// rendition joining an active stall stays silent, and the
+		// toast returns once every burst has cleared.
+		const m = new HlsStallMachine();
+		expect(m.failure(stall('audio'))).toEqual({ act: 'nudge', toast: true });
+		expect(m.failure(stall('main'))).toEqual({ act: 'nudge', toast: false });
+		m.fragmentLoaded({ frag: { type: 'main' } });
+		m.fragmentLoaded({ frag: { type: 'audio' } });
+		expect(m.failure(stall('main'))).toEqual({ act: 'nudge', toast: true });
+	});
+});
