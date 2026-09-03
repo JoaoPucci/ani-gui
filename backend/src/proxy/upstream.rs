@@ -27,31 +27,17 @@ pub const UA: &str =
 /// # Errors
 /// Returns [`AniError::Network`] if the underlying TLS stack cannot be
 /// initialized (extremely rare).
-/// Whether the proxy's upstream client is pinned to HTTP/1.1.
-///
-/// The provider's media edge serves segments over HTTP/2 in single
-/// 64 KiB flow-control windows and then stalls — one window per
-/// ~15s, ~3 KB/s, measured identically across IPs (VPN on or off),
-/// TLS fingerprints (plain curl and the impersonating build) and
-/// header sets, while the same segment over HTTP/1.1 flows at full
-/// speed. Players whose HTTP stacks are h1-only (mpv/ffmpeg, hence
-/// every ani-cli user on the same provider) never see it, which is
-/// why the breakage reported nowhere. reqwest negotiates h2 via
-/// ALPN by default, so the relay hit it on every segment; pinning
-/// h1 sidesteps the broken edge entirely.
-#[must_use]
-pub fn proxy_upstream_http1_only() -> bool {
-    true
-}
-
-pub fn build_client() -> Result<reqwest::Client> {
+pub fn build_client(http1_only: bool) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .user_agent(UA)
         .pool_idle_timeout(Duration::from_secs(30))
         .tcp_keepalive(Duration::from_secs(60))
         .timeout(Duration::from_secs(120))
         .gzip(true);
-    if proxy_upstream_http1_only() {
+    // The protocol policy lives in Config::proxy_http1_only (default
+    // pinned to h1 — see its doc for the measured h2 flow-control
+    // wedge); the builder applies what it is handed.
+    if http1_only {
         builder = builder.http1_only();
     }
     builder.build().map_err(|_| AniError::Network)
@@ -258,21 +244,13 @@ pub async fn fetch_streaming(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn the_upstream_client_pins_http1() {
-        // The provider's h2 edge trickles segments at one 64 KiB
-        // flow-control window per ~15s; h1 streams at full speed.
-        // The policy is a named function so this stays assertable —
-        // build_client applies it to the builder.
-        assert!(super::proxy_upstream_http1_only());
-    }
 
     use super::*;
     use crate::proxy::token::MediaKind;
 
     #[test]
     fn build_client_succeeds() {
-        let _c = build_client().expect("client builds");
+        let _c = build_client(true).expect("client builds");
     }
 
     #[test]
@@ -298,7 +276,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/abc/sub/1", server.uri())).unwrap();
         let kind = classify_via_head(&client, &url, "https://allmanga.to")
             .await
@@ -315,7 +293,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
         let kind = classify_via_head(&client, &url, "https://allmanga.to")
             .await
@@ -340,7 +318,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/videos/x/sub/1", server.uri())).unwrap();
         let kind = classify_via_head(&client, &url, "https://allmanga.to")
             .await
@@ -360,7 +338,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/playlist", server.uri())).unwrap();
         let kind = classify_via_head(&client, &url, "https://allmanga.to")
             .await
@@ -382,7 +360,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/master.m3u8", server.uri())).unwrap();
         let (body, _ct) = fetch_text(&client, &url, "https://allmanga.to")
             .await
@@ -402,7 +380,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/anything", server.uri())).unwrap();
         let err = fetch_text(&client, &url, "https://wrong.example")
             .await
@@ -418,7 +396,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = build_client().unwrap();
+        let client = build_client(true).unwrap();
         let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
         let err = fetch_text(&client, &url, "https://allmanga.to")
             .await

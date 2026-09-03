@@ -99,6 +99,17 @@ pub struct Config {
     /// than clearing them: opting back in revives whatever is still
     /// inside the TTL.
     pub cache_resolutions: bool,
+    /// When `true` (the default), the stream proxy's upstream client
+    /// speaks HTTP/1.1 only. The provider's media edge has served
+    /// segments over HTTP/2 in single 64 KiB flow-control windows
+    /// with ~15s stalls between them — unwatchable — while the same
+    /// segments over HTTP/1.1 flowed at full speed; h1 is also the
+    /// only protocol ffmpeg/mpv-based players speak, so it is the
+    /// continuously-exercised path. Config-file-only escape hatch
+    /// (no Settings UI): flip to `false` in config.toml if the edge
+    /// ever serves h1 worse than h2. Read at backend startup — a
+    /// flip needs an app restart.
+    pub proxy_http1_only: bool,
     /// Which connected tracker is the "primary" one — drives the
     /// topbar chip/avatar and the Watch Later rail's lead provider
     /// when more than one account is connected. Empty string (the
@@ -126,6 +137,7 @@ impl Default for Config {
             image_cache_cap_mb: 500,
             auto_play_next: false,
             cache_resolutions: false,
+            proxy_http1_only: false,
             download_bottom_bar_enabled: true,
             auto_skip_op: false,
             auto_skip_ed: false,

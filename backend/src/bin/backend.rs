@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use ani_gui::{api, app, proxy, AniError};
+use ani_gui::{api, app, config, proxy, AniError};
 
 fn main() -> std::process::ExitCode {
     // Logging — RUST_LOG honoured, default keeps the noise down.
@@ -56,7 +56,12 @@ fn main() -> std::process::ExitCode {
 
     // Bind, build state, spawn server, hold the runtime.
     let result = runtime.block_on(async {
-        let proxy_http = proxy::upstream::build_client()?;
+        // The proxy's protocol policy comes from the user's config,
+        // read once at boot (the escape hatch needs a restart).
+        let boot_config = config::paths::config_file()
+            .map(|p| config::read_config(&p).unwrap_or_default())
+            .unwrap_or_default();
+        let proxy_http = proxy::upstream::build_client(boot_config.proxy_http1_only)?;
         let (addr, listener) = proxy::bind_loopback(0).await?;
         let origin = proxy::ProxyOrigin::new(&addr.ip().to_string(), addr.port());
         let state = Arc::new(app::AppState::build(

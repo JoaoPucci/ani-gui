@@ -90,6 +90,34 @@ fn cache_resolutions_absent_in_old_config_decodes_as_false() {
 }
 
 #[test]
+fn proxy_http1_only_defaults_to_true() {
+    // The pin is the default: the provider's h2 edge has wedged its
+    // flow-control windows (64 KiB per ~15s stall) while h1 flowed
+    // at full speed, and h1 is the path every ffmpeg/mpv player
+    // exercises continuously. The field exists as the config-file
+    // escape hatch for the mirror scenario, not as an opt-in.
+    assert!(Config::default().proxy_http1_only);
+}
+
+#[test]
+fn proxy_http1_only_round_trips_through_toml() {
+    let c = Config {
+        proxy_http1_only: false,
+        ..Config::default()
+    };
+    let s = toml::to_string(&c).unwrap();
+    let parsed: Config = toml::from_str(&s).unwrap();
+    assert!(!parsed.proxy_http1_only);
+}
+
+#[test]
+fn proxy_http1_only_absent_in_old_config_decodes_as_true() {
+    let body = "mode = \"sub\"\nquality = \"best\"\n";
+    let cfg: Config = toml::from_str(body).unwrap();
+    assert!(cfg.proxy_http1_only);
+}
+
+#[test]
 fn auto_play_next_round_trips_through_toml() {
     let c = Config {
         auto_play_next: true,
