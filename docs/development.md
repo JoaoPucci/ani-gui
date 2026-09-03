@@ -80,7 +80,7 @@ the root:
 # 1 — build the Rust sidecar (one-shot per Rust change)
 (cd backend && cargo build --bin ani-gui-backend)
 
-# 2 — once per checkout, Linux only: stage the bundled deps
+# 2 — once per checkout, x86_64 Linux only: stage the bundled deps
 (cd electron && pnpm run fetch:linux-deps)
 
 # 3 — Vite dev server with HMR (keep running, own terminal)
@@ -99,9 +99,11 @@ impersonating transport (the resolver's plain-`curl` fallback is
 rejected by the provider); if you stage while Electron is already
 running, restart it.
 
-Do not run step 2 on macOS: the fetcher downloads Linux builds, and
-the staged directory outranks PATH, so the ELF binaries would shadow
-any usable transport a macOS host has.
+Do not run step 2 anywhere else — not on macOS, and not on other
+Linux architectures: the fetcher downloads x86_64 Linux builds (the
+same architecture every package ships for), and the staged directory
+outranks PATH, so on any other host the incompatible binaries would
+shadow a usable transport the host actually has.
 
 Without the staging step the app still launches and browses metadata;
 only stream resolution and downloads need the staged tools.
