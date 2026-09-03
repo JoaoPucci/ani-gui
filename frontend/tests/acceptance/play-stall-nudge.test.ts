@@ -44,7 +44,9 @@ vi.mock('hls.js', () => {
 		handlers: Record<string, Handler[]> = {};
 		startLoadCalls = 0;
 		loadedSource: string | null = null;
-		constructor() {
+		config: unknown;
+		constructor(config?: unknown) {
+			this.config = config;
 			FakeHls.instances.push(this);
 		}
 		loadSource(url: string) {
@@ -76,6 +78,7 @@ import { getGlobalVideo } from '../../src/lib/play/global-video';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
 	destroyed: boolean;
+	config: unknown;
 	emit: (event: string, data: unknown) => void;
 };
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
@@ -357,6 +360,20 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		app = mount(PlayPage, { target });
 		await until(() => hlsInstances().length > 1, 'the new engine to attach');
 		expect(old.destroyed).toBe(true);
+	});
+
+	it('the engine is constructed with the fast-fatal load policy', async () => {
+		// The engine's default patience — two minutes per fragment
+		// attempt across several retries — put every stall surface
+		// minutes behind a black screen. The page hands it the
+		// override at construction.
+		const hls = await mountPlayingHls();
+		expect(hls.config).toMatchObject({
+			lowLatencyMode: false,
+			fragLoadPolicy: {
+				default: { maxLoadTimeMs: 15000, maxTimeToFirstByte: 10000 }
+			}
+		});
 	});
 
 	it('an exhausted burst escalates to the real recovery', async () => {

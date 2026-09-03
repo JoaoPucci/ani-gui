@@ -26,14 +26,16 @@ describe('stallRecoveryToast', () => {
 	it('names the stall when the host is struggling', () => {
 		expect(stallRecoveryToast('hls fragLoadTimeOut')).toEqual({
 			kind: 'info',
-			message: m.play_stall_toast_host_slow()
+			message: m.play_stall_toast_host_slow(),
+			duration: 8000
 		});
 	});
 
 	it('names the expired link otherwise', () => {
 		expect(stallRecoveryToast('video MEDIA_ERR_NETWORK (net err)')).toEqual({
 			kind: 'info',
-			message: m.play_stall_toast_link_stale()
+			message: m.play_stall_toast_link_stale(),
+			duration: 8000
 		});
 	});
 
@@ -77,11 +79,14 @@ describe('exhaustedStallOverlayMessage', () => {
 
 describe('stallNudgeToast', () => {
 	it('says the host is slow and the SAME stream is being retried', () => {
+		// Doubled duration on every stall toast: a 4s flash over a
+		// black frame is a signal nobody sees.
 		// The recovery toasts promise a fresh link; a nudge retries
 		// the stream it already has, so that wording would lie.
 		expect(stallNudgeToast()).toEqual({
 			kind: 'info',
-			message: m.play_stall_toast_nudge()
+			message: m.play_stall_toast_nudge(),
+			duration: 8000
 		});
 	});
 });
