@@ -8,10 +8,14 @@ describe('HLS_STALL_LOAD_POLICY', () => {
 		// engine default of two minutes per attempt across several
 		// retries, which is the minutes-long black screen observed on
 		// a crawling host.
+		// maxTimeToFirstByteMs is hls.js 1.6's actual schema key — an
+		// earlier revision wrote maxTimeToFirstByte, which an untyped
+		// policy object accepted silently and the engine ignored, so
+		// the first-byte bound was never configured.
 		expect(HLS_STALL_LOAD_POLICY).toMatchObject({
 			fragLoadPolicy: {
 				default: {
-					maxTimeToFirstByte: 10000,
+					maxTimeToFirstByteMs: 10000,
 					maxLoadTimeMs: 15000,
 					timeoutRetry: { maxNumRetry: 1, retryDelayMs: 0, maxRetryDelayMs: 0 }
 				}

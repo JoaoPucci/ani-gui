@@ -371,7 +371,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		expect(hls.config).toMatchObject({
 			lowLatencyMode: false,
 			fragLoadPolicy: {
-				default: { maxLoadTimeMs: 15000, maxTimeToFirstByte: 10000 }
+				default: { maxLoadTimeMs: 15000, maxTimeToFirstByteMs: 10000 }
 			}
 		});
 	});
