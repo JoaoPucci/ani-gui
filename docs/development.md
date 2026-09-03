@@ -71,32 +71,35 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-Three terminals:
+In order — the two one-shot steps first, then the two processes that
+stay running:
 
 ```sh
-# Terminal 1 — Vite dev server with HMR
-cd frontend && pnpm dev          # http://localhost:5173
-
-# Terminal 2 — build the Rust sidecar (one-shot per Rust change)
+# 1 — build the Rust sidecar (one-shot per Rust change)
 cd backend && cargo build --bin ani-gui-backend
 
-# Terminal 3 — Electron shell (spawns the sidecar, points at Vite)
+# 2 — once per checkout, Linux only: stage the bundled deps
+cd electron && pnpm run fetch:linux-deps
+
+# 3 — Vite dev server with HMR (keep running)
+cd frontend && pnpm dev          # http://localhost:5173
+
+# 4 — Electron shell (spawns the sidecar, points at Vite; keep running)
 cd electron && pnpm dev
 ```
 
-Once per checkout **on Linux, after the first backend build**, stage
-the bundled deps next to the dev binary — the fetcher mirrors into
+Step 2's position is load-bearing on a fresh checkout: it must run
+after the first build, because the fetcher mirrors into
 `backend/target/{debug,release}/bin` only for profile directories
-that already exist, and playback needs the impersonating transport
-(the resolver's plain-`curl` fallback is rejected by the provider):
+that already exist — and before Electron, because the backend
+snapshots that directory once at startup. Playback needs the staged
+impersonating transport (the resolver's plain-`curl` fallback is
+rejected by the provider); if you stage while Electron is already
+running, restart it.
 
-```sh
-cd electron && pnpm run fetch:linux-deps   # Linux only — downloads Linux builds
-```
-
-Do not run it on macOS: the staged directory outranks PATH, so the
-Linux ELF binaries it downloads would shadow any usable transport a
-macOS host has.
+Do not run step 2 on macOS: the fetcher downloads Linux builds, and
+the staged directory outranks PATH, so the ELF binaries would shadow
+any usable transport a macOS host has.
 
 Without the staging step the app still launches and browses metadata;
 only stream resolution and downloads need the staged tools.
