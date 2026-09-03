@@ -71,7 +71,15 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-Three terminals:
+Once per checkout, stage the bundled deps next to the dev binary —
+playback needs the impersonating transport, and the resolver's plain
+`curl` fallback is rejected by the provider:
+
+```sh
+cd electron && pnpm run fetch:linux-deps   # stages into backend/target/{debug,release}/bin
+```
+
+Then three terminals:
 
 ```sh
 # Terminal 1 — Vite dev server with HMR
@@ -83,6 +91,9 @@ cd backend && cargo build --bin ani-gui-backend
 # Terminal 3 — Electron shell (spawns the sidecar, points at Vite)
 cd electron && pnpm dev
 ```
+
+Without the staging step the app still launches and browses metadata;
+only stream resolution and downloads need the staged tools.
 
 The Electron main process resolves the backend binary (`backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout `ANI_GUI_LISTENING <url>` handshake to discover the loopback port. The renderer reads that URL from `window.aniGui.apiBase` (set by the Electron preload script) and uses it for every `fetch()` call.
 
@@ -108,12 +119,15 @@ matching host and uploaded to the GitHub release by hand:
 
 The `electron-builder` config declares no macOS target; nothing
 produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
-Linux and macOS but not on Windows: pnpm executes package scripts
-through `cmd.exe` there regardless of the invoking terminal, and the
-Electron `dev` script sets environment variables with a POSIX prefix.
-`docs/deferred-work.md` tracks making it shell-independent; the
-packaging path is the verified Windows flow. No macOS artifact is
-built or shipped.
+Linux, where `fetch:linux-deps` stages the transport playback needs.
+On macOS the app launches and browses metadata, but no fetcher
+stages a transport there, so stream resolution falls back to a plain
+`curl` the provider rejects. On Windows the loop does not start at
+all: pnpm executes package scripts through `cmd.exe` regardless of
+the invoking terminal, and the Electron `dev` script sets
+environment variables with a POSIX prefix. `docs/deferred-work.md`
+tracks making it shell-independent; the packaging path is the
+verified Windows flow. No macOS artifact is built or shipped.
 
 ## Logging and debugging
 

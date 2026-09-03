@@ -63,7 +63,7 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 
 ## Build from source
 
-Tested on Linux. The dev loop (steps 5–6) works the same on macOS. It does not currently run on Windows: pnpm executes package scripts through `cmd.exe` there, and the Electron `dev` script sets environment variables with a POSIX prefix — [`docs/deferred-work.md`](./docs/deferred-work.md) tracks making it shell-independent. The packaging scripts (step 7) build per-host artifacts and are the verified Windows flow — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer. There is no macOS packaging target yet.
+Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metadata, but playback needs an impersonating transport and no fetcher stages one there. It does not currently run on Windows: pnpm executes package scripts through `cmd.exe` there, and the Electron `dev` script sets environment variables with a POSIX prefix — [`docs/deferred-work.md`](./docs/deferred-work.md) tracks making it shell-independent. The packaging scripts (step 7) build per-host artifacts and are the verified Windows flow — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer. There is no macOS packaging target yet.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -87,9 +87,10 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS. It does not
    (cd frontend && pnpm install)
    (cd electron && pnpm install)
    ```
-5. **Build the backend binary** (required before the first run, and after every Rust change):
+5. **Build the backend binary** (required before the first run, and after every Rust change), and stage the bundled tools next to it (once per checkout — playback needs the impersonating transport):
    ```sh
    cd backend && cargo build --bin ani-gui-backend
+   (cd ../electron && pnpm run fetch:linux-deps)
    ```
 6. **Run the dev app** — two terminals, started in this order:
    ```sh
