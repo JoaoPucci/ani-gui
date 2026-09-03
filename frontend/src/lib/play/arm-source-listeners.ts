@@ -21,8 +21,11 @@ export function armSourceScopedListeners(input: {
 }): void {
 	const { video } = input;
 	const resumeAt = recoveryResume.consume(input.showId, input.episode);
+	// Progress means frames actually rendered — the `playing` event —
+	// never a bare timeupdate: the resume seek below emits one at the
+	// old timestamp before the fresh source has delivered anything.
 	const markProgress = () => {
-		if (video.currentTime >= 1) stallMachine.progressed();
+		stallMachine.progressed();
 	};
 	const seekBack =
 		resumeAt !== null
@@ -31,9 +34,9 @@ export function armSourceScopedListeners(input: {
 				}
 			: null;
 	addSourceScopedCleanup(() => {
-		video.removeEventListener('timeupdate', markProgress);
+		video.removeEventListener('playing', markProgress);
 		if (seekBack) video.removeEventListener('loadedmetadata', seekBack);
 	});
-	video.addEventListener('timeupdate', markProgress);
+	video.addEventListener('playing', markProgress);
 	if (seekBack) video.addEventListener('loadedmetadata', seekBack, { once: true });
 }

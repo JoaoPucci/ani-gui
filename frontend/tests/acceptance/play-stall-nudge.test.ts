@@ -193,10 +193,10 @@ async function mountPlayingHls(opts: { proven?: boolean } = {}): Promise<FakeHls
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 	if (opts.proven !== false) {
 		// Minutes into a working stream — the URL has proven itself.
-		// The page learns of progress from timeupdate, which happy-dom
-		// never fires on its own.
+		// Proof is the `playing` event (frames rendered), which
+		// happy-dom never fires on its own.
 		video.currentTime = 300;
-		video.dispatchEvent(new Event('timeupdate'));
+		video.dispatchEvent(new Event('playing'));
 	}
 	return hlsInstances()[hlsInstances().length - 1];
 }
@@ -290,10 +290,10 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		const fresh = hlsInstances()[hlsInstances().length - 1];
 		const video = getGlobalVideo();
 		// The fresh stream proves itself: the machine reset with the
-		// re-attach, so progress must be re-marked (timeupdate never
-		// fires on its own in happy-dom).
+		// re-attach, so playback must render again (happy-dom never
+		// fires `playing` on its own).
 		video.currentTime = 120;
-		video.dispatchEvent(new Event('timeupdate'));
+		video.dispatchEvent(new Event('playing'));
 		const streamsBefore = FakeEventSource.instances.length;
 
 		fresh.emit(ERROR, HOST_SLOW_FATAL);
@@ -309,7 +309,6 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		const hls = await mountPlayingHls();
 		const video = getGlobalVideo();
 		video.currentTime = 0.5;
-		video.dispatchEvent(new Event('timeupdate'));
 		const streamsBefore = FakeEventSource.instances.length;
 
 		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
@@ -333,9 +332,9 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		unmount(app!);
 		app = null;
 
-		// Off-route playback runs for minutes…
+		// Off-route playback renders for minutes…
 		video.currentTime = 300;
-		video.dispatchEvent(new Event('timeupdate'));
+		video.dispatchEvent(new Event('playing'));
 		const streamsBefore = FakeEventSource.instances.length;
 
 		// …then the host stalls.
