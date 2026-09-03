@@ -127,8 +127,13 @@ matching host and uploaded to the GitHub release by hand:
 
 | Target | Host | Command |
 |---|---|---|
-| `.AppImage` + `.deb` | Linux | `pnpm package:release` |
-| NSIS installer (`.exe`) | Windows | `pnpm package:win` |
+| `.AppImage` + `.deb` | x86_64 Linux | `pnpm package:release` |
+| NSIS installer (`.exe`) | x64 Windows | `pnpm package:win` |
+
+The host architectures are load-bearing, not a formality: the dep
+fetchers stage hard-coded x86_64 assets and the AppImage repack
+prepends an x86_64 runtime, so a build on any other architecture
+produces a package with incompatible executables or fails outright.
 
 The `electron-builder` config declares no macOS target; nothing
 produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
