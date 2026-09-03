@@ -10,13 +10,13 @@
 
 ani-gui is a Rust + SvelteKit desktop application for browsing and watching anime — discovery, search, an embedded player, downloads, persistent watch history, Picture-in-Picture, and OP/ED skip. It began as a graphical front end over [pystardust/ani-cli](https://github.com/pystardust/ani-cli) and resolves streams itself now, in Rust.
 
-The repository no longer carries the script; anyone who wants the terminal flow installs [upstream's](https://github.com/pystardust/ani-cli). See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
+See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Features
 
 |  | |
 |---|---|
-| **Discovery** | Trending, This Season, Top Rated, Recently Released — AniList + Kitsu. |
+| **Discovery** | Trending and Top Rated rails, a rotating hero — AniList + Kitsu. |
 | **Search** | Full-text against Kitsu, instant as you type. |
 | **Detail page** | Synopsis, episodes with thumbnails, similar-titles strip. |
 | **Embedded player** | HLS / MP4, quality switch, native or custom controls — no `mpv` window. |
@@ -42,7 +42,7 @@ Platform support tiers:
 |---|---|---|
 | 1 | Linux | Actively tested on Ubuntu. Other distros work via AppImage. |
 | 2 | Windows | Most features verified end-to-end. Edge cases may surface. |
-| 3 | macOS | Untested. Builds the same way; should work — please file an issue if it doesn't. |
+| 3 | macOS | Untested. Builds the same way; should work, but no release is verified on it. |
 
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
@@ -64,7 +64,7 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 <details>
 <summary><strong>macOS</strong> — untested</summary>
 
-A `.dmg` is produced by the same `electron-builder` config and should install via the standard drag-into-Applications flow. macOS isn't part of the regular acceptance pass, so if you hit a problem please [open an issue](https://github.com/JoaoPucci/ani-gui/issues) — the app is shipped for it but unverified.
+A `.dmg` is produced by the same `electron-builder` config and should install via the standard drag-into-Applications flow. macOS isn't part of the regular acceptance pass — the app is shipped for it but unverified.
 
 </details>
 
@@ -154,12 +154,16 @@ User settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Settings page 
 
 - audio mode (`sub` / `dub`) and quality (`best`, `1080`, `720`, `480`, `worst`)
 - UI locale
-- external-player kind and command
+- external-player kind, command, and custom arguments
+- Syncplay binary path
 - image-cache size cap
 - auto-play next episode
 - auto-skip OP / ED
 - custom-vs-native player controls
 - whether to enter PiP automatically when you navigate away from a playing video
+- the download progress bar
+- whether the update check includes pre-releases
+- remembering resolved streams for quicker replays (off by default)
 
 Full table with defaults and effects is in [`docs/architecture.md`](./docs/architecture.md#user-settings).
 
@@ -188,4 +192,4 @@ ani-gui is a tool. Like any tool, the responsibility for how it's used lies with
 
 ## License
 
-[GPL-3.0](./LICENSE), inheriting from upstream `pystardust/ani-cli`.
+[GPL-3.0](./LICENSE).

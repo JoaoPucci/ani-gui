@@ -92,7 +92,7 @@
 	"section_about_hint": "versão, licença",
 	"about_version_label": "Versão",
 	"about_license_label": "Licença",
-	"about_license_text": "GPL-3.0 — herdada do projeto upstream.",
+	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Diagnóstico",
 	"about_disclaimer_label": "Aviso",
 	"about_disclaimer_text": "O ani-gui faz scraping de fontes públicas. Use apenas onde as leis locais permitirem. Os mantenedores não operam, hospedam nem garantem qualquer conteúdo upstream."

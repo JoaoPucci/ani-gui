@@ -92,7 +92,7 @@
 	"section_about_hint": "version, license",
 	"about_version_label": "Version",
 	"about_license_label": "License",
-	"about_license_text": "GPL-3.0 — inherited from upstream.",
+	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Diagnostics",
 	"about_disclaimer_label": "Disclaimer",
 	"about_disclaimer_text": "ani-gui scrapes public sources. Use only where local laws permit. The maintainers don't operate, host, or guarantee any of the upstream content."

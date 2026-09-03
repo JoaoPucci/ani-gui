@@ -92,7 +92,7 @@
 	"section_about_hint": "версия, лицензия",
 	"about_version_label": "Версия",
 	"about_license_label": "Лицензия",
-	"about_license_text": "GPL-3.0 — унаследована от исходного проекта.",
+	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Диагностика",
 	"about_disclaimer_label": "Дисклеймер",
 	"about_disclaimer_text": "ani-gui получает данные с публичных источников. Используйте только там, где это разрешено местным законодательством. Мейнтейнеры не управляют, не размещают и не гарантируют контент сторонних источников."

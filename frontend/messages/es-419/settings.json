@@ -92,7 +92,7 @@
 	"section_about_hint": "versión, licencia",
 	"about_version_label": "Versión",
 	"about_license_label": "Licencia",
-	"about_license_text": "GPL-3.0 — heredada del proyecto original.",
+	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Diagnóstico",
 	"about_disclaimer_label": "Aviso",
 	"about_disclaimer_text": "ani-gui consulta fuentes públicas. Úsalo solo donde la legislación local lo permita. Los mantenedores no operan, alojan ni garantizan ninguno de los contenidos de origen."
