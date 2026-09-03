@@ -315,6 +315,75 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		await until(() => video.currentTime === 720, 'the off-route seek to fire');
 	});
 
+	it('a provider 503 on a play click names the source as down', async () => {
+		// End-to-end through the typed SSE payload: the click joins
+		// the next-episode warm's stream, the server answers with the
+		// upstream envelope, and the failure overlay must say the
+		// source is down — not "check your connection", which sent a
+		// user chasing their own VPN through a provider maintenance
+		// window.
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		// A session id no other case uses: leaving the singleton on a
+		// shared URL would hand the NEXT mount the same-URL shortcut
+		// and skip its re-attach.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-down', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		// The narrowed warm resolves episode 2 — the click below joins
+		// its in-flight stream.
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=2')),
+			'the next-episode warm stream'
+		);
+
+		const tile = target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement;
+		expect(tile).not.toBeNull();
+		tile.click();
+
+		// The click takes over the warm: it aborts the background
+		// stream and opens its own interactive one (no prefetch flag)
+		// — the provider's answer arrives on THAT stream.
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1')
+				),
+			"the click's interactive stream"
+		);
+		const interactive = FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1'))
+			.pop()!;
+		interactive.dispatch(
+			'error',
+			JSON.stringify({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.play_play_failure_source_down()),
+			'the source-down copy on the failure overlay'
+		);
+	});
+
 	it('a superseded attach cancels its pending resume seek', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
