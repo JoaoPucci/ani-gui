@@ -47,15 +47,36 @@ describe('armSourceScopedListeners', () => {
 		expect(recoveryResume.consume('show-a', 6)).toBeNull();
 	});
 
-	it('marks the machine proven once playback crosses the threshold', () => {
+	it('marks the machine proven when playback actually starts', () => {
+		// The signal is the element's `playing` event — frames
+		// rendered, so on a fresh source the network delivered. A
+		// timeupdate alone proves nothing: the resume seek emits one
+		// at the old timestamp before the new stream has produced a
+		// single frame. Contract sharpened in this red: the previous
+		// spec proved via timeupdate and let exactly that false
+		// positive through.
 		armSourceScopedListeners({ video, showId: 'show-a', episode: 6 });
-		video.currentTime = 0.4;
+		video.currentTime = 300;
 		video.dispatchEvent(new Event('timeupdate'));
 		expect(stallMachine.failure(hostSlow)).toEqual({ act: 'recover' });
 		stallMachine.reset();
-		video.currentTime = 300;
-		video.dispatchEvent(new Event('timeupdate'));
+		video.dispatchEvent(new Event('playing'));
 		expect(stallMachine.failure(hostSlow)).toEqual({ act: 'nudge', toast: true });
+	});
+
+	it('the resume seek does not prove the fresh stream', () => {
+		// Recovery resumes at minutes in; the seek assigns the old
+		// timestamp and the element fires timeupdate. If the
+		// replacement URL is immediately dead, its stall must take
+		// the startup path — recover — not spend nudges the stream
+		// never earned.
+		recoveryResume.capture('show-a', 6, 432.5);
+		armSourceScopedListeners({ video, showId: 'show-a', episode: 6 });
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(video.currentTime).toBe(432.5);
+		video.dispatchEvent(new Event('timeupdate'));
+		expect(stallMachine.failure(hostSlow)).toEqual({ act: 'recover' });
 	});
 
 	it('the next attach flushes the previous listeners away', () => {
