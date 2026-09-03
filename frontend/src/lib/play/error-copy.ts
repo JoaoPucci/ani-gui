@@ -46,6 +46,18 @@ export function describeRateLimit(e: unknown): string | null {
 		: m.play_play_failure_rate_limited();
 }
 
+/** Shared first-chance mapper for the provider being down: upstream
+ *  5xx — the provider explicitly answering "service unavailable",
+ *  maintenance or an outage — returns copy that blames the source
+ *  and clears the user's own setup; null for everything else. The
+ *  detail and home pages keep surface-specific mappers for the
+ *  older kinds, so like the rate-limit branch this must be called
+ *  by each of them, not folded into one mapper of three. */
+export function describeSourceDown(e: unknown): string | null {
+	void e;
+	return null;
+}
+
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited → busy source (with the upstream's
  *  own retry hint when it sent one); no_results → catalogue miss;

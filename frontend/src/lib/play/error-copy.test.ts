@@ -4,7 +4,8 @@ import {
 	describeError,
 	describeExternalLaunchFailure,
 	describePlayFailure,
-	describeRateLimit
+	describeRateLimit,
+	describeSourceDown
 } from './error-copy';
 
 describe('describeRateLimit', () => {
@@ -182,5 +183,24 @@ describe('describePlayFailure — the provider being down names itself', () => {
 		expect(describePlayFailure({ kind: 'upstream', status: 403 })).toBe(
 			m.play_play_failure_network()
 		);
+	});
+});
+
+describe('describeSourceDown', () => {
+	it('is the shared first-chance branch every play surface calls', () => {
+		// The detail and home pages keep their own failure mappers;
+		// only shared first-chance helpers reach all three surfaces —
+		// the rate-limit branch already works this way, and the old
+		// copy showed on a provider 503 precisely because the
+		// source-down branch lived in one mapper of three.
+		expect(describeSourceDown({ kind: 'upstream', status: 503 })).toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describeSourceDown({ kind: 'upstream', status: 500 })).toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describeSourceDown({ kind: 'upstream', status: 403 })).toBeNull();
+		expect(describeSourceDown({ kind: 'network' })).toBeNull();
+		expect(describeSourceDown('boom')).toBeNull();
 	});
 });
