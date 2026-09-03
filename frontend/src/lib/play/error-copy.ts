@@ -67,14 +67,16 @@ export function describeSourceDown(e: unknown): string | null {
  *  scraper → upstream unhappy; timeout → slow upstream; network /
  *  upstream → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
-	void opts;
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);
 	if (sourceDown !== null) return sourceDown;
 	const raw = describeError(e).toLowerCase();
 	if (raw.includes('no_results')) {
-		return m.play_play_failure_no_results();
+		// The one deliberate per-surface difference: the detail page
+		// phrases a catalogue miss definitively (it also gates the
+		// Play CTA proactively); every other surface keeps the hedge.
+		return (opts?.noResults ?? m.play_play_failure_no_results)();
 	}
 	if (raw.includes('scraper')) {
 		return m.play_play_failure_scraper();

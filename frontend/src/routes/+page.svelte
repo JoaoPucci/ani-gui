@@ -14,7 +14,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
-	import { describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
+	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
@@ -604,32 +604,10 @@
 		return String(e);
 	}
 
-	/** Surface resolution failure kinds as user-readable copy. Mirrors the
-	 *  same mapper on /anime/[id] and /play/[id]. */
+	/** Play-call failure copy: the shared mapper, default phrasing.
+	 *  (The strings this replaces were hardcoded English.) */
 	function describePlayFailure(e: unknown): string {
-		// Shared first-chance branch: the typed rate limit renders the
-		// same localized busy-source copy (with the upstream's own
-		// retry hint) on every play surface. See $lib/play/error-copy.
-		const rateLimited = describeRateLimit(e);
-		if (rateLimited !== null) return rateLimited;
-		// Shared first-chance branch #2: a provider 5xx names the
-		// source as down instead of blaming the user's connection.
-		const sourceDown = describeSourceDown(e);
-		if (sourceDown !== null) return sourceDown;
-		const raw = describeError(e).toLowerCase();
-		if (raw.includes('no_results')) {
-			return "Couldn't find this title on the streaming source. The episode may not be available — try again later.";
-		}
-		if (raw.includes('scraper')) {
-			return "Couldn't resolve a working stream right now. The streaming source looks unhappy — try again in a few minutes.";
-		}
-		if (raw.includes('timeout')) {
-			return 'The streaming source took too long to respond. Try again in a few minutes.';
-		}
-		if (raw.includes('network') || raw.includes('upstream')) {
-			return 'Network trouble reaching the streaming source. Check your connection and try again.';
-		}
-		return "Couldn't start this episode right now. Try again in a few minutes.";
+		return sharedDescribePlayFailure(e);
 	}
 
 	/** Click handler for a Continue Watching card. Resolves the play
