@@ -105,5 +105,6 @@
 	"stall_toast_host_slow": "A transmissão travou — obtendo um link novo…",
 	"stall_toast_link_stale": "O link da transmissão expirou — obtendo um novo…",
 	"error_host_slow": "O servidor de vídeo está respondendo devagar agora. Costuma ser um problema do provedor — tentar de novo mais tarde geralmente resolve.",
-	"stall_toast_nudge": "A transmissão travou — o servidor de vídeo está lento. Tentando de novo…"
+	"stall_toast_nudge": "A transmissão travou — o servidor de vídeo está lento. Tentando de novo…",
+	"play_failure_source_down": "A fonte de streaming está fora do ar ou em manutenção agora. Não há nada de errado do seu lado — tente de novo mais tarde."
 }

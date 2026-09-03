@@ -105,5 +105,6 @@
 	"stall_toast_host_slow": "Stream stalled — getting a fresh link…",
 	"stall_toast_link_stale": "Stream link expired — getting a fresh one…",
 	"error_host_slow": "The video host is responding slowly right now. This is usually on the provider’s side — retrying later often fixes it.",
-	"stall_toast_nudge": "Stream stalled — the video host is slow. Retrying…"
+	"stall_toast_nudge": "Stream stalled — the video host is slow. Retrying…",
+	"play_failure_source_down": "The streaming source is down or under maintenance right now. Nothing is wrong on your end — try again later."
 }
