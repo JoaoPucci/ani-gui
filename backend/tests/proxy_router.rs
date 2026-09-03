@@ -40,7 +40,7 @@ async fn start_harness() -> Harness {
     let mock = MockServer::start().await;
     let sessions = SessionTable::new();
     let secret = AppSecret::random();
-    let client = ani_gui::proxy::upstream::build_client().expect("client");
+    let client = ani_gui::proxy::upstream::build_client(true).expect("client");
 
     // First, bind to get the actual port for ProxyOrigin.
     let (addr, listener) = bind_loopback(0).await.expect("bind");
