@@ -24,6 +24,10 @@
  */
 
 import type { PushArgs } from '$lib/toasts/store.svelte';
+
+/** Stall toasts double the default toast lifetime: a 4s flash over a
+ *  black frame is a signal nobody sees. */
+const STALL_TOAST_DURATION_MS = 8000;
 import { isNetworkClassStreamError, type StreamFailure } from '$lib/play/stale-stream';
 import { m } from '$lib/paraglide/messages';
 
@@ -49,7 +53,8 @@ export function stallRecoveryToast(reason: string): PushArgs | null {
 		message:
 			classifyStallCause(reason) === 'host-slow'
 				? m.play_stall_toast_host_slow()
-				: m.play_stall_toast_link_stale()
+				: m.play_stall_toast_link_stale(),
+		duration: STALL_TOAST_DURATION_MS
 	};
 }
 
@@ -57,7 +62,11 @@ export function stallRecoveryToast(reason: string): PushArgs | null {
  *  slow, the app is retrying the stream it already has — no fresh
  *  link involved, so the recovery toasts' wording would lie. */
 export function stallNudgeToast(): PushArgs {
-	return { kind: 'info', message: m.play_stall_toast_nudge() };
+	return {
+		kind: 'info',
+		message: m.play_stall_toast_nudge(),
+		duration: STALL_TOAST_DURATION_MS
+	};
 }
 
 /** Cause-naming overlay copy once the retry budget is spent and the

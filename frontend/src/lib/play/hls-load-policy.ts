@@ -11,4 +11,13 @@
  * loop — owns what happens next.
  */
 
-export const HLS_STALL_LOAD_POLICY: Record<string, unknown> = {};
+export const HLS_STALL_LOAD_POLICY: Record<string, unknown> = {
+	fragLoadPolicy: {
+		default: {
+			maxTimeToFirstByte: 10000,
+			maxLoadTimeMs: 15000,
+			timeoutRetry: { maxNumRetry: 1, retryDelayMs: 0, maxRetryDelayMs: 0 },
+			errorRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 }
+		}
+	}
+};

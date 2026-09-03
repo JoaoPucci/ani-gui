@@ -102,6 +102,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
+	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -1556,7 +1557,7 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			hls = new Hls({ lowLatencyMode: false });
+			hls = new Hls({ lowLatencyMode: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: a route unmount keeps
 			// it alive for PiP, so its destruction belongs to the next
 			// attach's flush, not to any component's lifetime.
