@@ -369,7 +369,16 @@ redundant.
 The rest is posture: the README frames the Windows packaging flow
 around Git Bash, including sourcing `bsdtar` from Git for Windows,
 while `fetch-windows-deps.mjs` itself documents that Windows 10+
-ships `bsdtar` natively. Once the dev script is shell-independent,
-`cmd`/PowerShell are first-class flows for developing and packaging
-the app, and the docs should present them that way. The fix waited
-because proving it needs a Windows host.
+ships `bsdtar` natively.
+
+Shell-independence alone does not make a fresh Windows checkout
+play, though. The dev loop never stages the bundled deps — only the
+packaging scripts chain `fetch:win-deps` / `fetch:linux-deps` — and
+`resolve_bundled_bin` in `backend/src/app.rs` deliberately falls
+through to PATH when nothing was staged. On Linux a developer often
+has a usable transport reachable anyway; on Windows PATH has no
+impersonating transport, so the resolver drops to plain curl and the
+provider rejects playback. First-class Windows development therefore
+needs the dev flow to stage (or document staging) the deps as well
+as fixing the script shell. The fix waited because proving it needs
+a Windows host.
