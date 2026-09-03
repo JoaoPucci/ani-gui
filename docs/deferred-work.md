@@ -343,11 +343,14 @@ starting it, and delete it when you find it done.
 
 ## Development environment
 
-**Windows development still assumes a POSIX shell, and nothing
-requires that any more.** The assumption dates from the project's
-shell-scraper origins; with the script retired, no part of the
-toolchain needs bash on Windows, yet the posture survives in two
-places.
+**Running and packaging the app on Windows still assumes a POSIX
+shell, and nothing requires that any more.** The assumption dates
+from the project's shell-scraper origins; with the script retired,
+nothing in the app's dev or packaging workflow needs bash on
+Windows, yet the posture survives in two places. (The bash *test*
+layer — the Bats suites, the arch checks, lefthook's shellcheck —
+is POSIX-shell work by nature and stays that way on every platform;
+this entry is about running and shipping the app.)
 
 The one real defect: `electron/package.json`'s `dev` script sets
 `ELECTRON_OZONE_PLATFORM_HINT` and `ELECTRON_DEV` with POSIX
@@ -367,6 +370,6 @@ The rest is posture: the README frames the Windows packaging flow
 around Git Bash, including sourcing `bsdtar` from Git for Windows,
 while `fetch-windows-deps.mjs` itself documents that Windows 10+
 ships `bsdtar` natively. Once the dev script is shell-independent,
-`cmd`/PowerShell are first-class flows and the docs should present
-them that way. The fix waited because proving it needs a Windows
-host.
+`cmd`/PowerShell are first-class flows for developing and packaging
+the app, and the docs should present them that way. The fix waited
+because proving it needs a Windows host.
