@@ -14,7 +14,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
-	import { describeRateLimit } from '$lib/play/error-copy';
+	import { describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
@@ -612,6 +612,10 @@
 		// retry hint) on every play surface. See $lib/play/error-copy.
 		const rateLimited = describeRateLimit(e);
 		if (rateLimited !== null) return rateLimited;
+		// Shared first-chance branch #2: a provider 5xx names the
+		// source as down instead of blaming the user's connection.
+		const sourceDown = describeSourceDown(e);
+		if (sourceDown !== null) return sourceDown;
 		const raw = describeError(e).toLowerCase();
 		if (raw.includes('no_results')) {
 			return "Couldn't find this title on the streaming source. The episode may not be available — try again later.";

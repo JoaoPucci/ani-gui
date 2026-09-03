@@ -37,7 +37,7 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
-	import { describeRateLimit } from '$lib/play/error-copy';
+	import { describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
@@ -1049,6 +1049,10 @@
 		// retry hint) on every play surface. See $lib/play/error-copy.
 		const rateLimited = describeRateLimit(e);
 		if (rateLimited !== null) return rateLimited;
+		// Shared first-chance branch #2: a provider 5xx names the
+		// source as down instead of blaming the user's connection.
+		const sourceDown = describeSourceDown(e);
+		if (sourceDown !== null) return sourceDown;
 		const raw = describeErrorString(e).toLowerCase();
 		if (raw.includes('no_results')) {
 			// "Not in the catalog" reads cleaner than the prior
