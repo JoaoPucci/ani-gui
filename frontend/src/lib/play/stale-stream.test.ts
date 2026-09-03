@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	canRecoverFromStaleStream,
+	decideStreamFailureResponse,
+	isHostSlowStreamError,
 	shouldAttemptStaleStreamRetry,
-	shouldResetStaleStreamBudget
+	shouldResetStaleStreamBudget,
+	STALL_NUDGE_BUDGET
 } from './stale-stream';
 
 describe('shouldAttemptStaleStreamRetry', () => {
@@ -169,5 +172,126 @@ describe('canRecoverFromStaleStream', () => {
 		// owns the play cache for its episode; if its result also
 		// fails, the next error event will trigger recovery normally.
 		expect(canRecoverFromStaleStream({ detail, switchBusy: true })).toBe(false);
+	});
+});
+
+describe('decideStreamFailureResponse', () => {
+	const hostSlow = { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' } as const;
+
+	it('nudges the same stream for a host-slow failure after playback progressed', () => {
+		// Five minutes into a working stream, a fragment timeout means
+		// the host is crawling — the URL demonstrably works, so a
+		// fresh resolve would return the same crawling stream at the
+		// cost of a full interruption. Retry what we have instead.
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: false,
+				nudgesUsed: 0,
+				playbackProgressed: true
+			})
+		).toBe('nudge');
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: false,
+				nudgesUsed: STALL_NUDGE_BUDGET - 1,
+				playbackProgressed: true
+			})
+		).toBe('nudge');
+	});
+
+	it('a nudge burst that runs out escalates to the recovery', () => {
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: false,
+				nudgesUsed: STALL_NUDGE_BUDGET,
+				playbackProgressed: true
+			})
+		).toBe('recover');
+	});
+
+	it('a stall before playback ever progressed recovers, not nudges', () => {
+		// At startup the URL has proven nothing — it may be the dead
+		// link this flow was built for.
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: false,
+				nudgesUsed: 0,
+				playbackProgressed: false
+			})
+		).toBe('recover');
+	});
+
+	it('non-timeout network failures recover as before', () => {
+		expect(
+			decideStreamFailureResponse({
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' },
+				hasAutoRetried: false,
+				nudgesUsed: 0,
+				playbackProgressed: true
+			})
+		).toBe('recover');
+		expect(
+			decideStreamFailureResponse({
+				err: { source: 'video', code: 2 },
+				hasAutoRetried: false,
+				nudgesUsed: 0,
+				playbackProgressed: true
+			})
+		).toBe('recover');
+	});
+
+	it('spent budgets surface, and non-network failures always did', () => {
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: true,
+				nudgesUsed: STALL_NUDGE_BUDGET,
+				playbackProgressed: true
+			})
+		).toBe('surface');
+		expect(
+			decideStreamFailureResponse({
+				err: { source: 'video', code: 3 },
+				hasAutoRetried: false,
+				nudgesUsed: 0,
+				playbackProgressed: true
+			})
+		).toBe('surface');
+	});
+
+	it('a spent recovery budget still nudges a fresh host-slow burst', () => {
+		// The one-shot recovery is a different, heavier budget; having
+		// used it must not turn cheap same-stream retries off.
+		expect(
+			decideStreamFailureResponse({
+				err: hostSlow,
+				hasAutoRetried: true,
+				nudgesUsed: 0,
+				playbackProgressed: true
+			})
+		).toBe('nudge');
+	});
+});
+
+describe('isHostSlowStreamError', () => {
+	it('matches hls timeout and stall details only', () => {
+		expect(
+			isHostSlowStreamError({ source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' })
+		).toBe(true);
+		expect(
+			isHostSlowStreamError({
+				source: 'hls',
+				type: 'mediaError',
+				details: 'bufferStalledError'
+			})
+		).toBe(true);
+		expect(
+			isHostSlowStreamError({ source: 'hls', type: 'networkError', details: 'fragLoadError' })
+		).toBe(false);
+		expect(isHostSlowStreamError({ source: 'video', code: 2 })).toBe(false);
 	});
 });

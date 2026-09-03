@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { m } from '$lib/paraglide/messages';
 import {
 	describeError,
 	describeExternalLaunchFailure,
 	describePlayFailure,
-	describeRateLimit
+	describeRateLimit,
+	describeSourceDown
 } from './error-copy';
 
 describe('describeRateLimit', () => {
@@ -158,5 +160,47 @@ describe('describeExternalLaunchFailure', () => {
 		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' })).toMatch(
 			/Couldn't start this episode right now/
 		);
+	});
+});
+
+describe('describePlayFailure — the provider being down names itself', () => {
+	it('an upstream 5xx blames the source, not the connection', () => {
+		// A 503 is the provider explicitly answering "service
+		// unavailable" — maintenance or an outage. The old copy said
+		// "check your connection", which sent the user chasing their
+		// own network and VPN through a provider maintenance window.
+		expect(describePlayFailure({ kind: 'upstream', status: 503 })).toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describePlayFailure({ kind: 'upstream', status: 502 })).toBe(
+			m.play_play_failure_source_down()
+		);
+	});
+
+	it('genuine connection failures keep the check-your-connection copy', () => {
+		expect(describePlayFailure({ kind: 'network' })).toBe(m.play_play_failure_network());
+		// A 4xx upstream is not the down-for-maintenance shape.
+		expect(describePlayFailure({ kind: 'upstream', status: 403 })).toBe(
+			m.play_play_failure_network()
+		);
+	});
+});
+
+describe('describeSourceDown', () => {
+	it('is the shared first-chance branch every play surface calls', () => {
+		// The detail and home pages keep their own failure mappers;
+		// only shared first-chance helpers reach all three surfaces —
+		// the rate-limit branch already works this way, and the old
+		// copy showed on a provider 503 precisely because the
+		// source-down branch lived in one mapper of three.
+		expect(describeSourceDown({ kind: 'upstream', status: 503 })).toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describeSourceDown({ kind: 'upstream', status: 500 })).toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describeSourceDown({ kind: 'upstream', status: 403 })).toBeNull();
+		expect(describeSourceDown({ kind: 'network' })).toBeNull();
+		expect(describeSourceDown('boom')).toBeNull();
 	});
 });

@@ -7,6 +7,8 @@
 // nicely with its DOM-bound siblings.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+	addSourceScopedCleanup,
+	flushSourceScopedCleanups,
 	attachGlobalVideoTo,
 	canReuseSession,
 	detachGlobalVideo,
@@ -198,5 +200,23 @@ describe('singleton lifecycle (happy-dom)', () => {
 		// quality re-resolves instead of resuming the old stream.
 		expect(reuseSessionIfMatching('kid-1', 1, 'worst', 'sub')).toBeNull();
 		expect(reuseSessionIfMatching('kid-1', 1, 'best', 'dub')).toBeNull();
+	});
+});
+
+describe('source-scoped cleanups', () => {
+	it('registrations accumulate and a flush runs then clears them', () => {
+		// A source owns several cleanups (its armed listeners, its
+		// player engine); they retire together when the next source
+		// attaches — the replace-one-registration shape this replaces
+		// could only carry a single owner per source.
+		const ran: string[] = [];
+		addSourceScopedCleanup(() => ran.push('listeners'));
+		addSourceScopedCleanup(() => ran.push('engine'));
+		expect(ran).toEqual([]);
+		flushSourceScopedCleanups();
+		expect(ran).toEqual(['listeners', 'engine']);
+		// The flush cleared: another flush runs nothing again.
+		flushSourceScopedCleanups();
+		expect(ran).toEqual(['listeners', 'engine']);
 	});
 });

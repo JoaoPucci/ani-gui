@@ -86,7 +86,9 @@
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import {
+		addSourceScopedCleanup,
 		attachGlobalVideoTo,
+		flushSourceScopedCleanups,
 		detachGlobalVideo,
 		getGlobalVideo,
 		setCurrentSession
@@ -94,6 +96,15 @@
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
+	import {
+		exhaustedStallOverlayMessage,
+		stallNudgeToast,
+		stallRecoveryToast
+	} from '$lib/play/stall-notice';
+	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
+	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { recoveryResume } from '$lib/play/resume-after-recovery';
+	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
 	import {
 		decideOnDestroyPrefetch,
@@ -1312,10 +1323,10 @@
 	});
 
 	function teardown() {
-		if (hls) {
-			hls.destroy();
-			hls = null;
-		}
+		// The engine's destroy rides the source-scoped flush (it must
+		// outlive this component for PiP); here the local handle just
+		// drops so the hls branch below builds a fresh one.
+		hls = null;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1450,6 +1461,15 @@
 		// playback from 0 and tear down a working HLS pipeline for
 		// no reason. We still update the session pointer so the
 		// PiP-leave navigation knows where to land next time.
+		//
+		// Checked BEFORE the resume-seek arms: an already-loaded
+		// source keeps playing and may never emit loadedmetadata
+		// again, and this path returns without the effect's cleanup —
+		// a listener armed here would survive until an unrelated
+		// later attach and seek it to the old position. It must also
+		// not consume the pending capture: a recovery in flight lands
+		// on a NEW session URL, and that landing is what the capture
+		// is for.
 		const same = videoEl.src === mediaUrl || videoEl.currentSrc === mediaUrl;
 		if (same) {
 			setCurrentSession({
@@ -1471,7 +1491,22 @@
 			if (videoEl.paused) void videoEl.play().catch(() => {});
 			return;
 		}
+
+		// A new media source is attaching — whatever burst state the
+		// previous stream accumulated is its own. Runs on every real
+		// re-attach, so history and direct-URL navigation get fresh
+		// budgets exactly like switchToEpisode and the recovery flow.
+		// The flush retires the previous source's listeners AND its
+		// engine, whichever mount created them — teardown can only
+		// reach this mount's own handle.
+		stallMachine.reset();
+		flushSourceScopedCleanups();
 		teardown();
+		// Source-scoped listeners — the resume seek and the progress
+		// marking — belong to the stream attaching here, which outlives
+		// this component in PiP; the module owns the arrangement. Armed
+		// AFTER the flush, which retires the previous source's.
+		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
 		playerError = null;
 
 		// Native <video> error events fire for HTTP 4xx/5xx and codec
@@ -1509,7 +1544,9 @@
 				void recoverFromStaleStream(`video ${reason}`);
 				return;
 			}
-			playerError = `Playback error: ${reason}`;
+			playerError =
+				exhaustedStallOverlayMessage({ source: 'video', code }, hasAutoRetried) ??
+				`Playback error: ${reason}`;
 		};
 		videoEl.addEventListener('error', onVideoError);
 
@@ -1520,27 +1557,49 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			hls = new Hls({ lowLatencyMode: false });
+			hls = new Hls({ lowLatencyMode: false, ...HLS_STALL_LOAD_POLICY });
+			// The engine retires with its source: a route unmount keeps
+			// it alive for PiP, so its destruction belongs to the next
+			// attach's flush, not to any component's lifetime.
+			const engine = hls;
+			addSourceScopedCleanup(() => {
+				engine.destroy();
+			});
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
+			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+				stallMachine.fragmentLoaded(data as { frag?: { type?: string } });
+			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
+				const err = { source: 'hls', type: data.type, details: data.details } as const;
+				const action = stallMachine.failure({
+					err,
+					hasAutoRetried,
+					rendition: (data as { frag?: { type?: string } }).frag?.type
+				});
+				// A host-slow stall on a stream that was playing: retry
+				// the SAME stream. startLoad keeps the buffer and the
+				// position — no session swap, no loading overlay; a
+				// re-resolve would return the same crawling URL at the
+				// price of a full interruption.
+				if (action.act === 'nudge' && hls) {
+					if (action.toast) toastStore.push(stallNudgeToast());
+					hls.startLoad();
+					return;
+				}
 				// canRecoverFromStaleStream gate mirrors the <video> path —
 				// fast initial fatal errors can land before detail/config
 				// populate; surface the overlay instead of consuming the
 				// budget on a no-op recovery.
-				if (
-					shouldAttemptStaleStreamRetry({
-						err: { source: 'hls', type: data.type },
-						hasAutoRetried
-					}) &&
-					canRecoverFromStaleStream({ detail, switchBusy })
-				) {
+				if (action.act === 'recover' && canRecoverFromStaleStream({ detail, switchBusy })) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
 				}
-				playerError = `Playback error: ${data.type} / ${data.details}`;
+				playerError =
+					exhaustedStallOverlayMessage(err, hasAutoRetried) ??
+					`Playback error: ${data.type} / ${data.details}`;
 			});
 		} else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
 			videoEl.src = mediaUrl;
@@ -1865,6 +1924,7 @@
 			// non-network error happens. See Codex P1 #3366915811.
 			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
 				hasAutoRetried = false;
+				stallMachine.reset();
 			}
 			// goto navigates within the same route, so the page doesn't
 			// fully unmount — `$effect` above re-fires with the new
@@ -1940,6 +2000,15 @@
 		// into a blank frame. The user keeps the Reload button to try
 		// again once the metadata lands.
 		playerError = null;
+		// The session swap restarts the element at zero; remember the
+		// place so the fresh attach can seek back, and tell the user
+		// what the upcoming loading overlay is (silence here is what
+		// made recoveries read as the app breaking).
+		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// The fresh session gets its own same-stream retry budget.
+		stallMachine.reset();
+		const toast = stallRecoveryToast(reason);
+		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
 		// sub/best matches switchToEpisode's pattern. A permanently null

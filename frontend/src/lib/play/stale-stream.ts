@@ -51,6 +51,51 @@ export function shouldAttemptStaleStreamRetry(args: {
 	return !args.hasAutoRetried && isNetworkClassStreamError(args.err);
 }
 
+/** True for the host-struggling signature: an hls failure whose
+ *  details carry the timeout / stall flavor. The playlists loaded —
+ *  hls.js got far enough to time out on media — while segments
+ *  crawl; the URL is not the problem, the host serving it is. */
+export function isHostSlowStreamError(err: StreamFailure): boolean {
+	return err.source === 'hls' && /timeout|stalled/i.test(err.details ?? '');
+}
+
+/** Same-stream retries granted per stall burst before escalating to
+ *  the full recovery. */
+export const STALL_NUDGE_BUDGET = 3;
+
+export type StreamFailureResponse = 'nudge' | 'recover' | 'surface';
+
+/** The response ladder for a fatal stream failure.
+ *
+ *  `nudge` — retry the SAME stream (`hls.startLoad()`): no session
+ *  swap, no loading overlay, buffer and position kept. Earned only
+ *  by the host-slow signature after playback has progressed — the
+ *  URL demonstrably works, so re-resolving would return the same
+ *  crawling stream at the price of a full interruption. Bounded by
+ *  STALL_NUDGE_BUDGET per burst.
+ *
+ *  `recover` — the evict + fresh-resolve flow this module has
+ *  always governed: dead links (the come-back-hours-later case) and
+ *  failures before playback ever progressed, plus a host-slow burst
+ *  that outlived its nudges. One per budget as before.
+ *
+ *  `surface` — the player-error overlay with the manual Reload. */
+export function decideStreamFailureResponse(args: {
+	err: StreamFailure;
+	hasAutoRetried: boolean;
+	nudgesUsed: number;
+	playbackProgressed: boolean;
+}): StreamFailureResponse {
+	if (
+		isHostSlowStreamError(args.err) &&
+		args.playbackProgressed &&
+		args.nudgesUsed < STALL_NUDGE_BUDGET
+	) {
+		return 'nudge';
+	}
+	return shouldAttemptStaleStreamRetry(args) ? 'recover' : 'surface';
+}
+
 /** True when a successful switchToEpisode landing should reset the
  *  one-shot auto-retry budget. Resets only on user-driven episode
  *  changes (Next/Prev/pick — distinct session-class, distinct budget).

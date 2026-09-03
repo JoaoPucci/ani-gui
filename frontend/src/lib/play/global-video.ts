@@ -176,3 +176,21 @@ export function reuseSessionIfMatching(
 		: null;
 	return canReuseSession(currentSession, state, kitsuId, episode, quality, mode);
 }
+
+/** Additive source-scoped cleanups: a source can own several — the
+ *  armed listeners, its player engine — so registrations accumulate
+ *  and the next attach flushes them all before arming its own. */
+let sourceScopedCleanups: (() => void)[] = [];
+
+export function addSourceScopedCleanup(fn: () => void): void {
+	sourceScopedCleanups.push(fn);
+}
+
+/** Run and clear every registered source-scoped cleanup. Called at
+ *  the top of a real attach: the previous source's listeners and
+ *  engine retire before the new source arms anything. */
+export function flushSourceScopedCleanups(): void {
+	const fns = sourceScopedCleanups;
+	sourceScopedCleanups = [];
+	for (const fn of fns) fn();
+}

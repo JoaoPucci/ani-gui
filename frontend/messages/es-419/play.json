@@ -101,5 +101,10 @@
 	"play_failure_rate_limited_wait": "La fuente de streaming está ocupada en este momento. Vuelve a intentarlo en unos {seconds} segundos.",
 	"play_failure_generic": "No se pudo iniciar este episodio ahora mismo. Vuelve a intentarlo en unos minutos.",
 	"progress_searching": "Buscando en {provider}…",
-	"progress_matched": "Encontrado: {title}"
+	"progress_matched": "Encontrado: {title}",
+	"stall_toast_host_slow": "La transmisión se detuvo — obteniendo un enlace nuevo…",
+	"stall_toast_link_stale": "El enlace de la transmisión expiró — obteniendo uno nuevo…",
+	"error_host_slow": "El servidor de video está respondiendo lento en este momento. Suele ser un problema del proveedor — reintentar más tarde normalmente lo soluciona.",
+	"stall_toast_nudge": "La transmisión se detuvo — el servidor de video está lento. Reintentando…",
+	"play_failure_source_down": "La fuente de streaming está caída o en mantenimiento en este momento. No hay ningún problema de tu lado — inténtalo más tarde."
 }

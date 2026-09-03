@@ -130,6 +130,21 @@ starting it, and delete it when you find it done.
   -m` — verified with a probe hook. So the gate has to move to
   `commit-msg` and skip only for a `test(red):` subject.
 
+## Correctness in the app (continued)
+
+- **The play page's same-URL attach shortcut skips the video error
+  listener.** The attach effect returns early when the singleton
+  already carries the exact media URL (the PiP-return path, kept so
+  a working pipeline isn't torn down), but the element's `error`
+  listener is registered below that return — so a session entered
+  through the shortcut has no element-error recovery: a rotated URL
+  dying under it surfaces nothing and retries nothing until the user
+  navigates. Found while writing the acceptance case for the
+  source-down failure copy, whose first draft accidentally took the
+  shortcut and dispatched an error nobody heard. The fix wants the
+  same source-scoped treatment the progress and resume listeners
+  got, not another registration inside the effect's conditional.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.
