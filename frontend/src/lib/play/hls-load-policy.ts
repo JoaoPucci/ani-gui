@@ -11,10 +11,15 @@
  * loop — owns what happens next.
  */
 
-export const HLS_STALL_LOAD_POLICY: Record<string, unknown> = {
+import type { HlsConfig } from 'hls.js';
+
+/** Typed against hls.js's own configuration so a schema typo is a
+ *  compile error — an untyped object silently accepted a misspelled
+ *  key once, and the engine ignored it. */
+export const HLS_STALL_LOAD_POLICY: Pick<HlsConfig, 'fragLoadPolicy'> = {
 	fragLoadPolicy: {
 		default: {
-			maxTimeToFirstByte: 10000,
+			maxTimeToFirstByteMs: 10000,
 			maxLoadTimeMs: 15000,
 			timeoutRetry: { maxNumRetry: 1, retryDelayMs: 0, maxRetryDelayMs: 0 },
 			errorRetry: { maxNumRetry: 3, retryDelayMs: 1000, maxRetryDelayMs: 4000 }
