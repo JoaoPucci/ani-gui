@@ -71,20 +71,22 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-In order — the two one-shot steps first, then the two processes that
-stay running:
+In order, starting from the repository root — the two one-shot steps
+run in subshells so they leave the working directory alone; the two
+long-running processes each get their own terminal, also opened at
+the root:
 
 ```sh
 # 1 — build the Rust sidecar (one-shot per Rust change)
-cd backend && cargo build --bin ani-gui-backend
+(cd backend && cargo build --bin ani-gui-backend)
 
 # 2 — once per checkout, Linux only: stage the bundled deps
-cd electron && pnpm run fetch:linux-deps
+(cd electron && pnpm run fetch:linux-deps)
 
-# 3 — Vite dev server with HMR (keep running)
+# 3 — Vite dev server with HMR (keep running, own terminal)
 cd frontend && pnpm dev          # http://localhost:5173
 
-# 4 — Electron shell (spawns the sidecar, points at Vite; keep running)
+# 4 — Electron shell (spawns the sidecar, points at Vite; keep running, own terminal)
 cd electron && pnpm dev
 ```
 
