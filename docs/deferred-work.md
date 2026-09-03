@@ -343,17 +343,30 @@ starting it, and delete it when you find it done.
 
 ## Development environment
 
-**The Electron `dev` script does not run on Windows.**
-`electron/package.json`'s `dev` script sets
+**Windows development still assumes a POSIX shell, and nothing
+requires that any more.** The assumption dates from the project's
+shell-scraper origins; with the script retired, no part of the
+toolchain needs bash on Windows, yet the posture survives in two
+places.
+
+The one real defect: `electron/package.json`'s `dev` script sets
 `ELECTRON_OZONE_PLATFORM_HINT` and `ELECTRON_DEV` with POSIX
 env-prefix syntax. On Windows, pnpm executes package scripts through
 `cmd.exe` (`%COMSPEC%`) regardless of the terminal pnpm was launched
 from — starting from Git Bash does not change the script shell — so
-the prefix is parsed as a command name and Electron never starts. The
-packaging path (`package:win`) avoids the syntax and is the verified
-Windows flow. Candidate routes: pnpm's `shell-emulator` or
-`script-shell` settings, moving the two variables into the Electron
-launcher, or a cross-platform env wrapper. The fix waited because it
-needs a Windows host to validate. One surprise worth checking first:
-the main process already manages an Ozone hint for the Wayland
-relaunch, so the env prefix may be partly redundant.
+the prefix is parsed as a command name and Electron never starts.
+This is the only POSIX-syntax script in the set; everything else is
+`cd`, `&&`, and node, which `cmd.exe` runs. Candidate routes: pnpm's
+`shell-emulator` or `script-shell` settings, moving the two variables
+into the Electron launcher, or a cross-platform env wrapper. One
+surprise worth checking first: the main process already manages an
+Ozone hint for the Wayland relaunch, so the env prefix may be partly
+redundant.
+
+The rest is posture: the README frames the Windows packaging flow
+around Git Bash, including sourcing `bsdtar` from Git for Windows,
+while `fetch-windows-deps.mjs` itself documents that Windows 10+
+ships `bsdtar` natively. Once the dev script is shell-independent,
+`cmd`/PowerShell are first-class flows and the docs should present
+them that way. The fix waited because proving it needs a Windows
+host.
