@@ -87,10 +87,10 @@ Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metada
    (cd frontend && pnpm install)
    (cd electron && pnpm install)
    ```
-5. **Build the backend binary** (required before the first run, and after every Rust change), and stage the bundled tools next to it (once per checkout — playback needs the impersonating transport):
+5. **Build the backend binary** (required before the first run, and after every Rust change). On Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport. The fetcher downloads Linux builds, so skip that step on macOS (the staged directory outranks PATH, and Linux binaries staged there would shadow any transport you do have):
    ```sh
    cd backend && cargo build --bin ani-gui-backend
-   (cd ../electron && pnpm run fetch:linux-deps)
+   (cd ../electron && pnpm run fetch:linux-deps)   # Linux only
    ```
 6. **Run the dev app** — two terminals, started in this order:
    ```sh

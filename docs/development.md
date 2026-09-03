@@ -84,15 +84,19 @@ cd backend && cargo build --bin ani-gui-backend
 cd electron && pnpm dev
 ```
 
-Once per checkout, **after the first backend build**, stage the
-bundled deps next to the dev binary — the fetcher mirrors into
+Once per checkout **on Linux, after the first backend build**, stage
+the bundled deps next to the dev binary — the fetcher mirrors into
 `backend/target/{debug,release}/bin` only for profile directories
 that already exist, and playback needs the impersonating transport
 (the resolver's plain-`curl` fallback is rejected by the provider):
 
 ```sh
-cd electron && pnpm run fetch:linux-deps
+cd electron && pnpm run fetch:linux-deps   # Linux only — downloads Linux builds
 ```
+
+Do not run it on macOS: the staged directory outranks PATH, so the
+Linux ELF binaries it downloads would shadow any usable transport a
+macOS host has.
 
 Without the staging step the app still launches and browses metadata;
 only stream resolution and downloads need the staged tools.
