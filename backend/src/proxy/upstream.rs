@@ -27,6 +27,23 @@ pub const UA: &str =
 /// # Errors
 /// Returns [`AniError::Network`] if the underlying TLS stack cannot be
 /// initialized (extremely rare).
+/// Whether the proxy's upstream client is pinned to HTTP/1.1.
+///
+/// The provider's media edge serves segments over HTTP/2 in single
+/// 64 KiB flow-control windows and then stalls — one window per
+/// ~15s, ~3 KB/s, measured identically across IPs (VPN on or off),
+/// TLS fingerprints (plain curl and the impersonating build) and
+/// header sets, while the same segment over HTTP/1.1 flows at full
+/// speed. Players whose HTTP stacks are h1-only (mpv/ffmpeg, hence
+/// every ani-cli user on the same provider) never see it, which is
+/// why the breakage reported nowhere. reqwest negotiates h2 via
+/// ALPN by default, so the relay hit it on every segment; pinning
+/// h1 sidesteps the broken edge entirely.
+#[must_use]
+pub fn proxy_upstream_http1_only() -> bool {
+    false
+}
+
 pub fn build_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .user_agent(UA)
@@ -239,6 +256,15 @@ pub async fn fetch_streaming(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_upstream_client_pins_http1() {
+        // The provider's h2 edge trickles segments at one 64 KiB
+        // flow-control window per ~15s; h1 streams at full speed.
+        // The policy is a named function so this stays assertable —
+        // build_client applies it to the builder.
+        assert!(super::proxy_upstream_http1_only());
+    }
+
     use super::*;
     use crate::proxy::token::MediaKind;
 
