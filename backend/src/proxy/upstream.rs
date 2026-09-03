@@ -41,18 +41,20 @@ pub const UA: &str =
 /// h1 sidesteps the broken edge entirely.
 #[must_use]
 pub fn proxy_upstream_http1_only() -> bool {
-    false
+    true
 }
 
 pub fn build_client() -> Result<reqwest::Client> {
-    reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         .user_agent(UA)
         .pool_idle_timeout(Duration::from_secs(30))
         .tcp_keepalive(Duration::from_secs(60))
         .timeout(Duration::from_secs(120))
-        .gzip(true)
-        .build()
-        .map_err(|_| AniError::Network)
+        .gzip(true);
+    if proxy_upstream_http1_only() {
+        builder = builder.http1_only();
+    }
+    builder.build().map_err(|_| AniError::Network)
 }
 
 /// Build the metadata HTTP client (Kitsu, AniList, provider search,
