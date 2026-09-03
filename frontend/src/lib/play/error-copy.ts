@@ -66,7 +66,8 @@ export function describeSourceDown(e: unknown): string | null {
  *  own retry hint when it sent one); no_results → catalogue miss;
  *  scraper → upstream unhappy; timeout → slow upstream; network /
  *  upstream → connection trouble; default → generic retry. */
-export function describePlayFailure(e: unknown): string {
+export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
+	void opts;
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);

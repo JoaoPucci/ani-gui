@@ -204,3 +204,20 @@ describe('describeSourceDown', () => {
 		expect(describeSourceDown('boom')).toBeNull();
 	});
 });
+
+describe('describePlayFailure — one mapper for every surface', () => {
+	it('a surface may override only the no-results copy', () => {
+		// The detail page's "isn't in the catalogue" phrasing is the
+		// one deliberate per-surface difference; everything else was
+		// triplicated drift (the home page's copies were hardcoded
+		// English). One mapper, one override point.
+		expect(describePlayFailure({ kind: 'no_results' }, { noResults: () => 'not indexed' })).toBe(
+			'not indexed'
+		);
+		expect(describePlayFailure({ kind: 'no_results' })).toBe(m.play_play_failure_no_results());
+		// The override touches nothing else.
+		expect(describePlayFailure({ kind: 'timeout' }, { noResults: () => 'not indexed' })).toBe(
+			m.play_play_failure_timeout()
+		);
+	});
+});
