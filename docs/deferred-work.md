@@ -340,3 +340,20 @@ starting it, and delete it when you find it done.
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
   a script ever needs it.
+
+## Development environment
+
+**The Electron `dev` script does not run on Windows.**
+`electron/package.json`'s `dev` script sets
+`ELECTRON_OZONE_PLATFORM_HINT` and `ELECTRON_DEV` with POSIX
+env-prefix syntax. On Windows, pnpm executes package scripts through
+`cmd.exe` (`%COMSPEC%`) regardless of the terminal pnpm was launched
+from — starting from Git Bash does not change the script shell — so
+the prefix is parsed as a command name and Electron never starts. The
+packaging path (`package:win`) avoids the syntax and is the verified
+Windows flow. Candidate routes: pnpm's `shell-emulator` or
+`script-shell` settings, moving the two variables into the Electron
+launcher, or a cross-platform env wrapper. The fix waited because it
+needs a Windows host to validate. One surprise worth checking first:
+the main process already manages an Ozone hint for the Wayland
+relaunch, so the env prefix may be partly redundant.

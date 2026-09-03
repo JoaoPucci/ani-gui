@@ -108,9 +108,12 @@ matching host and uploaded to the GitHub release by hand:
 
 The `electron-builder` config declares no macOS target; nothing
 produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
-any platform with a POSIX shell — the dev scripts set environment
-variables with POSIX prefixes, so on Windows run them from Git Bash —
-but no macOS artifact is built or shipped.
+Linux and macOS but not on Windows: pnpm executes package scripts
+through `cmd.exe` there regardless of the invoking terminal, and the
+Electron `dev` script sets environment variables with a POSIX prefix.
+`docs/deferred-work.md` tracks making it shell-independent; the
+packaging path is the verified Windows flow. No macOS artifact is
+built or shipped.
 
 ## Logging and debugging
 

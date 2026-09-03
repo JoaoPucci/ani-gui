@@ -63,7 +63,7 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 
 ## Build from source
 
-Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows — on Windows run it from Git Bash, since the dev scripts set environment variables with POSIX prefixes. The packaging scripts (step 7) build per-host artifacts — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer. There is no macOS packaging target yet.
+Tested on Linux. The dev loop (steps 5–6) works the same on macOS. It does not currently run on Windows: pnpm executes package scripts through `cmd.exe` there, and the Electron `dev` script sets environment variables with a POSIX prefix — [`docs/deferred-work.md`](./docs/deferred-work.md) tracks making it shell-independent. The packaging scripts (step 7) build per-host artifacts and are the verified Windows flow — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer. There is no macOS packaging target yet.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
