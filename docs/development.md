@@ -71,15 +71,7 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-Once per checkout, stage the bundled deps next to the dev binary —
-playback needs the impersonating transport, and the resolver's plain
-`curl` fallback is rejected by the provider:
-
-```sh
-cd electron && pnpm run fetch:linux-deps   # stages into backend/target/{debug,release}/bin
-```
-
-Then three terminals:
+Three terminals:
 
 ```sh
 # Terminal 1 — Vite dev server with HMR
@@ -90,6 +82,16 @@ cd backend && cargo build --bin ani-gui-backend
 
 # Terminal 3 — Electron shell (spawns the sidecar, points at Vite)
 cd electron && pnpm dev
+```
+
+Once per checkout, **after the first backend build**, stage the
+bundled deps next to the dev binary — the fetcher mirrors into
+`backend/target/{debug,release}/bin` only for profile directories
+that already exist, and playback needs the impersonating transport
+(the resolver's plain-`curl` fallback is rejected by the provider):
+
+```sh
+cd electron && pnpm run fetch:linux-deps
 ```
 
 Without the staging step the app still launches and browses metadata;

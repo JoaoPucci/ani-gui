@@ -343,14 +343,16 @@ starting it, and delete it when you find it done.
 
 ## Development environment
 
-**Running and packaging the app on Windows still assumes a POSIX
-shell, and nothing requires that any more.** The assumption dates
-from the project's shell-scraper origins; with the script retired,
-nothing in the app's dev or packaging workflow needs bash on
-Windows, yet the posture survives in two places. (The bash *test*
-layer — the Bats suites, the arch checks, lefthook's shellcheck —
-is POSIX-shell work by nature and stays that way on every platform;
-this entry is about running and shipping the app.)
+**The Windows dev loop still assumes a POSIX shell, and nothing
+requires that any more.** The assumption dates from the project's
+shell-scraper origins. Packaging is already shell-independent —
+`package:win` and everything it chains run under pnpm's Windows
+script shell, and the README permits PowerShell for it. What
+survives is the dev script, plus documentation posture around
+packaging. (The bash *test* layer — the Bats suites, the arch
+checks, lefthook's shellcheck — is POSIX-shell work by nature and
+stays that way on every platform; this entry is about running the
+app.)
 
 The one real defect: `electron/package.json`'s `dev` script sets
 `ELECTRON_OZONE_PLATFORM_HINT` and `ELECTRON_DEV` with POSIX
