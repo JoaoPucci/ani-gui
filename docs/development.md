@@ -94,9 +94,12 @@ pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
-Artifacts land in `electron/dist/`. There is no packaging CI — release
-artifacts are built on a matching host and uploaded to the GitHub
-release by hand:
+Artifacts land in `electron/dist/`. There is no release-packaging CI —
+no workflow triggers on a tag and nothing publishes installers. (The
+e2e workflow does run `pnpm run dist` on Linux to produce the
+`linux-unpacked/` build it tests against, so electron-builder itself is
+exercised in CI; publishing is not.) Release artifacts are built on a
+matching host and uploaded to the GitHub release by hand:
 
 | Target | Host | Command |
 |---|---|---|
@@ -104,8 +107,10 @@ release by hand:
 | NSIS installer (`.exe`) | Windows | `pnpm package:win` |
 
 The `electron-builder` config declares no macOS target; nothing
-produces a `.dmg`. The dev loop (Vite + Electron from source) is not
-platform-gated, but no macOS artifact is built or shipped.
+produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
+any platform with a POSIX shell — the dev scripts set environment
+variables with POSIX prefixes, so on Windows run them from Git Bash —
+but no macOS artifact is built or shipped.
 
 ## Logging and debugging
 
