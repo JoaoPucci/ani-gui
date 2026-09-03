@@ -37,7 +37,7 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
-	import { describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
+	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
@@ -1032,47 +1032,11 @@
 		return String(e);
 	}
 
-	/** Human-readable copy for a play-call failure. The raw AniError
-	 *  shape is `{kind, key?, detail?}`. A play that finds nothing
-	 *  arrives as `kind: "no_results"`, a stalled one as
-	 *  `kind: "timeout"`, and a provider that refused or went missing
-	 *  as `network` / `upstream`; everything else collapses to a
-	 *  generic message. The user shouldn't have to read JSON.
-	 *
-	 *  `kind: "scraper"` is matched below and cannot reach here: the
-	 *  only thing that constructs it is a download tool exiting
-	 *  non-zero, and this describes the play call. The branch stays
-	 *  because it costs nothing and the variant is shared. */
+	/** Play-call failure copy: the shared mapper with this surface's
+	 *  one deliberate difference — the definitive catalogue-miss
+	 *  phrasing (this page also gates the Play CTA proactively). */
 	function describePlayFailure(e: unknown): string {
-		// Shared first-chance branch: the typed rate limit renders the
-		// same localized busy-source copy (with the upstream's own
-		// retry hint) on every play surface. See $lib/play/error-copy.
-		const rateLimited = describeRateLimit(e);
-		if (rateLimited !== null) return rateLimited;
-		// Shared first-chance branch #2: a provider 5xx names the
-		// source as down instead of blaming the user's connection.
-		const sourceDown = describeSourceDown(e);
-		if (sourceDown !== null) return sourceDown;
-		const raw = describeErrorString(e).toLowerCase();
-		if (raw.includes('no_results')) {
-			// "Not in the catalog" reads cleaner than the prior
-			// "may not be available — try again later" hedge — a
-			// NoResults verdict means the title genuinely isn't
-			// indexed, and retrying won't help. The detail page also
-			// gates the Play CTA proactively when the availability
-			// probe lands first; this copy is the lazy fallback.
-			return m.detail_error_play_no_results();
-		}
-		if (raw.includes('scraper')) {
-			return m.detail_error_play_scraper();
-		}
-		if (raw.includes('timeout')) {
-			return m.detail_error_play_timeout();
-		}
-		if (raw.includes('network') || raw.includes('upstream')) {
-			return m.detail_error_play_network();
-		}
-		return m.detail_error_play_generic();
+		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
 	}
 
 	function heroFor(d: KitsuAnimeRef): { url: string | null; isCover: boolean } {
