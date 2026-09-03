@@ -94,15 +94,18 @@ pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
-Artifacts land in `electron/dist/`. CI builds all targets on every release tag:
+Artifacts land in `electron/dist/`. There is no packaging CI — release
+artifacts are built on a matching host and uploaded to the GitHub
+release by hand:
 
-| Target | Runner | Output |
+| Target | Host | Command |
 |---|---|---|
-| AppImage | `ubuntu-22.04` | `*.AppImage` |
-| `.deb` | `ubuntu-22.04` | `*.deb` |
-| Flatpak | `ubuntu-22.04` (flatpak-builder) | `*.flatpak` |
-| `.dmg` (Intel + Apple Silicon) | `macos-13`, `macos-14` | `*.dmg` |
-| `.msi` | `windows-latest` | `*.msi` |
+| `.AppImage` + `.deb` | Linux | `pnpm package:release` |
+| NSIS installer (`.exe`) | Windows | `pnpm package:win` |
+
+The `electron-builder` config declares no macOS target; nothing
+produces a `.dmg`. The dev loop (Vite + Electron from source) is not
+platform-gated, but no macOS artifact is built or shipped.
 
 ## Logging and debugging
 

@@ -42,7 +42,7 @@ Platform support tiers:
 |---|---|---|
 | 1 | Linux | Actively tested on Ubuntu. Other distros work via AppImage. |
 | 2 | Windows | Most features verified end-to-end. Edge cases may surface. |
-| 3 | macOS | Untested. Builds the same way; should work, but no release is verified on it. |
+| — | macOS | Not packaged. No installer is built or shipped; the dev loop runs from source. |
 
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
@@ -61,16 +61,9 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 
 </details>
 
-<details>
-<summary><strong>macOS</strong> — untested</summary>
-
-A `.dmg` is produced by the same `electron-builder` config and should install via the standard drag-into-Applications flow. macOS isn't part of the regular acceptance pass — the app is shipped for it but unverified.
-
-</details>
-
 ## Build from source
 
-Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) build per-host artifacts — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer.
+Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) build per-host artifacts — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer. There is no macOS packaging target.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -118,8 +111,6 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows;
    # `fetch:win-deps` needs `bsdtar`, which Git for Windows already ships)
    pnpm package:win       # NSIS installer
    ```
-   macOS `.dmg` is produced by CI on a `macos-*` runner — for local mac builds see [`docs/development.md`](./docs/development.md).
-
 For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
 ## First run
