@@ -71,18 +71,42 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-Three terminals:
+In order, starting from the repository root — the two one-shot steps
+run in subshells so they leave the working directory alone; the two
+long-running processes each get their own terminal, also opened at
+the root:
 
 ```sh
-# Terminal 1 — Vite dev server with HMR
+# 1 — build the Rust sidecar (one-shot per Rust change)
+(cd backend && cargo build --bin ani-gui-backend)
+
+# 2 — once per checkout, x86_64 Linux only: stage the bundled deps
+(cd electron && pnpm run fetch:linux-deps)
+
+# 3 — Vite dev server with HMR (keep running, own terminal)
 cd frontend && pnpm dev          # http://localhost:5173
 
-# Terminal 2 — build the Rust sidecar (one-shot per Rust change)
-cd backend && cargo build --bin ani-gui-backend
-
-# Terminal 3 — Electron shell (spawns the sidecar, points at Vite)
+# 4 — Electron shell (spawns the sidecar, points at Vite; keep running, own terminal)
 cd electron && pnpm dev
 ```
+
+Step 2's position is load-bearing on a fresh checkout: it must run
+after the first build, because the fetcher mirrors into
+`backend/target/{debug,release}/bin` only for profile directories
+that already exist — and before Electron, because the backend
+snapshots that directory once at startup. Playback needs the staged
+impersonating transport (the resolver's plain-`curl` fallback is
+rejected by the provider); if you stage while Electron is already
+running, restart it.
+
+Do not run step 2 anywhere else — not on macOS, and not on other
+Linux architectures: the fetcher downloads x86_64 Linux builds (the
+same architecture every package ships for), and the staged directory
+outranks PATH, so on any other host the incompatible binaries would
+shadow a usable transport the host actually has.
+
+Without the staging step the app still launches and browses metadata;
+only stream resolution and downloads need the staged tools.
 
 The Electron main process resolves the backend binary (`backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout `ANI_GUI_LISTENING <url>` handshake to discover the loopback port. The renderer reads that URL from `window.aniGui.apiBase` (set by the Electron preload script) and uses it for every `fetch()` call.
 
@@ -94,15 +118,34 @@ pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
-Artifacts land in `electron/dist/`. CI builds all targets on every release tag:
+Artifacts land in `electron/dist/`. There is no release-packaging CI —
+no workflow triggers on a tag and nothing publishes installers. (The
+e2e workflow does run `pnpm run dist` on Linux to produce the
+`linux-unpacked/` build it tests against, so electron-builder itself is
+exercised in CI; publishing is not.) Release artifacts are built on a
+matching host and uploaded to the GitHub release by hand:
 
-| Target | Runner | Output |
+| Target | Host | Command |
 |---|---|---|
-| AppImage | `ubuntu-22.04` | `*.AppImage` |
-| `.deb` | `ubuntu-22.04` | `*.deb` |
-| Flatpak | `ubuntu-22.04` (flatpak-builder) | `*.flatpak` |
-| `.dmg` (Intel + Apple Silicon) | `macos-13`, `macos-14` | `*.dmg` |
-| `.msi` | `windows-latest` | `*.msi` |
+| `.AppImage` + `.deb` | x86_64 Linux | `pnpm package:release` |
+| NSIS installer (`.exe`) | x64 Windows | `pnpm package:win` |
+
+The host architectures are load-bearing, not a formality: the dep
+fetchers stage hard-coded x86_64 assets and the AppImage repack
+prepends an x86_64 runtime, so a build on any other architecture
+produces a package with incompatible executables or fails outright.
+
+The `electron-builder` config declares no macOS target; nothing
+produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
+Linux, where `fetch:linux-deps` stages the transport playback needs.
+On macOS the app launches and browses metadata, but no fetcher
+stages a transport there, so stream resolution falls back to a plain
+`curl` the provider rejects. On Windows the loop does not start at
+all: pnpm executes package scripts through `cmd.exe` regardless of
+the invoking terminal, and the Electron `dev` script sets
+environment variables with a POSIX prefix. `docs/deferred-work.md`
+tracks making it shell-independent; the packaging path is the
+verified Windows flow. No macOS artifact is built or shipped.
 
 ## Logging and debugging
 

@@ -42,7 +42,7 @@ Platform support tiers:
 |---|---|---|
 | 1 | Linux | Actively tested on Ubuntu. Other distros work via AppImage. |
 | 2 | Windows | Most features verified end-to-end. Edge cases may surface. |
-| 3 | macOS | Untested. Builds the same way; should work, but no release is verified on it. |
+| — | macOS | Not packaged. No installer is built or shipped; the dev loop runs from source. |
 
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
@@ -61,16 +61,9 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 
 </details>
 
-<details>
-<summary><strong>macOS</strong> — untested</summary>
-
-A `.dmg` is produced by the same `electron-builder` config and should install via the standard drag-into-Applications flow. macOS isn't part of the regular acceptance pass — the app is shipped for it but unverified.
-
-</details>
-
 ## Build from source
 
-Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows; the packaging scripts (step 7) build per-host artifacts — run on Linux for `.AppImage` / `.deb`, on Windows for the NSIS installer.
+Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metadata, but playback needs an impersonating transport and no fetcher stages one there. It does not currently run on Windows: pnpm executes package scripts through `cmd.exe` there, and the Electron `dev` script sets environment variables with a POSIX prefix — [`docs/deferred-work.md`](./docs/deferred-work.md) tracks making it shell-independent. The packaging scripts (step 7) build per-host artifacts and are the verified Windows flow — run on x86_64 Linux for `.AppImage` / `.deb`, on x64 Windows for the NSIS installer. There is no macOS packaging target yet.
 
 1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
    ```sh
@@ -94,9 +87,10 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows;
    (cd frontend && pnpm install)
    (cd electron && pnpm install)
    ```
-5. **Build the backend binary** (required before the first run, and after every Rust change):
+5. **Build the backend binary** (required before the first run, and after every Rust change). On x86_64 Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport. The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip that step on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have:
    ```sh
    cd backend && cargo build --bin ani-gui-backend
+   (cd ../electron && pnpm run fetch:linux-deps)   # x86_64 Linux only
    ```
 6. **Run the dev app** — two terminals, started in this order:
    ```sh
@@ -118,8 +112,6 @@ Tested on Linux. The dev loop (steps 5–6) works the same on macOS and Windows;
    # `fetch:win-deps` needs `bsdtar`, which Git for Windows already ships)
    pnpm package:win       # NSIS installer
    ```
-   macOS `.dmg` is produced by CI on a `macos-*` runner — for local mac builds see [`docs/development.md`](./docs/development.md).
-
 For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
 ## First run

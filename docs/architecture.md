@@ -4,7 +4,7 @@
 
 ## What gets shipped
 
-A single-window desktop application. Linux: AppImage, `.deb`, Flatpak. macOS: `.dmg`. Windows: `.msi`. The user double-clicks an icon and gets a native window. There is no URL to visit, no port to remember, no internet-reachable service.
+A single-window desktop application. Linux: AppImage and `.deb`. Windows: NSIS installer. The user double-clicks an icon and gets a native window. There is no URL to visit, no port to remember, no internet-reachable service.
 
 ## Why there is a "backend"
 
