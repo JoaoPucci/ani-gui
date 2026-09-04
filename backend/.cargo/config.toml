@@ -1,0 +1,17 @@
+# The MSVC target links the C runtime dynamically by default, which
+# makes the shipped exe import vcruntime140.dll — a DLL Windows does
+# not ship, the installer does not stage, and Electron's binaries do
+# not carry. Linking it statically removes the import; the backend
+# then starts on a Windows where no installer ever left the VC++
+# redistributable behind. Costs some exe size, changes nothing for
+# machines that do have the DLL.
+#
+# Scoped to MSVC: the GNU toolchain and every non-Windows target keep
+# their defaults.
+#
+# A RUSTFLAGS environment variable REPLACES this entry rather than
+# merging with it — an environment that exports RUSTFLAGS must carry
+# the flag itself (rust.yml's Windows test leg does). The crt-static
+# assertion in app.rs goes red wherever the flag is lost.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
