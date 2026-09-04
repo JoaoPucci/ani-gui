@@ -344,4 +344,20 @@ mod tests {
         let got = resolve_bundled_bin(Some(td.path()));
         assert_eq!(got.as_deref(), Some(bin.as_path()));
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_build_carries_its_own_c_runtime() {
+        // A dynamically linked CRT imports vcruntime140.dll, which
+        // Windows does not ship and neither does anything in the
+        // package — Electron's own binaries carry no copy. On a
+        // machine where no other installer has left the VC++
+        // redistributable, the backend is then the one piece of the
+        // install that cannot start, and the app opens to a shell
+        // with nothing behind it.
+        assert!(
+            cfg!(target_feature = "crt-static"),
+            "the CRT is linked dynamically; a clean Windows has no vcruntime140.dll"
+        );
+    }
 }
