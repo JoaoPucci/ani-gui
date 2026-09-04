@@ -1,4 +1,5 @@
 {
 	"name": "ani-gui-workspace",
-	"private": true
+	"private": true,
+	"packageManager": "pnpm@10.34.5"
 }
