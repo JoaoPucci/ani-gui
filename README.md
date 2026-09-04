@@ -97,7 +97,9 @@ Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metada
    # Terminal A — Vite dev server, HMR on :5173
    cd frontend && pnpm dev
 
-   # Terminal B — Electron shell, spawns the backend binary from step 5
+   # Terminal B — Electron shell, spawns the backend binary from step 5.
+   # On Windows this also stages the bundled tools (impersonating
+   # transport, yt-dlp) next to the backend binary, so playback works.
    cd electron && pnpm dev
    ```
 7. **Build a distributable bundle**:
@@ -108,8 +110,9 @@ Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metada
    pnpm package           # .AppImage — fast iteration
    pnpm package:release   # .AppImage + .deb
 
-   # Windows host (Git Bash / PowerShell, with Rust + Node + pnpm installed natively;
-   # `fetch:win-deps` needs `bsdtar`, which Git for Windows already ships)
+   # Windows host (any shell — PowerShell, cmd, Git Bash; Rust + Node + pnpm
+   # installed natively. `fetch:win-deps` needs `bsdtar`, which Windows 10+
+   # ships as `tar.exe`)
    pnpm package:win       # NSIS installer
    ```
 For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).

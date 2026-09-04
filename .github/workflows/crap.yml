@@ -76,8 +76,6 @@ jobs:
 
       - if: needs.filter.outputs.relevant == 'true'
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - if: needs.filter.outputs.relevant == 'true'
         uses: actions/setup-node@v4
         with:
