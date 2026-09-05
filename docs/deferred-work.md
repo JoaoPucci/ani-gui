@@ -277,6 +277,11 @@ starting it, and delete it when you find it done.
   cache stamped by provider output is part of the answer, not an
   afterthought.
 
+  That investigation ran on 2026-09-05, during a second, total outage
+  of the provider: `docs/proposals/additional-providers.md` holds the
+  candidate survey, the integration shape, and a recommendation. The
+  survey's liveness claims rot; re-verify them before building.
+
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old
