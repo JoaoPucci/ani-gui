@@ -263,8 +263,8 @@ starting it, and delete it when you find it done.
   then zero bytes until timeout) while its JSON routes kept answering
   — nothing new could be resolved, and every uncached play was
   correctly reported as unreachable. Plays kept working only where a
-  cached resolution sat inside its 24-hour window *and* its stream
-  URL still answered validation — a dead URL evicts the row and falls
+  cached resolution sat inside its seven-day lifetime *and* its
+  stream URL still answered validation — a dead URL evicts the row and falls
   through to the unreachable provider. That softens the blow without
   changing the lesson. pystardust/ani-cli#1877 records the same
   outage from the outside.
@@ -276,6 +276,11 @@ starting it, and delete it when you find it done.
   (`docs/title-resolution.md`) is keyed by provider ids, so every
   cache stamped by provider output is part of the answer, not an
   afterthought.
+
+  That investigation ran on 2026-09-05, during a second, total outage
+  of the provider: `docs/proposals/additional-providers.md` holds the
+  candidate survey, the integration shape, and a recommendation. The
+  survey's liveness claims rot; re-verify them before building.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
