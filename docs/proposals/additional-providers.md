@@ -34,11 +34,17 @@ each outage is therefore not a strategy; a second provider is.
 ## What a second provider must offer
 
 1. **Reachable by our transport class.** The backend speaks HTTP
-   through TLS-fingerprint impersonation (curl-impersonate) with
-   full control of headers and cookies. That defeats fingerprint
-   checks; it cannot execute JavaScript, so a Cloudflare interactive
-   challenge or equivalent is a hard wall for the Rust client alone
-   (see "The transport gap" below).
+   through TLS-fingerprint impersonation (curl-impersonate). The
+   binary supports arbitrary headers and cookies, but the current
+   fetch seam does not expose them — it passes a bare URL with a
+   fixed user agent, one fresh process per request, no cookie jar —
+   so scrape-time header and cookie control (`Referer`, `Origin`,
+   `X-Requested-With`, cookie continuity across a walk) is part of
+   any new client's work, not something the transport already
+   hands it. Impersonation defeats fingerprint checks; it cannot
+   execute JavaScript, so a Cloudflare interactive challenge or
+   equivalent is a hard wall for the Rust client alone (see "The
+   transport gap" below).
 2. **Searchable by title.** The title-resolution bridge feeds
    Kitsu-derived titles in priority order (`docs/title-resolution.md`);
    the provider needs a text search that accepts them.
@@ -89,10 +95,14 @@ dub (a **per-episode** audio signal, requirement 4 at its
 strongest) → base64-decode a server hash into an embed URL → the
 embed page carries an XOR-obfuscated blob (key `otaku-embed-v1`)
 whose plaintext holds the master-playlist URL. Two bridge-relevant
-properties: entries are season-split, and the embed URLs are keyed
-by MyAnimeList id — the provider itself is MAL-mapped, so a pick
-could be verified against the Kitsu→MAL mapping directly instead of
-by episode-count distance. Risks: domain churn and ISP blocks make
+properties: entries are season-split, and the site surfaces
+MyAnimeList ids (its entry pages link them; the decoded embed URLs
+carry them), so a pick can be cross-checked against the Kitsu→MAL
+mapping. That is a verification signal on top of the episode-count
+disambiguation, not a replacement for it: the primary identifiers —
+entry slug, episode id, server hash — are provider ids, the MAL id
+costs a per-candidate fetch, and it stays a claim to verify until
+the client has proven the mapping holds. Risks: domain churn and ISP blocks make
 "which domain" a live question (a configurable or probing base URL,
 not a constant); the obfuscation key literally carries a version
 suffix, so rotation is a when, not an if.
@@ -167,6 +177,13 @@ ever the pick, this is its own investigation first.
   session — the seam work is the provider owning that value (and any
   future header like it) in the resolved result, propagated through
   the resolution cache, the proxy session, and the download path.
+  Subtitles ride the same decision: today they travel inside the
+  HLS master, whose rewrite the proxy already fetches and serves
+  (`.vtt` included), while hianime delivers soft-sub tracks as
+  sidecar files outside the playlist — so the resolved result also
+  carries subtitle descriptors, served through the proxy like every
+  other upstream fetch rather than by exposing upstream URLs to the
+  player.
 - **Provider-stamped state.** Every cache stamped by provider output
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
