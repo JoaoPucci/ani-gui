@@ -176,14 +176,23 @@ ever the pick, this is its own investigation first.
   resolution-cache row. The proxy is already referer-capable per
   session — the seam work is the provider owning that value (and any
   future header like it) in the resolved result, propagated through
-  the resolution cache, the proxy session, and the download path.
+  the resolution cache, the proxy session, the download path, and
+  the external-player and Syncplay handoffs, whose fresh-resolve
+  path builds its launch arguments with no referer today on the
+  same "the current provider needs none" reasoning.
   Subtitles ride the same decision: today they travel inside the
   HLS master, whose rewrite the proxy already fetches and serves
   (`.vtt` included), while hianime delivers soft-sub tracks as
   sidecar files outside the playlist — so the resolved result also
   carries subtitle descriptors, served through the proxy like every
   other upstream fetch rather than by exposing upstream URLs to the
-  player.
+  player. The proxy answer covers only the embedded player; the
+  three non-embedded consumers need their own: the download tool
+  receives just the master URL today, so sidecar tracks have to be
+  fetched alongside the media or handed to the tool to mux, and the
+  external-player and Syncplay handoffs expose a stream URL and
+  referer only — forward a subtitle argument where the target
+  player accepts one, and say so where it does not.
 - **Provider-stamped state.** Every cache stamped by provider output
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
