@@ -159,7 +159,14 @@ ever the pick, this is its own investigation first.
   fact — under failover both must be answered per attempt by the
   abstraction or its orchestrator, or an attempt against the second
   provider displays the first one's name and trains the first one's
-  circuit breaker.
+  circuit breaker. And a resolved stream must carry its provider's
+  playback request context: hianime's CDN wants the embed origin as
+  the `Referer`, while the current provider needs none, so the play
+  command hard-codes an empty one into the proxy session and the
+  resolution-cache row. The proxy is already referer-capable per
+  session — the seam work is the provider owning that value (and any
+  future header like it) in the resolved result, propagated through
+  the resolution cache, the proxy session, and the download path.
 - **Provider-stamped state.** Every cache stamped by provider output
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
