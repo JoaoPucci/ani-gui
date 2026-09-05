@@ -218,8 +218,15 @@ ever the pick, this is its own investigation first.
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
   mode)`, which today mean "on anidb.app" specifically; history rows
-  keyed on the provider slug and the slug→kitsu reverse mapping; the
-  numbering-offsets sidecar beside the history file
+  keyed on the provider slug and the slug→kitsu reverse mapping —
+  one row per id, appended rather than merged, and the detail page's
+  resume lookup takes the first file-order row whose mapping matches
+  the Kitsu id, so a show watched through two providers gets two
+  rows for one entry and resumes from the older one unless the
+  migration adds a Kitsu-level selection rule (most recent
+  last-watched stamp wins, or one row per Kitsu entry carrying the
+  provider as an attribute); the numbering-offsets sidecar beside
+  the history file
   (`backend/src/commands/anidb_offset_store.rs`), one row per bare
   slug carrying a show's numbering offset and last-watch display
   stamp — it outlives SQLite cache clears and is consulted on every
