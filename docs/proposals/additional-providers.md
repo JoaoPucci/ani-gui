@@ -44,7 +44,18 @@ each outage is therefore not a strategy; a second provider is.
    hands it. Impersonation defeats fingerprint checks; it cannot
    execute JavaScript, so a Cloudflare interactive challenge or
    equivalent is a hard wall for the Rust client alone (see "The
-   transport gap" below).
+   transport gap" below). And reachability has two halves, because
+   the scrape and the playback ride different transports: the
+   impersonating binary only performs the walk, while the embedded
+   player's playlists and segments are fetched by the proxy's own
+   plain `reqwest` client (`backend/src/proxy/upstream.rs`, a rustls
+   fingerprint), downloads by yt-dlp and ffmpeg, and handoffs by the
+   external player. A provider can resolve cleanly and still reject
+   every play if its CDN fingerprints the second transport. A
+   candidate counts as reachable only once a master playlist and its
+   segments have been pulled through the local proxy — and through
+   each non-embedded consumer the app supports — not when the site
+   answers a scrape probe.
 2. **Searchable by title.** The title-resolution bridge feeds
    Kitsu-derived titles in priority order (`docs/title-resolution.md`);
    the provider needs a text search that accepts them.
@@ -68,9 +79,12 @@ each outage is therefore not a strategy; a second provider is.
 ## Survey — 2026-09-05, one residential connection
 
 Probed with plain curl and with the staged impersonating transports
-(Chrome 116 and 136 fingerprints). One connection, one day: a
-Cloudflare challenge can be per-IP and per-moment, and domain
-listings churn constantly.
+(Chrome 116 and 136 fingerprints). "Reachable" below is the scrape
+half of requirement 1 only: no playlist or segment was pulled
+through the proxy's own client, so playback-transport acceptance is
+unverified for every row. One connection, one day: a Cloudflare
+challenge can be per-IP and per-moment, and domain listings churn
+constantly.
 
 | Provider | Reachable? | Verdict |
 |---|---|---|
