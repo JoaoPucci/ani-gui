@@ -256,10 +256,21 @@ ever the pick, this is its own investigation first.
   primary before every play. The orchestrator has to consult the
   breaker to skip (or race) a primary whose outage is already
   established, or give the first attempt a far shorter budget than
-  the resolve deadline. (2) Fall
+  the resolve deadline. Failover also changes what a clean miss
+  proves. Today a clean miss is the one verdict that persists as a
+  negative availability row, because a single provider that
+  searched every alias and found nothing has proven absence. A
+  fallback's clean miss while the primary is unreachable proves
+  nothing about the primary, so the aggregation rule has to be
+  explicit: a global negative may be written only when every
+  provider answered cleanly; otherwise key negatives per provider,
+  or persist nothing — or a primary-only show stays hidden for the
+  negative row's lifetime after the primary recovers. (2) Fall
   through to another provider when the primary lacks the show —
-  catalogue expansion, with murkier availability semantics (absence
-  verdicts become per-provider). (3) Per-title manual choice — UI
+  catalogue expansion, which turns the same per-provider absence
+  question into a user-visible one (a show absent on the primary
+  and present on the fallback is "available", and every surface
+  that says so has to agree). (3) Per-title manual choice — UI
   plus a cache dimension. Build (1) first; (2) and (3) only on
   demonstrated need.
 
