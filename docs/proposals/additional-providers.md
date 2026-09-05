@@ -157,8 +157,15 @@ ever the pick, this is its own investigation first.
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
   mode)`, which today mean "on anidb.app" specifically; history rows
-  keyed on the provider slug and the slug→kitsu reverse mapping; and
-  episode caps, which inherit the numbering-model difference above.
+  keyed on the provider slug and the slug→kitsu reverse mapping; the
+  numbering-offsets sidecar beside the history file
+  (`backend/src/commands/anidb_offset_store.rs`), one row per bare
+  slug carrying a show's numbering offset and last-watch display
+  stamp — it outlives SQLite cache clears and is consulted on every
+  history read and write, so a second provider's slugs landing in it
+  unqualified would apply the wrong episode translation to Continue
+  Watching; and episode caps, which inherit the numbering-model
+  difference above.
 - **Failover policy is three features, not one.** (1) Fail over when
   the primary is unreachable or refusing — the states the gate and
   outcome layers already classify; this is the outage fix. (2) Fall
