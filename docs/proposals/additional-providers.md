@@ -164,8 +164,13 @@ ever the pick, this is its own investigation first.
   stamp — it outlives SQLite cache clears and is consulted on every
   history read and write, so a second provider's slugs landing in it
   unqualified would apply the wrong episode translation to Continue
-  Watching; and episode caps, which inherit the numbering-model
-  difference above.
+  Watching; the last-watched stamps (`watched-at:v1:<show id>` rows
+  in the metadata cache, 30-day TTL) that Continue Watching's
+  recency order joins against history rows by the same bare id —
+  qualify history ids without migrating these and every stamp
+  detaches, demoting the whole strip to file order; keep both bare
+  and two providers' identical slugs share one timestamp; and
+  episode caps, which inherit the numbering-model difference above.
 - **Failover policy is three features, not one.** (1) Fail over when
   the primary is unreachable or refusing — the states the gate and
   outcome layers already classify; this is the outage fix. (2) Fall
