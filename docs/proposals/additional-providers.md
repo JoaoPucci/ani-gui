@@ -12,13 +12,18 @@ ten days that bet failed twice in two different ways:
 - **2026-08-27** — the provider's server-rendered routes stalled
   globally for hours (TLS completed, then zero bytes until timeout)
   while its JSON routes kept answering. Nothing new could be
-  resolved; plays survived only where a cached resolution was inside
-  its 24-hour window and its stream URL still validated.
+  resolved; plays survived only where a cached resolution existed —
+  resolution caching was still unconditional then — inside the
+  cache's seven-day row lifetime, with a stream URL that still
+  answered validation.
 - **Since early September 2026** (observed 2026-09-05) — a total,
   deliberate outage: every route, the JSON API included, answers a
   self-branded "Under Maintenance" 503 through Cloudflare in about a
-  third of a second. Days in, the cached-resolution rescue path has
-  drained; playback is simply down.
+  third of a second. Resolution caching became an opt-in setting,
+  default off, on 2026-09-03 — so this time most installs have no
+  cached rescue at all, and an opted-in install keeps a play alive
+  only while a row under seven days old still validates. Playback
+  is down.
 
 The same outage took down the whole `ani-cli` ecosystem, which moved
 onto anidb.app for its v5 in July 2026. Its maintainers are not
