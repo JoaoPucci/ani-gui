@@ -153,6 +153,14 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: backend
+        # A RUSTFLAGS environment variable replaces every rustflags
+        # entry in .cargo/config.toml rather than merging with it, so
+        # the workflow-level '-D warnings' silently discards the
+        # static-CRT flag the config pins for MSVC. Windows re-adds
+        # it here; the crt-static assertion in app.rs goes red in any
+        # environment that loses the flag again.
+        env:
+          RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
         run: cargo test --workspace --all-features
 
   coverage:
