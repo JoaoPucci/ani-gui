@@ -152,7 +152,14 @@ ever the pick, this is its own investigation first.
   availability and download commands import the concrete client and
   its types directly, and app state holds a single gate. The work is
   a provider trait with provider-neutral hit/episode types, one gate
-  instance per provider, and the commands taking the trait.
+  instance per provider, and the commands taking the trait. The seam
+  owns attribution too: the resolve path stamps a hard-coded
+  provider label into its progress events, and the play and download
+  walks record their combined outcome into the one gate after the
+  fact — under failover both must be answered per attempt by the
+  abstraction or its orchestrator, or an attempt against the second
+  provider displays the first one's name and trains the first one's
+  circuit breaker.
 - **Provider-stamped state.** Every cache stamped by provider output
   needs an explicit migrate-or-keep decision in the same change:
   resolution-cache rows; availability verdicts per `(kitsu_id,
