@@ -162,7 +162,14 @@ ever the pick, this is its own investigation first.
   availability and download commands import the concrete client and
   its types directly, and app state holds a single gate. The work is
   a provider trait with provider-neutral hit/episode types, one gate
-  instance per provider, and the commands taking the trait. The seam
+  instance per provider, and the commands taking the trait. History
+  reverse resolution is a fourth consumer of provider knowledge:
+  when a Continue Watching row has no stamped mapping, the recovery
+  derives a search term from the slug through the current provider's
+  parser alone and writes anything shaped differently off as an
+  unresolvable legacy row — provider-aware id parsing belongs to the
+  seam, and the id-qualification decision below must leave this path
+  able to tell whose id it is holding. The seam
   owns attribution too: the resolve path stamps a hard-coded
   provider label into its progress events, and the play and download
   walks record their combined outcome into the one gate after the
