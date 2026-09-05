@@ -176,11 +176,26 @@ ever the pick, this is its own investigation first.
   recency order joins against history rows by the same bare id —
   qualify history ids without migrating these and every stamp
   detaches, demoting the whole strip to file order; keep both bare
-  and two providers' identical slugs share one timestamp; and
-  episode caps, which inherit the numbering-model difference above.
+  and two providers' identical slugs share one timestamp; the
+  title-match rows (`title-match:` keys mapping a normalized
+  provider title and cour to a Kitsu id, 30-day TTL), which the
+  reverse-resolver falls back to when the slug mapping is absent or
+  rejected — they carry no provider dimension, so colliding titles
+  from two providers can read or overwrite each other's mapping;
+  the read side re-validates a hit before trusting it, which
+  softens the collision without closing it; and episode caps, which
+  inherit the numbering-model difference above.
 - **Failover policy is three features, not one.** (1) Fail over when
   the primary is unreachable or refusing — the states the gate and
-  outcome layers already classify; this is the outage fix. (2) Fall
+  outcome layers already classify; this is the outage fix. To
+  restore anything it also needs a bound on the primary attempt: an
+  interactive resolve is allowed the full 60-second deadline today,
+  and interactive requests deliberately bypass an open breaker, so a
+  sequential try-then-fall-over would spend a minute on a known-down
+  primary before every play. The orchestrator has to consult the
+  breaker to skip (or race) a primary whose outage is already
+  established, or give the first attempt a far shorter budget than
+  the resolve deadline. (2) Fall
   through to another provider when the primary lacks the show —
   catalogue expansion, with murkier availability semantics (absence
   verdicts become per-provider). (3) Per-title manual choice — UI
