@@ -71,6 +71,28 @@ fn a_page_without_the_search_shape_is_a_parse_failure() {
 }
 
 #[test]
+fn a_result_list_whose_cards_all_fail_to_parse_is_a_parse_failure() {
+    // The cards are there and the title anchor is not what the parser
+    // knows: read as "no results", every title searched would be
+    // persisted as absent.
+    let page = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><span data-slug="cowboy-bebop-1281" data-title="Cowboy Bebop">Cowboy Bebop</span></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    let err = parse_search(page).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let some_readable = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><span data-slug="x">X</span></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    assert_eq!(
+        parse_search(some_readable).expect("parsed").len(),
+        1,
+        "a readable card beside an unreadable one is kept"
+    );
+    let no_cards = r#"<html><body><div class="film_list-wrap"></div><div id="main-sidebar"></div></body></html>"#;
+    assert_eq!(
+        parse_search(no_cards).expect("parsed"),
+        Vec::<BrowseHit>::new(),
+        "a result region with no cards at all is the empty answer"
+    );
+}
+
+#[test]
 fn slug_id_is_the_trailing_number() {
     assert_eq!(slug_id("cowboy-bebop-1281"), Some(1281));
     assert_eq!(slug_id("cowboy-bebop"), None);
