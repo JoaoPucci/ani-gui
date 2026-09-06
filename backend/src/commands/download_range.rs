@@ -121,7 +121,10 @@ where
             "download: spawning tool on natively resolved stream",
         );
         spawn_download_tool(
-            &resolved.master_url,
+            &crate::scraper::provider::StreamSource {
+                master_url: resolved.master_url,
+                referer: resolved.referer,
+            },
             dest,
             &file_stem,
             Some(quality),
