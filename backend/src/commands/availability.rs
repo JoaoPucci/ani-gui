@@ -361,7 +361,14 @@ pub(crate) async fn check_availability_with_base(
         ..crate::commands::providers::Origins::of(state)
     };
     let mut attempt = ProbeAttempt { args, mode };
-    let probed = crate::commands::providers::run_at(state, origins, prio, &mut attempt).await;
+    let probed = crate::commands::providers::run_at(
+        state,
+        origins,
+        &state.provider_order,
+        prio,
+        &mut attempt,
+    )
+    .await;
     let (available, episode_count, extra_episodes, provider, persistable) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
@@ -527,6 +534,21 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
         probe_show(provider, self.args, self.mode).await
     }
+}
+
+/// The provider a positive availability row remembers for
+/// `(kitsu_id, mode)` — the one that proved the show playable — or
+/// nothing: negative rows, rows from before the field, and rows the
+/// cache does not hold remember no provider. A play starts from it.
+#[must_use]
+pub(crate) fn cached_provider(
+    state: &AppState,
+    kitsu_id: &str,
+    mode: &str,
+) -> Option<crate::scraper::provider::ProviderId> {
+    let body = meta_cache_get(&state.cache_pool, &cache_key(kitsu_id, mode)).ok()??;
+    let row: AvailabilityResponse = serde_json::from_str(&body).ok()?;
+    row.available.then_some(row.provider).flatten()
 }
 
 /// Persist a known availability result./// Persist a known availability result. Public so the play and
