@@ -260,6 +260,64 @@ starting it, and delete it when you find it done.
   answer for a show is still one request per episode on either
   provider.
 
+## Filling catalogue gaps from the second provider
+
+- **Ask the next provider when the first answers a clean miss**, so a
+  show the first provider does not carry plays from the second
+  instead of being hidden. Failover moves to the next provider only
+  when the current one was unreachable, refusing or broken; an
+  answered miss ends the walk. A finished show with a negative
+  verdict is then dropped from the home and search lists, and its
+  page disables Play and Download.
+
+  Why it waited: it is a change of meaning, not of one rule. A
+  negative verdict means "the provider that answered has nothing";
+  with gap filling it has to mean every provider answered a clean
+  miss, and every negative row written so far is a single-provider
+  verdict about a question nobody would ask any more. The
+  availability cache re-keyed for the same reason when the provider
+  changed from allanime to anidb.app, and would again. Positive rows
+  already name their provider.
+
+  Rate limiting is the biggest risk and the reason to plan before
+  building. A clean miss costs a full walk — every alias searched, up
+  to five candidates probed — and gap filling makes every genuinely
+  absent show cost one such walk per provider, on the page's own
+  probe and on the background warm that fills the list views alike.
+  hianime's rate-limit temperament has never been measured; the
+  survey in `docs/proposals/additional-providers.md` only saw it
+  answer quickly. Each provider has its own pacer and breaker, and
+  the interstitial check recognises a Cloudflare challenge, but a
+  breaker learns after the block, not before. Measure first: what
+  the site tolerates for search and AJAX listings at the background
+  pace, and whether it answers excess with the challenge page or a
+  429.
+
+  Provider affinity is what makes the feature usable rather than
+  merely correct. Without it, every play of a show only the second
+  provider carries pays the first provider's whole miss walk first.
+  A remembered provider already lives in two places — the
+  availability row names it, and a history row's show key carries
+  its label — so the order becomes per request.
+
+  What makes hianime a fit for this: its entries are season-split
+  like Kitsu's, so the count-based picker needs none of the offset
+  machinery anidb.app required; a captured search was tight (three
+  hits for "cowboy bebop": the series, the movie, one special); every
+  decoded embed URL carries the MyAnimeList id, so a pick can be
+  cross-checked against Kitsu's MAL mapping after the resolve for
+  free (whether the entry page carries it before the pick was not
+  confirmed); and it types each server sub or dub, so the bounded
+  mode scan applies unchanged.
+
+  Keep hiding, but only on a miss from every provider, and only for
+  finished shows as now: a card no provider can play is a dead
+  click. Per-title manual choice is not needed for this. If the
+  second provider becomes load-bearing for catalogue breadth rather
+  than a fallback, its domain churn arrives sooner: the canonical
+  domain is filtered per ISP, and the origin is a constant with a
+  test override only.
+
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old
