@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::app::AppState;
 use crate::commands::availability_refresh::with_row_if_ours;
-use crate::commands::play_native_resolve::NativeResolveRequest;
+use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::progress::ProgressLine;
 use crate::commands::session::{
@@ -473,10 +473,6 @@ where
         detail: format!("upstream_url: {} is not a valid URL", native.master_url),
     })?;
 
-    // anidb's streams carry no referer requirement — 5.0's own player
-    // invocation dropped the flag with the provider change.
-    let referer = String::new();
-
     // The resolve already fetched this URL and accepted it only
     // because its body opens as #EXTM3U — it is definitively HLS,
     // whatever shape the URL takes and however the CDN answers HEAD.
@@ -484,30 +480,23 @@ where
     // as MP4 and probed the stream upstream through the metadata
     // client.
     let kind = MediaKind::Hls;
+    let cached_resolution = cached_resolution_for(&native);
     tracing::info!(
         title = %args.title,
         episode = %args.episode,
         upstream = upstream_url.as_str(),
-        referer = referer.as_str(),
+        referer = cached_resolution.referer.as_str(),
         kind = ?kind,
         "play: natively resolved upstream",
     );
 
     // Persist the resolution so the next play of the same episode
     // skips the provider round-trips (subject to TTL + HEAD
-    // validation). show_id is the anidb slug, and storing it is what
-    // lets a cache hit write the same history row a fresh resolve
-    // would: `play_native_record::write_history` has the slug in hand
-    // from the walk, `write_history_on_cache_hit` reads it back from
-    // here. Nothing outside this app writes that file.
-    let cached_resolution = CachedResolution {
-        upstream_url: native.master_url.clone(),
-        referer: referer.clone(),
-        media_kind: kind,
-        show_id: native.slug.clone(),
-        show_title: native.title.clone(),
-        resolved_slot: Some(native.resolved_slot),
-    };
+    // validation). show_id is the provider's slug, and storing it is
+    // what lets a cache hit write the same history row a fresh
+    // resolve would: `play_native_record::write_history` has the slug
+    // in hand from the walk, `write_history_on_cache_hit` reads it
+    // back from here. Nothing outside this app writes that file.
     // Written unconditionally: the row doubles as the watch metadata
     // /api/play/mark-watched reads back (show identity, title, the
     // numbering slot this resolve stamped) — only the REPLAY reads
@@ -517,9 +506,26 @@ where
 
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
-        referer,
+        referer: cached_resolution.referer,
     };
     create_session_with_kind(state, &session_args, kind)
+}
+
+/// The cache row a native resolve leaves behind: the stream, the
+/// referer its provider named (the empty string being the proxy's and
+/// the HEAD check's "none"), and the show identity the mark-watched
+/// and cache-hit writers read back.
+pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution {
+    CachedResolution {
+        upstream_url: native.master_url.clone(),
+        referer: native.referer.clone().unwrap_or_default(),
+        // The resolve already fetched this URL and accepted it only
+        // because its body opens as #EXTM3U — it is definitively HLS.
+        media_kind: MediaKind::Hls,
+        show_id: native.slug.clone(),
+        show_title: native.title.clone(),
+        resolved_slot: Some(native.resolved_slot),
+    }
 }
 
 // `upstream_head_ok`, `try_serve_cached`, and

@@ -32,6 +32,11 @@ pub struct NativeResolved {
     pub title: String,
     /// The master-playlist URL the embed page carried.
     pub master_url: String,
+    /// The referer the provider's CDN wants on every fetch of the
+    /// master and what it lists — `None` when it wants none. Every
+    /// consumer of the resolve sends it: the proxy session, the cache
+    /// row, the download tool, the external player.
+    pub referer: Option<String>,
     /// Highest episode number the provider lists, for the
     /// availability cap stamp. Free — the picker already fetched the
     /// list.
@@ -223,6 +228,7 @@ where
                             slug: picked.hit.slug,
                             title: picked.hit.title,
                             master_url: resolved.master_url,
+                            referer: resolved.referer,
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,

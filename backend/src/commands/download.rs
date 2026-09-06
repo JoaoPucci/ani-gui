@@ -20,6 +20,7 @@ use crate::app::AppState;
 use crate::commands::play::anidb_client_with_base;
 use crate::commands::play_native_resolve::{resolve_native_bounded, NativeResolveRequest};
 use crate::error::{AniError, Result};
+use crate::scraper::provider::StreamSource;
 
 /// Wire payload for the download endpoint. A near-clone of [`PlayArgs`]
 /// (so the renderer can pass through the same metadata it gathered for
@@ -241,7 +242,10 @@ where
     );
     let file_stem = format!("{} Episode {}", resolved.title, args.episode);
     spawn_download_tool(
-        &resolved.master_url,
+        &StreamSource {
+            master_url: resolved.master_url,
+            referer: resolved.referer,
+        },
         &dest,
         &file_stem,
         Some(quality),
@@ -905,8 +909,22 @@ pub(crate) async fn publish_without_links(
     }
 }
 
+/// yt-dlp's own flag for the referer, or nothing when the stream
+/// needs none.
+pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
+    referer.map_or_else(Vec::new, |r| vec!["--referer".into(), r.into()])
+}
+
+/// ffmpeg takes raw request headers, CRLF-terminated, ahead of the
+/// input they apply to; or nothing when the stream needs none.
+pub(crate) fn ffmpeg_referer_args(referer: Option<&str>) -> Vec<String> {
+    referer.map_or_else(Vec::new, |r| {
+        vec!["-headers".into(), format!("Referer: {r}\r\n")]
+    })
+}
+
 pub(crate) async fn spawn_download_tool<F>(
-    master_url: &str,
+    source: &StreamSource,
     dest: &std::path::Path,
     file_stem: &str,
     quality: Option<&str>,
@@ -917,6 +935,8 @@ pub(crate) async fn spawn_download_tool<F>(
 where
     F: FnMut(&str) + Send,
 {
+    let master_url = source.master_url.as_str();
+    let referer = source.referer.as_deref();
     let target = dest.join(format!("{file_stem}.mp4"));
     // The ceiling belongs to the transfer, not to each step inside
     // it: one absolute instant, and everything below runs against
@@ -1012,7 +1032,8 @@ where
         if let Some(p) = &child_path {
             cmd.env("PATH", p);
         }
-        cmd.arg(master_url)
+        cmd.args(ytdlp_referer_args(referer))
+            .arg(master_url)
             .arg("--no-skip-unavailable-fragments")
             .arg("--fragment-retries")
             .arg("infinite")
@@ -1085,6 +1106,7 @@ where
         .arg("-loglevel")
         .arg("error")
         .arg("-stats")
+        .args(ffmpeg_referer_args(referer))
         .arg("-i")
         .arg(master_url)
         .arg("-c")

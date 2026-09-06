@@ -92,6 +92,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         .map_err(dead_end)?;
     Ok(ResolvedEpisode {
         master_url,
+        referer: source.referer,
         slot: ep.number,
         tag: ep.number2.clone(),
     })
@@ -104,6 +105,9 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
 pub struct ResolvedEpisode {
     /// The validated master-playlist URL.
     pub master_url: String,
+    /// The referer the provider's CDN wants on every fetch of it,
+    /// when it wants one.
+    pub referer: Option<String>,
     /// The row's integer `number` — the provider's own position for
     /// it, which is how a later resume finds this row again.
     pub slot: u32,
