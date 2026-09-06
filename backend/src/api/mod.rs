@@ -328,6 +328,9 @@ async fn get_kitsu_episodes(
 struct TitleMatchQuery {
     title: String,
     cour: u32,
+    /// The provider whose title this is; anidb when absent.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -343,8 +346,10 @@ async fn get_title_match(
     State(state): State<Arc<AppState>>,
     Query(q): Query<TitleMatchQuery>,
 ) -> Result<Json<Option<String>>, AniError> {
+    let provider =
+        crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
     Ok(Json(kitsu_inner::title_match_get(
-        &state, &q.title, q.cour,
+        &state, provider, &q.title, q.cour,
     )?))
 }
 
@@ -353,13 +358,18 @@ struct TitleMatchBody {
     title: String,
     cour: u32,
     kitsu_id: String,
+    /// The provider whose title this is; anidb when absent.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 async fn put_title_match(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TitleMatchBody>,
 ) -> Result<StatusCode, AniError> {
-    kitsu_inner::title_match_put(&state, &body.title, body.cour, &body.kitsu_id)?;
+    let provider =
+        crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
+    kitsu_inner::title_match_put(&state, provider, &body.title, body.cour, &body.kitsu_id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
