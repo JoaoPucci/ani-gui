@@ -1208,6 +1208,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_remembered_provider_is_read_off_a_positive_row_alone() {
+        // A positive row names the provider that proved the show
+        // playable; a play starts there. Negative rows, rows from
+        // before the field and missing rows remember nothing.
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let row = |available: bool, provider| AvailabilityResponse {
+            available,
+            episode_count: available.then_some(12),
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+            gate_refused: false,
+            provider,
+        };
+        write_cache_full(
+            &state,
+            "kid-9",
+            "sub",
+            None,
+            &row(true, Some(crate::scraper::provider::ProviderId::Hianime)),
+        );
+        write_cache_full(&state, "kid-10", "sub", None, &row(false, None));
+        write_cache_full(&state, "kid-11", "sub", None, &row(true, None));
+        assert_eq!(
+            cached_provider(&state, "kid-9", "sub"),
+            Some(crate::scraper::provider::ProviderId::Hianime)
+        );
+        assert_eq!(cached_provider(&state, "kid-9", "dub"), None, "per mode");
+        assert_eq!(
+            cached_provider(&state, "kid-10", "sub"),
+            None,
+            "negative rows"
+        );
+        assert_eq!(
+            cached_provider(&state, "kid-11", "sub"),
+            None,
+            "unattributed rows"
+        );
+        assert_eq!(
+            cached_provider(&state, "kid-12", "sub"),
+            None,
+            "missing rows"
+        );
+    }
+
     #[tokio::test]
     async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         // The pick already paid for the episodes list, so the cap is

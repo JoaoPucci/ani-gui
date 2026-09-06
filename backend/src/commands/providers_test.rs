@@ -443,3 +443,100 @@ async fn only_the_providers_the_state_orders_are_asked() {
         "a provider outside the order is never asked"
     );
 }
+
+// ── a remembered provider ───────────────────────────────────────────
+
+/// An attempt that records who it was asked of and answers nobody.
+struct Recording {
+    asked: Vec<ProviderId>,
+}
+
+#[async_trait::async_trait]
+impl Attempt for Recording {
+    type Output = ();
+    async fn run(&mut self, provider: &dyn Provider) -> Result<(), NativeError> {
+        self.asked.push(provider.id());
+        Err(NativeError {
+            error: AniError::Network,
+            clean_miss: false,
+            failed_at: None,
+        })
+    }
+}
+
+#[test]
+fn a_remembered_provider_leads_the_order_and_a_foreign_one_changes_nothing() {
+    assert_eq!(
+        order_with_affinity(&ORDER, Some(ProviderId::Hianime)),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(order_with_affinity(&ORDER, Some(ProviderId::Anidb)), ORDER);
+    assert_eq!(order_with_affinity(&ORDER, None), ORDER);
+    assert_eq!(
+        order_with_affinity(&[ProviderId::Anidb], Some(ProviderId::Hianime)),
+        vec![ProviderId::Anidb],
+        "a provider the state does not list is not asked on a row's say-so"
+    );
+}
+
+#[tokio::test]
+async fn a_walk_starts_from_the_remembered_provider() {
+    let td = tempfile::tempdir().expect("td");
+    let state = unroutable_state(&td, &ORDER);
+    let mut attempt = Recording { asked: Vec::new() };
+    let _ = run_from(
+        &state,
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    assert_eq!(attempt.asked, vec![ProviderId::Hianime, ProviderId::Anidb]);
+}
+
+mod affinity_props {
+    use super::order_with_affinity;
+    use crate::scraper::provider::ProviderId;
+    use proptest::prelude::*;
+
+    fn provider() -> impl Strategy<Value = ProviderId> {
+        prop_oneof![Just(ProviderId::Anidb), Just(ProviderId::Hianime)]
+    }
+
+    /// Any listing of the known providers, each at most once.
+    fn order() -> impl Strategy<Value = Vec<ProviderId>> {
+        prop::collection::vec(provider(), 0..3).prop_map(|mut v| {
+            let mut seen = Vec::new();
+            v.retain(|p| {
+                let new = !seen.contains(p);
+                seen.push(*p);
+                new
+            });
+            v
+        })
+    }
+
+    proptest! {
+        /// The result is the order itself, reordered at most by
+        /// moving the remembered provider to the front.
+        #[test]
+        fn the_order_is_kept_except_for_the_remembered_provider(
+            order in order(),
+            hint in prop::option::of(provider()),
+        ) {
+            let got = order_with_affinity(&order, hint);
+            let mut sorted_got = got.clone();
+            let mut sorted_order = order.clone();
+            sorted_got.sort_by_key(|p| p.label());
+            sorted_order.sort_by_key(|p| p.label());
+            prop_assert_eq!(sorted_got, sorted_order);
+            match hint {
+                Some(h) if order.contains(&h) => prop_assert_eq!(got.first(), Some(&h)),
+                _ => prop_assert_eq!(&got, &order),
+            }
+            let rest_got: Vec<_> = got.iter().filter(|p| Some(**p) != hint).collect();
+            let rest_order: Vec<_> = order.iter().filter(|p| Some(**p) != hint).collect();
+            prop_assert_eq!(rest_got, rest_order);
+        }
+    }
+}
