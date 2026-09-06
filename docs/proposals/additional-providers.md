@@ -176,8 +176,14 @@ ever the pick, this is its own investigation first.
   availability and download commands import the concrete client and
   its types directly, and app state holds a single gate. The work is
   a provider trait with provider-neutral hit/episode types, one gate
-  instance per provider, and the commands taking the trait. History
-  reverse resolution is a fourth consumer of provider knowledge:
+  instance per provider, and the commands taking the trait. The
+  consumer list is longer than it looks: a ranged or Download-All
+  request branches out of the download command into its own resolver
+  before the ordinary one, and that resolver constructs the client,
+  runs the walk and records outcomes into the gate by itself — move
+  the three named walks and leave it, and every range download still
+  contacts the unavailable primary. History
+  reverse resolution is a further consumer of provider knowledge:
   when a Continue Watching row has no stamped mapping, the recovery
   derives a search term from the slug through the current provider's
   parser alone and writes anything shaped differently off as an
@@ -265,7 +271,16 @@ ever the pick, this is its own investigation first.
   explicit: a global negative may be written only when every
   provider answered cleanly; otherwise key negatives per provider,
   or persist nothing — or a primary-only show stays hidden for the
-  negative row's lifetime after the primary recovers. (2) Fall
+  negative row's lifetime after the primary recovers. The positive
+  side has the mirror problem: a fallback success today would persist
+  `available: true` under the same provider-blind key for a day (a
+  month for finished shows), carrying the fallback's season-local
+  cap; once the primary recovers, feature (1) alone sends the play
+  back to the primary, whose clean miss does not fall through — so
+  the cached call-to-action stays lit while playback fails. Positive
+  rows therefore carry their provider too, or a fallback success
+  keeps provider affinity for the row's lifetime, and the read side
+  aggregates with provider health in view. (2) Fall
   through to another provider when the primary lacks the show —
   catalogue expansion, which turns the same per-provider absence
   question into a user-visible one (a show absent on the primary
