@@ -59,16 +59,20 @@ requires it; the exception is the update check that runs on launch
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
   episode through hianime also fetches its embed page from the embed
-  host the site names for it (zokoanime.video or megaplay.buzz).
+  host the site names for that episode. The site chooses those
+  hosts, and they can change without an app update; at the time of
+  writing they are zokoanime.video and megaplay.buzz.
 - **Video playback** — the chosen episode's playlist, its segments
   and any sidecar subtitle files are fetched directly from the
-  source CDN (for hianime, hosts under aniwatchtv.uk). Where the CDN
-  asks for one, it sees a normal `Referer` naming the origin of the
-  embed page the stream was read from — the host that actually served
-  that page, which is not always the host the catalogue's listing
-  named, because the catalogue moves those pages between hosts and
-  the request follows the move. Nothing identifying you is sent with
-  it.
+  source CDN the catalogue or its embed page names. For hianime that
+  is, at the time of writing, a host under aniwatchtv.uk; the app
+  does not restrict these fetches to a list of hosts, so the
+  provider's choice is what it reaches. Where the CDN asks for one,
+  it sees a normal `Referer` naming the origin of the embed page the
+  stream was read from — the host that actually served that page,
+  which is not always the host the catalogue's listing named, because
+  the catalogue moves those pages between hosts and the request
+  follows the move. Nothing identifying you is sent with it.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
