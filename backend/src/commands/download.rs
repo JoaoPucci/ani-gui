@@ -963,14 +963,32 @@ pub(crate) async fn write_sidecar_subtitles(
         };
         seen.push(&track.lang);
         let path = dest.join(format!("{file_stem}.{suffix}.vtt"));
-        match tokio::fs::write(&path, &body).await {
+        // Created new, never replaced: a file already at the name is
+        // the user's — a corrected subtitle from an earlier download —
+        // and stays as found.
+        match write_new(&path, &body).await {
             Ok(()) => written.push(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                tracing::info!(path = %path.display(), "download: subtitle already present, kept");
+            }
             Err(e) => {
                 tracing::warn!(path = %path.display(), error = %e, "download: subtitle write failed")
             }
         }
     }
     written
+}
+
+/// Write `body` to a file that must not exist yet.
+async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt as _;
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await?;
+    file.write_all(body).await?;
+    file.flush().await
 }
 
 /// yt-dlp's own flag for the referer, or nothing when the stream
