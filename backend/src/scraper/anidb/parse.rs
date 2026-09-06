@@ -2,22 +2,8 @@
 //! the client so each file stays inside the complexity ratchet's
 //! per-file bar.
 
-use super::BrowseHit;
 use crate::error::{AniError, Result};
-
-/// Whether a response body is cloudflare's challenge interstitial
-/// rather than provider content. Case-insensitive, like the script's
-/// `grep -qi`: challenge pages have varied the title's spelling.
-pub fn is_cloudflare_interstitial(body: &str) -> bool {
-    body.to_ascii_lowercase().contains("just a moment")
-}
-
-/// Form-urlencode a search query: space→`+`, reserved and non-ASCII
-/// bytes percent-encoded. The script's naive space swap sent `;` and
-/// friends raw and the provider answers those with a 400.
-pub fn encode_query(query: &str) -> String {
-    url::form_urlencoded::byte_serialize(query.as_bytes()).collect()
-}
+use crate::scraper::provider::BrowseHit;
 
 /// The digits after a slug's last hyphen, when there are any.
 pub(super) fn slug_numeric_id(slug: &str) -> Option<u64> {
