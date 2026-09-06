@@ -142,6 +142,36 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
 /// The handoff describes the launch from the resolve, referer
 /// included — the external player and Syncplay both take one, and a
 /// stream whose CDN checks it plays nowhere without it.
+/// The players fetch their subtitles themselves, so the handoff hands
+/// them the tracks' upstream URLs — the referer flag they already get
+/// covers those fetches too.
+#[test]
+fn launch_args_carry_the_resolves_sidecar_tracks() {
+    let cfg = crate::config::Config::default();
+    let native = crate::commands::play_native_resolve::NativeResolved {
+        slug: "the-show-77".into(),
+        title: "The Show".into(),
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        episode_cap: Some(3),
+        numbering_offset: 0,
+        extra_tags: Vec::new(),
+        resolved_slot: 1,
+        resolved_tag: None,
+        referer: Some("https://embed.example/".into()),
+        subtitles: vec![crate::scraper::provider::SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: "https://cdn.example/x/subs/en.vtt".into(),
+        }],
+    };
+    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec!["https://cdn.example/x/subs/en.vtt".to_string()]
+    );
+}
+
 #[test]
 fn launch_args_carry_the_resolves_referer() {
     let cfg = crate::config::Config::default();
