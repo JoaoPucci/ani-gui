@@ -827,3 +827,79 @@ fn the_resolve_deadline_stays_inside_the_half_open_trial_window() {
     // overlap the sanction chain forbids.
     assert!(RESOLVE_DEADLINE < crate::scraper::gate::HALF_OPEN_TRIAL_STALE);
 }
+
+// ── the source's referer survives the walk ──────────────────────────
+
+/// A provider whose CDN wants the embed origin as Referer: the walk
+/// must carry it out with the master URL, or every consumer of the
+/// resolve — session, cache row, downloader, handoff — sends none and
+/// the stream that just validated fails to play.
+struct RefererProvider;
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for RefererProvider {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::ProviderId::Anidb
+    }
+    async fn search(
+        &self,
+        _q: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::BrowseHit>> {
+        Ok(vec![crate::scraper::provider::BrowseHit {
+            slug: "the-show-77".into(),
+            title: "The Show".into(),
+            kind: None,
+        }])
+    }
+    async fn episodes(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::EpisodeRef>> {
+        Ok(vec![crate::scraper::provider::EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        }])
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        Ok(true)
+    }
+    async fn master_playlist_url(
+        &self,
+        _e: u64,
+        _m: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        Ok(crate::scraper::provider::StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+        })
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        Ok("#EXTM3U\n".into())
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        Ok(None)
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+#[tokio::test]
+async fn a_resolved_play_carries_the_sources_referer() {
+    let req = NativeResolveRequest {
+        title: "The Show",
+        alt_titles: &[],
+        episode: "1",
+        mode: "sub",
+        quality: "best",
+        expected_count: Some(1),
+        year: None,
+        subtype: None,
+    };
+    let native = resolve_native(&RefererProvider, req, &mut |_| {})
+        .await
+        .expect("resolved");
+    assert_eq!(native.master_url, "https://cdn.example/x/master.m3u8");
+    assert_eq!(native.referer.as_deref(), Some("https://embed.example/"));
+}
