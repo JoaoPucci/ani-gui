@@ -115,6 +115,7 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 2",
@@ -152,6 +153,7 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -172,6 +174,7 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -200,6 +203,7 @@ async fn tool_spawn_falls_back_to_ffmpeg_when_ytdlp_fails() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 2",
@@ -226,6 +230,7 @@ async fn tool_spawn_with_no_tools_is_a_config_error() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -512,6 +517,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -557,6 +563,7 @@ async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             dest.path(),
             "Show Episode 1",
@@ -606,6 +613,7 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -648,6 +656,7 @@ async fn the_download_tool_runs_in_a_normalized_environment() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -778,6 +787,7 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dest_dir,
             "Show Episode 1",
@@ -1100,6 +1110,7 @@ async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Ffmpeg Show Episode 1",
@@ -1206,6 +1217,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
     let one_source = StreamSource {
         master_url: "https://cdn.example/x/master.m3u8".into(),
         referer: None,
+        subtitles: Vec::new(),
     };
     let one = spawn_download_tool(
         &one_source,
@@ -1219,6 +1231,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
     let two_source = StreamSource {
         master_url: "https://cdn.example/x/master.m3u8".into(),
         referer: None,
+        subtitles: Vec::new(),
     };
     let two = spawn_download_tool(
         &two_source,
@@ -1280,6 +1293,7 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
                 &StreamSource {
                     master_url: "https://cdn.example/x/master.m3u8".into(),
                     referer: None,
+                    subtitles: Vec::new(),
                 },
                 &dir,
                 "Queued Show Episode 1",
@@ -1301,6 +1315,7 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Queued Show Episode 1",
@@ -1375,6 +1390,7 @@ async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             dest.path(),
             "Contended Show Episode 1",
@@ -1453,6 +1469,7 @@ async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Owned Show Episode 1",
@@ -1502,6 +1519,7 @@ async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         &stem,
@@ -1749,6 +1767,7 @@ async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it(
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Ambushed Show Episode 1",
@@ -1792,6 +1811,7 @@ async fn a_live_claim_at_publication_time_is_reported_as_pending() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contested Show Episode 1",
@@ -1827,6 +1847,7 @@ async fn the_already_here_report_is_a_stable_key_not_display_copy() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Owned Show Episode 1",
@@ -1863,6 +1884,7 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Stalled Show Episode 1",
@@ -1912,6 +1934,7 @@ async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Swept Show Episode 1",
@@ -1969,6 +1992,7 @@ async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Unlockable Show Episode 1",
@@ -2022,6 +2046,7 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Interrupted Show Episode 1",
@@ -2087,6 +2112,7 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Cancelled Show Episode 1",
@@ -2141,6 +2167,7 @@ async fn the_tool_writes_somewhere_other_than_the_target() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Scratch Show Episode 1",
@@ -2190,6 +2217,7 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contested Show Episode 1",
@@ -2309,6 +2337,7 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Abandoned Show Episode 1",
@@ -2400,6 +2429,7 @@ async fn a_claim_that_never_resolves_is_not_a_finished_download() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contended Show Episode 1",
@@ -2449,6 +2479,7 @@ async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Linked Show Episode 1",
@@ -2503,6 +2534,7 @@ async fn a_directory_at_the_target_refuses_before_the_transfer() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Blocked Show Episode 1",
@@ -2539,6 +2571,7 @@ async fn a_tool_that_writes_an_empty_file_installs_nothing() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Empty Show Episode 1",
@@ -2580,6 +2613,7 @@ async fn a_file_that_predates_the_download_is_kept() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Redownloaded Show Episode 1",

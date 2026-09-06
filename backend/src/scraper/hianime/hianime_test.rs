@@ -1,6 +1,6 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::provider::{BrowseHit, EpisodeRef};
+use crate::scraper::provider::{BrowseHit, EpisodeRef, SubtitleTrack};
 
 // ── search page ─────────────────────────────────────────────────────
 
@@ -553,7 +553,7 @@ fn the_embed_origin_is_the_referer_the_cdn_wants() {
 // ── the client over the seam ────────────────────────────────────────
 
 use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
-use crate::scraper::provider::{Provider, ProviderId, StreamSource, SubtitleTrack};
+use crate::scraper::provider::{Provider, ProviderId, StreamSource};
 use std::sync::Mutex;
 
 const BASE: &str = "http://stub";

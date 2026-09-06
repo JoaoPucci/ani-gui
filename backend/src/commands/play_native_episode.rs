@@ -5,7 +5,7 @@
 //! for the per-file complexity bar.
 
 use crate::error::AniError;
-use crate::scraper::provider::Provider;
+use crate::scraper::provider::{Provider, SubtitleTrack};
 
 use super::play_native::PickedShow;
 use super::play_native_numbering::{numbering_offset, provider_fraction};
@@ -93,6 +93,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     Ok(ResolvedEpisode {
         master_url,
         referer: source.referer,
+        subtitles: source.subtitles,
         slot: ep.number,
         tag: ep.number2.clone(),
     })
@@ -108,6 +109,8 @@ pub struct ResolvedEpisode {
     /// The referer the provider's CDN wants on every fetch of it,
     /// when it wants one.
     pub referer: Option<String>,
+    /// The sidecar subtitle tracks the provider listed beside it.
+    pub subtitles: Vec<SubtitleTrack>,
     /// The row's integer `number` — the provider's own position for
     /// it, which is how a later resume finds this row again.
     pub slot: u32,

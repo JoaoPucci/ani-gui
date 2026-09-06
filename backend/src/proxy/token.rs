@@ -147,6 +147,9 @@ pub struct StreamSession {
     pub media_kind: MediaKind,
     /// `Referer:` header the upstream CDN requires.
     pub referer: String,
+    /// Sidecar subtitle tracks the resolve listed; served by the
+    /// subtitle route with the session's referer.
+    pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
     /// Wall-clock expiry. After this point the session is GC'd on next read.
     pub expires_at: SystemTime,
 }
@@ -178,6 +181,7 @@ impl StreamSession {
             upstream_url,
             media_kind,
             referer: referer.into(),
+            subtitles: Vec::new(),
             expires_at: SystemTime::now() + DEFAULT_SESSION_TTL,
         }
     }
