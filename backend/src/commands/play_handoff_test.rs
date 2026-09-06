@@ -155,6 +155,7 @@ fn launch_args_carry_the_resolves_referer() {
         resolved_slot: 1,
         resolved_tag: None,
         referer: referer.map(str::to_string),
+        subtitles: Vec::new(),
     };
     let with = super::play_handoff::launch_args_for(
         native(Some("https://embed.example/")),

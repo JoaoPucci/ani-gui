@@ -374,6 +374,10 @@ mod empty_referer_tests;
 mod redirected_playlist_tests;
 
 #[cfg(test)]
+#[path = "subtitle_test.rs"]
+mod subtitle_tests;
+
+#[cfg(test)]
 #[path = "seg_referer_test.rs"]
 mod seg_referer_tests;
 
