@@ -381,7 +381,7 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
     Ok(detail)
 }
 
-/// Title-match cache: maps `(allmanga_title, cour) → kitsu_id`. Stored
+/// Title-match cache: maps `(provider, provider title, cour) → kitsu_id`. Stored
 /// in the shared `meta_cache` table under a `title-match:` key prefix
 /// so the home page's Continue Watching strip skips a kitsuSearch +
 /// pickKitsuMatch round-trip on subsequent loads.
@@ -398,26 +398,48 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   multi-cour entries since the picker collapsed siblings.
 /// - v2: slug-fetch fallback for cour > 1 (commit 86e02d2). Old v1
 ///   mappings now orphaned, replaced by fresh v2 lookups.
-const TITLE_MATCH_VERSION: u32 = 2;
+/// - v3: the key carries the provider whose title it maps, so two
+///   providers naming different shows identically cannot read or
+///   overwrite each other's mapping. v2 rows are orphaned rather
+///   than left answering for another provider.
+const TITLE_MATCH_VERSION: u32 = 3;
 
-fn title_match_key(title: &str, cour: u32) -> String {
+fn title_match_key(
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+) -> String {
     let normalized = title.trim().to_lowercase();
-    format!("title-match:v{TITLE_MATCH_VERSION}:{normalized}:c{cour}")
+    format!(
+        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c{cour}",
+        provider.label()
+    )
 }
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
 /// on miss; errors propagate the SQLite read failure.
-pub fn title_match_get(state: &AppState, title: &str, cour: u32) -> Result<Option<String>> {
-    meta_cache_get(&state.cache_pool, &title_match_key(title, cour))
+pub fn title_match_get(
+    state: &AppState,
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+) -> Result<Option<String>> {
+    meta_cache_get(&state.cache_pool, &title_match_key(provider, title, cour))
 }
 
 /// Persist a `(title, cour) → kitsu_id` mapping under TITLE_MATCH_TTL.
 /// Idempotent — re-puts overwrite the prior value, which is the
 /// behaviour the picker wants when Kitsu re-catalogues an entry.
-pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str) -> Result<()> {
+pub fn title_match_put(
+    state: &AppState,
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+    kitsu_id: &str,
+) -> Result<()> {
     meta_cache_put(
         &state.cache_pool,
-        &title_match_key(title, cour),
+        &title_match_key(provider, title, cour),
         kitsu_id,
         TITLE_MATCH_TTL.as_secs(),
     )
