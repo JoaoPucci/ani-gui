@@ -436,7 +436,9 @@ pub(crate) async fn check_availability_with_base(
                 episode_count_approximate,
                 // Not cached: it describes this request, not the show.
                 gate_refused: false,
-                provider: None,
+                // Cached: a cache hit must still say whose catalogue
+                // carries the show.
+                provider,
             },
         );
     }
