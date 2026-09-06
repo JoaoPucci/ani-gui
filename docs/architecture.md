@@ -117,7 +117,7 @@ Playback happens inside the desktop window — not in a detached `mpv` process. 
 
 - `<video>` element receives the master.m3u8 URL from the local proxy.
 - `hls.js` handles HLS streams. mp4 streams (some providers) play natively via `<video src=...>`.
-- Subtitles come embedded in the HLS manifest; hls.js surfaces them as `textTracks` and the player's CC picker selects among them.
+- Subtitles inside the HLS manifest are surfaced by hls.js as `textTracks`. Sidecar tracks — the `.vtt` files a provider lists beside the stream, outside the playlist — ride the session: the proxy lists them at `/s/<id>/subtitles` and serves each at `/s/<id>/sub/<n>.vtt` with the session's referer, and the play page appends one `<track>` per listing. The player's CC picker selects among both kinds. Downloads write sidecar tracks beside the media as `<name>.<lang>.vtt`; external players receive them as subtitle-file arguments (Syncplay wraps the player itself and takes none).
 - Quality switching maps to hls.js's `currentLevel` for HLS, or re-resolution for mp4.
 
 An "Open in external player" button on the player chrome launches the user's `mpv` (or platform default) with the natively resolved master-playlist URL. This is a user choice, never an automatic fallback — silent fallback would be confusing.
