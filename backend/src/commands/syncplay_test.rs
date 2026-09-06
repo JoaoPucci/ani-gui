@@ -7,6 +7,7 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         referer: None,
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
+        subtitle_urls: Vec::new(),
     }
 }
 
