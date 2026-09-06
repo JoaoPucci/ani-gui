@@ -1,6 +1,6 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchResponse};
+use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchRequest, FetchResponse};
 
 /// A fetch whose episodes endpoint answers per numeric id from a
 /// canned table; every other route 404s.
@@ -8,7 +8,8 @@ struct EpisodesTable(&'static [(u64, u32)]);
 
 #[async_trait::async_trait]
 impl Fetch for EpisodesTable {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         for (id, count) in self.0 {
             if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
                 let rows: Vec<String> = (1..=*count)
@@ -130,7 +131,8 @@ struct TaggedEpisodes;
 
 #[async_trait::async_trait]
 impl Fetch for TaggedEpisodes {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/api/frontend/anime/7/episodes") {
             let mut rows: Vec<String> = (1..=12)
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 700 + n, n))
@@ -175,7 +177,8 @@ struct OneDeadOneAlive;
 
 #[async_trait::async_trait]
 impl Fetch for OneDeadOneAlive {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/api/frontend/anime/99/episodes") {
             return Err(AniError::Network);
         }
@@ -223,7 +226,8 @@ struct FirstTwinDead;
 
 #[async_trait::async_trait]
 impl Fetch for FirstTwinDead {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/api/frontend/anime/99/episodes") {
             return Err(AniError::Network);
         }
@@ -289,7 +293,8 @@ struct FirstSlugStale;
 
 #[async_trait::async_trait]
 impl Fetch for FirstSlugStale {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/api/frontend/anime/88/episodes") {
             let rows: Vec<String> = (1..=12)
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
@@ -450,7 +455,8 @@ struct TransportDeadEpisodes;
 
 #[async_trait::async_trait]
 impl Fetch for TransportDeadEpisodes {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/episodes") {
             return Err(AniError::Network);
         }
@@ -480,7 +486,8 @@ struct MixedEpisodes;
 
 #[async_trait::async_trait]
 impl Fetch for MixedEpisodes {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/api/frontend/anime/11/episodes") {
             return Err(AniError::Network);
         }
@@ -534,7 +541,8 @@ struct YearTable(&'static [(u64, u32, Option<u32>)]);
 
 #[async_trait::async_trait]
 impl Fetch for YearTable {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         for (id, count, year) in self.0 {
             if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
                 let rows: Vec<String> = (1..=*count)
@@ -986,7 +994,8 @@ struct RefusingEpisodes {
 
 #[async_trait::async_trait]
 impl Fetch for RefusingEpisodes {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/episodes") {
             self.probes
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1007,7 +1016,8 @@ struct RefusingDetails {
 
 #[async_trait::async_trait]
 impl Fetch for RefusingDetails {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("/episodes") {
             let rows: Vec<String> = (1..=12)
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))

@@ -25,7 +25,7 @@ pub mod parse;
 pub mod parse_api;
 pub(crate) use crate::scraper::fetch::{candidate_names, is_executable, EXE_SUFFIXES};
 pub use crate::scraper::fetch::{
-    CurlImpersonateFetch, Fetch, FetchResponse, TransportCandidate, CURL_FAILOVER,
+    CurlImpersonateFetch, Fetch, FetchRequest, FetchResponse, TransportCandidate, CURL_FAILOVER,
     IMPERSONATE_AGENT,
 };
 pub use crate::scraper::gated::GatedFetch;

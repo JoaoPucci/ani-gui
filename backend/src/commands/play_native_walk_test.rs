@@ -1,6 +1,6 @@
 use crate::commands::play_native_resolve::NativeError;
 use crate::commands::play_native_walk::pick_native_walk;
-use crate::scraper::anidb::{AnidbClient, Fetch, FetchResponse};
+use crate::scraper::anidb::{AnidbClient, Fetch, FetchRequest, FetchResponse};
 use std::sync::Mutex;
 
 use super::super::play_native_test_provider::{
@@ -111,7 +111,8 @@ struct WalkAliasDies {
 
 #[async_trait::async_trait]
 impl Fetch for WalkAliasDies {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("dead+alias") {
             return Err(crate::error::AniError::Network);
         }
@@ -160,7 +161,7 @@ struct WalkGateSlams {
 
 #[async_trait::async_trait]
 impl Fetch for WalkGateSlams {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         *self.asked.lock().expect("asked") += 1;
         Err(crate::error::AniError::GateRefused)
     }

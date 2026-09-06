@@ -316,7 +316,8 @@ struct FixtureFetch;
 
 #[async_trait::async_trait]
 impl Fetch for FixtureFetch {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         let body = if url.contains("browse?q=nohit") {
             fixture("browse_empty.html")
         } else if url.contains("browse?q=cloudflare") {
@@ -498,7 +499,8 @@ struct MasterOnly {
 
 #[async_trait::async_trait]
 impl Fetch for MasterOnly {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url == "https://cdn.example/op/master.m3u8" {
             self.fetches
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -565,7 +567,8 @@ struct BlockedRendition;
 
 #[async_trait::async_trait]
 impl Fetch for BlockedRendition {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url == "https://cdn.example/op/master.m3u8" {
             return Ok(FetchResponse {
                 status: 200,
@@ -604,7 +607,7 @@ struct HtmlAnswers;
 
 #[async_trait::async_trait]
 impl Fetch for HtmlAnswers {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         Ok(FetchResponse {
             status: 200,
             body: "<html><body>Not here.</body></html>".into(),
@@ -655,7 +658,8 @@ struct HtmlRendition;
 
 #[async_trait::async_trait]
 impl Fetch for HtmlRendition {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url == "https://cdn.example/op/master.m3u8" {
             return Ok(FetchResponse {
                 status: 200,

@@ -77,16 +77,55 @@ pub struct FetchResponse {
     pub body: String,
 }
 
+/// One request to the transport: the URL plus the headers the
+/// provider needs on it, in order. A provider's endpoints can demand
+/// what the site itself does not — an AJAX listing that answers only
+/// to `X-Requested-With`, an embed page that checks its `Referer` —
+/// and the provider is the one that knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchRequest {
+    /// The URL to GET.
+    pub url: String,
+    /// `(name, value)` pairs, sent in this order.
+    pub headers: Vec<(String, String)>,
+}
+
+impl FetchRequest {
+    /// A headerless GET of `url`.
+    pub fn get(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            headers: Vec::new(),
+        }
+    }
+
+    /// The same request with `name: value` appended to its headers.
+    #[must_use]
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+}
+
 /// Transport seam. Implemented by the curl-impersonate subprocess in
-/// production and by fixture-backed fakes in tests.
+/// production and by fixture-backed fakes in tests. `fetch` is the
+/// one primitive; `get` is the headerless convenience over it.
 #[async_trait::async_trait]
 pub trait Fetch: Send + Sync {
-    /// GET `url` and return status + body.
+    /// Perform `req` and return status + body.
     ///
     /// # Errors
     /// [`AniError::Network`] on spawn/transport failure,
     /// [`AniError::Timeout`] when the request exceeds its deadline.
-    async fn get(&self, url: &str) -> Result<FetchResponse>;
+    async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse>;
+
+    /// GET `url` with no headers.
+    ///
+    /// # Errors
+    /// As [`Fetch::fetch`].
+    async fn get(&self, url: &str) -> Result<FetchResponse> {
+        self.fetch(&FetchRequest::get(url)).await
+    }
 
     /// The post-admission start of this transport's most recent
     /// attempt, when the transport tracks one (the gated production
@@ -281,8 +320,9 @@ pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
 /// `-w` appends the status after the body; the last line is split
 /// back off. Mirrors the script's anidb_curl flags, plus the
 /// impersonation target when the resolved binary needs one.
-pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
-    let mut args: Vec<String> = Vec::with_capacity(12);
+pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
+    let url = req.url.as_str();
+    let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
     // First, where curl honors it: a user's ~/.curlrc can redirect
     // the output or append transfers, and this code parses the body.
     args.push("-q".into());
@@ -301,6 +341,12 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     }
     args.push("-A".into());
     args.push(IMPERSONATE_AGENT.into());
+    // The request's own headers, in the provider's order — after the
+    // agent so a provider may override it, before the URL operand.
+    for (name, value) in &req.headers {
+        args.push("-H".into());
+        args.push(format!("{name}: {value}"));
+    }
     // The impersonated fingerprint advertises the browser's
     // Accept-Encoding (gzip, br, zstd) and the provider answers
     // compressed; without this flag curl hands the raw frame through
@@ -322,7 +368,8 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
 
 #[async_trait::async_trait]
 impl Fetch for CurlImpersonateFetch {
-    async fn get(&self, url: &str) -> Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
+        let url = req.url.as_str();
         // Timed so a debug run shows what each leg of the resolve
         // walk costs — the number the resolution cache's TTL-versus-
         // re-resolve decision needs, and the first thing to read
@@ -333,7 +380,7 @@ impl Fetch for CurlImpersonateFetch {
         // depend on the terminal that launched the backend.
         cmd.env("TERM", "dumb")
             .env("NO_COLOR", "1")
-            .args(fetch_args(url, self.impersonate))
+            .args(fetch_args(req, self.impersonate))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

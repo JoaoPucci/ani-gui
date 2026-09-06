@@ -2,7 +2,7 @@
 //! (`play_native_resolve_test`, `play_native_walk_test`) — compiled
 //! only under `cfg(test)`.
 
-use crate::scraper::anidb::{Fetch, FetchResponse};
+use crate::scraper::anidb::{Fetch, FetchRequest, FetchResponse};
 use std::sync::Mutex;
 
 /// Scriptable provider: browse responses keyed by query substring,
@@ -37,7 +37,8 @@ pub(crate) fn browse_page(entries: &[(&str, &str)]) -> String {
 
 #[async_trait::async_trait]
 impl Fetch for Provider {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         self.log.lock().expect("log").push(url.to_string());
         if let Some(q) = url.split("browse?q=").nth(1) {
             for (needle, body) in self.browse {
@@ -143,7 +144,7 @@ pub(crate) struct ProviderRef<'a>(pub(crate) &'a Provider);
 
 #[async_trait::async_trait]
 impl Fetch for ProviderRef<'_> {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
-        self.0.get(url).await
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        self.0.fetch(req).await
     }
 }

@@ -3,7 +3,7 @@
 //! Its own file rather than an append to `anidb_test.rs`, matching
 //! the other property modules on this branch.
 
-use super::{candidate_names, fetch_args, redacted_url, scrub_stderr};
+use super::{candidate_names, fetch_args, redacted_url, scrub_stderr, FetchRequest};
 
 proptest::proptest! {
     /// Expansion is exactly the suffix table applied in order: one
@@ -34,7 +34,7 @@ proptest::proptest! {
         url in ".*",
         target in proptest::option::of("[a-z]{1,12}[0-9]{0,4}"),
     ) {
-        let args = fetch_args(&url, target.as_deref());
+        let args = fetch_args(&FetchRequest::get(url.as_str()), target.as_deref());
         proptest::prop_assert_eq!(args.last().map(String::as_str), Some(url.as_str()));
     }
 
@@ -47,7 +47,7 @@ proptest::proptest! {
         url in "https://[a-z]{1,10}\\.[a-z]{2,4}/[a-z0-9/-]{0,20}",
         target in proptest::option::of("[a-z]{1,12}[0-9]{0,4}"),
     ) {
-        let args = fetch_args(&url, target.as_deref());
+        let args = fetch_args(&FetchRequest::get(url.as_str()), target.as_deref());
         let hits = args.iter().filter(|a| *a == &url).count();
         proptest::prop_assert_eq!(hits, 1);
     }
@@ -60,7 +60,7 @@ proptest::proptest! {
         url in ".*",
         target in proptest::option::of("[a-z]{1,12}[0-9]{0,4}"),
     ) {
-        let args = fetch_args(&url, target.as_deref());
+        let args = fetch_args(&FetchRequest::get(url.as_str()), target.as_deref());
         let at = args.iter().position(|a| a == "--impersonate");
         match &target {
             Some(t) => {
@@ -80,8 +80,8 @@ proptest::proptest! {
         url in ".*",
         target in "[a-z]{1,12}[0-9]{0,4}",
     ) {
-        let plain = fetch_args(&url, None);
-        let with = fetch_args(&url, Some(&target));
+        let plain = fetch_args(&FetchRequest::get(url.as_str()), None);
+        let with = fetch_args(&FetchRequest::get(url.as_str()), Some(&target));
         proptest::prop_assert_eq!(with.len(), plain.len() + 2);
         let stripped: Vec<String> = with
             .iter()
