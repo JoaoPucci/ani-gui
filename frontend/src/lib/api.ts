@@ -1014,8 +1014,12 @@ export function kitsuEpisodes(animeId: string, page: number = 1): Promise<KitsuE
  * the resolved id back. The backend stores this under TITLE_MATCH_TTL
  * (30 days) — the title→id mapping rarely changes.
  */
-export function kitsuTitleMatchGet(title: string, cour: number): Promise<string | null> {
-	const qs = new URLSearchParams({ title, cour: String(cour) });
+export function kitsuTitleMatchGet(
+	title: string,
+	cour: number,
+	provider: string
+): Promise<string | null> {
+	const qs = new URLSearchParams({ title, cour: String(cour), provider });
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1023,8 +1027,13 @@ export function kitsuTitleMatchGet(title: string, cour: number): Promise<string 
  * Persist a `(title, cour) → kitsu_id` mapping resolved by the
  * frontend picker. Idempotent — re-puts overwrite any prior value.
  */
-export function kitsuTitleMatchPut(title: string, cour: number, kitsuId: string): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId });
+export function kitsuTitleMatchPut(
+	title: string,
+	cour: number,
+	kitsuId: string,
+	provider: string
+): Promise<void> {
+	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
 }
 
 /**
