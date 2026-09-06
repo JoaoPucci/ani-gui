@@ -70,6 +70,15 @@ function ensureCreated(): HTMLVideoElement {
 	videoEl = document.createElement('video');
 	videoEl.autoplay = true;
 	videoEl.preload = 'auto';
+	// Every source and sidecar track this element loads comes from
+	// the proxy, which is another origin from the page on every build
+	// (a loopback port against the app's own origin). The browser
+	// refuses a <track> from another origin outright unless the media
+	// element asks in CORS mode; the proxy answers every route with a
+	// permissive allow-origin, so anonymous mode is what makes the
+	// sidecar tracks loadable. Media sources are unaffected: hls.js
+	// feeds MSE, and the mp4 route carries the same header.
+	videoEl.setAttribute('crossorigin', 'anonymous');
 	videoEl.style.inlineSize = '100%';
 	videoEl.style.blockSize = '100%';
 	videoEl.style.display = 'block';
