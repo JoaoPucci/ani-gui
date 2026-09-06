@@ -157,6 +157,7 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
+        provider: crate::scraper::provider::ProviderId::Anidb,
         referer: Some("https://embed.example/".into()),
         subtitles: vec![crate::scraper::provider::SubtitleTrack {
             lang: "en".into(),
@@ -184,6 +185,7 @@ fn launch_args_carry_the_resolves_referer() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
+        provider: crate::scraper::provider::ProviderId::Anidb,
         referer: referer.map(str::to_string),
         subtitles: Vec::new(),
     };
