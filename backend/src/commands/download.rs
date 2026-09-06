@@ -241,12 +241,13 @@ where
         "download: spawning tool on natively resolved stream",
     );
     let file_stem = format!("{} Episode {}", resolved.title, args.episode);
+    let source = StreamSource {
+        master_url: resolved.master_url,
+        referer: resolved.referer,
+        subtitles: resolved.subtitles,
+    };
     spawn_download_tool(
-        &StreamSource {
-            master_url: resolved.master_url,
-            referer: resolved.referer,
-            subtitles: resolved.subtitles,
-        },
+        &source,
         &dest,
         &file_stem,
         Some(quality),
@@ -260,6 +261,14 @@ where
         },
     )
     .await?;
+    write_sidecar_subtitles(
+        &state.proxy_http,
+        &source.subtitles,
+        source.referer.as_deref(),
+        &dest,
+        &file_stem,
+    )
+    .await;
 
     Ok(DownloadResponse {
         dest_dir: dest.to_string_lossy().into_owned(),
@@ -908,6 +917,60 @@ pub(crate) async fn publish_without_links(
             Err(_) => return Err(AniError::Io),
         }
     }
+}
+
+/// Fetch each sidecar track with the source's referer and write it
+/// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses
+/// is logged and skipped: the episode downloaded, and that is the
+/// transfer. Returns the paths written.
+pub(crate) async fn write_sidecar_subtitles(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+) -> Vec<PathBuf> {
+    let mut written = Vec::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for track in tracks {
+        let mut req = client.get(&track.url);
+        if let Some(r) = referer {
+            req = req.header(reqwest::header::REFERER, r);
+        }
+        let body = match req.send().await {
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
+                    continue;
+                }
+            },
+            Ok(resp) => {
+                tracing::warn!(lang = %track.lang, status = %resp.status(), "download: subtitle refused");
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!(lang = %track.lang, error = %e, "download: subtitle fetch failed");
+                continue;
+            }
+        };
+        // Two tracks in one language keep both files: the second is
+        // suffixed by its position.
+        let suffix = if seen.contains(&track.lang.as_str()) {
+            format!("{}-{}", track.lang, seen.len())
+        } else {
+            track.lang.clone()
+        };
+        seen.push(&track.lang);
+        let path = dest.join(format!("{file_stem}.{suffix}.vtt"));
+        match tokio::fs::write(&path, &body).await {
+            Ok(()) => written.push(path),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "download: subtitle write failed")
+            }
+        }
+    }
+    written
 }
 
 /// yt-dlp's own flag for the referer, or nothing when the stream

@@ -128,5 +128,6 @@ pub(crate) async fn try_launch_args_from_cache(
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
+        subtitle_urls: cached.subtitles.iter().map(|t| t.url.clone()).collect(),
     })
 }
