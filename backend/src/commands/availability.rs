@@ -1047,6 +1047,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_response_names_the_provider_whose_catalogue_answered() {
+        // Two providers means "available" needs an owner: the row
+        // says whose catalogue it describes, in the identifier the
+        // renderer's `StreamProvider` uses, and rows written before
+        // the field parse as unattributed rather than failing.
+        let server = stub_one_show(7).await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Probe Show",
+            "mode": "sub",
+            "kitsu_id": "556",
+            "episode_count": 7
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb)
+        );
+        let body = serde_json::to_value(&got).expect("json");
+        assert_eq!(body["provider"], "anidb");
+        let legacy: AvailabilityResponse =
+            serde_json::from_str(r#"{"available":true,"episode_count":7,"extra_episodes":[]}"#)
+                .expect("a row from before the field");
+        assert_eq!(legacy.provider, None);
+    }
+
+    #[tokio::test]
     async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         // The pick already paid for the episodes list, so the cap is
         // exact and free: no approximate flag, no gate-refused
