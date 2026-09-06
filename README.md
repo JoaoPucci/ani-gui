@@ -34,7 +34,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. The transport it uses to reach the provider ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream providers ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -164,7 +164,7 @@ Full table with defaults and effects is in [`docs/architecture.md`](./docs/archi
 
 ## How it works
 
-A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the provider itself. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
+A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the providers itself — anidb.app first, and hianime when anidb.app is unreachable. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
 
 For the long version — diagrams, cache TTLs, the title-resolution bridge, the PiP architecture — see [`docs/architecture.md`](./docs/architecture.md), [`docs/title-resolution.md`](./docs/title-resolution.md), and the rest of [`docs/`](./docs/).
 
@@ -176,7 +176,7 @@ See [`docs/development.md`](./docs/development.md).
 
 ani-gui only exists because of the projects it builds on:
 
-- **[pystardust/ani-cli](https://github.com/pystardust/ani-cli)** — the Bash scraper this project grew out of, and the source of the provider pipeline the Rust resolver reimplements.
+- **[pystardust/ani-cli](https://github.com/pystardust/ani-cli)** — the Bash scraper this project grew out of, and the source of the provider pipelines the Rust resolver reimplements.
 - **[Kitsu](https://kitsu.io/)** and **[AniList](https://anilist.co/)** for the metadata, posters, and trending data behind the discovery surface.
 - **[aniskip](https://aniskip.com/)** for the community-submitted OP/ED intervals.
 - **[hls.js](https://github.com/video-dev/hls.js/)** for the HLS playback inside the embedded player.
