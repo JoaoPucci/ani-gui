@@ -2251,6 +2251,33 @@ mod tests {
         );
     }
 
+    /// Sidecar tracks are attached by the resolver, never by the
+    /// caller of the public route: the endpoint is reachable from any
+    /// page that finds the loopback port, and a track it accepted
+    /// would be fetched by the proxy on the caller's behalf.
+    #[tokio::test]
+    async fn the_public_session_route_refuses_caller_supplied_tracks() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let body = r#"{"upstream_url":"https://cdn.example/master.m3u8","subtitles":[{"lang":"en","label":"English","default":true,"url":"http://127.0.0.1:1/admin/status"}]}"#;
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "a caller-supplied track list is refused"
+        );
+    }
+
     /// `/api/kitsu/anime/:id` — the wiremock for kitsu_inner won't
     /// answer at the unreachable test base, so the call surfaces an
     /// error. The route's job is to not panic on the path-parameter

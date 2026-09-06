@@ -158,3 +158,84 @@ async fn an_unknown_session_has_no_track_list() {
         .expect("response");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+/// The route relays a track the resolver listed, not whatever a
+/// caller can point it at: a body without the WebVTT signature is
+/// refused, the way the manifest route refuses a body that is not a
+/// playlist. Without that, a track URL is a read into anything the
+/// machine can reach.
+#[tokio::test]
+async fn a_body_that_is_not_webvtt_is_not_relayed() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/admin/status"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("{\"secret\":\"intranet\"}")
+                .insert_header("content-type", "application/json"),
+        )
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_with_tracks(
+        "https://embed.example/",
+        vec![SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: format!("{}/admin/status", server.uri()),
+        }],
+    )
+    .await;
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{id}/sub/0.vtt"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .expect("body");
+    assert!(
+        !body.windows(8).any(|w| w == b"intranet"),
+        "the upstream body must not reach the caller: {body:?}"
+    );
+}
+
+/// A byte-order mark ahead of the signature is still WebVTT — some
+/// CDNs serve the files that way.
+#[tokio::test]
+async fn a_webvtt_body_behind_a_byte_order_mark_is_relayed() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(b"\xEF\xBB\xBFWEBVTT\n\n00:00.000 --> 00:01.000\nhi\n".to_vec()),
+        )
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_with_tracks(
+        "https://embed.example/",
+        vec![SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: format!("{}/subs/en.vtt", server.uri()),
+        }],
+    )
+    .await;
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{id}/sub/0.vtt"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+}
