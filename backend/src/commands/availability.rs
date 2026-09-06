@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
-use crate::commands::play::anidb_client_with_base;
 use crate::commands::play_native_walk::pick_native_walk;
 use crate::error::Result;
 
@@ -146,6 +145,12 @@ pub struct AvailabilityResponse {
     /// leaves this false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gate_refused: bool,
+    /// The provider whose catalogue carries the show — the one that
+    /// answered `available`. None on negative rows, on boolean stamps
+    /// from the play and download paths, and on rows written before
+    /// the field existed.
+    #[serde(default)]
+    pub provider: Option<crate::scraper::provider::ProviderId>,
 }
 
 /// Whether a cached response may be served as-is, or has to re-probe.
@@ -343,30 +348,23 @@ pub(crate) async fn check_availability_with_base(
     } else {
         crate::scraper::gate::ScrapePriority::Interactive
     };
-    let client = anidb_client_with_base(state, anidb_base, prio)?;
-    let walk_started_at = tokio::time::Instant::now();
-    let probed = probe_show(&client, args, mode).await;
-    // One request, one outcome. The pick and the mode check are two
-    // stages of a single probe, so the breaker hears their combined
-    // verdict once — recording the pick's success first would reset
-    // the failure run every time a show's languages endpoint is
-    // down, and the breaker would never open. Same mapping the play
-    // path uses: answered verdicts (the clean miss included) are
-    // health, weather is distress, a gate refusal records nothing.
-    // Timestamped with the attempt that observed the outcome, so a
-    // probe that began before a concurrent recovery never reads as
-    // post-recovery evidence.
-    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &probed) {
-        let observed_at = probed
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(walk_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
-    let (available, episode_count, extra_episodes) = match probed {
-        Ok((p, present)) => {
+    // One request, one outcome: the pick and the mode check are two
+    // stages of a single probe, so each provider's breaker hears
+    // their combined verdict once — recording the pick's success
+    // first would reset the failure run every time a show's servers
+    // endpoint is down, and the breaker would never open. The runner
+    // records it under the play path's mapping: answered verdicts
+    // (the clean miss included) are health, weather is distress, a
+    // gate refusal records nothing.
+    let origins = crate::commands::providers::Origins {
+        anidb: anidb_base,
+        ..crate::commands::providers::Origins::of(state)
+    };
+    let mut attempt = ProbeAttempt { args, mode };
+    let probed = crate::commands::providers::run_at(state, origins, prio, &mut attempt).await;
+    let (available, episode_count, extra_episodes, provider) = match probed {
+        Ok(attempted) => {
+            let (p, present) = attempted.value;
             let Some(present) = present else {
                 // Every row the mode search touched was missing. The
                 // provider said nothing about this mode, which is
@@ -378,16 +376,17 @@ pub(crate) async fn check_availability_with_base(
                     true,
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
+                    Some(attempted.provider),
                 )
             } else {
                 // The provider ANSWERED absence for this mode.
                 // Cacheable, like the clean search miss.
-                (false, None, Vec::new())
+                (false, None, Vec::new(), None)
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new()),
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), None),
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
@@ -421,6 +420,7 @@ pub(crate) async fn check_availability_with_base(
                 extra_episodes,
                 episode_count_approximate,
                 gate_refused,
+                provider,
             });
         };
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -436,6 +436,7 @@ pub(crate) async fn check_availability_with_base(
                 episode_count_approximate,
                 // Not cached: it describes this request, not the show.
                 gate_refused: false,
+                provider: None,
             },
         );
     }
@@ -446,23 +447,26 @@ pub(crate) async fn check_availability_with_base(
         extra_episodes,
         episode_count_approximate,
         gate_refused,
+        provider,
     })
 }
 
-/// The probe's provider half, under one ceiling: pick the show, then
-/// measure how far the requested mode reaches.
+/// The probe's provider half: pick the show, then measure how far
+/// the requested mode reaches.
 ///
 /// Both stages are the same request as far as the caller and the
-/// breaker are concerned, so they share [`RESOLVE_DEADLINE`] — the
-/// walk alone can spend tens of seconds per alias against a slow
-/// provider, and a probe that outlives the gate's half-open trial
-/// window is the overlap the sanction chain forbids — and they
-/// produce a single outcome.
+/// breaker are concerned — the runner bounds them together under
+/// [`RESOLVE_DEADLINE`], since the walk alone can spend tens of
+/// seconds per alias against a slow provider, and a probe that
+/// outlives the gate's half-open trial window is the overlap the
+/// sanction chain forbids — and they produce a single outcome.
 ///
 /// # Errors
-/// The walk's own verdicts, the mode probe's transport failures, and
-/// [`AniError::Timeout`] at the deadline. `clean_miss` survives from
-/// the walk, so a persistable absence is still persistable.
+/// The walk's own verdicts and the mode probe's transport failures.
+/// `clean_miss` survives from the walk, so a persistable absence is
+/// still persistable.
+///
+/// [`RESOLVE_DEADLINE`]: crate::commands::play_native_resolve::RESOLVE_DEADLINE
 async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     client: &P,
     args: &AvailabilityArgs,
@@ -471,38 +475,41 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     (crate::commands::play_native::PickedShow, Option<bool>),
     crate::commands::play_native_resolve::NativeError,
 > {
-    let probe = async {
-        let picked = pick_native_walk(
-            client,
-            &args.title,
-            &args.alt_titles,
-            args.episode_count,
-            args.year,
-            args.subtype.as_deref(),
-        )
-        .await?;
-        let present =
-            crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
-                .await
-                .map_err(|error| crate::commands::play_native_resolve::NativeError {
-                    error,
-                    clean_miss: false,
-                    failed_at: None,
-                })?;
-        Ok((picked, present))
-    };
-    match tokio::time::timeout(
-        crate::commands::play_native_resolve::RESOLVE_DEADLINE,
-        probe,
+    let picked = pick_native_walk(
+        client,
+        &args.title,
+        &args.alt_titles,
+        args.episode_count,
+        args.year,
+        args.subtype.as_deref(),
     )
-    .await
-    {
-        Ok(verdict) => verdict,
-        Err(_elapsed) => Err(crate::commands::play_native_resolve::NativeError {
-            error: crate::error::AniError::Timeout,
+    .await?;
+    let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
+        .await
+        .map_err(|error| crate::commands::play_native_resolve::NativeError {
+            error,
             clean_miss: false,
             failed_at: None,
-        }),
+        })?;
+    Ok((picked, present))
+}
+
+/// [`probe_show`] as an attempt the runner can move between
+/// providers.
+struct ProbeAttempt<'r> {
+    args: &'r AvailabilityArgs,
+    mode: &'r str,
+}
+
+#[async_trait::async_trait]
+impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
+    type Output = (crate::commands::play_native::PickedShow, Option<bool>);
+
+    async fn run(
+        &mut self,
+        provider: &dyn crate::scraper::provider::Provider,
+    ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
+        probe_show(provider, self.args, self.mode).await
     }
 }
 
@@ -529,6 +536,7 @@ pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
         },
     );
 }
@@ -810,6 +818,7 @@ mod tests {
             episode_count: None,
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
             extra_episodes: Vec::new(),
         });
         assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
@@ -840,6 +849,7 @@ mod tests {
             episode_count: Some(1160),
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
             extra_episodes: vec!["1061.5".into()],
         };
         let json = serde_json::to_string(&r).expect("serialize");
@@ -1510,6 +1520,9 @@ mod tests {
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: td.path().join("history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            hianime_base: None,
+            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -1656,6 +1669,7 @@ mod tests {
                 extra_episodes: vec!["1061.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         let resp = batch_cached(
@@ -1686,6 +1700,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         // No row in the cache → batch_cached returns an empty map
@@ -1821,6 +1836,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         write_cache_full(
@@ -1834,6 +1850,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         // Cached as unavailable — no playable count to surface.
@@ -1848,6 +1865,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         let resp = batch_cached(
@@ -1908,6 +1926,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
 
@@ -2000,6 +2019,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
 
@@ -2076,6 +2096,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         drop(guard);
@@ -2145,12 +2166,14 @@ mod tests {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
         };
         assert!(cache_hit_is_usable(&exact), "an exact count is usable");
 
         let approximate = AvailabilityResponse {
             episode_count_approximate: true,
             gate_refused: false,
+            provider: None,
             ..exact.clone()
         };
         assert!(
@@ -2171,6 +2194,7 @@ mod tests {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
         };
         assert!(!cache_hit_is_usable(&legacy), "a count-less row re-probes");
 
@@ -2180,6 +2204,7 @@ mod tests {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            provider: None,
         };
         assert!(cache_hit_is_usable(&negative), "a negative row is kept");
     }
@@ -2206,6 +2231,7 @@ mod tests {
                 extra_episodes: extras,
                 episode_count_approximate: approximate,
                 gate_refused: false,
+                provider: None,
             };
             proptest::prop_assert_eq!(
                 cache_hit_is_usable(&row),
@@ -2230,6 +2256,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: approximate,
                 gate_refused: false,
+                provider: None,
             };
             proptest::prop_assert!(!cache_hit_is_usable(&row));
         }
@@ -2252,6 +2279,7 @@ mod tests {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: true,
                 gate_refused: false,
+                provider: None,
             },
         );
         let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
