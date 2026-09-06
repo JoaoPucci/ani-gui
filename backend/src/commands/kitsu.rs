@@ -520,13 +520,14 @@ pub async fn try_put_allmanga_kitsu_mapping(
     show_title: &str,
     kitsu_id: &str,
 ) {
-    // The guard reads the provider's title against Kitsu's slug
-    // convention the way anidb names its entries; a season-split
-    // provider names them differently, and its mapping was
-    // cross-checked by resolution.
-    let guarded = crate::scraper::provider::ShowKey::parse(show_id).provider
-        == crate::scraper::provider::ProviderId::Anidb;
-    if guarded && cour_pairing_disagrees(state, show_title, kitsu_id).await {
+    // Every provider's ids are guarded. The resolve carries no
+    // identity the guard could defer to — no Kitsu or MyAnimeList
+    // id, only the title, year and count the picker scored — so a
+    // wrongly picked sibling cour on any provider would otherwise
+    // persist the caller's Kitsu id under its slug, the row Continue
+    // Watching and resume then read. Lifting the guard for a provider
+    // wants identity provenance the resolve does not carry yet.
+    if cour_pairing_disagrees(state, show_title, kitsu_id).await {
         tracing::warn!(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
