@@ -165,12 +165,31 @@ fn servers_decode_their_embed_urls_and_keep_type_and_name() {
 }
 
 #[test]
-fn a_server_whose_hash_is_not_an_embed_url_is_skipped() {
-    let json = r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"!!!\"></div><div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"bm90IGEgdXJs\"></div>"}"#;
-    assert_eq!(
-        parse_servers(json).expect("parsed"),
-        Vec::<ServerEmbed>::new()
+fn a_server_whose_hash_is_not_an_embed_url_is_skipped_beside_one_that_is() {
+    let json = r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"!!!\"></div><div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9tYWwvMS8xL3N1Yg==\"></div>"}"#;
+    let servers = parse_servers(json).expect("parsed");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].name, "HD-2");
+}
+
+#[test]
+fn a_listing_whose_rows_all_fail_to_parse_is_a_parse_failure() {
+    // The marker survived a redesign but the attributes did not: zero
+    // rows out of a nonempty listing is the site having changed shape,
+    // and read as "none" it hides a playable show exactly as a missing
+    // marker did.
+    let servers = r#"{"status":true,"html":"<div class=\"server-item\" data-kind=\"sub\" data-name=\"HD-1\" data-ref=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let err = parse_servers(servers).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let hashes = r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"!!!\"></div><div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"bm90IGEgdXJs\"></div>"}"#;
+    let err = parse_servers(hashes).expect_err("refused");
+    assert!(
+        matches!(err, AniError::ParseFailed { .. }),
+        "hashes that all fail to decode are a changed format: {err:?}"
     );
+    let episodes = r#"{"status":true,"html":"<a class=\"ssl-item ep-item\" data-num=\"1\" data-ref=\"21418\"></a>"}"#;
+    let err = parse_episode_list(episodes).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
 #[test]
@@ -250,12 +269,26 @@ fn the_embed_payload_decodes_from_the_page_blob() {
 }
 
 #[test]
-fn an_embed_page_without_the_blob_is_no_payload() {
-    assert!(decode_embed("<html><body>Player</body></html>").is_none());
-    assert!(
-        decode_embed(r#"<script>window.__P="not base64 at all!"</script>"#).is_none(),
-        "garbage under the marker is a miss, not a panic"
-    );
+fn an_embed_page_without_the_blob_carries_no_playlist() {
+    let err = decode_embed("<html><body>Player</body></html>").expect_err("no marker");
+    assert!(matches!(err, AniError::NoResults), "{err:?}");
+}
+
+#[test]
+fn a_blob_that_no_longer_decodes_is_a_parse_failure() {
+    // The marker is there and the bytes are not what the key opens:
+    // the versioned key rotated, or the payload changed shape. That
+    // is the site having changed, never "this episode has no stream".
+    for page in [
+        r#"<script>window.__P="not base64 at all!"</script>"#,
+        r#"<script>window.__P="AAAA"</script>"#,
+    ] {
+        let err = decode_embed(page).expect_err("refused");
+        assert!(
+            matches!(err, AniError::ParseFailed { .. }),
+            "{page}: {err:?}"
+        );
+    }
 }
 
 #[test]
