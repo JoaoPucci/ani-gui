@@ -40,7 +40,7 @@
 	"error_load_headline": "Не удалось загрузить тайтл.",
 	"error_play_headline": "Не удалось включить эпизод {episode}",
 	"error_play_headline_single": "Не удалось воспроизвести",
-	"error_play_no_results": "Этого тайтла нет в стриминговом каталоге. Провайдеры его не индексируют.",
+	"error_play_no_results": "Этого тайтла нет в стриминговом каталоге.",
 	"list_add": "Добавить в список",
 	"list_close": "Закрыть",
 	"list_editor_aria": "Изменить запись списка",
