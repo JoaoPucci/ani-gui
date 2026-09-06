@@ -35,20 +35,21 @@ fn unwrap_envelope(json: &str) -> Result<String> {
 }
 
 /// An empty listing is the provider answering "none"; nonempty HTML
-/// with no row the parser knows is the site having changed shape, and
-/// reading that as "none" would let the mode probe persist an absence
-/// that hides a playable show. Rows the parser recognizes but cannot
-/// use are the caller's to skip.
+/// that yields no usable row is the site having changed shape —
+/// the marker gone, its attributes renamed, every hash in a format
+/// the parser does not open — and reading that as "none" would let
+/// the mode probe persist an absence that hides a playable show. A
+/// listing with at least one usable row skips the rest.
 ///
 /// # Errors
-/// [`AniError::ParseFailed`] for nonempty HTML without `marker`.
-fn recognizable(html: &str, marker: &str, what: &str) -> Result<()> {
-    if html.trim().is_empty() || html.contains(marker) {
-        return Ok(());
+/// [`AniError::ParseFailed`] for nonempty HTML that produced no row.
+fn recognized<T>(html: &str, rows: Vec<T>, what: &str) -> Result<Vec<T>> {
+    if rows.is_empty() && !html.trim().is_empty() {
+        return Err(AniError::ParseFailed {
+            detail: format!("hianime {what} without recognizable rows"),
+        });
     }
-    Err(AniError::ParseFailed {
-        detail: format!("hianime {what} without recognizable rows"),
-    })
+    Ok(rows)
 }
 
 /// The value of the first `name="…"` attribute in `s`.
@@ -65,8 +66,7 @@ fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
 /// As [`unwrap_envelope`].
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
-    recognizable(&html, "ep-item", "episode list")?;
-    Ok(html
+    let rows = html
         .split("ep-item")
         .skip(1)
         .filter_map(|item| {
@@ -78,7 +78,8 @@ pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
                 number2: None,
             })
         })
-        .collect())
+        .collect();
+    recognized(&html, rows, "episode list")
 }
 
 /// One playable server for an episode: its audio mode, the site's
@@ -100,8 +101,7 @@ pub struct ServerEmbed {
 /// As [`unwrap_envelope`].
 pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
     let html = unwrap_envelope(json)?;
-    recognizable(&html, "server-item", "server list")?;
-    Ok(html
+    let rows = html
         .split("server-item")
         .skip(1)
         .filter_map(|item| {
@@ -122,7 +122,8 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
                 embed_url,
             })
         })
-        .collect())
+        .collect();
+    recognized(&html, rows, "server list")
 }
 
 /// The server to play `mode` from: `HD-1` when the site lists it,
