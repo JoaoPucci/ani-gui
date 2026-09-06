@@ -252,6 +252,18 @@ impl ScraperGate {
         Ok(trial_stamp)
     }
 
+    /// Whether the breaker is open right now — a failover
+    /// orchestrator's question before it spends a budget on a provider
+    /// whose consecutive failures already tripped it. Interactive
+    /// admits bypass an open breaker by the gate's own contract, so
+    /// the admit path cannot answer this. A read, never a state
+    /// change.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        s.open_until.is_some_and(|until| Instant::now() < until)
+    }
+
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
     /// but a [`ScrapeOutcome::RateLimited`] opens an advertised-window
     /// pause immediately — background admits then WAIT through the
