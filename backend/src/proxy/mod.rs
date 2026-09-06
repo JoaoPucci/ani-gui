@@ -32,7 +32,8 @@ use crate::error::AniError;
 
 pub use m3u8::{rewrite_master, rewrite_media, ProxyOrigin};
 pub use token::{
-    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionTable, StreamSession,
+    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
+    StreamSession,
 };
 
 /// Shared state every proxy route reads.
@@ -57,6 +58,7 @@ pub fn build_router(state: ProxyState) -> Router {
         .route("/s/:session/master.m3u8", get(handle_master))
         .route("/s/:session/file.mp4", get(handle_mp4))
         .route("/s/:session/seg", get(handle_seg))
+        .route("/s/:session/subtitles", get(handle_subtitle_list))
         .route("/s/:session/sub/:track", get(handle_subtitle))
         .layer(
             CorsLayer::new()
@@ -160,6 +162,33 @@ async fn handle_master(
         HeaderValue::from_static("no-store"),
     );
     (StatusCode::OK, headers, rewritten).into_response()
+}
+
+/// The session's sidecar tracks in their proxied shape — what the
+/// play page asks for by the session id it keeps.
+async fn handle_subtitle_list(
+    State(state): State<Arc<ProxyState>>,
+    Path(session_str): Path<String>,
+) -> Response {
+    let session = match SessionId::parse(&session_str) {
+        Ok(s) => s,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid session id"),
+    };
+    let Some(sess) = state.sessions.get(&session) else {
+        return error_response(StatusCode::NOT_FOUND, "session not found or expired");
+    };
+    let listed: Vec<SessionSubtitle> = sess
+        .subtitles
+        .iter()
+        .enumerate()
+        .map(|(i, t)| SessionSubtitle::proxied(&state.origin.base, &session_str, i, t))
+        .collect();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("cache-control"),
+        HeaderValue::from_static("no-store"),
+    );
+    (StatusCode::OK, headers, axum::Json(listed)).into_response()
 }
 
 /// One sidecar subtitle track: `sub/<n>.vtt` names the nth track the
