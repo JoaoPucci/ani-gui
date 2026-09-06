@@ -10,7 +10,7 @@
 //! miss.
 
 use crate::error::{AniError, Result};
-use crate::scraper::provider::Provider;
+use crate::scraper::provider::{Provider, StreamSource};
 
 /// One variant row of a master playlist: the stream's vertical
 /// resolution and its URI, as the script's `anidb_m3u8` carves them
@@ -90,15 +90,17 @@ pub fn select_variant<'a>(
 /// would record breaker health instead of the rate-limit pause.
 pub async fn stream_url<P: Provider + ?Sized>(
     provider: &P,
-    master_url: &str,
+    source: &StreamSource,
     quality: &str,
 ) -> Result<String> {
+    let master_url = source.master_url.as_str();
+    let referer = source.referer.as_deref();
     // One validating fetch on EVERY path, best included: the
     // extracted URL is only a claim until the playlist answers,
     // and an unvalidated claim rides into breaker success,
     // availability, history, and a cached session the proxy
     // cannot load.
-    let body = provider.playlist(master_url).await?;
+    let body = provider.playlist(master_url, referer).await?;
     if !is_hls_playlist(&body) {
         // 200 with an HTML page passes the status and interstitial
         // checks; success here would ride into the breaker,
@@ -129,7 +131,7 @@ pub async fn stream_url<P: Provider + ?Sized>(
     // upstream, and masking it records breaker success and
     // stamps availability, history, and a cached session on a
     // blocked play.
-    match provider.playlist(&rendition).await {
+    match provider.playlist(&rendition, referer).await {
         // An HTML answer on the rendition is an answered miss like
         // a 404 — the validated adaptive master carries the play.
         Ok(body) if is_hls_playlist(&body) => Ok(rendition),

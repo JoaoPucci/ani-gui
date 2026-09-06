@@ -1,6 +1,14 @@
 use super::*;
 use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 
+/// A source with the referer anidb never needs.
+fn source(master_url: &str) -> StreamSource {
+    StreamSource {
+        master_url: master_url.into(),
+        referer: None,
+    }
+}
+
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -412,7 +420,8 @@ async fn client_resolves_the_master_playlist_for_sub_and_dies_clean_without_embe
         .master_playlist_url(9001, "sub")
         .await
         .expect("master url");
-    assert_eq!(url, "https://cdn.example/op/master.m3u8");
+    assert_eq!(url.master_url, "https://cdn.example/op/master.m3u8");
+    assert_eq!(url.referer, None, "anidb's CDN checks no referer");
     // Episode 9002 has no languages fixture route → 404 body → no embeds.
     assert!(client.master_playlist_url(9002, "sub").await.is_err());
 }
@@ -501,7 +510,7 @@ async fn quality_selection_returns_the_matching_variant() {
         fetches: fetches.clone(),
     });
     let url = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "720")
         .await
         .expect("served master");
     assert_eq!(url, "https://cdn.example/op/720/index.m3u8");
@@ -524,7 +533,7 @@ async fn a_dead_rendition_falls_back_to_the_served_master() {
         fetches: fetches.clone(),
     });
     let url = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "1080")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "1080")
         .await
         .expect("the served master carries the play");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
@@ -562,7 +571,7 @@ async fn a_blocked_rendition_propagates_instead_of_masking() {
     // about to request renditions through the same blocked front.
     let client = AnidbClient::new(BlockedRendition);
     let err = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "720")
         .await
         .expect_err("a blocked rendition must keep its identity");
     assert!(
@@ -594,7 +603,7 @@ async fn a_masters_html_answer_is_not_a_playlist() {
     // master must actually be an HLS playlist.
     let client = AnidbClient::new(HtmlAnswers);
     let err = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "best")
         .await
         .expect_err("an HTML page is not a playlist");
     assert!(
@@ -631,7 +640,7 @@ async fn a_renditions_html_answer_falls_back_to_the_served_master() {
     // carries the play.
     let client = AnidbClient::new(HtmlRendition);
     let url = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "720")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "720")
         .await
         .expect("the served master carries the play");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
@@ -652,13 +661,13 @@ async fn best_quality_keeps_the_adaptive_master_it_validated() {
         fetches: fetches.clone(),
     });
     let url = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "best")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "best")
         .await
         .expect("served master");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
     assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
     let err = client
-        .quality_stream_url("https://cdn.example/op/missing.m3u8", "best")
+        .quality_stream_url(&source("https://cdn.example/op/missing.m3u8"), "best")
         .await
         .expect_err("a dead master cannot report success");
     assert!(matches!(err, AniError::Upstream { status: 404 }));
@@ -672,7 +681,7 @@ async fn an_unserved_quality_falls_back_to_the_fetched_master() {
     });
     // Served master, unserved height → adaptive master, not a guess.
     let url = client
-        .quality_stream_url("https://cdn.example/op/master.m3u8", "480")
+        .quality_stream_url(&source("https://cdn.example/op/master.m3u8"), "480")
         .await
         .expect("the playlist itself was served");
     assert_eq!(url, "https://cdn.example/op/master.m3u8");
@@ -691,7 +700,7 @@ async fn a_failed_master_fetch_propagates_instead_of_reporting_success() {
         fetches: fetches.clone(),
     });
     let err = client
-        .quality_stream_url("https://cdn.example/op/missing.m3u8", "720")
+        .quality_stream_url(&source("https://cdn.example/op/missing.m3u8"), "720")
         .await
         .expect_err("the playlist fetch itself failed");
     assert!(

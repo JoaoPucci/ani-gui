@@ -80,14 +80,14 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
             None => tag_matches(&e.number.to_string(), &target),
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
-    let master = client
+    let source = client
         .master_playlist_url(ep.id, mode)
         .await
         .map_err(dead_end)?;
     // The quality step is soft only on a served playlist that lacks
     // the height; a failed master fetch is the episode failing.
     let master_url = client
-        .quality_stream_url(&master, quality)
+        .quality_stream_url(&source, quality)
         .await
         .map_err(dead_end)?;
     Ok(ResolvedEpisode {

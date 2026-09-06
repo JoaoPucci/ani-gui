@@ -60,6 +60,18 @@ pub struct EpisodeRef {
     pub number2: Option<String>,
 }
 
+/// What an episode resolved to: the master-playlist URL and the
+/// referer the provider's CDN wants on every fetch of it and of what
+/// it lists. `None` when the CDN wants none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamSource {
+    /// The master-playlist URL the provider's embed carried.
+    pub master_url: String,
+    /// The `Referer` to send on playlist and segment fetches, when
+    /// the CDN checks one — the embed host's origin, typically.
+    pub referer: Option<String>,
+}
+
 /// A stream provider: search, episode listing, per-episode audio
 /// mode, and stream-URL resolution. Every method's errors follow the
 /// walk's vocabulary — a typed upstream refusal, a parse failure, the
@@ -95,22 +107,23 @@ pub trait Provider: Send + Sync {
     /// As [`Provider::search`].
     async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool>;
 
-    /// The master-playlist URL an episode streams from in `mode`.
+    /// The master playlist an episode streams from in `mode`, with
+    /// the referer its fetches need.
     ///
     /// # Errors
     /// [`crate::error::AniError::NoResults`] when the mode has no
     /// embed or the embed carries no playlist, plus upstream and
     /// transport errors.
-    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<String>;
+    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource>;
 
-    /// A playlist body, fetched with whatever the provider's CDN
-    /// requires of the request. Refuses challenge pages and
-    /// non-success statuses as typed upstream errors, like every
-    /// other provider fetch.
+    /// A playlist body, fetched with `referer` when the source named
+    /// one and whatever else the provider's CDN requires. Refuses
+    /// challenge pages and non-success statuses as typed upstream
+    /// errors, like every other provider fetch.
     ///
     /// # Errors
     /// Upstream refusals and transport errors.
-    async fn playlist(&self, url: &str) -> Result<String>;
+    async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String>;
 
     /// The stream URL a quality setting selects from a master
     /// playlist — shared across providers, see
@@ -118,8 +131,8 @@ pub trait Provider: Send + Sync {
     ///
     /// # Errors
     /// The master fetch's own failure, verbatim.
-    async fn quality_stream_url(&self, master_url: &str, quality: &str) -> Result<String> {
-        crate::scraper::hls::stream_url(self, master_url, quality).await
+    async fn quality_stream_url(&self, source: &StreamSource, quality: &str) -> Result<String> {
+        crate::scraper::hls::stream_url(self, source, quality).await
     }
 
     /// The premiere year the show's detail page names, when it names
