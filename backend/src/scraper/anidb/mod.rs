@@ -23,61 +23,17 @@
 
 pub mod parse;
 pub mod parse_api;
-pub(crate) use crate::scraper::fetch::{candidate_names, is_executable, EXE_SUFFIXES};
-pub use crate::scraper::fetch::{
-    CurlImpersonateFetch, Fetch, FetchRequest, FetchResponse, TransportCandidate, CURL_FAILOVER,
-    IMPERSONATE_AGENT,
-};
-pub use crate::scraper::gated::GatedFetch;
+use crate::scraper::fetch::Fetch;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider, ProviderId};
 pub use parse::{
     encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, slug_search_term,
 };
-pub use parse_api::{
-    extract_master_url, parse_episodes, parse_languages, parse_master_variants, preferred_embed,
-    select_variant, MasterVariant,
-};
+pub use parse_api::{extract_master_url, parse_episodes, parse_languages, preferred_embed};
 
 use crate::error::{AniError, Result};
 
 /// Provider origin. Kept overridable at the client level for tests.
 pub const ANIDB_BASE: &str = "https://anidb.app";
-
-/// One row of the browse page: the slug the whole provider API is
-/// keyed on, and the display title.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BrowseHit {
-    /// e.g. `one-piece-69`. The numeric tail is the internal id.
-    pub slug: String,
-    /// Entity-decoded display title from the cover's alt text.
-    pub title: String,
-    /// The card's format badge (`TV`, `Movie`, `OVA`, ...) when the
-    /// markup carries one. `None` reads as unknown — a soft signal,
-    /// like an unparseable year.
-    pub kind: Option<String>,
-}
-
-impl BrowseHit {
-    /// The provider's internal id: the digits after the slug's last
-    /// hyphen.
-    pub fn numeric_id(&self) -> Option<u64> {
-        parse::slug_numeric_id(&self.slug)
-    }
-}
-
-/// One episode row: the db id the languages endpoint is keyed on and
-/// the 1-based episode number shown to users.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EpisodeRef {
-    /// The provider's episode db id — what the languages endpoint
-    /// takes.
-    pub id: u64,
-    /// 1-based episode number as shown to users.
-    pub number: u32,
-    /// The provider's display tag when it differs from `number` —
-    /// recaps and specials stream under decimal tags ("1061.5"),
-    /// and a decimal play request matches this field verbatim.
-    pub number2: Option<String>,
-}
 
 /// One playable embed for an episode, by audio language.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,8 +44,9 @@ pub struct LanguageEmbed {
     pub embed_url: String,
 }
 
-/// The provider client: search, episode listing, and stream-URL
-/// resolution over any [`Fetch`].
+/// The anidb client: search, episode listing, and stream-URL
+/// resolution over any [`Fetch`]. The walks reach it through
+/// [`Provider`].
 pub struct AnidbClient<F> {
     fetch: F,
     base: String,
@@ -119,109 +76,6 @@ impl<F: Fetch> AnidbClient<F> {
         &self.fetch
     }
 
-    /// Search the browse page. An interstitial or non-success status
-    /// is a typed upstream error; a result-less page is `Ok(vec![])`
-    /// only when it shows the browse shape — an unrecognized zero-hit
-    /// body is a parse failure, never absence.
-    ///
-    /// # Errors
-    /// [`AniError::Upstream`] when cloudflare or the site refuses,
-    /// [`AniError::ParseFailed`] on an unrecognized zero-hit body,
-    /// plus the transport errors of [`Fetch::get`].
-    pub async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
-        let url = format!("{}/browse?q={}", self.base, encode_query(query));
-        let body = self.content(&url).await?;
-        parse_browse(&body)
-    }
-
-    /// List a show's episodes by slug.
-    ///
-    /// # Errors
-    /// [`AniError::ParseFailed`] on a malformed slug or body, plus
-    /// upstream/transport errors as in [`Self::search`].
-    pub async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
-        let id = parse::slug_numeric_id(slug).ok_or_else(|| AniError::ParseFailed {
-            detail: format!("anidb slug without numeric tail: {slug}"),
-        })?;
-        let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
-        let body = self.content(&url).await?;
-        parse_episodes(&body)
-    }
-
-    /// Whether an episode's languages carry the requested mode's
-    /// embed — the availability probes' one-request mode check. Only
-    /// the languages row is fetched; no embed page.
-    ///
-    /// # Errors
-    /// Upstream/transport errors as in [`Self::search`],
-    /// [`AniError::ParseFailed`] on an unrecognized body.
-    pub async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
-        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
-        let body = self.content(&url).await?;
-        let embeds = parse_languages(&body)?;
-        Ok(preferred_embed(&embeds, mode).is_some())
-    }
-
-    /// Resolve an episode's master-playlist URL for `sub`/`dub`:
-    /// languages → preferred embed → embed page → jwplayer `file:`.
-    ///
-    /// # Errors
-    /// [`AniError::NoResults`] when no embed matches the mode or the
-    /// embed page carries no playlist, plus upstream/transport errors.
-    pub async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<String> {
-        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
-        let body = self.content(&url).await?;
-        let embeds = parse_languages(&body)?;
-        let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
-        let embed_body = self.content(&embed.embed_url).await?;
-        extract_master_url(&embed_body).ok_or(AniError::NoResults)
-    }
-
-    /// The stream URL a quality setting selects from a master
-    /// playlist, mirroring the script's `select_quality`. `best`
-    /// keeps the adaptive master URL (hls.js picks levels itself)
-    /// after one validating fetch; any other setting parses
-    /// its variants and returns the matching height's URI resolved
-    /// against the master's URL. Soft only on a SERVED playlist that
-    /// misses — an unserved height, an unparseable body or variant
-    /// URI — where the master URL comes back and playback stays
-    /// adaptive.
-    ///
-    /// # Errors
-    /// The fetch's own failure: returning the master URL that just
-    /// failed would report success upstream — stamping availability,
-    /// caching a session the player cannot load — and a swallowed
-    /// 429 would record breaker health instead of the rate-limit
-    /// pause.
-    pub async fn quality_stream_url(&self, master_url: &str, quality: &str) -> Result<String> {
-        quality::stream_url(self, master_url, quality).await
-    }
-
-    /// The premiere year the slug's detail page names, when it names
-    /// one. A missing page (not-found-shaped status) or a page
-    /// without a season link is the soft `Ok(None)` — the year is an
-    /// identity hint, and resolution must not die on a missing hint.
-    /// A refusal, rate limit, or transport failure is NOT a missing
-    /// hint: it is the provider blocking this client, and swallowing
-    /// it would let the picker keep probing detail pages and select
-    /// year-blind through the block.
-    ///
-    /// # Errors
-    /// [`AniError::RateLimited`], refusal-shaped [`AniError::Upstream`]
-    /// statuses, and transport errors, verbatim from the fetch.
-    pub async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
-        let url = format!("{}/anime/{slug}", self.base);
-        match self.content(&url).await {
-            Ok(body) => Ok(parse_detail_year(&body)),
-            Err(AniError::Upstream { status })
-                if !AniError::Upstream { status }.is_provider_block() =>
-            {
-                Ok(None)
-            }
-            Err(e) => Err(e),
-        }
-    }
-
     /// Fetch `url` and hand back content, refusing challenge pages
     /// and non-success statuses as typed upstream errors.
     async fn content(&self, url: &str) -> Result<String> {
@@ -239,7 +93,103 @@ impl<F: Fetch> AnidbClient<F> {
     }
 }
 
-mod quality;
+#[async_trait::async_trait]
+impl<F: Fetch> Provider for AnidbClient<F> {
+    fn id(&self) -> ProviderId {
+        ProviderId::Anidb
+    }
+
+    /// Search the browse page. An interstitial or non-success status
+    /// is a typed upstream error; a result-less page is `Ok(vec![])`
+    /// only when it shows the browse shape — an unrecognized zero-hit
+    /// body is a parse failure, never absence.
+    ///
+    /// # Errors
+    /// [`AniError::Upstream`] when cloudflare or the site refuses,
+    /// [`AniError::ParseFailed`] on an unrecognized zero-hit body,
+    /// plus the transport errors of [`crate::scraper::fetch::Fetch::get`].
+    async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
+        let url = format!("{}/browse?q={}", self.base, encode_query(query));
+        let body = self.content(&url).await?;
+        parse_browse(&body)
+    }
+
+    /// List a show's episodes by slug.
+    ///
+    /// # Errors
+    /// [`AniError::ParseFailed`] on a malformed slug or body, plus
+    /// upstream/transport errors as in [`Self::search`].
+    async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
+        let id = parse::slug_numeric_id(slug).ok_or_else(|| AniError::ParseFailed {
+            detail: format!("anidb slug without numeric tail: {slug}"),
+        })?;
+        let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
+        let body = self.content(&url).await?;
+        parse_episodes(&body)
+    }
+
+    /// Whether an episode's languages carry the requested mode's
+    /// embed — the availability probes' one-request mode check. Only
+    /// the languages row is fetched; no embed page.
+    ///
+    /// # Errors
+    /// Upstream/transport errors as in [`Self::search`],
+    /// [`AniError::ParseFailed`] on an unrecognized body.
+    async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
+        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
+        let body = self.content(&url).await?;
+        let embeds = parse_languages(&body)?;
+        Ok(preferred_embed(&embeds, mode).is_some())
+    }
+
+    /// Resolve an episode's master-playlist URL for `sub`/`dub`:
+    /// languages → preferred embed → embed page → jwplayer `file:`.
+    ///
+    /// # Errors
+    /// [`AniError::NoResults`] when no embed matches the mode or the
+    /// embed page carries no playlist, plus upstream/transport errors.
+    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<String> {
+        let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
+        let body = self.content(&url).await?;
+        let embeds = parse_languages(&body)?;
+        let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
+        let embed_body = self.content(&embed.embed_url).await?;
+        extract_master_url(&embed_body).ok_or(AniError::NoResults)
+    }
+
+    /// The premiere year the slug's detail page names, when it names
+    /// one. A missing page (not-found-shaped status) or a page
+    /// without a season link is the soft `Ok(None)` — the year is an
+    /// identity hint, and resolution must not die on a missing hint.
+    /// A refusal, rate limit, or transport failure is NOT a missing
+    /// hint: it is the provider blocking this client, and swallowing
+    /// it would let the picker keep probing detail pages and select
+    /// year-blind through the block.
+    ///
+    /// # Errors
+    /// [`AniError::RateLimited`], refusal-shaped [`AniError::Upstream`]
+    /// statuses, and transport errors, verbatim from the fetch.
+    async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
+        let url = format!("{}/anime/{slug}", self.base);
+        match self.content(&url).await {
+            Ok(body) => Ok(parse_detail_year(&body)),
+            Err(AniError::Upstream { status })
+                if !AniError::Upstream { status }.is_provider_block() =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn playlist(&self, url: &str) -> Result<String> {
+        self.content(url).await
+    }
+
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        self.fetch.last_attempt_at()
+    }
+}
 
 #[cfg(test)]
 #[path = "anidb_test.rs"]

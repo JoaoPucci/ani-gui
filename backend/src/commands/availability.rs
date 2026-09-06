@@ -361,7 +361,7 @@ pub(crate) async fn check_availability_with_base(
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(walk_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
@@ -463,8 +463,8 @@ pub(crate) async fn check_availability_with_base(
 /// The walk's own verdicts, the mode probe's transport failures, and
 /// [`AniError::Timeout`] at the deadline. `clean_miss` survives from
 /// the walk, so a persistable absence is still persistable.
-async fn probe_show<F: crate::scraper::anidb::Fetch>(
-    client: &crate::scraper::anidb::AnidbClient<F>,
+async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
+    client: &P,
     args: &AvailabilityArgs,
     mode: &str,
 ) -> std::result::Result<

@@ -226,7 +226,7 @@ where
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(resolve_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
@@ -992,7 +992,7 @@ where
         // transferring changes that.
         AtTarget::Obstruction | AtTarget::Unreadable => return Err(AniError::Io),
     }
-    let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
+    let suffixes = crate::scraper::fetch::EXE_SUFFIXES;
     let ytdlp = find_tool(path_env, "yt-dlp", suffixes);
     let ffmpeg = find_tool(path_env, "ffmpeg", suffixes);
     if ytdlp.is_none() && ffmpeg.is_none() {
@@ -1202,14 +1202,14 @@ fn tool_search_path(state: &AppState, path_env: &str) -> String {
 /// directory, like the curl transport's resolver.
 fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path::PathBuf> {
     std::env::split_paths(path_env).find_map(|d| {
-        crate::scraper::anidb::candidate_names(name, suffixes)
+        crate::scraper::fetch::candidate_names(name, suffixes)
             .into_iter()
             .map(|file| d.join(file))
             // Executability, not mere existence: a regular file the
             // platform cannot exec (an extraction that missed
             // chmod +x) must not hide a usable tool further along
             // the search.
-            .find(|p| crate::scraper::anidb::is_executable(p))
+            .find(|p| crate::scraper::fetch::is_executable(p))
     })
 }
 
@@ -1221,7 +1221,7 @@ fn find_tool(path_env: &str, name: &str, suffixes: &[&str]) -> Option<std::path:
 /// question, and a second hand-written pair of `find_tool` calls is how
 /// they would drift apart.
 fn a_download_tool_exists(path_env: &str) -> bool {
-    let suffixes = crate::scraper::anidb::EXE_SUFFIXES;
+    let suffixes = crate::scraper::fetch::EXE_SUFFIXES;
     find_tool(path_env, "yt-dlp", suffixes).is_some()
         || find_tool(path_env, "ffmpeg", suffixes).is_some()
 }

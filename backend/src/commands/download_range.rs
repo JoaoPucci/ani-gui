@@ -77,7 +77,7 @@ where
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(walk_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
@@ -103,7 +103,7 @@ where
                         .as_ref()
                         .err()
                         .and_then(|ne| ne.failed_at)
-                        .or_else(|| client.transport().last_attempt_at())
+                        .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
                         .unwrap_or(episode_started_at);
                     state.anidb_gate.record(outcome, observed_at);
                 }

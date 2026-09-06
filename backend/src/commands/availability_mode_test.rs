@@ -1,5 +1,7 @@
 use super::mode_present;
-use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchRequest, FetchResponse};
+use crate::scraper::anidb::AnidbClient;
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
+use crate::scraper::provider::EpisodeRef;
 use std::sync::Mutex;
 
 /// Languages rows for a listing whose first `dubbed` episodes carry
