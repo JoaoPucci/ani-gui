@@ -1088,6 +1088,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_cached_row_keeps_the_provider_that_answered() {
+        // The response names its provider; so must the row it leaves
+        // behind, or the next lookup — a cache hit — answers as a row
+        // from before the field, and nothing can start a play from
+        // the provider that proved the show playable.
+        let server = stub_one_show(7).await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Probe Show",
+            "mode": "sub",
+            "kitsu_id": "557",
+            "episode_count": 7
+        }))
+        .expect("args");
+        check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("probe succeeds");
+        let row = meta_cache_get(&state.cache_pool, &cache_key("557", "sub"))
+            .expect("cache read")
+            .expect("row written");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            "the row names the provider whose catalogue answered"
+        );
+    }
+
+    #[tokio::test]
     async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         // The pick already paid for the episodes list, so the cap is
         // exact and free: no approximate flag, no gate-refused
