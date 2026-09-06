@@ -324,3 +324,122 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
         "an answered not-found is an answer"
     );
 }
+
+// ── the state's providers ───────────────────────────────────────────
+
+use crate::app::AppState;
+use crate::commands::play_native_resolve::NativeResolveRequest;
+
+/// A state whose providers are all unroutable: every attempt is the
+/// transport failing to connect, the shape that fails over.
+fn unroutable_state(td: &tempfile::TempDir, order: &[ProviderId]) -> AppState {
+    use crate::meta::kitsu::KitsuClient;
+    use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
+    use std::sync::Arc;
+    AppState {
+        secret: AppSecret::random(),
+        sessions: SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        meta_http: reqwest::Client::new(),
+        proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
+        bundled_bin: None,
+        legacy_sweep: crate::legacy_script::SweepReport::default(),
+        history_path: td.path().join("history"),
+        anidb_base: Some("http://127.0.0.1:1".into()),
+        anidb_gate: Arc::new(ScraperGate::new()),
+        hianime_base: Some("http://127.0.0.1:1".into()),
+        hianime_gate: Arc::new(ScraperGate::new()),
+        provider_order: order.to_vec(),
+        image_cache_dir: td.path().join("images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
+        config_path: td.path().join("config.toml"),
+        state_dir: td.path().join("state"),
+        internal_secret: crate::account::InternalSecret::random(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+    }
+}
+
+/// One failure short of the breaker opening, so the next recorded
+/// failure — and only a recorded failure — opens it.
+fn one_short_of_open(gate: &ScraperGate) {
+    for _ in 0..FAILURE_THRESHOLD - 1 {
+        gate.record(
+            crate::scraper::gate::ScrapeOutcome::Failure,
+            tokio::time::Instant::now(),
+        );
+    }
+}
+
+async fn resolve_unreachable(state: &AppState) -> NativeError {
+    let mut attempt = ResolveAttempt {
+        request: NativeResolveRequest {
+            title: "Unreachable Show",
+            alt_titles: &[],
+            episode: "1",
+            mode: "sub",
+            quality: "best",
+            expected_count: None,
+            year: None,
+            subtype: None,
+        },
+        on_progress: &mut |_| {},
+    };
+    super::run(state, ScrapePriority::Interactive, &mut attempt)
+        .await
+        .expect_err("nobody answers")
+}
+
+#[test]
+fn each_provider_gets_a_client_of_its_own_on_its_own_gate() {
+    let td = tempfile::tempdir().expect("td");
+    let state = unroutable_state(&td, &ORDER);
+    for p in ORDER {
+        let client = client_for(&state, Origins::of(&state), p, ScrapePriority::Interactive)
+            .expect("a curl on PATH");
+        assert_eq!(client.id(), p);
+    }
+    assert!(std::ptr::eq(
+        gate_of(&state, ProviderId::Anidb),
+        &*state.anidb_gate
+    ));
+    assert!(std::ptr::eq(
+        gate_of(&state, ProviderId::Hianime),
+        &*state.hianime_gate
+    ));
+}
+
+#[tokio::test]
+async fn a_walk_runs_against_the_states_providers_and_each_hears_its_own_outcome() {
+    let td = tempfile::tempdir().expect("td");
+    let state = unroutable_state(&td, &ORDER);
+    one_short_of_open(&state.anidb_gate);
+    one_short_of_open(&state.hianime_gate);
+    let err = resolve_unreachable(&state).await;
+    assert!(fails_over(&err.error), "{:?}", err.error);
+    assert!(
+        state.anidb_gate.is_open(),
+        "the primary's failure landed on its own breaker"
+    );
+    assert!(
+        state.hianime_gate.is_open(),
+        "the fallback's failure landed on its own breaker"
+    );
+}
+
+#[tokio::test]
+async fn only_the_providers_the_state_orders_are_asked() {
+    let td = tempfile::tempdir().expect("td");
+    let state = unroutable_state(&td, &[ProviderId::Anidb]);
+    one_short_of_open(&state.anidb_gate);
+    one_short_of_open(&state.hianime_gate);
+    let err = resolve_unreachable(&state).await;
+    assert!(fails_over(&err.error), "{:?}", err.error);
+    assert!(state.anidb_gate.is_open());
+    assert!(
+        !state.hianime_gate.is_open(),
+        "a provider outside the order is never asked"
+    );
+}
