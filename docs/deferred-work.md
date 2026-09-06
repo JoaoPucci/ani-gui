@@ -254,33 +254,11 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## Additional providers
-
-- **Investigate alternative stream providers and add the viable ones**,
-  so playback survives the current provider having a bad day. All
-  resolution rides a single provider today, and on 2026-08-27 its
-  server-rendered routes stalled globally for hours (TLS completed,
-  then zero bytes until timeout) while its JSON routes kept answering
-  — nothing new could be resolved, and every uncached play was
-  correctly reported as unreachable. Plays kept working only where a
-  cached resolution sat inside its seven-day lifetime *and* its
-  stream URL still answered validation — a dead URL evicts the row and falls
-  through to the unreachable provider. That softens the blow without
-  changing the lesson. pystardust/ani-cli#1877 records the same
-  outage from the outside.
-
-  The investigation half is the real work: which providers are worth
-  scraping, what their catalogues and rate limits look like, and how a
-  second provider slots into resolution (fallback when the first is
-  unreachable, or a per-title choice). The title-resolution bridge
-  (`docs/title-resolution.md`) is keyed by provider ids, so every
-  cache stamped by provider output is part of the answer, not an
-  afterthought.
-
-  That investigation ran on 2026-09-05, during a second, total outage
-  of the provider: `docs/proposals/additional-providers.md` holds the
-  candidate survey, the integration shape, and a recommendation. The
-  survey's liveness claims rot; re-verify them before building.
+  The second provider did not change the cost. hianime types each
+  server sub or dub, which is the per-episode signal wanted here,
+  but it lists servers per episode in its own request, so the
+  answer for a show is still one request per episode on either
+  provider.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
