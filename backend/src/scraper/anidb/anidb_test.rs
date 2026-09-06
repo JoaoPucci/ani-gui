@@ -159,13 +159,19 @@ fn numeric_id_is_the_slug_tail() {
         slug: "one-piece-69".into(),
         title: "One Piece".into(),
     };
-    assert_eq!(parse::slug_numeric_id(&hit.slug), Some(69));
+    assert_eq!(
+        crate::scraper::provider::slug_numeric_id(&hit.slug),
+        Some(69)
+    );
     let no_tail = BrowseHit {
         kind: None,
         slug: "no-numeric-tail".into(),
         title: "x".into(),
     };
-    assert_eq!(parse::slug_numeric_id(&no_tail.slug), None);
+    assert_eq!(
+        crate::scraper::provider::slug_numeric_id(&no_tail.slug),
+        None
+    );
 }
 
 #[test]
