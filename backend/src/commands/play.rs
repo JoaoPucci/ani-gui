@@ -507,6 +507,7 @@ where
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
         referer: cached_resolution.referer,
+        subtitles: cached_resolution.subtitles,
     };
     create_session_with_kind(state, &session_args, kind)
 }
@@ -525,6 +526,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
+        subtitles: native.subtitles.clone(),
     }
 }
 
@@ -1062,6 +1064,7 @@ mod tests {
             show_id: String::new(),
             show_title: String::new(),
             resolved_slot: None,
+            subtitles: Vec::new(),
         }
     }
 
@@ -1231,6 +1234,7 @@ mod tests {
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
     }
@@ -1484,6 +1488,7 @@ mod tests {
                 show_id: "x".into(),
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let cfg = external_cfg();

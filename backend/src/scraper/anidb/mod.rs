@@ -160,6 +160,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
         Ok(StreamSource {
             master_url,
             referer: None,
+            subtitles: Vec::new(),
         })
     }
 

@@ -62,6 +62,7 @@ pub(crate) async fn try_serve_cached(
         return None;
     }
     let session_args = CreateSessionArgs {
+        subtitles: cached.subtitles.clone(),
         upstream_url: cached.upstream_url.clone(),
         referer: cached.referer.clone(),
     };

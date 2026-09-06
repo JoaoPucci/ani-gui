@@ -245,6 +245,7 @@ where
         &StreamSource {
             master_url: resolved.master_url,
             referer: resolved.referer,
+            subtitles: resolved.subtitles,
         },
         &dest,
         &file_stem,
