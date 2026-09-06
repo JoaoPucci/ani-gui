@@ -337,12 +337,13 @@ starting it, and delete it when you find it done.
   pace, and whether it answers excess with the challenge page or a
   429.
 
-  Provider affinity is what makes the feature usable rather than
-  merely correct. Without it, every play of a show only the second
-  provider carries pays the first provider's whole miss walk first.
-  A remembered provider already lives in two places — the
-  availability row names it, and a history row's show key carries
-  its label — so the order becomes per request.
+  Provider affinity for plays exists: a play, a download or a
+  handoff starts from the provider the show's positive availability
+  row names, and a history row's show key carries its label too.
+  What gap filling adds is the walk that produces such a row in the
+  first place — the probe runs the base order and, with a miss
+  continuing to the next provider, pays a walk per provider on
+  every re-probe of a genuinely absent show.
 
   What makes hianime a fit for this: its entries are season-split
   like Kitsu's, so the count-based picker needs none of the offset

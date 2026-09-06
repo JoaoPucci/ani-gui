@@ -64,9 +64,11 @@ The resolver's walks — search the aliases, pick the candidate by episode count
 
 Two providers ship: anidb.app, then hianime. Each has an admission gate of its own — a pacer for background probes and a circuit breaker that opens after consecutive failures — so an outage on one never paces or refuses traffic to the other. The failover orchestrator (`backend/src/commands/providers.rs`) runs every walk against the providers in order and moves to the next only when the current one was **unreachable, refusing or broken**: a transport failure, a timeout, a provider-shaped block or rate limit, a background request the gate refused, or a page the parser no longer recognises. A provider that answered — including one that searched and found nothing — ends the walk; a miss on anidb.app is not retried on hianime. A provider whose breaker is open is skipped while another remains, and the last one is always tried, since an interactive request may be the trial that closes its breaker. Every attempt but the last is bounded by a 20-second budget under the 60-second resolve deadline, so a stalled outage cannot spend the whole deadline before the fallback is asked. Each attempt's outcome lands on its own provider's gate.
 
-The one asymmetry is absence. A clean miss — every search completed and nothing matched — is the only verdict the availability cache persists as a negative row, and a clean miss reached on hianime *after* anidb.app was unreachable is demoted to a plain miss: absence on the fallback proves nothing about a primary that never answered. Positive rows name the provider whose catalogue carries the show.
+The order is per request when a show is already known. A positive availability row names the provider whose catalogue carries the show, and a play, a download or a handoff for that show starts from it, so a show hianime proved playable during an anidb.app outage stays playable after anidb.app recovers — its clean miss would otherwise end the walk on a show the row says is there.
 
-Every store a resolve stamps keys on a show key that says whose id it holds — anidb.app's as the bare slug every existing row already holds, hianime's under its label. [`title-resolution.md`](./title-resolution.md#show-keys) describes the format and what reads it.
+The asymmetry is absence. A clean miss — every search completed and nothing matched — is the only verdict the availability cache persists as a negative row, and it is a verdict from **the provider that answered**: since a miss does not fail over, a negative row means anidb.app searched and found nothing, not that no provider carries the show. A fallback's answer after an unreachable primary is never persisted as absence: a clean miss reached on hianime then is demoted to a plain miss, and a show hianime found without the requested audio mode is answered as unavailable for that request and not written, because absence on the fallback proves nothing about a primary that never answered.
+
+The history rows, the numbering sidecar beside the history file, the watched-at stamps and the reverse mapping to Kitsu key on a show key that says whose id it holds — anidb.app's as the bare slug every existing row already holds, hianime's under its label — and the play-resolution row, keyed on the request as the cache section below describes, carries the same key in its value. [`title-resolution.md`](./title-resolution.md#show-keys) describes the format and what reads it.
 
 The survey that chose hianime, and the integration shape this section describes, are in [`proposals/additional-providers.md`](./proposals/additional-providers.md).
 
@@ -91,7 +93,7 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days |
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days |
-| Availability probe (negative — the show isn't in the catalogue) | SQLite `meta_cache` | 7 days |
+| Availability probe (negative — a clean miss from the provider that answered) | SQLite `meta_cache` | 7 days |
 | aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite play-resolution table | until upstream rotates |
