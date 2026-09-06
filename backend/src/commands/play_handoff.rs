@@ -48,7 +48,7 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(started_at);
         state.anidb_gate.record(outcome, observed_at);
     }

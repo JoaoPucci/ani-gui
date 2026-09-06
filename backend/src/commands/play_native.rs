@@ -1,5 +1,4 @@
-//! Native play resolution against the anidb provider — the picker
-//! half. Replaces the "compute a `-S` index and hope the script's
+//! Native play resolution — the picker half, over any provider. Replaces the "compute a `-S` index and hope the script's
 //! search returns the same list" coupling with a direct pick over the
 //! client's own results.
 //!
@@ -13,7 +12,7 @@
 //! capture confirms where the browse markup carries a year.
 
 use crate::error::Result;
-use crate::scraper::anidb::{AnidbClient, BrowseHit, Fetch};
+use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
@@ -32,7 +31,7 @@ pub struct PickedShow {
     /// The winning browse hit.
     pub hit: BrowseHit,
     /// The show's episodes, as returned by the probe.
-    pub episodes: Vec<crate::scraper::anidb::EpisodeRef>,
+    pub episodes: Vec<EpisodeRef>,
 }
 
 /// Whether a transport-dead candidate outranks the winner: a
@@ -83,8 +82,8 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// # Errors
 /// [`crate::error::AniError::NoResults`] when `hits` is empty or no
 /// candidate survives the threshold.
-pub async fn pick_candidate<F: Fetch>(
-    client: &AnidbClient<F>,
+pub async fn pick_candidate<P: Provider + ?Sized>(
+    client: &P,
     hits: &[BrowseHit],
     expected: Option<u32>,
     search_title: &str,
@@ -113,12 +112,7 @@ pub async fn pick_candidate<F: Fetch>(
     // Probe the surviving head; a failing probe removes the
     // candidate, never the pick. Each survivor keeps whether its
     // own detail year positively matched Kitsu's.
-    let mut probed_ok: Vec<(
-        &BrowseHit,
-        Vec<crate::scraper::anidb::EpisodeRef>,
-        u32,
-        bool,
-    )> = Vec::new();
+    let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
     // Identity carried by transport-DEAD candidates
     // ([`identity_rank`]), with their provider position: a dead
@@ -160,7 +154,7 @@ pub async fn pick_candidate<F: Fetch>(
                         best_failed = Some((failed, pos));
                     }
                 }
-                tracing::debug!(slug = %h.slug, error = ?e, "anidb pick: probe failed, skipping candidate");
+                tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
         }
     }

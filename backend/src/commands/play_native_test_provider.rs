@@ -1,21 +1,21 @@
-//! Shared scriptable anidb provider for the native-walk test files
+//! Shared scriptable transport for the native-walk test files
 //! (`play_native_resolve_test`, `play_native_walk_test`) — compiled
 //! only under `cfg(test)`.
 
-use crate::scraper::anidb::{Fetch, FetchRequest, FetchResponse};
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 use std::sync::Mutex;
 
-/// Scriptable provider: browse responses keyed by query substring,
+/// Scriptable transport: browse responses keyed by query substring,
 /// one shared episodes/languages/embed/master catalogue, and a URL
 /// log so tests can assert how far the walk went.
-pub(crate) struct Provider {
+pub(crate) struct ScriptedTransport {
     /// `(query substring, browse HTML)` — first match wins. A `!`
     /// body means "answer 403 with the interstitial".
     browse: &'static [(&'static str, &'static str)],
     log: Mutex<Vec<String>>,
 }
 
-impl Provider {
+impl ScriptedTransport {
     pub(crate) fn new(browse: &'static [(&'static str, &'static str)]) -> Self {
         Self {
             browse,
@@ -36,7 +36,7 @@ pub(crate) fn browse_page(entries: &[(&str, &str)]) -> String {
 }
 
 #[async_trait::async_trait]
-impl Fetch for Provider {
+impl Fetch for ScriptedTransport {
     async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         let url = req.url.as_str();
         self.log.lock().expect("log").push(url.to_string());
@@ -139,11 +139,11 @@ pub(crate) fn the_show_browse() -> &'static str {
     Box::leak(browse_page(&[("the-show-77", "The Show")]).into_boxed_str())
 }
 
-/// Borrowing adapter so one Provider serves a whole test.
-pub(crate) struct ProviderRef<'a>(pub(crate) &'a Provider);
+/// Borrowing adapter so one transport serves a whole test.
+pub(crate) struct ScriptedTransportRef<'a>(pub(crate) &'a ScriptedTransport);
 
 #[async_trait::async_trait]
-impl Fetch for ProviderRef<'_> {
+impl Fetch for ScriptedTransportRef<'_> {
     async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         self.0.fetch(req).await
     }

@@ -226,7 +226,7 @@ pub(crate) fn anidb_client_for<'a>(
     priority: crate::scraper::gate::ScrapePriority,
 ) -> Result<
     crate::scraper::anidb::AnidbClient<
-        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
     >,
 > {
     anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
@@ -237,7 +237,7 @@ fn anidb_client<'a>(
     priority: crate::scraper::gate::ScrapePriority,
 ) -> Result<
     crate::scraper::anidb::AnidbClient<
-        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
     >,
 > {
     anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
@@ -251,11 +251,11 @@ pub(super) fn anidb_client_with_base<'a>(
     priority: crate::scraper::gate::ScrapePriority,
 ) -> Result<
     crate::scraper::anidb::AnidbClient<
-        crate::scraper::anidb::GatedFetch<'a, crate::scraper::anidb::CurlImpersonateFetch>,
+        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
     >,
 > {
     let path_env = std::env::var("PATH").unwrap_or_default();
-    let fetch = crate::scraper::anidb::CurlImpersonateFetch::resolve(
+    let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
         &path_env,
     )
@@ -263,7 +263,7 @@ pub(super) fn anidb_client_with_base<'a>(
         tracing::error!("no curl binary found for the anidb transport");
         AniError::Network
     })?;
-    let fetch = crate::scraper::anidb::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
+    let fetch = crate::scraper::gated::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
     Ok(match base {
         Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
         None => crate::scraper::anidb::AnidbClient::new(fetch),
@@ -421,7 +421,7 @@ where
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(resolve_started_at);
         state.anidb_gate.record(outcome, observed_at);
     }

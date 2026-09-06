@@ -3,7 +3,7 @@
 //! each file stays inside the complexity ratchet's per-file bar.
 
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, Fetch};
+use crate::scraper::provider::Provider;
 
 use super::play_native::{pick_candidate, PickedShow};
 use super::play_native_resolve::NativeError;
@@ -18,8 +18,8 @@ use super::play_native_resolve::NativeError;
 /// # Errors
 /// [`NativeError`] with `clean_miss` set only for the
 /// all-clean-no-match verdict.
-pub async fn pick_native_walk<F: Fetch>(
-    client: &AnidbClient<F>,
+pub async fn pick_native_walk<P: Provider + ?Sized>(
+    client: &P,
     title: &str,
     alt_titles: &[String],
     expected_count: Option<u32>,
@@ -58,7 +58,6 @@ pub async fn pick_native_walk<F: Fetch>(
                         any_search_errored = true;
                         last_failure_at = Some(
                             client
-                                .transport()
                                 .last_attempt_at()
                                 .unwrap_or_else(tokio::time::Instant::now),
                         );
@@ -83,7 +82,6 @@ pub async fn pick_native_walk<F: Fetch>(
                 any_search_errored = true;
                 last_failure_at = Some(
                     client
-                        .transport()
                         .last_attempt_at()
                         .unwrap_or_else(tokio::time::Instant::now),
                 );

@@ -1,6 +1,8 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchRequest, FetchResponse};
+use crate::scraper::anidb::AnidbClient;
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
+use crate::scraper::provider::EpisodeRef;
 
 /// A fetch whose episodes endpoint answers per numeric id from a
 /// canned table; every other route 404s.
