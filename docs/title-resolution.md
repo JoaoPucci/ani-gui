@@ -85,7 +85,7 @@ The mappings response is cached in `meta_cache` indefinitely — Kitsu's mapping
 - **Banner backfill** — when the detail page sees a null `coverImage` from Kitsu, it bridges to MAL and asks AniList for `bannerImage`. Roughly half of any week's currently-airing top 20 shows hit this fallback path.
 - **aniskip** lookups need the MAL id to query, and the same Kitsu→MAL mapping is reused.
 - **Availability** can answer "is this on anidb.app in the requested mode?" by running the same walk the play path would and caching the verdict per `(kitsu_id, mode)`.
-- **Continue Watching** maps history rows back to Kitsu: rows key on the provider slug, whose hyphenated words are the show's own title — the reverse-resolver searches Kitsu with them directly and persists the `(slug → kitsu_id)` mapping.
+- **Continue Watching** maps history rows back to Kitsu: rows key on the provider's show key (below), whose slug's hyphenated words are the show's own title — the reverse-resolver reads the key, searches Kitsu with the words directly, and persists the `(show key → kitsu_id)` mapping. When two providers have each left a row for the same show, the detail page resumes from the one with the latest watched-at stamp.
 
 ## Failure modes the bridge tolerates
 
@@ -93,3 +93,9 @@ The mappings response is cached in `meta_cache` indefinitely — Kitsu's mapping
 - **The provider has no candidate matching any title** — the play path returns `NoResults`; the frontend renders an "isn't on the streaming source" overlay instead of a cryptic backend error.
 - **The picker can't disambiguate** — exact-title-or-first-hit fallback. This is the worst case for correctness, but it's still a real entry on the provider; the user sees a sub-show rather than no show. They can pick the right one manually from search.
 - **A cached play-resolution URL stops working** — the silent retry path evicts the cached row and re-resolves once before surfacing an error to the user.
+
+## Show keys
+
+Every store a resolve stamps — history rows, the numbering sidecar beside the history file, the watched-at stamps, the reverse mapping, the resolution-cache row — keys on the show key the resolve produced, as a string. anidb's key is the bare slug (`one-piece-69`), which is what every row written before there were two providers already holds, so nothing migrates. Any other provider's key carries its label as a prefix (`hianime:cowboy-bebop-1281`). The read side parses the string back: a known label names its provider; anything else — including the allanime-era ids that predate slugs — is anidb's. The renderer treats the id as opaque except for that label, which it reads to say which provider's title a title-match cache key is for: the title-match cache is keyed per provider, so two providers naming different shows identically cannot read or overwrite each other's mapping.
+
+The cross-cour guard on the reverse mapping write compares the provider's title against Kitsu's slug convention the way anidb names its entries; a season-split provider names them differently, so the guard applies to anidb keys only and another provider's mapping is written as resolution cross-checked it.
