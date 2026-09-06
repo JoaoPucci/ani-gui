@@ -1773,3 +1773,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "play_referer_test.rs"]
+mod referer_tests;

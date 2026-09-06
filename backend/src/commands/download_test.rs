@@ -2492,3 +2492,28 @@ async fn a_file_that_predates_the_download_is_kept() {
         "a file the user already had is not one they agreed to lose"
     );
 }
+
+// ── the referer reaches whichever tool transfers ────────────────────
+
+/// yt-dlp takes the referer as its own flag; ffmpeg takes raw request
+/// headers. A stream whose CDN checks the referer downloads with
+/// neither tool unless each gets it in the shape it understands.
+#[test]
+fn each_tool_gets_the_referer_in_its_own_flag_shape() {
+    assert_eq!(
+        ytdlp_referer_args(Some("https://embed.example/")),
+        vec![
+            "--referer".to_string(),
+            "https://embed.example/".to_string()
+        ]
+    );
+    assert!(ytdlp_referer_args(None).is_empty());
+    assert_eq!(
+        ffmpeg_referer_args(Some("https://embed.example/")),
+        vec![
+            "-headers".to_string(),
+            "Referer: https://embed.example/\r\n".to_string()
+        ]
+    );
+    assert!(ffmpeg_referer_args(None).is_empty());
+}
