@@ -239,3 +239,33 @@ async fn a_webvtt_body_behind_a_byte_order_mark_is_relayed() {
         .expect("response");
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+#[test]
+fn a_subtitle_body_is_one_by_its_signature_with_or_without_a_byte_order_mark() {
+    assert!(is_webvtt(b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"));
+    assert!(is_webvtt(b"\xEF\xBB\xBFWEBVTT\n"));
+    assert!(!is_webvtt(b"<html><title>Just a moment...</title></html>"));
+    assert!(!is_webvtt(b""));
+    assert!(!is_webvtt(b"\xEF\xBB\xBF"));
+}
+
+proptest::proptest! {
+    /// Whatever follows, a body is a subtitle track exactly when its
+    /// first bytes — behind an optional byte-order mark — spell the
+    /// signature.
+    #[test]
+    fn the_signature_decides_and_nothing_after_it_does(
+        bom: bool,
+        head in proptest::collection::vec(proptest::num::u8::ANY, 0..8),
+        rest in proptest::collection::vec(proptest::num::u8::ANY, 0..64),
+    ) {
+        let mut body = Vec::new();
+        if bom {
+            body.extend_from_slice(b"\xEF\xBB\xBF");
+        }
+        body.extend_from_slice(&head);
+        body.extend_from_slice(&rest);
+        let expected = [head.as_slice(), rest.as_slice()].concat().starts_with(b"WEBVTT");
+        proptest::prop_assert_eq!(is_webvtt(&body), expected);
+    }
+}

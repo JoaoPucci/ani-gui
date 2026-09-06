@@ -2798,3 +2798,44 @@ async fn a_finished_sidecar_claim_keeps_its_file() {
         "a refused claim touches nothing"
     );
 }
+
+/// A CDN in front of the subtitles can answer a challenge page with
+/// 200. Written as a sidecar it would sit at the track's name for
+/// good, since every later download keeps what it finds there. Only
+/// a body that is a subtitle track claims the name.
+#[tokio::test]
+async fn a_body_that_is_not_webvtt_is_not_written_as_a_sidecar() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<html><title>Just a moment...</title></html>")
+                .insert_header("content-type", "text/html"),
+        )
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 4",
+    )
+    .await;
+    assert!(written.is_empty(), "nothing claims the name: {written:?}");
+    assert!(
+        !dest.path().join("Show Episode 4.en.vtt").exists(),
+        "a challenge page is not a subtitle track"
+    );
+}
