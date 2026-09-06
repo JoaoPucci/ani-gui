@@ -18,6 +18,9 @@ use crate::error::Result;
 pub enum ProviderId {
     /// anidb.app — the provider ani-cli 5.0 scrapes.
     Anidb,
+    /// hianime — the provider ani-cli moved to when anidb.app went
+    /// dark in September 2026.
+    Hianime,
 }
 
 impl ProviderId {
@@ -27,6 +30,9 @@ impl ProviderId {
     pub fn label(self) -> &'static str {
         match self {
             Self::Anidb => "anidb.app",
+            // The brand, not a domain: the site's domain churns and is
+            // filtered per ISP, and the label names who answered.
+            Self::Hianime => "hianime",
         }
     }
 }
