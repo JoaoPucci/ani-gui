@@ -189,7 +189,18 @@ ever the pick, this is its own investigation first.
   parser alone and writes anything shaped differently off as an
   unresolvable legacy row — provider-aware id parsing belongs to the
   seam, and the id-qualification decision below must leave this path
-  able to tell whose id it is holding. The seam
+  able to tell whose id it is holding. The mapping's write and read
+  validation is provider-specific in the same way: a successful play
+  persists the provider→Kitsu mapping only after a cour heuristic
+  compares the provider title's cour suffix with Kitsu's slug
+  convention, and the frontend applies related title, count and cour
+  checks before trusting the row. Both are tuned to how the current
+  provider names things; a season-split provider that names seasons
+  differently from Kitsu can have a mapping rejected that resolution
+  had already cross-checked, and the play then loses its
+  deterministic Continue Watching and resume mapping. The seam
+  carries the provider's own match provenance into that path — a
+  verified MAL id, say — or validation becomes per-provider. The seam
   owns attribution too: the resolve path stamps a hard-coded
   provider label into its progress events, and the play and download
   walks record their combined outcome into the one gate after the
