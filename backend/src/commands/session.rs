@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::app::AppState;
 use crate::error::{AniError, Result};
-use crate::proxy::{MediaKind, StreamSession};
+use crate::proxy::{MediaKind, SessionSubtitle, StreamSession};
 use crate::scraper::provider::SubtitleTrack;
 
 /// Frontend → backend payload. All URLs are strings on the wire.
@@ -25,22 +25,6 @@ pub struct CreateSessionArgs {
     /// Sidecar subtitle tracks the resolve listed beside the stream.
     #[serde(default)]
     pub subtitles: Vec<SubtitleTrack>,
-}
-
-/// One sidecar track as the renderer sees it: the same language,
-/// label and default flag the provider listed, and a proxy URL in
-/// place of the upstream one.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct SessionSubtitle {
-    /// Language code (`en`).
-    pub lang: String,
-    /// Display label (`English`).
-    pub label: String,
-    /// Whether the player should select it by default.
-    pub default: bool,
-    /// `…/s/<uuid>/sub/<n>.vtt` — served by the proxy with the
-    /// session's referer.
-    pub url: String,
 }
 
 /// What the frontend gets back: a session id, the proxy URL the
@@ -126,12 +110,7 @@ fn create_session_inner(
         .subtitles
         .iter()
         .enumerate()
-        .map(|(i, t)| SessionSubtitle {
-            lang: t.lang.clone(),
-            label: t.label.clone(),
-            default: t.default,
-            url: format!("{}/s/{}/sub/{i}.vtt", state.proxy_origin.base, session_str),
-        })
+        .map(|(i, t)| SessionSubtitle::proxied(&state.proxy_origin.base, &session_str, i, t))
         .collect();
 
     Ok(CreateSessionResponse {
