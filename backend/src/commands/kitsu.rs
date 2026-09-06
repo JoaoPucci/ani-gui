@@ -814,6 +814,10 @@ fn normalize_query(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "kitsu_title_match_test.rs"]
+mod title_match_tests;
+
+#[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]
 mod show_key_tests;
 
@@ -1094,8 +1098,21 @@ mod tests {
     #[test]
     fn title_match_cache_round_trips_for_a_given_title_and_cour() {
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean Part 2", 2, "kitsu-id-42").expect("put ok");
-        let got = title_match_get(&state, "Stone Ocean Part 2", 2).expect("get ok");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean Part 2",
+            2,
+            "kitsu-id-42",
+        )
+        .expect("put ok");
+        let got = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean Part 2",
+            2,
+        )
+        .expect("get ok");
         assert_eq!(got, Some("kitsu-id-42".to_string()));
     }
 
@@ -1106,9 +1123,28 @@ mod tests {
         // alone — only trim + lowercase — but that's enough to soak
         // up the common variations from the history file.)
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean", 1, "id-1").expect("put");
-        let got_lc = title_match_get(&state, "stone ocean", 1).expect("get lowercased");
-        let got_padded = title_match_get(&state, "  STONE OCEAN  ", 1).expect("get padded");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            1,
+            "id-1",
+        )
+        .expect("put");
+        let got_lc = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "stone ocean",
+            1,
+        )
+        .expect("get lowercased");
+        let got_padded = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "  STONE OCEAN  ",
+            1,
+        )
+        .expect("get padded");
         assert_eq!(got_lc, Some("id-1".to_string()));
         assert_eq!(got_padded, Some("id-1".to_string()));
     }
@@ -1118,14 +1154,40 @@ mod tests {
         // Cour is part of the key — Stone Ocean Part 1 and Part 2
         // must not collide on the cache row.
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean", 1, "id-part1").expect("put p1");
-        title_match_put(&state, "Stone Ocean", 2, "id-part2").expect("put p2");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            1,
+            "id-part1",
+        )
+        .expect("put p1");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            2,
+            "id-part2",
+        )
+        .expect("put p2");
         assert_eq!(
-            title_match_get(&state, "Stone Ocean", 1).expect("get p1"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Stone Ocean",
+                1
+            )
+            .expect("get p1"),
             Some("id-part1".to_string())
         );
         assert_eq!(
-            title_match_get(&state, "Stone Ocean", 2).expect("get p2"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Stone Ocean",
+                2
+            )
+            .expect("get p2"),
             Some("id-part2".to_string())
         );
     }
@@ -1134,7 +1196,13 @@ mod tests {
     fn title_match_cache_returns_none_for_unknown_titles() {
         let state = state_with_kitsu_at("http://unused");
         assert_eq!(
-            title_match_get(&state, "Nothing here", 1).expect("get ok"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Nothing here",
+                1
+            )
+            .expect("get ok"),
             None
         );
     }
@@ -1144,10 +1212,30 @@ mod tests {
         // When the picker resolves a different kitsu_id later (a
         // re-cataloguing on Kitsu, say), the latest put wins.
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Demon Slayer", 1, "old").expect("put old");
-        title_match_put(&state, "Demon Slayer", 1, "new").expect("put new");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Demon Slayer",
+            1,
+            "old",
+        )
+        .expect("put old");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Demon Slayer",
+            1,
+            "new",
+        )
+        .expect("put new");
         assert_eq!(
-            title_match_get(&state, "Demon Slayer", 1).expect("get"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Demon Slayer",
+                1
+            )
+            .expect("get"),
             Some("new".to_string())
         );
     }
