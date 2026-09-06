@@ -55,7 +55,14 @@ each outage is therefore not a strategy; a second provider is.
    candidate counts as reachable only once a master playlist and its
    segments have been pulled through the local proxy — and through
    each non-embedded consumer the app supports — not when the site
-   answers a scrape probe.
+   answers a scrape probe. And on both packaged platforms: Windows
+   stages its own executables through its own fetcher and invokes
+   them through platform-specific paths, so a Linux-only pass can
+   leave the NSIS build installing cleanly and unable to resolve or
+   consume a stream — exactly the silent platform gap `AGENTS.md`
+   §15 exists to forbid. Neither the survey nor the client work
+   counts a candidate as reachable until both platforms have pulled
+   a playlist and segments through their own packaged tools.
 2. **Searchable by title.** The title-resolution bridge feeds
    Kitsu-derived titles in priority order (`docs/title-resolution.md`);
    the provider needs a text search that accepts them.
@@ -182,7 +189,13 @@ ever the pick, this is its own investigation first.
   before the ordinary one, and that resolver constructs the client,
   runs the walk and records outcomes into the gate by itself — move
   the three named walks and leave it, and every range download still
-  contacts the unavailable primary. History
+  contacts the unavailable primary. The external-player and Syncplay
+  handoffs are the same shape: with resolution caching off (the
+  default) or on a miss, their fresh-resolve path builds its own
+  client, runs the bounded walk and records into the gate, so the
+  handoff resolver is a walk consumer in its own right — routed
+  through the orchestrator with per-attempt attribution, not only
+  handed headers and subtitles afterwards. History
   reverse resolution is a further consumer of provider knowledge:
   when a Continue Watching row has no stamped mapping, the recovery
   derives a search term from the slug through the current provider's
