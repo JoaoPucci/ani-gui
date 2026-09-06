@@ -2715,3 +2715,51 @@ async fn sidecar_tracks_are_written_beside_the_media_with_the_referer() {
         "a refused track is skipped, not written empty"
     );
 }
+
+/// A track file already beside the media is the user's — a corrected
+/// subtitle from an earlier download — and stays as found; the
+/// tracks with no file there still land.
+#[tokio::test]
+async fn a_sidecar_the_user_already_has_is_preserved() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for lang in ["en", "es"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nfrom the CDN\n"))
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let en = dest.path().join("Show Episode 2.en.vtt");
+    std::fs::write(&en, "WEBVTT\n\nthe user's own\n").expect("existing sidecar");
+    let tracks = ["en", "es"]
+        .iter()
+        .map(|lang| SubtitleTrack {
+            lang: (*lang).into(),
+            label: (*lang).into(),
+            default: false,
+            url: format!("{}/subs/{lang}.vtt", server.uri()),
+        })
+        .collect::<Vec<_>>();
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 2",
+    )
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("still there"),
+        "WEBVTT\n\nthe user's own\n",
+        "the file the user had is left as found"
+    );
+    assert_eq!(
+        written,
+        vec![dest.path().join("Show Episode 2.es.vtt")],
+        "only the track with no file at its name is written"
+    );
+}
