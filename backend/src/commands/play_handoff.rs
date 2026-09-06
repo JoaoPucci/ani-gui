@@ -22,7 +22,10 @@ use crate::error::Result;
 /// history row. Sending an episode to mpv or Syncplay is as much a
 /// watch as playing it in the window, and both go through
 /// [`crate::commands::play_native_record`] so the two paths cannot
-/// disagree about what a row's number means.
+/// disagree about what a row's number means. The handoff also
+/// stamps the watch's moment beside the row: the embedded player
+/// does that on mark-watched, and a handoff has no progress to wait
+/// for.
 ///
 /// # Errors
 /// The walk's typed verdicts — `NoResults` for a clean miss, the
@@ -56,6 +59,7 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
     let native = native.map_err(|ne| ne.error)?;
     crate::commands::play_native_record::stamp_numbering(state, &native);
     crate::commands::play_native_record::write_history(state, &native, &args.episode);
+    crate::commands::play_native_record::stamp_watched_now(state, &native);
     Ok(launch_args_for(native, args, &cfg))
 }
 
