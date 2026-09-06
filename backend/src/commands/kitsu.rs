@@ -498,7 +498,13 @@ pub async fn try_put_allmanga_kitsu_mapping(
     show_title: &str,
     kitsu_id: &str,
 ) {
-    if cour_pairing_disagrees(state, show_title, kitsu_id).await {
+    // The guard reads the provider's title against Kitsu's slug
+    // convention the way anidb names its entries; a season-split
+    // provider names them differently, and its mapping was
+    // cross-checked by resolution.
+    let guarded = crate::scraper::provider::ShowKey::parse(show_id).provider
+        == crate::scraper::provider::ProviderId::Anidb;
+    if guarded && cour_pairing_disagrees(state, show_title, kitsu_id).await {
         tracing::warn!(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
@@ -603,10 +609,11 @@ pub async fn resolve_allmanga_show_id(
         }
     }
 
-    // 2) anidb slug rows carry their identity in the slug itself —
-    //    the hyphenated words are the show's title. Search Kitsu with
-    //    them directly; a miss stays a soft None.
-    if let Some(term) = crate::scraper::anidb::slug_search_term(show_id) {
+    // 2) Slug-shaped rows carry their identity in the slug itself —
+    //    the hyphenated words are the show's title, whichever provider
+    //    the key names. Search Kitsu with them directly; a miss stays
+    //    a soft None.
+    if let Some(term) = crate::scraper::provider::ShowKey::parse(show_id).search_term() {
         return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
     }
 
