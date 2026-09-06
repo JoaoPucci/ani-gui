@@ -132,6 +132,16 @@ describe('singleton lifecycle (happy-dom)', () => {
 		expect(b).toBe(a);
 	});
 
+	it('is CORS-enabled: every source and sidecar track it loads comes from the proxy origin', () => {
+		// The proxy is a different origin from the page on every build
+		// (a loopback port against the app's own origin), and the
+		// browser refuses a <track> from another origin outright unless
+		// the media element asks for it in CORS mode. The proxy answers
+		// every route with a permissive allow-origin, so anonymous mode
+		// is what makes the sidecar tracks loadable at all.
+		expect(getGlobalVideo().getAttribute('crossorigin')).toBe('anonymous');
+	});
+
 	it('attachGlobalVideoTo moves the singleton into the requested parent', () => {
 		const frame = document.createElement('div');
 		document.body.appendChild(frame);
