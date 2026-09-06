@@ -199,6 +199,15 @@ async fn post_session(
     State(state): State<Arc<AppState>>,
     Json(args): Json<session_inner::CreateSessionArgs>,
 ) -> Result<Json<session_inner::CreateSessionResponse>, AniError> {
+    // Sidecar tracks are attached by the resolver, never by the
+    // caller of this route: it is reachable from any page that finds
+    // the loopback port, and the proxy fetches a session's tracks on
+    // the caller's behalf.
+    if !args.subtitles.is_empty() {
+        return Err(AniError::ParseFailed {
+            detail: "subtitles: attached by the resolver, not accepted here".into(),
+        });
+    }
     Ok(Json(session_inner::create_session(&state, &args)?))
 }
 
