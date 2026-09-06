@@ -5,7 +5,7 @@
 //! for the per-file complexity bar.
 
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch};
+use crate::scraper::anidb::{AnidbClient, Fetch};
 
 use super::play_native::PickedShow;
 use super::play_native_numbering::{numbering_offset, provider_fraction};
@@ -45,7 +45,7 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
 /// # Errors
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
 /// here is evidence of absence.
-pub async fn resolve_episode<F: AnidbFetch>(
+pub async fn resolve_episode<F: Fetch>(
     client: &AnidbClient<F>,
     picked: &PickedShow,
     episode: &str,

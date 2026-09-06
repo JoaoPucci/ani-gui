@@ -3,7 +3,7 @@ use super::super::play_native_test_provider::{
 };
 use super::*;
 use crate::commands::progress::ProgressLine;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, FetchResponse};
+use crate::scraper::anidb::{AnidbClient, Fetch, FetchResponse};
 use std::sync::Mutex;
 
 // The show catalogue every happy-path test shares: slug the-show-77,
@@ -137,7 +137,7 @@ struct DetailRefusingProvider {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for DetailRefusingProvider {
+impl Fetch for DetailRefusingProvider {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("browse?q=") {
             self.browses
@@ -459,7 +459,7 @@ struct ChainFate {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for ChainFate {
+impl Fetch for ChainFate {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         self.log.lock().expect("log").push(url.to_string());
         if url.contains("browse?q=") {
@@ -518,7 +518,7 @@ async fn run_chain(fate: &ChainFate) -> std::result::Result<NativeResolved, Nati
 struct ChainRef<'a>(&'a ChainFate);
 
 #[async_trait::async_trait]
-impl AnidbFetch for ChainRef<'_> {
+impl Fetch for ChainRef<'_> {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         self.0.get(url).await
     }
@@ -533,7 +533,7 @@ struct FirstAliasDies {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for FirstAliasDies {
+impl Fetch for FirstAliasDies {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("browse?q=") {
             if url.contains("dead+alias") {
@@ -614,7 +614,7 @@ fn second_stamp(fetch: &FirstAliasDies) -> tokio::time::Instant {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for &FirstAliasDies {
+impl Fetch for &FirstAliasDies {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         (*self).get(url).await
     }
@@ -630,7 +630,7 @@ impl AnidbFetch for &FirstAliasDies {
 struct DeadProbes;
 
 #[async_trait::async_trait]
-impl AnidbFetch for DeadProbes {
+impl Fetch for DeadProbes {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("browse?q=") {
             return Ok(FetchResponse {
@@ -779,7 +779,7 @@ async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
 struct StallingProvider;
 
 #[async_trait::async_trait]
-impl AnidbFetch for StallingProvider {
+impl Fetch for StallingProvider {
     async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
         std::future::pending().await
     }

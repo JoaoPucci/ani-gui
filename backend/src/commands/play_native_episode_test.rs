@@ -7,7 +7,7 @@ use crate::scraper::anidb::{BrowseHit, EpisodeRef, FetchResponse};
 struct OnlyEpisode(u64);
 
 #[async_trait::async_trait]
-impl crate::scraper::anidb::AnidbFetch for OnlyEpisode {
+impl crate::scraper::anidb::Fetch for OnlyEpisode {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains(&format!("/api/frontend/episode/{}/languages", self.0)) {
             return Ok(FetchResponse {
