@@ -119,6 +119,10 @@ fn parse_http_url(s: &str, field: &str) -> Result<Url> {
 }
 
 #[cfg(test)]
+#[path = "session_subtitles_test.rs"]
+mod subtitle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};

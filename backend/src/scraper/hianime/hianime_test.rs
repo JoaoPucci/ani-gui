@@ -495,7 +495,7 @@ fn the_embed_payload_decodes_from_the_page_blob() {
             lang: "en".into(),
             label: "English".into(),
             default: true,
-            src: "https://hls.example/v/subs/en.vtt".into(),
+            url: "https://hls.example/v/subs/en.vtt".into(),
         }]
     );
 }
@@ -553,7 +553,7 @@ fn the_embed_origin_is_the_referer_the_cdn_wants() {
 // ── the client over the seam ────────────────────────────────────────
 
 use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
-use crate::scraper::provider::{Provider, ProviderId, StreamSource};
+use crate::scraper::provider::{Provider, ProviderId, StreamSource, SubtitleTrack};
 use std::sync::Mutex;
 
 const BASE: &str = "http://stub";
@@ -883,7 +883,14 @@ async fn the_master_is_the_decoded_embed_src_with_the_embed_origin_as_referer() 
         StreamSource {
             master_url: "https://hls.example/v/master.m3u8".into(),
             referer: Some("https://zokoanime.video/".into()),
-        }
+            subtitles: vec![SubtitleTrack {
+                lang: "en".into(),
+                label: "English".into(),
+                default: true,
+                url: "https://hls.example/v/subs/en.vtt".into(),
+            }],
+        },
+        "the embed's sidecar tracks ride out with the master — a sub stream is raw video without them"
     );
     let err = c
         .master_playlist_url(21419, "sub")

@@ -372,6 +372,10 @@ fn clone_passthrough_headers(src: &reqwest::header::HeaderMap) -> HeaderMap {
 }
 
 #[cfg(test)]
+#[path = "subtitle_test.rs"]
+mod subtitle_tests;
+
+#[cfg(test)]
 #[path = "seg_referer_test.rs"]
 mod seg_referer_tests;
 
