@@ -12,6 +12,7 @@ fn args(stream: &str) -> LaunchArgs {
         player_command: "mpv".into(),
         player_kind: ExternalPlayerKind::Mpv,
         custom_args_template: None,
+        subtitle_urls: Vec::new(),
     }
 }
 
