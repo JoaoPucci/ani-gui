@@ -1117,6 +1117,81 @@ mod tests {
         );
     }
 
+    /// A hianime stub carrying one show whose episodes offer sub
+    /// servers only: search page, episode list, server list.
+    async fn stub_hianime_sub_only() -> wiremock::MockServer {
+        use base64::Engine as _;
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        let base = server.uri();
+        let search = format!(
+            r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/fallback-show-7" title="Fallback Show" class="dynamic-name">Fallback Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
+        );
+        wiremock::Mock::given(method("GET"))
+            .and(path("/search"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
+            .mount(&server)
+            .await;
+        let list = serde_json::json!({
+            "status": true,
+            "html": r#"<a class="ep-item" data-number="1" data-id="7001"></a><a class="ep-item" data-number="2" data-id="7002"></a>"#,
+        })
+        .to_string();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/theme/episode/list/7"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
+            .mount(&server)
+            .await;
+        let hash =
+            base64::engine::general_purpose::STANDARD.encode(format!("{base}/stream/mal/7/1/sub"));
+        let servers = serde_json::json!({
+            "status": true,
+            "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
+        })
+        .to_string();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/theme/episode/servers"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn a_fallbacks_mode_miss_after_an_unreachable_primary_is_not_persisted() {
+        // The primary never answered; the fallback found the show
+        // and has no dub of it. That is the answer for now — but
+        // absence on the fallback proves nothing about a primary that
+        // may carry the dub, and a persisted negative would hide the
+        // show for the row's whole lifetime after the primary
+        // recovers.
+        let hianime = stub_hianime_sub_only().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "dub",
+            "kitsu_id": "558",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+            .await
+            .expect("the fallback answered");
+        assert!(!got.available, "the fallback carries no dub");
+        assert!(
+            meta_cache_get(&state.cache_pool, &cache_key("558", "dub"))
+                .expect("cache read")
+                .is_none(),
+            "a mode miss on the fallback while the primary was unreachable is not a verdict"
+        );
+    }
+
     #[tokio::test]
     async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         // The pick already paid for the episodes list, so the cap is
