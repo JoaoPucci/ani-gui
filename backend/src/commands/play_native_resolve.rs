@@ -15,7 +15,7 @@
 
 use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
-use crate::scraper::provider::{Provider, SubtitleTrack};
+use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
 use super::play_native::pick_candidate;
 pub use super::play_native_episode::resolve_episode;
@@ -26,8 +26,11 @@ use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, number
 /// a session, stamp caches, and write history.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeResolved {
-    /// The provider slug — the id history and caches key on.
+    /// The show key's string — the id history and caches key on:
+    /// anidb's bare slug, another provider's slug under its label.
     pub slug: String,
+    /// The provider that answered.
+    pub provider: ProviderId,
     /// The provider's display title for the show.
     pub title: String,
     /// The master-playlist URL the embed page carried.
@@ -228,7 +231,8 @@ where
                         let offset = numbering_offset(&picked.episodes);
                         let extra_tags = extra_episode_tags(&picked.episodes);
                         return Ok(NativeResolved {
-                            slug: picked.hit.slug,
+                            slug: ShowKey::new(client.id(), picked.hit.slug).to_string(),
+                            provider: client.id(),
                             title: picked.hit.title,
                             master_url: resolved.master_url,
                             referer: resolved.referer,
