@@ -5,6 +5,8 @@
 use base64::Engine as _;
 use serde::Deserialize;
 
+use crate::error::{AniError, Result};
+
 /// The XOR key the embed pages use. Versioned in the value itself.
 const EMBED_KEY: &[u8] = b"otaku-embed-v1";
 
@@ -32,22 +34,36 @@ pub struct EmbedPayload {
     pub subtitles: Vec<SubtitleTrack>,
 }
 
-/// Decode the payload out of an embed page. `None` for a page without
-/// the marker, a blob that is not base64, or plaintext that is not the
-/// payload — each is a miss, never a panic.
-#[must_use]
-pub fn decode_embed(html: &str) -> Option<EmbedPayload> {
-    let (_, rest) = html.split_once("window.__P=\"")?;
-    let blob = rest.split('"').next()?;
+/// Decode the payload out of an embed page. A page without the
+/// marker carries no playlist — the answered "nothing here". A page
+/// whose marker is present but whose blob the key does not open, or
+/// whose plaintext is not the payload, is the site having changed —
+/// the versioned key rotated, the shape moved — and that is a parse
+/// failure, never an episode without a stream.
+///
+/// # Errors
+/// [`AniError::NoResults`] without the marker,
+/// [`AniError::ParseFailed`] when the blob does not decode.
+pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
+    let Some((_, rest)) = html.split_once("window.__P=\"") else {
+        return Err(AniError::NoResults);
+    };
+    let undecodable = |what: &str| AniError::ParseFailed {
+        detail: format!("hianime embed payload: {what}"),
+    };
+    let blob = rest
+        .split('"')
+        .next()
+        .ok_or_else(|| undecodable("unterminated blob"))?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(blob)
-        .ok()?;
+        .map_err(|_| undecodable("blob is not base64"))?;
     let plain: Vec<u8> = bytes
         .iter()
         .enumerate()
         .map(|(i, b)| b ^ EMBED_KEY[i % EMBED_KEY.len()])
         .collect();
-    serde_json::from_slice(&plain).ok()
+    serde_json::from_slice(&plain).map_err(|_| undecodable("plaintext is not the payload"))
 }
 
 /// The origin the CDN wants as `Referer` on every playlist fetch:
