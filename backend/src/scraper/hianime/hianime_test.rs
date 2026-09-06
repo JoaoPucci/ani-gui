@@ -236,3 +236,216 @@ fn the_embed_origin_is_the_referer_the_cdn_wants() {
     );
     assert_eq!(embed_origin("not a url"), None);
 }
+
+// ── the client over the seam ────────────────────────────────────────
+
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
+use crate::scraper::provider::{Provider, ProviderId, StreamSource};
+use std::sync::Mutex;
+
+const BASE: &str = "http://stub";
+
+/// The site as the client sees it — every endpoint of the 2026-09-06
+/// capture, refusing what the real site refuses: the AJAX listings
+/// without `X-Requested-With`, the embed without the site's origin as
+/// `Referer`, the playlists without the embed host's.
+struct Site {
+    log: Mutex<Vec<FetchRequest>>,
+}
+
+impl Site {
+    fn new() -> Self {
+        Self {
+            log: Mutex::new(Vec::new()),
+        }
+    }
+    fn requests(&self) -> Vec<FetchRequest> {
+        self.log.lock().expect("log").clone()
+    }
+}
+
+fn header<'a>(req: &'a FetchRequest, name: &str) -> Option<&'a str> {
+    req.headers
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.as_str())
+}
+
+fn ok(body: impl Into<String>) -> crate::error::Result<FetchResponse> {
+    Ok(FetchResponse {
+        status: 200,
+        body: body.into(),
+    })
+}
+
+fn refused(status: u16) -> crate::error::Result<FetchResponse> {
+    Ok(FetchResponse {
+        status,
+        body: "<html>Forbidden</html>".into(),
+    })
+}
+
+#[async_trait::async_trait]
+impl Fetch for Site {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        self.log.lock().expect("log").push(req.clone());
+        let url = req.url.as_str();
+        let ajax = header(req, "X-Requested-With") == Some("XMLHttpRequest");
+        match url {
+            u if u == format!("{BASE}/search?keyword=cowboy+bebop") => ok(SEARCH_PAGE),
+            u if u == format!("{BASE}/search?keyword=zqxjvwkpltmb") => ok(
+                r#"<html><body><div class="film_list film_list-grid"><p>No animes found.</p></div><div id="main-sidebar"></div></body></html>"#,
+            ),
+            u if u == format!("{BASE}/api/theme/episode/list/1281") => {
+                if ajax {
+                    ok(EPISODE_LIST)
+                } else {
+                    refused(403)
+                }
+            }
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21418") => {
+                if ajax {
+                    ok(SERVERS)
+                } else {
+                    refused(403)
+                }
+            }
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21419") => {
+                if ajax {
+                    ok(r#"{"status":true,"html":""}"#)
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/1/1/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(format!(
+                        r#"<html><body><script>window.__P="{EMBED_BLOB}"</script></body></html>"#
+                    ))
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/master.m3u8" => {
+                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/720/index.m3u8" => {
+                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                    ok("#EXTM3U\n")
+                } else {
+                    refused(403)
+                }
+            }
+            u if u == format!("{BASE}/cowboy-bebop-1281") => ok(
+                r#"<div class="item item-title"><span class="item-head">Aired:</span><span class="name">Apr 3, 1998 to Apr 24, 1999</span></div>"#,
+            ),
+            u if u == format!("{BASE}/search?keyword=blocked") => Ok(FetchResponse {
+                status: 403,
+                body: "<title>Just a moment...</title>".into(),
+            }),
+            _ => refused(404),
+        }
+    }
+}
+
+fn client() -> HianimeClient<Site> {
+    HianimeClient::with_base(Site::new(), BASE)
+}
+
+#[test]
+fn the_client_names_itself() {
+    let c = client();
+    assert_eq!(c.id(), ProviderId::Hianime);
+    assert_eq!(c.label(), "hianime");
+    assert_eq!(HIANIME_BASE, "https://hianime.at");
+}
+
+#[tokio::test]
+async fn search_asks_the_search_page_with_the_encoded_query() {
+    let c = client();
+    let hits = c.search("cowboy bebop").await.expect("hits");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    assert_eq!(
+        c.transport().requests()[0].url,
+        format!("{BASE}/search?keyword=cowboy+bebop")
+    );
+    assert_eq!(
+        c.search("zqxjvwkpltmb").await.expect("answered"),
+        Vec::new(),
+        "the no-results page is the provider answering absence"
+    );
+}
+
+#[tokio::test]
+async fn an_interstitial_is_an_upstream_refusal() {
+    let err = client().search("blocked").await.expect_err("refused");
+    assert!(matches!(err, AniError::Upstream { status: 403 }), "{err:?}");
+}
+
+#[tokio::test]
+async fn episodes_are_keyed_on_the_slugs_id_and_asked_as_ajax() {
+    let c = client();
+    let eps = c.episodes("cowboy-bebop-1281").await.expect("listing");
+    assert_eq!(eps.iter().map(|e| e.id).collect::<Vec<_>>(), [21418, 21419]);
+    let err = c.episodes("cowboy-bebop").await.expect_err("no id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn has_mode_reads_the_episodes_server_list() {
+    let c = client();
+    assert!(c.has_mode(21418, "sub").await.expect("answered"));
+    assert!(c.has_mode(21418, "dub").await.expect("answered"));
+    assert!(
+        !c.has_mode(21419, "dub").await.expect("answered"),
+        "an episode with no servers has no mode"
+    );
+}
+
+#[tokio::test]
+async fn the_master_is_the_decoded_embed_src_with_the_embed_origin_as_referer() {
+    let c = client();
+    let source = c.master_playlist_url(21418, "sub").await.expect("resolved");
+    assert_eq!(
+        source,
+        StreamSource {
+            master_url: "https://hls.example/v/master.m3u8".into(),
+            referer: Some("https://zokoanime.video/".into()),
+        }
+    );
+    let err = c
+        .master_playlist_url(21419, "sub")
+        .await
+        .expect_err("no servers");
+    assert!(matches!(err, AniError::NoResults), "{err:?}");
+}
+
+#[tokio::test]
+async fn quality_selection_fetches_playlists_with_the_embed_referer() {
+    let c = client();
+    let source = c.master_playlist_url(21418, "sub").await.expect("resolved");
+    let chosen = c
+        .quality_stream_url(&source, "720")
+        .await
+        .expect("selected");
+    assert_eq!(chosen, "https://hls.example/v/720/index.m3u8");
+}
+
+#[tokio::test]
+async fn detail_year_reads_the_entry_page_and_soft_misses() {
+    let c = client();
+    assert_eq!(
+        c.detail_year("cowboy-bebop-1281").await.expect("year"),
+        Some(1998)
+    );
+    assert_eq!(
+        c.detail_year("no-such-entry-9").await.expect("soft"),
+        None,
+        "a missing page is no hint, not a failure"
+    );
+}
