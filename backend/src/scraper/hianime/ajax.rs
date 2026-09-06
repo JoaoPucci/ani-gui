@@ -34,6 +34,23 @@ fn unwrap_envelope(json: &str) -> Result<String> {
     })
 }
 
+/// An empty listing is the provider answering "none"; nonempty HTML
+/// with no row the parser knows is the site having changed shape, and
+/// reading that as "none" would let the mode probe persist an absence
+/// that hides a playable show. Rows the parser recognizes but cannot
+/// use are the caller's to skip.
+///
+/// # Errors
+/// [`AniError::ParseFailed`] for nonempty HTML without `marker`.
+fn recognizable(html: &str, marker: &str, what: &str) -> Result<()> {
+    if html.trim().is_empty() || html.contains(marker) {
+        return Ok(());
+    }
+    Err(AniError::ParseFailed {
+        detail: format!("hianime {what} without recognizable rows"),
+    })
+}
+
 /// The value of the first `name="…"` attribute in `s`.
 fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
     let (_, rest) = s.split_once(name)?;
@@ -48,6 +65,7 @@ fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
 /// As [`unwrap_envelope`].
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
+    recognizable(&html, "ep-item", "episode list")?;
     Ok(html
         .split("ep-item")
         .skip(1)
@@ -82,6 +100,7 @@ pub struct ServerEmbed {
 /// As [`unwrap_envelope`].
 pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
     let html = unwrap_envelope(json)?;
+    recognizable(&html, "server-item", "server list")?;
     Ok(html
         .split("server-item")
         .skip(1)
