@@ -4,11 +4,10 @@
 //! the other property modules on this branch: appended blocks collide
 //! with every later addition to the same file.
 
-use crate::scraper::anidb::parse::{
-    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year,
-};
+use crate::scraper::anidb::parse::{parse_browse, parse_detail_year};
 use crate::scraper::anidb::parse_api::{parse_episodes, parse_languages, preferred_embed};
 use crate::scraper::anidb::LanguageEmbed;
+use crate::scraper::provider::{encode_query, is_cloudflare_interstitial};
 
 use super::{slug_numeric_id, slug_search_term};
 

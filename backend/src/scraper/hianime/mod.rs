@@ -17,9 +17,11 @@ pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
 pub use parse::{parse_detail_year, parse_search, slug_id};
 
 use crate::error::{AniError, Result};
-use crate::scraper::anidb::{encode_query, is_cloudflare_interstitial};
 use crate::scraper::fetch::{Fetch, FetchRequest};
-use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider, ProviderId, StreamSource};
+use crate::scraper::provider::{
+    encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
+    StreamSource,
+};
 
 /// Provider origin. Overridable at the client level for tests, and
 /// worth keeping overridable for real: the site's domain churns and
