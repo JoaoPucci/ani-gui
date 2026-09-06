@@ -40,6 +40,28 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved) {
     }
 }
 
+/// Stamp the watch's moment beside the show's history row.
+///
+/// The stamp orders Continue Watching and, when two providers have
+/// each left a row for one show, picks the one to resume from. The
+/// embedded player stamps on mark-watched, once playback has
+/// reported progress; a handoff has no progress to wait for — the
+/// launch is the watch — so it stamps as it writes the row. A failed
+/// write is logged and swallowed, like the row's.
+pub(crate) fn stamp_watched_now(state: &AppState, native: &NativeResolved) {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    if let Err(e) = crate::commands::kitsu::watched_at_put(state, &native.slug, now_ms) {
+        tracing::warn!(
+            show_id = %native.slug,
+            error = ?e,
+            "watched-at stamp write failed after handoff",
+        );
+    }
+}
+
 /// Record the watch.
 ///
 /// `ep_no` is the matched row's own slot — exactly what a resume
