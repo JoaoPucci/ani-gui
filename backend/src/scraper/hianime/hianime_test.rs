@@ -174,6 +174,36 @@ fn a_server_whose_hash_is_not_an_embed_url_is_skipped() {
 }
 
 #[test]
+fn an_empty_server_list_is_the_provider_answering_no_servers() {
+    assert_eq!(
+        parse_servers(r#"{"status":true,"html":""}"#).expect("answered"),
+        Vec::<ServerEmbed>::new()
+    );
+}
+
+#[test]
+fn a_nonempty_server_list_with_no_recognizable_rows_is_a_parse_failure() {
+    // The site changed shape: read as "no servers", has_mode says
+    // false and the mode probe persists an absence that hides a
+    // playable show for the negative TTL. Weather, not a verdict.
+    let json = r#"{"status":true,"html":"<div class=\"ps_-block\"><div class=\"item srv\" data-kind=\"sub\" data-ref=\"x\"></div></div>"}"#;
+    let err = parse_servers(json).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_nonempty_episode_list_with_no_recognizable_rows_is_a_parse_failure() {
+    let json = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"item\" data-num=\"1\" data-ref=\"9\"></a></div>"}"#;
+    let err = parse_episode_list(json).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert_eq!(
+        parse_episode_list(r#"{"status":true,"html":""}"#).expect("answered"),
+        Vec::<EpisodeRef>::new(),
+        "an empty listing is the provider answering no episodes"
+    );
+}
+
+#[test]
 fn the_preferred_server_is_hd1_of_the_mode_else_the_first_of_the_mode() {
     let servers = parse_servers(SERVERS).expect("parsed");
     assert_eq!(
