@@ -49,6 +49,11 @@ pub struct Attempted<'a, T> {
     pub value: T,
     /// The client the answer came from.
     pub client: Box<dyn Provider + 'a>,
+    /// True when a provider ahead of this one was unreachable,
+    /// refusing or broken: the answer is the fallback's alone, and
+    /// an absence in it proves nothing about the provider that never
+    /// answered.
+    pub after_unreachable: bool,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
@@ -56,6 +61,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
         f.debug_struct("Attempted")
             .field("provider", &self.provider)
             .field("value", &self.value)
+            .field("after_unreachable", &self.after_unreachable)
             .finish_non_exhaustive()
     }
 }
@@ -158,6 +164,7 @@ where
                     provider,
                     value,
                     client,
+                    after_unreachable: any_unreachable,
                 })
             }
             Err(ne) if fails_over(&ne.error) => {

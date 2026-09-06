@@ -362,7 +362,7 @@ pub(crate) async fn check_availability_with_base(
     };
     let mut attempt = ProbeAttempt { args, mode };
     let probed = crate::commands::providers::run_at(state, origins, prio, &mut attempt).await;
-    let (available, episode_count, extra_episodes, provider) = match probed {
+    let (available, episode_count, extra_episodes, provider, persistable) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
             let Some(present) = present else {
@@ -377,16 +377,25 @@ pub(crate) async fn check_availability_with_base(
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
+                    true,
                 )
             } else {
                 // The provider ANSWERED absence for this mode.
-                // Cacheable, like the clean search miss.
-                (false, None, Vec::new(), None)
+                // Cacheable, like the clean search miss — unless it is
+                // a fallback answering for a primary that never did:
+                // absence on the fallback proves nothing about the
+                // primary, and a persisted negative would hide a show
+                // the primary dubs for the row's whole lifetime. The
+                // answer stands for this request; the row stays
+                // unwritten.
+                (false, None, Vec::new(), None, !attempted.after_unreachable)
             }
         }
         // Clean miss: the only verdict that proves absence — flows
-        // into the cache write below.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), None),
+        // into the cache write below. The runner has already demoted
+        // a fallback's clean miss after an unreachable primary, so
+        // one that arrives here is every provider's.
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), None, true),
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
@@ -394,7 +403,12 @@ pub(crate) async fn check_availability_with_base(
     let episode_count_approximate = false;
     let gate_refused = false;
 
-    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(id) = args
+        .kitsu_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .filter(|_| persistable)
+    {
         // A refresh that answered while this was out has already put a
         // cache-skipping reading in the row. Writing over it would
         // reinstate the count this lookup read THROUGH the cache to
