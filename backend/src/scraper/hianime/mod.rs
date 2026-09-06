@@ -163,3 +163,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 #[cfg(test)]
 #[path = "hianime_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "hianime_prop_test.rs"]
+mod prop_tests;
