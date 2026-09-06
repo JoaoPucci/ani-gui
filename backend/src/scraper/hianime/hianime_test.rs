@@ -1,5 +1,6 @@
 use super::*;
 use crate::error::AniError;
+use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
 // ── search page ─────────────────────────────────────────────────────
 

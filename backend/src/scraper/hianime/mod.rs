@@ -9,6 +9,13 @@
 //! playlist and whose `subtitles` are sidecar tracks. The CDN checks
 //! the embed host's origin as `Referer` on every playlist fetch.
 
+pub mod ajax;
+pub mod embed;
+pub mod parse;
+pub use ajax::{parse_episode_list, parse_servers, preferred_server, ServerEmbed};
+pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
+pub use parse::{parse_detail_year, parse_search, slug_id};
+
 #[cfg(test)]
 #[path = "hianime_test.rs"]
 mod tests;
