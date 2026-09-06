@@ -245,8 +245,10 @@ async fn handle_subtitle(
 }
 
 /// Whether a body carries the WebVTT signature — the file's first
-/// bytes, behind a UTF-8 byte-order mark when a CDN serves one.
-fn is_webvtt(body: &[u8]) -> bool {
+/// bytes, behind a UTF-8 byte-order mark when a CDN serves one. The
+/// relay and the download's sidecar writer both refuse anything else.
+#[must_use]
+pub fn is_webvtt(body: &[u8]) -> bool {
     let body = body.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(body);
     body.starts_with(b"WEBVTT")
 }

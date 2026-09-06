@@ -954,6 +954,14 @@ pub(crate) async fn write_sidecar_subtitles(
                 continue;
             }
         };
+        // Only a subtitle track claims a name: a CDN can answer a
+        // challenge page with 200, and written it would sit at the
+        // track's name for good, since later downloads keep what
+        // they find there.
+        if !crate::proxy::is_webvtt(&body) {
+            tracing::warn!(lang = %track.lang, "download: subtitle body is not a track, skipped");
+            continue;
+        }
         // Two tracks in one language keep both files: the second is
         // suffixed by its position.
         let suffix = if seen.contains(&track.lang.as_str()) {
