@@ -550,3 +550,67 @@ fn resolve_carries_no_target_for_a_wrapper() {
     let fetch = CurlImpersonateFetch::resolve(None, &path_env).expect("resolved");
     assert_eq!(fetch.impersonate(), None);
 }
+
+// ── per-request headers ─────────────────────────────────────────────
+
+/// A provider's endpoints can demand headers the site itself does
+/// not — an AJAX listing that answers only to `X-Requested-With`, an
+/// embed page that checks its `Referer` — so a request carries its
+/// headers to the child, one `-H` per header, in the order given.
+#[test]
+fn request_headers_reach_the_child_as_header_flags() {
+    let req = FetchRequest::get("https://provider.example/x")
+        .header("Referer", "https://provider.example/")
+        .header("X-Requested-With", "XMLHttpRequest");
+    let args = fetch_args(&req, None);
+    let headers: Vec<&str> = args
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| *a == "-H")
+        .map(|(i, _)| args[i + 1].as_str())
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            "Referer: https://provider.example/",
+            "X-Requested-With: XMLHttpRequest"
+        ]
+    );
+    assert_eq!(
+        args.last().map(String::as_str),
+        Some("https://provider.example/x"),
+        "the URL stays the operand whatever precedes it"
+    );
+}
+
+#[test]
+fn a_request_without_headers_adds_no_header_flags() {
+    let args = fetch_args(&FetchRequest::get("https://provider.example/x"), None);
+    assert!(
+        !args.iter().any(|a| a == "-H"),
+        "a headerless request is the argv every existing provider already gets"
+    );
+}
+
+/// `get` is the convenience every URL-only caller keeps; it is the
+/// same request with no headers, so a transport implements `fetch`
+/// once and answers both.
+#[tokio::test]
+async fn get_is_a_headerless_fetch() {
+    struct Recording(std::sync::Mutex<Vec<FetchRequest>>);
+    #[async_trait::async_trait]
+    impl Fetch for Recording {
+        async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+            self.0.lock().expect("log").push(req.clone());
+            Ok(FetchResponse {
+                status: 200,
+                body: String::new(),
+            })
+        }
+    }
+    let t = Recording(std::sync::Mutex::new(Vec::new()));
+    t.get("https://provider.example/y").await.expect("ok");
+    let seen = t.0.lock().expect("log").clone();
+    assert_eq!(seen, vec![FetchRequest::get("https://provider.example/y")]);
+    assert!(seen[0].headers.is_empty());
+}
