@@ -17,8 +17,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
-use crate::commands::play::anidb_client_with_base;
-use crate::commands::play_native_resolve::{resolve_native_bounded, NativeResolveRequest};
+use crate::commands::play_native_resolve::NativeResolveRequest;
 use crate::error::{AniError, Result};
 use crate::scraper::provider::StreamSource;
 
@@ -186,7 +185,6 @@ where
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -197,7 +195,6 @@ where
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
-    let resolve_started_at = tokio::time::Instant::now();
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
             crate::commands::progress::ProgressLine::LinksFetched { provider } => {
@@ -212,26 +209,23 @@ where
         };
         on_progress(DownloadProgress { line: text });
     };
-    // Bounded like the play path: a provider that accepts connections
-    // but stalls must not pin the resolve past the gate's half-open
-    // trial window. The hour-long deadline below covers the transfer
-    // alone.
-    let resolved = resolve_native_bounded(&client, request, &mut forward).await;
-    // Resolution and transfer are separate stages now, so the breaker
-    // learns from the fresh resolution outcome alone — the stale
-    // whole-run signal the subprocess forced is gone. Same mapping
-    // as play: answered verdicts are health, weather is distress, a
+    // Against the providers in order and bounded like the play path:
+    // a provider that accepts connections but stalls must not pin the
+    // resolve past the gate's half-open trial window, and the next
+    // provider is asked when the one before it was unreachable. The
+    // hour-long deadline below covers the transfer alone. Resolution
+    // and transfer are separate stages, so each breaker learns from
+    // the fresh resolution outcome alone, under the play path's
+    // mapping: answered verdicts are health, weather is distress, a
     // gate refusal records nothing.
-    if let Some(outcome) = crate::commands::play_native_outcome::breaker_outcome(prio, &resolved) {
-        let observed_at = resolved
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(resolve_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
-    let resolved = resolved.map_err(|ne| ne.error)?;
+    let mut attempt = crate::commands::providers::ResolveAttempt {
+        request,
+        on_progress: &mut forward,
+    };
+    let resolved = crate::commands::providers::run(state, prio, &mut attempt)
+        .await
+        .map_err(|ne| ne.error)?
+        .value;
 
     tracing::info!(
         slug = %resolved.slug,

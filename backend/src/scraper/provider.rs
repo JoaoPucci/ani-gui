@@ -30,7 +30,12 @@ pub fn encode_query(query: &str) -> String {
 /// Which provider answered. Stamped onto everything provider output
 /// reaches — progress lines, breaker outcomes, cache rows — so a
 /// failover between providers can attribute each attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Serialized as the identifier the renderer's `StreamProvider`
+/// names — `anidb`, `hianime` — not as the label a show key carries,
+/// so a response field typed on one side matches the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ProviderId {
     /// anidb.app — the provider ani-cli 5.0 scrapes.
     Anidb,
