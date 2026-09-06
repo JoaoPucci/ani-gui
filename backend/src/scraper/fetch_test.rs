@@ -357,7 +357,10 @@ fn every_wrapper_and_plain_curl_carry_no_target() {
 
 #[test]
 fn a_candidate_with_a_target_passes_it_on_the_command_line() {
-    let args = fetch_args("https://anidb.app/anime/x", Some("chrome136"));
+    let args = fetch_args(
+        &FetchRequest::get("https://anidb.app/anime/x"),
+        Some("chrome136"),
+    );
     let i = args
         .iter()
         .position(|a| a == "--impersonate")
@@ -367,7 +370,7 @@ fn a_candidate_with_a_target_passes_it_on_the_command_line() {
 
 #[test]
 fn a_candidate_without_a_target_gets_no_impersonate_flag() {
-    let args = fetch_args("https://anidb.app/anime/x", None);
+    let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), None);
     assert!(
         !args.iter().any(|a| a == "--impersonate"),
         "a wrapper already carries its fingerprint; passing a target too would fight it"
@@ -383,7 +386,7 @@ fn a_candidate_without_a_target_gets_no_impersonate_flag() {
 #[test]
 fn the_windows_child_reads_the_native_certificate_store() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert!(
             args.iter().any(|a| a == "--ca-native"),
             "without the flag a BoringSSL child on Windows fails every TLS verify"
@@ -399,7 +402,7 @@ fn the_windows_child_reads_the_native_certificate_store() {
 #[test]
 fn other_platforms_keep_the_builds_own_verification_defaults() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert!(
             !args.iter().any(|a| a == "--ca-native"),
             "the flag is a Windows accommodation, not a default"
@@ -459,7 +462,7 @@ fn transport_logs_elide_credential_shaped_url_parts() {
 #[test]
 fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert!(
             args.iter().any(|a| a == "-g"),
             "an unmatched bracket in a URL makes curl print the whole operand to stderr"
@@ -489,7 +492,7 @@ fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
 #[test]
 fn the_child_reports_its_error_text_despite_silent_mode() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert!(
             args.iter().any(|a| a == "-sSL"),
             "silent mode without show-error logs an empty stderr on every transfer failure"
@@ -507,7 +510,7 @@ fn the_child_reports_its_error_text_despite_silent_mode() {
 #[test]
 fn the_child_decodes_the_content_encoding_it_advertises() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert!(
             args.iter().any(|a| a == "--compressed"),
             "an advertised encoding the child does not decode is a parse failure downstream"
@@ -518,7 +521,7 @@ fn the_child_decodes_the_content_encoding_it_advertises() {
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args("https://anidb.app/anime/x", target);
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
         assert_eq!(
             args.last().map(String::as_str),
             Some("https://anidb.app/anime/x")

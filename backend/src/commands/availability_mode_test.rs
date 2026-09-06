@@ -1,5 +1,5 @@
 use super::mode_present;
-use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchResponse};
+use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchRequest, FetchResponse};
 use std::sync::Mutex;
 
 /// Languages rows for a listing whose first `dubbed` episodes carry
@@ -29,7 +29,8 @@ impl Dubbed {
 
 #[async_trait::async_trait]
 impl Fetch for &Dubbed {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         let id: u64 = url
             .split("/episode/")
             .nth(1)
@@ -183,7 +184,7 @@ struct DeadTransport;
 
 #[async_trait::async_trait]
 impl Fetch for DeadTransport {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         Err(crate::error::AniError::Network)
     }
 }
