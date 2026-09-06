@@ -9,6 +9,8 @@
 //! transport. The walks take `&P where P: Provider`, so a second
 //! provider slots in without the walks learning its name.
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::Result;
 
 /// Whether a response body is cloudflare's challenge interstitial
@@ -84,9 +86,26 @@ pub struct EpisodeRef {
     pub number2: Option<String>,
 }
 
-/// What an episode resolved to: the master-playlist URL and the
-/// referer the provider's CDN wants on every fetch of it and of what
-/// it lists. `None` when the CDN wants none.
+/// A sidecar subtitle track a provider lists beside the stream —
+/// a `.vtt` outside the playlist, which nothing in the manifest
+/// would ever tell the player about.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleTrack {
+    /// Language code (`en`).
+    pub lang: String,
+    /// Display label (`English`).
+    pub label: String,
+    /// Whether the player should select it by default.
+    #[serde(default)]
+    pub default: bool,
+    /// The track's upstream URL, fetched with the source's referer.
+    pub url: String,
+}
+
+/// What an episode resolved to: the master-playlist URL, the referer
+/// the provider's CDN wants on every fetch of it and of what it
+/// lists (`None` when the CDN wants none), and the sidecar subtitle
+/// tracks listed beside it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamSource {
     /// The master-playlist URL the provider's embed carried.
@@ -94,6 +113,9 @@ pub struct StreamSource {
     /// The `Referer` to send on playlist and segment fetches, when
     /// the CDN checks one — the embed host's origin, typically.
     pub referer: Option<String>,
+    /// Sidecar subtitle tracks, outside the playlist. Empty for a
+    /// provider whose subtitles ride inside the manifest.
+    pub subtitles: Vec<SubtitleTrack>,
 }
 
 /// A stream provider: search, episode listing, per-episode audio
