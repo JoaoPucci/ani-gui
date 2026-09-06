@@ -40,6 +40,17 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
+    /// The provider a label names. Anything that is not a known
+    /// label — an absent one included — is anidb, the default every
+    /// caller from before there were two providers means.
+    #[must_use]
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "hianime" => Self::Hianime,
+            _ => Self::Anidb,
+        }
+    }
+
     /// The label the renderer interpolates into its progress copy
     /// ("Searching {provider}…").
     #[must_use]
