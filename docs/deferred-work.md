@@ -194,6 +194,27 @@ starting it, and delete it when you find it done.
   this is the embedded player only. A legible default matters more
   than the options: size relative to the video frame rather than the
   window, so Picture-in-Picture and fullscreen both read.
+- **Subtitle track selection: a locale-aware default, and a remembered
+  choice.** Which track shows when an episode opens is the provider's
+  call today, in every app locale: the page lists the tracks the
+  video carries and flips one to showing only when the user picks it,
+  and the browser turns on the track the provider flagged default —
+  English, on every hianime episode seen so far — while the rest
+  start hidden and a payload with no flag starts with everything off.
+  Nothing persists; the next episode starts from the provider's flag
+  again.
+
+  Two halves: prefer a track matching the app language when the
+  listing carries one, falling back to the provider's default; and
+  remember the user's last pick — a language, or off — across
+  episodes.
+
+  It waits on evidence. Every hianime listing captured or played so
+  far offered English alone, so the locale half has nothing to
+  select from yet; find a show whose listing carries more languages
+  before designing against the payload, and check what the label and
+  language code look like for them. The remembering half does not
+  depend on that and could go first.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
