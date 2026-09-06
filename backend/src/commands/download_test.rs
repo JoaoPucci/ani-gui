@@ -2763,3 +2763,38 @@ async fn a_sidecar_the_user_already_has_is_preserved() {
         "only the track with no file at its name is written"
     );
 }
+
+/// Claiming a sidecar's name is `create_new`; what follows can fail
+/// — the disk fills, the transfer is cancelled — and a partial file
+/// left at the name would be kept as the user's own by every later
+/// download. So a claim that is not finished takes its file with it.
+#[tokio::test]
+async fn a_sidecar_claim_dropped_before_it_is_finished_leaves_no_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    let claim = claim_new(&path).await.expect("claimed");
+    assert!(path.exists(), "the name is taken the moment it is claimed");
+    drop(claim);
+    assert!(
+        !path.exists(),
+        "an unfinished claim leaves nothing at the name"
+    );
+}
+
+#[tokio::test]
+async fn a_finished_sidecar_claim_keeps_its_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    write_new(&path, b"WEBVTT\n\nhi\n").await.expect("written");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n"
+    );
+    let again = claim_new(&path).await.expect_err("taken");
+    assert_eq!(again.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n",
+        "a refused claim touches nothing"
+    );
+}
