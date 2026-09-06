@@ -53,18 +53,22 @@ requires it; the exception is the update check that runs on launch
 (below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the anidb.app streaming catalogue playback
-  resolves against. These requests carry the search terms you typed
-  or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one.
-- **Video playback** — the chosen episode URL is fetched directly
-  from its source CDN. Where that CDN requires a `Referer`, it sees a
-  normal one naming the origin of the embed page the stream was read
-  from — the host that actually served that page, which is not always
-  the host the catalogue's listing named, because the catalogue moves
-  those pages between hosts and the request follows the move; where it
-  requires none, as the anidb.app CDN does, the app adds no `Referer`
-  of its own. Nothing identifying you is sent with it.
+  only if connected), and the streaming catalogues playback resolves
+  against: anidb.app first, and hianime (reached at hianime.at) when
+  anidb.app is unreachable. These requests carry the search terms
+  you typed or the anime IDs you're browsing; they do not carry any
+  account identifier unless you've connected one. Resolving an
+  episode through hianime also fetches its embed page from the embed
+  host the site names for it (zokoanime.video or megaplay.buzz).
+- **Video playback** — the chosen episode's playlist, its segments
+  and any sidecar subtitle files are fetched directly from the
+  source CDN (for hianime, hosts under aniwatchtv.uk). Where the CDN
+  asks for one, it sees a normal `Referer` naming the origin of the
+  embed page the stream was read from — the host that actually served
+  that page, which is not always the host the catalogue's listing
+  named, because the catalogue moves those pages between hosts and
+  the request follows the move. Nothing identifying you is sent with
+  it.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
