@@ -179,9 +179,8 @@ starting it, and delete it when you find it done.
   diagnostics page holds boot-time notices — and a single surface
   would give them, and whatever later features emit, somewhere to go
   when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 — the outage that
-  led to the second provider, now failed over to automatically: every
-  uncached play failed as unreachable and
+  outages like the provider failure of 2026-08-27 (see "Additional
+  providers" below): every uncached play failed as unreachable and
   the app had nowhere to say the problem was the provider's, not
   their setup's. That job needs a
   notice source that does not exist yet — the app inferring an outage
@@ -289,6 +288,12 @@ starting it, and delete it when you find it done.
   of per-episode audio, or a budget for the full scan on listings
   small enough to afford it — not a smarter search over the same
   requests.
+
+  The second provider did not change the cost. hianime types each
+  server sub or dub, which is the per-episode signal wanted here,
+  but it lists servers per episode in its own request, so the
+  answer for a show is still one request per episode on either
+  provider.
 
 ## Validating the hianime fallback on the packaged Windows flows
 
