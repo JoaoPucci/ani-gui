@@ -40,7 +40,7 @@
 	"error_load_headline": "Não foi possível carregar este título.",
 	"error_play_headline": "Não foi possível reproduzir o episódio {episode}",
 	"error_play_headline_single": "Não foi possível reproduzir",
-	"error_play_no_results": "Este título não está no catálogo de streaming. Os provedores não o indexam.",
+	"error_play_no_results": "Este título não está no catálogo de streaming.",
 	"list_add": "Adicionar à lista",
 	"list_close": "Fechar",
 	"list_editor_aria": "Editar item da lista",
