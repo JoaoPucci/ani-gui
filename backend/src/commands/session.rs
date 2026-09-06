@@ -23,6 +23,9 @@ pub struct CreateSessionArgs {
     /// `Referer:` header the upstream CDN expects (empty string if none).
     pub referer: String,
     /// Sidecar subtitle tracks the resolve listed beside the stream.
+    /// Attached by the resolver alone: the public session route
+    /// refuses a caller-supplied list, since the proxy fetches a
+    /// session's tracks on the caller's behalf.
     #[serde(default)]
     pub subtitles: Vec<SubtitleTrack>,
 }
