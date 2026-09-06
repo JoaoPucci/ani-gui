@@ -306,6 +306,10 @@ impl ScraperGate {
 // `record_outcome` lives in a `#[path]` child module so its
 // complexity counts against its own file while the gate's state
 // stays private to this module tree.
+#[cfg(test)]
+#[path = "gate_open_test.rs"]
+mod open_tests;
+
 #[path = "gate_recording.rs"]
 mod recording;
 
