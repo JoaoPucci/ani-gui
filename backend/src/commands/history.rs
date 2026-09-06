@@ -105,6 +105,10 @@ pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
 }
 
 #[cfg(test)]
+#[path = "history_selection_test.rs"]
+mod selection_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::AppState;
