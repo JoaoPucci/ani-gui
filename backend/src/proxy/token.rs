@@ -133,6 +133,40 @@ impl Default for SessionId {
     }
 }
 
+/// One sidecar track as the renderer sees it: the same language,
+/// label and default flag the provider listed, and a proxy URL in
+/// place of the upstream one.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionSubtitle {
+    /// Language code (`en`).
+    pub lang: String,
+    /// Display label (`English`).
+    pub label: String,
+    /// Whether the player should select it by default.
+    pub default: bool,
+    /// `…/s/<uuid>/sub/<n>.vtt` — served by the proxy with the
+    /// session's referer.
+    pub url: String,
+}
+
+impl SessionSubtitle {
+    /// The proxied shape of the session's `index`th track.
+    #[must_use]
+    pub fn proxied(
+        origin_base: &str,
+        session: &str,
+        index: usize,
+        track: &crate::scraper::provider::SubtitleTrack,
+    ) -> Self {
+        Self {
+            lang: track.lang.clone(),
+            label: track.label.clone(),
+            default: track.default,
+            url: format!("{origin_base}/s/{session}/sub/{index}.vtt"),
+        }
+    }
+}
+
 /// One playback session. Created when the user clicks Play on an episode.
 /// Held in [`SessionTable`] until it expires.
 #[derive(Debug, Clone)]

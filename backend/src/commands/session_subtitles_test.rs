@@ -2,6 +2,7 @@
 //! offered to the renderer as proxied URLs it can hand a `<track>`.
 
 use super::*;
+use crate::proxy::SessionSubtitle;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::SubtitleTrack;
 use std::path::PathBuf;
