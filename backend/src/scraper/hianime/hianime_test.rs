@@ -297,6 +297,24 @@ fn an_embed_page_without_the_blob_carries_no_playlist() {
 }
 
 #[test]
+fn a_payload_assignment_in_another_form_is_a_parse_failure() {
+    // The marker is there; the assignment is not the one the parser
+    // extracts. That is the site having reformatted its page, and it
+    // must not read as an episode without a playlist.
+    for page in [
+        r#"<script>window.__P = "AAAA"</script>"#,
+        r#"<script>window.__P='AAAA'</script>"#,
+        r#"<script>window.__P=BLOB</script>"#,
+    ] {
+        let err = decode_embed(page).expect_err("refused");
+        assert!(
+            matches!(err, AniError::ParseFailed { .. }),
+            "{page}: {err:?}"
+        );
+    }
+}
+
+#[test]
 fn a_blob_that_no_longer_decodes_is_a_parse_failure() {
     // The marker is there and the bytes are not what the key opens:
     // the versioned key rotated, or the payload changed shape. That
