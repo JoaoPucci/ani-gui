@@ -239,18 +239,21 @@ mod default_first_props {
     use crate::scraper::provider::SubtitleTrack;
     use proptest::prelude::*;
 
+    /// Languages and default flags vary freely; URLs are distinct by
+    /// position, as a listing never names one file twice and the
+    /// order properties below tell tracks apart by URL.
     fn tracks() -> impl Strategy<Value = Vec<SubtitleTrack>> {
-        prop::collection::vec(
-            ("[a-z]{2}", any::<bool>(), "[a-z0-9]{1,8}").prop_map(|(lang, default, tail)| {
-                SubtitleTrack {
+        prop::collection::vec(("[a-z]{2}", any::<bool>()), 0..6).prop_map(|rows| {
+            rows.into_iter()
+                .enumerate()
+                .map(|(i, (lang, default))| SubtitleTrack {
                     label: lang.clone(),
-                    url: format!("https://cdn.example/{tail}.vtt"),
+                    url: format!("https://cdn.example/{i}.vtt"),
                     lang,
                     default,
-                }
-            }),
-            0..6,
-        )
+                })
+                .collect()
+        })
     }
 
     proptest! {
