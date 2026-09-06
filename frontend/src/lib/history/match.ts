@@ -21,6 +21,7 @@ import {
 	kitsuTitleMatchPut,
 	type KitsuAnimeRef
 } from '$lib/api';
+import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
@@ -80,7 +81,11 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    count is incompatible with courSize, drop the cached hit
 	//    and force a fresh resolution.
 	try {
-		const cachedId = await kitsuTitleMatchGet(preliminary.searchTitle, preliminary.cour);
+		const cachedId = await kitsuTitleMatchGet(
+			preliminary.searchTitle,
+			preliminary.cour,
+			providerOfShowId(preliminary.allmangaShowId)
+		);
 		if (cachedId) {
 			try {
 				const cached = await kitsuAnimeDetail(cachedId);
@@ -163,7 +168,12 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	// 5) Persist on success so the next session bypasses the lookup.
 	if (match) {
 		try {
-			await kitsuTitleMatchPut(preliminary.searchTitle, preliminary.cour, match.id);
+			await kitsuTitleMatchPut(
+				preliminary.searchTitle,
+				preliminary.cour,
+				match.id,
+				providerOfShowId(preliminary.allmangaShowId)
+			);
 		} catch {
 			// Cache write failed — non-fatal, callers still get the match.
 		}
