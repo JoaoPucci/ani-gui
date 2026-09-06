@@ -195,3 +195,7 @@ pub trait Provider: Send + Sync {
     /// aggregate failure verdicts with it.
     fn last_attempt_at(&self) -> Option<tokio::time::Instant>;
 }
+
+#[cfg(test)]
+#[path = "provider_test.rs"]
+mod tests;
