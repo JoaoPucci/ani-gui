@@ -44,6 +44,18 @@ fn the_search_term_is_the_slugs_words_for_either_provider() {
     );
 }
 
+#[test]
+fn a_label_parses_back_to_its_provider_and_anything_else_is_anidb() {
+    assert_eq!(ProviderId::from_label("hianime"), ProviderId::Hianime);
+    assert_eq!(ProviderId::from_label("anidb.app"), ProviderId::Anidb);
+    assert_eq!(
+        ProviderId::from_label(""),
+        ProviderId::Anidb,
+        "an absent label is the default every existing caller means"
+    );
+    assert_eq!(ProviderId::from_label("something else"), ProviderId::Anidb);
+}
+
 proptest::proptest! {
     /// Any provider, any slug: the key round-trips through its string.
     #[test]
