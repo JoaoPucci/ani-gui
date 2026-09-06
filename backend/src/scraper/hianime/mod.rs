@@ -127,7 +127,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         let embed = FetchRequest::get(server.embed_url.clone())
             .header("Referer", format!("{}/", self.base));
         let page = self.content(&embed).await?;
-        let payload = decode_embed(&page).ok_or(AniError::NoResults)?;
+        let payload = decode_embed(&page)?;
         Ok(StreamSource {
             master_url: payload.src,
             referer: embed_origin(&server.embed_url),
