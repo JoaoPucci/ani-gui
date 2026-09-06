@@ -171,6 +171,29 @@ starting it, and delete it when you find it done.
   user-level under `~/.local/share/flatpak`, app id `io.mpv.Mpv`) —
   kept here as a reference for probing the same locations, not as
   code to port.
+- **Subtitle presentation: user styling, and the anime's own
+  colours.** Subtitle cues render as the browser draws them — the
+  play page only picks which track shows — with no styling and no
+  preference behind it: default font and size, white on a shadow,
+  bottom centre, for the tracks inside a playlist and the sidecar
+  ones alike. Two directions, not exclusive: a settings surface for
+  font, size, colour, background, edge and position, and the
+  per-anime accent the app already derives from the cover colour
+  tinting the cues, in the spirit of the per-anime theming the
+  detail and watch pages do.
+
+  Worth knowing before starting: the browser's cue styling honours a
+  short allow-list (colour, background, font, shadow, outline) and
+  not position, so moving cues means setting positions on the
+  track's own cues or drawing them in an overlay of the app's own
+  from the active cues. hls.js delivers in-playlist subtitles as
+  native cues too, so one mechanism covers both kinds. hianime's
+  sidecar WebVTT carries inline markup (italics) and its own cue
+  settings, which an overlay has to honour. External players and
+  Syncplay receive the tracks as files and style them themselves —
+  this is the embedded player only. A legible default matters more
+  than the options: size relative to the video frame rather than the
+  window, so Picture-in-Picture and fullscreen both read.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
