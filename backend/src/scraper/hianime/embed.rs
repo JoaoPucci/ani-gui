@@ -45,12 +45,17 @@ pub struct EmbedPayload {
 /// [`AniError::NoResults`] without the marker,
 /// [`AniError::ParseFailed`] when the blob does not decode.
 pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
-    let Some((_, rest)) = html.split_once("window.__P=\"") else {
+    if !html.contains("window.__P") {
         return Err(AniError::NoResults);
-    };
+    }
     let undecodable = |what: &str| AniError::ParseFailed {
         detail: format!("hianime embed payload: {what}"),
     };
+    // The page carries the payload; only the one assignment form the
+    // parser knows is extractable from it.
+    let (_, rest) = html
+        .split_once("window.__P=\"")
+        .ok_or_else(|| undecodable("assignment in an unsupported form"))?;
     let blob = rest
         .split('"')
         .next()
