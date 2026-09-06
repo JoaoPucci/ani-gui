@@ -980,15 +980,65 @@ pub(crate) async fn write_sidecar_subtitles(
 }
 
 /// Write `body` to a file that must not exist yet.
-async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt as _;
-    let mut file = tokio::fs::OpenOptions::new()
+pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
+    claim_new(path).await?.finish(body).await
+}
+
+/// A sidecar's name, taken with create-new and held until the file
+/// is finished. Dropped unfinished — the write failed, the transfer
+/// was cancelled — it removes the file it created: a partial file
+/// at the name would be kept as the user's own by every later
+/// download, which never replaces what it finds.
+#[derive(Debug)]
+pub(crate) struct SidecarClaim {
+    path: std::path::PathBuf,
+    /// Open while the claim is live; closed before the removal, since
+    /// Windows will not remove an open file.
+    file: Option<tokio::fs::File>,
+    finished: bool,
+}
+
+/// Claim `path` for a new sidecar.
+///
+/// # Errors
+/// The open's own; `AlreadyExists` when the name is taken.
+pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<SidecarClaim> {
+    let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)
         .await?;
-    file.write_all(body).await?;
-    file.flush().await
+    Ok(SidecarClaim {
+        path: path.to_path_buf(),
+        file: Some(file),
+        finished: false,
+    })
+}
+
+impl SidecarClaim {
+    /// Write the whole body and keep the file.
+    ///
+    /// # Errors
+    /// The write's own; the file is removed on the way out.
+    pub(crate) async fn finish(mut self, body: &[u8]) -> std::io::Result<()> {
+        use tokio::io::AsyncWriteExt as _;
+        let file = self.file.as_mut().expect("a live claim holds its file");
+        file.write_all(body).await?;
+        file.flush().await?;
+        self.finished = true;
+        Ok(())
+    }
+}
+
+impl Drop for SidecarClaim {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if !self.finished {
+            if let Err(e) = std::fs::remove_file(&self.path) {
+                tracing::warn!(path = %self.path.display(), error = %e, "download: unfinished subtitle not removed");
+            }
+        }
+    }
 }
 
 /// yt-dlp's own flag for the referer, or nothing when the stream
