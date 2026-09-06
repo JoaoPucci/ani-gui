@@ -26,11 +26,17 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let end = html[start..]
         .find("main-sidebar")
         .map_or(html.len(), |i| start + i);
-    Ok(html[start..end]
-        .split("film-detail")
-        .skip(1)
-        .filter_map(parse_card)
-        .collect())
+    let cards: Vec<&str> = html[start..end].split("film-detail").skip(1).collect();
+    let hits: Vec<BrowseHit> = cards.iter().filter_map(|c| parse_card(c)).collect();
+    if hits.is_empty() && !cards.is_empty() {
+        // Cards the parser cannot read are the site having changed
+        // shape; read as "no results" they would be persisted as
+        // absence for every title searched.
+        return Err(AniError::ParseFailed {
+            detail: "hianime search page without readable cards".into(),
+        });
+    }
+    Ok(hits)
 }
 
 /// One result card: the title anchor's slug and title, and the first
