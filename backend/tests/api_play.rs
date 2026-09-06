@@ -29,6 +29,7 @@ use ani_gui::app::AppState;
 use ani_gui::cache;
 use ani_gui::meta::kitsu::KitsuClient;
 use ani_gui::proxy::{AppSecret, ProxyOrigin, SessionTable};
+use ani_gui::scraper::provider::ProviderId;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
@@ -86,14 +87,23 @@ async fn stub_anidb() -> wiremock::MockServer {
     server
 }
 
-/// Build an `AppState` whose provider base points at the local anidb
-/// stub. There is no script path to neutralise any more — the field
-/// went with the subprocess — so what keeps this honest is that the
-/// stub is the only thing serving the walk, and the assertions below
-/// check it was asked for every step.
-fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
+/// Build an `AppState` whose provider bases point at local stubs.
+/// There is no script path to neutralise any more — the field went
+/// with the subprocess — so what keeps this honest is that the stubs
+/// are the only things serving the walk, and the assertions below
+/// check they were asked for every step. Without a hianime origin
+/// the order stops at anidb: a test that stubs one provider must not
+/// fall through to the real other one.
+fn build_state(tmp: &std::path::Path, anidb_base: &str, hianime_base: Option<&str>) -> AppState {
+    let provider_order = match hianime_base {
+        Some(_) => vec![ProviderId::Anidb, ProviderId::Hianime],
+        None => vec![ProviderId::Anidb],
+    };
     AppState {
         anidb_base: Some(anidb_base.to_string()),
+        hianime_base: hianime_base.map(str::to_string),
+        hianime_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
+        provider_order,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -114,6 +124,156 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str) -> AppState {
         availability_refreshes: ani_gui::commands::availability_refresh::AvailabilityRefreshes::new(
         ),
     }
+}
+
+/// An anidb that is down the way it went down in September 2026: a
+/// maintenance page on every route, the JSON API included.
+async fn stub_anidb_down() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(
+            wiremock::ResponseTemplate::new(503).set_body_string("<h1>Under Maintenance</h1>"),
+        )
+        .mount(&server)
+        .await;
+    server
+}
+
+/// The embed page's payload as the site ships it: the player JSON
+/// XOR'd under its versioned key, then base64'd.
+fn embed_blob(payload: &str) -> String {
+    use base64::Engine as _;
+    const KEY: &[u8] = b"otaku-embed-v1";
+    let xored: Vec<u8> = payload
+        .bytes()
+        .zip(KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    base64::engine::general_purpose::STANDARD.encode(xored)
+}
+
+/// A local hianime stub covering its whole flow: search page →
+/// episode list → server list → embed page → master. The embed lives
+/// on the stub's own origin, so every request stays on the machine.
+async fn stub_hianime() -> wiremock::MockServer {
+    use base64::Engine as _;
+    let server = wiremock::MockServer::start().await;
+    let base = server.uri();
+    let search = format!(
+        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/test-show-1" title="test" class="dynamic-name">test</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
+    );
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/search"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
+        .mount(&server)
+        .await;
+    let eps: Vec<String> = (1..=12)
+        .map(|n| {
+            format!(
+                r#"<a class="ep-item" data-number="{n}" data-id="{}"></a>"#,
+                1000 + n
+            )
+        })
+        .collect();
+    let list = serde_json::json!({ "status": true, "html": eps.join("") }).to_string();
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/theme/episode/list/1"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
+        .mount(&server)
+        .await;
+    let hash =
+        base64::engine::general_purpose::STANDARD.encode(format!("{base}/stream/mal/1/1/sub"));
+    let servers = serde_json::json!({
+        "status": true,
+        "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
+    })
+    .to_string();
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/api/theme/episode/servers"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
+        .mount(&server)
+        .await;
+    let payload =
+        serde_json::json!({ "src": format!("{base}/op/master.m3u8"), "subtitles": [] }).to_string();
+    let embed = format!(
+        r#"<html><body><script>window.__P="{}"</script></body></html>"#,
+        embed_blob(&payload)
+    );
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/stream/mal/1/1/sub"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/op/master.m3u8"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn play_fails_over_to_the_next_provider_when_the_first_is_down() {
+    let tmp = TempDir::new().expect("tempdir");
+    std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
+    let anidb = stub_anidb_down().await;
+    let hianime = stub_hianime().await;
+    let state = Arc::new(build_state(tmp.path(), &anidb.uri(), Some(&hianime.uri())));
+    // One failure short of open: the outage this play observes is
+    // what opens the primary's breaker, and only the primary's.
+    for _ in 0..ani_gui::scraper::gate::FAILURE_THRESHOLD - 1 {
+        state.anidb_gate.record(
+            ani_gui::scraper::outcome::ScrapeOutcome::Failure,
+            tokio::time::Instant::now(),
+        );
+    }
+
+    run_play_assertion(state.clone())
+        .await
+        .expect("the play resolved through the fallback");
+
+    assert!(
+        !anidb
+            .received_requests()
+            .await
+            .expect("stub recorded its requests")
+            .is_empty(),
+        "the primary was asked first"
+    );
+    let asked: Vec<String> = hianime
+        .received_requests()
+        .await
+        .expect("stub recorded its requests")
+        .iter()
+        .map(|r| r.url.path().to_string())
+        .collect();
+    for needle in [
+        "/search",
+        "/api/theme/episode/list/1",
+        "/api/theme/episode/servers",
+        "/stream/mal/1/1/sub",
+    ] {
+        assert!(
+            asked.iter().any(|p| p.contains(needle)),
+            "the fallback's flow must hit {needle}; saw {asked:?}"
+        );
+    }
+    // The row is keyed on the fallback's qualified id — the bare slug
+    // would be read back as anidb's.
+    let history =
+        std::fs::read_to_string(tmp.path().join("hist/history")).expect("history written");
+    assert!(
+        history.contains("hianime:test-show-1"),
+        "history keyed on the answering provider: {history}"
+    );
+    assert!(
+        state.anidb_gate.is_open(),
+        "the primary's outage landed on its own breaker"
+    );
+    assert!(
+        !state.hianime_gate.is_open(),
+        "and not on the provider that answered"
+    );
 }
 
 /// The same provider, but the embed hands out an opaque playlist URL
@@ -176,7 +336,8 @@ async fn an_opaque_validated_playlist_stays_hls() {
     let tmp = TempDir::new().expect("tempdir");
     std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
     let anidb = stub_anidb_opaque().await;
-    let result = run_play_assertion(tmp.path(), &anidb.uri()).await;
+    let state = Arc::new(build_state(tmp.path(), &anidb.uri(), None));
+    let result = run_play_assertion(state).await;
     result.expect("the validated playlist plays as HLS");
 }
 
@@ -187,7 +348,8 @@ async fn play_endpoint_resolves_natively_and_returns_session() {
 
     let anidb = stub_anidb().await;
 
-    let result = run_play_assertion(tmp.path(), &anidb.uri()).await;
+    let state = Arc::new(build_state(tmp.path(), &anidb.uri(), None));
+    let result = run_play_assertion(state).await;
     result.expect("play assertion succeeded");
 
     // The whole resolution was served by the stub: browse, episodes,
@@ -210,8 +372,8 @@ async fn play_endpoint_resolves_natively_and_returns_session() {
     }
 }
 
-async fn run_play_assertion(tmp: &std::path::Path, anidb_base: &str) -> Result<(), String> {
-    let router = build_api_router(Arc::new(build_state(tmp, anidb_base)));
+async fn run_play_assertion(state: Arc<AppState>) -> Result<(), String> {
+    let router = build_api_router(state);
     let body = r#"{"title":"test","episode":"1","mode":"sub","quality":"best","episode_count":12}"#;
     let response = router
         .oneshot(
