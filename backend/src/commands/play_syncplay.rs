@@ -47,24 +47,40 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // Syncplay's wrapped player gets the same flags it would have
     // under play_external.
     if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        return open_syncplay(&SyncplayLaunchArgs {
-            stream_url: launch.stream_url,
-            binary: cfg.syncplay_binary,
-            referer: launch.referer,
+        return open_syncplay(&syncplay_launch_for(
+            launch,
+            cfg.syncplay_binary,
             player_kind,
-            player_binary: cfg.external_player.clone(),
-        });
+            cfg.external_player,
+        ));
     }
 
     let launch = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
+    open_syncplay(&syncplay_launch_for(
+        launch,
+        cfg.syncplay_binary,
+        player_kind,
+        cfg.external_player,
+    ))
+}
 
-    open_syncplay(&SyncplayLaunchArgs {
+/// A launch projected onto Syncplay's arguments: the stream, the
+/// referer and the sidecar tracks the wrapped player needs, plus the
+/// binaries and the player kind the flags are shaped for.
+pub(crate) fn syncplay_launch_for(
+    launch: crate::commands::external_player::LaunchArgs,
+    binary: String,
+    player_kind: crate::commands::external_player::ExternalPlayerKind,
+    player_binary: String,
+) -> SyncplayLaunchArgs {
+    SyncplayLaunchArgs {
         stream_url: launch.stream_url,
-        binary: cfg.syncplay_binary,
+        binary,
         referer: launch.referer,
         player_kind,
-        player_binary: cfg.external_player,
-    })
+        player_binary,
+        subtitle_urls: launch.subtitle_urls,
+    }
 }
 
 #[cfg(test)]
