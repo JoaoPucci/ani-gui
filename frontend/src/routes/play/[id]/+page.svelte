@@ -93,6 +93,7 @@
 		getGlobalVideo,
 		setCurrentSession
 	} from '$lib/play/global-video';
+	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -1605,6 +1606,14 @@
 			videoEl.src = mediaUrl;
 		} else {
 			playerError = 'HLS playback is not supported in this webview.';
+		}
+
+		// Sidecar subtitle tracks: the session lists them, one <track>
+		// per listing on the singleton, removed with the source like the
+		// engine is.
+		if (!playerError) {
+			const apiBase = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
+			addSourceScopedCleanup(armSidecarTracks(videoEl, apiBase, sessionId));
 		}
 
 		// Stamp the session so the layout's PiP-leave handler knows

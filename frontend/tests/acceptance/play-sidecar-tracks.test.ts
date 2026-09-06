@@ -83,9 +83,7 @@ describe('sidecar subtitle tracks', () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json(
-					kitsuRef({ id: KITSU_ID, canonical_title: 'The Show', episode_count: 12 })
-				)
+				HttpResponse.json(kitsuRef(KITSU_ID, 'The Show', 12))
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () => HttpResponse.json(null)),
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
