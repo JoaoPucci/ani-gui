@@ -82,8 +82,12 @@ where
     // and candidate listings in sequence, each request against its
     // own transport timeout, so an unbounded pick can delay the
     // first transfer past the gate's half-open trial window.
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
     let mut attempt = PickAttempt { args };
-    let attempted = super::providers::run(state, prio, &mut attempt)
+    let attempted = super::providers::run_from(state, remembered, prio, &mut attempt)
         .await
         .map_err(|ne| ne.error)?;
     let picked = attempted.value;

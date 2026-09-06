@@ -45,11 +45,15 @@ pub async fn resolve_launch_args(
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut |_| {},
     };
-    let native = crate::commands::providers::run(state, prio, &mut attempt)
+    let native = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
         .await
         .map_err(|ne| ne.error)?
         .value;

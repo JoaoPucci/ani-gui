@@ -332,18 +332,29 @@ where
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
-    // Against the providers in order, bounded: a provider that
-    // accepts connections but stalls every request must not keep the
-    // play pending past the gate's half-open trial window, and the
-    // next provider is asked when the one before it was unreachable.
-    // Each attempt's outcome lands on its own provider's breaker so
-    // background traffic backs off after provider-shaped failures —
-    // and only those; the mapping is play_native_outcome's.
+    // Against the providers in order — starting from the one a
+    // positive availability row remembers — and bounded: a provider
+    // that accepts connections but stalls every request must not
+    // keep the play pending past the gate's half-open trial window,
+    // and the next provider is asked when the one before it was
+    // unreachable. Each attempt's outcome lands on its own provider's
+    // breaker so background traffic backs off after provider-shaped
+    // failures — and only those; the mapping is play_native_outcome's.
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut on_progress,
     };
-    let native = crate::commands::providers::run(state, scrape_priority(args), &mut attempt).await;
+    let native = crate::commands::providers::run_from(
+        state,
+        remembered,
+        scrape_priority(args),
+        &mut attempt,
+    )
+    .await;
     let native = match native {
         Ok(attempted) => attempted.value,
         Err(ne) => {
