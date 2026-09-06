@@ -53,6 +53,7 @@ pub mod play_native_year;
 pub mod play_resolution_cache;
 pub mod play_syncplay;
 pub mod progress;
+pub mod providers;
 pub mod proxy_url;
 pub mod session;
 pub mod settings;
