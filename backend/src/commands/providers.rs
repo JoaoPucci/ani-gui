@@ -268,21 +268,63 @@ pub async fn run<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    run_at(state, Origins::of(state), priority, attempt).await
+    run_at(
+        state,
+        Origins::of(state),
+        &state.provider_order,
+        priority,
+        attempt,
+    )
+    .await
 }
 
-/// [`run`] with the providers' origins named by the caller.
+/// [`run`] starting from `remembered` — the provider a positive
+/// availability row named — when the state lists it. A show the
+/// fallback proved playable during a primary outage stays playable
+/// after the primary recovers: its clean miss would otherwise end
+/// the walk on a show the row says is there.
+///
+/// # Errors
+/// As [`with_failover`].
+pub async fn run_from<'a, A: Attempt>(
+    state: &'a AppState,
+    remembered: Option<ProviderId>,
+    priority: ScrapePriority,
+    attempt: &mut A,
+) -> Result<Attempted<'a, A::Output>, NativeError> {
+    let order = order_with_affinity(&state.provider_order, remembered);
+    run_at(state, Origins::of(state), &order, priority, attempt).await
+}
+
+/// `order` with `remembered` moved to the front when it is listed;
+/// the rest keep their places. A provider the state does not list is
+/// not asked on a row's say-so.
+#[must_use]
+pub fn order_with_affinity(
+    order: &[ProviderId],
+    remembered: Option<ProviderId>,
+) -> Vec<ProviderId> {
+    match remembered {
+        Some(first) if order.contains(&first) => std::iter::once(first)
+            .chain(order.iter().copied().filter(|p| *p != first))
+            .collect(),
+        _ => order.to_vec(),
+    }
+}
+
+/// [`run`] with the providers' origins and order named by the caller.
 ///
 /// # Errors
 /// As [`with_failover`].
 pub async fn run_at<'a, A: Attempt>(
     state: &'a AppState,
     origins: Origins<'_>,
+    order: &[ProviderId],
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
     with_failover(
-        &state.provider_order,
+        order,
         priority,
         RESOLVE_DEADLINE,
         PRIMARY_ATTEMPT_BUDGET,

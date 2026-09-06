@@ -218,11 +218,15 @@ where
     // the fresh resolution outcome alone, under the play path's
     // mapping: answered verdicts are health, weather is distress, a
     // gate refusal records nothing.
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut forward,
     };
-    let resolved = crate::commands::providers::run(state, prio, &mut attempt)
+    let resolved = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
         .await
         .map_err(|ne| ne.error)?
         .value;
