@@ -1,4 +1,4 @@
-//! A gate-admitting [`AnidbFetch`] decorator: every provider request
+//! A gate-admitting [`Fetch`] decorator: every provider request
 //! — search, detail page, episodes, languages, embed, master — passes
 //! through [`ScraperGate::admit`] before the transport runs. The
 //! resolve walk's own pre-flight admit paces one slot per alias; this
@@ -9,7 +9,7 @@
 use crate::error::Result;
 use crate::scraper::gate::{ScrapePriority, ScraperGate};
 
-use super::{AnidbFetch, FetchResponse};
+use super::fetch::{Fetch, FetchResponse};
 
 /// See the module docs. Interactive admits are a no-op by the gate's
 /// own contract, so click-path latency is untouched; background
@@ -57,7 +57,7 @@ impl<'g, F> GatedFetch<'g, F> {
 }
 
 #[async_trait::async_trait]
-impl<F: AnidbFetch> AnidbFetch for GatedFetch<'_, F> {
+impl<F: Fetch> Fetch for GatedFetch<'_, F> {
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         GatedFetch::last_attempt_at(self)
     }

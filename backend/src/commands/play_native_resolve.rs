@@ -15,7 +15,7 @@
 
 use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch};
+use crate::scraper::anidb::{AnidbClient, Fetch};
 
 use super::play_native::pick_candidate;
 pub use super::play_native_episode::resolve_episode;
@@ -124,7 +124,7 @@ pub async fn resolve_native_bounded<F, P>(
     on_progress: &mut P,
 ) -> std::result::Result<NativeResolved, NativeError>
 where
-    F: AnidbFetch,
+    F: Fetch,
     P: FnMut(ProgressLine) + Send,
 {
     match tokio::time::timeout(RESOLVE_DEADLINE, resolve_native(client, req, on_progress)).await {
@@ -162,7 +162,7 @@ pub async fn resolve_native<F, P>(
     on_progress: &mut P,
 ) -> std::result::Result<NativeResolved, NativeError>
 where
-    F: AnidbFetch,
+    F: Fetch,
     P: FnMut(ProgressLine) + Send,
 {
     on_progress(ProgressLine::Searching {

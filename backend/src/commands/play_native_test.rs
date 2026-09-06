@@ -1,13 +1,13 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, EpisodeRef, FetchResponse};
+use crate::scraper::anidb::{AnidbClient, EpisodeRef, Fetch, FetchResponse};
 
 /// A fetch whose episodes endpoint answers per numeric id from a
 /// canned table; every other route 404s.
 struct EpisodesTable(&'static [(u64, u32)]);
 
 #[async_trait::async_trait]
-impl AnidbFetch for EpisodesTable {
+impl Fetch for EpisodesTable {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         for (id, count) in self.0 {
             if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
@@ -129,7 +129,7 @@ fn threshold_is_a_floor_of_three_with_proportional_slack() {
 struct TaggedEpisodes;
 
 #[async_trait::async_trait]
-impl AnidbFetch for TaggedEpisodes {
+impl Fetch for TaggedEpisodes {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/api/frontend/anime/7/episodes") {
             let mut rows: Vec<String> = (1..=12)
@@ -174,7 +174,7 @@ async fn fractional_extras_do_not_inflate_the_candidate_count() {
 struct OneDeadOneAlive;
 
 #[async_trait::async_trait]
-impl AnidbFetch for OneDeadOneAlive {
+impl Fetch for OneDeadOneAlive {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/api/frontend/anime/99/episodes") {
             return Err(AniError::Network);
@@ -222,7 +222,7 @@ async fn a_transport_dead_title_match_blocks_a_sibling_pick() {
 struct FirstTwinDead;
 
 #[async_trait::async_trait]
-impl AnidbFetch for FirstTwinDead {
+impl Fetch for FirstTwinDead {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/api/frontend/anime/99/episodes") {
             return Err(AniError::Network);
@@ -288,7 +288,7 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
 struct FirstSlugStale;
 
 #[async_trait::async_trait]
-impl AnidbFetch for FirstSlugStale {
+impl Fetch for FirstSlugStale {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/api/frontend/anime/88/episodes") {
             let rows: Vec<String> = (1..=12)
@@ -449,7 +449,7 @@ async fn an_all_not_found_pool_is_an_answered_dead_end() {
 struct TransportDeadEpisodes;
 
 #[async_trait::async_trait]
-impl AnidbFetch for TransportDeadEpisodes {
+impl Fetch for TransportDeadEpisodes {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/episodes") {
             return Err(AniError::Network);
@@ -479,7 +479,7 @@ async fn all_probes_dying_on_transport_stays_transient() {
 struct MixedEpisodes;
 
 #[async_trait::async_trait]
-impl AnidbFetch for MixedEpisodes {
+impl Fetch for MixedEpisodes {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/api/frontend/anime/11/episodes") {
             return Err(AniError::Network);
@@ -533,7 +533,7 @@ async fn empty_hits_are_no_results() {
 struct YearTable(&'static [(u64, u32, Option<u32>)]);
 
 #[async_trait::async_trait]
-impl AnidbFetch for YearTable {
+impl Fetch for YearTable {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         for (id, count, year) in self.0 {
             if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
@@ -985,7 +985,7 @@ struct RefusingEpisodes {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for RefusingEpisodes {
+impl Fetch for RefusingEpisodes {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/episodes") {
             self.probes
@@ -1006,7 +1006,7 @@ struct RefusingDetails {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for RefusingDetails {
+impl Fetch for RefusingDetails {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         if url.contains("/episodes") {
             let rows: Vec<String> = (1..=12)

@@ -1,11 +1,71 @@
-//! Transport for the anidb client — split from the module head so
-//! each file stays inside the complexity ratchet's per-file bar.
+//! The impersonating transport every provider client fetches through:
+//! a curl-impersonate binary spawned per request, resolved from the
+//! bundled-binary directory before PATH. Split from the clients so the
+//! transport is one thing and each provider's parsers are another.
 
 use std::path::{Path, PathBuf};
 
 use crate::error::{AniError, Result};
 
-use super::{CURL_FAILOVER, IMPERSONATE_AGENT};
+/// The user agent ani-cli 5.0 sends; the interstitial keys on TLS
+/// fingerprint first but the agent rides along for parity.
+pub const IMPERSONATE_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/// One transport candidate: the executable name the resolver hunts,
+/// and the impersonation target that name needs passed to it.
+///
+/// Upstream's per-browser entries are wrapper scripts that spell a
+/// fingerprint out in their own flags, so a wrapper needs no target —
+/// its name *is* the choice. The patched binary underneath them
+/// carries no fingerprint by default and takes `--impersonate
+/// <target>` instead. That distinction is the whole reason this is a
+/// struct rather than a name: Windows ships those wrappers as `.bat`
+/// files, which the resolver deliberately will not name (see
+/// `fetch::EXE_SUFFIXES`), leaving the bare binary as the only
+/// impersonating transport it can spawn there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportCandidate {
+    /// Executable name, before the platform's suffix table widens it.
+    pub name: &'static str,
+    /// Target to pass as `--impersonate`, when the binary needs one.
+    pub impersonate: Option<&'static str>,
+}
+
+/// curl binaries in preference order — ani-cli 5.0's failover list,
+/// with the bare impersonate build inserted ahead of the plain-curl
+/// tail. Impersonate builds come first; the tail exists so the
+/// resolver can still name an executable on hosts without them, where
+/// the interstitial then surfaces as a typed upstream error rather
+/// than a missing-binary one.
+///
+/// The wrappers stay ahead of the bare binary so the packages that
+/// stage them keep resolving exactly what they resolved before.
+pub const CURL_FAILOVER: &[TransportCandidate] = &[
+    TransportCandidate {
+        name: "curl_firefox135",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome136",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome116",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_ff117",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl-impersonate",
+        impersonate: Some("chrome136"),
+    },
+    TransportCandidate {
+        name: "curl",
+        impersonate: None,
+    },
+];
 
 /// A fetched response: enough for the client to tell content from a
 /// challenge page without transport details leaking upward.
@@ -20,7 +80,7 @@ pub struct FetchResponse {
 /// Transport seam. Implemented by the curl-impersonate subprocess in
 /// production and by fixture-backed fakes in tests.
 #[async_trait::async_trait]
-pub trait AnidbFetch: Send + Sync {
+pub trait Fetch: Send + Sync {
     /// GET `url` and return status + body.
     ///
     /// # Errors
@@ -261,7 +321,7 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for CurlImpersonateFetch {
+impl Fetch for CurlImpersonateFetch {
     async fn get(&self, url: &str) -> Result<FetchResponse> {
         // Timed so a debug run shows what each leg of the resolve
         // walk costs — the number the resolution cache's TTL-versus-
@@ -298,7 +358,7 @@ impl AnidbFetch for CurlImpersonateFetch {
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
+                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "transport spawn failed");
                     return Err(AniError::Network);
                 }
             }
@@ -312,19 +372,19 @@ impl AnidbFetch for CurlImpersonateFetch {
                 exe = %self.exe.display(),
                 code = ?output.status.code(),
                 stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url),
-                "anidb transport child failed"
+                "transport child failed"
             );
             return Err(AniError::Network);
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
         let status: u16 = status_line.trim().parse().map_err(|_| {
-            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "anidb transport trailer unparseable");
+            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "transport trailer unparseable");
             AniError::Network
         })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
-            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "anidb transport reported 000");
+            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "transport reported 000");
             return Err(AniError::Network);
         }
         tracing::debug!(
@@ -332,7 +392,7 @@ impl AnidbFetch for CurlImpersonateFetch {
             status,
             ms = started.elapsed().as_millis(),
             bytes = body.len(),
-            "anidb transport fetch"
+            "transport fetch"
         );
         Ok(FetchResponse {
             status,
@@ -340,6 +400,10 @@ impl AnidbFetch for CurlImpersonateFetch {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "fetch_test.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "fetch_prop_test.rs"]

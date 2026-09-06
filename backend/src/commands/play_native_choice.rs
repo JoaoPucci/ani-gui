@@ -5,7 +5,7 @@
 //! and the probe loop's transport-death tracking share.
 
 use crate::error::Result;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
+use crate::scraper::anidb::{AnidbClient, BrowseHit, Fetch};
 
 use super::play_native::PickedShow;
 
@@ -31,7 +31,7 @@ pub(super) fn identity_rank(title_matches: bool, confirmed: bool) -> u8 {
 /// keeps the provider's own ranking, so pages without season links
 /// stay resolvable. The single probe still runs so the caller gets
 /// the episode list it needs.
-pub(super) async fn pick_without_count<F: AnidbFetch>(
+pub(super) async fn pick_without_count<F: Fetch>(
     client: &AnidbClient<F>,
     head: &[(&BrowseHit, bool)],
     needle: &str,

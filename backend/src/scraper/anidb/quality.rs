@@ -6,9 +6,9 @@
 use crate::error::{AniError, Result};
 
 use super::parse_api::{parse_master_variants, select_variant};
-use super::{AnidbClient, AnidbFetch};
+use super::{AnidbClient, Fetch};
 
-pub(super) async fn stream_url<F: AnidbFetch>(
+pub(super) async fn stream_url<F: Fetch>(
     client: &AnidbClient<F>,
     master_url: &str,
     quality: &str,

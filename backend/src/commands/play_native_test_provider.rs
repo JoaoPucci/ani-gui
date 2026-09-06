@@ -2,7 +2,7 @@
 //! (`play_native_resolve_test`, `play_native_walk_test`) — compiled
 //! only under `cfg(test)`.
 
-use crate::scraper::anidb::{AnidbFetch, FetchResponse};
+use crate::scraper::anidb::{Fetch, FetchResponse};
 use std::sync::Mutex;
 
 /// Scriptable provider: browse responses keyed by query substring,
@@ -36,7 +36,7 @@ pub(crate) fn browse_page(entries: &[(&str, &str)]) -> String {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for Provider {
+impl Fetch for Provider {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         self.log.lock().expect("log").push(url.to_string());
         if let Some(q) = url.split("browse?q=").nth(1) {
@@ -142,7 +142,7 @@ pub(crate) fn the_show_browse() -> &'static str {
 pub(crate) struct ProviderRef<'a>(pub(crate) &'a Provider);
 
 #[async_trait::async_trait]
-impl AnidbFetch for ProviderRef<'_> {
+impl Fetch for ProviderRef<'_> {
     async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
         self.0.get(url).await
     }

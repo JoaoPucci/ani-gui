@@ -3,7 +3,7 @@
 //! each file stays inside the complexity ratchet's per-file bar.
 
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch};
+use crate::scraper::anidb::{AnidbClient, Fetch};
 
 use super::play_native::{pick_candidate, PickedShow};
 use super::play_native_resolve::NativeError;
@@ -18,7 +18,7 @@ use super::play_native_resolve::NativeError;
 /// # Errors
 /// [`NativeError`] with `clean_miss` set only for the
 /// all-clean-no-match verdict.
-pub async fn pick_native_walk<F: AnidbFetch>(
+pub async fn pick_native_walk<F: Fetch>(
     client: &AnidbClient<F>,
     title: &str,
     alt_titles: &[String],

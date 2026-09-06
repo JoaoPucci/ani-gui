@@ -13,7 +13,7 @@
 //! capture confirms where the browse markup carries a year.
 
 use crate::error::Result;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
+use crate::scraper::anidb::{AnidbClient, BrowseHit, Fetch};
 
 use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
@@ -83,7 +83,7 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// # Errors
 /// [`crate::error::AniError::NoResults`] when `hits` is empty or no
 /// candidate survives the threshold.
-pub async fn pick_candidate<F: AnidbFetch>(
+pub async fn pick_candidate<F: Fetch>(
     client: &AnidbClient<F>,
     hits: &[BrowseHit],
     expected: Option<u32>,
