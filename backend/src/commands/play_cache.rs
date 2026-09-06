@@ -131,3 +131,7 @@ pub(crate) async fn try_launch_args_from_cache(
         subtitle_urls: cached.subtitles.iter().map(|t| t.url.clone()).collect(),
     })
 }
+
+#[cfg(test)]
+#[path = "play_cache_test.rs"]
+mod tests;
