@@ -807,6 +807,10 @@ fn normalize_query(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "kitsu_show_key_test.rs"]
+mod show_key_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::AppState;
