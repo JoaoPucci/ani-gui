@@ -66,11 +66,14 @@ async fn a_qualified_id_resolves_through_its_slugs_words() {
 }
 
 /// The cross-cour guard compares the provider's title against Kitsu's
-/// slug convention the way anidb names entries. A season-split
-/// provider names them differently, so its mappings are written as
-/// resolution cross-checked them.
+/// slug convention, and it guards every provider's ids: the resolve
+/// carries no identity the guard could defer to — no Kitsu or
+/// MyAnimeList id, only the title, year and count the picker
+/// scored — and a wrongly picked sibling cour would otherwise
+/// persist the caller's Kitsu id under its slug, which is the poison
+/// Continue Watching and resume then read.
 #[tokio::test]
-async fn the_cour_guard_applies_to_anidb_ids_only() {
+async fn the_cour_guard_applies_to_every_providers_ids() {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime/12"))
@@ -93,10 +96,8 @@ async fn the_cour_guard_applies_to_anidb_ids_only() {
     );
     try_put_allmanga_kitsu_mapping(&state, "hianime:one-piece-100", "One Piece Part 2", "12").await;
     assert_eq!(
-        allmanga_kitsu_get(&state, "hianime:one-piece-100")
-            .expect("read")
-            .as_deref(),
-        Some("12"),
-        "another provider's id is mapped as resolution cross-checked it"
+        allmanga_kitsu_get(&state, "hianime:one-piece-100").expect("read"),
+        None,
+        "another provider's id under a cross-cour title stays unmapped too"
     );
 }
