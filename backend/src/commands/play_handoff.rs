@@ -69,6 +69,21 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: native.subtitles.into_iter().map(|t| t.url).collect(),
+        subtitle_urls: subtitle_urls_default_first(&native.subtitles),
     }
+}
+
+/// The tracks' URLs with the provider's default first: a player that
+/// takes one subtitle file takes the first listed. The provider's
+/// order stands among the rest, and among several defaults.
+#[must_use]
+pub fn subtitle_urls_default_first(
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+) -> Vec<String> {
+    let (defaults, rest): (Vec<_>, Vec<_>) = tracks.iter().partition(|t| t.default);
+    defaults
+        .into_iter()
+        .chain(rest)
+        .map(|t| t.url.clone())
+        .collect()
 }

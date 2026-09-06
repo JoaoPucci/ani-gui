@@ -54,9 +54,10 @@ pub struct LaunchArgs {
     /// `--referrer=` with nothing after the equals).
     #[serde(default)]
     pub custom_args_template: Option<String>,
-    /// Sidecar subtitle tracks' upstream URLs, in the provider's
-    /// order. The player fetches them itself; the referer flag it
-    /// already gets covers those fetches.
+    /// Sidecar subtitle tracks' upstream URLs, the provider's default
+    /// first and the provider's order after it — a player that takes
+    /// one file takes the first. The player fetches them itself; the
+    /// referer flag it already gets covers those fetches.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
 }
