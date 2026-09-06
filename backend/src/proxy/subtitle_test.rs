@@ -87,3 +87,74 @@ async fn an_unknown_track_index_is_not_found() {
         .expect("response");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+/// The play page keeps a session id, not the session response, so it
+/// asks the proxy which tracks the session holds — the same proxied
+/// shape the response carried.
+#[tokio::test]
+async fn a_session_lists_its_tracks_by_id() {
+    let (router, id) = proxy_with_tracks(
+        "https://embed.example/",
+        vec![
+            SubtitleTrack {
+                lang: "en".into(),
+                label: "English".into(),
+                default: true,
+                url: "https://cdn.example/x/subs/en.vtt".into(),
+            },
+            SubtitleTrack {
+                lang: "es".into(),
+                label: "Español".into(),
+                default: false,
+                url: "https://cdn.example/x/subs/es.vtt".into(),
+            },
+        ],
+    )
+    .await;
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{id}/subtitles"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .expect("body");
+    let listed: Vec<SessionSubtitle> = serde_json::from_slice(&body).expect("json");
+    assert_eq!(
+        listed,
+        vec![
+            SessionSubtitle {
+                lang: "en".into(),
+                label: "English".into(),
+                default: true,
+                url: format!("http://127.0.0.1:1/s/{id}/sub/0.vtt"),
+            },
+            SessionSubtitle {
+                lang: "es".into(),
+                label: "Español".into(),
+                default: false,
+                url: format!("http://127.0.0.1:1/s/{id}/sub/1.vtt"),
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_unknown_session_has_no_track_list() {
+    let (router, _) = proxy_with_tracks("https://embed.example/", Vec::new()).await;
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{}/subtitles", SessionId::new().as_string()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
