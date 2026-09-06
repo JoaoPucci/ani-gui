@@ -117,7 +117,18 @@ pub(crate) async fn try_launch_args_from_cache(
         upstream = cached.upstream_url.as_str(),
         "play_external: cache hit (HEAD ok), launching mpv from cached URL",
     );
-    Some(LaunchArgs {
+    Some(cached_launch_args(cached, args, cfg))
+}
+
+/// The launch a cached resolution describes: the row's stream and
+/// referer, its sidecar tracks with the provider's default first —
+/// as the fresh resolve lists them — and the user's player settings.
+pub(crate) fn cached_launch_args(
+    cached: play_resolution_cache::CachedResolution,
+    args: &super::play::PlayArgs,
+    cfg: &crate::config::Config,
+) -> LaunchArgs {
+    LaunchArgs {
         stream_url: cached.upstream_url,
         referer: if cached.referer.is_empty() {
             None
@@ -128,8 +139,8 @@ pub(crate) async fn try_launch_args_from_cache(
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: cached.subtitles.iter().map(|t| t.url.clone()).collect(),
-    })
+        subtitle_urls: super::play_handoff::subtitle_urls_default_first(&cached.subtitles),
+    }
 }
 
 #[cfg(test)]
