@@ -4,6 +4,7 @@
 //! client's tests.
 
 use super::*;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
 
 /// The master playlist captured from a provider — an HLS master is
 /// the same document whichever site served it.

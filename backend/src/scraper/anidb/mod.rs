@@ -24,7 +24,7 @@
 pub mod parse;
 pub mod parse_api;
 use crate::scraper::fetch::Fetch;
-use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider, ProviderId};
+use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider, ProviderId, StreamSource};
 pub use parse::{
     encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, slug_search_term,
 };
@@ -148,13 +148,18 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// # Errors
     /// [`AniError::NoResults`] when no embed matches the mode or the
     /// embed page carries no playlist, plus upstream/transport errors.
-    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<String> {
+    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
         let body = self.content(&url).await?;
         let embeds = parse_languages(&body)?;
         let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
         let embed_body = self.content(&embed.embed_url).await?;
-        extract_master_url(&embed_body).ok_or(AniError::NoResults)
+        let master_url = extract_master_url(&embed_body).ok_or(AniError::NoResults)?;
+        // anidb's CDN checks no referer; the proxy sends none.
+        Ok(StreamSource {
+            master_url,
+            referer: None,
+        })
     }
 
     /// The premiere year the slug's detail page names, when it names
@@ -182,7 +187,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
         }
     }
 
-    async fn playlist(&self, url: &str) -> Result<String> {
+    async fn playlist(&self, url: &str, _referer: Option<&str>) -> Result<String> {
         self.content(url).await
     }
 
