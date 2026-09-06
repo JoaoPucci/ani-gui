@@ -12,8 +12,12 @@
 
 use std::time::Duration;
 
+use crate::app::AppState;
 use crate::commands::play_native_outcome::breaker_outcome;
-use crate::commands::play_native_resolve::NativeError;
+use crate::commands::play_native_resolve::{
+    resolve_native, NativeError, NativeResolveRequest, NativeResolved, RESOLVE_DEADLINE,
+};
+use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
 use crate::scraper::gate::{ScrapePriority, ScraperGate};
 use crate::scraper::provider::{Provider, ProviderId};
@@ -173,6 +177,131 @@ where
         clean_miss: false,
         failed_at: None,
     }))
+}
+
+/// Where each provider's client points: the state's overrides, or a
+/// caller's own (the availability command's test seam).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Origins<'a> {
+    /// The anidb origin, when not the real site.
+    pub anidb: Option<&'a str>,
+    /// The hianime origin, when not the real site.
+    pub hianime: Option<&'a str>,
+}
+
+impl<'a> Origins<'a> {
+    /// The state's overrides — `None` for both in production.
+    #[must_use]
+    pub fn of(state: &'a AppState) -> Self {
+        Self {
+            anidb: state.anidb_base.as_deref(),
+            hianime: state.hianime_base.as_deref(),
+        }
+    }
+}
+
+/// The gate `provider`'s traffic is admitted through.
+#[must_use]
+pub fn gate_of(state: &AppState, provider: ProviderId) -> &ScraperGate {
+    match provider {
+        ProviderId::Anidb => &state.anidb_gate,
+        ProviderId::Hianime => &state.hianime_gate,
+    }
+}
+
+/// The production client for `provider`: the curl-impersonate
+/// transport resolved through the bundled directory then PATH,
+/// pointed at the site (or its override in `origins`), with every
+/// request admitted through the provider's own gate at `priority` —
+/// the walk fans out into candidate probes and the episode chain,
+/// and each of those is a provider request the pacing contract
+/// covers, not just the search.
+///
+/// # Errors
+/// [`AniError::Network`] when no curl binary resolves at all — the
+/// host cannot reach any provider by any transport.
+pub fn client_for<'a>(
+    state: &'a AppState,
+    origins: Origins<'_>,
+    provider: ProviderId,
+    priority: ScrapePriority,
+) -> crate::error::Result<Box<dyn Provider + 'a>> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
+        state.bundled_bin.as_deref(),
+        &path_env,
+    )
+    .ok_or_else(|| {
+        tracing::error!("no curl binary found for the provider transport");
+        AniError::Network
+    })?;
+    let fetch =
+        crate::scraper::gated::GatedFetch::new(fetch, Some(gate_of(state, provider)), priority);
+    Ok(match provider {
+        ProviderId::Anidb => match origins.anidb {
+            Some(base) => Box::new(crate::scraper::anidb::AnidbClient::with_base(fetch, base)),
+            None => Box::new(crate::scraper::anidb::AnidbClient::new(fetch)),
+        },
+        ProviderId::Hianime => match origins.hianime {
+            Some(base) => Box::new(crate::scraper::hianime::HianimeClient::with_base(
+                fetch, base,
+            )),
+            None => Box::new(crate::scraper::hianime::HianimeClient::new(fetch)),
+        },
+    })
+}
+
+/// Run `attempt` against the state's providers in order, under the
+/// resolve deadline, each on its own gate. See [`with_failover`].
+///
+/// # Errors
+/// As [`with_failover`].
+pub async fn run<'a, A: Attempt>(
+    state: &'a AppState,
+    priority: ScrapePriority,
+    attempt: &mut A,
+) -> Result<Attempted<'a, A::Output>, NativeError> {
+    run_at(state, Origins::of(state), priority, attempt).await
+}
+
+/// [`run`] with the providers' origins named by the caller.
+///
+/// # Errors
+/// As [`with_failover`].
+pub async fn run_at<'a, A: Attempt>(
+    state: &'a AppState,
+    origins: Origins<'_>,
+    priority: ScrapePriority,
+    attempt: &mut A,
+) -> Result<Attempted<'a, A::Output>, NativeError> {
+    with_failover(
+        &state.provider_order,
+        priority,
+        RESOLVE_DEADLINE,
+        PRIMARY_ATTEMPT_BUDGET,
+        |provider| client_for(state, origins, provider, priority),
+        |provider| gate_of(state, provider),
+        attempt,
+    )
+    .await
+}
+
+/// The play resolve as an attempt: alias walk, bounded probing,
+/// episode-to-master resolution, reporting progress as it goes.
+pub struct ResolveAttempt<'r, F> {
+    /// What to resolve.
+    pub request: NativeResolveRequest<'r>,
+    /// Where the walk's progress lines go.
+    pub on_progress: &'r mut F,
+}
+
+#[async_trait::async_trait]
+impl<F: FnMut(ProgressLine) + Send> Attempt for ResolveAttempt<'_, F> {
+    type Output = NativeResolved;
+
+    async fn run(&mut self, provider: &dyn Provider) -> Result<NativeResolved, NativeError> {
+        resolve_native(provider, self.request, self.on_progress).await
+    }
 }
 
 #[cfg(test)]

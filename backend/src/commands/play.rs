@@ -162,6 +162,7 @@ pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
     available: bool,
+    provider: Option<crate::scraper::provider::ProviderId>,
     generation_at_start: u64,
     episode_cap: Option<u32>,
     extra_tags: &[String],
@@ -202,6 +203,7 @@ pub(super) async fn stamp_availability_after_native(
                         extra_episodes: extra_tags.to_vec(),
                         episode_count_approximate: false,
                         gate_refused: false,
+                        provider,
                     },
                 );
             }
@@ -209,65 +211,6 @@ pub(super) async fn stamp_availability_after_native(
         },
     )
     .await;
-}
-
-/// The production anidb client: the curl-impersonate transport
-/// resolved through the bundled directory then PATH, pointed at the
-/// provider (or the test override), with every request admitted
-/// through the scraper gate at `priority` — the walk fans out into
-/// candidate probes and the episode chain, and each of those is a
-/// provider request the pacing contract covers, not just the search.
-///
-/// # Errors
-/// [`AniError::Network`] when no curl binary resolves at all — the
-/// host cannot reach the provider by any transport.
-pub(crate) fn anidb_client_for<'a>(
-    state: &'a AppState,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
-}
-
-fn anidb_client<'a>(
-    state: &'a AppState,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
-}
-
-/// [`anidb_client`] with an explicit origin override, shared with the
-/// availability and download paths (and their test seams).
-pub(super) fn anidb_client_with_base<'a>(
-    state: &'a AppState,
-    base: Option<&str>,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    let path_env = std::env::var("PATH").unwrap_or_default();
-    let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
-        state.bundled_bin.as_deref(),
-        &path_env,
-    )
-    .ok_or_else(|| {
-        tracing::error!("no curl binary found for the anidb transport");
-        AniError::Network
-    })?;
-    let fetch = crate::scraper::gated::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
-    Ok(match base {
-        Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
-        None => crate::scraper::anidb::AnidbClient::new(fetch),
-    })
 }
 
 /// Scraper-gate priority for a play-shaped request: prefetches (and
@@ -379,7 +322,6 @@ where
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     );
-    let client = anidb_client(state, scrape_priority(args))?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -390,43 +332,20 @@ where
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
-    let resolve_started_at = tokio::time::Instant::now();
-    // Bounded: a provider that accepts connections but stalls every
-    // request must not keep the play pending past the gate's
-    // half-open trial window (see RESOLVE_DEADLINE).
-    let native = crate::commands::play_native_resolve::resolve_native_bounded(
-        &client,
+    // Against the providers in order, bounded: a provider that
+    // accepts connections but stalls every request must not keep the
+    // play pending past the gate's half-open trial window, and the
+    // next provider is asked when the one before it was unreachable.
+    // Each attempt's outcome lands on its own provider's breaker so
+    // background traffic backs off after provider-shaped failures —
+    // and only those; the mapping is play_native_outcome's.
+    let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
-        &mut on_progress,
-    )
-    .await;
-    // Feed the breaker the resolution's outcome so background traffic
-    // backs off after provider-shaped failures — and only those. The
-    // mapping lives in play_native_resolve::breaker_outcome: answered
-    // verdicts (clean misses, absent episodes or audio) are health,
-    // weather is distress.
-    // None = the gate refused before any provider contact; the
-    // breaker only hears about requests that got past it.
-    if let Some(outcome) =
-        crate::commands::play_native_outcome::breaker_outcome(scrape_priority(args), &native)
-    {
-        // Timestamped with the attempt that OBSERVED the outcome,
-        // not the chain's start: the gate's stale filters discard
-        // evidence predating the last recovery, and a long resolve
-        // would otherwise have its fresh 429 thrown away whenever a
-        // concurrent resolve recorded recovery mid-chain. The chain
-        // start remains the fallback for a resolve refused before
-        // any fetch ran.
-        let observed_at = native
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(resolve_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
+        on_progress: &mut on_progress,
+    };
+    let native = crate::commands::providers::run(state, scrape_priority(args), &mut attempt).await;
     let native = match native {
-        Ok(n) => n,
+        Ok(attempted) => attempted.value,
         Err(ne) => {
             if ne.clean_miss {
                 // The one verdict that proves absence — persist it,
@@ -435,6 +354,7 @@ where
                     state,
                     args,
                     false,
+                    None,
                     availability_generation,
                     None,
                     &[],
@@ -458,6 +378,7 @@ where
         state,
         args,
         true,
+        Some(native.provider),
         availability_generation,
         native.episode_cap,
         &native.extra_tags,
@@ -605,6 +526,9 @@ mod tests {
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            hianime_base: None,
+            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -648,6 +572,7 @@ mod tests {
             &state,
             &args,
             true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             generation,
             Some(1061),
             &["1061.5".to_string()],
@@ -686,6 +611,7 @@ mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         let args = PlayArgs {
@@ -709,6 +635,7 @@ mod tests {
             &state,
             &args,
             true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             generation,
             Some(1061),
             &["1061.5".to_string()],
@@ -1899,7 +1826,7 @@ mod tests {
         crate::commands::availability::write_cache(&state, "race-1", "sub", true);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, generation, None, &[]).await;
+        stamp_availability_after_native(&state, &args, false, None, generation, None, &[]).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -1940,7 +1867,16 @@ mod tests {
             Some("cap-1"),
             "sub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(2), &[]).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            generation,
+            Some(2),
+            &[],
+        )
+        .await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {
@@ -1982,7 +1918,16 @@ mod tests {
             Some("dub-1"),
             "dub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(12), &[]).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            generation,
+            Some(12),
+            &[],
+        )
+        .await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {

@@ -7,9 +7,12 @@ use crate::app::AppState;
 use crate::error::Result;
 
 use super::download::{spawn_download_tool, DownloadArgs, DownloadProgress};
-use super::play::anidb_client_with_base;
+use super::play_native::PickedShow;
 use super::play_native_episode::resolve_episode;
+use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
+use super::providers::{gate_of, Attempt};
+use crate::scraper::provider::Provider;
 
 /// `"a-b"` with both halves integers and `a <= b`. Anything else is
 /// not a range: the single-episode path keeps its own semantics
@@ -23,10 +26,39 @@ pub(crate) fn episode_range(episode: &str) -> Option<(u32, u32)> {
     (a <= b).then_some((a, b))
 }
 
-/// Download episodes `first..=last` of the picked show. The breaker
-/// hears the walk's verdict once and, on a failing episode, that
-/// episode's verdict — the same observed-at stamping as the play
-/// path, since every request here rides the same gated transport.
+/// The pick as an attempt: the runner moves it between providers,
+/// and the episodes are then resolved against whichever answered.
+struct PickAttempt<'r> {
+    args: &'r DownloadArgs,
+}
+
+#[async_trait::async_trait]
+impl Attempt for PickAttempt<'_> {
+    type Output = PickedShow;
+
+    async fn run(
+        &mut self,
+        provider: &dyn Provider,
+    ) -> std::result::Result<PickedShow, NativeError> {
+        pick_native_walk(
+            provider,
+            &self.args.title,
+            &self.args.alt_titles,
+            self.args.episode_count,
+            self.args.year,
+            self.args.subtype.as_deref(),
+        )
+        .await
+    }
+}
+
+/// Download episodes `first..=last` of the picked show. The pick
+/// runs against the providers in order; the episodes then resolve
+/// against the one that answered, so a range never straddles two
+/// catalogues. That provider's breaker hears the walk's verdict once
+/// and, on a failing episode, that episode's verdict — the same
+/// observed-at stamping as the play path, since every request here
+/// rides the same gated transport.
 ///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own
@@ -46,42 +78,17 @@ where
     F: FnMut(DownloadProgress) + Send,
 {
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
-    let walk_started_at = tokio::time::Instant::now();
     // Bounded like the play path's resolve: the walk probes aliases
     // and candidate listings in sequence, each request against its
     // own transport timeout, so an unbounded pick can delay the
     // first transfer past the gate's half-open trial window.
-    let picked = match tokio::time::timeout(
-        super::play_native_resolve::RESOLVE_DEADLINE,
-        pick_native_walk(
-            &client,
-            &args.title,
-            &args.alt_titles,
-            args.episode_count,
-            args.year,
-            args.subtype.as_deref(),
-        ),
-    )
-    .await
-    {
-        Ok(picked) => picked,
-        Err(_elapsed) => Err(super::play_native_resolve::NativeError {
-            error: crate::error::AniError::Timeout,
-            clean_miss: false,
-            failed_at: None,
-        }),
-    };
-    if let Some(outcome) = super::play_native_outcome::breaker_outcome(prio, &picked) {
-        let observed_at = picked
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(walk_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
-    let picked = picked.map_err(|ne| ne.error)?;
+    let mut attempt = PickAttempt { args };
+    let attempted = super::providers::run(state, prio, &mut attempt)
+        .await
+        .map_err(|ne| ne.error)?;
+    let picked = attempted.value;
+    let client = attempted.client;
+    let gate = gate_of(state, attempted.provider);
     on_progress(DownloadProgress {
         line: format!("Matched {}", picked.hit.title),
     });
@@ -94,7 +101,7 @@ where
         });
         let ep_no = ep.to_string();
         let episode_started_at = tokio::time::Instant::now();
-        let resolved = match resolve_episode(&client, &picked, &ep_no, &args.mode, quality).await {
+        let resolved = match resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await {
             Ok(r) => r,
             Err(ne) => {
                 let failed: std::result::Result<(), _> = Err(ne);
@@ -103,9 +110,9 @@ where
                         .as_ref()
                         .err()
                         .and_then(|ne| ne.failed_at)
-                        .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
+                        .or_else(|| client.last_attempt_at())
                         .unwrap_or(episode_started_at);
-                    state.anidb_gate.record(outcome, observed_at);
+                    gate.record(outcome, observed_at);
                 }
                 return Err(match failed {
                     Err(ne) => ne.error,
