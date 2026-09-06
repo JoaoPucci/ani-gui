@@ -106,7 +106,31 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedPutMatch).toHaveBeenCalledWith(
 			preliminary.searchTitle,
 			preliminary.cour,
-			'fresh-id'
+			'fresh-id',
+			'anidb'
+		);
+	});
+
+	it('asks and writes the title-match cache for the provider the history id names', async () => {
+		const preliminary = resolveHistoryEntry(
+			{ id: 'hianime:demon-slayer-9', ep_no: '5', title: 'Demon Slayer (26 episodes)' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('fresh-id', 'Demon Slayer')]);
+
+		const got = await resolveKitsuMatch(preliminary);
+		expect(got?.id).toBe('fresh-id');
+		expect(mockedGetMatch).toHaveBeenCalledWith(
+			preliminary.searchTitle,
+			preliminary.cour,
+			'hianime'
+		);
+		expect(mockedPutMatch).toHaveBeenCalledWith(
+			preliminary.searchTitle,
+			preliminary.cour,
+			'fresh-id',
+			'hianime'
 		);
 	});
 
@@ -185,7 +209,7 @@ describe('resolveKitsuMatch', () => {
 		mockedSearch.mockResolvedValue([]);
 
 		await resolveKitsuMatch(preliminary);
-		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2);
+		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, 'anidb');
 	});
 
 	it('multi-cour entry: tries slug-fetch first and skips search when slug hits', async () => {
