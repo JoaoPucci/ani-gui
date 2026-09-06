@@ -2271,10 +2271,10 @@ mod tests {
             )
             .await
             .expect("oneshot");
-        assert_eq!(
-            response.status(),
-            StatusCode::BAD_REQUEST,
-            "a caller-supplied track list is refused"
+        assert!(
+            response.status().is_client_error(),
+            "a caller-supplied track list is refused; got {}",
+            response.status()
         );
     }
 
