@@ -223,6 +223,15 @@ async fn handle_subtitle(
         }
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
+    // Relayed only when it is a subtitle track, the way the manifest
+    // route relays only a playlist: a track URL must not become a
+    // read into whatever else the machine can reach.
+    if !is_webvtt(&body) {
+        return error_response(
+            StatusCode::BAD_GATEWAY,
+            "upstream body is not a subtitle track",
+        );
+    }
     let mut headers = HeaderMap::new();
     headers.insert(
         HeaderName::from_static("content-type"),
@@ -233,6 +242,13 @@ async fn handle_subtitle(
         HeaderValue::from_static("no-store"),
     );
     (StatusCode::OK, headers, body).into_response()
+}
+
+/// Whether a body carries the WebVTT signature — the file's first
+/// bytes, behind a UTF-8 byte-order mark when a CDN serves one.
+fn is_webvtt(body: &[u8]) -> bool {
+    let body = body.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(body);
+    body.starts_with(b"WEBVTT")
 }
 
 /// Streaming pass-through for direct-MP4 upstreams (wixmp/sharepoint
