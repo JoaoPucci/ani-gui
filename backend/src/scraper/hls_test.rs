@@ -65,3 +65,73 @@ proptest::proptest! {
         proptest::prop_assert!(!is_hls_playlist(&ws));
     }
 }
+
+// ── the source's referer reaches the playlist fetch ────────────────
+
+/// A provider hands the resolver a master URL together with the
+/// referer its CDN wants on every playlist fetch — the embed host's
+/// origin, which can differ per server — and the quality step's
+/// validating fetches must carry it, or a resolved stream fails its
+/// own validation with a 403.
+#[tokio::test]
+async fn quality_selection_fetches_playlists_with_the_sources_referer() {
+    struct Recording(std::sync::Mutex<Vec<(String, Option<String>)>>);
+    #[async_trait::async_trait]
+    impl Provider for Recording {
+        fn id(&self) -> ProviderId {
+            ProviderId::Anidb
+        }
+        async fn search(&self, _q: &str) -> Result<Vec<BrowseHit>> {
+            unreachable!()
+        }
+        async fn episodes(&self, _s: &str) -> Result<Vec<EpisodeRef>> {
+            unreachable!()
+        }
+        async fn has_mode(&self, _e: u64, _m: &str) -> Result<bool> {
+            unreachable!()
+        }
+        async fn master_playlist_url(&self, _e: u64, _m: &str) -> Result<StreamSource> {
+            unreachable!()
+        }
+        async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
+            self.0
+                .lock()
+                .expect("log")
+                .push((url.to_string(), referer.map(str::to_string)));
+            Ok(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n"
+                    .into(),
+            )
+        }
+        async fn detail_year(&self, _s: &str) -> Result<Option<u32>> {
+            unreachable!()
+        }
+        fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+            None
+        }
+    }
+    let provider = Recording(std::sync::Mutex::new(Vec::new()));
+    let source = StreamSource {
+        master_url: "https://cdn.example/v/master.m3u8".into(),
+        referer: Some("https://embed.example/".into()),
+    };
+    let chosen = stream_url(&provider, &source, "720")
+        .await
+        .expect("selected");
+    assert_eq!(chosen, "https://cdn.example/v/720/index.m3u8");
+    let fetched = provider.0.lock().expect("log").clone();
+    assert_eq!(
+        fetched,
+        vec![
+            (
+                "https://cdn.example/v/master.m3u8".to_string(),
+                Some("https://embed.example/".to_string())
+            ),
+            (
+                "https://cdn.example/v/720/index.m3u8".to_string(),
+                Some("https://embed.example/".to_string())
+            ),
+        ],
+        "the master and the rendition both carry the source's referer"
+    );
+}
