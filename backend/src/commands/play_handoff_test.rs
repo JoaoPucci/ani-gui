@@ -215,6 +215,7 @@ fn launch_args_lead_with_the_providers_default_track() {
     let cfg = crate::config::Config::default();
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "show-1".into(),
+        provider: crate::scraper::provider::ProviderId::Anidb,
         title: "Show".into(),
         master_url: "https://cdn.example/x/master.m3u8".into(),
         episode_cap: None,
