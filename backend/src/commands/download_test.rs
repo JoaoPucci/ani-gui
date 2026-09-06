@@ -2655,3 +2655,63 @@ fn each_tool_gets_the_referer_in_its_own_flag_shape() {
     );
     assert!(ffmpeg_referer_args(None).is_empty());
 }
+
+// ── sidecar tracks land beside the media ────────────────────────────
+
+/// A sub episode from a provider that lists its subtitles as sidecar
+/// tracks is raw video on disk unless each track lands beside the
+/// media, fetched with the source's referer. A track the CDN refuses
+/// is skipped: the episode downloaded, and that is the transfer.
+#[tokio::test]
+async fn sidecar_tracks_are_written_beside_the_media_with_the_referer() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{header, method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .and(header("referer", "https://embed.example/"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![
+        SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: format!("{}/subs/en.vtt", server.uri()),
+        },
+        SubtitleTrack {
+            lang: "es".into(),
+            label: "Español".into(),
+            default: false,
+            url: format!("{}/subs/es.vtt", server.uri()),
+        },
+    ];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        Some("https://embed.example/"),
+        dest.path(),
+        "Show Episode 2",
+    )
+    .await;
+    let en = dest.path().join("Show Episode 2.en.vtt");
+    assert_eq!(written, vec![en.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("track on disk"),
+        "WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"
+    );
+    assert!(
+        !dest.path().join("Show Episode 2.es.vtt").exists(),
+        "a refused track is skipped, not written empty"
+    );
+}

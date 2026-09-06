@@ -223,3 +223,7 @@ pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result
 #[cfg(test)]
 #[path = "external_player_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "external_player_subtitles_test.rs"]
+mod subtitle_tests;
