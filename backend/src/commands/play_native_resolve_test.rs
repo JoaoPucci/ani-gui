@@ -872,6 +872,12 @@ impl crate::scraper::provider::Provider for RefererProvider {
         Ok(crate::scraper::provider::StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: Some("https://embed.example/".into()),
+            subtitles: vec![crate::scraper::provider::SubtitleTrack {
+                lang: "en".into(),
+                label: "English".into(),
+                default: true,
+                url: "https://cdn.example/x/subs/en.vtt".into(),
+            }],
         })
     }
     async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
@@ -902,4 +908,13 @@ async fn a_resolved_play_carries_the_sources_referer() {
         .expect("resolved");
     assert_eq!(native.master_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(native.referer.as_deref(), Some("https://embed.example/"));
+    assert_eq!(
+        native
+            .subtitles
+            .iter()
+            .map(|t| t.url.as_str())
+            .collect::<Vec<_>>(),
+        ["https://cdn.example/x/subs/en.vtt"],
+        "sidecar tracks are part of what the resolve hands every consumer"
+    );
 }

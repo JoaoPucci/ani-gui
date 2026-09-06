@@ -225,6 +225,10 @@ pub fn evict(pool: &SqlitePool, key: &str) {
 }
 
 #[cfg(test)]
+#[path = "play_resolution_cache_subtitles_test.rs"]
+mod subtitle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::cache::open_in_memory;
@@ -423,7 +427,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None, None);
-        assert!(k.starts_with("play:v12:"), "got {k}");
+        assert!(k.starts_with("play:v13:"), "got {k}");
     }
 
     #[test]
