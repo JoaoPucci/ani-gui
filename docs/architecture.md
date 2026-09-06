@@ -10,7 +10,7 @@ A single-window desktop application. Linux: AppImage and `.deb`. Windows: NSIS i
 
 The app talks to three things a browser tab cannot reach on its own:
 
-1. The streaming provider — sits behind TLS-fingerprinting protection that rejects browser and plain-HTTP clients, so requests go out through a `curl-impersonate` subprocess.
+1. The streaming providers — each sits behind TLS-fingerprinting protection that rejects browser and plain-HTTP clients, so requests go out through a `curl-impersonate` subprocess.
 2. The watch-history file — needs filesystem access.
 3. Anime stream CDNs — require a `Referer:` header that browser fetch APIs cannot set, and serve segments without permissive CORS.
 
@@ -27,7 +27,7 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
  │  │ SvelteKit + hls.js │ ◄────────── │ Rust HTTP server   │   │
  │  └─────────┬──────────┘             └─────┬──────────────┘   │
  │            │                              │                  │
- │            │ <video src="http://127.0.0.1:├──► anidb.app    │
+ │            │ <video src="http://127.0.0.1:├──► providers    │
  │            │  PORT/s/<token>/...">        │   via curl       │
  │            │                              │                  │
  │            │  bytes streamed via proxy    ├──► Kitsu (REST)  │
@@ -44,7 +44,7 @@ So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port
 Three layers, in lockstep:
 
 - **Renderer** — SvelteKit static SPA running inside the desktop shell's web view. Renders the discovery surface, search results, detail pages, and the embedded player (`<video>` + hls.js). Stateless beyond UI state; talks only to the backend.
-- **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the provider, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
+- **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the providers, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
 - **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
 ## Data flow: searching and playing an episode
@@ -52,11 +52,23 @@ Three layers, in lockstep:
 1. The user types a query into the search bar.
 2. The renderer calls `POST /api/kitsu/search`. The backend hits Kitsu and returns matches.
 3. The user picks a result; the renderer fetches detail and episode list via `GET /api/kitsu/anime/:id` and `GET /api/kitsu/episodes/:id`.
-4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against [anidb.app](https://anidb.app): it searches the browse page for the title (falling back through every alias), probes candidates' episode lists to pick the right show, fetches the episode's language embeds, and reads the master-playlist URL off the chosen embed page. Requests go through a `curl-impersonate` subprocess — the provider sits behind TLS-fingerprinting protection that rejects plain HTTP clients.
+4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against the providers in order. [anidb.app](https://anidb.app) first: it searches the browse page for the title (falling back through every alias), probes candidates' episode lists to pick the right show, fetches the episode's language embeds, and reads the master-playlist URL off the chosen embed page. When anidb.app is unreachable, [hianime](https://hianime.at) through the same walk over its own pages: its search page, its per-entry episode list and per-episode server list, and the embed page whose payload carries the master-playlist URL and any sidecar subtitle tracks. Requests go through a `curl-impersonate` subprocess — both providers sit behind TLS-fingerprinting protection that rejects plain HTTP clients. See [Providers and failover](#providers-and-failover).
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
 6. The renderer mounts `<video>` and points hls.js at `http://127.0.0.1:<port>/s/<token>/master.m3u8`.
 7. The streaming proxy fetches the upstream master playlist with the correct `Referer:` header, parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
 8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the `Referer:`, bytes stream back.
+
+## Providers and failover
+
+The resolver's walks — search the aliases, pick the candidate by episode count and year, chase the episode to a playable URL — are policy, and they read the same whichever site answers. What differs per site sits behind a `Provider` trait in `backend/src/scraper/`: how a query becomes hits, how a slug becomes an episode list, how an episode becomes a playlist, and what the CDN wants on the request (hianime's playlists are served only with the embed host's origin as `Referer`; anidb.app's need none). A resolved stream carries that context — the master URL, its referer, its sidecar subtitle tracks — and every consumer reads it from there: the proxy session, the resolution cache, downloads, and the external-player and Syncplay handoffs.
+
+Two providers ship: anidb.app, then hianime. Each has an admission gate of its own — a pacer for background probes and a circuit breaker that opens after consecutive failures — so an outage on one never paces or refuses traffic to the other. The failover orchestrator (`backend/src/commands/providers.rs`) runs every walk against the providers in order and moves to the next only when the current one was **unreachable, refusing or broken**: a transport failure, a timeout, a provider-shaped block or rate limit, a background request the gate refused, or a page the parser no longer recognises. A provider that answered — including one that searched and found nothing — ends the walk; a miss on anidb.app is not retried on hianime. A provider whose breaker is open is skipped while another remains, and the last one is always tried, since an interactive request may be the trial that closes its breaker. Every attempt but the last is bounded by a 20-second budget under the 60-second resolve deadline, so a stalled outage cannot spend the whole deadline before the fallback is asked. Each attempt's outcome lands on its own provider's gate.
+
+The one asymmetry is absence. A clean miss — every search completed and nothing matched — is the only verdict the availability cache persists as a negative row, and a clean miss reached on hianime *after* anidb.app was unreachable is demoted to a plain miss: absence on the fallback proves nothing about a primary that never answered. Positive rows name the provider whose catalogue carries the show.
+
+Every store a resolve stamps keys on a show key that says whose id it holds — anidb.app's as the bare slug every existing row already holds, hianime's under its label. [`title-resolution.md`](./title-resolution.md#show-keys) describes the format and what reads it.
+
+The survey that chose hianime, and the integration shape this section describes, are in [`proposals/additional-providers.md`](./proposals/additional-providers.md).
 
 ## Discovery (landing page)
 
@@ -79,7 +91,7 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days |
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days |
-| Availability probe (negative — show isn't on anidb.app) | SQLite `meta_cache` | 7 days |
+| Availability probe (negative — the show isn't in the catalogue) | SQLite `meta_cache` | 7 days |
 | aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite play-resolution table | until upstream rotates |
