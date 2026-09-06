@@ -40,7 +40,7 @@
 	"error_load_headline": "Couldn't load this title.",
 	"error_play_headline": "Couldn't play episode {episode}",
 	"error_play_headline_single": "Couldn't play this",
-	"error_play_no_results": "This title isn't in the streaming catalogue. The providers don't index it.",
+	"error_play_no_results": "This title isn't in the streaming catalogue.",
 	"list_add": "Add to list",
 	"list_close": "Close",
 	"list_editor_aria": "Edit list entry",
