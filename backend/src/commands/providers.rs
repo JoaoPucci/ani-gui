@@ -49,11 +49,6 @@ pub struct Attempted<'a, T> {
     pub value: T,
     /// The client the answer came from.
     pub client: Box<dyn Provider + 'a>,
-    /// True when a provider ahead of this one was unreachable,
-    /// refusing or broken: the answer is the fallback's alone, and
-    /// an absence in it proves nothing about the provider that never
-    /// answered.
-    pub after_unreachable: bool,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
@@ -61,7 +56,6 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
         f.debug_struct("Attempted")
             .field("provider", &self.provider)
             .field("value", &self.value)
-            .field("after_unreachable", &self.after_unreachable)
             .finish_non_exhaustive()
     }
 }
@@ -88,15 +82,17 @@ pub fn fails_over(error: &AniError) -> bool {
 /// the last is always tried. Every attempt but the last is bounded by
 /// `attempt_budget`, and all of them together by `total_budget`. Each
 /// attempt's outcome is recorded on its provider's gate, timestamped
-/// with the instant that observed it. A clean miss reached after an
-/// unreachable provider is demoted to a plain miss: absence on the
-/// fallback proves nothing about a primary that never answered.
+/// with the instant that observed it. A miss is reported as the
+/// provider gave it, a clean miss included: whose verdict it is, and
+/// while whom it may be served, is the availability cache's rule,
+/// which names the provider on the row.
 ///
 /// `remembered` names the provider a positive availability row put
 /// first. Its answered miss is not the walk's verdict — the row
 /// proves the show and its mode at the show's level, not that every
 /// episode has an embed — so the walk goes on to the rest of the
-/// order, and the miss stands only when the rest were unreachable.
+/// order, and the miss stands, as given, only when the rest were
+/// unreachable.
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
@@ -200,7 +196,7 @@ struct Walk {
     /// The first unreachable error, to surface when nobody answers.
     first_unreachable: Option<NativeError>,
     /// Whether any provider so far was unreachable, refusing, broken
-    /// or skipped: an absence after that proves nothing.
+    /// or skipped.
     any_unreachable: bool,
     /// The providers skipped for an open breaker, in order.
     skipped: Vec<ProviderId>,
@@ -284,19 +280,13 @@ where
             provider,
             value,
             client,
-            after_unreachable: walk.any_unreachable,
         }),
         Err(ne) if fails_over(&ne.error) => {
             walk.any_unreachable = true;
             walk.first_unreachable.get_or_insert(ne);
             Tried::FailedOver
         }
-        Err(mut ne) => {
-            if ne.clean_miss && walk.any_unreachable {
-                ne.clean_miss = false;
-            }
-            Tried::Missed(ne)
-        }
+        Err(ne) => Tried::Missed(ne),
     }
 }
 
@@ -344,9 +334,6 @@ where
                 Tried::Missed(ne) => verdict = ne,
             }
         }
-    }
-    if verdict.clean_miss && walk.any_unreachable {
-        verdict.clean_miss = false;
     }
     Err(verdict)
 }
