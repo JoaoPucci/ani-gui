@@ -52,6 +52,7 @@ pub async fn resolve_launch_args(
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut |_| {},
+        answered_by: None,
     };
     let native = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
         .await
