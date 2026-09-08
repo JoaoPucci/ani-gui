@@ -7,9 +7,13 @@ use crate::scraper::provider::BrowseHit;
 
 /// The search page's result cards. The list lives inside
 /// `film_list-wrap`; the top-10 widget and the sidebar carry the same
-/// `film-detail` markup and are not the answer. A page that says "No
-/// animes found." is the provider answering absence; a page without
-/// either shape is a parse failure, never absence.
+/// `film-detail` markup and are not the answer. Cards are split at
+/// their own boundary (`flw-item`) and only a card's detail block is
+/// read: the poster link that leads a card carries an href and title
+/// of its own, and a card whose detail block has no anchor is skipped
+/// rather than read from its neighbour. A page that says "No animes
+/// found." is the provider answering absence; a page without either
+/// shape is a parse failure, never absence.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] when the page shows neither the result
@@ -26,8 +30,14 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let end = html[start..]
         .find("main-sidebar")
         .map_or(html.len(), |i| start + i);
-    let cards: Vec<&str> = html[start..end].split("film-detail").skip(1).collect();
-    let hits: Vec<BrowseHit> = cards.iter().filter_map(|c| parse_card(c)).collect();
+    let cards: Vec<&str> = html[start..end].split("flw-item").skip(1).collect();
+    let hits: Vec<BrowseHit> = cards
+        .iter()
+        .filter_map(|card| {
+            let (_, detail) = card.split_once("film-detail")?;
+            parse_card(detail)
+        })
+        .collect();
     if hits.is_empty() && !cards.is_empty() {
         // Cards the parser cannot read are the site having changed
         // shape; read as "no results" they would be persisted as
