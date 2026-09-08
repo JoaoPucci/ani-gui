@@ -127,11 +127,16 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let servers = self.servers(episode_id).await?;
-        // The first server whose page decodes wins. A page without
-        // the payload, or one the key does not open, is a host the
-        // client cannot read and the next server is tried; a host
-        // that refused or could not be reached is stepped over too,
-        // and surfaces only when no server served a stream.
+        // The first server whose page decodes wins; every other
+        // outcome is stepped over and remembered, and surfaces only
+        // when no server served a stream — in the order of what it
+        // says about the client. A page that carries the payload the
+        // key does not open is the site having changed, and the
+        // client no longer reading it: a parse failure, ahead of a
+        // host that refused or could not be reached. A page without
+        // the payload is a host the client does not read at all, and
+        // an episode with only those has no stream.
+        let mut broken: Option<AniError> = None;
         let mut weather: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
             // The embed host checks that the site sent the viewer.
@@ -151,11 +156,14 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                         referer: embed_origin(&server.embed_url),
                     })
                 }
-                Err(AniError::NoResults | AniError::ParseFailed { .. }) => continue,
+                Err(AniError::NoResults) => continue,
+                Err(e @ AniError::ParseFailed { .. }) => {
+                    broken.get_or_insert(e);
+                }
                 Err(e) => return Err(e),
             }
         }
-        Err(weather.unwrap_or(AniError::NoResults))
+        Err(broken.or(weather).unwrap_or(AniError::NoResults))
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
