@@ -350,6 +350,7 @@ where
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut on_progress,
+        answered_by: None,
     };
     let native = crate::commands::providers::run_from(
         state,
@@ -368,7 +369,7 @@ where
                     state,
                     args,
                     false,
-                    None,
+                    attempt.answered_by,
                     availability_generation,
                     None,
                     &[],
