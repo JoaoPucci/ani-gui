@@ -356,13 +356,18 @@ starting it, and delete it when you find it done.
   context isolation on and node integration off, loads its own
   bundle over the app's private scheme, and no component injects
   HTML — Svelte escapes every string it renders. A policy is still
-  the standard hardening for an Electron renderer, and one of two
-  items on Electron's security checklist the app does not meet. The
-  other is navigation: the window refuses new windows through its
-  open handler but installs no `will-navigate` guard, so nothing
-  stops the renderer's own document from navigating away from the
-  app's origin. The two close together; the guard is a few lines in
-  the main process.
+  the standard hardening for an Electron renderer, and one of the
+  items on Electron's security checklist the app does not meet. Two
+  others are known. Navigation: the window refuses new windows
+  through its open handler but installs no `will-navigate` guard, so
+  nothing stops the renderer's own document from navigating away
+  from the app's origin; that closes together with the policy, in a
+  few lines of the main process. And the sandbox: the AppImage is
+  repacked to start Electron with `--no-sandbox`, because its
+  read-only squashfs cannot carry the SUID bit Chromium's setuid
+  sandbox needs (the `.deb` sets the bit in its postinst and keeps
+  the sandbox), which is a packaging question of its own and not
+  part of this entry.
 
   The shape that fits: the frontend is a client-only static build
   (`ssr = false`, the static adapter), so SvelteKit's own `kit.csp`
