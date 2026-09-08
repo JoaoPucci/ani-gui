@@ -94,6 +94,7 @@
 	"syncplay_spawn_failed_unnamed": "Não consegui abrir o Syncplay — nenhum caminho de binário configurado. Instale o Syncplay ou escolha o executável em Configurações.",
 	"episodes_range_of": "{epStart}–{epEnd} de {total}",
 	"play_failure_no_results": "Não foi possível encontrar este título na fonte de streaming. O episódio pode estar indisponível — tente de novo mais tarde.",
+	"play_failure_episode_unavailable": "Este episódio não está disponível na fonte de streaming agora. O título existe, mas nenhum stream foi encontrado para este episódio neste áudio — tente outro episódio, o outro áudio ou mais tarde.",
 	"play_failure_scraper": "Não foi possível resolver um stream agora. A fonte de streaming parece instável — tente de novo em alguns minutos.",
 	"play_failure_timeout": "A fonte de streaming demorou demais para responder. Tente de novo em alguns minutos.",
 	"play_failure_network": "Problema de rede ao acessar a fonte de streaming. Verifique sua conexão e tente de novo.",
