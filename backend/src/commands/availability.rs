@@ -2584,61 +2584,72 @@ mod tests {
         );
     }
 
-    proptest::proptest! {
-        /// The rule over the whole input space rather than the four
-        /// corners the examples spell: a row is servable exactly when
-        /// it is negative, or carries a count that the backend
-        /// confirmed. Anything else re-probes.
-        ///
-        /// Stated as an equivalence, not a re-implementation — the
-        /// point is that no combination of the three inputs, and no
-        /// count value, reaches a fifth outcome.
-        #[test]
-        fn usability_is_negative_or_a_confirmed_count(
-            available in proptest::bool::ANY,
-            count in proptest::option::of(0u32..2000),
-            approximate in proptest::bool::ANY,
-            extras in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..4),
-        ) {
-            let td = tempfile::tempdir().expect("td");
-            let state = cache_only_state(&td);
-            let row = AvailabilityResponse {
-                available,
-                episode_count: count,
-                extra_episodes: extras,
-                episode_count_approximate: approximate,
-                gate_refused: false,
-                provider: None,
-            };
-            proptest::prop_assert_eq!(
-                cache_hit_is_usable(&state, &row),
-                !available || (count.is_some() && !approximate)
-            );
-        }
+    /// The rule over the whole input space rather than the four
+    /// corners the examples spell: a row is servable exactly when it
+    /// is negative — and, on the state these run against, backed by
+    /// a reachable primary — or carries a count that the backend
+    /// confirmed. Anything else re-probes.
+    ///
+    /// Stated as an equivalence, not a re-implementation — the point
+    /// is that no combination of the three inputs, and no count
+    /// value, reaches a fifth outcome. Driven by hand so the state,
+    /// whose pool spawns a reaper thread, is built once for every
+    /// case rather than once per case: macOS's thread ceiling is
+    /// lower than a property's case count.
+    #[test]
+    fn usability_is_negative_or_a_confirmed_count() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let cases = (
+            proptest::bool::ANY,
+            proptest::option::of(0u32..2000),
+            proptest::bool::ANY,
+            proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..4),
+        );
+        proptest::test_runner::TestRunner::default()
+            .run(&cases, |(available, count, approximate, extras)| {
+                let row = AvailabilityResponse {
+                    available,
+                    episode_count: count,
+                    extra_episodes: extras,
+                    episode_count_approximate: approximate,
+                    gate_refused: false,
+                    provider: None,
+                };
+                proptest::prop_assert_eq!(
+                    cache_hit_is_usable(&state, &row),
+                    !available || (count.is_some() && !approximate)
+                );
+                Ok(())
+            })
+            .expect("the equivalence holds over the input space");
+    }
 
-        /// The safety direction on its own, because it is the one
-        /// that costs a user a phantom episode: an AVAILABLE row that
-        /// is approximate, or has no count, is never served. A click
-        /// asking the cache to confirm a cap must not be answered
-        /// with the same unconfirmed number it is questioning.
-        #[test]
-        fn an_unconfirmed_available_row_is_never_served(
-            count in proptest::option::of(0u32..2000),
-            approximate in proptest::bool::ANY,
-        ) {
-            let td = tempfile::tempdir().expect("td");
-            let state = cache_only_state(&td);
-            proptest::prop_assume!(approximate || count.is_none());
-            let row = AvailabilityResponse {
-                available: true,
-                episode_count: count,
-                extra_episodes: Vec::new(),
-                episode_count_approximate: approximate,
-                gate_refused: false,
-                provider: None,
-            };
-            proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
-        }
+    /// The safety direction on its own, because it is the one that
+    /// costs a user a phantom episode: an AVAILABLE row that is
+    /// approximate, or has no count, is never served. A click asking
+    /// the cache to confirm a cap must not be answered with the same
+    /// unconfirmed number it is questioning.
+    #[test]
+    fn an_unconfirmed_available_row_is_never_served() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let cases = (proptest::option::of(0u32..2000), proptest::bool::ANY);
+        proptest::test_runner::TestRunner::default()
+            .run(&cases, |(count, approximate)| {
+                proptest::prop_assume!(approximate || count.is_none());
+                let row = AvailabilityResponse {
+                    available: true,
+                    episode_count: count,
+                    extra_episodes: Vec::new(),
+                    episode_count_approximate: approximate,
+                    gate_refused: false,
+                    provider: None,
+                };
+                proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
+                Ok(())
+            })
+            .expect("an unconfirmed available row is never served");
     }
 
     /// The flag has to survive the cache round-trip, or the re-probe
