@@ -1187,6 +1187,76 @@ mod tests {
         assert!(try_serve_cached(&state, &cached).await.is_some());
     }
 
+    /// A sidecar track is signed like the stream and expires on its
+    /// own, and a track that fails to load never reaches the player's
+    /// recovery path — so a hit served on the stream's answer alone
+    /// plays without subtitles for the rest of the row's life. The
+    /// row is live only when everything it names is.
+    #[tokio::test]
+    async fn try_serve_cached_returns_none_when_a_cached_track_is_dead() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/video.mp4"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/subs/en.vtt"))
+            .respond_with(wiremock::ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let mut cached = cached_blank(
+            format!("{}/video.mp4", server.uri()),
+            String::new(),
+            MediaKind::Mp4,
+        );
+        cached.subtitles = vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))];
+        assert!(
+            try_serve_cached(&state, &cached).await.is_none(),
+            "a dead track is a dead row"
+        );
+    }
+
+    /// Every track is asked, with the row's referer — the CDN that
+    /// signs the stream signs the tracks — and a row whose tracks all
+    /// answer is served.
+    #[tokio::test]
+    async fn try_serve_cached_asks_every_track_with_the_referer_and_serves_when_all_answer() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::header(
+                "referer",
+                "https://embed.example/",
+            ))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let mut cached = cached_blank(
+            format!("{}/video.mp4", server.uri()),
+            "https://embed.example/".into(),
+            MediaKind::Mp4,
+        );
+        cached.subtitles = vec![
+            track("en", true, &format!("{}/subs/en.vtt", server.uri())),
+            track("es", false, &format!("{}/subs/es.vtt", server.uri())),
+        ];
+        assert!(try_serve_cached(&state, &cached).await.is_some());
+        let asked: Vec<String> = server
+            .received_requests()
+            .await
+            .expect("recorded")
+            .iter()
+            .map(|r| r.url.path().to_string())
+            .collect();
+        assert!(
+            asked.contains(&"/subs/en.vtt".to_string())
+                && asked.contains(&"/subs/es.vtt".to_string()),
+            "every track is asked: {asked:?}"
+        );
+    }
+
     fn external_args(title: &str, episode: &str) -> PlayArgs {
         PlayArgs {
             title: title.into(),
@@ -1215,6 +1285,26 @@ mod tests {
     }
 
     fn seed_play_cache(state: &AppState, args: &PlayArgs, upstream: &str, referer: &str) {
+        seed_play_cache_with_tracks(state, args, upstream, referer, Vec::new());
+    }
+
+    /// A sidecar track as a resolve lists it.
+    fn track(lang: &str, default: bool, url: &str) -> crate::scraper::provider::SubtitleTrack {
+        crate::scraper::provider::SubtitleTrack {
+            lang: lang.into(),
+            label: lang.into(),
+            default,
+            url: url.into(),
+        }
+    }
+
+    fn seed_play_cache_with_tracks(
+        state: &AppState,
+        args: &PlayArgs,
+        upstream: &str,
+        referer: &str,
+        subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
+    ) {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
@@ -1234,7 +1324,7 @@ mod tests {
                 show_id: "abc".into(),
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
-                subtitles: Vec::new(),
+                subtitles,
             },
         );
     }
@@ -1508,6 +1598,77 @@ mod tests {
         assert!(try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .is_none());
+    }
+
+    /// The projection the external player and Syncplay share checks
+    /// the tracks as the play path does: a dead track evicts the row
+    /// and the caller resolves afresh.
+    #[tokio::test]
+    async fn try_launch_args_from_cache_evicts_and_returns_none_when_a_cached_track_is_dead() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/v.mp4"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/subs/en.vtt"))
+            .respond_with(wiremock::ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = external_args("Stale Track", "2");
+        seed_play_cache_with_tracks(
+            &state,
+            &args,
+            &format!("{}/v.mp4", server.uri()),
+            "",
+            vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))],
+        );
+        let cfg = external_cfg();
+        assert!(try_launch_args_from_cache(&state, &args, &cfg)
+            .await
+            .is_none());
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            "best",
+            &args.episode,
+            args.year,
+            args.episode_count,
+            None,
+        );
+        assert!(
+            play_resolution_cache::get(&state.cache_pool, &key)
+                .ok()
+                .flatten()
+                .is_none(),
+            "a row with a dead track is evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_launch_args_from_cache_carries_the_tracks_when_every_track_answers() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let args = external_args("Live Track", "2");
+        let sub = format!("{}/subs/en.vtt", server.uri());
+        seed_play_cache_with_tracks(
+            &state,
+            &args,
+            &format!("{}/v.mp4", server.uri()),
+            "",
+            vec![track("en", true, &sub)],
+        );
+        let cfg = external_cfg();
+        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+            .await
+            .expect("hit");
+        assert_eq!(launch.subtitle_urls, vec![sub]);
     }
 
     #[test]
