@@ -971,9 +971,9 @@ pub(crate) async fn write_sidecar_subtitles(
         };
         seen.push(&track.lang);
         let path = dest.join(format!("{file_stem}.{suffix}.vtt"));
-        // Created new, never replaced: a file already at the name is
-        // the user's — a corrected subtitle from an earlier download —
-        // and stays as found.
+        // Created new, never replaced: a file with bytes at the name
+        // is the user's — a corrected subtitle from an earlier
+        // download — and stays as found.
         match write_new(&path, &body).await {
             Ok(()) => written.push(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -987,9 +987,22 @@ pub(crate) async fn write_sidecar_subtitles(
     written
 }
 
-/// Write `body` to a file that must not exist yet.
+/// Write `body` to a file whose name is free (see [`name_is_taken`]).
 pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
     claim_new(path).await?.finish(body).await
+}
+
+/// Whether a sidecar's name is taken: a file with bytes is there,
+/// and it is the user's. A zero-length file is not — a WebVTT file
+/// is never empty — but a claim abandoned by an install that stopped
+/// between creating the name and filling it (the rename install,
+/// where the filesystem offers no hard links), and the name is free.
+fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
+    match std::fs::metadata(path) {
+        Ok(meta) => Ok(meta.len() > 0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// A sidecar's name, taken only for a complete file. The bytes go to
@@ -999,7 +1012,8 @@ pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::R
 /// claim dropped unfinished removes its scratch and the name stays
 /// free, and a kill or a power loss between the two leaves the
 /// scratch behind, never a partial file at the name that every later
-/// download would keep as the user's own.
+/// download would keep as the user's own. The one partial file the
+/// rename install can leave is empty, and an empty name is free.
 #[derive(Debug)]
 pub(crate) struct SidecarClaim {
     target: std::path::PathBuf,
@@ -1017,7 +1031,12 @@ pub(crate) struct SidecarClaim {
 /// `AlreadyExists` when the name is taken; the scratch's own open
 /// errors otherwise.
 pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<SidecarClaim> {
-    if tokio::fs::try_exists(path).await? {
+    let taken = match tokio::fs::metadata(path).await {
+        Ok(meta) => meta.len() > 0,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    if taken {
         return Err(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             "a sidecar is already at the name",
@@ -1060,27 +1079,49 @@ impl SidecarClaim {
     }
 }
 
-/// Put the complete scratch at the name without ever replacing what
-/// is there: a hard link refuses a taken name atomically and leaves
-/// the scratch as a second name to remove; where links are not
-/// offered, a create-new claims the name and a rename fills it.
+/// Put the complete scratch at the name without replacing a file with
+/// bytes: a hard link refuses a taken name atomically and leaves the
+/// scratch as a second name to remove; where links are not offered,
+/// [`install_by_rename`]. An empty file at the name is an abandoned
+/// claim ([`name_is_taken`]) and is replaced by the rename, which is
+/// atomic: two installs that both found it empty each land a complete
+/// file, and the one that lands last stays — never a partial one.
 fn install_sidecar(scratch: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
     match std::fs::hard_link(scratch, target) {
         Ok(()) => {
             let _ = std::fs::remove_file(scratch);
             Ok(())
         }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
-        Err(_) => {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(target)?;
-            std::fs::rename(scratch, target).inspect_err(|_| {
-                let _ = std::fs::remove_file(target);
-            })
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            if name_is_taken(target)? {
+                return Err(e);
+            }
+            std::fs::rename(scratch, target)
         }
+        Err(_) => install_by_rename(scratch, target),
     }
+}
+
+/// The install where the filesystem offers no hard links: a
+/// create-new claims the name — or finds an abandoned empty claim
+/// there, which is as good — and a rename fills it. A stop between
+/// the two leaves the empty claim for the next install to take.
+fn install_by_rename(scratch: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && !name_is_taken(target)? => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::rename(scratch, target).inspect_err(|_| {
+        // The claim, not a file another install has since completed.
+        if name_is_taken(target).is_ok_and(|taken| !taken) {
+            let _ = std::fs::remove_file(target);
+        }
+    })
 }
 
 impl Drop for SidecarClaim {
