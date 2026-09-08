@@ -3641,3 +3641,179 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
         "the fallback that served the range is remembered"
     );
 }
+
+// ── the walk's clean miss on a single download ────────────────────
+
+/// A single download that misses cleanly stamps the miss as the
+/// provider's negative row, as the play path does: the lists stop
+/// re-probing a show the provider searched and has not got.
+#[tokio::test]
+async fn a_download_stamps_the_walks_clean_miss_as_the_providers_negative_row() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+        )
+        .mount(&server)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Ghost Show",
+        "episode": "1",
+        "mode": "sub",
+        "kitsu_id": "ghost-7",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let bin = dir_with_a_findable_tool();
+    let err = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect_err("nothing matches");
+    assert!(matches!(err, AniError::NoResults));
+    let cached = crate::commands::availability::batch_cached(
+        &state,
+        &crate::commands::availability::AvailabilityBatchArgs {
+            kitsu_ids: vec!["ghost-7".into()],
+            mode: "sub".into(),
+        },
+    );
+    assert_eq!(
+        cached.cached.get("ghost-7"),
+        Some(&false),
+        "the clean miss is the provider's negative row"
+    );
+}
+
+// ── the sidecar writer's other ways out ───────────────────────────
+
+/// A track whose fetch fails at the connection is skipped like a
+/// refused one: nothing lands at its name.
+#[tokio::test]
+async fn a_subtitle_fetch_that_fails_is_skipped() {
+    use crate::scraper::provider::SubtitleTrack;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: "http://127.0.0.1:1/subs/en.vtt".into(),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 6",
+    )
+    .await;
+    assert!(written.is_empty());
+    assert!(!dest.path().join("Show Episode 6.en.vtt").exists());
+}
+
+/// Two tracks in one language keep both files: the second is
+/// suffixed by its position, so neither overwrites the other.
+#[tokio::test]
+async fn two_tracks_in_one_language_keep_both_files() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for (route, cue) in [("/subs/en-a.vtt", "first"), ("/subs/en-b.vtt", "second")] {
+        Mock::given(method("GET"))
+            .and(wm_path(route))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("WEBVTT\n\n00:00.000 --> 00:01.000\n{cue}\n")),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |route: &str| SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("/subs/en-a.vtt"), track("/subs/en-b.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 7",
+    )
+    .await;
+    let first = dest.path().join("Show Episode 7.en.vtt");
+    let second = dest.path().join("Show Episode 7.en-1.vtt");
+    assert_eq!(written, vec![first.clone(), second.clone()]);
+    assert!(std::fs::read_to_string(&first)
+        .expect("first")
+        .ends_with("first\n"));
+    assert!(std::fs::read_to_string(&second)
+        .expect("second")
+        .ends_with("second\n"));
+}
+
+/// A write that fails for a reason other than a taken name — the
+/// destination directory is gone — skips the track and writes
+/// nothing anywhere.
+#[tokio::test]
+async fn a_subtitle_write_that_fails_is_skipped() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nhi\n"))
+        .mount(&server)
+        .await;
+    let parent = tempfile::tempdir().expect("parent");
+    let gone = parent.path().join("gone");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        &gone,
+        "Show Episode 8",
+    )
+    .await;
+    assert!(written.is_empty());
+    assert!(!gone.exists(), "a failed write creates nothing");
+}
+
+/// Where the rename install cannot claim the name for a reason other
+/// than a taken one, it fails with that reason and leaves the
+/// scratch; and the empty claim it makes does not outlive a rename
+/// that fails because the scratch is gone.
+#[test]
+fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_without_a_scratch() {
+    let dest = tempfile::tempdir().expect("dest");
+    let scratch = dest.path().join(".ani-gui-0-scratch.part.vtt");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    let unclaimable = dest.path().join("gone").join("Show Episode 9.en.vtt");
+    let err = install_by_rename(&scratch, &unclaimable).expect_err("no directory to claim in");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(scratch.exists(), "the scratch stays with its claim");
+
+    let target = dest.path().join("Show Episode 10.en.vtt");
+    let missing = dest.path().join(".ani-gui-0-missing.part.vtt");
+    let err = install_by_rename(&missing, &target).expect_err("nothing to move");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(
+        !target.exists(),
+        "the empty claim made for the rename is removed with it"
+    );
+}
