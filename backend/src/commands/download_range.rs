@@ -8,7 +8,7 @@ use crate::error::Result;
 
 use super::download::{spawn_download_tool, DownloadArgs, DownloadProgress};
 use super::play_native::PickedShow;
-use super::play_native_episode::resolve_episode;
+use super::play_native_episode::{resolve_episode, ResolvedEpisode};
 use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
 use super::providers::{gate_of, Attempt};
@@ -26,21 +26,27 @@ pub(crate) fn episode_range(episode: &str) -> Option<(u32, u32)> {
     (a <= b).then_some((a, b))
 }
 
-/// The pick as an attempt: the runner moves it between providers,
-/// and the episodes are then resolved against whichever answered.
-struct PickAttempt<'r> {
+/// The range's start as an attempt: the pick and the first episode's
+/// stream. The runner moves it between providers, and a provider
+/// commits to the range only once it has served that first stream —
+/// a primary whose catalogue pages answer but whose stream chain is
+/// broken hands the range to the fallback, as a single download
+/// would. The remaining episodes resolve against whichever served it.
+struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
+    first: u32,
+    quality: &'r str,
 }
 
 #[async_trait::async_trait]
-impl Attempt for PickAttempt<'_> {
-    type Output = PickedShow;
+impl Attempt for RangeStartAttempt<'_> {
+    type Output = (PickedShow, ResolvedEpisode);
 
     async fn run(
         &mut self,
         provider: &dyn Provider,
-    ) -> std::result::Result<PickedShow, NativeError> {
-        pick_native_walk(
+    ) -> std::result::Result<(PickedShow, ResolvedEpisode), NativeError> {
+        let picked = pick_native_walk(
             provider,
             &self.args.title,
             &self.args.alt_titles,
@@ -48,17 +54,27 @@ impl Attempt for PickAttempt<'_> {
             self.args.year,
             self.args.subtype.as_deref(),
         )
-        .await
+        .await?;
+        let first = resolve_episode(
+            provider,
+            &picked,
+            &self.first.to_string(),
+            &self.args.mode,
+            self.quality,
+        )
+        .await?;
+        Ok((picked, first))
     }
 }
 
-/// Download episodes `first..=last` of the picked show. The pick
-/// runs against the providers in order; the episodes then resolve
-/// against the one that answered, so a range never straddles two
-/// catalogues. That provider's breaker hears the walk's verdict once
-/// and, on a failing episode, that episode's verdict — the same
-/// observed-at stamping as the play path, since every request here
-/// rides the same gated transport.
+/// Download episodes `first..=last` of the picked show. The pick and
+/// the first episode's stream run against the providers in order;
+/// the remaining episodes then resolve against the one that served
+/// it, so a range never straddles two catalogues. That provider's
+/// breaker hears the start's verdict once and, on a failing later
+/// episode, that episode's verdict — the same observed-at stamping
+/// as the play path, since every request here rides the same gated
+/// transport.
 ///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own
@@ -86,16 +102,21 @@ where
         .kitsu_id
         .as_deref()
         .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
-    let mut attempt = PickAttempt { args };
+    let mut attempt = RangeStartAttempt {
+        args,
+        first,
+        quality,
+    };
     let attempted = super::providers::run_from(state, remembered, prio, &mut attempt)
         .await
         .map_err(|ne| ne.error)?;
-    let picked = attempted.value;
+    let (picked, first_resolved) = attempted.value;
     let client = attempted.client;
     let gate = gate_of(state, attempted.provider);
     on_progress(DownloadProgress {
         line: format!("Matched {}", picked.hit.title),
     });
+    let mut first_resolved = Some(first_resolved);
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -105,7 +126,13 @@ where
         });
         let ep_no = ep.to_string();
         let episode_started_at = tokio::time::Instant::now();
-        let resolved = match resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await {
+        // The first episode was resolved by the attempt that chose
+        // the provider; the rest resolve here, against it.
+        let resolved = match first_resolved.take() {
+            Some(r) => Ok(r),
+            None => resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await,
+        };
+        let resolved = match resolved {
             Ok(r) => r,
             Err(ne) => {
                 let failed: std::result::Result<(), _> = Err(ne);
