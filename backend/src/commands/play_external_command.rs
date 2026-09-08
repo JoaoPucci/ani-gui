@@ -33,12 +33,17 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // would wait another 30s for a fresh resolve.
     // HEAD-validate so a stale/dead URL falls through to the fresh
     // path instead of handing mpv a 403.
-    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        return external_player::open_external_player(&launch);
+    if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {
+        external_player::open_external_player(&launch)?;
+        crate::commands::play_native_record::record_watch(state, &watch);
+        return Ok(());
     }
 
-    let launch = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
-    external_player::open_external_player(&launch)
+    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
+    external_player::open_external_player(&launch)?;
+    // The spawn is the watch: recorded once the player has started.
+    crate::commands::play_native_record::record_watch(state, &watch);
+    Ok(())
 }
 
 #[cfg(all(test, unix))]
