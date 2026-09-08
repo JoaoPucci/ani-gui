@@ -1285,6 +1285,132 @@ mod tests {
         );
     }
 
+    /// An anidb whose browse answers a completed search with nothing
+    /// in it — the one shape that proves absence.
+    async fn stub_no_results() -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string("<html><body><p>No results</p></body></html>"),
+            )
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn a_clean_miss_row_names_the_provider_that_answered_it() {
+        // A negative row is one provider's verdict — a miss does not
+        // fail over — so the row says whose, and the read side can
+        // ask whether that provider is still there to stand behind it.
+        let server = stub_no_results().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Nowhere Show",
+            "mode": "sub",
+            "kitsu_id": "559"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+            .await
+            .expect("a clean miss is an answer");
+        assert!(!got.available);
+        let row = meta_cache_get(&state.cache_pool, &cache_key("559", "sub"))
+            .expect("cache read")
+            .expect("the miss is persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            "the negative row names the provider whose miss it is"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
+        // The primary answered a clean miss and then went down. Its
+        // negative row is the primary's verdict alone, and serving it
+        // through the outage hides — from the lists and from the
+        // page's play and download — a show the fallback carries, for
+        // the row's whole lifetime, in the exact outage failover
+        // exists for. Unattributed negatives — rows the play path
+        // stamped — count as the primary's.
+        let hianime = stub_hianime_sub_only().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "560",
+            "sub",
+            false,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+        );
+        write_cache(&state, "561", "sub", false, None);
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            state.anidb_gate.record(
+                crate::scraper::gate::ScrapeOutcome::Failure,
+                tokio::time::Instant::now(),
+            );
+        }
+        let listed = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["560".into(), "561".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(
+            !listed.cached.contains_key("560") && !listed.cached.contains_key("561"),
+            "the lists do not hide on a verdict nobody can stand behind: {:?}",
+            listed.cached
+        );
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "560",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+            .await
+            .expect("the probe re-runs and the fallback answers");
+        assert!(got.available, "the fallback carries the show");
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime)
+        );
+    }
+
+    #[test]
+    fn a_negative_row_is_served_while_its_provider_is_reachable() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
+        write_cache(
+            &state,
+            "562",
+            "sub",
+            false,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+        );
+        let listed = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["562".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(listed.cached.get("562"), Some(&false));
+    }
+
     #[tokio::test]
     async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         // The pick already paid for the episodes list, so the cap is
@@ -1986,8 +2112,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v12:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v12:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v13:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v13:kid-1:dub");
     }
 
     #[test]
