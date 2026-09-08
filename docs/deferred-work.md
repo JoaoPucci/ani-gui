@@ -341,6 +341,47 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
+## A content security policy for the renderer
+
+- **The renderer runs under no content security policy, in the
+  packaged app as much as in development.** Nothing sets one: not
+  the Electron main process, not the preload, not the SvelteKit
+  configuration, not the HTML shell. Electron prints its
+  insecure-policy warning on every development launch for exactly
+  this and suppresses the same warning once packaged, so the warning
+  going quiet is not the gap closing.
+
+  What the policy would guard against is script injected into the
+  renderer, and today's exposure is narrow: the window runs with
+  context isolation on and node integration off, loads its own
+  bundle over the app's private scheme, and no component injects
+  HTML — Svelte escapes every string it renders. A policy is still
+  the standard hardening for an Electron renderer, and the one piece
+  of Electron's security checklist the app does not meet.
+
+  The shape that fits: the frontend is a client-only static build
+  (`ssr = false`, the static adapter), so SvelteKit's own `kit.csp`
+  in hash mode lands the policy as a meta tag in the built page and
+  hashes the loader script it inlines. The directives have to allow
+  what the renderer really loads, which is less than it looks: its
+  own origin; the local backend on the loopback port, which is also
+  the origin of every image, stream, subtitle file and the
+  server-sent event stream the play and download pages listen to;
+  blob URLs, which is how the HLS player attaches media, and a worker
+  source if that player spawns one; data URLs for the two inline SVG
+  grain backgrounds; and inline styles, since the components set
+  `style` attributes for accents and layout. Two things to settle
+  against the code before choosing: how SvelteKit applies the policy
+  under the development server, whose hot reload has its own inline
+  script and socket, and whether the packaged window is better served
+  by a header from the app-scheme protocol handler than by the meta
+  tag.
+
+  It waited on the second-provider series: the policy is only
+  verifiable against a player that plays, and until that series
+  merged the primary catalogue was unreachable and nothing on the
+  default branch could.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
