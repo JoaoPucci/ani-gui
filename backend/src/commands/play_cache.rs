@@ -5,15 +5,17 @@
 //!   • `upstream_head_ok` — HEAD-pings a cached upstream URL with
 //!     the right Referer and treats 2xx/3xx as live, anything else
 //!     (including network errors) as dead.
+//!   • `cached_row_is_live` — the check both replays share: the
+//!     row's stream and every sidecar track it lists pass
+//!     `upstream_head_ok` with the row's referer.
 //!   • `try_serve_cached` — turns a `CachedResolution` row into a
-//!     fresh session response when its URL still passes
-//!     `upstream_head_ok`. Used by the embedded-player flow's
-//!     fast path in `play_with_progress`.
+//!     fresh session response when the row is live. Used by the
+//!     embedded-player flow's fast path in `play_with_progress`.
 //!   • `try_launch_args_from_cache` — sibling of `try_serve_cached`
-//!     for the external-player flow: walks the same cache, HEAD-
-//!     validates, and returns ready-to-launch [`LaunchArgs`] (or
-//!     `None`) so `play_external` can hand mpv a cached URL without
-//!     resolving again.
+//!     for the external-player flow: walks the same cache, checks
+//!     the row the same way, and returns ready-to-launch
+//!     [`LaunchArgs`] (or `None`) so `play_external` can hand mpv a
+//!     cached URL without resolving again.
 //!
 //! All three are async and depend on `AppState`'s reqwest client +
 //! cache pool, so the fixtures in play.rs's test module
@@ -49,16 +51,37 @@ pub(crate) async fn upstream_head_ok(
     resp.status().is_success() || resp.status().is_redirection()
 }
 
-/// HEAD-validate a cached upstream URL. Returns a fresh
-/// CreateSessionResponse on success, or `None` if the URL is dead /
-/// unreachable / returns an error status — caller should fall through
-/// to a fresh resolve.
+/// Whether a cached row can still be served: its stream answers the
+/// HEAD check, and so does every sidecar track it lists — each with
+/// the row's referer, which is what the relay sends when it fetches
+/// a track. A track is signed like the stream and expires on its
+/// own, and a track that fails to load never reaches the player's
+/// recovery path, so a row is live only when everything it names is.
+/// The first dead URL ends the check; a URL that does not parse is
+/// dead.
+pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
+    let urls = std::iter::once(cached.upstream_url.as_str())
+        .chain(cached.subtitles.iter().map(|t| t.url.as_str()));
+    for raw in urls {
+        let Ok(url) = url::Url::parse(raw) else {
+            return false;
+        };
+        if !upstream_head_ok(&state.meta_http, &url, &cached.referer).await {
+            return false;
+        }
+    }
+    true
+}
+
+/// Serve a cached row as a fresh CreateSessionResponse when the row
+/// is live ([`cached_row_is_live`]), or `None` when its stream or one
+/// of its tracks is dead, unreachable or answers an error status —
+/// the caller falls through to a fresh resolve.
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
 ) -> Option<CreateSessionResponse> {
-    let url = url::Url::parse(&cached.upstream_url).ok()?;
-    if !upstream_head_ok(&state.meta_http, &url, &cached.referer).await {
+    if !cached_row_is_live(state, cached).await {
         return None;
     }
     let session_args = CreateSessionArgs {
@@ -74,11 +97,12 @@ pub(crate) async fn try_serve_cached(
     Some(resp)
 }
 
-/// Cache-hit branch of `play_external`: returns ready-to-launch
-/// `LaunchArgs` when the play_resolution_cache has a live row,
-/// otherwise `None` (caller falls through to a fresh resolve).
-/// HEAD-fail evicts the row before returning None so the next
-/// attempt isn't bitten by the same dead URL.
+/// Cache-hit branch of `play_external` and `play_syncplay`: returns
+/// ready-to-launch `LaunchArgs` when the play_resolution_cache has a
+/// live row ([`cached_row_is_live`]), otherwise `None` (caller falls
+/// through to a fresh resolve). A dead stream or a dead track evicts
+/// the row before returning None so the next attempt isn't bitten by
+/// the same dead URL.
 pub(crate) async fn try_launch_args_from_cache(
     state: &AppState,
     args: &super::play::PlayArgs,
@@ -101,13 +125,12 @@ pub(crate) async fn try_launch_args_from_cache(
         args.subtype.as_deref(),
     );
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
-    let parsed = url::Url::parse(&cached.upstream_url).ok()?;
-    if !upstream_head_ok(&state.meta_http, &parsed, &cached.referer).await {
+    if !cached_row_is_live(state, &cached).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row stale (HEAD failed), evicted, resolving afresh",
+            "play_external: cache row stale (HEAD failed on the stream or a track), evicted, resolving afresh",
         );
         return None;
     }
