@@ -45,7 +45,12 @@ impl Provider for Stub {
 enum Behavior {
     Answer(&'static str),
     Unreachable(fn() -> AniError),
-    Miss { clean: bool },
+    Miss {
+        clean: bool,
+    },
+    /// The show found, the episode not: the provider's own verdict
+    /// on the episode.
+    MissEpisode,
     Stall,
 }
 
@@ -91,6 +96,11 @@ impl Attempt for Scripted {
             Behavior::Miss { clean } => Err(NativeError {
                 error: AniError::NoResults,
                 clean_miss: clean,
+                failed_at: None,
+            }),
+            Behavior::MissEpisode => Err(NativeError {
+                error: AniError::EpisodeUnavailable,
+                clean_miss: true,
                 failed_at: None,
             }),
             Behavior::Stall => std::future::pending().await,
@@ -825,6 +835,69 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     assert!(
         err.clean_miss,
         "the remembered provider's clean miss stands as its own"
+    );
+}
+
+/// A remembered provider that found the show but not the episode has
+/// said something the rest of the order cannot unsay: a later title
+/// miss means that provider lacks the show, not that the episode
+/// verdict was wrong. The episode's verdict is the one the user sees.
+#[tokio::test]
+async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::MissEpisode),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
+    );
+}
+
+/// The same when the title miss comes from a skipped provider's
+/// half-open trial: the episode verdict from the provider that was
+/// tried first stands over the trial's title miss.
+#[tokio::test]
+async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
     );
 }
 
