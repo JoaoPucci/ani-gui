@@ -94,6 +94,7 @@
 	"syncplay_spawn_failed_unnamed": "Couldn't launch Syncplay — no binary path is set. Install Syncplay or pick its executable in Settings.",
 	"episodes_range_of": "{epStart}–{epEnd} of {total}",
 	"play_failure_no_results": "Couldn't find this title on the streaming source. The episode may not be available — try again later.",
+	"play_failure_episode_unavailable": "This episode isn't available from the streaming source right now. The show is there, but no stream was found for this episode in this audio — try another episode, the other audio, or again later.",
 	"play_failure_scraper": "Couldn't resolve a working stream right now. The streaming source looks unhappy — try again in a few minutes.",
 	"play_failure_timeout": "The streaming source took too long to respond. Try again in a few minutes.",
 	"play_failure_network": "Network trouble reaching the streaming source. Check your connection and try again.",
