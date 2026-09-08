@@ -135,6 +135,7 @@ async fn run<'a>(
 ) -> Result<Attempted<'a, &'static str>, NativeError> {
     with_failover(
         &ORDER,
+        None,
         priority,
         Duration::from_secs(60),
         Duration::from_secs(20),
