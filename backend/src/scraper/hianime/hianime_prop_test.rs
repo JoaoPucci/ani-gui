@@ -20,13 +20,16 @@ fn encode_title(title: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// A result list as the site renders it: every card leads with its
+/// poster link — an href and title that are not the card's identity —
+/// ahead of the detail block whose anchor is.
 fn search_page(cards: &[(String, u64, String, String)]) -> String {
     let mut page = String::from(
         r#"<html><body><section class="block_area block_area_sidebar"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/decoy-1" title="Decoy">Decoy</a></h3></div></section><div class="film_list-wrap">"#,
     );
     for (words, id, title, kind) in cards {
         page.push_str(&format!(
-            r#"<div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{words}-{id}" title="{}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">{kind}</span><span class="dot"></span><span class="fdi-item fdi-duration">24m</span></div></div></div>"#,
+            r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{id}" class="film-poster-ahref item-qtip" title="Poster {id}"></a></div><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{words}-{id}" title="{}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">{kind}</span><span class="dot"></span><span class="fdi-item fdi-duration">24m</span></div></div></div>"#,
             encode_title(title)
         ));
     }
@@ -55,8 +58,10 @@ fn envelope(html: &str) -> String {
 
 proptest::proptest! {
     /// Every card inside the result list comes back as its hit, in
-    /// order, title decoded, badge kept — and the decoy cards outside
-    /// the list never do, however many results there are.
+    /// order, title decoded, badge kept, read from its detail anchor
+    /// and never from the poster link that leads it — and the decoy
+    /// cards outside the list never do, however many results there
+    /// are.
     #[test]
     fn search_cards_round_trip(
         cards in proptest::collection::vec(
