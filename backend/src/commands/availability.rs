@@ -147,9 +147,9 @@ pub struct AvailabilityResponse {
     pub gate_refused: bool,
     /// The provider that answered: on a positive row the one whose
     /// catalogue carries the show, on a negative row the one whose
-    /// clean miss it is — served only while that provider is
-    /// reachable. None on a fallback's mode miss, which is never
-    /// persisted, and on rows written before the field existed.
+    /// miss it is — served only while that provider is reachable and
+    /// every provider ahead of it is not. None on rows written before
+    /// the field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
 }
@@ -173,18 +173,28 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
     parsed.episode_count.is_some() && !parsed.episode_count_approximate
 }
 
-/// Whether a negative row's provider is reachable. A clean miss is
-/// one provider's verdict — a miss does not fail over — and served
-/// through that provider's outage it would hide a show the fallback
-/// carries for the row's whole lifetime, in the exact outage
-/// failover exists for. While the provider's breaker is open the row
-/// is not served and the probe runs again; an unattributed negative
-/// — a row the play path stamped — counts as the primary's.
+/// Whether a negative row's provider can stand behind it now. A miss
+/// is one provider's verdict — a miss does not fail over — so the
+/// row is served only while that provider is reachable and every
+/// provider ahead of it in the order is not: the primary's negative
+/// through the primary's own outage would hide a show the fallback
+/// carries, and the fallback's negative, written during that outage,
+/// proves nothing about the primary once it is back. Otherwise the
+/// row is not served and the probe runs again. An unattributed
+/// negative counts as the primary's; one naming a provider the state
+/// no longer lists has nobody to stand behind it.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
-    let provider = parsed
-        .provider
-        .or_else(|| state.provider_order.first().copied());
-    provider.is_none_or(|p| !crate::commands::providers::gate_of(state, p).is_open())
+    let order = &state.provider_order;
+    let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
+        return true;
+    };
+    let Some(position) = order.iter().position(|p| *p == provider) else {
+        return false;
+    };
+    let open = |p: &crate::scraper::provider::ProviderId| {
+        crate::commands::providers::gate_of(state, *p).is_open()
+    };
+    !open(&provider) && order[..position].iter().all(open)
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
@@ -397,7 +407,7 @@ pub(crate) async fn check_availability_with_base(
         &mut attempt,
     )
     .await;
-    let (available, episode_count, extra_episodes, provider, persistable) = match probed {
+    let (available, episode_count, extra_episodes, provider) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
             let Some(present) = present else {
@@ -412,26 +422,22 @@ pub(crate) async fn check_availability_with_base(
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
-                    true,
                 )
             } else {
                 // The provider ANSWERED absence for this mode.
-                // Cacheable, like the clean search miss — unless it is
-                // a fallback answering for a primary that never did:
-                // absence on the fallback proves nothing about the
-                // primary, and a persisted negative would hide a show
-                // the primary dubs for the row's whole lifetime. The
-                // answer stands for this request; the row stays
-                // unwritten.
-                (false, None, Vec::new(), None, !attempted.after_unreachable)
+                // Cacheable, like the clean search miss, and named as
+                // that provider's: the read side serves the row only
+                // while that provider is reachable and every provider
+                // ahead of it is not — so a fallback's absence stands
+                // through the primary's outage and not a moment past
+                // it, since it proves nothing about the primary.
+                (false, None, Vec::new(), Some(attempted.provider))
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below, naming the provider whose miss
-        // it is. The runner has already demoted a fallback's clean
-        // miss after an unreachable primary, so one that arrives here
-        // was answered with every provider ahead of it reachable.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, true),
+        // it is, under the same read rule.
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by),
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
@@ -439,12 +445,7 @@ pub(crate) async fn check_availability_with_base(
     let episode_count_approximate = false;
     let gate_refused = false;
 
-    if let Some(id) = args
-        .kitsu_id
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .filter(|_| persistable)
-    {
+    if let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) {
         // A refresh that answered while this was out has already put a
         // cache-skipping reading in the row. Writing over it would
         // reinstate the count this lookup read THROUGH the cache to
