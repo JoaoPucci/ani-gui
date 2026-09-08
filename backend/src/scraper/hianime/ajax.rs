@@ -39,7 +39,9 @@ fn unwrap_envelope(json: &str) -> Result<String> {
 /// the marker gone, its attributes renamed, every hash in a format
 /// the parser does not open — and reading that as "none" would let
 /// the mode probe persist an absence that hides a playable show. A
-/// listing with at least one usable row skips the rest.
+/// listing with at least one usable row skips the rest. The episode
+/// list has one more shape that means "none": its container rendered
+/// with nothing inside ([`is_blank_listing`]).
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] for nonempty HTML that produced no row.
@@ -58,15 +60,28 @@ fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
     rest.split('"').next()
 }
 
+/// Whether `html` is the episode list's container with nothing but
+/// whitespace inside — how the site renders an entry it has announced
+/// but not started serving. That is the provider answering "no
+/// episodes"; the same container holding anything the parser does
+/// not read is a changed shape, and stays one.
+fn is_blank_listing(html: &str) -> bool {
+    html.split_once("class=\"ss-list\"")
+        .and_then(|(_, rest)| rest.split_once('>'))
+        .and_then(|(_, body)| body.split_once("</div>"))
+        .is_some_and(|(inside, _)| inside.trim().is_empty())
+}
+
 /// An entry's episodes: each `ep-item` anchor's `data-number` and
 /// `data-id`. Rows whose number or id does not parse are skipped —
-/// the listing numbers integers per entry.
+/// the listing numbers integers per entry. A listing whose container
+/// holds nothing is the entry having no episodes yet.
 ///
 /// # Errors
 /// As [`unwrap_envelope`].
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
-    let rows = html
+    let rows: Vec<EpisodeRef> = html
         .split("ep-item")
         .skip(1)
         .filter_map(|item| {
@@ -79,6 +94,9 @@ pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
             })
         })
         .collect();
+    if rows.is_empty() && is_blank_listing(&html) {
+        return Ok(rows);
+    }
     recognized(&html, rows, "episode list")
 }
 
