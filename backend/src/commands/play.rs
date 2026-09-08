@@ -1744,7 +1744,7 @@ pub(crate) mod tests {
             vec![track("en", true, &sub)],
         );
         let cfg = external_cfg();
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
         assert_eq!(launch.subtitle_urls, vec![sub]);
