@@ -1904,6 +1904,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_dub_success_stamp_keeps_the_provider() {
+        // The dub stamp is boolean — no cap — but it still names the
+        // provider that played the episode: the row is the affinity
+        // the next play starts from, and a dub play through the
+        // fallback that wrote it away would send the next episode
+        // back to the primary's clean miss.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Dub Show".into(),
+            episode: "1".into(),
+            mode: "dub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("dub-2".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("dub-2"),
+            "dub",
+        );
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            generation,
+            Some(12),
+            &[],
+        )
+        .await;
+        let key = crate::commands::availability::cache_key("dub-2", "dub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the boolean stamp keeps the provider"
+        );
+        assert_eq!(row.episode_count, None, "and still no dub cap");
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "dub-2", "dub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "so the next play starts there"
+        );
+    }
+
+    #[tokio::test]
     async fn a_dub_success_stamp_keeps_the_cap_out_of_the_row() {
         // picked.episodes is the provider-wide list: a dub resolve
         // only proves the REQUESTED episode has an English embed.
