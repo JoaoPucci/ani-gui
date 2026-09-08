@@ -1242,14 +1242,45 @@ mod tests {
         server
     }
 
+    /// A hianime that answers every search with nothing.
+    async fn stub_hianime_no_results() -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/search"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<html><body><div class="film_list film_list-grid"><p>No animes found.</p></div><div id="main-sidebar"></div></body></html>"#,
+            ))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn open_breaker(gate: &crate::scraper::gate::ScraperGate) {
+        for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
+            gate.record(
+                crate::scraper::gate::ScrapeOutcome::Failure,
+                tokio::time::Instant::now(),
+            );
+        }
+    }
+
+    fn close_breaker(gate: &crate::scraper::gate::ScraperGate) {
+        gate.record(
+            crate::scraper::gate::ScrapeOutcome::Success,
+            tokio::time::Instant::now(),
+        );
+    }
+
     #[tokio::test]
-    async fn a_fallbacks_mode_miss_after_an_unreachable_primary_is_not_persisted() {
-        // The primary never answered; the fallback found the show
-        // and has no dub of it. That is the answer for now — but
-        // absence on the fallback proves nothing about a primary that
-        // may carry the dub, and a persisted negative would hide the
-        // show for the row's whole lifetime after the primary
-        // recovers.
+    async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served_while_the_outage_lasts(
+    ) {
+        // The primary never answered; the fallback found the show and
+        // has no dub of it. That is a verdict too — the fallback's —
+        // and the row says so: served while the primary is down and
+        // the fallback up, so the outage does not re-walk an absent
+        // show on every look, and not once the primary is back, since
+        // absence on the fallback proves nothing about it.
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
@@ -1269,11 +1300,79 @@ mod tests {
             .await
             .expect("the fallback answered");
         assert!(!got.available, "the fallback carries no dub");
+        let row = meta_cache_get(&state.cache_pool, &cache_key("558", "dub"))
+            .expect("cache read")
+            .expect("the fallback's verdict is persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "and named as the fallback's"
+        );
+
+        // The outage is on: the row is served, the lists hide.
+        open_breaker(&state.anidb_gate);
+        let listed = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["558".into()],
+                mode: "dub".into(),
+            },
+        );
+        assert_eq!(listed.cached.get("558"), Some(&false));
+        let asked_before = hianime.received_requests().await.expect("recorded").len();
+        check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+            .await
+            .expect("served");
+        let asked_after = hianime.received_requests().await.expect("recorded").len();
+        assert_eq!(
+            asked_before, asked_after,
+            "a cache hit asks the fallback nothing"
+        );
+
+        // The primary is back: the fallback's row no longer stands
+        // for it.
+        close_breaker(&state.anidb_gate);
+        let listed = batch_cached(
+            &state,
+            &AvailabilityBatchArgs {
+                kitsu_ids: vec!["558".into()],
+                mode: "dub".into(),
+            },
+        );
         assert!(
-            meta_cache_get(&state.cache_pool, &cache_key("558", "dub"))
-                .expect("cache read")
-                .is_none(),
-            "a mode miss on the fallback while the primary was unreachable is not a verdict"
+            !listed.cached.contains_key("558"),
+            "the fallback's negative is not served once the primary is reachable"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fallbacks_clean_miss_during_the_primarys_outage_is_persisted_as_its_own() {
+        let hianime = stub_hianime_no_results().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Nowhere Show",
+            "mode": "sub",
+            "kitsu_id": "563"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+            .await
+            .expect("a clean miss on the fallback is an answer");
+        assert!(!got.available);
+        let row = meta_cache_get(&state.cache_pool, &cache_key("563", "sub"))
+            .expect("cache read")
+            .expect("persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime)
         );
     }
 
