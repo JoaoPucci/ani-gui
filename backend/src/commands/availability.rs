@@ -558,11 +558,20 @@ pub(crate) fn cached_provider(
 /// unknown from these call sites (they don't read availableEpisodes
 /// off the candidate), so the cache row stores None there; the next
 /// detail-page probe will fill it in.
-pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool) {
+pub fn write_cache(
+    state: &AppState,
+    kitsu_id: &str,
+    mode: &str,
+    available: bool,
+    provider: Option<crate::scraper::provider::ProviderId>,
+) {
     // Status unknown at this call site (play / download success /
     // failure paths). Use ongoing TTL — the next detail-page probe
     // will overwrite this row anyway, since check_availability's
-    // self-heal kicks in for rows with episode_count=None.
+    // self-heal kicks in for rows with episode_count=None. The
+    // provider is kept: the row is the affinity the next play starts
+    // from, and a boolean stamp that dropped it would send the next
+    // episode back to a provider that may not carry the show.
     write_cache_full(
         state,
         kitsu_id,
@@ -574,7 +583,7 @@ pub fn write_cache(state: &AppState, kitsu_id: &str, mode: &str, available: bool
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider,
         },
     );
 }
@@ -1914,7 +1923,7 @@ mod tests {
     fn write_cache_round_trips_for_negative_results() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
-        write_cache(&state, "kid-2", "dub", false);
+        write_cache(&state, "kid-2", "dub", false, None);
         let resp = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1932,7 +1941,7 @@ mod tests {
     fn batch_cached_keys_by_mode() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
-        write_cache(&state, "kid-3", "sub", true);
+        write_cache(&state, "kid-3", "sub", true, None);
         let dub_resp = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1959,7 +1968,7 @@ mod tests {
     fn batch_cached_skips_empty_ids_in_input() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
-        write_cache(&state, "kid-4", "sub", true);
+        write_cache(&state, "kid-4", "sub", true, None);
         let resp = batch_cached(
             &state,
             &AvailabilityBatchArgs {
