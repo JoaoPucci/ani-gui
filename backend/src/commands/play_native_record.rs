@@ -45,21 +45,68 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved) {
 /// The stamp orders Continue Watching and, when two providers have
 /// each left a row for one show, picks the one to resume from. The
 /// embedded player stamps on mark-watched, once playback has
-/// reported progress; a handoff has no progress to wait for — the
-/// launch is the watch — so it stamps as it writes the row. A failed
-/// write is logged and swallowed, like the row's.
-pub(crate) fn stamp_watched_now(state: &AppState, native: &NativeResolved) {
+/// reported progress; a handoff stamps once the player has started.
+/// A failed write is logged and swallowed, like the row's.
+pub(crate) fn stamp_watched_now(state: &AppState, show_id: &str) {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    if let Err(e) = crate::commands::kitsu::watched_at_put(state, &native.slug, now_ms) {
+    if let Err(e) = crate::commands::kitsu::watched_at_put(state, show_id, now_ms) {
         tracing::warn!(
-            show_id = %native.slug,
+            show_id = %show_id,
             error = ?e,
-            "watched-at stamp write failed after handoff",
+            "watched-at stamp write failed",
         );
     }
+}
+
+/// A watch a handoff will record once its player has started: the
+/// history row's three fields, from a fresh resolve or a cached one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Watch {
+    /// The show key's string.
+    pub show_id: String,
+    /// The provider's title for the row.
+    pub title: String,
+    /// The row's episode number, in the provider's numbering.
+    pub ep_no: String,
+}
+
+impl Watch {
+    /// The watch a fresh resolve describes.
+    #[must_use]
+    pub fn of(native: &NativeResolved) -> Self {
+        Self {
+            show_id: native.slug.clone(),
+            title: native.title.clone(),
+            ep_no: native.resolved_slot.to_string(),
+        }
+    }
+}
+
+/// Record a handoff's watch: the history row and the watched-at
+/// stamp, written once the player has started — the spawn is the
+/// watch, and a player that failed to start leaves nothing behind.
+/// A watch without a show id (a cached row from before the field)
+/// records nothing.
+pub(crate) fn record_watch(state: &AppState, watch: &Watch) {
+    if watch.show_id.is_empty() {
+        return;
+    }
+    let entry = crate::history::HistoryEntry {
+        ep_no: watch.ep_no.clone(),
+        id: watch.show_id.clone(),
+        title: watch.title.clone(),
+    };
+    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+        tracing::warn!(
+            show_id = %watch.show_id,
+            error = ?e,
+            "history write failed after handoff",
+        );
+    }
+    stamp_watched_now(state, &watch.show_id);
 }
 
 /// Record the watch.

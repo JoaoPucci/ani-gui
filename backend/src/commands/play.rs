@@ -1548,7 +1548,7 @@ mod tests {
         seed_play_cache(&state, &args, &format!("{}/v.mp4", server.uri()), "");
         let cfg = external_cfg();
 
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
 
@@ -1635,7 +1635,7 @@ mod tests {
         );
         let cfg = external_cfg();
 
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
         assert_eq!(launch.referer.as_deref(), Some("https://allmanga.to"));

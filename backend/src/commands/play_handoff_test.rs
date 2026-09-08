@@ -99,7 +99,7 @@ async fn the_handoff_resolves_through_the_native_walk() {
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let launch = super::play_handoff::resolve_launch_args(&state, &args_for())
+    let (launch, _watch) = super::play_handoff::resolve_launch_args(&state, &args_for())
         .await
         .expect("the native walk resolves the stream");
     assert!(

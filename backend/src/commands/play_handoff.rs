@@ -16,21 +16,22 @@ use crate::error::Result;
 /// Resolve `args` through the native walk and describe the launch.
 ///
 /// A handoff is always a click, never a prefetch, so the walk runs at
-/// interactive priority, the breaker hears the resolution's outcome
-/// under the same mapping the embedded path uses, and the resolve
-/// leaves the same two records behind — the numbering stamp and the
-/// history row. Sending an episode to mpv or Syncplay is as much a
-/// watch as playing it in the window, and both go through
-/// [`crate::commands::play_native_record`] so the two paths cannot
-/// disagree about what a row's number means. The handoff also
-/// stamps the watch's moment beside the row: the embedded player
-/// does that on mark-watched, and a handoff has no progress to wait
-/// for.
+/// interactive priority and the breaker hears the resolution's
+/// outcome under the same mapping the embedded path uses. The
+/// resolve stamps the numbering it learned and hands back the watch
+/// to record — the history row and the watched-at stamp — which the
+/// command writes once the player has started: the spawn is the
+/// watch, and a player that fails to start leaves nothing behind.
+/// Both paths go through [`crate::commands::play_native_record`] so
+/// they cannot disagree about what a row's number means.
 ///
 /// # Errors
 /// The walk's typed verdicts — `NoResults` for a clean miss, the
 /// transport's own errors for weather.
-pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<LaunchArgs> {
+pub async fn resolve_launch_args(
+    state: &AppState,
+    args: &PlayArgs,
+) -> Result<(LaunchArgs, crate::commands::play_native_record::Watch)> {
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
@@ -58,9 +59,8 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
     }
     let native = native.map_err(|ne| ne.error)?;
     crate::commands::play_native_record::stamp_numbering(state, &native);
-    crate::commands::play_native_record::write_history(state, &native, &args.episode);
-    crate::commands::play_native_record::stamp_watched_now(state, &native);
-    Ok(launch_args_for(native, args, &cfg))
+    let watch = crate::commands::play_native_record::Watch::of(&native);
+    Ok((launch_args_for(native, args, &cfg), watch))
 }
 
 /// The launch a resolve describes: the stream, the referer its
