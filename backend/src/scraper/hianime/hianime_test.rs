@@ -244,23 +244,50 @@ fn a_nonempty_episode_list_with_no_recognizable_rows_is_a_parse_failure() {
     );
 }
 
+/// The site's server list as captured on 2026-09-08, two days after
+/// the first capture: `HD-1` and `HD-2` are megaplay.buzz now, and
+/// the zokoanime server — the one whose page carries the payload —
+/// is listed under its own name. The names rotate; the page shape
+/// is what the client can read.
+const SERVERS_RENAMED: &str = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1iY2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xNzM1LzM5MS9zdWI=\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9kdWI/cz10Y2Ru\"></div>"}"#;
+
+/// The servers to try for a mode, in order: the ones on a host whose
+/// embed page the client can read first, then the site's own order.
+/// A name is not a shape — `HD-1` moved hosts between two captures.
 #[test]
-fn the_preferred_server_is_hd1_of_the_mode_else_the_first_of_the_mode() {
+fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
     let servers = parse_servers(SERVERS).expect("parsed");
     assert_eq!(
-        preferred_server(&servers, "sub").map(|s| s.name.as_str()),
-        Some("HD-1")
+        servers_for(&servers, "sub")
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["HD-1", "HD-2"],
+        "zokoanime first, as the site lists it"
     );
-    let without_hd1: Vec<ServerEmbed> = servers
-        .iter()
-        .filter(|s| s.name != "HD-1")
-        .cloned()
-        .collect();
+    let renamed = parse_servers(SERVERS_RENAMED).expect("parsed");
     assert_eq!(
-        preferred_server(&without_hd1, "sub").map(|s| s.embed_url.as_str()),
-        Some("https://megaplay.buzz/stream/mal/1/1/sub")
+        renamed.len(),
+        4,
+        "the captured list parses whole: {renamed:?}"
     );
-    assert!(preferred_server(&without_hd1, "dub").is_none());
+    assert_eq!(
+        servers_for(&renamed, "sub")
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ZokoAnime", "HD-1", "HD-2"],
+        "zokoanime first though the site lists it last"
+    );
+    assert_eq!(
+        servers_for(&renamed, "dub")
+            .iter()
+            .map(|s| s.embed_url.as_str())
+            .collect::<Vec<_>>(),
+        vec!["https://megaplay.buzz/stream/s-2/8272/dub?s=tcdn"],
+        "a mode with no readable host still lists what the site has"
+    );
+    assert!(servers_for(&renamed, "raw").is_empty());
 }
 
 // ── embed page ──────────────────────────────────────────────────────
@@ -420,6 +447,37 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21420") => {
+                if ajax {
+                    ok(SERVERS_RENAMED)
+                } else {
+                    refused(403)
+                }
+            }
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21421") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // megaplay's player page: no payload in the markup, the
+            // sources come from a call its script makes.
+            "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
+            | "https://megaplay.buzz/stream/s-2/8272/sub?s=bcdn" => ok(
+                r#"<html><head><title>File 143764 - MegaPlay</title></head><body><div id="player"></div><script src="/assets/player.js"></script></body></html>"#,
+            ),
+            "https://zokoanime.video/stream/mal/1735/391/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(format!(
+                        r#"<html><body><script>window.__P="{EMBED_BLOB}"</script></body></html>"#
+                    ))
+                } else {
+                    refused(403)
+                }
+            }
             "https://zokoanime.video/stream/mal/1/1/sub" => {
                 if header(req, "Referer") == Some(&format!("{BASE}/")) {
                     ok(format!(
@@ -551,4 +609,31 @@ async fn detail_year_reads_the_entry_page_and_soft_misses() {
         None,
         "a missing page is no hint, not a failure"
     );
+}
+
+/// The site lists several servers per episode and names them by
+/// slot, and the slots move between hosts; only one host's page
+/// carries the payload the client reads. The master comes from the
+/// first server whose page it can read, whatever the site calls it.
+#[tokio::test]
+async fn the_master_comes_from_the_first_server_whose_page_the_client_reads() {
+    let c = client();
+    let source = c.master_playlist_url(21420, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+    assert_eq!(
+        source.referer.as_deref(),
+        Some("https://zokoanime.video/"),
+        "the referer is the host that served the payload"
+    );
+    assert!(c.has_mode(21420, "sub").await.expect("asked"));
+}
+
+#[tokio::test]
+async fn an_episode_whose_servers_all_serve_unreadable_pages_has_no_stream() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21421, "sub")
+        .await
+        .expect_err("nothing readable");
+    assert!(matches!(err, AniError::NoResults), "{err:?}");
 }
