@@ -264,6 +264,21 @@ impl ScraperGate {
         s.open_until.is_some_and(|until| Instant::now() < until)
     }
 
+    /// Whether the provider is refusing right now: the breaker open,
+    /// or an advertised rate-limit window still running. Admission
+    /// keeps the two apart — background waits through a pause and is
+    /// refused by an open breaker — but a verdict that has to be
+    /// stood behind asks one question of both: a walk sent to this
+    /// provider now is told to come back later, and moves on to the
+    /// next. A read, never a state change.
+    #[must_use]
+    pub fn is_refusing(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        let now = Instant::now();
+        s.open_until.is_some_and(|until| now < until)
+            || s.paused_until.is_some_and(|paused| now < paused)
+    }
+
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
     /// but a [`ScrapeOutcome::RateLimited`] opens an advertised-window
     /// pause immediately — background admits then WAIT through the
