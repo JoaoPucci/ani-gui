@@ -175,10 +175,11 @@ fn a_background_deadline_elapse_is_no_evidence() {
 fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
     use proptest::strategy::Strategy as _;
     proptest::prop_oneof![
-        (0u8..4).prop_map(|k| match k {
+        (0u8..5).prop_map(|k| match k {
             0 => AniError::Network,
             1 => AniError::Timeout,
             2 => AniError::NoResults,
+            3 => AniError::EpisodeUnavailable,
             _ => AniError::GateRefused,
         }),
         (0u16..1000).prop_map(|status| AniError::Upstream { status }),
@@ -211,7 +212,7 @@ proptest::proptest! {
         } else {
             match &error {
                 AniError::GateRefused => None,
-                AniError::NoResults => Some(ScrapeOutcome::Success),
+                AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
                 AniError::Timeout if background => None,
                 AniError::RateLimited { retry_after_secs } => {
                     Some(ScrapeOutcome::RateLimited {
