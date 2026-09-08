@@ -2764,20 +2764,59 @@ async fn a_sidecar_the_user_already_has_is_preserved() {
     );
 }
 
-/// Claiming a sidecar's name is `create_new`; what follows can fail
-/// — the disk fills, the transfer is cancelled — and a partial file
-/// left at the name would be kept as the user's own by every later
-/// download. So a claim that is not finished takes its file with it.
+/// A sidecar's name carries only a complete file. The bytes go to a
+/// scratch sibling first, and the name is taken — never replaced —
+/// only once they are all there; a claim that is not finished takes
+/// its scratch with it and the name stays free. A crash between the
+/// two leaves the scratch behind, not a partial file at the name that
+/// every later download would keep as the user's own.
 #[tokio::test]
 async fn a_sidecar_claim_dropped_before_it_is_finished_leaves_no_file() {
     let dest = tempfile::tempdir().expect("dest");
     let path = dest.path().join("Show Episode 3.en.vtt");
     let claim = claim_new(&path).await.expect("claimed");
-    assert!(path.exists(), "the name is taken the moment it is claimed");
+    assert!(
+        !path.exists(),
+        "the name is not taken until the file is complete"
+    );
+    let scratch: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        scratch.len(),
+        1,
+        "the bytes go to one scratch sibling: {scratch:?}"
+    );
+    assert!(
+        scratch[0].starts_with('.'),
+        "a hidden scratch name: {scratch:?}"
+    );
     drop(claim);
     assert!(
         !path.exists(),
         "an unfinished claim leaves nothing at the name"
+    );
+    assert_eq!(
+        std::fs::read_dir(dest.path()).expect("dir").count(),
+        0,
+        "and takes its scratch with it"
+    );
+}
+
+#[tokio::test]
+async fn a_finished_sidecar_claim_leaves_only_the_complete_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    write_new(&path, b"WEBVTT\n\nhi\n").await.expect("written");
+    let names: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Show Episode 3.en.vtt".to_string()],
+        "no scratch remains"
     );
 }
 
