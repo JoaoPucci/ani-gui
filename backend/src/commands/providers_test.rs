@@ -257,8 +257,14 @@ async fn a_stalled_primary_yields_to_the_fallback_within_its_budget() {
     );
 }
 
+/// The runner reports the answer as the provider gave it. A clean
+/// miss on the fallback while the primary was unreachable is the
+/// fallback's clean miss — whose verdict a negative row is, and
+/// while whom it may be served, is the cache's rule, which names the
+/// provider on the row and serves it only while every provider
+/// ahead of that one is down.
 #[tokio::test]
-async fn a_fallbacks_clean_miss_after_an_unreachable_primary_is_not_a_verdict() {
+async fn a_fallbacks_clean_miss_after_an_unreachable_primary_stays_its_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
@@ -272,8 +278,8 @@ async fn a_fallbacks_clean_miss_after_an_unreachable_primary_is_not_a_verdict() 
         .expect_err("missed");
     assert!(matches!(err.error, AniError::NoResults));
     assert!(
-        !err.clean_miss,
-        "the primary never answered; absence on the fallback proves nothing about it"
+        err.clean_miss,
+        "the fallback searched every alias and found nothing; that is its clean miss"
     );
 }
 
@@ -615,8 +621,8 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     .expect_err("nobody served it");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(
-        !err.clean_miss,
-        "absence on one provider with another unreachable proves nothing"
+        err.clean_miss,
+        "the remembered provider's clean miss stands as its own"
     );
 }
 
