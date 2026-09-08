@@ -65,7 +65,9 @@ requires it; the exception is the update check that runs on launch
   episode through hianime also fetches its embed page from the embed
   host the site names for that episode. The site chooses those
   hosts, and they can change without an app update; at the time of
-  writing they are zokoanime.video and megaplay.buzz.
+  writing the listings name zokoanime.video, megaplay.buzz and
+  vidtube.site, and the client fetches whichever the site lists for
+  the episode.
 - **Video playback** — the chosen episode's playlist, its segments
   and any sidecar subtitle files are fetched directly from the
   source CDN the catalogue or its embed page names. For hianime that
