@@ -72,7 +72,7 @@ Only a walk in which every search completed and nothing matched counts as eviden
 
 ## Episode caps
 
-The picked show's episode list arrives with the probe, so the availability cap is the exact highest listed episode number — no second fetch and no approximation. Both providers list integer episodes only; recap half-episodes don't exist in their numbering. The two number differently: anidb.app counts continuously across a franchise's seasons, hianime within each season-split entry — which is why the cap is stamped per provider and never compared across them.
+The picked show's episode list arrives with the probe, so the availability cap is the exact highest listed episode number — no second fetch and no approximation. The cap is an integer on both providers. anidb.app also keeps a fractional display tag on a recap row (`number2`, `1061.5` for a One Piece recap), and the resolver surfaces those as playable extras beside the cap rather than inside it; hianime lists no such tags. The two number differently: anidb.app counts continuously across a franchise's seasons, hianime within each season-split entry — which is why the cap is stamped per provider and never compared across them.
 
 ## Kitsu → MAL via the mappings endpoint
 
