@@ -133,9 +133,12 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // says about the client. A page that carries the payload the
         // key does not open is the site having changed, and the
         // client no longer reading it: a parse failure, ahead of a
-        // host that refused or could not be reached. A page without
-        // the payload is a host the client does not read at all, and
-        // an episode with only those has no stream.
+        // host that refused or could not be reached. Among those, a
+        // block outranks an answered status or a dropped connection
+        // ([`weightier`]), so one host's not-found cannot hide the
+        // next host's refusal from the breaker. A page without the
+        // payload is a host the client does not read at all, and an
+        // episode with only those has no stream.
         let mut broken: Option<AniError> = None;
         let mut weather: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
@@ -145,7 +148,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             let page = match self.content(&embed).await {
                 Ok(page) => page,
                 Err(e) => {
-                    weather.get_or_insert(e);
+                    weather = Some(match weather.take() {
+                        Some(kept) => weightier(kept, e),
+                        None => e,
+                    });
                     continue;
                 }
             };
@@ -189,6 +195,19 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         self.fetch.last_attempt_at()
+    }
+}
+
+/// The weather to keep when two of an episode's hosts failed: a
+/// provider block — a refusal-shaped status or a rate limit — outranks
+/// an answered status or a dropped connection, since the block speaks
+/// for the provider and the breaker must hear it; between two of a
+/// rank the one seen first stays.
+fn weightier(kept: AniError, next: AniError) -> AniError {
+    if next.is_provider_block() && !kept.is_provider_block() {
+        next
+    } else {
+        kept
     }
 }
 
