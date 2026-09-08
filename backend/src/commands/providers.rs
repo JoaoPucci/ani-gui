@@ -96,13 +96,16 @@ pub fn fails_over(error: &AniError) -> bool {
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
-/// path: when every provider that was tried answered a miss, the
-/// skipped ones are asked before the miss surfaces. Background
-/// traffic keeps the skip.
+/// path: when every provider that was tried answered a miss or was
+/// unreachable, the skipped ones are asked before the miss or the
+/// error surfaces — a skipped provider may have recovered, and its
+/// answer or its miss is then the walk's. Background traffic keeps
+/// the skip.
 ///
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
-/// provider answered, the first unreachable error: the primary's.
+/// provider answered, the first unreachable error: the primary's
+/// when it was tried.
 #[allow(clippy::too_many_arguments)]
 pub async fn with_failover<'c, 'g, A, C, G>(
     order: &[ProviderId],
@@ -170,25 +173,28 @@ where
             }
         }
     }
-    if let Some(miss) = affinity_miss {
-        return retry_skipped(
-            miss,
-            overall,
-            total_budget,
-            attempt_budget,
-            priority,
-            &mut client_for,
-            &gate_of,
-            attempt,
-            &mut walk,
-        )
-        .await;
-    }
-    Err(walk.first_unreachable.unwrap_or(NativeError {
-        error: AniError::Network,
-        clean_miss: false,
-        failed_at: None,
-    }))
+    // Nothing answered: the remembered provider's miss set aside, or
+    // the first unreachable error. Either way the skipped providers
+    // get their trial before it surfaces.
+    let verdict = affinity_miss
+        .or_else(|| walk.first_unreachable.take())
+        .unwrap_or(NativeError {
+            error: AniError::Network,
+            clean_miss: false,
+            failed_at: None,
+        });
+    retry_skipped(
+        verdict,
+        overall,
+        total_budget,
+        attempt_budget,
+        priority,
+        &mut client_for,
+        &gate_of,
+        attempt,
+        &mut walk,
+    )
+    .await
 }
 
 /// What a walk has learned so far.
@@ -290,14 +296,16 @@ where
     }
 }
 
-/// A miss is the walk's verdict — unless providers were skipped for
-/// an open breaker on an interactive walk, which the gate would have
-/// admitted as the breaker's half-open trial. Those are asked now:
-/// an answer is the walk's, and a miss of theirs — the last answer
-/// given — replaces the one they were asked for.
+/// The walk's verdict so far — a miss, or the first unreachable
+/// error when nothing answered — stands, unless providers were
+/// skipped for an open breaker on an interactive walk, which the
+/// gate would have admitted as the breaker's half-open trial. Those
+/// are asked now: an answer is the walk's, a miss of theirs — the
+/// last answer given — replaces the verdict they were asked for, and
+/// one unreachable too leaves it standing.
 ///
 /// # Errors
-/// The miss that stands.
+/// The verdict that stands.
 #[allow(clippy::too_many_arguments)]
 async fn retry_skipped<'c, 'g, A, C, G>(
     miss: NativeError,
