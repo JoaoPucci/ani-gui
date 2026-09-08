@@ -91,7 +91,7 @@ The mappings response is cached in `meta_cache` indefinitely — Kitsu's mapping
 ## Failure modes the bridge tolerates
 
 - **Kitsu has no MAL mapping** — aniskip lookup returns an empty list (the player just doesn't show the skip button); banner backfill falls through to the blurred-poster placeholder.
-- **The primary provider is unreachable** — the walk runs against the next provider; a miss reached there after an unreachable primary is not persisted as absence.
+- **The primary provider is unreachable** — the walk runs against the next provider. A miss reached there is persisted as that provider's negative verdict, naming it, and is served only while that provider is reachable and the primary is not; once the primary is back the row stops standing and the probe runs again.
 - **The provider has no candidate matching any title** — the play path returns `NoResults`; the frontend renders an "isn't in the streaming catalogue" overlay instead of a cryptic backend error. A provider that answered ends the walk — the miss is not retried on the next provider.
 - **The picker can't disambiguate** — exact-title-or-first-hit fallback. This is the worst case for correctness, but it's still a real entry on the provider; the user sees a sub-show rather than no show. They can pick the right one manually from search.
 - **A cached play-resolution URL stops working** — the silent retry path evicts the cached row and re-resolves once before surfacing an error to the user.
