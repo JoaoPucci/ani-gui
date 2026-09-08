@@ -373,6 +373,28 @@ starting it, and delete it when you find it done.
   the canonical domain is filtered per ISP, and the origin is a
   constant with a test override only.
 
+## Decoding hianime's other embed hosts
+
+- **Read the embed pages of hianime's other servers**, so an episode
+  plays from whichever server the site lists rather than from the
+  one host the client can read. An episode's server list names
+  several servers by slot and the site moves the slots between
+  hosts: on 2026-09-06 `HD-1` was zokoanime.video, whose page carries
+  the XOR'd payload the client decodes; on 2026-09-08 `HD-1` and
+  `HD-2` were megaplay.buzz and the zokoanime server was listed under
+  its own name. The client tries the hosts it can read first and
+  takes the first page that decodes, so the rename cost nothing —
+  but the day the readable host drops off a listing, that episode
+  has no stream.
+
+  What the other pages look like: megaplay.buzz and vidtube.site
+  serve a player page with no payload in its markup (a title like
+  "File 143764 - MegaPlay", a player element, a script); their
+  sources come from a call the script makes, which the client has
+  not been taught. Reverse-engineering that is the work, host by
+  host, and each is a maintenance cost of its own. Not urgent while
+  zokoanime keeps appearing on every listing seen so far.
+
 ## A provider order and switch in settings
 
 - **Let the user order the providers and switch one off.** The
