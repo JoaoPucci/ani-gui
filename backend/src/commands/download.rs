@@ -992,16 +992,21 @@ pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::R
     claim_new(path).await?.finish(body).await
 }
 
-/// A sidecar's name, taken with create-new and held until the file
-/// is finished. Dropped unfinished — the write failed, the transfer
-/// was cancelled — it removes the file it created: a partial file
-/// at the name would be kept as the user's own by every later
-/// download, which never replaces what it finds.
+/// A sidecar's name, taken only for a complete file. The bytes go to
+/// a hidden scratch sibling; finishing installs the scratch at the
+/// name — a link, or a create-new and a rename where links are not
+/// offered — refusing a name already taken, which is the user's. A
+/// claim dropped unfinished removes its scratch and the name stays
+/// free, and a kill or a power loss between the two leaves the
+/// scratch behind, never a partial file at the name that every later
+/// download would keep as the user's own.
 #[derive(Debug)]
 pub(crate) struct SidecarClaim {
-    path: std::path::PathBuf,
-    /// Open while the claim is live; closed before the removal, since
-    /// Windows will not remove an open file.
+    target: std::path::PathBuf,
+    scratch: std::path::PathBuf,
+    /// Open while the bytes are being written; closed before the
+    /// install and before any removal, since Windows will not move
+    /// or remove an open file.
     file: Option<tokio::fs::File>,
     finished: bool,
 }
@@ -1009,32 +1014,72 @@ pub(crate) struct SidecarClaim {
 /// Claim `path` for a new sidecar.
 ///
 /// # Errors
-/// The open's own; `AlreadyExists` when the name is taken.
+/// `AlreadyExists` when the name is taken; the scratch's own open
+/// errors otherwise.
 pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<SidecarClaim> {
+    if tokio::fs::try_exists(path).await? {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "a sidecar is already at the name",
+        ));
+    }
+    let scratch = path.with_file_name(format!(
+        ".ani-gui-{}-{}.part.vtt",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
     let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(path)
+        .open(&scratch)
         .await?;
     Ok(SidecarClaim {
-        path: path.to_path_buf(),
+        target: path.to_path_buf(),
+        scratch,
         file: Some(file),
         finished: false,
     })
 }
 
 impl SidecarClaim {
-    /// Write the whole body and keep the file.
+    /// Write the whole body to the scratch and install it at the name.
     ///
     /// # Errors
-    /// The write's own; the file is removed on the way out.
+    /// The write's own; `AlreadyExists` when the name was taken in
+    /// the meantime. The scratch is removed on every way out.
     pub(crate) async fn finish(mut self, body: &[u8]) -> std::io::Result<()> {
         use tokio::io::AsyncWriteExt as _;
-        let file = self.file.as_mut().expect("a live claim holds its file");
+        let mut file = self.file.take().expect("a live claim holds its file");
         file.write_all(body).await?;
         file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
+        install_sidecar(&self.scratch, &self.target)?;
         self.finished = true;
         Ok(())
+    }
+}
+
+/// Put the complete scratch at the name without ever replacing what
+/// is there: a hard link refuses a taken name atomically and leaves
+/// the scratch as a second name to remove; where links are not
+/// offered, a create-new claims the name and a rename fills it.
+fn install_sidecar(scratch: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::hard_link(scratch, target) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(scratch);
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) => {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)?;
+            std::fs::rename(scratch, target).inspect_err(|_| {
+                let _ = std::fs::remove_file(target);
+            })
+        }
     }
 }
 
@@ -1042,8 +1087,10 @@ impl Drop for SidecarClaim {
     fn drop(&mut self) {
         drop(self.file.take());
         if !self.finished {
-            if let Err(e) = std::fs::remove_file(&self.path) {
-                tracing::warn!(path = %self.path.display(), error = %e, "download: unfinished subtitle not removed");
+            if let Err(e) = std::fs::remove_file(&self.scratch) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(path = %self.scratch.display(), error = %e, "download: unfinished subtitle scratch not removed");
+                }
             }
         }
     }
