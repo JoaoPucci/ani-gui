@@ -35,7 +35,7 @@ pub fn breaker_outcome<T>(
             // resolves are never paced: their elapse is a real
             // stall and falls through to the failure arm.
             AniError::Timeout if priority == ScrapePriority::Background => None,
-            AniError::NoResults => Some(ScrapeOutcome::Success),
+            AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
             AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
             }),

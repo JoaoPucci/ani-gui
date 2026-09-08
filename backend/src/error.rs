@@ -39,6 +39,13 @@ pub enum AniError {
     #[error("no results")]
     NoResults,
 
+    /// The show was found and the episode was not — not listed, or
+    /// with no stream in the requested mode. The episode's verdict,
+    /// distinct from a title the catalogue lacks, so the page can
+    /// say which; an answer, like the miss, never a block.
+    #[error("episode unavailable")]
+    EpisodeUnavailable,
+
     /// The provider answered HTTP 200 with an in-band "Too many
     /// requests" error — an application-level rate limit. Distinct
     /// from [`AniError::Upstream`] with 429: the status line says
@@ -167,6 +174,7 @@ impl AniError {
             Self::Scraper { key } => key,
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
+            Self::EpisodeUnavailable => crate::i18n::keys::PLAY_EPISODE_UNAVAILABLE,
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
             Self::FfmpegMissing => crate::i18n::keys::DOWNLOAD_FFMPEG_MISSING,
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
@@ -211,7 +219,7 @@ impl AniError {
     #[must_use]
     pub fn http_status_code(&self) -> u16 {
         match self {
-            Self::NoResults => 404,
+            Self::NoResults | Self::EpisodeUnavailable => 404,
             Self::InvalidToken => 401,
             // A rate-limit passes through verbatim so the frontend can tell it
             // apart from a generic bad gateway and tell the user to retry.
