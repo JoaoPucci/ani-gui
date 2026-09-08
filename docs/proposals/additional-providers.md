@@ -1,8 +1,15 @@
 # Proposal: additional stream providers
 
-**Status**: proposed. The candidate survey below was taken on
-2026-09-05 and describes a landscape that rots quickly — re-verify
-every claim in it before building on one.
+**Status**: implemented. This is the proposal as it was written on
+2026-09-05, before the work, kept for its survey and its reasoning;
+what shipped is described in `docs/architecture.md` under
+"Providers and failover", and differs from the design below in its
+details. Read the tense here as historical: the single-provider
+resolution the opening describes, and the seam, the per-provider
+gates and the orchestrator the integration section says are
+missing, are all built. The candidate survey describes a landscape
+that rots quickly — re-verify every claim in it before building on
+one.
 
 ## Why this matters
 

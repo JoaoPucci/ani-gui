@@ -178,7 +178,9 @@ starting it, and delete it when you find it done.
   bottom centre, for the tracks inside a playlist and the sidecar
   ones alike. Two directions, not exclusive: a settings surface for
   font, size, colour, background, edge and position, and the
-  per-anime accent the app already derives from the cover colour
+  per-anime accent the app already picks for a show — today a
+  palette entry chosen by hashing the Kitsu id, with cover-colour
+  theming a noted intent in that module and not yet the source —
   tinting the cues, in the spirit of the per-anime theming the
   detail and watch pages do.
 
@@ -223,8 +225,10 @@ starting it, and delete it when you find it done.
   diagnostics page holds boot-time notices — and a single surface
   would give them, and whatever later features emit, somewhere to go
   when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 (see "Additional
-  providers" below): every uncached play failed as unreachable and
+  outages like the provider failure of 2026-08-27 — the outage that
+  led to the second provider, now failed over to automatically (see
+  "Providers and failover" in `docs/architecture.md`): every
+  uncached play failed as unreachable and
   the app had nowhere to say the problem was the provider's, not
   their setup's. That job needs a
   notice source that does not exist yet — the app inferring an outage
@@ -324,8 +328,10 @@ starting it, and delete it when you find it done.
   already name their provider.
 
   Rate limiting is the biggest risk and the reason to plan before
-  building. A clean miss costs a full walk — every alias searched, up
-  to five candidates probed — and gap filling makes every genuinely
+  building. A clean miss costs a full walk — every alias searched,
+  and up to five candidates probed per alias, so a show with four
+  aliases can cost twenty-five episode-list probes plus a detail-year
+  request per candidate — and gap filling makes every genuinely
   absent show cost one such walk per provider, on the page's own
   probe and on the background warm that fills the list views alike.
   hianime's rate-limit temperament has never been measured; the
