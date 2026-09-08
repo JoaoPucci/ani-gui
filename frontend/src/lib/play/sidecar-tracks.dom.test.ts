@@ -103,3 +103,33 @@ describe('armSidecarTracks', () => {
 		expect(v.querySelectorAll('track').length).toBe(0);
 	});
 });
+
+// The listing is asked from the origin the media URL carries. The
+// backend builds that URL on its own address, so the ask reaches the
+// backend whether the preload bridge is on `window` (Electron) or
+// nothing is (browser-only dev, where the base comes from an env
+// variable): a page that read the bridge alone asked the dev server
+// instead, and the swallowed failure showed as a session without
+// subtitles.
+describe('the listing is asked from the origin of the media URL', () => {
+	const originalFetch = globalThis.fetch;
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	it('asks the media origin, with no preload bridge on window', () => {
+		const asked: string[] = [];
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			asked.push(String(input));
+			return new Response('[]');
+		}) as typeof fetch;
+		expect('aniGui' in window, 'no preload bridge').toBe(false);
+		const cleanup = armSidecarTracks(
+			video(),
+			'http://127.0.0.1:4567/s/session-1/master.m3u8',
+			'session-1'
+		);
+		expect(asked).toEqual(['http://127.0.0.1:4567/s/session-1/subtitles']);
+		cleanup();
+	});
+});
