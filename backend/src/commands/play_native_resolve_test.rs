@@ -357,13 +357,22 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
     );
 }
 
+/// The show was found; the episode was not — or has no stream in
+/// the mode. That is the episode's verdict, not the title's: it
+/// surfaces as its own error, so the page can say the episode is
+/// unavailable instead of that the title is not in the catalogue.
+/// Never the persistable clean miss.
 #[tokio::test]
 async fn an_unlisted_episode_is_a_dead_end_not_absence() {
     let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "9", Some(3)).await;
     let err = got.expect_err("unlisted episode");
     assert!(!err.clean_miss);
-    assert!(matches!(err.error, AniError::NoResults));
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
 }
 
 #[tokio::test]
@@ -388,6 +397,11 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
     .await;
     let err = got.expect_err("no dub embed");
     assert!(!err.clean_miss);
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
 }
 
 #[tokio::test]
