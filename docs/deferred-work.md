@@ -359,12 +359,15 @@ starting it, and delete it when you find it done.
   What makes hianime a fit for this: its entries are season-split
   like Kitsu's, so the count-based picker needs none of the offset
   machinery anidb.app required; a captured search was tight (three
-  hits for "cowboy bebop": the series, the movie, one special); every
-  decoded embed URL carries the MyAnimeList id, so a pick can be
-  cross-checked against Kitsu's MAL mapping after the resolve for
-  free (whether the entry page carries it before the pick was not
-  confirmed); and it types each server sub or dub, so the bounded
-  mode scan applies unchanged.
+  hits for "cowboy bebop": the series, the movie, one special); one
+  embed host's URL carries the MyAnimeList id in its path — the
+  zokoanime pages the client reads today are `/stream/mal/<id>/…` —
+  so a pick resolved through that host can be cross-checked against
+  Kitsu's MAL mapping after the resolve, while megaplay's path
+  carries the site's own ids and no such identity, so the check is
+  per host rather than a signal every pick gets (whether the entry
+  page carries it before the pick was not confirmed); and it types
+  each server sub or dub, so the bounded mode scan applies unchanged.
 
   Keep hiding, but only on a miss from every provider, and only for
   finished shows as now: a card no provider can play is a dead
