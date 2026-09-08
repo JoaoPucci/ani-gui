@@ -225,6 +225,7 @@ where
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut forward,
+        answered_by: None,
     };
     let resolved = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
         .await

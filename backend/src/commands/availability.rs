@@ -145,10 +145,11 @@ pub struct AvailabilityResponse {
     /// leaves this false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gate_refused: bool,
-    /// The provider whose catalogue carries the show — the one that
-    /// answered `available`. None on negative rows, on boolean stamps
-    /// from the play and download paths, and on rows written before
-    /// the field existed.
+    /// The provider that answered: on a positive row the one whose
+    /// catalogue carries the show, on a negative row the one whose
+    /// clean miss it is — served only while that provider is
+    /// reachable. None on a fallback's mode miss, which is never
+    /// persisted, and on rows written before the field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
 }
@@ -162,13 +163,28 @@ pub struct AvailabilityResponse {
 /// serving it would make every later read, including a click trying
 /// to confirm the cap, replay the same wrong number.
 ///
-/// A negative row is always usable: `episode_count` is meaningless
-/// when there is no candidate.
-fn cache_hit_is_usable(parsed: &AvailabilityResponse) -> bool {
+/// A negative row is usable while the provider whose verdict it is
+/// can stand behind it — see [`negative_row_is_backed`]; its
+/// `episode_count` is meaningless when there is no candidate.
+fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool {
     if !parsed.available {
-        return true;
+        return negative_row_is_backed(state, parsed);
     }
     parsed.episode_count.is_some() && !parsed.episode_count_approximate
+}
+
+/// Whether a negative row's provider is reachable. A clean miss is
+/// one provider's verdict — a miss does not fail over — and served
+/// through that provider's outage it would hide a show the fallback
+/// carries for the row's whole lifetime, in the exact outage
+/// failover exists for. While the provider's breaker is open the row
+/// is not served and the probe runs again; an unattributed negative
+/// — a row the play path stamped — counts as the primary's.
+fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
+    let provider = parsed
+        .provider
+        .or_else(|| state.provider_order.first().copied());
+    provider.is_none_or(|p| !crate::commands::providers::gate_of(state, p).is_open())
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
@@ -210,6 +226,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v13: a negative row names the provider whose clean miss it is
+    //      and is served only while that provider is reachable — a
+    //      miss does not fail over, so the row is one provider's
+    //      verdict, and served through that provider's outage it hid
+    //      a show the fallback carries for its whole lifetime. A v12
+    //      negative names nobody and would keep doing exactly that;
+    //      re-keying re-probes.
     // v12: the picker gained the subtype disproof — Kitsu's subtype
     //      rejects format-mismatched candidates. A v11 verdict reached
     //      without it can be available:true on a pool whose only
@@ -278,7 +301,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v12:{kitsu_id}:{m}")
+    format!("availability:v13:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -330,7 +353,7 @@ pub(crate) async fn check_availability_with_base(
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
-                if cache_hit_is_usable(&parsed) {
+                if cache_hit_is_usable(state, &parsed) {
                     return Ok(parsed);
                 }
             }
@@ -360,7 +383,11 @@ pub(crate) async fn check_availability_with_base(
         anidb: anidb_base,
         ..crate::commands::providers::Origins::of(state)
     };
-    let mut attempt = ProbeAttempt { args, mode };
+    let mut attempt = ProbeAttempt {
+        args,
+        mode,
+        answered_by: None,
+    };
     let probed = crate::commands::providers::run_at(
         state,
         origins,
@@ -399,10 +426,11 @@ pub(crate) async fn check_availability_with_base(
             }
         }
         // Clean miss: the only verdict that proves absence — flows
-        // into the cache write below. The runner has already demoted
-        // a fallback's clean miss after an unreachable primary, so
-        // one that arrives here is every provider's.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), None, true),
+        // into the cache write below, naming the provider whose miss
+        // it is. The runner has already demoted a fallback's clean
+        // miss after an unreachable primary, so one that arrives here
+        // was answered with every provider ahead of it reachable.
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, true),
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
@@ -522,6 +550,9 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
 struct ProbeAttempt<'r> {
     args: &'r AvailabilityArgs,
     mode: &'r str,
+    /// The provider the last attempt ran against — on a miss, the
+    /// one whose verdict it is.
+    answered_by: Option<crate::scraper::provider::ProviderId>,
 }
 
 #[async_trait::async_trait]
@@ -532,6 +563,7 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
+        self.answered_by = Some(provider.id());
         probe_show(provider, self.args, self.mode).await
     }
 }
@@ -723,6 +755,11 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
+                // A negative nobody can stand behind is not served:
+                // the card renders, and the page's probe re-asks.
+                if !parsed.available && !negative_row_is_backed(state, &parsed) {
+                    continue;
+                }
                 cached.insert(id.clone(), parsed.available);
                 // Only surface a count when the probe found the show
                 // AND the cache body carries one. Negative-cached rows
@@ -2484,6 +2521,8 @@ mod tests {
     /// replaces it.
     #[test]
     fn an_approximate_cached_count_is_not_a_usable_hit() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
         let exact = AvailabilityResponse {
             available: true,
             episode_count: Some(12),
@@ -2492,7 +2531,10 @@ mod tests {
             gate_refused: false,
             provider: None,
         };
-        assert!(cache_hit_is_usable(&exact), "an exact count is usable");
+        assert!(
+            cache_hit_is_usable(&state, &exact),
+            "an exact count is usable"
+        );
 
         let approximate = AvailabilityResponse {
             episode_count_approximate: true,
@@ -2501,7 +2543,7 @@ mod tests {
             ..exact.clone()
         };
         assert!(
-            !cache_hit_is_usable(&approximate),
+            !cache_hit_is_usable(&state, &approximate),
             "an approximate count must re-probe rather than be served"
         );
     }
@@ -2512,6 +2554,8 @@ mod tests {
     /// candidate.
     #[test]
     fn usable_hit_rules_for_legacy_and_negative_rows() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
         let legacy = AvailabilityResponse {
             available: true,
             episode_count: None,
@@ -2520,7 +2564,10 @@ mod tests {
             gate_refused: false,
             provider: None,
         };
-        assert!(!cache_hit_is_usable(&legacy), "a count-less row re-probes");
+        assert!(
+            !cache_hit_is_usable(&state, &legacy),
+            "a count-less row re-probes"
+        );
 
         let negative = AvailabilityResponse {
             available: false,
@@ -2530,7 +2577,10 @@ mod tests {
             gate_refused: false,
             provider: None,
         };
-        assert!(cache_hit_is_usable(&negative), "a negative row is kept");
+        assert!(
+            cache_hit_is_usable(&state, &negative),
+            "a negative row is kept"
+        );
     }
 
     proptest::proptest! {
@@ -2549,6 +2599,8 @@ mod tests {
             approximate in proptest::bool::ANY,
             extras in proptest::collection::vec("[0-9]{1,3}(\\.5)?", 0..4),
         ) {
+            let td = tempfile::tempdir().expect("td");
+            let state = cache_only_state(&td);
             let row = AvailabilityResponse {
                 available,
                 episode_count: count,
@@ -2558,7 +2610,7 @@ mod tests {
                 provider: None,
             };
             proptest::prop_assert_eq!(
-                cache_hit_is_usable(&row),
+                cache_hit_is_usable(&state, &row),
                 !available || (count.is_some() && !approximate)
             );
         }
@@ -2573,6 +2625,8 @@ mod tests {
             count in proptest::option::of(0u32..2000),
             approximate in proptest::bool::ANY,
         ) {
+            let td = tempfile::tempdir().expect("td");
+            let state = cache_only_state(&td);
             proptest::prop_assume!(approximate || count.is_none());
             let row = AvailabilityResponse {
                 available: true,
@@ -2582,7 +2636,7 @@ mod tests {
                 gate_refused: false,
                 provider: None,
             };
-            proptest::prop_assert!(!cache_hit_is_usable(&row));
+            proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
         }
     }
 
@@ -2611,17 +2665,22 @@ mod tests {
             .expect("row present");
         let parsed: AvailabilityResponse = serde_json::from_str(&raw).expect("parse");
         assert!(parsed.episode_count_approximate, "the flag must persist");
-        assert!(!cache_hit_is_usable(&parsed), "and drive the re-probe");
+        assert!(
+            !cache_hit_is_usable(&state, &parsed),
+            "and drive the re-probe"
+        );
     }
 
     /// A row written before the flag existed has no such key, and
     /// serde must read it as exact rather than refusing to parse.
     #[test]
     fn a_legacy_row_without_the_flag_parses_as_exact() {
+        let td = tempfile::tempdir().expect("td");
+        let state = cache_only_state(&td);
         let parsed: AvailabilityResponse =
             serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
         assert!(!parsed.episode_count_approximate);
-        assert!(cache_hit_is_usable(&parsed));
+        assert!(cache_hit_is_usable(&state, &parsed));
     }
 }
 

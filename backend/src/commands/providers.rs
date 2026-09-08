@@ -342,6 +342,9 @@ pub struct ResolveAttempt<'r, F> {
     pub request: NativeResolveRequest<'r>,
     /// Where the walk's progress lines go.
     pub on_progress: &'r mut F,
+    /// The provider the last attempt ran against — on a miss, the
+    /// one whose verdict it is, for the negative row to name.
+    pub answered_by: Option<ProviderId>,
 }
 
 #[async_trait::async_trait]
@@ -349,6 +352,7 @@ impl<F: FnMut(ProgressLine) + Send> Attempt for ResolveAttempt<'_, F> {
     type Output = NativeResolved;
 
     async fn run(&mut self, provider: &dyn Provider) -> Result<NativeResolved, NativeError> {
+        self.answered_by = Some(provider.id());
         resolve_native(provider, self.request, self.on_progress).await
     }
 }
