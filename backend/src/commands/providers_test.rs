@@ -675,3 +675,89 @@ async fn a_skipped_provider_stays_skipped_on_a_background_walk() {
     assert!(matches!(err.error, AniError::NoResults));
     assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
 }
+
+/// The same half-open trial when nothing answered at all: a skipped
+/// primary and an unreachable fallback leave an interactive walk with
+/// a provider it never asked and a gate that would admit the click,
+/// so the skipped one is tried before the request fails.
+#[tokio::test]
+async fn a_skipped_provider_is_retried_when_the_rest_were_unreachable_on_an_interactive_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the recovered primary answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "skipped first, asked last"
+    );
+}
+
+/// A skipped provider asked last answers for itself: its miss is the
+/// walk's verdict, as given, not the unreachable fallback's error.
+#[tokio::test]
+async fn a_retried_skipped_providers_miss_is_the_verdict_when_the_rest_were_unreachable() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("the primary answered a miss");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(err.clean_miss, "the miss stands as the primary gave it");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+#[tokio::test]
+async fn a_skipped_provider_stays_skipped_when_the_rest_were_unreachable_on_a_background_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Background,
+        &mut attempt,
+    )
+    .await
+    .expect_err("background traffic does not trial an open breaker");
+    assert!(matches!(err.error, AniError::Network), "{:?}", err.error);
+    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+}
