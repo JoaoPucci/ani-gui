@@ -114,6 +114,28 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
 
+    /// The listing container with only whitespace inside is the
+    /// site's shape for an entry without episodes, whatever chrome
+    /// surrounds it; the same container holding anything else and
+    /// no row the parser knows is a changed shape, refused.
+    #[test]
+    fn a_blank_listing_container_is_no_episodes_and_a_filled_one_without_rows_is_refused(
+        chrome_before in "[^<>\"]{0,40}",
+        chrome_after in "[^<>\"]{0,40}",
+        inside in "[ \t\n\r]{0,12}",
+        filler in "[a-z][a-z ]{0,20}",
+    ) {
+        let blank = format!(
+            r#"<div class="seasons-block">{chrome_before}<div class="ss-list">{inside}</div>{chrome_after}</div>"#
+        );
+        prop_assert_eq!(parse_episode_list(&envelope(&blank)).expect("answered"), Vec::<EpisodeRef>::new());
+        let filled = format!(
+            r#"<div class="seasons-block">{chrome_before}<div class="ss-list">{inside}<a class="ssl-item">{filler}</a></div>{chrome_after}</div>"#
+        );
+        let refused = matches!(parse_episode_list(&envelope(&filled)), Err(AniError::ParseFailed { .. }));
+        prop_assert!(refused, "a filled container without rows: {filled}");
+    }
+
     /// Every server row comes back with its type, its name and the
     /// URL its hash encodes, in order.
     #[test]

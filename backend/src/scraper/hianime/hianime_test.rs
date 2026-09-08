@@ -244,6 +244,23 @@ fn a_nonempty_episode_list_with_no_recognizable_rows_is_a_parse_failure() {
     );
 }
 
+/// The listing as the site renders it for an entry it has announced
+/// but not started serving, captured on 2026-09-09 for
+/// `demon-slayer-kimetsu-no-yaiba-infinity-castle-part-2-7215`: the
+/// listing's chrome and its container, with nothing inside.
+const BLANK_EPISODE_LIST: &str = r#"{"status":true,"totalItems":0,"html":"<div class=\"seasons-block \">\n    <div id=\"detail-ss-list\" class=\"detail-seasons\">\n        <div class=\"detail-infor-content\">\n            <div class=\"ss-choice\">\n                <div class=\"ssc-list\">\n                    <div id=\"ssc-list\" class=\"ssc-button\">\n                        <div class=\"ssc-label\">List of episodes:</div>\n                    </div>\n                </div>\n                <div class=\"ssc-quick\">\n                    <input id=\"search-ep\" class=\"form-control\" type=\"text\" placeholder=\"Number of Ep\" autocomplete=\"off\">\n                </div>\n            </div>\n            <div class=\"ss-list\">\n            </div>\n        </div>\n    </div>\n</div>"}"#;
+
+#[test]
+fn a_listing_whose_container_holds_nothing_is_the_provider_answering_no_episodes() {
+    // Refusing this shape made the probe weather, and weather made
+    // the whole hianime attempt fail over — so the play surfaced the
+    // other provider's outage instead of this show's own verdict.
+    assert_eq!(
+        parse_episode_list(BLANK_EPISODE_LIST).expect("answered"),
+        Vec::<EpisodeRef>::new()
+    );
+}
+
 /// The site's server list as captured on 2026-09-08, two days after
 /// the first capture: `HD-1` and `HD-2` are megaplay.buzz now, and
 /// the zokoanime server — the one whose page carries the payload —
