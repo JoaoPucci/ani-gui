@@ -147,9 +147,10 @@ pub struct AvailabilityResponse {
     pub gate_refused: bool,
     /// The provider that answered: on a positive row the one whose
     /// catalogue carries the show, on a negative row the one whose
-    /// miss it is — served only while that provider is reachable and
-    /// every provider ahead of it is not. None on rows written before
-    /// the field existed.
+    /// miss it is — served only while that provider is answering and
+    /// every provider ahead of it is refusing (breaker open, or a
+    /// rate-limit pause running). None on rows written before the
+    /// field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
 }
@@ -175,14 +176,17 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 
 /// Whether a negative row's provider can stand behind it now. A miss
 /// is one provider's verdict — a miss does not fail over — so the
-/// row is served only while that provider is reachable and every
-/// provider ahead of it in the order is not: the primary's negative
-/// through the primary's own outage would hide a show the fallback
-/// carries, and the fallback's negative, written during that outage,
-/// proves nothing about the primary once it is back. Otherwise the
-/// row is not served and the probe runs again. An unattributed
-/// negative counts as the primary's; one naming a provider the state
-/// no longer lists has nobody to stand behind it.
+/// row is served only while that provider is answering and every
+/// provider ahead of it in the order is refusing: the primary's
+/// negative through the primary's own outage would hide a show the
+/// fallback carries, and the fallback's negative, written during
+/// that outage, proves nothing about the primary once it is back.
+/// Refusing is the gate's word for it — an open breaker or a running
+/// rate-limit pause, either of which sends a walk asked now to the
+/// next provider. Otherwise the row is not served and the probe runs
+/// again. An unattributed negative counts as the primary's; one
+/// naming a provider the state no longer lists has nobody to stand
+/// behind it.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
     let order = &state.provider_order;
     let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
@@ -191,10 +195,10 @@ fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bo
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
-    let open = |p: &crate::scraper::provider::ProviderId| {
-        crate::commands::providers::gate_of(state, *p).is_open()
+    let refusing = |p: &crate::scraper::provider::ProviderId| {
+        crate::commands::providers::gate_of(state, *p).is_refusing()
     };
-    !open(&provider) && order[..position].iter().all(open)
+    !refusing(&provider) && order[..position].iter().all(refusing)
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
@@ -237,7 +241,7 @@ pub struct AvailabilityBatchResponse {
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v13: a negative row names the provider whose clean miss it is
-    //      and is served only while that provider is reachable — a
+    //      and is served only while that provider is answering — a
     //      miss does not fail over, so the row is one provider's
     //      verdict, and served through that provider's outage it hid
     //      a show the fallback carries for its whole lifetime. A v12
@@ -427,8 +431,8 @@ pub(crate) async fn check_availability_with_base(
                 // The provider ANSWERED absence for this mode.
                 // Cacheable, like the clean search miss, and named as
                 // that provider's: the read side serves the row only
-                // while that provider is reachable and every provider
-                // ahead of it is not — so a fallback's absence stands
+                // while that provider is answering and every provider
+                // ahead of it is refusing — so a fallback's absence stands
                 // through the primary's outage and not a moment past
                 // it, since it proves nothing about the primary.
                 (false, None, Vec::new(), Some(attempted.provider))
