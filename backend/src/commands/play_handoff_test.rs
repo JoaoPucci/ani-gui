@@ -288,24 +288,25 @@ mod default_first_props {
     }
 }
 
-/// Sending an episode to a player is a watch, and the handoff writes
-/// the history row for it; the watched-at stamp beside the row is
-/// what orders Continue Watching and picks the row to resume from
-/// when two providers each left one, so the handoff stamps it too.
+/// The resolve is not the watch — the spawn is. A player that fails
+/// to start must leave no history row and no watched-at stamp
+/// behind, so the resolve records nothing; the commands that spawn
+/// record the watch once the spawn succeeded.
 #[tokio::test]
-async fn the_handoff_stamps_the_watch_beside_its_history_row() {
+async fn the_resolve_records_no_watch_before_the_spawn() {
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let before = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0);
-    super::play_handoff::resolve_launch_args(&state, &args_for())
+    let (_launch, _native) = super::play_handoff::resolve_launch_args(&state, &args_for())
         .await
         .expect("the native walk resolves the stream");
-    let stamp = crate::commands::kitsu::watched_at_get(&state, "handoff-show-7")
-        .expect("stamp read")
-        .expect("the handoff stamped its watch");
-    assert!(stamp >= before, "stamped with the handoff's own moment");
+    assert!(
+        !state.history_path.exists(),
+        "no history row before the player has started"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "handoff-show-7").expect("stamp read"),
+        None,
+        "no watched-at stamp before the player has started"
+    );
 }
