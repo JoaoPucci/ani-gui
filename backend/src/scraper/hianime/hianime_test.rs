@@ -480,12 +480,43 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A readable host whose payload the key does not open,
+            // then a host without a payload at all.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21422") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85Lzkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1iY2Ru\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The same undecodable page first, then a host whose page
+            // decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85Lzkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
             | "https://megaplay.buzz/stream/s-2/8272/sub?s=bcdn" => ok(
                 r#"<html><head><title>File 143764 - MegaPlay</title></head><body><div id="player"></div><script src="/assets/player.js"></script></body></html>"#,
             ),
+            // The payload marker is there; the blob is not one the
+            // key opens.
+            "https://zokoanime.video/stream/mal/9/9/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(r#"<html><body><script>window.__P="AAAA"</script></body></html>"#)
+                } else {
+                    refused(403)
+                }
+            }
             "https://zokoanime.video/stream/mal/1735/391/sub" => {
                 if header(req, "Referer") == Some(&format!("{BASE}/")) {
                     ok(format!(
@@ -653,4 +684,26 @@ async fn an_episode_whose_servers_all_serve_unreadable_pages_has_no_stream() {
         .await
         .expect_err("nothing readable");
     assert!(matches!(err, AniError::NoResults), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_payload_the_client_cannot_decode_is_a_parse_failure_once_every_server_is_tried() {
+    // The marker is on the page and the blob does not open: the key
+    // rotated or the shape moved. Read as "no stream" that is an
+    // answered verdict — health to the breaker, an absence the mode
+    // probe may persist — for what is the client no longer reading
+    // the site.
+    let c = client();
+    let err = c
+        .master_playlist_url(21422, "sub")
+        .await
+        .expect_err("nothing decoded");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_payload_the_client_cannot_decode_is_stepped_over_when_a_later_server_decodes() {
+    let c = client();
+    let source = c.master_playlist_url(21423, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
 }
