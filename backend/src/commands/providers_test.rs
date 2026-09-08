@@ -434,6 +434,10 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
     );
     assert!(!fails_over(&AniError::NoResults));
     assert!(
+        !fails_over(&AniError::EpisodeUnavailable),
+        "an episode the provider does not carry is an answer too"
+    );
+    assert!(
         !fails_over(&AniError::Upstream { status: 404 }),
         "an answered not-found is an answer"
     );
