@@ -8,11 +8,16 @@
 //! XOR-decodes to the player's JSON, whose `src` is the master
 //! playlist and whose `subtitles` are sidecar tracks. The CDN checks
 //! the embed host's origin as `Referer` on every playlist fetch.
+//!
+//! An episode lists several servers, named by slot, and the site
+//! moves the slots between embed hosts; only some hosts' pages carry
+//! the blob. The client tries the servers it can read first and
+//! takes the first page that decodes.
 
 pub mod ajax;
 pub mod embed;
 pub mod parse;
-pub use ajax::{parse_episode_list, parse_servers, preferred_server, ServerEmbed};
+pub use ajax::{parse_episode_list, parse_servers, servers_for, ServerEmbed};
 pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
 pub use parse::{parse_detail_year, parse_search, slug_id};
 
@@ -117,21 +122,40 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 
     async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
         let servers = self.servers(episode_id).await?;
-        Ok(preferred_server(&servers, mode).is_some())
+        Ok(!servers_for(&servers, mode).is_empty())
     }
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let servers = self.servers(episode_id).await?;
-        let server = preferred_server(&servers, mode).ok_or(AniError::NoResults)?;
-        // The embed host checks that the site sent the viewer.
-        let embed = FetchRequest::get(server.embed_url.clone())
-            .header("Referer", format!("{}/", self.base));
-        let page = self.content(&embed).await?;
-        let payload = decode_embed(&page)?;
-        Ok(StreamSource {
-            master_url: payload.src,
-            referer: embed_origin(&server.embed_url),
-        })
+        // The first server whose page decodes wins. A page without
+        // the payload, or one the key does not open, is a host the
+        // client cannot read and the next server is tried; a host
+        // that refused or could not be reached is stepped over too,
+        // and surfaces only when no server served a stream.
+        let mut weather: Option<AniError> = None;
+        for server in servers_for(&servers, mode) {
+            // The embed host checks that the site sent the viewer.
+            let embed = FetchRequest::get(server.embed_url.clone())
+                .header("Referer", format!("{}/", self.base));
+            let page = match self.content(&embed).await {
+                Ok(page) => page,
+                Err(e) => {
+                    weather.get_or_insert(e);
+                    continue;
+                }
+            };
+            match decode_embed(&page) {
+                Ok(payload) => {
+                    return Ok(StreamSource {
+                        master_url: payload.src,
+                        referer: embed_origin(&server.embed_url),
+                    })
+                }
+                Err(AniError::NoResults | AniError::ParseFailed { .. }) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(weather.unwrap_or(AniError::NoResults))
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {

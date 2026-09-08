@@ -126,12 +126,25 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
     recognized(&html, rows, "server list")
 }
 
-/// The server to play `mode` from: `HD-1` when the site lists it,
-/// else the first of that mode — the reference scraper's preference.
+/// The embed hosts whose pages carry the payload the client reads —
+/// the `window.__P` blob. The site names its servers by slot and
+/// moves the slots between hosts; a name is not a shape.
+const READABLE_HOSTS: &[&str] = &["zokoanime.video"];
+
+/// Whether `embed_url` is on a host whose page the client can read.
+fn readable(embed_url: &str) -> bool {
+    url::Url::parse(embed_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .is_some_and(|h| READABLE_HOSTS.contains(&h.as_str()))
+}
+
+/// The servers to try for `mode`, in order: every server of that
+/// mode, the ones on a host the client can read first, the site's
+/// own order kept within each half. Empty when the mode has none.
 #[must_use]
-pub fn preferred_server<'a>(servers: &'a [ServerEmbed], mode: &str) -> Option<&'a ServerEmbed> {
-    let of_mode = || servers.iter().filter(|s| s.mode == mode);
-    of_mode()
-        .find(|s| s.name == "HD-1")
-        .or_else(|| of_mode().next())
+pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a ServerEmbed> {
+    let of_mode = servers.iter().filter(|s| s.mode == mode);
+    let (readable_hosts, rest): (Vec<_>, Vec<_>) = of_mode.partition(|s| readable(&s.embed_url));
+    readable_hosts.into_iter().chain(rest).collect()
 }
