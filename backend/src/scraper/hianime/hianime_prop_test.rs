@@ -34,6 +34,21 @@ fn search_page(cards: &[(String, u64, String, String)]) -> String {
     page
 }
 
+/// A failure a host can hand the server loop: an upstream status of
+/// any shape, a rate limit, or a dropped connection.
+fn arb_weather() -> impl Strategy<Value = AniError> {
+    prop_oneof![
+        (100u16..600).prop_map(|status| AniError::Upstream { status }),
+        proptest::option::of(0u64..10_000)
+            .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        proptest::bool::ANY.prop_map(|dropped| if dropped {
+            AniError::Network
+        } else {
+            AniError::Timeout
+        }),
+    ]
+}
+
 fn envelope(html: &str) -> String {
     serde_json::json!({"status": true, "html": html}).to_string()
 }
@@ -216,6 +231,29 @@ proptest::proptest! {
             embed_origin(&format!("{scheme}://{host}{path}")),
             Some(format!("{scheme}://{host}/"))
         );
+    }
+
+    /// Of two hosts' failures the kept one is a provider block exactly
+    /// when either was; between two of a rank the first stays.
+    #[test]
+    fn the_kept_weather_is_a_block_whenever_either_was(
+        first in arb_weather(),
+        second in arb_weather(),
+    ) {
+        let first_block = first.is_provider_block();
+        let second_block = second.is_provider_block();
+        let first_repr = format!("{first:?}");
+        let second_repr = format!("{second:?}");
+        let kept = weightier(first, second);
+        prop_assert_eq!(kept.is_provider_block(), first_block || second_block);
+        let kept_repr = format!("{kept:?}");
+        if first_block == second_block {
+            prop_assert_eq!(kept_repr, first_repr);
+        } else if second_block {
+            prop_assert_eq!(kept_repr, second_repr);
+        } else {
+            prop_assert_eq!(kept_repr, first_repr);
+        }
     }
 
     /// Whatever the site names its servers, the ones to try for a mode
