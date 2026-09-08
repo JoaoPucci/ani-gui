@@ -1613,12 +1613,11 @@
 			sourceAttached = false;
 		}
 
-		// Sidecar subtitle tracks: the session lists them, one <track>
-		// per listing on the singleton, removed with the source like the
-		// engine is.
+		// Sidecar subtitle tracks: the session lists them at the media
+		// URL's origin, one <track> per listing on the singleton, removed
+		// with the source like the engine is.
 		if (sourceAttached) {
-			const apiBase = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
-			addSourceScopedCleanup(armSidecarTracks(videoEl, apiBase, sessionId));
+			addSourceScopedCleanup(armSidecarTracks(videoEl, mediaUrl, sessionId));
 		}
 
 		// Stamp the session so the layout's PiP-leave handler knows

@@ -4,9 +4,11 @@
  * ever tell the player about.
  *
  * The play page keeps only the session id across navigation, so the
- * tracks are asked for by id from the proxy — the same origin the
- * media URL is built against — and each becomes one `<track>` on the
- * singleton video, where the browser renders it natively and the
+ * tracks are asked for by id from the proxy — at the origin the media
+ * URL carries, which the backend built on its own address, so the ask
+ * reaches the backend whether the preload bridge is present or the
+ * base came from the environment — and each becomes one `<track>` on
+ * the singleton video, where the browser renders it natively and the
  * captions picker already lists it. The pure parts (the URL, the
  * attribute mapping) are tested on their own; the DOM adapter is
  * exercised by the acceptance test on the mounted page.
@@ -49,14 +51,17 @@ export function trackAttributes(track: SidecarTrack): TrackAttributes {
 /**
  * The session's tracks, or none: a listing that fails to load is the
  * same as a session without tracks — playback must never wait on it.
+ * `mediaUrl` is the session's media URL; the listing lives at its
+ * origin.
  */
 export async function fetchSidecarTracks(
-	apiBase: string,
+	mediaUrl: string,
 	sessionId: string,
 	signal?: AbortSignal
 ): Promise<SidecarTrack[]> {
 	try {
-		const res = await fetch(sidecarTracksUrl(apiBase, sessionId), { signal });
+		const origin = new URL(mediaUrl).origin;
+		const res = await fetch(sidecarTracksUrl(origin, sessionId), { signal });
 		if (!res.ok) return [];
 		const listed: unknown = await res.json();
 		return Array.isArray(listed) ? (listed as SidecarTrack[]) : [];
@@ -91,12 +96,12 @@ export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrac
  */
 export function armSidecarTracks(
 	video: HTMLVideoElement,
-	apiBase: string,
+	mediaUrl: string,
 	sessionId: string
 ): () => void {
 	const controller = new AbortController();
 	let detach: (() => void) | null = null;
-	void fetchSidecarTracks(apiBase, sessionId, controller.signal).then((tracks) => {
+	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
 		detach = attachSidecarTracks(video, tracks);
 	});
