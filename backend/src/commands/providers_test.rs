@@ -1059,6 +1059,68 @@ mod negative_rank_props {
             let want = if keep_earlier { earlier.summary() } else { later.summary() };
             let got = firmer_negative(earlier.negative(), later.negative(), &configured);
             prop_assert_eq!(summary_of(&got), want);
+
+
+        }
+    }
+}
+
+mod episode_verdict_rank_props {
+    use super::{firmer_negative, negative_outranks, Negative};
+    use crate::commands::play_native_resolve::NativeError;
+    use crate::error::AniError;
+    use crate::scraper::provider::ProviderId;
+    use proptest::prelude::*;
+
+    /// A miss as a provider reports it: a title miss or an episode
+    /// verdict, with either clean-miss flag, in values that build the
+    /// negative as many times as a property needs.
+    #[derive(Debug, Clone)]
+    struct MissShape {
+        episode: bool,
+        clean_miss: bool,
+    }
+
+    impl MissShape {
+        fn negative(&self) -> Negative<'static, &'static str> {
+            Negative::Miss(
+                NativeError {
+                    error: if self.episode {
+                        AniError::EpisodeUnavailable
+                    } else {
+                        AniError::NoResults
+                    },
+                    clean_miss: self.clean_miss,
+                    failed_at: None,
+                },
+                Some(ProviderId::Hianime),
+            )
+        }
+    }
+
+    fn miss() -> impl Strategy<Value = MissShape> {
+        (any::<bool>(), any::<bool>()).prop_map(|(episode, clean_miss)| MissShape {
+            episode,
+            clean_miss,
+        })
+    }
+
+    fn is_episode(negative: &Negative<'_, &'static str>) -> bool {
+        matches!(negative, Negative::Miss(ne, _) if matches!(ne.error, AniError::EpisodeUnavailable))
+    }
+
+    proptest! {
+        /// An episode verdict is a miss that found the show, so it
+        /// outranks a later clean title miss and is the one kept; a
+        /// later miss of equal rank is the last answer given.
+        #[test]
+        fn an_episode_verdict_outranks_a_later_clean_title_miss(earlier in miss(), later in miss()) {
+            let outranks = negative_outranks(&earlier.negative(), &later.negative());
+            let expected = !earlier.clean_miss && later.clean_miss;
+            prop_assert_eq!(outranks, expected);
+            let kept = firmer_negative(earlier.negative(), later.negative());
+            let kept_is_earlier = if outranks { earlier.episode } else { later.episode };
+            prop_assert_eq!(is_episode(&kept), kept_is_earlier);
         }
     }
 }
