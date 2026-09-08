@@ -54,6 +54,58 @@ fn search_cards_inside_the_result_list_become_hits() {
     );
 }
 
+/// Each result card leads with its poster link — `href` and `title`
+/// of its own — ahead of the detail block the parser reads.
+const SEARCH_PAGE_WITH_POSTER_LINKS: &str = r##"<html><body>
+<div class="film_list-wrap">
+  <div class="flw-item">
+    <div class="film-poster"><a href="https://hianime.at/watch/cowboy-bebop-1281" class="film-poster-ahref item-qtip" title="Cowboy Bebop"></a></div>
+    <div class="film-detail">
+      <h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop" class="dynamic-name">Cowboy Bebop</a></h3>
+      <div class="fd-infor"><span class="fdi-item">TV</span></div>
+    </div>
+  </div>
+  <div class="flw-item">
+    <div class="film-poster"><a href="https://hianime.at/watch/unreadable-7" class="film-poster-ahref item-qtip" title="Unreadable"></a></div>
+    <div class="film-detail">
+      <h3 class="film-name"><span data-slug="unreadable-7">Unreadable</span></h3>
+    </div>
+  </div>
+  <div class="flw-item">
+    <div class="film-poster"><a href="https://hianime.at/watch/cowboy-bebop-the-movie-1282" class="film-poster-ahref item-qtip" title="Cowboy Bebop: The Movie"></a></div>
+    <div class="film-detail">
+      <h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-the-movie-1282" title="Cowboy Bebop: The Movie" class="dynamic-name">Cowboy Bebop: The Movie</a></h3>
+      <div class="fd-infor"><span class="fdi-item">Movie</span></div>
+    </div>
+  </div>
+</div>
+<div id="main-sidebar"></div>
+</body></html>"##;
+
+#[test]
+fn a_card_the_parser_cannot_read_is_skipped_and_its_neighbour_is_read_once() {
+    // A card whose detail block has no anchor must not borrow the
+    // next card's poster link as its identity, and the next card must
+    // not come back twice: the hits are exactly the readable cards,
+    // each with its own slug and title.
+    let hits = parse_search(SEARCH_PAGE_WITH_POSTER_LINKS).expect("parsed");
+    assert_eq!(
+        hits,
+        vec![
+            BrowseHit {
+                slug: "cowboy-bebop-1281".into(),
+                title: "Cowboy Bebop".into(),
+                kind: Some("TV".into()),
+            },
+            BrowseHit {
+                slug: "cowboy-bebop-the-movie-1282".into(),
+                title: "Cowboy Bebop: The Movie".into(),
+                kind: Some("Movie".into()),
+            },
+        ]
+    );
+}
+
 #[test]
 fn a_search_page_that_says_no_animes_found_is_an_empty_answer() {
     let page = r#"<html><body><div class="tab-content"><div class="block_area-content block_area-list film_list film_list-grid film_list-wfeature"><p>No animes found.</p></div></div><div id="main-sidebar"></div></body></html>"#;
