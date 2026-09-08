@@ -310,46 +310,51 @@ starting it, and delete it when you find it done.
 
 ## Filling catalogue gaps from the second provider
 
-- **Ask the next provider when the first answers a clean miss**, so a
-  show the first provider does not carry plays from the second
-  instead of being hidden. Failover moves to the next provider only
-  when the current one was unreachable, refusing or broken; an
-  answered miss ends the walk. A finished show with a negative
-  verdict is then dropped from the home and search lists, and its
-  page disables Play and Download.
+- **Ask the next provider when the first answers a miss**, so a show
+  the first provider does not carry plays from the second instead of
+  being hidden — the catalogues as a union. Failover moves to the
+  next provider only when the current one was unreachable, refusing
+  or broken; an answered miss ends the walk, and a finished show
+  with a negative verdict is dropped from the home and search lists
+  while its page disables Play and Download.
 
-  Why it waited: it is a change of meaning, not of one rule. A
-  negative verdict means "the provider that answered has nothing";
-  with gap filling it has to mean every provider answered a clean
-  miss, and every negative row written so far is a single-provider
-  verdict about a question nobody would ask any more. The
-  availability cache re-keyed for the same reason when the provider
-  changed from allanime to anidb.app, and would again. Positive rows
-  already name their provider.
+  Not in parallel. Asking every provider for every request doubles
+  the traffic on the resource this entry worries about and buys
+  nothing when the first provider carries the show, which is most of
+  the time; the union comes from the walk going on past a miss, in
+  order, and stopping at the first provider that has the show.
 
-  Rate limiting is the biggest risk and the reason to plan before
-  building. A clean miss costs a full walk — every alias searched,
-  and up to five candidates probed per alias, so a show with four
-  aliases can cost twenty-five episode-list probes plus a detail-year
-  request per candidate — and gap filling makes every genuinely
+  What it changes: a negative verdict stops meaning "the provider
+  that answered has nothing" and starts meaning "every provider
+  asked has nothing". Negative rows already name their provider and
+  are served only while that provider is reachable and the ones
+  ahead of it are not, so the store is ready for per-provider
+  absence; the aggregation is the new part — a show is absent only
+  when every enabled provider answered a miss, and a row from one
+  provider must not hide a show the walk never asked the next about.
+  Provider affinity exists: a play, a download or a handoff starts
+  from the provider the show's positive row names, so a show found
+  on the second provider is not re-walked through the first on every
+  play. An episode one provider carries but the other lacks is a
+  sub-case of the same rule, half of which the affinity pick's yield
+  already covers.
+
+  Rate limiting is the biggest risk and the reason to measure before
+  building. A miss costs a full walk — every alias searched, and up
+  to five candidates probed per alias, so a show with four aliases
+  can cost twenty-five episode-list probes plus a detail-year
+  request per candidate — and the union makes every genuinely
   absent show cost one such walk per provider, on the page's own
   probe and on the background warm that fills the list views alike.
   hianime's rate-limit temperament has never been measured; the
   survey in `docs/proposals/additional-providers.md` only saw it
-  answer quickly. Each provider has its own pacer and breaker, and
-  the interstitial check recognises a Cloudflare challenge, but a
-  breaker learns after the block, not before. Measure first: what
-  the site tolerates for search and AJAX listings at the background
-  pace, and whether it answers excess with the challenge page or a
-  429.
-
-  Provider affinity for plays exists: a play, a download or a
-  handoff starts from the provider the show's positive availability
-  row names, and a history row's show key carries its label too.
-  What gap filling adds is the walk that produces such a row in the
-  first place — the probe runs the base order and, with a miss
-  continuing to the next provider, pays a walk per provider on
-  every re-probe of a genuinely absent show.
+  answer quickly, and in September 2026, with anidb.app down, it
+  carried every request without visible pushback. Each provider has
+  its own pacer and breaker, and the interstitial check recognises a
+  Cloudflare challenge, but a breaker learns after the block, not
+  before. Measure first: what the site tolerates for search and AJAX
+  listings at the background pace, and whether it answers excess
+  with the challenge page or a 429.
 
   What makes hianime a fit for this: its entries are season-split
   like Kitsu's, so the count-based picker needs none of the offset
@@ -363,11 +368,30 @@ starting it, and delete it when you find it done.
 
   Keep hiding, but only on a miss from every provider, and only for
   finished shows as now: a card no provider can play is a dead
-  click. Per-title manual choice is not needed for this. If the
-  second provider becomes load-bearing for catalogue breadth rather
-  than a fallback, its domain churn arrives sooner: the canonical
-  domain is filtered per ISP, and the origin is a constant with a
-  test override only.
+  click. If the second provider becomes load-bearing for catalogue
+  breadth rather than a fallback, its domain churn arrives sooner:
+  the canonical domain is filtered per ISP, and the origin is a
+  constant with a test override only.
+
+## A provider order and switch in settings
+
+- **Let the user order the providers and switch one off.** The
+  order is fixed at build — anidb.app, then hianime — and there is
+  no way to prefer the second or to leave one out. The state already
+  carries the order as a list every walk reads; this is that list
+  read from the config instead, plus one settings row: the order,
+  and an on/off per provider, with a disabled provider simply absent
+  from the list.
+
+  Why it waited: it wants the union above first, so that putting a
+  provider first is a preference rather than a way of shrinking the
+  catalogue to one site. Two consequences are already handled by the
+  cache's read rule — a negative row naming a provider the state no
+  longer lists has nobody to stand behind it and re-probes, and a
+  positive row's affinity is ignored when the state does not list
+  its provider. A per-title provider picker is not this, and is not
+  planned: affinity already remembers which provider plays each
+  show.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
