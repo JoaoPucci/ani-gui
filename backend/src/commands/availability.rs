@@ -201,6 +201,109 @@ fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bo
     !refusing(&provider) && order[..position].iter().all(refusing)
 }
 
+/// What a native resolve learned about a show, for its availability
+/// row: a stream served, or a clean miss, and whose verdict it is.
+#[derive(Debug, Clone, Copy)]
+pub struct ResolveVerdict<'a> {
+    /// Whether the resolve served a stream.
+    pub available: bool,
+    /// The provider that served it, or whose clean miss it is.
+    pub provider: Option<crate::scraper::provider::ProviderId>,
+    /// The cap the resolve's own listing paid for, when it served.
+    pub episode_cap: Option<u32>,
+    /// The listing's fractional extras, when it served.
+    pub extra_tags: &'a [String],
+}
+
+impl<'a> ResolveVerdict<'a> {
+    /// A stream served by `provider`, from a listing with this cap
+    /// and these extras.
+    #[must_use]
+    pub fn served(
+        provider: crate::scraper::provider::ProviderId,
+        episode_cap: Option<u32>,
+        extra_tags: &'a [String],
+    ) -> Self {
+        Self {
+            available: true,
+            provider: Some(provider),
+            episode_cap,
+            extra_tags,
+        }
+    }
+
+    /// A clean miss — every search completed and nothing matched —
+    /// from the provider that answered it.
+    #[must_use]
+    pub fn missed(provider: Option<crate::scraper::provider::ProviderId>) -> Self {
+        Self {
+            available: false,
+            provider,
+            episode_cap: None,
+            extra_tags: &[],
+        }
+    }
+}
+
+/// Stamp the availability row with a native resolve's verdict,
+/// guarded against a refresh that answered while the resolve was in
+/// flight: `generation_at_start` was captured before the resolve
+/// ([`crate::commands::availability_refresh::generation_at_start`]),
+/// and a write over a newer answer would disable (or falsely enable)
+/// a show the user was just told about. Every path that resolves
+/// natively — the embedded player, a download, a range, a handoff —
+/// records through here, so a positive row names the provider that
+/// served the show and the next operation for it starts there.
+///
+/// A served resolve with a cap writes the full row for sub: the cap
+/// is exact for sub, and dropping it would evict an exact row into a
+/// count-less one for the whole TTL. A dub resolve only proves the
+/// requested episode has an English embed, so the dub row stays
+/// boolean and self-heals via the next mode-aware probe. The row
+/// takes the ongoing TTL either way, status being unknown here.
+pub async fn stamp_after_native(
+    state: &AppState,
+    kitsu_id: Option<&str>,
+    mode: &str,
+    generation_at_start: u64,
+    verdict: ResolveVerdict<'_>,
+) {
+    let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let row = cache_key(id, mode);
+    crate::commands::availability_refresh::with_row_if_ours(
+        &state.availability_refreshes,
+        &row,
+        generation_at_start,
+        false,
+        || match verdict.episode_cap {
+            Some(cap) if verdict.available && mode != "dub" => {
+                write_cache_full(
+                    state,
+                    id,
+                    mode,
+                    None,
+                    &AvailabilityResponse {
+                        available: true,
+                        episode_count: Some(cap),
+                        // Derived from the listing the resolve paid
+                        // for — the same tags a fractional play
+                        // matches against number2, so they outrank
+                        // whatever an older probe stored.
+                        extra_episodes: verdict.extra_tags.to_vec(),
+                        episode_count_approximate: false,
+                        gate_refused: false,
+                        provider: verdict.provider,
+                    },
+                );
+            }
+            _ => write_cache(state, id, mode, verdict.available, verdict.provider),
+        },
+    )
+    .await;
+}
+
 /// Inputs for the batch `availability_cached` lookup — a list of
 /// Kitsu ids and the mode to read cached results for. Skips the
 /// network entirely; only returns entries that already have a value

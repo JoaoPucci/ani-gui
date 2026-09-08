@@ -36,6 +36,9 @@ struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
     first: u32,
     quality: &'r str,
+    /// The provider the last attempt ran against — whose verdict a
+    /// clean miss is.
+    answered_by: Option<crate::scraper::provider::ProviderId>,
 }
 
 #[async_trait::async_trait]
@@ -46,6 +49,7 @@ impl Attempt for RangeStartAttempt<'_> {
         &mut self,
         provider: &dyn Provider,
     ) -> std::result::Result<(PickedShow, ResolvedEpisode), NativeError> {
+        self.answered_by = Some(provider.id());
         let picked = pick_native_walk(
             provider,
             &self.args.title,
@@ -102,15 +106,50 @@ where
         .kitsu_id
         .as_deref()
         .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
+    let generation = super::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+    );
     let mut attempt = RangeStartAttempt {
         args,
         first,
         quality,
+        answered_by: None,
     };
-    let attempted = super::providers::run_from(state, remembered, prio, &mut attempt)
-        .await
-        .map_err(|ne| ne.error)?;
+    let attempted = match super::providers::run_from(state, remembered, prio, &mut attempt).await {
+        Ok(attempted) => attempted,
+        Err(ne) => {
+            if ne.clean_miss {
+                super::availability::stamp_after_native(
+                    state,
+                    args.kitsu_id.as_deref(),
+                    &args.mode,
+                    generation,
+                    super::availability::ResolveVerdict::missed(attempt.answered_by),
+                )
+                .await;
+            }
+            return Err(ne.error);
+        }
+    };
     let (picked, first_resolved) = attempted.value;
+    // The range's first stream is a positive availability fact
+    // naming the provider that served it, with the cap the pick's
+    // listing paid for — the row the play path writes.
+    let extra_tags = super::play_native_numbering::extra_episode_tags(&picked.episodes);
+    super::availability::stamp_after_native(
+        state,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+        generation,
+        super::availability::ResolveVerdict::served(
+            attempted.provider,
+            super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
+            &extra_tags,
+        ),
+    )
+    .await;
     let client = attempted.client;
     let gate = gate_of(state, attempted.provider);
     on_progress(DownloadProgress {

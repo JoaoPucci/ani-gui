@@ -16,7 +16,6 @@
 use serde::Deserialize;
 
 use crate::app::AppState;
-use crate::commands::availability_refresh::with_row_if_ours;
 use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::progress::ProgressLine;
@@ -153,11 +152,9 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     }
 }
 
-/// Stamp the availability cache with a native resolution's verdict,
-/// guarded against a refresh that answered while the resolution was
-/// in flight — the generation was captured before the resolve, and a
-/// write over a newer answer would disable (or falsely enable) a show
-/// the user was just told about.
+/// Stamp the availability cache with a native resolution's verdict —
+/// the shared [`crate::commands::availability::stamp_after_native`],
+/// keyed by the play's own show and mode.
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
@@ -167,49 +164,16 @@ pub(super) async fn stamp_availability_after_native(
     episode_cap: Option<u32>,
     extra_tags: &[String],
 ) {
-    let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
-        return;
-    };
-    let row = crate::commands::availability::cache_key(id, args.mode.as_str());
-    with_row_if_ours(
-        &state.availability_refreshes,
-        &row,
+    crate::commands::availability::stamp_after_native(
+        state,
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
         generation_at_start,
-        false,
-        || match episode_cap {
-            // The resolve already paid for the provider's episode
-            // list — the cap is exact FOR SUB, and dropping it would
-            // evict an exact row into episode_count: null for the
-            // whole TTL. A dub resolve only proves the requested
-            // episode has an English embed, so the provider-wide
-            // list must not become an exact (kitsu_id, dub) count —
-            // the dub row stays boolean and self-heals via the next
-            // mode-aware probe. Status is unknown at this call site,
-            // so the row takes the ongoing TTL like the boolean
-            // write.
-            Some(cap) if available && args.mode != "dub" => {
-                crate::commands::availability::write_cache_full(
-                    state,
-                    id,
-                    &args.mode,
-                    None,
-                    &crate::commands::availability::AvailabilityResponse {
-                        available: true,
-                        episode_count: Some(cap),
-                        // Derived from the listing the resolve paid
-                        // for — the same tags a fractional play
-                        // matches against number2, so they outrank
-                        // whatever an older probe stored.
-                        extra_episodes: extra_tags.to_vec(),
-                        episode_count_approximate: false,
-                        gate_refused: false,
-                        provider,
-                    },
-                );
-            }
-            _ => crate::commands::availability::write_cache(
-                state, id, &args.mode, available, provider,
-            ),
+        crate::commands::availability::ResolveVerdict {
+            available,
+            provider,
+            episode_cap,
+            extra_tags,
         },
     )
     .await;

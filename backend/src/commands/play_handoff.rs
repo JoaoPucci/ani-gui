@@ -49,15 +49,50 @@ pub async fn resolve_launch_args(
         .kitsu_id
         .as_deref()
         .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
+    let generation = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+    );
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut |_| {},
         answered_by: None,
     };
-    let native = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
-        .await
-        .map_err(|ne| ne.error)?
-        .value;
+    // The verdict is stamped as the embedded player stamps its own:
+    // a served stream names the provider that served it, a clean
+    // miss the provider whose miss it is.
+    let native =
+        match crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await {
+            Ok(attempted) => {
+                crate::commands::availability::stamp_after_native(
+                    state,
+                    args.kitsu_id.as_deref(),
+                    &args.mode,
+                    generation,
+                    crate::commands::availability::ResolveVerdict::served(
+                        attempted.provider,
+                        attempted.value.episode_cap,
+                        &attempted.value.extra_tags,
+                    ),
+                )
+                .await;
+                attempted.value
+            }
+            Err(ne) => {
+                if ne.clean_miss {
+                    crate::commands::availability::stamp_after_native(
+                        state,
+                        args.kitsu_id.as_deref(),
+                        &args.mode,
+                        generation,
+                        crate::commands::availability::ResolveVerdict::missed(attempt.answered_by),
+                    )
+                    .await;
+                }
+                return Err(ne.error);
+            }
+        };
     crate::commands::play_native_record::stamp_numbering(state, &native);
     let watch = crate::commands::play_native_record::Watch::of(&native);
     Ok((launch_args_for(native, args, &cfg), watch))
