@@ -57,8 +57,8 @@ export const DEPS = [
 		binary: 'yt-dlp.exe',
 		directBinary: true,
 	},
-	// curl-impersonate: the transport native anidb resolution spawns.
-	// The provider's TLS-fingerprinting front 403s plain curl, so
+	// curl-impersonate: the transport the native resolution spawns for
+	// the stream providers. Their TLS-fingerprinting front 403s plain curl, so
 	// without this every play, availability probe and download dies
 	// with a network error — the exact footgun bundling exists to
 	// remove, and the reason a Windows build could install and browse

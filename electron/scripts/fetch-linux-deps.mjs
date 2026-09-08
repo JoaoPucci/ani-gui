@@ -86,8 +86,8 @@ export const DEPS = [
 		binary: 'yt-dlp',
 		directBinary: true,
 	},
-	// curl-impersonate: the transport the native anidb resolution
-	// spawns. The provider's TLS-fingerprinting protection 403s plain
+	// curl-impersonate: the transport the native resolution spawns
+	// for the stream providers. Their TLS-fingerprinting protection 403s plain
 	// curl, so without this every play / availability / download
 	// attempt dies with a network error on machines that never
 	// hand-installed it. One tarball carries the patched curl binary
