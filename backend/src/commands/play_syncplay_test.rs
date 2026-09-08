@@ -140,3 +140,76 @@ async fn a_fresh_syncplay_launch_resolves_natively_and_receives_the_master_url()
         "syncplay must receive the master playlist URL; got: {argv}"
     );
 }
+
+/// Syncplay's cache-hit launch records the watch once the spawn
+/// succeeded, exactly as the external player's does.
+#[tokio::test]
+async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (binary, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
+            binary.display()
+        ),
+    )
+    .expect("write config");
+    let args = play_args();
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: "cached-show-9".into(),
+            show_title: "Cached Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+        },
+    );
+
+    play_syncplay(&state, &args)
+        .await
+        .expect("launches from the cache");
+
+    let mut argv = String::new();
+    for _ in 0..100 {
+        if let Ok(s) = std::fs::read_to_string(&argv_file) {
+            if !s.is_empty() {
+                argv = s;
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(
+        argv.contains("/cached/master.m3u8"),
+        "the cached URL reached Syncplay: {argv}"
+    );
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    assert!(hsts.contains("cached-show-9"), "{hsts}");
+    assert!(
+        crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+            .expect("stamp read")
+            .is_some(),
+        "the watch is stamped once Syncplay started"
+    );
+}

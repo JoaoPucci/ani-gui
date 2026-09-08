@@ -268,3 +268,110 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
         "the row must carry the resolved provider slot, not the display tag: {hsts}"
     );
 }
+
+/// The spawn is the watch. A player that cannot start — the binary is
+/// missing, the path is wrong — leaves no history row and no
+/// watched-at stamp, so the resume never points at an episode nobody
+/// saw.
+#[tokio::test]
+async fn a_failed_spawn_records_no_watch() {
+    let mock = MockServer::start().await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), &mock.uri());
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\n",
+            dir.path().join("no-such-player").display()
+        ),
+    )
+    .expect("write config");
+
+    let err = play_external(&state, &play_args())
+        .await
+        .expect_err("the player cannot start");
+    assert!(
+        matches!(err, crate::error::AniError::PlayerSpawnFailed { .. }),
+        "{err:?}"
+    );
+    assert!(
+        !state.history_path.exists(),
+        "no history row for a watch that never began"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        None
+    );
+}
+
+/// A cached resolution is as much a watch as a fresh one once the
+/// player has started: the row and the stamp are written then, keyed
+/// on the cached show id, so the resume's latest-stamp choice sees
+/// this watch and not the other provider's older row.
+#[tokio::test]
+async fn a_cached_external_play_records_the_watch_after_the_spawn() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let args = play_args();
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: "cached-show-9".into(),
+            show_title: "Cached Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+        },
+    );
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+
+    let argv = wait_for(&argv_file).await;
+    assert!(
+        argv.contains("/cached/master.m3u8"),
+        "the cached URL reached the player: {argv}"
+    );
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    assert!(
+        hsts.contains("cached-show-9"),
+        "the row keys on the cached show id: {hsts}"
+    );
+    let stamp = crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+        .expect("stamp read")
+        .expect("the watch is stamped once the player started");
+    assert!(stamp >= before);
+}
