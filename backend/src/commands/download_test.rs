@@ -3560,3 +3560,84 @@ async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() 
         calls.contains("/h/9101/master.m3u8") && calls.contains("/h/9102/master.m3u8"),
         "both streams came from the fallback: {calls}"
     );
+}
+
+/// A resolve that served a stream is a positive availability fact
+/// naming the provider that served it, on the download path as on
+/// the play path: the next operation for the show starts from that
+/// provider instead of from the primary, whose clean miss would end
+/// the walk before the provider already proven to work is asked.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_remembers_the_provider_that_served_it() {
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "kitsu_id": "rs-21",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        None,
+        "nothing is remembered before the resolve"
+    );
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the download completes");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        Some(crate::scraper::provider::ProviderId::Anidb),
+        "the provider that served the stream is remembered"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_through_the_fallback_remembers_the_fallback() {
+    let anidb = stub_range_show_with_a_broken_stream_chain().await;
+    let hianime = stub_hianime_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &anidb.uri());
+    state.provider_order = vec![
+        crate::scraper::provider::ProviderId::Anidb,
+        crate::scraper::provider::ProviderId::Hianime,
+    ];
+    state.hianime_base = Some(hianime.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1-2",
+        "mode": "sub",
+        "kitsu_id": "rs-21",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the range completes through the fallback");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime),
+        "the fallback that served the range is remembered"
+    );
+}
