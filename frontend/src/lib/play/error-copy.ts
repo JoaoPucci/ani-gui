@@ -63,7 +63,8 @@ export function describeSourceDown(e: unknown): string | null {
 
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited → busy source (with the upstream's
- *  own retry hint when it sent one); no_results → catalogue miss;
+ *  own retry hint when it sent one); episode_unavailable → the show
+ *  is there and this episode is not; no_results → catalogue miss;
  *  scraper → upstream unhappy; timeout → slow upstream; network /
  *  upstream → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
@@ -72,6 +73,13 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 	const sourceDown = describeSourceDown(e);
 	if (sourceDown !== null) return sourceDown;
 	const raw = describeError(e).toLowerCase();
+	if (raw.includes('episode_unavailable')) {
+		// The show is in the catalogue; this episode has no stream in
+		// the requested audio. The same copy on every surface — the
+		// detail page's catalogue-miss phrasing is for a title the
+		// catalogue lacks, which this is not.
+		return m.play_play_failure_episode_unavailable();
+	}
 	if (raw.includes('no_results')) {
 		// The one deliberate per-surface difference: the detail page
 		// phrases a catalogue miss definitively (it also gates the
