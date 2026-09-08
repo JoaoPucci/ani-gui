@@ -170,16 +170,34 @@ pub(crate) async fn try_launch_args_from_cache(
         upstream = cached.upstream_url.as_str(),
         "play_external: cache hit (HEAD ok), launching mpv from cached URL",
     );
-    // The watch to record once the player has started: the history
-    // file speaks the provider's numbering, and the offset was
-    // stamped by the resolve that wrote this row.
-    let offset = super::anidb_offset::get(state, &cached.show_id);
-    let watch = super::play_native_record::Watch {
+    let watch = cached_watch(state, &cached, &args.episode);
+    Some((cached_launch_args(cached, args, cfg), watch))
+}
+
+/// The watch a cached resolution describes, for the command to
+/// record once the player has started. The history file speaks the
+/// provider's numbering: the row's own slot when it carries one —
+/// the display number translated through the single display stamp
+/// can point at a recap once a later resolve has moved the stamp —
+/// and the stamp-aware translation only for a row from before the
+/// field, as the embedded player's cache-hit path does.
+pub(crate) fn cached_watch(
+    state: &AppState,
+    cached: &play_resolution_cache::CachedResolution,
+    episode: &str,
+) -> super::play_native_record::Watch {
+    let ep_no = cached.resolved_slot.map_or_else(
+        || {
+            let offset = super::anidb_offset::get(state, &cached.show_id);
+            super::anidb_offset::write_ep_no(state, &cached.show_id, episode, offset)
+        },
+        |slot| slot.to_string(),
+    );
+    super::play_native_record::Watch {
         show_id: cached.show_id.clone(),
         title: cached.show_title.clone(),
-        ep_no: super::anidb_offset::write_ep_no(state, &cached.show_id, &args.episode, offset),
-    };
-    Some((cached_launch_args(cached, args, cfg), watch))
+        ep_no,
+    }
 }
 
 /// The launch a cached resolution describes: the row's stream and
