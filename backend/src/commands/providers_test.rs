@@ -541,3 +541,130 @@ mod affinity_props {
         }
     }
 }
+
+// ── affinity yields; skipped providers are retried ──────────────────
+
+async fn run_with<'a>(
+    gates: &'a Gates,
+    order: &[ProviderId],
+    remembered: Option<ProviderId>,
+    priority: ScrapePriority,
+    attempt: &mut Scripted,
+) -> Result<Attempted<'a, &'static str>, NativeError> {
+    with_failover(
+        order,
+        remembered,
+        priority,
+        Duration::from_secs(60),
+        Duration::from_secs(20),
+        stub,
+        |p| gates.of(p),
+        attempt,
+    )
+    .await
+}
+
+/// A positive availability row proves the show and its mode at the
+/// show's level, not that every episode has an embed; a remembered
+/// provider's answered dead end therefore yields to the rest of the
+/// order instead of ending the walk on an episode another provider
+/// may serve.
+#[tokio::test]
+async fn a_remembered_providers_answered_miss_yields_to_the_rest() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest of the order answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "anidb");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+#[tokio::test]
+async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        !err.clean_miss,
+        "absence on one provider with another unreachable proves nothing"
+    );
+}
+
+/// The gate admits an interactive click through an open breaker as
+/// its half-open trial; the skip is only the fast path. When every
+/// provider that was tried answered a miss, the skipped ones are
+/// asked before the user is told the show is nowhere.
+#[tokio::test]
+async fn a_skipped_provider_is_retried_when_the_rest_only_missed_on_an_interactive_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the recovered primary answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "skipped first, asked last"
+    );
+}
+
+#[tokio::test]
+async fn a_skipped_provider_stays_skipped_on_a_background_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Background,
+        &mut attempt,
+    )
+    .await
+    .expect_err("background traffic does not trial an open breaker");
+    assert!(matches!(err.error, AniError::NoResults));
+    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+}
