@@ -2838,6 +2838,70 @@ async fn a_finished_sidecar_claim_keeps_its_file() {
     );
 }
 
+/// A zero-length file at a sidecar's name is a claim abandoned by an
+/// install that stopped between creating the name and filling it —
+/// the fallback where the filesystem offers no hard links — and
+/// never the user's subtitle, since a WebVTT file is never empty.
+/// Refusing it kept the name empty for good, every later download
+/// reading the refusal as the user's own file. It is taken over; a
+/// file with bytes at the name is still the user's and still refused.
+#[tokio::test]
+async fn an_empty_file_at_a_sidecar_name_is_an_abandoned_claim_and_is_taken() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 4.en.vtt");
+    std::fs::write(&path, b"").expect("abandoned claim");
+    write_new(&path, b"WEBVTT\n\nhi\n")
+        .await
+        .expect("an empty name is free");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n",
+        "the complete file is at the name"
+    );
+    let names: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Show Episode 4.en.vtt".to_string()],
+        "no scratch remains"
+    );
+}
+
+/// The install that fills the name by a rename — the path taken where
+/// the filesystem offers no hard links — takes over an abandoned
+/// empty name the same way, and still refuses a name with bytes.
+#[test]
+fn the_rename_install_takes_an_abandoned_claim_and_refuses_a_file_with_bytes() {
+    let dest = tempfile::tempdir().expect("dest");
+    let abandoned = dest.path().join("Show Episode 4.en.vtt");
+    std::fs::write(&abandoned, b"").expect("abandoned claim");
+    let scratch = dest.path().join(".ani-gui-0-scratch.part.vtt");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    install_by_rename(&scratch, &abandoned).expect("an empty name is free");
+    assert_eq!(
+        std::fs::read_to_string(&abandoned).expect("file"),
+        "WEBVTT\n\nhi\n"
+    );
+    assert!(!scratch.exists(), "the scratch moved to the name");
+
+    let users = dest.path().join("Show Episode 5.en.vtt");
+    std::fs::write(&users, b"WEBVTT\n\nthe user's own\n").expect("the user's file");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    let err = install_by_rename(&scratch, &users).expect_err("refused");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_to_string(&users).expect("file"),
+        "WEBVTT\n\nthe user's own\n",
+        "a refused install touches nothing at the name"
+    );
+    assert!(
+        scratch.exists(),
+        "a refused install leaves the scratch to its claim"
+    );
+}
+
 /// A CDN in front of the subtitles can answer a challenge page with
 /// 200. Written as a sidecar it would sit at the track's name for
 /// good, since every later download keeps what it finds there. Only
