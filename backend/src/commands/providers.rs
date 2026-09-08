@@ -92,11 +92,25 @@ pub fn fails_over(error: &AniError) -> bool {
 /// unreachable provider is demoted to a plain miss: absence on the
 /// fallback proves nothing about a primary that never answered.
 ///
+/// `remembered` names the provider a positive availability row put
+/// first. Its answered miss is not the walk's verdict — the row
+/// proves the show and its mode at the show's level, not that every
+/// episode has an embed — so the walk goes on to the rest of the
+/// order, and the miss stands only when the rest were unreachable.
+///
+/// On an interactive walk the gate admits a click through an open
+/// breaker as its half-open trial, so the skip is only the fast
+/// path: when every provider that was tried answered a miss, the
+/// skipped ones are asked before the miss surfaces. Background
+/// traffic keeps the skip.
+///
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
 /// provider answered, the first unreachable error: the primary's.
+#[allow(clippy::too_many_arguments)]
 pub async fn with_failover<'c, 'g, A, C, G>(
     order: &[ProviderId],
+    remembered: Option<ProviderId>,
     priority: ScrapePriority,
     total_budget: Duration,
     attempt_budget: Duration,
@@ -110,80 +124,231 @@ where
     G: Fn(ProviderId) -> &'g ScraperGate,
 {
     let overall = tokio::time::Instant::now();
-    let mut first_unreachable: Option<NativeError> = None;
-    let mut any_unreachable = false;
+    let mut walk = Walk {
+        first_unreachable: None,
+        any_unreachable: false,
+        skipped: Vec::new(),
+    };
+    let mut affinity_miss: Option<NativeError> = None;
     let count = order.len();
     for (i, &provider) in order.iter().enumerate() {
         let last = i + 1 == count;
         if !last && gate_of(provider).is_open() {
-            any_unreachable = true;
+            walk.any_unreachable = true;
+            walk.skipped.push(provider);
             continue;
         }
-        let remaining = total_budget.saturating_sub(overall.elapsed());
-        if remaining.is_zero() {
+        let Some(budget) = walk_budget(overall, total_budget, attempt_budget, last) else {
             break;
-        }
-        let budget = if last {
-            remaining
-        } else {
-            attempt_budget.min(remaining)
         };
-        let client = match client_for(provider) {
-            Ok(c) => c,
-            Err(error) => {
-                any_unreachable = true;
-                first_unreachable.get_or_insert(NativeError {
-                    error,
-                    clean_miss: false,
-                    failed_at: None,
-                });
-                continue;
-            }
-        };
-        let started = tokio::time::Instant::now();
-        let result = match tokio::time::timeout(budget, attempt.run(&*client)).await {
-            Ok(result) => result,
-            Err(_elapsed) => Err(NativeError {
-                error: AniError::Timeout,
-                clean_miss: false,
-                failed_at: None,
-            }),
-        };
-        if let Some(outcome) = breaker_outcome(priority, &result) {
-            let observed_at = result
-                .as_ref()
-                .err()
-                .and_then(|ne| ne.failed_at)
-                .or_else(|| client.last_attempt_at())
-                .unwrap_or(started);
-            gate_of(provider).record(outcome, observed_at);
-        }
-        match result {
-            Ok(value) => {
-                return Ok(Attempted {
-                    provider,
-                    value,
-                    client,
-                    after_unreachable: any_unreachable,
-                })
-            }
-            Err(ne) if fails_over(&ne.error) => {
-                any_unreachable = true;
-                first_unreachable.get_or_insert(ne);
-            }
-            Err(mut ne) => {
-                if ne.clean_miss && any_unreachable {
-                    ne.clean_miss = false;
+        match try_provider(
+            provider,
+            budget,
+            priority,
+            &mut client_for,
+            &gate_of,
+            attempt,
+            &mut walk,
+        )
+        .await
+        {
+            Tried::Answered(answer) => return Ok(answer),
+            Tried::FailedOver => {}
+            Tried::Missed(miss) => {
+                if i == 0 && remembered == Some(provider) {
+                    affinity_miss = Some(miss);
+                    continue;
                 }
-                return Err(ne);
+                return retry_skipped(
+                    miss,
+                    overall,
+                    total_budget,
+                    attempt_budget,
+                    priority,
+                    &mut client_for,
+                    &gate_of,
+                    attempt,
+                    &mut walk,
+                )
+                .await;
             }
         }
     }
-    Err(first_unreachable.unwrap_or(NativeError {
+    if let Some(miss) = affinity_miss {
+        return retry_skipped(
+            miss,
+            overall,
+            total_budget,
+            attempt_budget,
+            priority,
+            &mut client_for,
+            &gate_of,
+            attempt,
+            &mut walk,
+        )
+        .await;
+    }
+    Err(walk.first_unreachable.unwrap_or(NativeError {
         error: AniError::Network,
         clean_miss: false,
         failed_at: None,
     }))
+}
+
+/// What a walk has learned so far.
+struct Walk {
+    /// The first unreachable error, to surface when nobody answers.
+    first_unreachable: Option<NativeError>,
+    /// Whether any provider so far was unreachable, refusing, broken
+    /// or skipped: an absence after that proves nothing.
+    any_unreachable: bool,
+    /// The providers skipped for an open breaker, in order.
+    skipped: Vec<ProviderId>,
+}
+
+/// How one attempt ended.
+enum Tried<'c, T> {
+    Answered(Attempted<'c, T>),
+    FailedOver,
+    Missed(NativeError),
+}
+
+/// The budget for the next attempt: the whole remainder for the last
+/// provider, the attempt budget otherwise; none once the total is
+/// spent.
+fn walk_budget(
+    overall: tokio::time::Instant,
+    total_budget: Duration,
+    attempt_budget: Duration,
+    last: bool,
+) -> Option<Duration> {
+    let remaining = total_budget.saturating_sub(overall.elapsed());
+    if remaining.is_zero() {
+        return None;
+    }
+    Some(if last {
+        remaining
+    } else {
+        attempt_budget.min(remaining)
+    })
+}
+
+/// One bounded attempt against `provider`, its outcome recorded on
+/// the provider's gate.
+async fn try_provider<'c, 'g, A, C, G>(
+    provider: ProviderId,
+    budget: Duration,
+    priority: ScrapePriority,
+    client_for: &mut C,
+    gate_of: &G,
+    attempt: &mut A,
+    walk: &mut Walk,
+) -> Tried<'c, A::Output>
+where
+    A: Attempt,
+    C: FnMut(ProviderId) -> crate::error::Result<Box<dyn Provider + 'c>>,
+    G: Fn(ProviderId) -> &'g ScraperGate,
+{
+    let client = match client_for(provider) {
+        Ok(c) => c,
+        Err(error) => {
+            walk.any_unreachable = true;
+            walk.first_unreachable.get_or_insert(NativeError {
+                error,
+                clean_miss: false,
+                failed_at: None,
+            });
+            return Tried::FailedOver;
+        }
+    };
+    let started = tokio::time::Instant::now();
+    let result = match tokio::time::timeout(budget, attempt.run(&*client)).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(NativeError {
+            error: AniError::Timeout,
+            clean_miss: false,
+            failed_at: None,
+        }),
+    };
+    if let Some(outcome) = breaker_outcome(priority, &result) {
+        let observed_at = result
+            .as_ref()
+            .err()
+            .and_then(|ne| ne.failed_at)
+            .or_else(|| client.last_attempt_at())
+            .unwrap_or(started);
+        gate_of(provider).record(outcome, observed_at);
+    }
+    match result {
+        Ok(value) => Tried::Answered(Attempted {
+            provider,
+            value,
+            client,
+            after_unreachable: walk.any_unreachable,
+        }),
+        Err(ne) if fails_over(&ne.error) => {
+            walk.any_unreachable = true;
+            walk.first_unreachable.get_or_insert(ne);
+            Tried::FailedOver
+        }
+        Err(mut ne) => {
+            if ne.clean_miss && walk.any_unreachable {
+                ne.clean_miss = false;
+            }
+            Tried::Missed(ne)
+        }
+    }
+}
+
+/// A miss is the walk's verdict — unless providers were skipped for
+/// an open breaker on an interactive walk, which the gate would have
+/// admitted as the breaker's half-open trial. Those are asked now:
+/// an answer is the walk's, and a miss of theirs — the last answer
+/// given — replaces the one they were asked for.
+///
+/// # Errors
+/// The miss that stands.
+#[allow(clippy::too_many_arguments)]
+async fn retry_skipped<'c, 'g, A, C, G>(
+    miss: NativeError,
+    overall: tokio::time::Instant,
+    total_budget: Duration,
+    attempt_budget: Duration,
+    priority: ScrapePriority,
+    client_for: &mut C,
+    gate_of: &G,
+    attempt: &mut A,
+    walk: &mut Walk,
+) -> Result<Attempted<'c, A::Output>, NativeError>
+where
+    A: Attempt,
+    C: FnMut(ProviderId) -> crate::error::Result<Box<dyn Provider + 'c>>,
+    G: Fn(ProviderId) -> &'g ScraperGate,
+{
+    let mut verdict = miss;
+    if matches!(priority, ScrapePriority::Interactive) && !walk.skipped.is_empty() {
+        let skipped = std::mem::take(&mut walk.skipped);
+        let count = skipped.len();
+        for (i, provider) in skipped.into_iter().enumerate() {
+            let Some(budget) = walk_budget(overall, total_budget, attempt_budget, i + 1 == count)
+            else {
+                break;
+            };
+            match try_provider(
+                provider, budget, priority, client_for, gate_of, attempt, walk,
+            )
+            .await
+            {
+                Tried::Answered(answer) => return Ok(answer),
+                Tried::FailedOver => {}
+                Tried::Missed(ne) => verdict = ne,
+            }
+        }
+    }
+    if verdict.clean_miss && walk.any_unreachable {
+        verdict.clean_miss = false;
+    }
+    Err(verdict)
 }
 
 /// Where each provider's client points: the state's overrides, or a
@@ -272,6 +437,7 @@ pub async fn run<'a, A: Attempt>(
         state,
         Origins::of(state),
         &state.provider_order,
+        None,
         priority,
         attempt,
     )
@@ -293,7 +459,16 @@ pub async fn run_from<'a, A: Attempt>(
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
     let order = order_with_affinity(&state.provider_order, remembered);
-    run_at(state, Origins::of(state), &order, priority, attempt).await
+    let remembered = remembered.filter(|r| order.first() == Some(r));
+    run_at(
+        state,
+        Origins::of(state),
+        &order,
+        remembered,
+        priority,
+        attempt,
+    )
+    .await
 }
 
 /// `order` with `remembered` moved to the front when it is listed;
@@ -312,7 +487,8 @@ pub fn order_with_affinity(
     }
 }
 
-/// [`run`] with the providers' origins and order named by the caller.
+/// [`run`] with the providers' origins and order named by the caller,
+/// and the provider a positive row put first, when one did.
 ///
 /// # Errors
 /// As [`with_failover`].
@@ -320,11 +496,13 @@ pub async fn run_at<'a, A: Attempt>(
     state: &'a AppState,
     origins: Origins<'_>,
     order: &[ProviderId],
+    remembered: Option<ProviderId>,
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
     with_failover(
         order,
+        remembered,
         priority,
         RESOLVE_DEADLINE,
         PRIMARY_ATTEMPT_BUDGET,

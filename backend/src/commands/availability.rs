@@ -392,6 +392,7 @@ pub(crate) async fn check_availability_with_base(
         state,
         origins,
         &state.provider_order,
+        None,
         prio,
         &mut attempt,
     )
