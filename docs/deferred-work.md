@@ -376,7 +376,14 @@ starting it, and delete it when you find it done.
   what the renderer really loads, which is less than it looks: its
   own origin; the local backend on the loopback port, which is also
   the origin of every image, stream, subtitle file and the
-  server-sent event stream the play and download pages listen to;
+  server-sent event stream the play and download pages listen to —
+  with one exception, the manual diagnostic route, which hands a
+  pasted public URL straight to the player, so a policy limited to
+  the loopback closes it; the work decides whether that route is
+  allowed through (a media source open to any host, which gives up
+  part of the point), sent through the proxy like every other
+  stream (what the layer-boundary rule already says of stream
+  traffic), or retired;
   blob URLs, which is how the HLS player attaches media, and a worker
   source if that player spawns one; data URLs for the two inline SVG
   grain backgrounds; and inline styles, since the components set
