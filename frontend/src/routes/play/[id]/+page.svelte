@@ -1555,6 +1555,10 @@
 		// support; the <video> element handles seek natively, no need
 		// for hls.js. HLS sessions still go through hls.js so that
 		// chromium without native HLS works (it doesn't, on Linux).
+		// Whether a source was attached below, tracked locally: the
+		// effect must not read `playerError` after writing it, or it
+		// subscribes to its own write and reruns until Svelte gives up.
+		let sourceAttached = true;
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
@@ -1606,12 +1610,13 @@
 			videoEl.src = mediaUrl;
 		} else {
 			playerError = 'HLS playback is not supported in this webview.';
+			sourceAttached = false;
 		}
 
 		// Sidecar subtitle tracks: the session lists them, one <track>
 		// per listing on the singleton, removed with the source like the
 		// engine is.
-		if (!playerError) {
+		if (sourceAttached) {
 			const apiBase = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
 			addSourceScopedCleanup(armSidecarTracks(videoEl, apiBase, sessionId));
 		}
