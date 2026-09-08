@@ -194,4 +194,46 @@ proptest::proptest! {
             Some(format!("{scheme}://{host}/"))
         );
     }
+
+    /// Whatever the site names its servers, the ones to try for a mode
+    /// are exactly that mode's servers — every one of them, once — with
+    /// the hosts the client can read ahead of the rest and the site's
+    /// order kept within each half.
+    #[test]
+    fn servers_for_a_mode_are_its_servers_readable_hosts_first(
+        servers in proptest::collection::vec(
+            (
+                proptest::sample::select(vec!["sub", "dub"]),
+                "[A-Za-z0-9-]{1,10}",
+                proptest::sample::select(vec![
+                    "https://zokoanime.video/stream/mal/1/1/sub",
+                    "https://megaplay.buzz/stream/s-2/1/sub",
+                    "https://vidtube.site/stream/abc/sub",
+                ]),
+            )
+                .prop_map(|(mode, name, url)| ServerEmbed {
+                    mode: mode.to_string(),
+                    name,
+                    embed_url: url.to_string(),
+                }),
+            0..8,
+        ),
+        mode in proptest::sample::select(vec!["sub", "dub"]),
+    ) {
+        let picked = servers_for(&servers, mode);
+        let expected: Vec<&ServerEmbed> = servers.iter().filter(|s| s.mode == mode).collect();
+        prop_assert_eq!(picked.len(), expected.len());
+        for s in &expected {
+            prop_assert!(picked.iter().any(|p| std::ptr::eq(*p, *s)));
+        }
+        let readable = |s: &ServerEmbed| s.embed_url.starts_with("https://zokoanime.video/");
+        let first_unreadable = picked.iter().position(|s| !readable(s));
+        let last_readable = picked.iter().rposition(|s| readable(s));
+        if let (Some(u), Some(r)) = (first_unreadable, last_readable) {
+            prop_assert!(r < u, "readable hosts lead: {picked:?}");
+        }
+        let readable_order: Vec<&ServerEmbed> = picked.iter().copied().filter(|s| readable(s)).collect();
+        let readable_site_order: Vec<&ServerEmbed> = expected.iter().copied().filter(|s| readable(s)).collect();
+        prop_assert!(readable_order.iter().zip(&readable_site_order).all(|(a, b)| std::ptr::eq(*a, *b)));
+    }
 }
