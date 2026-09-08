@@ -3401,3 +3401,162 @@ async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
         "three in flight overlap and never exceed three: {three_at_a_time}"
     );
 }
+
+/// The embed page's payload as hianime ships it: the player JSON
+/// XOR'd under its versioned key, then base64'd.
+#[cfg(unix)]
+fn hianime_embed_blob(payload: &str) -> String {
+    use base64::Engine as _;
+    const KEY: &[u8] = b"otaku-embed-v1";
+    let xored: Vec<u8> = payload
+        .bytes()
+        .zip(KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    base64::engine::general_purpose::STANDARD.encode(xored)
+}
+
+/// An anidb whose catalogue pages answer but whose stream chain is
+/// broken: the languages endpoint blocks. Search and episodes are
+/// the range stub's.
+#[cfg(unix)]
+async fn stub_range_show_with_a_broken_stream_chain() -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/anime/range-show-21"><img alt="Range Show"/></a>"#),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/api/frontend/anime/21/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"episodes":[{"id":2101,"number":1},{"id":2102,"number":2}]}"#),
+        )
+        .mount(&server)
+        .await;
+    for ep in [2101u64, 2102] {
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/api/frontend/episode/{ep}/languages")))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+/// A hianime carrying the same two-episode show through its whole
+/// chain: search page, episode list, server list, embed page, master.
+#[cfg(unix)]
+async fn stub_hianime_range_show() -> wiremock::MockServer {
+    use base64::Engine as _;
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    let base = server.uri();
+    let search = format!(
+        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/range-show-21" title="Range Show" class="dynamic-name">Range Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
+    );
+    wiremock::Mock::given(method("GET"))
+        .and(path("/search"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
+        .mount(&server)
+        .await;
+    let list = serde_json::json!({
+        "status": true,
+        "html": r#"<a class="ep-item" data-number="1" data-id="9101"></a><a class="ep-item" data-number="2" data-id="9102"></a>"#,
+    })
+    .to_string();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/api/theme/episode/list/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
+        .mount(&server)
+        .await;
+    for ep in [9101u64, 9102] {
+        let hash = base64::engine::general_purpose::STANDARD
+            .encode(format!("{base}/stream/mal/21/{ep}/sub"));
+        let servers = serde_json::json!({
+            "status": true,
+            "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
+        })
+        .to_string();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/theme/episode/servers"))
+            .and(wiremock::matchers::query_param("episodeId", ep.to_string()))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
+            .mount(&server)
+            .await;
+        let payload =
+            serde_json::json!({ "src": format!("{base}/h/{ep}/master.m3u8"), "subtitles": [] })
+                .to_string();
+        let embed = format!(
+            r#"<html><body><script>window.__P="{}"</script></body></html>"#,
+            hianime_embed_blob(&payload)
+        );
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/stream/mal/21/{ep}/sub")))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/h/{ep}/master.m3u8")))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+/// A range commits to a provider only once that provider has served
+/// the range's first stream, not once it has answered a search: a
+/// primary whose catalogue pages work but whose stream chain is
+/// broken hands the range to the fallback, as a single download
+/// would, instead of aborting it.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() {
+    let anidb = stub_range_show_with_a_broken_stream_chain().await;
+    let hianime = stub_hianime_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &anidb.uri());
+    state.provider_order = vec![
+        crate::scraper::provider::ProviderId::Anidb,
+        crate::scraper::provider::ProviderId::Hianime,
+    ];
+    state.hianime_base = Some(hianime.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1-2",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the range completes through the fallback");
+    let calls = std::fs::read_to_string(&log).expect("both episodes ran");
+    assert_eq!(
+        calls.lines().count(),
+        2,
+        "one transfer per episode: {calls}"
+    );
+    assert!(
+        calls.contains("/h/9101/master.m3u8") && calls.contains("/h/9102/master.m3u8"),
+        "both streams came from the fallback: {calls}"
+    );
