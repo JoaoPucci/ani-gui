@@ -447,7 +447,11 @@ async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
     let (got, _) = run(&provider, "the sequel", &[], "3", None).await;
     let err = got.expect_err("episode 3 has not aired");
     assert!(!err.clean_miss);
-    assert!(matches!(err.error, AniError::NoResults));
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "the entry was found; the number past its tail is the episode's verdict: {:?}",
+        err.error
+    );
 }
 
 #[tokio::test]
