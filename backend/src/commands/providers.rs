@@ -177,8 +177,14 @@ where
                     affinity_miss = Some((miss, by));
                     continue;
                 }
+                let verdict = match affinity_miss.take() {
+                    Some((set_aside, set_by)) => {
+                        firmer_verdict((set_aside, Some(set_by)), (miss, Some(by)))
+                    }
+                    None => (miss, Some(by)),
+                };
                 return retry_skipped(
-                    (miss, Some(by)),
+                    verdict,
                     overall,
                     total_budget,
                     attempt_budget,
@@ -377,7 +383,7 @@ where
             {
                 Tried::Answered(answer) => return Ok(answer),
                 Tried::FailedOver => {}
-                Tried::Missed(ne, by) => verdict = (ne, Some(by)),
+                Tried::Missed(ne, by) => verdict = firmer_verdict(verdict, (ne, Some(by))),
             }
         }
     }
@@ -386,6 +392,42 @@ where
         attempt.missed_by(by);
     }
     Err(error)
+}
+
+/// The verdict to keep when two providers both missed. An episode
+/// verdict outranks a title miss: a provider that found the show and
+/// not the episode has said something a later title miss cannot
+/// unsay — the later provider lacks the show, which says nothing
+/// about the episode. Between two verdicts of the same kind the later
+/// one stands, as it did before.
+fn firmer_miss(earlier: NativeError, later: NativeError) -> NativeError {
+    if keeps_earlier(&earlier, &later) {
+        earlier
+    } else {
+        later
+    }
+}
+
+/// Whether the earlier of two misses is the one to keep: only an
+/// episode verdict over a title miss.
+fn keeps_earlier(earlier: &NativeError, later: &NativeError) -> bool {
+    let episode = |ne: &NativeError| matches!(ne.error, AniError::EpisodeUnavailable);
+    episode(earlier) && !episode(later)
+}
+
+/// [`firmer_miss`] over a verdict and the provider whose verdict it
+/// is, so the provider travels with the verdict that is kept — the
+/// row a miss writes names the provider that missed, not the last
+/// one asked.
+fn firmer_verdict(
+    earlier: (NativeError, Option<ProviderId>),
+    later: (NativeError, Option<ProviderId>),
+) -> (NativeError, Option<ProviderId>) {
+    if keeps_earlier(&earlier.0, &later.0) {
+        earlier
+    } else {
+        later
+    }
 }
 
 /// Where each provider's client points: the state's overrides, or a
