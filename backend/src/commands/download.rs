@@ -222,15 +222,54 @@ where
         .kitsu_id
         .as_deref()
         .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
+    // Captured before the resolve, as the play path does: the verdict
+    // stamped is the one this resolve got, and a refresh can land any
+    // time between.
+    let generation = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+    );
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut forward,
         answered_by: None,
     };
-    let resolved = crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
-        .await
-        .map_err(|ne| ne.error)?
-        .value;
+    let resolved =
+        match crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await {
+            Ok(attempted) => {
+                // A served stream is a positive availability fact naming
+                // the provider that served it — the next operation for
+                // the show starts there, not from a primary whose clean
+                // miss would end the walk first.
+                crate::commands::availability::stamp_after_native(
+                    state,
+                    args.kitsu_id.as_deref(),
+                    &args.mode,
+                    generation,
+                    crate::commands::availability::ResolveVerdict::served(
+                        attempted.provider,
+                        attempted.value.episode_cap,
+                        &attempted.value.extra_tags,
+                    ),
+                )
+                .await;
+                attempted.value
+            }
+            Err(ne) => {
+                if ne.clean_miss {
+                    crate::commands::availability::stamp_after_native(
+                        state,
+                        args.kitsu_id.as_deref(),
+                        &args.mode,
+                        generation,
+                        crate::commands::availability::ResolveVerdict::missed(attempt.answered_by),
+                    )
+                    .await;
+                }
+                return Err(ne.error);
+            }
+        };
 
     tracing::info!(
         slug = %resolved.slug,
