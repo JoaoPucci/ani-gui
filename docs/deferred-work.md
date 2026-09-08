@@ -312,69 +312,36 @@ starting it, and delete it when you find it done.
 
 - **Ask the next provider when the first answers a miss**, so a show
   the first provider does not carry plays from the second instead of
-  being hidden — the catalogues as a union. Failover moves to the
-  next provider only when the current one was unreachable, refusing
-  or broken; an answered miss ends the walk, and a finished show
-  with a negative verdict is dropped from the home and search lists
-  while its page disables Play and Download.
+  being hidden — the catalogues as a union. Today an answered miss
+  ends the walk; only an unreachable, refusing or broken provider
+  moves it on. Not in parallel: asking every provider for every
+  request doubles the traffic on the resource this entry worries
+  about and buys nothing when the first provider carries the show,
+  which is most of the time.
 
-  Not in parallel. Asking every provider for every request doubles
-  the traffic on the resource this entry worries about and buys
-  nothing when the first provider carries the show, which is most of
-  the time; the union comes from the walk going on past a miss, in
-  order, and stopping at the first provider that has the show.
+  What it changes underneath: a negative verdict stops meaning "the
+  provider that answered has nothing" and starts meaning "every
+  provider asked has nothing", so a show is absent only when every
+  enabled provider missed, and a row from one provider must not hide
+  a show the walk never asked the next about.
 
-  What it changes: a negative verdict stops meaning "the provider
-  that answered has nothing" and starts meaning "every provider
-  asked has nothing". Negative rows already name their provider and
-  are served only while that provider is reachable and the ones
-  ahead of it are not, so the store is ready for per-provider
-  absence; the aggregation is the new part — a show is absent only
-  when every enabled provider answered a miss, and a row from one
-  provider must not hide a show the walk never asked the next about.
-  Provider affinity exists: a play, a download or a handoff starts
-  from the provider the show's positive row names, so a show found
-  on the second provider is not re-walked through the first on every
-  play. An episode one provider carries but the other lacks is a
-  sub-case of the same rule, half of which the affinity pick's yield
-  already covers.
+  It waited on a measurement. A miss costs a full walk — every alias
+  searched, up to five candidates probed per alias — and the union
+  makes every genuinely absent show cost one such walk per provider,
+  on the page's probe and on the background warm alike. hianime's
+  rate-limit temperament has never been measured: in September 2026,
+  with anidb.app down, it carried every request without visible
+  pushback, and a breaker learns after the block, not before. Measure
+  what the site tolerates for search and listings at the background
+  pace, and whether excess gets the challenge page or a 429, before
+  building.
 
-  Rate limiting is the biggest risk and the reason to measure before
-  building. A miss costs a full walk — every alias searched, and up
-  to five candidates probed per alias, so a show with four aliases
-  can cost twenty-five episode-list probes plus a detail-year
-  request per candidate — and the union makes every genuinely
-  absent show cost one such walk per provider, on the page's own
-  probe and on the background warm that fills the list views alike.
-  hianime's rate-limit temperament has never been measured; the
-  survey in `docs/proposals/additional-providers.md` only saw it
-  answer quickly, and in September 2026, with anidb.app down, it
-  carried every request without visible pushback. Each provider has
-  its own pacer and breaker, and the interstitial check recognises a
-  Cloudflare challenge, but a breaker learns after the block, not
-  before. Measure first: what the site tolerates for search and AJAX
-  listings at the background pace, and whether it answers excess
-  with the challenge page or a 429.
-
-  What makes hianime a fit for this: its entries are season-split
-  like Kitsu's, so the count-based picker needs none of the offset
-  machinery anidb.app required; a captured search was tight (three
-  hits for "cowboy bebop": the series, the movie, one special); one
-  embed host's URL carries the MyAnimeList id in its path — the
-  zokoanime pages the client reads today are `/stream/mal/<id>/…` —
-  so a pick resolved through that host can be cross-checked against
-  Kitsu's MAL mapping after the resolve, while megaplay's path
-  carries the site's own ids and no such identity, so the check is
-  per host rather than a signal every pick gets (whether the entry
-  page carries it before the pick was not confirmed); and it types
-  each server sub or dub, so the bounded mode scan applies unchanged.
-
-  Keep hiding, but only on a miss from every provider, and only for
-  finished shows as now: a card no provider can play is a dead
-  click. If the second provider becomes load-bearing for catalogue
-  breadth rather than a fallback, its domain churn arrives sooner:
-  the canonical domain is filtered per ISP, and the origin is a
-  constant with a test override only.
+  Two things a grep will not surface: only the zokoanime embed pages
+  carry the MyAnimeList id in their path, so a cross-check against
+  Kitsu's mapping is per host, not a signal every pick gets; and if
+  the second provider becomes load-bearing rather than a fallback,
+  its domain churn arrives sooner — the canonical domain is filtered
+  per ISP, and the origin is a constant with a test override only.
 
 ## Decoding hianime's other embed hosts
 

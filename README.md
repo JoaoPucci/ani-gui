@@ -164,7 +164,7 @@ Full table with defaults and effects is in [`docs/architecture.md`](./docs/archi
 
 ## How it works
 
-A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the providers itself — anidb.app first, and hianime when anidb.app is unreachable. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
+A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the providers itself — anidb.app first, hianime when anidb.app is unreachable, and for a show once found on hianime, hianime first from then on. A streaming proxy in the sidecar adds the right `Referer:` headers and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
 
 For the long version — diagrams, cache TTLs, the title-resolution bridge, the PiP architecture — see [`docs/architecture.md`](./docs/architecture.md), [`docs/title-resolution.md`](./docs/title-resolution.md), and the rest of [`docs/`](./docs/).
 
