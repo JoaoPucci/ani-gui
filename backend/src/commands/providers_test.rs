@@ -386,6 +386,7 @@ async fn resolve_unreachable(state: &AppState) -> NativeError {
             subtype: None,
         },
         on_progress: &mut |_| {},
+        answered_by: None,
     };
     super::run(state, ScrapePriority::Interactive, &mut attempt)
         .await
