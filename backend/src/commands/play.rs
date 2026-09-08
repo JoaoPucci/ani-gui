@@ -207,7 +207,9 @@ pub(super) async fn stamp_availability_after_native(
                     },
                 );
             }
-            _ => crate::commands::availability::write_cache(state, id, &args.mode, available),
+            _ => crate::commands::availability::write_cache(
+                state, id, &args.mode, available, provider,
+            ),
         },
     )
     .await;
@@ -1834,7 +1836,7 @@ mod tests {
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache(&state, "race-1", "sub", true);
+        crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
 
         // The stale resolution now tries to stamp a negative.
         stamp_availability_after_native(&state, &args, false, None, generation, None, &[]).await;
