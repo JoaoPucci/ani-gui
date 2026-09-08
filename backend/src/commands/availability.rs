@@ -1273,6 +1273,17 @@ mod tests {
         );
     }
 
+    /// The provider answered a rate limit with a window: an
+    /// advertised pause, which the gate keeps apart from the breaker.
+    fn pause_provider(gate: &crate::scraper::gate::ScraperGate) {
+        gate.record(
+            crate::scraper::gate::ScrapeOutcome::RateLimited {
+                retry_after: Some(std::time::Duration::from_secs(120)),
+            },
+            tokio::time::Instant::now(),
+        );
+    }
+
     #[tokio::test]
     async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served_while_the_outage_lasts(
     ) {
@@ -1375,6 +1386,144 @@ mod tests {
             row.provider,
             Some(crate::scraper::provider::ProviderId::Hianime)
         );
+    }
+
+    #[test]
+    fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
+        // A rate limit with a window is the provider refusing, as an
+        // open breaker is: a walk asked now is told to come back
+        // later and moves on to the next provider, which may carry
+        // the show. The primary's negative therefore stops standing
+        // through the primary's pause, and the fallback's negative,
+        // written during an outage, stands through it.
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        write_cache(
+            &state,
+            "570",
+            "sub",
+            false,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+        );
+        write_cache(
+            &state,
+            "571",
+            "sub",
+            false,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let served = |state: &AppState| {
+            let listed = batch_cached(
+                state,
+                &AvailabilityBatchArgs {
+                    kitsu_ids: vec!["570".into(), "571".into()],
+                    mode: "sub".into(),
+                },
+            );
+            (
+                listed.cached.contains_key("570"),
+                listed.cached.contains_key("571"),
+            )
+        };
+        assert_eq!(
+            served(&state),
+            (true, false),
+            "both providers reachable: the primary's negative stands, the fallback's does not"
+        );
+
+        pause_provider(&state.anidb_gate);
+        assert!(
+            !state.anidb_gate.is_open(),
+            "a pause is not the breaker opening"
+        );
+        assert_eq!(
+            served(&state),
+            (false, true),
+            "the primary pausing: its negative yields, the fallback's stands"
+        );
+
+        pause_provider(&state.hianime_gate);
+        assert_eq!(
+            served(&state),
+            (false, false),
+            "both pausing: nobody stands behind either row"
+        );
+
+        close_breaker(&state.anidb_gate);
+        close_breaker(&state.hianime_gate);
+        assert_eq!(
+            served(&state),
+            (true, false),
+            "a fresh success on each ends its pause"
+        );
+    }
+
+    /// The backing rule over every state the two gates can be in —
+    /// closed, breaker open, pausing, both — for a row from either
+    /// provider or from before the field: a row is served exactly
+    /// when its provider is not refusing and every provider ahead of
+    /// it is, and a pause counts as refusing wherever a breaker does.
+    /// Driven by hand on one state, whose gates are reset between
+    /// cases by the success that clears both a breaker and a pause.
+    #[test]
+    fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_refuse() {
+        use crate::scraper::provider::ProviderId;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![ProviderId::Anidb, ProviderId::Hianime];
+        let cases = (
+            proptest::bool::ANY,
+            proptest::bool::ANY,
+            proptest::bool::ANY,
+            proptest::bool::ANY,
+            0u8..3,
+        );
+        proptest::test_runner::TestRunner::default()
+            .run(
+                &cases,
+                |(anidb_broken, anidb_paused, hianime_broken, hianime_paused, row_provider)| {
+                    close_breaker(&state.anidb_gate);
+                    close_breaker(&state.hianime_gate);
+                    if anidb_broken {
+                        open_breaker(&state.anidb_gate);
+                    }
+                    if anidb_paused {
+                        pause_provider(&state.anidb_gate);
+                    }
+                    if hianime_broken {
+                        open_breaker(&state.hianime_gate);
+                    }
+                    if hianime_paused {
+                        pause_provider(&state.hianime_gate);
+                    }
+                    let provider = match row_provider {
+                        0 => None,
+                        1 => Some(ProviderId::Anidb),
+                        _ => Some(ProviderId::Hianime),
+                    };
+                    let row = AvailabilityResponse {
+                        available: false,
+                        episode_count: None,
+                        extra_episodes: Vec::new(),
+                        episode_count_approximate: false,
+                        gate_refused: false,
+                        provider,
+                    };
+                    let anidb_refusing = anidb_broken || anidb_paused;
+                    let hianime_refusing = hianime_broken || hianime_paused;
+                    let expected = match provider {
+                        None | Some(ProviderId::Anidb) => !anidb_refusing,
+                        Some(ProviderId::Hianime) => !hianime_refusing && anidb_refusing,
+                    };
+                    proptest::prop_assert_eq!(negative_row_is_backed(&state, &row), expected);
+                    Ok(())
+                },
+            )
+            .expect("the backing rule holds over every gate state");
     }
 
     #[test]
