@@ -12,12 +12,21 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     // repeated dub requests for sub-only shows and refuses unrelated
     // background traffic.
     let absent_episode = NativeError {
-        error: AniError::NoResults,
+        error: AniError::EpisodeUnavailable,
         clean_miss: false,
         failed_at: None,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(absent_episode)),
+        Some(ScrapeOutcome::Success)
+    ));
+    let rejected_pool = NativeError {
+        error: AniError::NoResults,
+        clean_miss: false,
+        failed_at: None,
+    };
+    assert!(matches!(
+        breaker_outcome::<()>(ScrapePriority::Interactive, &Err(rejected_pool)),
         Some(ScrapeOutcome::Success)
     ));
     // Weather stays distress.
