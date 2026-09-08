@@ -502,6 +502,18 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A host that answers not-found for its page, then one
+            // that refuses outright.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21424") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwNC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwMy9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/403/sub" => refused(403),
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
@@ -699,6 +711,21 @@ async fn a_payload_the_client_cannot_decode_is_a_parse_failure_once_every_server
         .await
         .expect_err("nothing decoded");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn the_weather_kept_across_servers_is_the_block_not_the_first_miss() {
+    // The first host answers not-found for its page and the next
+    // refuses. Surfacing the first — an answered status — reads as a
+    // dead end, and the breaker records health on a provider that
+    // just blocked the client; the refusal is what the walk needs.
+    let c = client();
+    let err = c
+        .master_playlist_url(21424, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 403 }), "{err:?}");
+    assert!(err.is_provider_block());
 }
 
 #[tokio::test]
