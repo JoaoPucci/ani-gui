@@ -7,6 +7,7 @@ use super::*;
 use crate::error::AniError;
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 use base64::Engine as _;
+use proptest::prelude::*;
 
 /// A title as the site would print it in an attribute: the four
 /// entities the parser decodes, encoded.
