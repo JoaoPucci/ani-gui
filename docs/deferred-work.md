@@ -356,8 +356,13 @@ starting it, and delete it when you find it done.
   context isolation on and node integration off, loads its own
   bundle over the app's private scheme, and no component injects
   HTML — Svelte escapes every string it renders. A policy is still
-  the standard hardening for an Electron renderer, and the one piece
-  of Electron's security checklist the app does not meet.
+  the standard hardening for an Electron renderer, and one of two
+  items on Electron's security checklist the app does not meet. The
+  other is navigation: the window refuses new windows through its
+  open handler but installs no `will-navigate` guard, so nothing
+  stops the renderer's own document from navigating away from the
+  app's origin. The two close together; the guard is a few lines in
+  the main process.
 
   The shape that fits: the frontend is a client-only static build
   (`ssr = false`, the static adapter), so SvelteKit's own `kit.csp`
@@ -377,10 +382,14 @@ starting it, and delete it when you find it done.
   by a header from the app-scheme protocol handler than by the meta
   tag.
 
-  It waited on the second-provider series: the policy is only
-  verifiable against a player that plays, and until that series
-  merged the primary catalogue was unreachable and nothing on the
-  default branch could.
+  Verify it against a play that goes the whole way — the proxied
+  stream, the event stream the page listens to, and any sidecar
+  subtitle track a provider serves — which needs a catalogue the
+  app can reach. It waited for one: at the time of writing the only
+  provider's catalogue answered every request with a maintenance
+  page, so nothing on the default branch could play through that
+  path, and the manual diagnostic route's pasted URL exercises
+  neither the proxy nor the event stream, so it is no substitute.
 
 ## Housekeeping
 
