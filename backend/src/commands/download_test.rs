@@ -3121,6 +3121,55 @@ async fn a_body_over_the_subtitle_cap_is_skipped_and_the_track_beside_it_lands()
     );
 }
 
+/// A track's name follows its place in the listing, not which
+/// tracks happened to arrive: when the first of two tracks in a
+/// language fails, the second still lands under its suffixed name,
+/// so a retry that brings the first one in does not find its name
+/// taken by the second and write the second twice.
+#[tokio::test]
+async fn a_later_track_in_a_language_keeps_its_suffix_when_an_earlier_one_fails() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en-a.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en-b.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nsecond\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |route: &str| SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("/subs/en-a.vtt"), track("/subs/en-b.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 17",
+    )
+    .await;
+    let second = dest.path().join("Show Episode 17.en-1.vtt");
+    assert_eq!(
+        written,
+        vec![second.clone()],
+        "the second track keeps the name its place in the listing gives it"
+    );
+    assert!(
+        !dest.path().join("Show Episode 17.en.vtt").exists(),
+        "the first track's name stays free for it"
+    );
+}
+
 /// A CDN in front of the subtitles can answer a challenge page with
 /// 200. Written as a sidecar it would sit at the track's name for
 /// good, since every later download keeps what it finds there. Only
