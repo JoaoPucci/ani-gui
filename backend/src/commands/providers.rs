@@ -143,7 +143,15 @@ where
             walk.skipped.push(provider);
             continue;
         }
-        let Some(budget) = walk_budget(overall, total_budget, attempt_budget, last) else {
+        // The skipped providers are owed their trial on an interactive
+        // walk, so an attempt budget stays in reserve for each of them;
+        // a background walk never retries and reserves nothing.
+        let owed = if matches!(priority, ScrapePriority::Interactive) {
+            walk.skipped.len()
+        } else {
+            0
+        };
+        let Some(budget) = walk_budget(overall, total_budget, attempt_budget, last, owed) else {
             break;
         };
         match try_provider(
@@ -226,24 +234,33 @@ enum Tried<'c, T> {
     Missed(NativeError, ProviderId),
 }
 
-/// The budget for the next attempt: the whole remainder for the last
-/// provider, the attempt budget otherwise; none once the total is
+/// The budget for the next attempt. The last provider with nobody
+/// still owed an attempt gets the whole remainder; every other
+/// attempt gets the attempt budget, out of what is left once one
+/// attempt budget per provider still owed (`owed`) is held back —
+/// a stalled attempt must not eat the trial a skipped provider is
+/// due. None once the total, or what is left after the reserve, is
 /// spent.
 fn walk_budget(
     overall: tokio::time::Instant,
     total_budget: Duration,
     attempt_budget: Duration,
     last: bool,
+    owed: usize,
 ) -> Option<Duration> {
     let remaining = total_budget.saturating_sub(overall.elapsed());
     if remaining.is_zero() {
         return None;
     }
-    Some(if last {
-        remaining
-    } else {
-        attempt_budget.min(remaining)
-    })
+    if last && owed == 0 {
+        return Some(remaining);
+    }
+    let reserve = attempt_budget.saturating_mul(u32::try_from(owed).unwrap_or(u32::MAX));
+    let free = remaining.saturating_sub(reserve);
+    if free.is_zero() {
+        return None;
+    }
+    Some(attempt_budget.min(free))
 }
 
 /// One bounded attempt against `provider`, its outcome recorded on
@@ -340,7 +357,9 @@ where
         let skipped = std::mem::take(&mut walk.skipped);
         let count = skipped.len();
         for (i, provider) in skipped.into_iter().enumerate() {
-            let Some(budget) = walk_budget(overall, total_budget, attempt_budget, i + 1 == count)
+            // Each retry after this one is still owed its attempt.
+            let owed = count - i - 1;
+            let Some(budget) = walk_budget(overall, total_budget, attempt_budget, owed == 0, owed)
             else {
                 break;
             };
