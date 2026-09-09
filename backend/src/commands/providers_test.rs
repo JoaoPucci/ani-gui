@@ -762,9 +762,10 @@ mod affinity_props {
 }
 
 mod miss_props {
-    use super::firmer_miss;
+    use super::{firmer_miss, firmer_verdict};
     use crate::commands::play_native_resolve::NativeError;
     use crate::error::AniError;
+    use crate::scraper::provider::ProviderId;
     use proptest::prelude::*;
 
     /// A miss as a provider reports it: a title miss or an episode
@@ -785,7 +786,32 @@ mod miss_props {
         matches!(ne.error, AniError::EpisodeUnavailable)
     }
 
+    fn provider() -> impl Strategy<Value = Option<ProviderId>> {
+        prop_oneof![
+            Just(None),
+            Just(Some(ProviderId::Anidb)),
+            Just(Some(ProviderId::Hianime)),
+        ]
+    }
+
     proptest! {
+        /// The same rule over a verdict and its provider: whichever
+        /// miss is kept, its own provider comes with it.
+        #[test]
+        fn the_kept_verdicts_provider_comes_with_it(
+            earlier in miss(),
+            earlier_by in provider(),
+            later in miss(),
+            later_by in provider(),
+        ) {
+            let keep_earlier = is_episode(&earlier) && !is_episode(&later);
+            let expected_by = if keep_earlier { earlier_by } else { later_by };
+            let expected_flag = if keep_earlier { earlier.clean_miss } else { later.clean_miss };
+            let (kept, by) = firmer_verdict((earlier, earlier_by), (later, later_by));
+            prop_assert_eq!(by, expected_by);
+            prop_assert_eq!(kept.clean_miss, expected_flag);
+        }
+
         /// The kept verdict is an episode verdict exactly when either
         /// miss was one; between two of a kind the later stands, and
         /// between two kinds the episode's own flag is what is kept.
