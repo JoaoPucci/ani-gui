@@ -238,23 +238,29 @@ proptest::proptest! {
         );
     }
 
-    /// Of two hosts' failures the kept one is a provider block exactly
-    /// when either was; between two of a rank the first stays.
+    /// Of two hosts' failures the kept one is the louder: a rate limit
+    /// over any other provider block, a block over the rest; between
+    /// two of a rank the first stays.
     #[test]
-    fn the_kept_weather_is_a_block_whenever_either_was(
+    fn the_kept_weather_is_the_louder_of_the_two(
         first in arb_weather(),
         second in arb_weather(),
     ) {
-        let first_block = first.is_provider_block();
-        let second_block = second.is_provider_block();
+        fn rank(w: &AniError) -> u8 {
+            match w {
+                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 2,
+                w if w.is_provider_block() => 1,
+                _ => 0,
+            }
+        }
+        let first_rank = rank(&first);
+        let second_rank = rank(&second);
         let first_repr = format!("{first:?}");
         let second_repr = format!("{second:?}");
         let kept = weightier(first, second);
-        prop_assert_eq!(kept.is_provider_block(), first_block || second_block);
+        prop_assert_eq!(rank(&kept), first_rank.max(second_rank));
         let kept_repr = format!("{kept:?}");
-        if first_block == second_block {
-            prop_assert_eq!(kept_repr, first_repr);
-        } else if second_block {
+        if second_rank > first_rank {
             prop_assert_eq!(kept_repr, second_repr);
         } else {
             prop_assert_eq!(kept_repr, first_repr);
