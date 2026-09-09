@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc a3f573d27920dfc5ee6c2a5b22beb088328ad929691a548199aa2502d32acf68 # shrinks to chrome_before = "", chrome_after = "", inside = "", filler = "a"
+cc 7d7b817fa1220274fafab6c938c956126beebbe023114a4659fe5fd769a925b7 # shrinks to first = Upstream { status: 500 }, second = RateLimited { retry_after_secs: None }
