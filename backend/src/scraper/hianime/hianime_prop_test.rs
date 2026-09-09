@@ -273,6 +273,41 @@ proptest::proptest! {
         }
     }
 
+    /// A row whose mode is not one the client knows never comes
+    /// back: the sub and dub rows come back in order, and a listing
+    /// of only other modes is refused rather than read as no servers.
+    #[test]
+    fn rows_with_a_mode_the_client_does_not_know_never_come_back(
+        rows in proptest::collection::vec(
+            ("(sub|dub|softsub|raw|SUB|Dub|sub |[a-z]{1,8})", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}"),
+            1..6,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(mode, name, host, path)| {
+                let url = format!("https://{host}/{path}");
+                let hash = base64::engine::general_purpose::STANDARD.encode(url.as_bytes());
+                format!(r#"<div class="item server-item" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"><a class="btn">{name}</a></div>"#)
+            })
+            .collect();
+        let expected: Vec<ServerEmbed> = rows
+            .iter()
+            .filter(|(mode, _, _, _)| matches!(mode.trim(), "sub" | "dub"))
+            .map(|(mode, name, host, path)| ServerEmbed {
+                mode: mode.trim().to_string(),
+                name: name.clone(),
+                embed_url: format!("https://{host}/{path}"),
+            })
+            .collect();
+        if expected.is_empty() {
+            let refused = matches!(parse_servers(&envelope(&html)), Err(AniError::ParseFailed { .. }));
+            proptest::prop_assert!(refused, "a listing of only unknown modes is a changed shape");
+        } else {
+            proptest::prop_assert_eq!(parse_servers(&envelope(&html)).expect("servers"), expected);
+        }
+    }
+
     /// A body that is not the envelope is a parse failure, never an
     /// empty answer — a throttling page or a redesign must not read
     /// as "no episodes".

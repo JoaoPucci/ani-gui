@@ -316,6 +316,24 @@ fn a_server_row_with_a_blank_mode_is_not_a_usable_row() {
 }
 
 #[test]
+fn a_server_row_with_a_mode_the_client_does_not_know_is_not_a_usable_row() {
+    // The site types its servers sub or dub, and the mode probe asks
+    // for exactly those. A row typed some other way — the values
+    // renamed — would pass as parsed while has_mode found neither,
+    // and the probe would persist an absence over a listing it did
+    // not understand. Such a row is not usable; a listing of nothing
+    // else is a changed shape.
+    let unsupported_only = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"softsub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"raw\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let err = parse_servers(unsupported_only).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let mixed = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"softsub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let servers = parse_servers(mixed).expect("the usable row");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].mode, "sub");
+    assert_eq!(servers[0].name, "HD-2");
+}
+
+#[test]
 fn a_nonempty_episode_list_with_no_recognizable_rows_is_a_parse_failure() {
     let json = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"item\" data-num=\"1\" data-ref=\"9\"></a></div>"}"#;
     let err = parse_episode_list(json).expect_err("refused");
