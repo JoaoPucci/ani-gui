@@ -3302,60 +3302,99 @@ async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
     );
 }
 
-/// The tracks are fetched a few at a time, not all at once: with one
-/// in flight, three tracks that each take a beat arrive one after the
-/// other; with three in flight they arrive together.
+/// The tracks are fetched a few at a time, not all at once. A
+/// server of the test's own counts the requests it holds open at
+/// once: with one in flight it never sees a second, and with three
+/// in flight over six tracks it sees more than one and never a
+/// fourth. Counting in-flight requests holds on any machine; the
+/// wall clock does not.
 #[tokio::test]
 async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
     use crate::scraper::provider::SubtitleTrack;
-    use wiremock::matchers::{method, path as wm_path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-    let server = MockServer::start().await;
-    for lang in ["en", "es", "fr"] {
-        Mock::given(method("GET"))
-            .and(wm_path(format!("/subs/{lang}.vtt")))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(format!("WEBVTT\n\n{lang}\n"))
-                    .set_delay(std::time::Duration::from_millis(250)),
-            )
-            .mount(&server)
-            .await;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let port = listener.local_addr().expect("addr").port();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most_at_once = Arc::new(AtomicUsize::new(0));
+    {
+        let in_flight = Arc::clone(&in_flight);
+        let most_at_once = Arc::clone(&most_at_once);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                let in_flight = Arc::clone(&in_flight);
+                let most_at_once = Arc::clone(&most_at_once);
+                tokio::spawn(async move {
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    most_at_once.fetch_max(now, Ordering::SeqCst);
+                    // The request head, then a beat held open so the
+                    // other fetches of the batch overlap it.
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while socket.read(&mut byte).await.is_ok_and(|n| n == 1) {
+                        head.push(byte[0]);
+                        if head.ends_with(b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    let body = "WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n";
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/vtt\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
     }
     let track = |lang: &str| SubtitleTrack {
         lang: lang.into(),
         label: lang.into(),
         default: false,
-        url: format!("{}/subs/{lang}.vtt", server.uri()),
+        url: format!("http://127.0.0.1:{port}/subs/{lang}.vtt"),
     };
-    let tracks = vec![track("en"), track("es"), track("fr")];
-    let phase = |concurrency: usize| {
-        let tracks = tracks.clone();
+    let phase = |langs: &[&str], concurrency: usize| {
+        let tracks: Vec<SubtitleTrack> = langs.iter().map(|l| track(l)).collect();
+        let most_at_once = Arc::clone(&most_at_once);
         async move {
+            most_at_once.store(0, Ordering::SeqCst);
             let dest = tempfile::tempdir().expect("dest");
-            let started = std::time::Instant::now();
             let written = write_sidecar_subtitles_with(
                 &reqwest::Client::new(),
                 &tracks,
                 None,
                 dest.path(),
                 "Show Episode 17",
-                std::time::Duration::from_secs(10),
+                std::time::Duration::from_secs(30),
                 concurrency,
             )
             .await;
-            assert_eq!(written.len(), 3, "every track lands: {written:?}");
-            started.elapsed()
+            assert_eq!(
+                written.len(),
+                tracks.len(),
+                "every track lands: {written:?}"
+            );
+            most_at_once.load(Ordering::SeqCst)
         }
     };
-    let one_at_a_time = phase(1).await;
-    let together = phase(3).await;
-    assert!(
-        one_at_a_time >= std::time::Duration::from_millis(700),
-        "one in flight serialises the three beats: {one_at_a_time:?}"
+    let one_at_a_time = phase(&["en", "es", "fr"], 1).await;
+    assert_eq!(
+        one_at_a_time, 1,
+        "one in flight never lets the server see a second"
     );
+    let three_at_a_time = phase(&["en", "es", "fr", "de", "it", "pt"], 3).await;
     assert!(
-        together < std::time::Duration::from_millis(600),
-        "three in flight overlap them: {together:?}"
+        (2..=3).contains(&three_at_a_time),
+        "three in flight overlap and never exceed three: {three_at_a_time}"
     );
 }
