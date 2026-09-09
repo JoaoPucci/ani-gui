@@ -1336,5 +1336,8 @@ where
 }
 
 #[cfg(test)]
+#[path = "download_prop_test.rs"]
+mod prop_tests;
+#[cfg(test)]
 #[path = "download_test.rs"]
 mod tests;
