@@ -373,10 +373,10 @@ starting it, and delete it when you find it done.
   Two things a grep will not surface. The manual diagnostic route
   hands a pasted public URL straight to the player, the one place
   the renderer loads a stream from anywhere but the loopback
-  backend, so a policy limited to the loopback closes it; the work
-  decides whether that route is allowed through, sent through the
-  proxy like every other stream (what the layer-boundary rule
-  already says of stream traffic), or retired. And the HLS player
+  backend, so a policy limited to the loopback closes it — which is
+  the boundary rule catching up with the route, since every stream
+  is meant to pass through the proxy; the work sends it through the
+  proxy like every other stream, or retires it. And the HLS player
   attaches media through blob URLs, which no origin-shaped rule
   covers.
 
