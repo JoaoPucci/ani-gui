@@ -344,19 +344,18 @@ starting it, and delete it when you find it done.
 ## A content security policy for the renderer
 
 - **The renderer runs under no content security policy, in the
-  packaged app as much as in development.** Nothing sets one: not
-  the Electron main process, not the preload, not the SvelteKit
-  configuration, not the HTML shell. Electron prints its
-  insecure-policy warning on every development launch for exactly
-  this and suppresses the same warning once packaged, so the warning
-  going quiet is not the gap closing.
+  packaged app as much as in development.** Nothing sets one.
+  Electron prints its insecure-policy warning on every development
+  launch for exactly this and suppresses the same warning once
+  packaged, so the warning going quiet is not the gap closing.
 
   What the policy would guard against is script injected into the
   renderer, and today's exposure is narrow: the window runs with
   context isolation on and node integration off, the packaged app
   loads its bundle over the app's private scheme (development loads
-  the Vite server over plain HTTP instead, which is one more reason
-  the two builds will not share one policy), and no component
+  the Vite server instead, over plain HTTP by default — the URL is
+  an environment override — which is one more reason the two builds
+  will not share one policy), and no component
   injects HTML — Svelte escapes every string it renders. A policy is
   still the standard hardening for an Electron renderer, and one of
   the items on Electron's security checklist the app does not meet.
