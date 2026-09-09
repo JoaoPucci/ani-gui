@@ -106,6 +106,36 @@ fn a_card_the_parser_cannot_read_is_skipped_and_its_neighbour_is_read_once() {
     );
 }
 
+/// A card whose title is blank names nothing: picked, it would put
+/// an empty title on the resolve, the download's file name and the
+/// progress copy, and match no title the user typed. Skipped like an
+/// unreadable card; a listing of only such cards is refused.
+#[test]
+fn a_card_whose_title_is_blank_is_skipped_and_a_listing_of_such_cards_is_refused() {
+    let card = |slug: &str, title: &str| {
+        format!(
+            r#"<div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div>"#
+        )
+    };
+    let page = |cards: String| {
+        format!(r#"<html><body><div class="film_list-wrap">{cards}</div></body></html>"#)
+    };
+    let mixed = page(format!(
+        "{}{}",
+        card("nameless-1", "   "),
+        card("cowboy-bebop-1281", "Cowboy Bebop")
+    ));
+    let hits = parse_search(&mixed).expect("the readable card");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    let all_blank = page(format!(
+        "{}{}",
+        card("nameless-1", ""),
+        card("nameless-2", " \t ")
+    ));
+    let err = parse_search(&all_blank).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
 #[test]
 fn a_card_whose_slug_carries_no_id_is_skipped_and_a_listing_of_such_cards_is_refused() {
     // The episode listing is keyed on the decimal tail of a slug; a
