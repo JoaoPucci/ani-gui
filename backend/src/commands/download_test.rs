@@ -2967,6 +2967,114 @@ async fn a_name_held_by_a_symlink_or_a_directory_is_taken() {
     assert!(leftovers.is_empty(), "no scratch remains: {leftovers:?}");
 }
 
+/// The sidecar phase runs after the media tool has finished and is
+/// bounded as a whole: the tracks are fetched together, and one
+/// deadline covers them all, so a CDN that stalls cannot keep the
+/// download "active" for a per-request timeout per track. Tracks
+/// that do not arrive in time are skipped like refused ones.
+#[tokio::test]
+async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_returns() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for route in ["/subs/en.vtt", "/subs/es.vtt"] {
+        Mock::given(method("GET"))
+            .and(wm_path(route))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("WEBVTT\n\nlate\n")
+                    .set_delay(std::time::Duration::from_secs(5)),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let started = std::time::Instant::now();
+    let written = write_sidecar_subtitles_within(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 14",
+        std::time::Duration::from_millis(300),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    assert!(written.is_empty(), "nothing arrived in time: {written:?}");
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "the phase returned at its deadline, not after each stalled request: {elapsed:?}"
+    );
+    assert!(!dest.path().join("Show Episode 14.en.vtt").exists());
+    assert!(!dest.path().join("Show Episode 14.es.vtt").exists());
+}
+
+/// A track that answers in time lands even when another stalls: the
+/// deadline skips the late one, not the phase.
+#[tokio::test]
+async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nquick\n"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("WEBVTT\n\nlate\n")
+                .set_delay(std::time::Duration::from_secs(5)),
+        )
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let started = std::time::Instant::now();
+    let written = write_sidecar_subtitles_within(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 15",
+        std::time::Duration::from_millis(300),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    let en = dest.path().join("Show Episode 15.en.vtt");
+    assert_eq!(
+        written,
+        vec![en.clone()],
+        "only the track that answered lands"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("track"),
+        "WEBVTT\n\nquick\n"
+    );
+    assert!(!dest.path().join("Show Episode 15.es.vtt").exists());
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "the phase returned at its deadline: {elapsed:?}"
+    );
+}
+
 /// A CDN in front of the subtitles can answer a challenge page with
 /// 200. Written as a sidecar it would sit at the track's name for
 /// good, since every later download keeps what it finds there. Only
