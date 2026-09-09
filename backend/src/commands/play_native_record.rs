@@ -85,12 +85,16 @@ impl Watch {
     }
 }
 
-/// Record a handoff's watch: the history row and the watched-at
-/// stamp, written once the player has started — the spawn is the
+/// Record a handoff's watch: the history row, the watched-at stamp
+/// and, when the caller knows the Kitsu id, the show's reverse
+/// mapping — written once the player has started; the spawn is the
 /// watch, and a player that failed to start leaves nothing behind.
-/// A watch without a show id (a cached row from before the field)
-/// records nothing.
-pub(crate) fn record_watch(state: &AppState, watch: &Watch) {
+/// The mapping is what lets the row be found by the Kitsu id, and
+/// what puts its stamp in the running when two providers have each
+/// left a row; the embedded player writes it on mark-watched, which
+/// a handoff never reaches. A watch without a show id (a cached row
+/// from before the field) records nothing.
+pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     if watch.show_id.is_empty() {
         return;
     }
@@ -107,6 +111,15 @@ pub(crate) fn record_watch(state: &AppState, watch: &Watch) {
         );
     }
     stamp_watched_now(state, &watch.show_id);
+    if let Some(kid) = kitsu_id.filter(|k| !k.is_empty()) {
+        crate::commands::kitsu::try_put_allmanga_kitsu_mapping(
+            state,
+            &watch.show_id,
+            &watch.title,
+            kid,
+        )
+        .await;
+    }
 }
 
 /// Record the watch.
