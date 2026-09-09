@@ -84,8 +84,13 @@ pub fn fails_over(error: &AniError) -> bool {
 
 /// Run `attempt` against `order`'s providers until one answers.
 ///
-/// A provider whose breaker is open is skipped while another remains;
-/// the last is always tried. Every attempt but the last is bounded by
+/// A provider that is refusing — its breaker open, or an advertised
+/// rate-limit window still running — is skipped while another
+/// remains; the last is always tried. Skipping a pausing provider is
+/// the same call for both priorities: an interactive attempt would
+/// only be told to come back later, and a background one would wait
+/// inside the gate for the window, its attempt budget spent before
+/// the fallback is asked. Every attempt but the last is bounded by
 /// `attempt_budget`, and all of them together by `total_budget`. Each
 /// attempt's outcome is recorded on its provider's gate, timestamped
 /// with the instant that observed it. A miss is reported as the
@@ -138,7 +143,7 @@ where
     let count = order.len();
     for (i, &provider) in order.iter().enumerate() {
         let last = i + 1 == count;
-        if !last && gate_of(provider).is_open() {
+        if !last && gate_of(provider).is_refusing() {
             walk.any_unreachable = true;
             walk.skipped.push(provider);
             continue;
@@ -222,7 +227,8 @@ struct Walk {
     /// Whether any provider so far was unreachable, refusing, broken
     /// or skipped.
     any_unreachable: bool,
-    /// The providers skipped for an open breaker, in order.
+    /// The providers skipped for refusing — an open breaker or a
+    /// running pause — in order.
     skipped: Vec<ProviderId>,
 }
 
@@ -326,8 +332,9 @@ where
 
 /// The walk's verdict so far — a miss, or the first unreachable
 /// error when nothing answered — stands, unless providers were
-/// skipped for an open breaker on an interactive walk, which the
-/// gate would have admitted as the breaker's half-open trial. Those
+/// skipped for refusing on an interactive walk, which the gate would
+/// have admitted anyway — an open breaker's half-open trial, a pause
+/// it ignores for a click. Those
 /// are asked now: an answer is the walk's, a miss of theirs — the
 /// last answer given — replaces the verdict they were asked for,
 /// author and all, and one unreachable too leaves it standing. The
