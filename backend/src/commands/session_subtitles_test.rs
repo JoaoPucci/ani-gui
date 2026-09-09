@@ -91,3 +91,37 @@ fn a_session_without_tracks_offers_none() {
     let resp = create_session_with_kind(&state, &args, MediaKind::Hls).expect("session");
     assert!(resp.subtitles.is_empty());
 }
+
+/// A listing beyond the track cap is malformed or hostile; the
+/// session keeps the first cap-many and offers only those, so the
+/// player cannot be handed an unbounded list of tracks to fetch.
+#[test]
+fn a_session_keeps_only_the_first_cap_many_tracks() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let state = state();
+    let total = SUBTITLE_TRACK_CAP + 5;
+    let args = CreateSessionArgs {
+        upstream_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: "https://embed.example/".into(),
+        subtitles: (0..total)
+            .map(|i| SubtitleTrack {
+                lang: format!("l{i:02}"),
+                label: format!("Language {i}"),
+                default: false,
+                url: format!("https://cdn.example/x/subs/l{i:02}.vtt"),
+            })
+            .collect(),
+    };
+    let resp = create_session_with_kind(&state, &args, MediaKind::Hls).expect("session");
+    assert_eq!(resp.subtitles.len(), SUBTITLE_TRACK_CAP);
+    assert_eq!(resp.subtitles[0].lang, "l00");
+    assert_eq!(
+        resp.subtitles[SUBTITLE_TRACK_CAP - 1].lang,
+        format!("l{:02}", SUBTITLE_TRACK_CAP - 1)
+    );
+    let stored = state
+        .sessions
+        .get(&crate::proxy::SessionId::parse(&resp.session_id).expect("id"))
+        .expect("stored");
+    assert_eq!(stored.subtitles, args.subtitles[..SUBTITLE_TRACK_CAP]);
+}
