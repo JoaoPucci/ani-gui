@@ -36,8 +36,8 @@ struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
     first: u32,
     quality: &'r str,
-    /// The provider the last attempt ran against — whose verdict a
-    /// clean miss is.
+    /// The provider whose miss the walk returned — set by the walk,
+    /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
 }
 
@@ -49,7 +49,6 @@ impl Attempt for RangeStartAttempt<'_> {
         &mut self,
         provider: &dyn Provider,
     ) -> std::result::Result<(PickedShow, ResolvedEpisode), NativeError> {
-        self.answered_by = Some(provider.id());
         let picked = pick_native_walk(
             provider,
             &self.args.title,
@@ -68,6 +67,10 @@ impl Attempt for RangeStartAttempt<'_> {
         )
         .await?;
         Ok((picked, first))
+    }
+
+    fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
+        self.answered_by = Some(provider);
     }
 }
 
