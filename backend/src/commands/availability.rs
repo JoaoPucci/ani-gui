@@ -477,6 +477,19 @@ pub(crate) async fn check_availability_with_base(
         }
     }
 
+    // A positive row the probe does not serve — a resolve's count-less
+    // stamp, an approximate count — still names the provider that
+    // proved the show, and the reprobe starts from it: from the
+    // primary, its clean miss would end the walk and overwrite that
+    // proof with a negative.
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|id| cached_provider(state, id, mode));
+    let order = crate::commands::providers::order_with_affinity(&state.provider_order, remembered);
+    let remembered = remembered.filter(|r| order.first() == Some(r));
+
     // Funnel through the native walk so availability honours the
     // same alias recovery and disambiguation play uses. The pick's
     // episodes probe already pays for the full list, so the cap comes
@@ -505,15 +518,9 @@ pub(crate) async fn check_availability_with_base(
         mode,
         answered_by: None,
     };
-    let probed = crate::commands::providers::run_at(
-        state,
-        origins,
-        &state.provider_order,
-        None,
-        prio,
-        &mut attempt,
-    )
-    .await;
+    let probed =
+        crate::commands::providers::run_at(state, origins, &order, remembered, prio, &mut attempt)
+            .await;
     let (available, episode_count, extra_episodes, provider) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
