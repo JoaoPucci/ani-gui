@@ -37,6 +37,12 @@ pub trait Attempt: Send {
     /// # Errors
     /// The walk's own verdicts, as [`NativeError`].
     async fn run(&mut self, provider: &dyn Provider) -> Result<Self::Output, NativeError>;
+
+    /// The walk is about to return a miss, and `provider` is the one
+    /// whose miss it is — not necessarily the last one asked: a
+    /// skipped provider's half-open trial that fails leaves the saved
+    /// miss standing, and the saved miss keeps its author.
+    fn missed_by(&mut self, provider: ProviderId);
 }
 
 /// What an attempt produced, who produced it, and the client that
@@ -128,7 +134,7 @@ where
         any_unreachable: false,
         skipped: Vec::new(),
     };
-    let mut affinity_miss: Option<NativeError> = None;
+    let mut affinity_miss: Option<(NativeError, ProviderId)> = None;
     let count = order.len();
     for (i, &provider) in order.iter().enumerate() {
         let last = i + 1 == count;
@@ -153,13 +159,13 @@ where
         {
             Tried::Answered(answer) => return Ok(answer),
             Tried::FailedOver => {}
-            Tried::Missed(miss) => {
+            Tried::Missed(miss, by) => {
                 if i == 0 && remembered == Some(provider) {
-                    affinity_miss = Some(miss);
+                    affinity_miss = Some((miss, by));
                     continue;
                 }
                 return retry_skipped(
-                    miss,
+                    (miss, Some(by)),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -177,12 +183,16 @@ where
     // the first unreachable error. Either way the skipped providers
     // get their trial before it surfaces.
     let verdict = affinity_miss
-        .or_else(|| walk.first_unreachable.take())
-        .unwrap_or(NativeError {
-            error: AniError::Network,
-            clean_miss: false,
-            failed_at: None,
-        });
+        .map(|(miss, by)| (miss, Some(by)))
+        .or_else(|| walk.first_unreachable.take().map(|e| (e, None)))
+        .unwrap_or((
+            NativeError {
+                error: AniError::Network,
+                clean_miss: false,
+                failed_at: None,
+            },
+            None,
+        ));
     retry_skipped(
         verdict,
         overall,
@@ -208,11 +218,12 @@ struct Walk {
     skipped: Vec<ProviderId>,
 }
 
-/// How one attempt ended.
+/// How one attempt ended: an answer, a failover, or a miss with the
+/// provider whose miss it is.
 enum Tried<'c, T> {
     Answered(Attempted<'c, T>),
     FailedOver,
-    Missed(NativeError),
+    Missed(NativeError, ProviderId),
 }
 
 /// The budget for the next attempt: the whole remainder for the last
@@ -292,7 +303,7 @@ where
             walk.first_unreachable.get_or_insert(ne);
             Tried::FailedOver
         }
-        Err(ne) => Tried::Missed(ne),
+        Err(ne) => Tried::Missed(ne, provider),
     }
 }
 
@@ -301,14 +312,15 @@ where
 /// skipped for an open breaker on an interactive walk, which the
 /// gate would have admitted as the breaker's half-open trial. Those
 /// are asked now: an answer is the walk's, a miss of theirs — the
-/// last answer given — replaces the verdict they were asked for, and
-/// one unreachable too leaves it standing.
+/// last answer given — replaces the verdict they were asked for,
+/// author and all, and one unreachable too leaves it standing. The
+/// attempt is told whose miss the verdict is before it surfaces.
 ///
 /// # Errors
 /// The verdict that stands.
 #[allow(clippy::too_many_arguments)]
 async fn retry_skipped<'c, 'g, A, C, G>(
-    miss: NativeError,
+    verdict: (NativeError, Option<ProviderId>),
     overall: tokio::time::Instant,
     total_budget: Duration,
     attempt_budget: Duration,
@@ -323,7 +335,7 @@ where
     C: FnMut(ProviderId) -> crate::error::Result<Box<dyn Provider + 'c>>,
     G: Fn(ProviderId) -> &'g ScraperGate,
 {
-    let mut verdict = miss;
+    let mut verdict = verdict;
     if matches!(priority, ScrapePriority::Interactive) && !walk.skipped.is_empty() {
         let skipped = std::mem::take(&mut walk.skipped);
         let count = skipped.len();
@@ -339,11 +351,15 @@ where
             {
                 Tried::Answered(answer) => return Ok(answer),
                 Tried::FailedOver => {}
-                Tried::Missed(ne) => verdict = ne,
+                Tried::Missed(ne, by) => verdict = (ne, Some(by)),
             }
         }
     }
-    Err(verdict)
+    let (error, by) = verdict;
+    if let Some(by) = by {
+        attempt.missed_by(by);
+    }
+    Err(error)
 }
 
 /// Where each provider's client points: the state's overrides, or a
@@ -515,8 +531,10 @@ pub struct ResolveAttempt<'r, F> {
     pub request: NativeResolveRequest<'r>,
     /// Where the walk's progress lines go.
     pub on_progress: &'r mut F,
-    /// The provider the last attempt ran against — on a miss, the
-    /// one whose verdict it is, for the negative row to name.
+    /// The provider whose miss the walk returned, for the negative
+    /// row to name — set by the walk, which knows whose verdict
+    /// survived, not by the attempt, which only knows who was asked
+    /// last.
     pub answered_by: Option<ProviderId>,
 }
 
@@ -525,8 +543,11 @@ impl<F: FnMut(ProgressLine) + Send> Attempt for ResolveAttempt<'_, F> {
     type Output = NativeResolved;
 
     async fn run(&mut self, provider: &dyn Provider) -> Result<NativeResolved, NativeError> {
-        self.answered_by = Some(provider.id());
         resolve_native(provider, self.request, self.on_progress).await
+    }
+
+    fn missed_by(&mut self, provider: ProviderId) {
+        self.answered_by = Some(provider);
     }
 }
 
