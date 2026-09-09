@@ -97,7 +97,17 @@ fn create_session_inner(
     media_kind: MediaKind,
 ) -> Result<CreateSessionResponse> {
     let mut session = StreamSession::new_with_kind(upstream, media_kind, args.referer.clone());
-    session.subtitles.clone_from(&args.subtitles);
+    // The player fetches every track it is handed, so a listing is
+    // bounded here as the download's writer bounds it: the first
+    // cap-many tracks, the rest dropped with a note.
+    let (tracks, dropped) = crate::proxy::upstream::within_track_cap(&args.subtitles);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "session: subtitle listing longer than the track cap, the rest dropped"
+        );
+    }
+    session.subtitles = tracks.to_vec();
     let id = session.id;
     state.sessions.insert(session);
 
@@ -109,8 +119,7 @@ fn create_session_inner(
         MediaKind::Mp4 => "file.mp4",
     };
     let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
-    let subtitles = args
-        .subtitles
+    let subtitles = tracks
         .iter()
         .enumerate()
         .map(|(i, t)| SessionSubtitle::proxied(&state.proxy_origin.base, &session_str, i, t))
