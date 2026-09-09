@@ -564,6 +564,50 @@ async fn a_walk_starts_from_the_remembered_provider() {
     assert_eq!(attempt.asked, vec![ProviderId::Hianime, ProviderId::Anidb]);
 }
 
+mod budget_props {
+    use super::walk_budget;
+    use proptest::prelude::*;
+    use std::time::Duration;
+
+    proptest! {
+        /// Whatever the attempt gets, the providers still owed a trial
+        /// keep one attempt budget each of what remains; the last
+        /// attempt with nobody owed keeps the whole remainder; nothing
+        /// is handed out once the total, or what is left after the
+        /// reserve, is spent.
+        #[test]
+        fn the_owed_trials_keep_their_budget(
+            total_secs in 1u64..120,
+            attempt_secs in 1u64..60,
+            elapsed_secs in 0u64..150,
+            last in prop::bool::ANY,
+            owed in 0usize..4,
+        ) {
+            let total = Duration::from_secs(total_secs);
+            let attempt = Duration::from_secs(attempt_secs);
+            let elapsed = Duration::from_secs(elapsed_secs);
+            let overall = tokio::time::Instant::now() - elapsed;
+            let remaining = total.saturating_sub(elapsed);
+            let reserve = attempt * u32::try_from(owed).expect("small");
+            let got = walk_budget(overall, total, attempt, last, owed);
+            if remaining.is_zero() {
+                prop_assert_eq!(got, None);
+            } else if last && owed == 0 {
+                // The clock moved between the two readings by at most
+                // a few microseconds; compare loosely.
+                let budget = got.expect("the remainder");
+                prop_assert!(remaining.abs_diff(budget) < Duration::from_millis(50));
+            } else if remaining <= reserve {
+                prop_assert_eq!(got, None);
+            } else {
+                let budget = got.expect("an attempt");
+                prop_assert!(budget <= attempt);
+                prop_assert!(budget + reserve <= remaining + Duration::from_millis(50));
+            }
+        }
+    }
+}
+
 mod affinity_props {
     use super::order_with_affinity;
     use crate::scraper::provider::ProviderId;
