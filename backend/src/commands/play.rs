@@ -1218,6 +1218,58 @@ mod tests {
         );
     }
 
+    /// The row's URLs are asked together under one deadline, so a
+    /// row costs at most one request's worth of waiting however many
+    /// tracks it lists: a track whose CDN stalls past the deadline
+    /// makes the row not live, and the check returns at the deadline
+    /// rather than after the stalled request's own timeout — the
+    /// fresh resolve the caller falls through to is the faster path.
+    #[tokio::test]
+    async fn a_cached_row_whose_track_stalls_past_the_deadline_is_not_live_and_the_check_returns_at_the_deadline(
+    ) {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/video.mp4"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/subs/en.vtt"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/subs/es.vtt"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3)),
+            )
+            .mount(&server)
+            .await;
+        let state = state_with_proxy_origin();
+        let mut cached = cached_blank(
+            format!("{}/video.mp4", server.uri()),
+            String::new(),
+            MediaKind::Mp4,
+        );
+        cached.subtitles = vec![
+            track("en", true, &format!("{}/subs/en.vtt", server.uri())),
+            track("es", false, &format!("{}/subs/es.vtt", server.uri())),
+        ];
+        let started = std::time::Instant::now();
+        let live = crate::commands::play_cache::cached_row_is_live_within(
+            &state,
+            &cached,
+            std::time::Duration::from_millis(300),
+        )
+        .await;
+        let elapsed = started.elapsed();
+        assert!(!live, "a track that does not answer in time is a dead row");
+        assert!(
+            elapsed < std::time::Duration::from_millis(1500),
+            "the check returned at the deadline, not after the stalled request: {elapsed:?}"
+        );
+    }
+
     /// Every track is asked, with the row's referer — the CDN that
     /// signs the stream signs the tracks — and a row whose tracks all
     /// answer is served.
