@@ -252,3 +252,47 @@ proptest::proptest! {
         }
     }
 }
+
+mod verdict_props {
+    use super::episode_verdict;
+    use crate::error::AniError;
+    use proptest::prelude::*;
+
+    fn error() -> impl Strategy<Value = AniError> {
+        prop_oneof![
+            (0u8..5).prop_map(|k| match k {
+                0 => AniError::Network,
+                1 => AniError::Timeout,
+                2 => AniError::NoResults,
+                3 => AniError::EpisodeUnavailable,
+                _ => AniError::GateRefused,
+            }),
+            (0u16..1000).prop_map(|status| AniError::Upstream { status }),
+            proptest::option::of(0u64..100_000)
+                .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        ]
+    }
+
+    proptest! {
+        /// An answered dead end — a title miss or a not-found-shaped
+        /// status — becomes the episode's verdict; a block, a gate
+        /// refusal and transport weather pass through as they came.
+        #[test]
+        fn an_answered_dead_end_is_the_episodes_verdict_and_nothing_else_changes(
+            error in error(),
+        ) {
+            let passes_through = error.is_provider_block()
+                || matches!(error, AniError::GateRefused | AniError::Network | AniError::Timeout);
+            let before = format!("{error:?}");
+            let after = episode_verdict(error);
+            if passes_through {
+                prop_assert_eq!(format!("{after:?}"), before);
+            } else {
+                prop_assert!(
+                    matches!(after, AniError::EpisodeUnavailable),
+                    "{before} -> {after:?}"
+                );
+            }
+        }
+    }
+}
