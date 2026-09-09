@@ -80,7 +80,7 @@ proptest::proptest! {
             (
                 "[a-z0-9]{1,6}(-[a-z0-9]{1,6}){0,3}",
                 1u64..1_000_000,
-                "[A-Za-z0-9 ,:!&'\"<>-]{1,30}",
+                "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
                 "(TV|Movie|OVA|ONA|Special)",
             ),
             0..5,
@@ -108,7 +108,7 @@ proptest::proptest! {
             (
                 "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
                 proptest::option::of(1u64..1_000_000),
-                "[A-Za-z0-9 ,:!&'\"<>-]{1,30}",
+                "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
                 "(TV|Movie|OVA|ONA|Special)",
             ),
             1..5,
@@ -170,6 +170,44 @@ proptest::proptest! {
             r#"<div class="item item-title"><span class="item-head">Aired:</span><span class="name">{month} {day}, {year} {end}</span></div>"#
         );
         proptest::prop_assert_eq!(parse_detail_year(&page), Some(year));
+    }
+
+    /// A card whose title is blank never comes back, whatever its
+    /// slug; the cards with a title do, in order.
+    #[test]
+    fn cards_with_a_blank_title_never_come_back(
+        cards in proptest::collection::vec(
+            (
+                "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
+                1u64..1_000_000,
+                proptest::option::of("[A-Za-z0-9,:!-][A-Za-z0-9 ,:!-]{0,20}"),
+                " {0,3}",
+                "(TV|Movie|OVA|ONA|Special)",
+            ),
+            1..5,
+        )
+    ) {
+        let with_slugs: Vec<(String, String, String)> = cards
+            .iter()
+            .map(|(words, id, title, pad, kind)| {
+                let title = title.as_ref().map_or_else(|| pad.clone(), |t| format!("{pad}{t}{pad}"));
+                (format!("{words}-{id}"), title, kind.clone())
+            })
+            .collect();
+        let page = search_page_with_slugs(&with_slugs);
+        let expected: Vec<String> = cards
+            .iter()
+            .filter(|(_, _, title, _, _)| title.is_some())
+            .map(|(words, id, _, _, _)| format!("{words}-{id}"))
+            .collect();
+        match parse_search(&page) {
+            Ok(hits) => {
+                let slugs: Vec<String> = hits.iter().map(|h| h.slug.clone()).collect();
+                proptest::prop_assert_eq!(slugs, expected);
+            }
+            Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(expected.is_empty(), "refused with readable cards present"),
+            Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+        }
     }
 
     /// Every ep-item row comes back as its episode ref, in order.
