@@ -114,9 +114,11 @@ pub struct ServerEmbed {
 
 /// An episode's servers. A server whose hash does not decode to an
 /// absolute http(s) URL is skipped: nothing downstream can use it.
-/// So is one whose mode is blank: a row typed as nothing is not a
-/// server of any mode, and counting it as read would let a listing
-/// of such rows pass as "no sub, no dub" instead of a changed shape.
+/// So is one whose mode is not `sub` or `dub`, the two the site types
+/// its servers with and the two the mode probe asks for: a row typed
+/// as nothing, or as some renamed value, is not a server of any mode
+/// the client knows, and counting it as read would let a listing of
+/// such rows pass as "no sub, no dub" instead of a changed shape.
 ///
 /// # Errors
 /// As [`unwrap_envelope`].
@@ -127,7 +129,7 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
         .skip(1)
         .filter_map(|item| {
             let mode = attr(item, "data-type=\"")?.trim().to_string();
-            if mode.is_empty() {
+            if !matches!(mode.as_str(), "sub" | "dub") {
                 return None;
             }
             let name = attr(item, "data-server-name=\"")?.trim().to_string();
