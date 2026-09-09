@@ -3817,3 +3817,59 @@ fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_wit
         "the empty claim made for the rename is removed with it"
     );
 }
+
+// ── a range's first episode the remembered provider lacks ─────────
+
+/// A range whose first episode the remembered provider does not
+/// carry, on a title the other provider lacks, is the episode's
+/// verdict — the show is there, this episode is not — and not the
+/// title miss the other provider answered: the positive row that
+/// remembered the provider stands, and nothing writes an absence
+/// over it.
+#[tokio::test]
+async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_and_the_row() {
+    use wiremock::matchers::{method, path};
+    let anidb = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+        )
+        .mount(&anidb)
+        .await;
+    let hianime = stub_hianime_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &anidb.uri());
+    state.provider_order = vec![
+        crate::scraper::provider::ProviderId::Anidb,
+        crate::scraper::provider::ProviderId::Hianime,
+    ];
+    state.hianime_base = Some(hianime.uri());
+    crate::commands::availability::write_cache(
+        &state,
+        "rs-21",
+        "sub",
+        true,
+        Some(crate::scraper::provider::ProviderId::Hianime),
+    );
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "3-4",
+        "mode": "sub",
+        "kitsu_id": "rs-21",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let bin = dir_with_a_findable_tool();
+    let err = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect_err("the remembered provider lists two episodes, not a third");
+    assert!(matches!(err, AniError::EpisodeUnavailable), "{err:?}");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime),
+        "the row that remembered the provider stands; an episode verdict writes no absence"
+    );
+}

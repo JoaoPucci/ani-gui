@@ -979,3 +979,96 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         crate::scraper::provider::ProviderId::Hianime
     );
 }
+
+// ── the episode step's own verdict ─────────────────────────────────
+
+/// A provider whose listing is one episode and whose embed step
+/// answers "no stream": the two answered dead ends the episode step
+/// can reach.
+struct NoStreamProvider;
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for NoStreamProvider {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::ProviderId::Hianime
+    }
+    async fn search(
+        &self,
+        _q: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::BrowseHit>> {
+        unreachable!()
+    }
+    async fn episodes(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::EpisodeRef>> {
+        unreachable!()
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        unreachable!()
+    }
+    async fn master_playlist_url(
+        &self,
+        _e: u64,
+        _m: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        Err(AniError::NoResults)
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        unreachable!()
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        unreachable!()
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+fn one_episode_show() -> crate::commands::play_native::PickedShow {
+    crate::commands::play_native::PickedShow {
+        hit: crate::scraper::provider::BrowseHit {
+            slug: "the-show-77".into(),
+            title: "The Show".into(),
+            kind: None,
+        },
+        episodes: vec![crate::scraper::provider::EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        }],
+    }
+}
+
+/// The episode step answers its own verdict — the show is there,
+/// this episode is not — whether the listing lacks the episode or
+/// the embed step has no stream for it, so every caller that walks
+/// the chain directly, not only the native resolve, ranks it as the
+/// episode's and never as a title miss.
+#[tokio::test]
+async fn the_episode_step_answers_the_episodes_verdict_directly() {
+    let provider = NoStreamProvider;
+    let picked = one_episode_show();
+    let unlisted = crate::commands::play_native_episode::resolve_episode(
+        &provider, &picked, "9", "sub", "best",
+    )
+    .await
+    .expect_err("no ninth episode");
+    assert!(
+        matches!(unlisted.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        unlisted.error
+    );
+    assert!(!unlisted.clean_miss);
+    let no_stream = crate::commands::play_native_episode::resolve_episode(
+        &provider, &picked, "1", "sub", "best",
+    )
+    .await
+    .expect_err("no stream for the first");
+    assert!(
+        matches!(no_stream.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        no_stream.error
+    );
+    assert!(!no_stream.clean_miss);
+}
