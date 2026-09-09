@@ -3075,6 +3075,52 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
     );
 }
 
+/// A track URL can point at something far larger than a subtitle
+/// file — the video itself, behind a malformed descriptor. The writer
+/// reads a body only up to the subtitle cap, skips one that proves
+/// larger, and still lands the track beside it that fits.
+#[tokio::test]
+async fn a_body_over_the_subtitle_cap_is_skipped_and_the_track_beside_it_lands() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let mut oversized = b"WEBVTT\n\n".to_vec();
+    oversized.resize(crate::proxy::upstream::SUBTITLE_BODY_CAP + 1, b'x');
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(oversized))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nhola\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 16",
+    )
+    .await;
+    let es = dest.path().join("Show Episode 16.es.vtt");
+    assert_eq!(written, vec![es.clone()], "only the track that fits lands");
+    assert!(
+        !dest.path().join("Show Episode 16.en.vtt").exists(),
+        "an oversized body claims no name"
+    );
+}
+
 /// A CDN in front of the subtitles can answer a challenge page with
 /// 200. Written as a sidecar it would sit at the track's name for
 /// good, since every later download keeps what it finds there. Only
