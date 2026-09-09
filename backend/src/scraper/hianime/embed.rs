@@ -37,13 +37,16 @@ pub struct EmbedPayload {
 /// Decode the payload out of an embed page. A page without the
 /// marker carries no playlist — the answered "nothing here". A page
 /// whose marker is present but whose blob the key does not open, or
-/// whose plaintext is not the payload, is the site having changed —
-/// the versioned key rotated, the shape moved — and that is a parse
-/// failure, never an episode without a stream.
+/// whose plaintext is not the payload, or whose source is not an
+/// absolute http(s) URL the transport can fetch, is the site having
+/// changed — the versioned key rotated, the shape moved, the source
+/// written some other way — and that is a parse failure, never an
+/// episode without a stream.
 ///
 /// # Errors
 /// [`AniError::NoResults`] without the marker,
-/// [`AniError::ParseFailed`] when the blob does not decode.
+/// [`AniError::ParseFailed`] when the blob does not decode to a
+/// payload with a fetchable source.
 pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
     if !html.contains("window.__P") {
         return Err(AniError::NoResults);
@@ -68,7 +71,18 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
         .enumerate()
         .map(|(i, b)| b ^ EMBED_KEY[i % EMBED_KEY.len()])
         .collect();
-    serde_json::from_slice(&plain).map_err(|_| undecodable("plaintext is not the payload"))
+    let payload: EmbedPayload =
+        serde_json::from_slice(&plain).map_err(|_| undecodable("plaintext is not the payload"))?;
+    if !is_fetchable(&payload.src) {
+        return Err(undecodable("source is not an absolute http(s) URL"));
+    }
+    Ok(payload)
+}
+
+/// Whether the transport can fetch `src`: an absolute URL under
+/// http or https, nothing else.
+fn is_fetchable(src: &str) -> bool {
+    url::Url::parse(src).is_ok_and(|u| matches!(u.scheme(), "http" | "https"))
 }
 
 /// The origin the CDN wants as `Referer` on every playlist fetch:
