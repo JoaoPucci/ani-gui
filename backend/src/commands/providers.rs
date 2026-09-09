@@ -394,31 +394,21 @@ where
     Err(error)
 }
 
-/// The verdict to keep when two providers both missed. An episode
+/// Whether the earlier of two misses is the one to keep. An episode
 /// verdict outranks a title miss: a provider that found the show and
 /// not the episode has said something a later title miss cannot
 /// unsay — the later provider lacks the show, which says nothing
 /// about the episode. Between two verdicts of the same kind the later
 /// one stands, as it did before.
-fn firmer_miss(earlier: NativeError, later: NativeError) -> NativeError {
-    if keeps_earlier(&earlier, &later) {
-        earlier
-    } else {
-        later
-    }
-}
-
-/// Whether the earlier of two misses is the one to keep: only an
-/// episode verdict over a title miss.
 fn keeps_earlier(earlier: &NativeError, later: &NativeError) -> bool {
     let episode = |ne: &NativeError| matches!(ne.error, AniError::EpisodeUnavailable);
     episode(earlier) && !episode(later)
 }
 
-/// [`firmer_miss`] over a verdict and the provider whose verdict it
-/// is, so the provider travels with the verdict that is kept — the
-/// row a miss writes names the provider that missed, not the last
-/// one asked.
+/// The verdict to keep when two providers both missed, with the
+/// provider whose verdict it is, so the provider travels with the
+/// verdict that is kept — the row a miss writes names the provider
+/// that missed, not the last one asked.
 fn firmer_verdict(
     earlier: (NativeError, Option<ProviderId>),
     later: (NativeError, Option<ProviderId>),

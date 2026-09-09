@@ -762,7 +762,7 @@ mod affinity_props {
 }
 
 mod miss_props {
-    use super::{firmer_miss, firmer_verdict};
+    use super::firmer_verdict;
     use crate::commands::play_native_resolve::NativeError;
     use crate::error::AniError;
     use crate::scraper::provider::ProviderId;
@@ -809,27 +809,6 @@ mod miss_props {
             let expected_flag = if keep_earlier { earlier.clean_miss } else { later.clean_miss };
             let (kept, by) = firmer_verdict((earlier, earlier_by), (later, later_by));
             prop_assert_eq!(by, expected_by);
-            prop_assert_eq!(kept.clean_miss, expected_flag);
-        }
-
-        /// The kept verdict is an episode verdict exactly when either
-        /// miss was one; between two of a kind the later stands, and
-        /// between two kinds the episode's own flag is what is kept.
-        #[test]
-        fn an_episode_verdict_is_kept_whenever_either_miss_was_one(
-            earlier in miss(),
-            later in miss(),
-        ) {
-            let either = is_episode(&earlier) || is_episode(&later);
-            let expected_flag = if is_episode(&earlier) == is_episode(&later) {
-                later.clean_miss
-            } else if is_episode(&earlier) {
-                earlier.clean_miss
-            } else {
-                later.clean_miss
-            };
-            let kept = firmer_miss(earlier, later);
-            prop_assert_eq!(is_episode(&kept), either);
             prop_assert_eq!(kept.clean_miss, expected_flag);
         }
     }
