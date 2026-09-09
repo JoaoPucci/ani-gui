@@ -259,6 +259,28 @@ proptest::proptest! {
         }
     }
 
+    /// A payload whose source is not an absolute http(s) URL is not a
+    /// stream the client can fetch: blank, relative, or under another
+    /// scheme, it is refused as a parse failure whatever else it says.
+    #[test]
+    fn a_payload_with_an_unfetchable_source_is_refused(
+        src in prop_oneof![
+            Just(String::new()),
+            "/[a-z0-9/]{1,20}\\.m3u8",
+            "[a-z]{3,10}",
+            "(ftp|file|data|javascript)://?[a-z0-9./]{1,20}",
+        ],
+    ) {
+        let json = serde_json::json!({"src": src, "subtitles": []}).to_string();
+        let key = b"otaku-embed-v1";
+        let blob = base64::engine::general_purpose::STANDARD.encode(
+            json.bytes().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect::<Vec<u8>>(),
+        );
+        let page = format!(r#"<html><body><script>window.__P="{blob}"</script></body></html>"#);
+        let refused = matches!(decode_embed(&page), Err(AniError::ParseFailed { .. }));
+        prop_assert!(refused, "accepted a source the client cannot fetch: {src:?}");
+    }
+
     /// The origin is scheme and host with a trailing slash — the path
     /// never leaks into the referer.
     #[test]

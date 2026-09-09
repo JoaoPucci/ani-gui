@@ -592,6 +592,36 @@ impl Fetch for Site {
                 }
             }
             "https://zokoanime.video/stream/mal/9/429/sub" => refused(429),
+            // A host whose payload decodes to a source the client
+            // cannot fetch — a relative path — then one whose page
+            // decodes to a stream.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21426") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3JlbGF0aXZlL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A lone host whose payload decodes to a blank source.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21427") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2JsYW5rL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The payload decodes; its source is a relative path, or
+            // nothing at all.
+            "https://zokoanime.video/stream/mal/9/relative/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX09NFwFBF0UGAgREGEwWGQcXSkBFRFdWTUkGWAcZCxEISAUTVS88Fg=="</script></body></html>"#,
+            ),
+            "https://zokoanime.video/stream/mal/9/blank/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX09ASUZeA1MbHRUHEF5HVzk4GQ=="</script></body></html>"#,
+            ),
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
@@ -818,6 +848,29 @@ async fn the_weather_kept_across_servers_is_the_rate_limit_over_a_generic_block(
         .await
         .expect_err("no server served a stream");
     assert!(matches!(err, AniError::Upstream { status: 429 }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_payload_whose_source_the_client_cannot_fetch_is_stepped_over_for_a_later_server() {
+    // The payload decoded, but its source is a relative path: nothing
+    // the transport can fetch. Taking it ends the walk on an operand
+    // that fails, while the next server had the stream.
+    let c = client();
+    let source = c.master_playlist_url(21426, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+}
+
+#[tokio::test]
+async fn a_payload_whose_source_is_blank_is_a_parse_failure_when_no_server_serves_a_stream() {
+    // Decoded, and not the shape the client can use: the site changed
+    // what it puts in the payload, which is a parse failure and never
+    // an episode without a stream.
+    let c = client();
+    let err = c
+        .master_playlist_url(21427, "sub")
+        .await
+        .expect_err("no usable source");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
 #[tokio::test]
