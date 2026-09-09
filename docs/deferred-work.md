@@ -364,11 +364,12 @@ starting it, and delete it when you find it done.
   nothing stops the renderer's own document from navigating away
   from the app's origin; that closes together with the policy, in a
   few lines of the main process. And the sandbox: the AppImage is
-  repacked to start Electron with `--no-sandbox`, because its
-  read-only squashfs cannot carry the SUID bit Chromium's setuid
-  sandbox needs (the `.deb` sets the bit in its postinst and keeps
-  the sandbox), which is a packaging question of its own and not
-  part of this entry.
+  repacked to start Electron with `--no-sandbox`, because the
+  unprivileged FUSE mount an AppImage runs from does not honour
+  setuid execution, so Chromium's setuid sandbox helper cannot be
+  used from inside it (the `.deb` sets the helper's SUID bit in its
+  postinst and keeps the sandbox), which is a packaging question of
+  its own and not part of this entry.
 
   Two things a grep will not surface. The manual diagnostic route
   hands a pasted public URL straight to the player, the one place
