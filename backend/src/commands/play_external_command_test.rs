@@ -470,3 +470,60 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
         "a cached handoff persists the mapping too"
     );
 }
+
+/// The stamp and the mapping follow the row, never lead it. When the
+/// history file cannot be written — a directory sits where it should
+/// be, the state directory is full — the watch is not on disk, and a
+/// stamp advanced anyway would make that unrecorded watch the latest
+/// of the show's rows: the resume would pick this row's stale
+/// episode over another provider's real one.
+#[tokio::test]
+async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::create_dir_all(&state.history_path).expect("a directory where the file should be");
+    let watch = crate::commands::play_native_record::Watch {
+        show_id: "the-show-77".into(),
+        title: "The Show".into(),
+        ep_no: "3".into(),
+    };
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        None,
+        "a watch that never reached the file must not be stamped"
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        None,
+        "nor mapped"
+    );
+}
+
+/// The same watch with a writable file: row, stamp and mapping all
+/// land.
+#[tokio::test]
+async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let watch = crate::commands::play_native_record::Watch {
+        show_id: "the-show-77".into(),
+        title: "The Show".into(),
+        ep_no: "3".into(),
+    };
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    assert!(hsts.contains("the-show-77"), "{hsts}");
+    assert!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77")
+            .expect("stamp read")
+            .is_some(),
+        "the persisted watch is stamped"
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
+            .expect("mapping read")
+            .as_deref(),
+        Some("K42")
+    );
+}
