@@ -128,6 +128,16 @@ impl Gates {
             );
         }
     }
+    /// The provider answered a rate limit with a window: an
+    /// advertised pause, which the gate keeps apart from the breaker.
+    fn pause(&self, p: ProviderId) {
+        self.of(p).record(
+            crate::scraper::gate::ScrapeOutcome::RateLimited {
+                retry_after: Some(Duration::from_secs(120)),
+            },
+            tokio::time::Instant::now(),
+        );
+    }
 }
 
 const ORDER: [ProviderId; 2] = [ProviderId::Anidb, ProviderId::Hianime];
@@ -228,6 +238,43 @@ async fn an_open_breaker_skips_the_primary_while_another_remains() {
         .expect("answered");
     assert_eq!(got.provider, ProviderId::Hianime);
     assert_eq!(attempt.asked(), [ProviderId::Hianime]);
+}
+
+/// An advertised rate-limit window is the provider refusing, as an
+/// open breaker is: a walk asked during it is told to come back
+/// later, so it moves on while another provider remains — on a
+/// background walk too, where waiting inside the gate for the window
+/// would spend the attempt budget before the fallback is asked.
+#[tokio::test]
+async fn a_provider_in_a_rate_limit_pause_is_skipped_while_another_remains() {
+    for priority in [ScrapePriority::Interactive, ScrapePriority::Background] {
+        let gates = Gates::new();
+        gates.pause(ProviderId::Anidb);
+        let mut attempt = Scripted::new(&[
+            (ProviderId::Anidb, Behavior::Answer("must not be asked")),
+            (ProviderId::Hianime, Behavior::Answer("from hianime")),
+        ]);
+        let got = run(&gates, priority, &mut attempt).await.expect("answered");
+        assert_eq!(got.provider, ProviderId::Hianime, "{priority:?}");
+        assert_eq!(attempt.asked(), [ProviderId::Hianime], "{priority:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_last_provider_is_tried_even_in_a_rate_limit_pause() {
+    let gates = Gates::new();
+    gates.pause(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Hianime, Behavior::Answer("from hianime")),
+    ]);
+    let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
+        .await
+        .expect("the last provider is always tried");
+    assert_eq!(got.provider, ProviderId::Hianime);
 }
 
 #[tokio::test]
