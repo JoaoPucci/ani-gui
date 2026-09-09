@@ -180,3 +180,40 @@ proptest::proptest! {
         proptest::prop_assert_eq!(scrub_stderr(&stderr, &url), stderr);
     }
 }
+
+proptest::proptest! {
+    /// Every header the request carries reaches curl as its own `-H`
+    /// operand, `Name: value`, in the request's order; the URL still
+    /// follows them all as the final argument; and taking the pairs
+    /// back out leaves exactly the headerless argv.
+    #[test]
+    fn each_header_rides_its_own_flag_in_order_ahead_of_the_url(
+        url in "https://[a-z]{1,10}\\.[a-z]{2,4}/[a-z0-9/-]{0,20}",
+        headers in proptest::collection::vec(("[A-Za-z-]{1,20}", "[^\\r\\n]{0,40}"), 0..6),
+        target in proptest::option::of("[a-z]{1,12}[0-9]{0,4}"),
+    ) {
+        let mut req = FetchRequest::get(url.as_str());
+        for (name, value) in &headers {
+            req = req.header(name.clone(), value.clone());
+        }
+        let args = fetch_args(&req, target.as_deref());
+        let flags: Vec<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "-H")
+            .map(|(i, _)| i)
+            .collect();
+        proptest::prop_assert_eq!(flags.len(), headers.len());
+        for (i, (name, value)) in flags.iter().zip(&headers) {
+            let want = format!("{name}: {value}");
+            proptest::prop_assert_eq!(args.get(*i + 1).map(String::as_str), Some(want.as_str()));
+            proptest::prop_assert!(*i + 1 < args.len() - 1, "a header operand must precede the URL");
+        }
+        proptest::prop_assert_eq!(args.last().map(String::as_str), Some(url.as_str()));
+        let mut stripped = args.clone();
+        for i in flags.iter().rev() {
+            stripped.drain(*i..*i + 2);
+        }
+        proptest::prop_assert_eq!(stripped, fetch_args(&FetchRequest::get(url.as_str()), target.as_deref()));
+    }
+}
