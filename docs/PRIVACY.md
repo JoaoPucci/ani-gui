@@ -61,8 +61,10 @@ requires it; the exception is the update check that runs on launch
   and hianime first, for a while, for a show it proved playable
   while the walk had moved on: the app remembers
   which catalogue carried a show for as long as its availability
-  record lasts (a day for an airing show, thirty days for a finished
-  one) and asks that one first for later plays, downloads and
+  record lasts — a day from the last play, download or hand-off,
+  each of which restamps the record with a day's life; a probe alone
+  leaves a finished show's record for thirty days — and asks that
+  one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
   anidb.app again. These requests carry the search terms
