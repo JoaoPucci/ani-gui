@@ -2902,6 +2902,71 @@ fn the_rename_install_takes_an_abandoned_claim_and_refuses_a_file_with_bytes() {
     );
 }
 
+/// A name held by anything but a regular file is the user's,
+/// whatever the entry's length: a symlink — dangling, or to an empty
+/// file — or a directory. The classifier must not follow a link to an
+/// empty file and take the name, nor read a dangling link as an
+/// absent file; either way the rename would replace the user's entry.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_name_held_by_a_symlink_or_a_directory_is_taken() {
+    let dest = tempfile::tempdir().expect("dest");
+
+    let dangling = dest.path().join("Show Episode 11.en.vtt");
+    std::os::unix::fs::symlink(dest.path().join("nowhere.vtt"), &dangling).expect("symlink");
+    let err = write_new(&dangling, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a dangling link is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(
+        std::fs::symlink_metadata(&dangling)
+            .expect("the link is still there")
+            .file_type()
+            .is_symlink(),
+        "the user's link survives"
+    );
+    assert!(
+        !dest.path().join("nowhere.vtt").exists(),
+        "nothing was written through the link"
+    );
+
+    let real = dest.path().join("empty.vtt");
+    std::fs::write(&real, b"").expect("empty file");
+    let linked = dest.path().join("Show Episode 12.en.vtt");
+    std::os::unix::fs::symlink(&real, &linked).expect("symlink");
+    let err = write_new(&linked, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a link to an empty file is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(
+        std::fs::symlink_metadata(&linked)
+            .expect("the link is still there")
+            .file_type()
+            .is_symlink(),
+        "the user's link survives"
+    );
+    assert_eq!(
+        std::fs::metadata(&real).expect("the linked file").len(),
+        0,
+        "the linked file is untouched"
+    );
+
+    let dir = dest.path().join("Show Episode 13.en.vtt");
+    std::fs::create_dir(&dir).expect("dir");
+    let err = write_new(&dir, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a directory is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(dir.is_dir(), "the directory survives");
+
+    let leftovers: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".ani-gui-"))
+        .collect();
+    assert!(leftovers.is_empty(), "no scratch remains: {leftovers:?}");
+}
+
 /// A CDN in front of the subtitles can answer a challenge page with
 /// 200. Written as a sidecar it would sit at the track's name for
 /// good, since every later download keeps what it finds there. Only
