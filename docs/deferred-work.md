@@ -174,28 +174,17 @@ starting it, and delete it when you find it done.
 - **Subtitle presentation: user styling, and the anime's own
   colours.** Subtitle cues render as the browser draws them — the
   play page only picks which track shows — with no styling and no
-  preference behind it: default font and size, white on a shadow,
-  bottom centre, for the tracks inside a playlist and the sidecar
-  ones alike. Two directions, not exclusive: a settings surface for
-  font, size, colour, background, edge and position, and the
-  per-anime accent the app already picks for a show — today a
-  palette entry chosen by hashing the Kitsu id, with cover-colour
-  theming a noted intent in that module and not yet the source —
-  tinting the cues, in the spirit of the per-anime theming the
-  detail and watch pages do.
+  preference behind it, for the tracks inside a playlist and the
+  sidecar ones alike. The two directions this could take, not
+  exclusive: letting the user style cues, and tinting them with the
+  per-anime accent the app already picks for a show.
 
-  Worth knowing before starting: the browser's cue styling honours a
-  short allow-list (colour, background, font, shadow, outline) and
-  not position, so moving cues means setting positions on the
-  track's own cues or drawing them in an overlay of the app's own
-  from the active cues. hls.js delivers in-playlist subtitles as
-  native cues too, so one mechanism covers both kinds. hianime's
-  sidecar WebVTT carries inline markup (italics) and its own cue
-  settings, which an overlay has to honour. External players and
-  Syncplay receive the tracks as files and style them themselves —
-  this is the embedded player only. A legible default matters more
-  than the options: size relative to the video frame rather than the
-  window, so Picture-in-Picture and fullscreen both read.
+  Worth knowing before starting: the browser's cue styling honours
+  only a short allow-list of properties, and position is not on it;
+  hianime's sidecar WebVTT carries inline markup and its own cue
+  settings; and external players and Syncplay receive the tracks as
+  files and style them themselves, so this is the embedded player
+  only.
 - **Subtitle track selection: a locale-aware default, and a remembered
   choice.** Which track shows when an episode opens is the provider's
   call today, in every app locale: the page lists the tracks the
