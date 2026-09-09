@@ -337,6 +337,27 @@ pub async fn fetch_streaming(
 }
 
 #[cfg(test)]
+mod track_cap_props {
+    use super::{within_track_cap, SUBTITLE_TRACK_CAP};
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The kept tracks are the listing's first ones, never more
+        /// than the cap, and the count left behind is the remainder.
+        #[test]
+        fn the_first_cap_many_are_kept_and_the_rest_counted(
+            tracks in proptest::collection::vec(0u32..1000, 0..(SUBTITLE_TRACK_CAP * 3))
+        ) {
+            let (kept, dropped) = within_track_cap(&tracks);
+            prop_assert!(kept.len() <= SUBTITLE_TRACK_CAP);
+            prop_assert_eq!(kept, &tracks[..kept.len()]);
+            prop_assert_eq!(kept.len() + dropped, tracks.len());
+            prop_assert_eq!(dropped, tracks.len().saturating_sub(SUBTITLE_TRACK_CAP));
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
