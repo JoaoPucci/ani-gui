@@ -1015,24 +1015,33 @@ pub(crate) async fn write_sidecar_subtitles_within(
 }
 
 /// One track's body, when the CDN serves it: a refusal, a transport
-/// failure or a body that does not arrive is logged and `None`.
+/// failure, a body that does not arrive or one larger than a
+/// subtitle file can be (read only up to the cap, never held whole)
+/// is logged and `None`.
 async fn fetch_sidecar_track(
     client: &reqwest::Client,
     track: &crate::scraper::provider::SubtitleTrack,
     referer: Option<&str>,
 ) -> Option<bytes::Bytes> {
+    use crate::proxy::upstream::{read_body_capped, CappedBody, SUBTITLE_BODY_CAP};
     let mut req = client.get(&track.url);
     if let Some(r) = referer {
         req = req.header(reqwest::header::REFERER, r);
     }
     match req.send().await {
-        Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-            Ok(b) => Some(b),
-            Err(e) => {
-                tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
-                None
+        Ok(resp) if resp.status().is_success() => {
+            match read_body_capped(resp, SUBTITLE_BODY_CAP).await {
+                Ok(CappedBody::Whole(b)) => Some(b),
+                Ok(CappedBody::Oversized) => {
+                    tracing::warn!(lang = %track.lang, "download: subtitle body larger than a track, skipped");
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
+                    None
+                }
             }
-        },
+        }
         Ok(resp) => {
             tracing::warn!(lang = %track.lang, status = %resp.status(), "download: subtitle refused");
             None

@@ -58,6 +58,88 @@ pub fn build_meta_client() -> reqwest::Client {
 /// Fetch a manifest (HTTP body) from upstream with the right `Referer:`.
 /// Used for master.m3u8 + media .m3u8 + .vtt.
 ///
+/// The most a subtitle body may weigh, in bytes. A WebVTT file for
+/// a feature-length film runs to a few hundred kilobytes; four
+/// megabytes leaves room for one carrying styling and positioning
+/// on every cue, and refuses the video a malformed track URL can
+/// point at before it is read into memory.
+pub const SUBTITLE_BODY_CAP: usize = 4 * 1024 * 1024;
+
+/// A body read under a cap: the whole of it, or the finding that it
+/// is larger than the cap allows.
+#[derive(Debug)]
+pub enum CappedBody {
+    /// The body, no larger than the cap.
+    Whole(Bytes),
+    /// The body proved larger than the cap — by its declared length
+    /// ahead of any read, or by the bytes as they arrived — and was
+    /// not read past it.
+    Oversized,
+}
+
+/// Read a response's body up to `cap` bytes, streaming. A declared
+/// `Content-Length` over the cap is refused before a byte is read;
+/// otherwise the chunks are accumulated and the read stops the
+/// moment they would exceed the cap, so no more than the cap is ever
+/// held. The relay and the download's sidecar writer share this so
+/// neither can drift into holding an unbounded body.
+///
+/// # Errors
+/// The transport's own, when the body cannot be read.
+pub async fn read_body_capped(
+    mut resp: reqwest::Response,
+    cap: usize,
+) -> reqwest::Result<CappedBody> {
+    if resp
+        .content_length()
+        .is_some_and(|declared| declared > cap as u64)
+    {
+        return Ok(CappedBody::Oversized);
+    }
+    let mut body = bytes::BytesMut::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if body.len() + chunk.len() > cap {
+            return Ok(CappedBody::Oversized);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(CappedBody::Whole(body.freeze()))
+}
+
+/// Fetch a subtitle track with `referer`, reading its body only up
+/// to [`SUBTITLE_BODY_CAP`]: the whole body, or the finding that it
+/// is larger than a subtitle file can be.
+///
+/// # Errors
+/// - [`AniError::Network`] for connection, DNS or body-read failures
+/// - [`AniError::Upstream`] when the response status is not 2xx
+pub async fn fetch_subtitle(
+    client: &reqwest::Client,
+    url: &Url,
+    referer: &str,
+) -> Result<CappedBody> {
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(referer) {
+        headers.insert(REFERER, v);
+    }
+    headers.insert(USER_AGENT, HeaderValue::from_static(UA));
+    let resp = client
+        .get(url.as_str())
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|_| AniError::Network)?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AniError::Upstream {
+            status: status.as_u16(),
+        });
+    }
+    read_body_capped(resp, SUBTITLE_BODY_CAP)
+        .await
+        .map_err(|_| AniError::Network)
+}
+
 /// Returns the raw bytes plus the response's `Content-Type` so the proxy
 /// can echo it back to the player.
 ///
