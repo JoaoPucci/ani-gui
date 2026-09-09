@@ -285,6 +285,21 @@ fn a_nonempty_server_list_with_no_recognizable_rows_is_a_parse_failure() {
 }
 
 #[test]
+fn a_server_row_with_a_blank_mode_is_not_a_usable_row() {
+    // A row that keeps its type attribute but empties it would pass
+    // as parsed, has_mode would find no sub or dub, and the probe
+    // would persist an absence over a listing it did not understand.
+    let blank_only = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"  \" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9tYWwvMS8xL3N1Yg==\"></div>"}"#;
+    let err = parse_servers(blank_only).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let mixed = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\" \" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9tYWwvMS8xL3N1Yg==\"></div>"}"#;
+    let servers = parse_servers(mixed).expect("the usable row");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].mode, "sub");
+    assert_eq!(servers[0].name, "HD-2");
+}
+
+#[test]
 fn a_nonempty_episode_list_with_no_recognizable_rows_is_a_parse_failure() {
     let json = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"item\" data-num=\"1\" data-ref=\"9\"></a></div>"}"#;
     let err = parse_episode_list(json).expect_err("refused");
