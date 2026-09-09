@@ -992,14 +992,19 @@ pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::R
     claim_new(path).await?.finish(body).await
 }
 
-/// Whether a sidecar's name is taken: a file with bytes is there,
-/// and it is the user's. A zero-length file is not — a WebVTT file
-/// is never empty — but a claim abandoned by an install that stopped
-/// between creating the name and filling it (the rename install,
-/// where the filesystem offers no hard links), and the name is free.
+/// Whether a sidecar's name is taken: anything at it is the user's —
+/// a file with bytes, a symlink whether or not it resolves, a
+/// directory, any other entry — except a zero-length regular file. A
+/// WebVTT file is never empty, so that one is a claim abandoned by
+/// an install that stopped between creating the name and filling it
+/// (the rename install, where the filesystem offers no hard links),
+/// and the name is free. The entry itself is examined, never what a
+/// link points at: following it would read a dangling link as an
+/// absent file and a link to an empty file as a claim, and the
+/// install would then rename over the user's link.
 fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
-    match std::fs::metadata(path) {
-        Ok(meta) => Ok(meta.len() > 0),
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => Ok(!(meta.is_file() && meta.len() == 0)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e),
     }
@@ -1031,12 +1036,7 @@ pub(crate) struct SidecarClaim {
 /// `AlreadyExists` when the name is taken; the scratch's own open
 /// errors otherwise.
 pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<SidecarClaim> {
-    let taken = match tokio::fs::metadata(path).await {
-        Ok(meta) => meta.len() > 0,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-        Err(e) => return Err(e),
-    };
-    if taken {
+    if name_is_taken(path)? {
         return Err(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             "a sidecar is already at the name",
