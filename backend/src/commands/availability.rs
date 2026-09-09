@@ -1691,6 +1691,65 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
+        // The batch read already refuses to serve the fallback's
+        // negative once the primary is answering again, and the lists
+        // then send the id to the warm; the warm must not take the
+        // same row for a fresh one, or the card stays visible until
+        // the negative expires.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+            )
+            .mount(&anidb)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.anidb_base = Some(anidb.uri());
+        write_cache(
+            &state,
+            "590",
+            "sub",
+            false,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let state = std::sync::Arc::new(state);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Nowhere Show",
+            "mode": "sub",
+            "kitsu_id": "590",
+            "status": "finished"
+        }))
+        .expect("args");
+        warm(std::sync::Arc::clone(&state), vec![args]).await;
+        assert!(
+            !anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "the warm re-probed the row nobody stands behind"
+        );
+        let row = meta_cache_get(&state.cache_pool, &cache_key("590", "sub"))
+            .expect("cache read")
+            .expect("persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            "the row is the primary's own verdict now"
+        );
+    }
+
     #[test]
     fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_refuse() {
         use crate::scraper::provider::ProviderId;
