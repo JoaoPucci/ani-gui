@@ -659,8 +659,8 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
 struct ProbeAttempt<'r> {
     args: &'r AvailabilityArgs,
     mode: &'r str,
-    /// The provider the last attempt ran against — on a miss, the
-    /// one whose verdict it is.
+    /// The provider whose miss the walk returned — set by the walk,
+    /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
 }
 
@@ -672,8 +672,11 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        self.answered_by = Some(provider.id());
         probe_show(provider, self.args, self.mode).await
+    }
+
+    fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
+        self.answered_by = Some(provider);
     }
 }
 

@@ -54,7 +54,7 @@ struct Scripted {
     behavior: HashMap<ProviderId, Behavior>,
     asked: Mutex<Vec<ProviderId>>,
     /// The provider a miss is attributed to — what a negative row
-    /// would name — as the production attempts record it.
+    /// would name — as the walk reports it.
     answered_by: Option<ProviderId>,
 }
 
@@ -76,7 +76,6 @@ impl Attempt for Scripted {
     type Output = &'static str;
     async fn run(&mut self, provider: &dyn Provider) -> Result<&'static str, NativeError> {
         self.asked.lock().expect("asked").push(provider.id());
-        self.answered_by = Some(provider.id());
         match self
             .behavior
             .get(&provider.id())
@@ -96,6 +95,10 @@ impl Attempt for Scripted {
             }),
             Behavior::Stall => std::future::pending().await,
         }
+    }
+
+    fn missed_by(&mut self, provider: ProviderId) {
+        self.answered_by = Some(provider);
     }
 }
 
@@ -475,6 +478,8 @@ impl Attempt for Recording {
             failed_at: None,
         })
     }
+
+    fn missed_by(&mut self, _provider: ProviderId) {}
 }
 
 #[test]
