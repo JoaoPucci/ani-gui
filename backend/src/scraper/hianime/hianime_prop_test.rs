@@ -38,10 +38,12 @@ fn search_page(cards: &[(String, u64, String, String)]) -> String {
 }
 
 /// A failure a host can hand the server loop: an upstream status of
-/// any shape, a rate limit, or a dropped connection.
+/// any shape, a rate limit, a dropped connection, or a page the
+/// client could not read.
 fn arb_weather() -> impl Strategy<Value = AniError> {
     prop_oneof![
         (100u16..600).prop_map(|status| AniError::Upstream { status }),
+        "[a-z ]{1,20}".prop_map(|detail| AniError::ParseFailed { detail }),
         proptest::option::of(0u64..10_000)
             .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
         proptest::bool::ANY.prop_map(|dropped| if dropped {
@@ -296,8 +298,9 @@ proptest::proptest! {
     }
 
     /// Of two hosts' failures the kept one is the louder: a rate limit
-    /// over any other provider block, a block over the rest; between
-    /// two of a rank the first stays.
+    /// over everything, a page the client could not read over any
+    /// other provider block, a block over the rest; between two of a
+    /// rank the first stays.
     #[test]
     fn the_kept_weather_is_the_louder_of_the_two(
         first in arb_weather(),
@@ -305,7 +308,8 @@ proptest::proptest! {
     ) {
         fn rank(w: &AniError) -> u8 {
             match w {
-                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 2,
+                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
+                AniError::ParseFailed { .. } => 2,
                 w if w.is_provider_block() => 1,
                 _ => 0,
             }

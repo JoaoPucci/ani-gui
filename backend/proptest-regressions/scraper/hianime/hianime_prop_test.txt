@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc a3f573d27920dfc5ee6c2a5b22beb088328ad929691a548199aa2502d32acf68 # shrinks to chrome_before = "", chrome_after = "", inside = "", filler = "a"
 cc 7d7b817fa1220274fafab6c938c956126beebbe023114a4659fe5fd769a925b7 # shrinks to first = Upstream { status: 500 }, second = RateLimited { retry_after_secs: None }
+cc 8e30bc5538c2a3df53859f2f5498c18731e66af9fb7215109a46f2a0c2d471cf # shrinks to first = ParseFailed { detail: "a" }, second = Upstream { status: 500 }
