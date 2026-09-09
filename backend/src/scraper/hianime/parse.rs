@@ -67,6 +67,11 @@ fn parse_card(card: &str) -> Option<BrowseHit> {
         return None;
     }
     let title = decode_entities(attr(card, "title=\"")?);
+    // A card without a title names nothing: it would put an empty
+    // title on the resolve and match no title the user typed.
+    if title.trim().is_empty() {
+        return None;
+    }
     let kind = card
         .split("class=\"fdi-item\">")
         .nth(1)
