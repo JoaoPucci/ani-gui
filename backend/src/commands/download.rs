@@ -929,6 +929,12 @@ pub(crate) async fn publish_without_links(
 /// reports done.
 pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How many sidecar tracks are fetched at once. Enough that a
+/// listing's few languages overlap under the phase deadline, few
+/// enough that a listing at the track cap never opens more than a
+/// handful of connections or holds more than a handful of bodies.
+pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
+
 /// Fetch each sidecar track with the source's referer and write it
 /// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses,
 /// or has not served by [`SIDECAR_PHASE_DEADLINE`], is logged and
@@ -952,10 +958,8 @@ pub(crate) async fn write_sidecar_subtitles(
     .await
 }
 
-/// [`write_sidecar_subtitles`] under a caller's deadline. The tracks
-/// are fetched together and each is given until the deadline, so a
-/// track that answers in time lands beside one that stalls; the
-/// files are then written in the listing's order.
+/// [`write_sidecar_subtitles`] under a caller's deadline, with the
+/// tracks fetched [`SIDECAR_FETCH_CONCURRENCY`] at a time.
 pub(crate) async fn write_sidecar_subtitles_within(
     client: &reqwest::Client,
     tracks: &[crate::scraper::provider::SubtitleTrack],
@@ -964,26 +968,60 @@ pub(crate) async fn write_sidecar_subtitles_within(
     file_stem: &str,
     deadline: std::time::Duration,
 ) -> Vec<PathBuf> {
+    write_sidecar_subtitles_with(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        deadline,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await
+}
+
+/// The sidecar phase in full. Only the first
+/// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
+/// tracks of the listing are fetched, `concurrency` at a time, each
+/// given until the deadline, and each body is written the moment it
+/// arrives rather than held until the rest have; so a track that
+/// answers in time lands beside one that stalls, and a listing at
+/// the cap never holds more than a few bodies at once. The files are
+/// named from the listing's order, whatever order they arrive in.
+pub(crate) async fn write_sidecar_subtitles_with(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+    concurrency: usize,
+) -> Vec<PathBuf> {
+    use futures_util::stream::{self, StreamExt as _};
+    let (tracks, dropped) = crate::proxy::upstream::within_track_cap(tracks);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "download: subtitle listing longer than the track cap, the rest skipped"
+        );
+    }
     let until = tokio::time::Instant::now() + deadline;
-    let fetches = tracks.iter().map(|track| async move {
-        match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer)).await {
-            Ok(body) => body,
-            Err(_elapsed) => {
-                tracing::warn!(lang = %track.lang, "download: subtitle not served by the phase's deadline, skipped");
-                None
-            }
-        }
-    });
-    let bodies = futures_util::future::join_all(fetches).await;
     // Names follow the listing, not what arrived: a track that fails
     // today keeps its name free for a retry, and the next one in its
     // language keeps the suffix its place gives it.
     let suffixes = sidecar_suffixes(tracks.iter().map(|t| t.lang.as_str()));
-    let mut written = Vec::new();
-    for ((track, body), suffix) in tracks.iter().zip(bodies).zip(suffixes) {
+    let fetches: Vec<_> = tracks
+        .iter()
+        .enumerate()
+        .map(|(i, track)| fetch_sidecar_track_by(client, track, referer, until, i))
+        .collect();
+    let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
+    let mut written: Vec<(usize, PathBuf)> = Vec::new();
+    while let Some((i, body)) = arrivals.next().await {
         let Some(body) = body else {
             continue;
         };
+        let track = &tracks[i];
         // Only a subtitle track claims a name: a CDN can answer a
         // challenge page with 200, and written it would sit at the
         // track's name for good, since later downloads keep what
@@ -992,12 +1030,12 @@ pub(crate) async fn write_sidecar_subtitles_within(
             tracing::warn!(lang = %track.lang, "download: subtitle body is not a track, skipped");
             continue;
         }
-        let path = dest.join(format!("{file_stem}.{suffix}.vtt"));
+        let path = dest.join(format!("{file_stem}.{}.vtt", suffixes[i]));
         // Created new, never replaced: a file with bytes at the name
         // is the user's — a corrected subtitle from an earlier
         // download — and stays as found.
         match write_new(&path, &body).await {
-            Ok(()) => written.push(path),
+            Ok(()) => written.push((i, path)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 tracing::info!(path = %path.display(), "download: subtitle already present, kept");
             }
@@ -1006,7 +1044,8 @@ pub(crate) async fn write_sidecar_subtitles_within(
             }
         }
     }
-    written
+    written.sort_by_key(|(i, _)| *i);
+    written.into_iter().map(|(_, path)| path).collect()
 }
 
 /// The name part each track takes beside the media, from its place
@@ -1027,6 +1066,27 @@ pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<
             }
         })
         .collect()
+}
+
+/// [`fetch_sidecar_track`] under the phase's deadline, tagged with
+/// the track's place in the listing so the arrival can be named.
+async fn fetch_sidecar_track_by<'a>(
+    client: &'a reqwest::Client,
+    track: &'a crate::scraper::provider::SubtitleTrack,
+    referer: Option<&'a str>,
+    until: tokio::time::Instant,
+    index: usize,
+) -> (usize, Option<bytes::Bytes>) {
+    let body = match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer))
+        .await
+    {
+        Ok(body) => body,
+        Err(_elapsed) => {
+            tracing::warn!(lang = %track.lang, "download: subtitle not served by the phase's deadline, skipped");
+            None
+        }
+    };
+    (index, body)
 }
 
 /// One track's body, when the CDN serves it: a refusal, a transport
