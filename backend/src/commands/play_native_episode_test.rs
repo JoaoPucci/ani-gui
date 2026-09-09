@@ -188,8 +188,8 @@ async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
         .await
         .expect_err("the recap must not answer for episode 4");
     assert!(
-        matches!(ne.error, AniError::NoResults),
-        "expected the dead end, got {:?}",
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "expected the episode's verdict, got {:?}",
         ne.error
     );
     assert!(!ne.clean_miss);
