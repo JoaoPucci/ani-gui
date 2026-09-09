@@ -1495,6 +1495,46 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_fallbacks_clean_miss_stays_the_fallbacks_when_the_skipped_primary_is_retried_and_still_down(
+    ) {
+        // The primary's breaker is open, so the interactive probe
+        // skips it; the fallback misses cleanly; the primary gets its
+        // half-open trial and is still down. The verdict is the
+        // fallback's miss, and the row has to name the fallback:
+        // named as the primary's it would be served the moment the
+        // breaker closed, for the rest of the negative TTL, hiding a
+        // show only the primary carries.
+        let hianime = stub_hianime_no_results().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        open_breaker(&state.anidb_gate);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Nowhere Show",
+            "mode": "sub",
+            "kitsu_id": "564"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+            .await
+            .expect("a clean miss on the fallback is an answer");
+        assert!(!got.available);
+        let row = meta_cache_get(&state.cache_pool, &cache_key("564", "sub"))
+            .expect("cache read")
+            .expect("persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the miss is the fallback's, not the retried primary's"
+        );
+    }
+
     #[test]
     fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
         // A rate limit with a window is the provider refusing, as an

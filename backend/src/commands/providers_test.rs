@@ -53,6 +53,9 @@ enum Behavior {
 struct Scripted {
     behavior: HashMap<ProviderId, Behavior>,
     asked: Mutex<Vec<ProviderId>>,
+    /// The provider a miss is attributed to — what a negative row
+    /// would name — as the production attempts record it.
+    answered_by: Option<ProviderId>,
 }
 
 impl Scripted {
@@ -60,6 +63,7 @@ impl Scripted {
         Self {
             behavior: script.iter().cloned().collect(),
             asked: Mutex::new(Vec::new()),
+            answered_by: None,
         }
     }
     fn asked(&self) -> Vec<ProviderId> {
@@ -72,6 +76,7 @@ impl Attempt for Scripted {
     type Output = &'static str;
     async fn run(&mut self, provider: &dyn Provider) -> Result<&'static str, NativeError> {
         self.asked.lock().expect("asked").push(provider.id());
+        self.answered_by = Some(provider.id());
         match self
             .behavior
             .get(&provider.id())
@@ -760,4 +765,71 @@ async fn a_skipped_provider_stays_skipped_when_the_rest_were_unreachable_on_a_ba
     .expect_err("background traffic does not trial an open breaker");
     assert!(matches!(err.error, AniError::Network), "{:?}", err.error);
     assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+}
+
+// ── whose miss a verdict is ──────────────────────────────────────────
+
+/// A miss is attributed to the provider whose miss it is. A skipped
+/// primary retried on its half-open trial and found still unreachable
+/// does not become the author of the fallback's verdict — named as
+/// the primary's, the negative row would be served the moment its
+/// breaker closed, hiding a show only the primary carries.
+#[tokio::test]
+async fn a_saved_miss_keeps_the_provider_that_produced_it_when_the_retried_one_is_unreachable() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("the fallback's miss stands");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(err.clean_miss);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the miss is the fallback's, not the retried primary's"
+    );
+}
+
+/// When the retried primary answers a miss of its own, that miss —
+/// the last answer given — is the verdict, and it is the primary's.
+#[tokio::test]
+async fn a_retried_providers_own_miss_is_attributed_to_it() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("both missed");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
 }
