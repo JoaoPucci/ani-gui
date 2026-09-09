@@ -127,49 +127,45 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let servers = self.servers(episode_id).await?;
-        // The first server whose page decodes wins; every other
-        // outcome is stepped over and remembered, and surfaces only
-        // when no server served a stream — in the order of what it
-        // says about the client. A page that carries the payload the
-        // key does not open is the site having changed, and the
-        // client no longer reading it: a parse failure, ahead of a
-        // host that refused or could not be reached. Among those, a
-        // block outranks an answered status or a dropped connection
-        // ([`weightier`]), so one host's not-found cannot hide the
-        // next host's refusal from the breaker. A page without the
-        // payload is a host the client does not read at all, and an
-        // episode with only those has no stream.
-        let mut broken: Option<AniError> = None;
-        let mut weather: Option<AniError> = None;
+        // The first server whose page decodes to a stream wins; every
+        // other outcome is stepped over and remembered, and the
+        // loudest surfaces when no server served a stream
+        // ([`weightier`]): a rate limit above everything, since it
+        // alone opens the breaker's advertised pause at once; then a
+        // page that carries a payload the client cannot use — the key
+        // does not open it, or its source is nothing the transport
+        // fetches — which is the site having changed and the client
+        // no longer reading it; then a host that refused or failed,
+        // which speaks for the provider; then an answered status or a
+        // dropped connection. A page without the payload is a host the
+        // client does not read at all, and an episode with only those
+        // has no stream.
+        let mut kept: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
             // The embed host checks that the site sent the viewer.
             let embed = FetchRequest::get(server.embed_url.clone())
                 .header("Referer", format!("{}/", self.base));
-            let page = match self.content(&embed).await {
-                Ok(page) => page,
-                Err(e) => {
-                    weather = Some(match weather.take() {
-                        Some(kept) => weightier(kept, e),
-                        None => e,
-                    });
-                    continue;
-                }
+            let outcome = match self.content(&embed).await {
+                Ok(page) => decode_embed(&page),
+                Err(e) => Err(e),
             };
-            match decode_embed(&page) {
+            match outcome {
                 Ok(payload) => {
                     return Ok(StreamSource {
                         master_url: payload.src,
                         referer: embed_origin(&server.embed_url),
                     })
                 }
-                Err(AniError::NoResults) => continue,
-                Err(e @ AniError::ParseFailed { .. }) => {
-                    broken.get_or_insert(e);
+                Err(AniError::NoResults) => {}
+                Err(e) => {
+                    kept = Some(match kept.take() {
+                        Some(so_far) => weightier(so_far, e),
+                        None => e,
+                    });
                 }
-                Err(e) => return Err(e),
             }
         }
-        Err(broken.or(weather).unwrap_or(AniError::NoResults))
+        Err(kept.unwrap_or(AniError::NoResults))
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
@@ -198,9 +194,11 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 }
 
-/// The weather to keep when two of an episode's hosts failed, by
-/// what the breaker makes of it: a rate limit outranks every other
-/// provider block, since it alone opens the advertised pause at once;
+/// The failure to keep when two of an episode's hosts failed, by
+/// what the walk and the breaker make of it: a rate limit outranks
+/// everything, since it alone opens the advertised pause at once; a
+/// page the client could not read — a parse failure — outranks any
+/// other block, since it says the client no longer reads the site;
 /// a block — a refusal-shaped status or a server error — outranks an
 /// answered status or a dropped connection, since the block speaks
 /// for the provider and the breaker must hear it; between two of a
@@ -213,11 +211,12 @@ fn weightier(kept: AniError, next: AniError) -> AniError {
     }
 }
 
-/// How loudly a host's failure speaks for the provider: a rate limit
-/// above any other block, a block above the rest.
+/// How loudly a host's failure speaks: a rate limit above all, a
+/// parse failure above any other block, a block above the rest.
 fn weather_rank(weather: &AniError) -> u8 {
     match weather {
-        AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 2,
+        AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
+        AniError::ParseFailed { .. } => 2,
         w if w.is_provider_block() => 1,
         _ => 0,
     }
