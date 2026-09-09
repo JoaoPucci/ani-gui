@@ -8,8 +8,9 @@
 use crate::app::AppState;
 use crate::commands::external_player::LaunchArgs;
 use crate::commands::play::{anidb_client_for, PlayArgs};
+use crate::commands::play_native_resolve::NativeResolved;
 use crate::commands::play_native_resolve::{resolve_native_bounded, NativeResolveRequest};
-use crate::config::read_config;
+use crate::config::{read_config, Config};
 use crate::error::Result;
 
 /// Resolve `args` through the native walk and describe the launch.
@@ -48,21 +49,25 @@ pub async fn resolve_launch_args(state: &AppState, args: &PlayArgs) -> Result<La
             .as_ref()
             .err()
             .and_then(|ne| ne.failed_at)
-            .or_else(|| client.transport().last_attempt_at())
+            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
             .unwrap_or(started_at);
         state.anidb_gate.record(outcome, observed_at);
     }
     let native = native.map_err(|ne| ne.error)?;
     crate::commands::play_native_record::stamp_numbering(state, &native);
     crate::commands::play_native_record::write_history(state, &native, &args.episode);
-    Ok(LaunchArgs {
+    Ok(launch_args_for(native, args, &cfg))
+}
+
+/// The launch a resolve describes: the stream, the referer its
+/// provider named, the title, and the user's player settings.
+pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Config) -> LaunchArgs {
+    LaunchArgs {
         stream_url: native.master_url,
-        // anidb's streams carry no referer requirement — the
-        // embedded path records the same where it sets this empty.
-        referer: None,
+        referer: native.referer,
         title: Some(format!("{} · ep {}", args.title, args.episode)),
-        player_command: cfg.external_player,
+        player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
-        custom_args_template: Some(cfg.external_player_custom_args),
-    })
+        custom_args_template: Some(cfg.external_player_custom_args.clone()),
+    }
 }

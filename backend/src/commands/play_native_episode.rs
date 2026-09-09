@@ -5,7 +5,7 @@
 //! for the per-file complexity bar.
 
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch};
+use crate::scraper::provider::Provider;
 
 use super::play_native::PickedShow;
 use super::play_native_numbering::{numbering_offset, provider_fraction};
@@ -45,8 +45,8 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
 /// # Errors
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
 /// here is evidence of absence.
-pub async fn resolve_episode<F: AnidbFetch>(
-    client: &AnidbClient<F>,
+pub async fn resolve_episode<P: Provider + ?Sized>(
+    client: &P,
     picked: &PickedShow,
     episode: &str,
     mode: &str,
@@ -80,18 +80,19 @@ pub async fn resolve_episode<F: AnidbFetch>(
             None => tag_matches(&e.number.to_string(), &target),
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
-    let master = client
+    let source = client
         .master_playlist_url(ep.id, mode)
         .await
         .map_err(dead_end)?;
     // The quality step is soft only on a served playlist that lacks
     // the height; a failed master fetch is the episode failing.
     let master_url = client
-        .quality_stream_url(&master, quality)
+        .quality_stream_url(&source, quality)
         .await
         .map_err(dead_end)?;
     Ok(ResolvedEpisode {
         master_url,
+        referer: source.referer,
         slot: ep.number,
         tag: ep.number2.clone(),
     })
@@ -104,6 +105,9 @@ pub async fn resolve_episode<F: AnidbFetch>(
 pub struct ResolvedEpisode {
     /// The validated master-playlist URL.
     pub master_url: String,
+    /// The referer the provider's CDN wants on every fetch of it,
+    /// when it wants one.
+    pub referer: Option<String>,
     /// The row's integer `number` — the provider's own position for
     /// it, which is how a later resume finds this row again.
     pub slot: u32,

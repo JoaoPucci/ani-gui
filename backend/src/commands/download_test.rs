@@ -112,7 +112,10 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
     stage_tool(bin.path(), "ffmpeg", "echo ffmpeg-ran >&2; exit 0");
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Show Episode 2",
         None,
@@ -146,7 +149,10 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
     stage_tool(bin.path(), "yt-dlp", "echo \"ytdlp $*\" >&2; exit 0");
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "X",
         Some("720"),
@@ -163,7 +169,10 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
 
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "X",
         Some("worst"),
@@ -188,7 +197,10 @@ async fn tool_spawn_falls_back_to_ffmpeg_when_ytdlp_fails() {
     stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Show Episode 2",
         None,
@@ -211,7 +223,10 @@ async fn tool_spawn_with_no_tools_is_a_config_error() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "X",
         None,
@@ -494,7 +509,10 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     stage_tool(bin.path(), "ffmpeg", "sleep 0.6; exit 0");
     let started = std::time::Instant::now();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Show Episode 1",
         None,
@@ -536,7 +554,10 @@ async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
     let got = tokio::time::timeout(
         std::time::Duration::from_secs(10),
         spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             dest.path(),
             "Show Episode 1",
             None,
@@ -582,7 +603,10 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
         drop(held);
     });
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Show Episode 1",
         None,
@@ -621,7 +645,10 @@ async fn the_download_tool_runs_in_a_normalized_environment() {
     // race every other test in the process. The assertion holds
     // whatever it says, because the spawn sets these explicitly.
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Show Episode 1",
         None,
@@ -748,7 +775,10 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
     let dest_dir = dest.path().to_path_buf();
     let task = tokio::spawn(async move {
         let _ = spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             &dest_dir,
             "Show Episode 1",
             None,
@@ -1067,7 +1097,10 @@ async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
         ),
     );
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Ffmpeg Show Episode 1",
         None,
@@ -1170,8 +1203,12 @@ async fn two_downloads_of_one_target_do_not_overlap() {
     let path_env = bin.path().display().to_string();
     let mut sink_one = |_l: &str| {};
     let mut sink_two = |_l: &str| {};
+    let one_source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+    };
     let one = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &one_source,
         dest.path(),
         "Same Show Episode 1",
         None,
@@ -1179,8 +1216,12 @@ async fn two_downloads_of_one_target_do_not_overlap() {
         std::time::Duration::from_secs(10),
         &mut sink_one,
     );
+    let two_source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+    };
     let two = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &two_source,
         dest.path(),
         "Same Show Episode 1",
         None,
@@ -1236,7 +1277,10 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
         tokio::spawn(async move {
             let mut sink = |_l: &str| {};
             spawn_download_tool(
-                "https://cdn.example/x/master.m3u8",
+                &StreamSource {
+                    master_url: "https://cdn.example/x/master.m3u8".into(),
+                    referer: None,
+                },
                 &dir,
                 "Queued Show Episode 1",
                 None,
@@ -1254,7 +1298,10 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     let queued = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             &dir,
             "Queued Show Episode 1",
             None,
@@ -1325,7 +1372,10 @@ async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             dest.path(),
             "Contended Show Episode 1",
             None,
@@ -1400,7 +1450,10 @@ async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
 
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Owned Show Episode 1",
         None,
@@ -1446,7 +1499,10 @@ async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
     );
     let stem = "n".repeat(300);
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         &stem,
         None,
@@ -1690,7 +1746,10 @@ async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it(
 
     let mut lines = Vec::new();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Ambushed Show Episode 1",
         None,
@@ -1730,7 +1789,10 @@ async fn a_live_claim_at_publication_time_is_reported_as_pending() {
 
     let mut lines = Vec::new();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Contested Show Episode 1",
         None,
@@ -1762,7 +1824,10 @@ async fn the_already_here_report_is_a_stable_key_not_display_copy() {
 
     let mut lines = Vec::new();
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Owned Show Episode 1",
         None,
@@ -1795,7 +1860,10 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
 
     let mut lines = Vec::new();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Stalled Show Episode 1",
         None,
@@ -1841,7 +1909,10 @@ async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
     );
 
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Swept Show Episode 1",
         None,
@@ -1895,7 +1966,10 @@ async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
 
     let mut sink = |_l: &str| {};
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Unlockable Show Episode 1",
         None,
@@ -1945,7 +2019,10 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
     let running = tokio::spawn(async move {
         let mut sink = |_l: &str| {};
         spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             &dir,
             "Interrupted Show Episode 1",
             None,
@@ -2007,7 +2084,10 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     let running = tokio::spawn(async move {
         let mut sink = |_l: &str| {};
         spawn_download_tool(
-            "https://cdn.example/x/master.m3u8",
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+            },
             &dir,
             "Cancelled Show Episode 1",
             None,
@@ -2058,7 +2138,10 @@ async fn the_tool_writes_somewhere_other_than_the_target() {
     );
     let mut sink = |_l: &str| {};
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Scratch Show Episode 1",
         None,
@@ -2104,7 +2187,10 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
     );
     let mut sink = |_l: &str| {};
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Contested Show Episode 1",
         None,
@@ -2220,7 +2306,10 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
 
     let mut lines = Vec::new();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Abandoned Show Episode 1",
         None,
@@ -2308,7 +2397,10 @@ async fn a_claim_that_never_resolves_is_not_a_finished_download() {
 
     let mut lines = Vec::new();
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Contended Show Episode 1",
         None,
@@ -2354,7 +2446,10 @@ async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
     .expect("a dangling link");
 
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Linked Show Episode 1",
         None,
@@ -2405,7 +2500,10 @@ async fn a_directory_at_the_target_refuses_before_the_transfer() {
     std::fs::create_dir(dest.path().join("Blocked Show Episode 1.mp4")).expect("an obstruction");
 
     let got = spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Blocked Show Episode 1",
         None,
@@ -2438,7 +2536,10 @@ async fn a_tool_that_writes_an_empty_file_installs_nothing() {
         &format!("{}\nexit 0", writes_its_output("")),
     );
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Empty Show Episode 1",
         None,
@@ -2476,7 +2577,10 @@ async fn a_file_that_predates_the_download_is_kept() {
     );
     let mut sink = |_l: &str| {};
     spawn_download_tool(
-        "https://cdn.example/x/master.m3u8",
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+        },
         dest.path(),
         "Redownloaded Show Episode 1",
         None,
@@ -2491,4 +2595,29 @@ async fn a_file_that_predates_the_download_is_kept() {
         Some("earlier"),
         "a file the user already had is not one they agreed to lose"
     );
+}
+
+// ── the referer reaches whichever tool transfers ────────────────────
+
+/// yt-dlp takes the referer as its own flag; ffmpeg takes raw request
+/// headers. A stream whose CDN checks the referer downloads with
+/// neither tool unless each gets it in the shape it understands.
+#[test]
+fn each_tool_gets_the_referer_in_its_own_flag_shape() {
+    assert_eq!(
+        ytdlp_referer_args(Some("https://embed.example/")),
+        vec![
+            "--referer".to_string(),
+            "https://embed.example/".to_string()
+        ]
+    );
+    assert!(ytdlp_referer_args(None).is_empty());
+    assert_eq!(
+        ffmpeg_referer_args(Some("https://embed.example/")),
+        vec![
+            "-headers".to_string(),
+            "Referer: https://embed.example/\r\n".to_string()
+        ]
+    );
+    assert!(ffmpeg_referer_args(None).is_empty());
 }

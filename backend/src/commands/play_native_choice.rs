@@ -5,7 +5,7 @@
 //! and the probe loop's transport-death tracking share.
 
 use crate::error::Result;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
+use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native::PickedShow;
 
@@ -31,8 +31,8 @@ pub(super) fn identity_rank(title_matches: bool, confirmed: bool) -> u8 {
 /// keeps the provider's own ranking, so pages without season links
 /// stay resolvable. The single probe still runs so the caller gets
 /// the episode list it needs.
-pub(super) async fn pick_without_count<F: AnidbFetch>(
-    client: &AnidbClient<F>,
+pub(super) async fn pick_without_count<P: Provider + ?Sized>(
+    client: &P,
     head: &[(&BrowseHit, bool)],
     needle: &str,
     year_excluded_any: bool,
@@ -82,12 +82,7 @@ pub(super) async fn pick_without_count<F: AnidbFetch>(
 /// outranks a merely tolerated neighbor; only a full tie falls to
 /// provider order (min_by_key keeps the first of equals).
 pub(super) fn select_winner(
-    probed_ok: &[(
-        &BrowseHit,
-        Vec<crate::scraper::anidb::EpisodeRef>,
-        u32,
-        bool,
-    )],
+    probed_ok: &[(&BrowseHit, Vec<EpisodeRef>, u32, bool)],
     best_dist: u32,
     needle: &str,
 ) -> (usize, u8) {

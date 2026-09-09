@@ -344,7 +344,7 @@ proptest::proptest! {
         heights in proptest::collection::vec(0u32..5000, 0..12),
         pick in proptest::num::usize::ANY,
     ) {
-        use crate::scraper::anidb::parse_api::{select_variant, MasterVariant};
+        use crate::scraper::hls::{select_variant, MasterVariant};
         let variants: Vec<MasterVariant> = heights
             .iter()
             .enumerate()
@@ -372,7 +372,7 @@ proptest::proptest! {
             0..8,
         ),
     ) {
-        use crate::scraper::anidb::parse_api::{parse_master_variants, MasterVariant};
+        use crate::scraper::hls::{parse_master_variants, MasterVariant};
         let mut m3u8 = String::from("#EXTM3U\n");
         for (h, path) in &rows {
             m3u8.push_str(&format!(
