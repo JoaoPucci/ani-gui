@@ -358,19 +358,16 @@ starting it, and delete it when you find it done.
 
 - **Let the user order the providers and switch one off.** The
   order is fixed at build — anidb.app, then hianime — and there is
-  no way to prefer the second or to leave one out. The state already
-  carries the order as a list every walk reads; this is that list
-  read from the config instead, plus one settings row: the order,
-  and an on/off per provider, with a disabled provider simply absent
-  from the list.
+  no way to prefer the second or to leave one out.
 
   Why it waited: it wants the union above first, so that putting a
   provider first is a preference rather than a way of shrinking the
-  catalogue to one site. Two consequences are already handled by the
-  cache's read rule — a negative row naming a provider the state no
-  longer lists has nobody to stand behind it and re-probes, and a
-  positive row's affinity is ignored when the state does not list
-  its provider. A per-title provider picker is not this, and is not
+  catalogue to one site.
+
+  Worth knowing: the cache's read rule already copes with a provider
+  the app no longer lists — a negative row naming it has nobody to
+  stand behind it and re-probes, and a positive row's affinity to it
+  is ignored. A per-title provider picker is not this, and is not
   planned: affinity already remembers which provider plays each
   show.
 
