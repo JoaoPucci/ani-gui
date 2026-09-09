@@ -55,8 +55,11 @@ requires it; the exception is the update check that runs on launch
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogues playback resolves
   against: anidb.app first, and hianime (reached at hianime.at) when
-  anidb.app is unreachable — and hianime first, for a while, for a
-  show it proved playable while anidb.app was down: the app remembers
+  the walk moves on from anidb.app — because it was unreachable,
+  refused or rate-limited the request, answered a page the app
+  cannot read, or its own gate turned a background request away —
+  and hianime first, for a while, for a show it proved playable
+  while the walk had moved on: the app remembers
   which catalogue carried a show for as long as its availability
   record lasts (a day for an airing show, thirty days for a finished
   one) and asks that one first for later plays, downloads and
