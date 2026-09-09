@@ -604,6 +604,17 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A host whose payload the key does not open, then one
+            // that rate-limits.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21428") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85Lzkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQyOS9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // A lone host whose payload decodes to a blank source.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21427") => {
                 if ajax {
@@ -871,6 +882,22 @@ async fn a_payload_whose_source_is_blank_is_a_parse_failure_when_no_server_serve
         .await
         .expect_err("no usable source");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_rate_limit_from_a_later_server_outranks_an_earlier_parse_failure() {
+    // One host's payload the key does not open; the next host
+    // rate-limits. The parse failure says the client no longer reads
+    // the site, but the rate limit is the one verdict the breaker
+    // acts on at once — the advertised pause — and surfacing the
+    // parse failure instead lets background traffic go on hitting a
+    // provider that is throttling.
+    let c = client();
+    let err = c
+        .master_playlist_url(21428, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 429 }), "{err:?}");
 }
 
 #[tokio::test]
