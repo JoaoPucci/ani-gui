@@ -919,10 +919,21 @@ pub(crate) async fn publish_without_links(
     }
 }
 
+/// How long the sidecar phase may take as a whole. A subtitle file is
+/// kilobytes and the tracks are fetched together, so a minute is
+/// generous for all of them at once; the proxy client would otherwise
+/// let each one stall for its own two minutes, one after another,
+/// after the media tool had already finished under its hour. A CDN
+/// that has not answered in a minute is stalling, and the deadline
+/// turns that into a skipped track rather than a download that never
+/// reports done.
+pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Fetch each sidecar track with the source's referer and write it
-/// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses
-/// is logged and skipped: the episode downloaded, and that is the
-/// transfer. Returns the paths written.
+/// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses,
+/// or has not served by [`SIDECAR_PHASE_DEADLINE`], is logged and
+/// skipped: the episode downloaded, and that is the transfer.
+/// Returns the paths written.
 pub(crate) async fn write_sidecar_subtitles(
     client: &reqwest::Client,
     tracks: &[crate::scraper::provider::SubtitleTrack],
@@ -930,29 +941,45 @@ pub(crate) async fn write_sidecar_subtitles(
     dest: &std::path::Path,
     file_stem: &str,
 ) -> Vec<PathBuf> {
+    write_sidecar_subtitles_within(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        SIDECAR_PHASE_DEADLINE,
+    )
+    .await
+}
+
+/// [`write_sidecar_subtitles`] under a caller's deadline. The tracks
+/// are fetched together and each is given until the deadline, so a
+/// track that answers in time lands beside one that stalls; the
+/// files are then written in the listing's order.
+pub(crate) async fn write_sidecar_subtitles_within(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+) -> Vec<PathBuf> {
+    let until = tokio::time::Instant::now() + deadline;
+    let fetches = tracks.iter().map(|track| async move {
+        match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer)).await {
+            Ok(body) => body,
+            Err(_elapsed) => {
+                tracing::warn!(lang = %track.lang, "download: subtitle not served by the phase's deadline, skipped");
+                None
+            }
+        }
+    });
+    let bodies = futures_util::future::join_all(fetches).await;
     let mut written = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
-    for track in tracks {
-        let mut req = client.get(&track.url);
-        if let Some(r) = referer {
-            req = req.header(reqwest::header::REFERER, r);
-        }
-        let body = match req.send().await {
-            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                Ok(b) => b,
-                Err(e) => {
-                    tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
-                    continue;
-                }
-            },
-            Ok(resp) => {
-                tracing::warn!(lang = %track.lang, status = %resp.status(), "download: subtitle refused");
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!(lang = %track.lang, error = %e, "download: subtitle fetch failed");
-                continue;
-            }
+    for (track, body) in tracks.iter().zip(bodies) {
+        let Some(body) = body else {
+            continue;
         };
         // Only a subtitle track claims a name: a CDN can answer a
         // challenge page with 200, and written it would sit at the
@@ -985,6 +1012,36 @@ pub(crate) async fn write_sidecar_subtitles(
         }
     }
     written
+}
+
+/// One track's body, when the CDN serves it: a refusal, a transport
+/// failure or a body that does not arrive is logged and `None`.
+async fn fetch_sidecar_track(
+    client: &reqwest::Client,
+    track: &crate::scraper::provider::SubtitleTrack,
+    referer: Option<&str>,
+) -> Option<bytes::Bytes> {
+    let mut req = client.get(&track.url);
+    if let Some(r) = referer {
+        req = req.header(reqwest::header::REFERER, r);
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+            Ok(b) => Some(b),
+            Err(e) => {
+                tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
+                None
+            }
+        },
+        Ok(resp) => {
+            tracing::warn!(lang = %track.lang, status = %resp.status(), "download: subtitle refused");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(lang = %track.lang, error = %e, "download: subtitle fetch failed");
+            None
+        }
+    }
 }
 
 /// Write `body` to a file whose name is free (see [`name_is_taken`]).
