@@ -341,6 +341,55 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
+## A content security policy for the renderer
+
+- **The renderer runs under no content security policy, in the
+  packaged app as much as in development.** Nothing sets one.
+  Electron prints its insecure-policy warning on every development
+  launch for exactly this and suppresses the same warning once
+  packaged, so the warning going quiet is not the gap closing.
+
+  What the policy would guard against is script injected into the
+  renderer, and today's exposure is narrow: the window runs with
+  context isolation on and node integration off, the packaged app
+  loads its bundle over the app's private scheme (development loads
+  the Vite server instead, over plain HTTP by default — the URL is
+  an environment override — which is one more reason the two builds
+  will not share one policy), and no component
+  injects HTML — Svelte escapes every string it renders. A policy is
+  still the standard hardening for an Electron renderer, and one of
+  the items on Electron's security checklist the app does not meet.
+  Two others are known. Navigation: the window refuses new windows
+  through its open handler but installs no `will-navigate` guard, so
+  nothing stops the renderer's own document from navigating away
+  from the app's origin; that closes together with the policy, in a
+  few lines of the main process. And the sandbox: the AppImage is
+  repacked to start Electron with `--no-sandbox`, because the
+  unprivileged FUSE mount an AppImage runs from does not honour
+  setuid execution, so Chromium's setuid sandbox helper cannot be
+  used from inside it (the `.deb` sets the helper's SUID bit in its
+  postinst and keeps the sandbox), which is a packaging question of
+  its own and not part of this entry.
+
+  Two things a grep will not surface. The manual diagnostic route
+  hands a pasted public URL straight to the player, the one place
+  the renderer loads a stream from anywhere but the loopback
+  backend, so a policy limited to the loopback closes it — which is
+  the boundary rule catching up with the route, since every stream
+  is meant to pass through the proxy; the work sends it through the
+  proxy like every other stream, or retires it. And the HLS player
+  attaches media through blob URLs, which no origin-shaped rule
+  covers.
+
+  It waited for a play to verify against — one that goes through
+  the proxy and the event stream the page listens to. At the time
+  of writing the only provider's catalogue answered every request
+  with a maintenance page, so a fresh resolution could not be had on
+  the default branch; only an installation that had opted into
+  cached resolutions, with a row still live, could play through
+  that path, and the diagnostic route's pasted URL exercises neither
+  the proxy nor the event stream.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
