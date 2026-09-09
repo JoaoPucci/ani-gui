@@ -5,7 +5,7 @@
 - **Kitsu** (REST/JSON:API) — discovery surface (search, trending fallback, top rated, recently released, detail pages, episode metadata).
 - **AniList** (GraphQL) — recency-weighted "Trending Now" row and banner backfill when Kitsu's banner is null.
 - **anidb.app** — the streaming catalogue the backend resolves playback against first.
-- **hianime** — the streaming catalogue the backend resolves against when anidb.app is unreachable, and first for a show it was once found on (see [Providers and failover](./architecture.md#providers-and-failover)).
+- **hianime** — the streaming catalogue the backend resolves against when anidb.app is unreachable, and first for a show it was found on while that memory lasts — the availability record's lifetime, a day for an airing show and thirty days for a finished one (see [Providers and failover](./architecture.md#providers-and-failover)).
 - **aniskip** (REST) — community OP / ED skip-time intervals, keyed by MyAnimeList id.
 
 Every interaction other than discovery has to find the same show in two or more of these. None of them carry the others' ids, and any given anime may appear in some but not others (aniskip in particular is sparse). This document describes how the backend bridges them and what the cache stores in the process.
@@ -42,7 +42,7 @@ Every interaction other than discovery has to find the same show in two or more 
 
 Four distinct lookups, each with its own gotchas:
 
-1. **Kitsu → provider title match** — the native walk searches the provider's catalogue: anidb.app's browse page, or hianime's search page when anidb.app is unreachable or the show was last found on hianime. Kitsu canonical titles (often the licensed English form) and the provider's index don't always agree, so the bridge tries the canonical first and falls back to romanized Japanese, native script, and known synonyms before giving up.
+1. **Kitsu → provider title match** — the native walk searches the provider's catalogue: anidb.app's browse page, or hianime's search page when anidb.app is unreachable or the show's still-live availability record names hianime. Kitsu canonical titles (often the licensed English form) and the provider's index don't always agree, so the bridge tries the canonical first and falls back to romanized Japanese, native script, and known synonyms before giving up.
 2. **Candidate disambiguation** — multiple browse hits can match the same query string ("Gintama" returns the series and its movies in the provider's own ranking). The browse page carries titles only, so the picker probes each considered hit's episode list — bounded to the first few hits, since real queries put the right show near the top and every probe is an upstream request — and Kitsu's authoritative `episode_count` picks the candidate whose count is closest.
 3. **Kitsu ↔ MAL** — neither Kitsu's id nor the provider's slug matches MAL's. Kitsu publishes a mappings endpoint that exposes the third-party ids it knows about; the backend fetches `kitsu/anime/:id?include=mappings` and walks the included documents for the MyAnimeList row.
 4. **MAL → aniskip / AniList** — once the MAL id is in hand, aniskip and AniList's `Media(idMal:)` query are direct lookups.
