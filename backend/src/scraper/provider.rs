@@ -31,6 +31,10 @@ impl ProviderId {
     }
 }
 
+#[cfg(test)]
+#[path = "provider_prop_test.rs"]
+mod prop_tests;
+
 /// One search hit: the slug the provider's API is keyed on, and the
 /// display title.
 #[derive(Debug, Clone, PartialEq, Eq)]
