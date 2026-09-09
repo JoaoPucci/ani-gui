@@ -566,6 +566,17 @@ impl Fetch for Site {
                 }
             }
             "https://zokoanime.video/stream/mal/9/403/sub" => refused(403),
+            // A host that refuses outright, then one that rate-limits.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21425") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwMy9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQyOS9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/429/sub" => refused(429),
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
@@ -778,6 +789,20 @@ async fn the_weather_kept_across_servers_is_the_block_not_the_first_miss() {
         .expect_err("no server served a stream");
     assert!(matches!(err, AniError::Upstream { status: 403 }), "{err:?}");
     assert!(err.is_provider_block());
+}
+
+#[tokio::test]
+async fn the_weather_kept_across_servers_is_the_rate_limit_over_a_generic_block() {
+    // The first host refuses and the next rate-limits. Both are
+    // provider blocks, but only the rate limit opens the breaker's
+    // advertised pause at once; keeping the refusal lets background
+    // traffic go on hitting a provider that is rate-limiting.
+    let c = client();
+    let err = c
+        .master_playlist_url(21425, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 429 }), "{err:?}");
 }
 
 #[tokio::test]
