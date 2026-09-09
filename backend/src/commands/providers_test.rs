@@ -1437,6 +1437,11 @@ async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
         vec![ProviderId::Hianime, ProviderId::Anidb],
         "the rest of the order was still asked"
     );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the kept verdict's provider travels with it"
+    );
 }
 
 /// The same when the title miss comes from a skipped provider's
@@ -1467,6 +1472,11 @@ async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the episode verdict's provider, not the trial's"
     );
 }
 
