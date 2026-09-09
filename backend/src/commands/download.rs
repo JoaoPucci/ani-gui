@@ -975,9 +975,12 @@ pub(crate) async fn write_sidecar_subtitles_within(
         }
     });
     let bodies = futures_util::future::join_all(fetches).await;
+    // Names follow the listing, not what arrived: a track that fails
+    // today keeps its name free for a retry, and the next one in its
+    // language keeps the suffix its place gives it.
+    let suffixes = sidecar_suffixes(tracks.iter().map(|t| t.lang.as_str()));
     let mut written = Vec::new();
-    let mut seen: Vec<&str> = Vec::new();
-    for (track, body) in tracks.iter().zip(bodies) {
+    for ((track, body), suffix) in tracks.iter().zip(bodies).zip(suffixes) {
         let Some(body) = body else {
             continue;
         };
@@ -989,14 +992,6 @@ pub(crate) async fn write_sidecar_subtitles_within(
             tracing::warn!(lang = %track.lang, "download: subtitle body is not a track, skipped");
             continue;
         }
-        // Two tracks in one language keep both files: the second is
-        // suffixed by its position.
-        let suffix = if seen.contains(&track.lang.as_str()) {
-            format!("{}-{}", track.lang, seen.len())
-        } else {
-            track.lang.clone()
-        };
-        seen.push(&track.lang);
         let path = dest.join(format!("{file_stem}.{suffix}.vtt"));
         // Created new, never replaced: a file with bytes at the name
         // is the user's — a corrected subtitle from an earlier
@@ -1012,6 +1007,26 @@ pub(crate) async fn write_sidecar_subtitles_within(
         }
     }
     written
+}
+
+/// The name part each track takes beside the media, from its place
+/// in the listing alone: the first track of a language is the
+/// language, and the n-th after it is `<lang>-<n>`, so two tracks in
+/// one language keep both files and a name never depends on which
+/// tracks arrived.
+pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut seen: Vec<&str> = Vec::new();
+    langs
+        .map(|lang| {
+            let earlier = seen.iter().filter(|l| **l == lang).count();
+            seen.push(lang);
+            if earlier == 0 {
+                lang.to_string()
+            } else {
+                format!("{lang}-{earlier}")
+            }
+        })
+        .collect()
 }
 
 /// One track's body, when the CDN serves it: a refusal, a transport
