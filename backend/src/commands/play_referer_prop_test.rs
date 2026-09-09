@@ -34,6 +34,7 @@ proptest::proptest! {
             resolved_tag: tag,
             referer: referer.clone(),
             subtitles: Vec::new(),
+            provider: crate::scraper::provider::ProviderId::Anidb,
         };
         let row = cached_resolution_for(&resolved);
         proptest::prop_assert_eq!(row.upstream_url, master_url);
