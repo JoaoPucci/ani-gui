@@ -184,6 +184,41 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_servers(&envelope(&html)).expect("servers"), expected);
     }
 
+    /// A row whose mode is blank never comes back: the rows with a
+    /// mode come back in order, and a listing of only blank rows is
+    /// refused rather than read as no servers.
+    #[test]
+    fn rows_with_a_blank_mode_never_come_back_and_an_all_blank_listing_is_refused(
+        rows in proptest::collection::vec(
+            ("(sub|dub||[ \t]{1,3})", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}"),
+            1..6,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(mode, name, host, path)| {
+                let url = format!("https://{host}/{path}");
+                let hash = base64::engine::general_purpose::STANDARD.encode(url.as_bytes());
+                format!(r#"<div class="item server-item" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"><a class="btn">{name}</a></div>"#)
+            })
+            .collect();
+        let expected: Vec<ServerEmbed> = rows
+            .iter()
+            .filter(|(mode, _, _, _)| !mode.trim().is_empty())
+            .map(|(mode, name, host, path)| ServerEmbed {
+                mode: mode.clone(),
+                name: name.clone(),
+                embed_url: format!("https://{host}/{path}"),
+            })
+            .collect();
+        if expected.is_empty() {
+            let refused = matches!(parse_servers(&envelope(&html)), Err(AniError::ParseFailed { .. }));
+            proptest::prop_assert!(refused, "an all-blank listing is a changed shape");
+        } else {
+            proptest::prop_assert_eq!(parse_servers(&envelope(&html)).expect("servers"), expected);
+        }
+    }
+
     /// A body that is not the envelope is a parse failure, never an
     /// empty answer — a throttling page or a redesign must not read
     /// as "no episodes".
