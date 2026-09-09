@@ -353,12 +353,14 @@ starting it, and delete it when you find it done.
 
   What the policy would guard against is script injected into the
   renderer, and today's exposure is narrow: the window runs with
-  context isolation on and node integration off, loads its own
-  bundle over the app's private scheme, and no component injects
-  HTML — Svelte escapes every string it renders. A policy is still
-  the standard hardening for an Electron renderer, and one of the
-  items on Electron's security checklist the app does not meet. Two
-  others are known. Navigation: the window refuses new windows
+  context isolation on and node integration off, the packaged app
+  loads its bundle over the app's private scheme (development loads
+  the Vite server over plain HTTP instead, which is one more reason
+  the two builds will not share one policy), and no component
+  injects HTML — Svelte escapes every string it renders. A policy is
+  still the standard hardening for an Electron renderer, and one of
+  the items on Electron's security checklist the app does not meet.
+  Two others are known. Navigation: the window refuses new windows
   through its open handler but installs no `will-navigate` guard, so
   nothing stops the renderer's own document from navigating away
   from the app's origin; that closes together with the policy, in a
@@ -369,39 +371,24 @@ starting it, and delete it when you find it done.
   the sandbox), which is a packaging question of its own and not
   part of this entry.
 
-  The shape that fits: the frontend is a client-only static build
-  (`ssr = false`, the static adapter), so SvelteKit's own `kit.csp`
-  in hash mode lands the policy as a meta tag in the built page and
-  hashes the loader script it inlines. The directives have to allow
-  what the renderer really loads, which is less than it looks: its
-  own origin; the local backend on the loopback port, which is also
-  the origin of every image, stream, subtitle file and the
-  server-sent event stream the play and download pages listen to —
-  with one exception, the manual diagnostic route, which hands a
-  pasted public URL straight to the player, so a policy limited to
-  the loopback closes it; the work decides whether that route is
-  allowed through (a media source open to any host, which gives up
-  part of the point), sent through the proxy like every other
-  stream (what the layer-boundary rule already says of stream
-  traffic), or retired;
-  blob URLs, which is how the HLS player attaches media, and a worker
-  source if that player spawns one; data URLs for the two inline SVG
-  grain backgrounds; and inline styles, since the components set
-  `style` attributes for accents and layout. Two things to settle
-  against the code before choosing: how SvelteKit applies the policy
-  under the development server, whose hot reload has its own inline
-  script and socket, and whether the packaged window is better served
-  by a header from the app-scheme protocol handler than by the meta
-  tag.
+  Two things a grep will not surface. The manual diagnostic route
+  hands a pasted public URL straight to the player, the one place
+  the renderer loads a stream from anywhere but the loopback
+  backend, so a policy limited to the loopback closes it; the work
+  decides whether that route is allowed through, sent through the
+  proxy like every other stream (what the layer-boundary rule
+  already says of stream traffic), or retired. And the HLS player
+  attaches media through blob URLs, which no origin-shaped rule
+  covers.
 
-  Verify it against a play that goes the whole way — the proxied
-  stream, the event stream the page listens to, and any sidecar
-  subtitle track a provider serves — which needs a catalogue the
-  app can reach. It waited for one: at the time of writing the only
-  provider's catalogue answered every request with a maintenance
-  page, so nothing on the default branch could play through that
-  path, and the manual diagnostic route's pasted URL exercises
-  neither the proxy nor the event stream, so it is no substitute.
+  It waited for a play to verify against — one that goes through
+  the proxy and the event stream the page listens to. At the time
+  of writing the only provider's catalogue answered every request
+  with a maintenance page, so a fresh resolution could not be had on
+  the default branch; only an installation that had opted into
+  cached resolutions, with a row still live, could play through
+  that path, and the diagnostic route's pasted URL exercises neither
+  the proxy nor the event stream.
 
 ## Housekeeping
 
