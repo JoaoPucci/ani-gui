@@ -562,10 +562,15 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// poison. Only an absent `slug` field counts as no evidence.
 async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
     use crate::commands::cour::{cour_from_slug, cour_from_title};
+    // Without cour evidence on the provider's side there is nothing
+    // to disagree with, so Kitsu is not asked at all.
+    let Some(provider_cour) = cour_from_title(show_title) else {
+        return false;
+    };
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let provider_cour = cour_from_title(show_title);
+    let provider_cour = Some(provider_cour);
     let kitsu_cour = detail
         .slug
         .as_deref()
