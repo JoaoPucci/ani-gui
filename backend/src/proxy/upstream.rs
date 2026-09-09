@@ -240,6 +240,82 @@ pub async fn fetch_streaming(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A server that answers one request with a chunked body and no
+    /// Content-Length, so the cap has to be enforced on the bytes as
+    /// they arrive rather than on a header.
+    async fn chunked_server(chunks: Vec<Vec<u8>>) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.expect("accept");
+            let mut sink = [0u8; 4096];
+            let _ = sock.read(&mut sink).await;
+            let mut out =
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/vtt\r\n\r\n"
+                    .to_vec();
+            for chunk in chunks {
+                out.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
+                out.extend_from_slice(&chunk);
+                out.extend_from_slice(b"\r\n");
+            }
+            out.extend_from_slice(b"0\r\n\r\n");
+            let _ = sock.write_all(&out).await;
+            let _ = sock.shutdown().await;
+        });
+        format!("http://{addr}/track.vtt")
+    }
+
+    /// The cap is enforced on the bytes as they stream: a body that
+    /// proves larger than the cap is refused once it does, and one
+    /// that fits arrives whole.
+    #[tokio::test]
+    async fn a_streamed_body_is_cut_at_the_cap_and_a_fitting_one_arrives_whole() {
+        let client = reqwest::Client::new();
+        let chunks = || vec![b"WEBVTT\n\n".to_vec(), vec![b'a'; 20], vec![b'b'; 20]];
+        let url = chunked_server(chunks()).await;
+        let resp = client.get(&url).send().await.expect("response");
+        assert!(
+            resp.content_length().is_none(),
+            "the server sends no length"
+        );
+        assert!(matches!(
+            read_body_capped(resp, 16).await.expect("read"),
+            CappedBody::Oversized
+        ));
+        let url = chunked_server(chunks()).await;
+        let resp = client.get(&url).send().await.expect("response");
+        match read_body_capped(resp, 64).await.expect("read") {
+            CappedBody::Whole(body) => assert_eq!(body.len(), 48),
+            CappedBody::Oversized => panic!("a body under the cap arrives whole"),
+        }
+    }
+
+    /// A Content-Length over the cap refuses the body before a byte
+    /// of it is read.
+    #[tokio::test]
+    async fn a_declared_length_over_the_cap_is_refused_unread() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/big.vtt"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(vec![b'x'; 100]))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(format!("{}/big.vtt", server.uri()))
+            .send()
+            .await
+            .expect("response");
+        assert_eq!(resp.content_length(), Some(100));
+        assert!(matches!(
+            read_body_capped(resp, 99).await.expect("read"),
+            CappedBody::Oversized
+        ));
+    }
     use crate::proxy::token::MediaKind;
 
     #[test]
