@@ -72,7 +72,7 @@ Only a walk in which every search completed and nothing matched counts as eviden
 
 ## Episode caps
 
-The picked show's episode list arrives with the probe, so the availability cap is the exact highest listed episode number — no second fetch and no approximation. The cap is an integer on both providers. anidb.app also keeps a fractional display tag on a recap row (`number2`, `1061.5` for a One Piece recap), and the resolver surfaces those as playable extras beside the cap rather than inside it; hianime lists no such tags. The two number differently: anidb.app counts continuously across a franchise's seasons, hianime within each season-split entry — which is why the cap is stamped per provider and never compared across them.
+The picked show's episode list arrives with the probe, so the availability cap is the highest listed episode number, normalised to the entry's own numbering — a continuation cour on anidb.app lists its episodes with the franchise offset, which the cap subtracts — with no second fetch and no approximation. The cap is an integer on both providers. anidb.app also keeps a fractional display tag on a recap row (`number2`, `1061.5` for a One Piece recap), and the resolver surfaces those as playable extras beside the cap rather than inside it; hianime lists no such tags. The two number differently: anidb.app counts continuously across a franchise's seasons, hianime within each season-split entry — which is why the cap is stamped per provider and never compared across them.
 
 ## Kitsu → MAL via the mappings endpoint
 
@@ -92,7 +92,7 @@ The mappings response is cached in `meta_cache` indefinitely — Kitsu's mapping
 
 - **Kitsu has no MAL mapping** — aniskip lookup returns an empty list (the player just doesn't show the skip button); banner backfill falls through to the blurred-poster placeholder.
 - **The primary provider is unreachable** — the walk runs against the next provider. A miss reached there is persisted as that provider's negative verdict, naming it, and is served only while that provider's gate is answering and the primary's gate is refusing — a breaker open, or a rate-limit pause running; once a request has taught the primary's gate that it is back, the row stops standing and the probe runs again.
-- **The provider has no candidate matching any title** — the play path returns `NoResults`; the frontend renders an "isn't in the streaming catalogue" overlay instead of a cryptic backend error. A provider that answered ends the walk — the miss is not retried on the next provider.
+- **The provider has no candidate matching any title** — the play path returns `NoResults`; the frontend renders an "isn't in the streaming catalogue" overlay instead of a cryptic backend error. A provider that answered ends the walk — the miss is not retried on the next provider — unless a positive availability record put that provider first, in which case its miss is set aside and the rest of the order is asked, the record proving the show and not every episode.
 - **The picker can't disambiguate** — exact-title-or-first-hit fallback. This is the worst case for correctness, but it's still a real entry on the provider; the user sees a sub-show rather than no show. They can pick the right one manually from search.
 - **A cached play-resolution URL stops working** — the silent retry path evicts the cached row and re-resolves once before surfacing an error to the user.
 

@@ -58,8 +58,10 @@ requires it; the exception is the update check that runs on launch
   the walk moves on from anidb.app — because it was unreachable,
   refused or rate-limited the request, answered a page the app
   cannot read, or its own gate turned a background request away —
-  and hianime first, for a while, for a show it proved playable
-  while the walk had moved on: the app remembers
+  and hianime first, for a while, for a show it was found on while
+  the walk had moved on — a positive availability record, which
+  says the show and the audio are listed there, not that a stream
+  was played: the app remembers
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last play, download or hand-off
   that went to a catalogue, each of which restamps the record with a

@@ -303,7 +303,11 @@ starting it, and delete it when you find it done.
   the first provider does not carry plays from the second instead of
   being hidden — the catalogues as a union. Today an answered miss
   ends the walk; only an unreachable, refusing or broken provider
-  moves it on. Not in parallel: asking every provider for every
+  moves it on. The one exception already ships: a provider a
+  positive availability record put first has its answered miss set
+  aside and the rest of the order asked, since the record proves
+  the show, not every episode. Not in parallel: asking every
+  provider for every
   request doubles the traffic on the resource this entry worries
   about and buys nothing when the first provider carries the show,
   which is most of the time.
