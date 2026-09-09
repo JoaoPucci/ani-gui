@@ -3829,6 +3829,7 @@ fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_wit
 /// title miss the other provider answered: the positive row that
 /// remembered the provider stands, and nothing writes an absence
 /// over it.
+#[cfg(unix)]
 #[tokio::test]
 async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_and_the_row() {
     use wiremock::matchers::{method, path};
