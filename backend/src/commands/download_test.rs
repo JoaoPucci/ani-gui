@@ -3238,3 +3238,124 @@ mod sidecar_suffix_props {
         }
     }
 }
+
+// ── the sidecar phase is bounded in count and in flight ────────────
+
+/// A listing is a handful of languages; one that lists more tracks
+/// than the cap is malformed or hostile, and only the first cap-many
+/// are fetched — in listing order, so a well-formed listing that is
+/// merely long keeps its first tracks.
+#[tokio::test]
+async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let total = SUBTITLE_TRACK_CAP + 3;
+    for i in 0..total {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/l{i:02}.vtt")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(format!("WEBVTT\n\ncue {i}\n")),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks: Vec<SubtitleTrack> = (0..total)
+        .map(|i| SubtitleTrack {
+            lang: format!("l{i:02}"),
+            label: format!("Language {i}"),
+            default: false,
+            url: format!("{}/subs/l{i:02}.vtt", server.uri()),
+        })
+        .collect();
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 16",
+    )
+    .await;
+    let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
+        .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
+        .collect();
+    assert_eq!(
+        written, expected,
+        "the first cap-many land, in listing order"
+    );
+    for i in SUBTITLE_TRACK_CAP..total {
+        assert!(
+            !dest
+                .path()
+                .join(format!("Show Episode 16.l{i:02}.vtt"))
+                .exists(),
+            "track {i} is past the cap and never fetched"
+        );
+    }
+    assert_eq!(
+        server.received_requests().await.expect("recorded").len(),
+        SUBTITLE_TRACK_CAP,
+        "no request is made for a track past the cap"
+    );
+}
+
+/// The tracks are fetched a few at a time, not all at once: with one
+/// in flight, three tracks that each take a beat arrive one after the
+/// other; with three in flight they arrive together.
+#[tokio::test]
+async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for lang in ["en", "es", "fr"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("WEBVTT\n\n{lang}\n"))
+                    .set_delay(std::time::Duration::from_millis(250)),
+            )
+            .mount(&server)
+            .await;
+    }
+    let track = |lang: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}/subs/{lang}.vtt", server.uri()),
+    };
+    let tracks = vec![track("en"), track("es"), track("fr")];
+    let phase = |concurrency: usize| {
+        let tracks = tracks.clone();
+        async move {
+            let dest = tempfile::tempdir().expect("dest");
+            let started = std::time::Instant::now();
+            let written = write_sidecar_subtitles_with(
+                &reqwest::Client::new(),
+                &tracks,
+                None,
+                dest.path(),
+                "Show Episode 17",
+                std::time::Duration::from_secs(10),
+                concurrency,
+            )
+            .await;
+            assert_eq!(written.len(), 3, "every track lands: {written:?}");
+            started.elapsed()
+        }
+    };
+    let one_at_a_time = phase(1).await;
+    let together = phase(3).await;
+    assert!(
+        one_at_a_time >= std::time::Duration::from_millis(700),
+        "one in flight serialises the three beats: {one_at_a_time:?}"
+    );
+    assert!(
+        together < std::time::Duration::from_millis(600),
+        "three in flight overlap them: {together:?}"
+    );
+}
