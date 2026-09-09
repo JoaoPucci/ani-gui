@@ -265,6 +265,58 @@ async fn a_stalled_primary_yields_to_the_fallback_within_its_budget() {
     );
 }
 
+/// A skipped provider is owed its half-open trial on an interactive
+/// walk, so the walk keeps an attempt budget in reserve for it: a
+/// fallback that stalls is cut off at its attempt budget, not handed
+/// the whole remainder, and the recovered primary gets its turn.
+#[tokio::test(start_paused = true)]
+async fn a_stalled_fallback_leaves_the_skipped_primary_its_trial() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("from anidb")),
+        (ProviderId::Hianime, Behavior::Stall),
+    ]);
+    let started = tokio::time::Instant::now();
+    let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
+        .await
+        .expect("the recovered primary answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_secs(20) && waited < Duration::from_secs(21),
+        "the fallback got one attempt budget, then the primary its trial: {waited:?}"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "skipped first, retried after the stall"
+    );
+}
+
+/// A background walk never retries a skipped provider, so nothing is
+/// held back for it: the fallback keeps the whole remainder.
+#[tokio::test(start_paused = true)]
+async fn a_background_walk_gives_a_stalled_fallback_the_whole_remainder() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
+        (ProviderId::Hianime, Behavior::Stall),
+    ]);
+    let started = tokio::time::Instant::now();
+    let err = run(&gates, ScrapePriority::Background, &mut attempt)
+        .await
+        .expect_err("the stall is the verdict");
+    assert!(matches!(err.error, AniError::Timeout), "{:?}", err.error);
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_secs(60) && waited < Duration::from_secs(61),
+        "the whole remainder went to the fallback: {waited:?}"
+    );
+    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+}
+
 /// The runner reports the answer as the provider gave it. A clean
 /// miss on the fallback while the primary was unreachable is the
 /// fallback's clean miss — whose verdict a negative row is, and
