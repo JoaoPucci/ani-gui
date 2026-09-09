@@ -7,7 +7,8 @@
 //!     (including network errors) as dead.
 //!   • `cached_row_is_live` — the check both replays share: the
 //!     row's stream and every sidecar track it lists pass
-//!     `upstream_head_ok` with the row's referer.
+//!     `upstream_head_ok` with the row's referer, asked together
+//!     under one deadline.
 //!   • `try_serve_cached` — turns a `CachedResolution` row into a
 //!     fresh session response when the row is live. Used by the
 //!     embedded-player flow's fast path in `play_with_progress`.
@@ -51,26 +52,55 @@ pub(crate) async fn upstream_head_ok(
     resp.status().is_success() || resp.status().is_redirection()
 }
 
+/// How long a cached row may take to prove itself live. The row is
+/// a shortcut past a fresh resolve, whose first request answers in
+/// a few seconds; a shortcut that takes longer than that is no
+/// shortcut, and the metadata client would otherwise let each URL
+/// stall for its own thirty seconds. The URLs are asked together,
+/// so this bounds the whole check, however many tracks the row
+/// lists.
+pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
+    std::time::Duration::from_secs(10);
+
 /// Whether a cached row can still be served: its stream answers the
 /// HEAD check, and so does every sidecar track it lists — each with
 /// the row's referer, which is what the relay sends when it fetches
 /// a track. A track is signed like the stream and expires on its
 /// own, and a track that fails to load never reaches the player's
 /// recovery path, so a row is live only when everything it names is.
-/// The first dead URL ends the check; a URL that does not parse is
-/// dead.
+/// The URLs are asked together under [`CACHED_ROW_CHECK_DEADLINE`];
+/// the first dead URL ends the check, a URL that does not parse is
+/// dead, and a deadline that elapses is a row that is not live.
 pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
-    let urls = std::iter::once(cached.upstream_url.as_str())
-        .chain(cached.subtitles.iter().map(|t| t.url.as_str()));
-    for raw in urls {
+    cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+}
+
+/// [`cached_row_is_live`] under a caller's deadline.
+pub(crate) async fn cached_row_is_live_within(
+    state: &AppState,
+    cached: &CachedResolution,
+    deadline: std::time::Duration,
+) -> bool {
+    let mut urls = Vec::with_capacity(1 + cached.subtitles.len());
+    for raw in std::iter::once(cached.upstream_url.as_str())
+        .chain(cached.subtitles.iter().map(|t| t.url.as_str()))
+    {
         let Ok(url) = url::Url::parse(raw) else {
             return false;
         };
-        if !upstream_head_ok(&state.meta_http, &url, &cached.referer).await {
-            return false;
-        }
+        urls.push(url);
     }
-    true
+    let checks = urls.iter().map(|url| async move {
+        if upstream_head_ok(&state.meta_http, url, &cached.referer).await {
+            Ok(())
+        } else {
+            Err(())
+        }
+    });
+    matches!(
+        tokio::time::timeout(deadline, futures_util::future::try_join_all(checks)).await,
+        Ok(Ok(_))
+    )
 }
 
 /// Serve a cached row as a fresh CreateSessionResponse when the row
