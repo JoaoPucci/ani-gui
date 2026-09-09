@@ -920,7 +920,7 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
             continue;
         };
-        if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &cache_key(id, mode)) {
+        if has_usable_row(&state, id, mode) {
             continue;
         }
         if matches!(
@@ -937,9 +937,10 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
             Some(id) if !id.is_empty() => id,
             _ => continue,
         };
-        // Skip entries that already have a fresh cache value.
-        let key = cache_key(id, mode);
-        if let Ok(Some(_)) = meta_cache_get(&state.cache_pool, &key) {
+        // Skip entries whose fresh row the readers would serve — the
+        // same rule the probe and the batch read apply, so a negative
+        // row nobody stands behind is a miss here as it is there.
+        if has_usable_row(&state, id, mode) {
             continue;
         }
         // Warm probes are background by definition — enforce it
@@ -959,6 +960,19 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         }
         sleep(backoff).await;
     }
+}
+
+/// Whether the cache holds a row for `(kitsu_id, mode)` that the
+/// readers would serve — fresh, and usable under
+/// [`cache_hit_is_usable`]: a count-less or approximate positive
+/// re-probes, and so does a negative row whose provider no longer
+/// stands behind it.
+fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
+    let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &cache_key(kitsu_id, mode)) else {
+        return false;
+    };
+    serde_json::from_str::<AvailabilityResponse>(&body)
+        .is_ok_and(|parsed| cache_hit_is_usable(state, &parsed))
 }
 
 /// How long the warm loop sleeps after one probe, given its outcome.
