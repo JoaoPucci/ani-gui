@@ -51,7 +51,9 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
 
 /// One result card: the title anchor's slug and title, and the first
 /// plain `fdi-item` badge (the duration badge carries a second class
-/// and is skipped by the exact match).
+/// and is skipped by the exact match). A slug without the decimal
+/// tail the episode listing is keyed on ([`slug_id`]) is not a card
+/// the client can resolve, and is skipped like an unreadable one.
 fn parse_card(card: &str) -> Option<BrowseHit> {
     let href = attr(card, "href=\"")?;
     let slug = href
@@ -61,7 +63,7 @@ fn parse_card(card: &str) -> Option<BrowseHit> {
         .next()?
         .trim()
         .to_string();
-    if slug.is_empty() {
+    if slug.is_empty() || slug_id(&slug).is_none() {
         return None;
     }
     let title = decode_entities(attr(card, "title=\"")?);
