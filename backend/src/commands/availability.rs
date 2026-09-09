@@ -1619,6 +1619,71 @@ mod tests {
     /// it is, and a pause counts as refusing wherever a breaker does.
     /// Driven by hand on one state, whose gates are reset between
     /// cases by the success that clears both a breaker and a pause.
+
+    #[tokio::test]
+    async fn a_reprobe_of_a_count_less_positive_row_starts_from_the_provider_it_remembers() {
+        // A resolve through the fallback stamps a positive row without
+        // a count, which the probe does not serve; the reprobe it runs
+        // instead has to start from the provider that proved the show,
+        // or the primary's clean miss ends the walk and overwrites the
+        // fallback's proof with a negative that disables Play.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+            )
+            .mount(&anidb)
+            .await;
+        let hianime = stub_hianime_sub_only().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "580",
+            "sub",
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "580"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+            .await
+            .expect("answered");
+        assert!(
+            got.available,
+            "the provider the row remembers still carries the show"
+        );
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime)
+        );
+        assert!(
+            anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "the remembered provider answered; the primary was not asked"
+        );
+        assert_eq!(
+            cached_provider(&state, "580", "sub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the row keeps its provider"
+        );
+    }
+
     #[test]
     fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_refuse() {
         use crate::scraper::provider::ProviderId;
