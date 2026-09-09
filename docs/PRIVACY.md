@@ -55,11 +55,14 @@ requires it; the exception is the update check that runs on launch
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogues playback resolves
   against: anidb.app first, and hianime (reached at hianime.at) when
-  anidb.app is unreachable — and hianime first, from then on, for a
+  anidb.app is unreachable — and hianime first, for a while, for a
   show it proved playable while anidb.app was down: the app remembers
-  which catalogue carried a show and asks that one first for later
-  plays, downloads and hand-offs of it, so those requests reach
-  hianime after anidb.app recovers. These requests carry the search terms
+  which catalogue carried a show for as long as its availability
+  record lasts (a day for an airing show, thirty days for a finished
+  one) and asks that one first for later plays, downloads and
+  hand-offs of it, so those requests reach hianime after anidb.app
+  recovers; once the record expires the next resolve starts from
+  anidb.app again. These requests carry the search terms
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
   episode through hianime also fetches its embed page from the embed
