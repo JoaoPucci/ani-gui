@@ -213,8 +213,17 @@ async fn handle_subtitle(
     let Ok(upstream_url) = Url::parse(&sub.url) else {
         return error_response(StatusCode::BAD_GATEWAY, "subtitle url unparseable");
     };
-    let body = match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
-        Ok((bytes, _ct)) => bytes,
+    // Read only up to the subtitle cap: a track URL can point at
+    // something far larger than a subtitle file, and the player asks
+    // for every attached track on its own.
+    let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
+        Ok(upstream::CappedBody::Whole(bytes)) => bytes,
+        Ok(upstream::CappedBody::Oversized) => {
+            return error_response(
+                StatusCode::BAD_GATEWAY,
+                "upstream body is larger than a subtitle track",
+            );
+        }
         Err(AniError::Upstream { status }) => {
             return error_response(
                 StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
