@@ -198,16 +198,28 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 }
 
-/// The weather to keep when two of an episode's hosts failed: a
-/// provider block — a refusal-shaped status or a rate limit — outranks
-/// an answered status or a dropped connection, since the block speaks
+/// The weather to keep when two of an episode's hosts failed, by
+/// what the breaker makes of it: a rate limit outranks every other
+/// provider block, since it alone opens the advertised pause at once;
+/// a block — a refusal-shaped status or a server error — outranks an
+/// answered status or a dropped connection, since the block speaks
 /// for the provider and the breaker must hear it; between two of a
 /// rank the one seen first stays.
 fn weightier(kept: AniError, next: AniError) -> AniError {
-    if next.is_provider_block() && !kept.is_provider_block() {
+    if weather_rank(&next) > weather_rank(&kept) {
         next
     } else {
         kept
+    }
+}
+
+/// How loudly a host's failure speaks for the provider: a rate limit
+/// above any other block, a block above the rest.
+fn weather_rank(weather: &AniError) -> u8 {
+    match weather {
+        AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 2,
+        w if w.is_provider_block() => 1,
+        _ => 0,
     }
 }
 
