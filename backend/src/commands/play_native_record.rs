@@ -94,6 +94,13 @@ impl Watch {
 /// left a row; the embedded player writes it on mark-watched, which
 /// a handoff never reaches. A watch without a show id (a cached row
 /// from before the field) records nothing.
+///
+/// The row leads and the rest follow: a history write that fails —
+/// the state directory unwritable or full while the cache is not —
+/// ends the recording with a log line, since a stamp advanced for a
+/// watch that never reached the file would make that row the show's
+/// latest and hand the resume its stale episode over another
+/// provider's real one.
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     if watch.show_id.is_empty() {
         return;
@@ -107,8 +114,9 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         tracing::warn!(
             show_id = %watch.show_id,
             error = ?e,
-            "history write failed after handoff",
+            "history write failed after handoff; the watch is not stamped",
         );
+        return;
     }
     stamp_watched_now(state, &watch.show_id);
     if let Some(kid) = kitsu_id.filter(|k| !k.is_empty()) {
