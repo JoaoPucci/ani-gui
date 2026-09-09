@@ -205,6 +205,51 @@ async fn a_body_that_is_not_webvtt_is_not_relayed() {
     );
 }
 
+/// A track URL can point at something far larger than a subtitle
+/// file — the video itself, behind a malformed descriptor — and the
+/// player asks for every attached track on its own. The relay reads
+/// a body only up to the subtitle cap and refuses one that proves
+/// larger, before it is held in memory whole.
+#[tokio::test]
+async fn a_body_over_the_subtitle_cap_is_not_relayed() {
+    let server = MockServer::start().await;
+    let mut oversized = b"WEBVTT\n\n".to_vec();
+    oversized.resize(crate::proxy::upstream::SUBTITLE_BODY_CAP + 1, b'x');
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/huge.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(oversized))
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_with_tracks(
+        "https://embed.example/",
+        vec![SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: format!("{}/subs/huge.vtt", server.uri()),
+        }],
+    )
+    .await;
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{id}/sub/0.vtt"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .expect("body");
+    assert!(
+        body.len() < 1024,
+        "the oversized body must not reach the caller: {} bytes",
+        body.len()
+    );
+}
+
 /// A byte-order mark ahead of the signature is still WebVTT — some
 /// CDNs serve the files that way.
 #[tokio::test]
