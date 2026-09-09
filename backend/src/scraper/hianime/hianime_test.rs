@@ -107,6 +107,22 @@ fn a_card_the_parser_cannot_read_is_skipped_and_its_neighbour_is_read_once() {
 }
 
 #[test]
+fn a_card_whose_slug_carries_no_id_is_skipped_and_a_listing_of_such_cards_is_refused() {
+    // The episode listing is keyed on the decimal tail of a slug; a
+    // card without one cannot be resolved, and picked — as the
+    // count-less pick would — it fails the walk where a later card
+    // would have played. It is skipped like an unreadable card, and a
+    // listing of nothing else is a changed shape.
+    let mixed = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    let hits = parse_search(mixed).expect("parsed");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    let unresolvable_only = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    let err = parse_search(unresolvable_only).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[test]
 fn a_search_page_that_says_no_animes_found_is_an_empty_answer() {
     let page = r#"<html><body><div class="tab-content"><div class="block_area-content block_area-list film_list film_list-grid film_list-wfeature"><p>No animes found.</p></div></div><div id="main-sidebar"></div></body></html>"#;
     assert_eq!(parse_search(page).expect("parsed"), Vec::<BrowseHit>::new());

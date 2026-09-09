@@ -24,12 +24,22 @@ fn encode_title(title: &str) -> String {
 /// poster link — an href and title that are not the card's identity —
 /// ahead of the detail block whose anchor is.
 fn search_page(cards: &[(String, u64, String, String)]) -> String {
+    let with_slugs: Vec<(String, String, String)> = cards
+        .iter()
+        .map(|(words, id, title, kind)| (format!("{words}-{id}"), title.clone(), kind.clone()))
+        .collect();
+    search_page_with_slugs(&with_slugs)
+}
+
+/// The same list with each card's slug given whole, so a card can
+/// carry a slug of any shape.
+fn search_page_with_slugs(cards: &[(String, String, String)]) -> String {
     let mut page = String::from(
         r#"<html><body><section class="block_area block_area_sidebar"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/decoy-1" title="Decoy">Decoy</a></h3></div></section><div class="film_list-wrap">"#,
     );
-    for (words, id, title, kind) in cards {
+    for (slug, title, kind) in cards {
         page.push_str(&format!(
-            r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{id}" class="film-poster-ahref item-qtip" title="Poster {id}"></a></div><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{words}-{id}" title="{}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">{kind}</span><span class="dot"></span><span class="fdi-item fdi-duration">24m</span></div></div></div>"#,
+            r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{slug}" class="film-poster-ahref item-qtip" title="Poster {slug}"></a></div><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{slug}" title="{}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">{kind}</span><span class="dot"></span><span class="fdi-item fdi-duration">24m</span></div></div></div>"#,
             encode_title(title)
         ));
     }
@@ -86,6 +96,48 @@ proptest::proptest! {
             })
             .collect();
         proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
+    }
+
+    /// A card whose slug carries no decimal tail cannot be resolved
+    /// and never comes back: the resolvable cards come back in order,
+    /// and a list of only unresolvable cards is refused rather than
+    /// read as results.
+    #[test]
+    fn cards_whose_slug_carries_no_id_never_come_back(
+        cards in proptest::collection::vec(
+            (
+                "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
+                proptest::option::of(1u64..1_000_000),
+                "[A-Za-z0-9 ,:!&'\"<>-]{1,30}",
+                "(TV|Movie|OVA|ONA|Special)",
+            ),
+            1..5,
+        )
+    ) {
+        let with_slugs: Vec<(String, String, String)> = cards
+            .iter()
+            .map(|(words, id, title, kind)| {
+                let slug = id.map_or_else(|| words.clone(), |id| format!("{words}-{id}"));
+                (slug, title.clone(), kind.clone())
+            })
+            .collect();
+        let page = search_page_with_slugs(&with_slugs);
+        let expected: Vec<BrowseHit> = cards
+            .iter()
+            .filter_map(|(words, id, title, kind)| {
+                id.map(|id| BrowseHit {
+                    slug: format!("{words}-{id}"),
+                    title: title.clone(),
+                    kind: Some(kind.clone()),
+                })
+            })
+            .collect();
+        if expected.is_empty() {
+            let refused = matches!(parse_search(&page), Err(AniError::ParseFailed { .. }));
+            proptest::prop_assert!(refused, "a list of only unresolvable cards is a changed shape");
+        } else {
+            proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
+        }
     }
 
     /// A body that shows neither the result list nor the no-results
