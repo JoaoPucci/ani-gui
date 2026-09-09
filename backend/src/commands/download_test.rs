@@ -412,7 +412,10 @@ async fn a_range_download_stops_at_the_first_failing_episode() {
     let err = download_with_tools(&state, &args, &path_env, |_p| {})
         .await
         .expect_err("episode 3 does not exist");
-    assert!(matches!(err, AniError::NoResults));
+    assert!(
+        matches!(err, AniError::EpisodeUnavailable),
+        "the show is there, the third episode is not: {err:?}"
+    );
     let calls = std::fs::read_to_string(&log).expect("the first two episodes ran");
     assert_eq!(
         calls.lines().count(),
