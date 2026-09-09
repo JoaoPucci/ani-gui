@@ -3210,3 +3210,31 @@ async fn a_body_that_is_not_webvtt_is_not_written_as_a_sidecar() {
         "a challenge page is not a subtitle track"
     );
 }
+
+mod sidecar_suffix_props {
+    use super::sidecar_suffixes;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// A name follows the listing alone: the first track of a
+        /// language is the language, every later one carries the
+        /// count of the same language ahead of it, and no two tracks
+        /// share a name.
+        #[test]
+        fn names_follow_the_listing_and_never_collide(
+            langs in proptest::collection::vec("[a-z]{2,3}", 0..8)
+        ) {
+            let names = sidecar_suffixes(langs.iter().map(String::as_str));
+            prop_assert_eq!(names.len(), langs.len());
+            for (i, (lang, name)) in langs.iter().zip(&names).enumerate() {
+                let earlier = langs[..i].iter().filter(|l| *l == lang).count();
+                let expected = if earlier == 0 { lang.clone() } else { format!("{lang}-{earlier}") };
+                prop_assert_eq!(name, &expected);
+            }
+            let mut distinct = names.clone();
+            distinct.sort();
+            distinct.dedup();
+            prop_assert_eq!(distinct.len(), names.len());
+        }
+    }
+}
