@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-12_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -75,17 +75,21 @@ requires it; the exception is the update check that runs on launch
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
   episode through hianime also fetches its embed page from the embed
-  host the site names for that episode. The site chooses those
-  hosts, and they can change without an app update; at the time of
-  writing the listings name zokoanime.video, megaplay.buzz and
-  vidtube.site, and the client fetches whichever the site lists for
-  the episode.
+  host the site names for that episode, and on megaplay's pages the
+  host's own sources endpoint as well, since that is where its
+  player gets the stream. The site chooses those hosts, and they can
+  change without an app update; at the time of writing the listings
+  name zokoanime.video, megaplay.buzz and vidtube.site, and the
+  client fetches whichever the site lists for the episode.
 - **Video playback** — the chosen episode's playlist, its segments
   and any sidecar subtitle files are fetched directly from the
   source CDN the catalogue or its embed page names. For hianime that
-  is, at the time of writing, a host under aniwatchtv.uk; the app
-  does not restrict these fetches to a list of hosts, so the
-  provider's choice is what it reaches. The CDN sees a normal
+  is, at the time of writing, a host under aniwatchtv.uk behind the
+  zokoanime pages, and behind the megaplay pages the hosts its
+  sources endpoint names — ncdn.imgnex.top for playlists,
+  bb.akirax.buzz for segments, fetch.nexabloom.top for subtitle
+  files; the app does not restrict these fetches to a list of hosts,
+  so the provider's choice is what it reaches. The CDN sees a normal
   `Referer` — the catalogue origin, or for hianime the embed host's
   — so it serves the file.
 - **Tracker integration (optional)** — only if you sign in to AniList

@@ -338,25 +338,23 @@ starting it, and delete it when you find it done.
 
 ## Decoding hianime's other embed hosts
 
-- **Read the embed pages of hianime's other servers**, so an episode
-  plays from whichever server the site lists rather than from the
-  one host the client can read. An episode's server list names
-  several servers by slot and the site moves the slots between
-  hosts: on 2026-09-06 `HD-1` was zokoanime.video, whose page carries
-  the XOR'd payload the client decodes; on 2026-09-08 `HD-1` and
-  `HD-2` were megaplay.buzz and the zokoanime server was listed under
-  its own name. The client tries the hosts it can read first and
-  takes the first page that decodes, so the rename cost nothing —
-  but the day the readable host drops off a listing, that episode
-  has no stream.
+- **Read the embed pages of hianime's remaining servers**, so an
+  episode plays from whichever server the site lists. An episode's
+  server list names several servers by slot and the site moves the
+  slots between hosts; the client reads a page by its shape, not the
+  host's name. Two shapes are read today: zokoanime's page, which
+  carries the stream in a payload, and megaplay's, which names a
+  media id the site's sources endpoint answers for. vidtube.site is
+  the host seen in listings whose page the client does not read; a
+  server on it is stepped over, and a mode listed only there has no
+  stream.
 
-  What the other pages look like: megaplay.buzz and vidtube.site
-  serve a player page with no payload in its markup (a title like
-  "File 143764 - MegaPlay", a player element, a script); their
-  sources come from a call the script makes, which the client has
-  not been taught. Reverse-engineering that is the work, host by
-  host, and each is a maintenance cost of its own. Not urgent while
-  zokoanime keeps appearing on every listing seen so far.
+  What its page looks like: a player page with no payload in its
+  markup and a script that fetches the sources. Reverse-engineering
+  that is the work, and each host read is a maintenance cost of its
+  own, since the site changes what its players fetch. Not urgent
+  while every listing seen so far carries a zokoanime or a megaplay
+  server.
 
 ## A provider order and switch in settings
 
