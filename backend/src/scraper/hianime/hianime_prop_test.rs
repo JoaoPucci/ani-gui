@@ -477,6 +477,45 @@ proptest::proptest! {
         );
     }
 
+    /// The walk's verdict when no server served a stream: the kept
+    /// failure as it stands, lifted to a parse failure when the mode
+    /// had a row the client could not read — which never outranks a
+    /// rate limit — and the answered absence only when nothing was
+    /// kept and every row was read.
+    #[test]
+    fn the_final_verdict_keeps_the_doubt_of_an_unreadable_row(
+        kept in proptest::option::of(arb_weather()),
+        uncertain in proptest::bool::ANY,
+    ) {
+        fn rank(w: &AniError) -> u8 {
+            match w {
+                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
+                AniError::ParseFailed { .. } => 2,
+                w if w.is_provider_block() => 1,
+                _ => 0,
+            }
+        }
+        let kept_rank = kept.as_ref().map(rank);
+        let kept_repr = kept.as_ref().map(|k| format!("{k:?}"));
+        let verdict = final_verdict(kept, uncertain, "sub");
+        match (kept_rank, uncertain) {
+            (None, false) => prop_assert!(matches!(verdict, AniError::NoResults), "{verdict:?}"),
+            (None, true) => prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}"),
+            (Some(_), false) => prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr),
+            (Some(r), true) => {
+                // The doubt is a parse failure; a louder kept failure
+                // stands, a parse failure kept first stays, anything
+                // quieter yields to the doubt.
+                prop_assert_eq!(rank(&verdict), r.max(2));
+                if r >= 2 {
+                    prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr);
+                } else {
+                    prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}");
+                }
+            }
+        }
+    }
+
     /// Of two hosts' failures the kept one is the louder: a rate limit
     /// over everything, a page the client could not read over any
     /// other provider block, a block over the rest; between two of a
