@@ -641,6 +641,18 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A sub server whose page carries no payload beside a sub
+            // row whose hash no longer decodes: the mode is uncertain
+            // and no server serves a stream.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21434") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"!!!\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21420") => {
                 if ajax {
                     ok(SERVERS_RENAMED)
@@ -932,6 +944,23 @@ async fn the_master_comes_from_the_first_server_whose_page_the_client_reads() {
         "the referer is the host that served the payload"
     );
     assert!(c.has_mode(21420, "sub").await.expect("asked"));
+}
+
+/// A mode the listing left uncertain — a row the client could not
+/// read beside one it could — stays uncertain when the readable
+/// server's page carries no payload: the unreadable row may have
+/// been the playable server, so the walk ends in a parse failure,
+/// never in the answered absence the resolver would treat as an
+/// episode's dead end.
+#[tokio::test]
+async fn an_uncertain_mode_whose_readable_pages_carry_no_payload_is_a_parse_failure() {
+    let c = client();
+    assert!(c.has_mode(21434, "sub").await.expect("a readable server"));
+    let err = c
+        .master_playlist_url(21434, "sub")
+        .await
+        .expect_err("no stream can be read");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
 #[tokio::test]
