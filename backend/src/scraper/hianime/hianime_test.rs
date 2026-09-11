@@ -292,6 +292,41 @@ fn a_server_whose_hash_is_not_an_embed_url_is_skipped_beside_one_that_is() {
     assert_eq!(servers[0].name, "HD-2");
 }
 
+/// A listing can be readable for one mode and not the other: a dub
+/// row that decodes beside sub rows whose hashes no longer do. Read as
+/// "no sub", the mode probe would persist an absence over the sub
+/// playback the site still lists, so the listing keeps, per mode,
+/// whether a row was present but unreadable, and a mode with no
+/// readable server answers a parse failure when one was.
+#[test]
+fn a_mode_whose_rows_were_all_unreadable_is_uncertain_not_absent() {
+    let json = r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"!!!\"></div><div class=\"server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(json).expect("the dub row is readable");
+    assert_eq!(listing.servers.len(), 1);
+    assert_eq!(listing.servers[0].mode, "dub");
+    assert_eq!(listing.unreadable_modes, vec!["sub".to_string()]);
+    assert!(
+        matches!(
+            listing.mode_readable("sub"),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "a mode with rows the client could not read is not absent"
+    );
+    assert!(listing.mode_readable("dub").expect("read"));
+    assert!(parse_server_listing(SERVERS)
+        .expect("parsed")
+        .mode_readable("dub")
+        .expect("read"));
+    let sub_only = parse_server_listing(
+        r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+    )
+    .expect("parsed");
+    assert!(
+        !sub_only.mode_readable("dub").expect("read"),
+        "a mode the listing carries no row of is absent"
+    );
+}
+
 #[test]
 fn a_listing_whose_rows_all_fail_to_parse_is_a_parse_failure() {
     // The marker survived a redesign but the attributes did not: zero
@@ -595,6 +630,17 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A dub server the client reads beside a sub row whose hash
+            // no longer decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21429") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"!!!\"></div><div class=\"server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21420") => {
                 if ajax {
                     ok(SERVERS_RENAMED)
@@ -797,6 +843,23 @@ async fn episodes_are_keyed_on_the_slugs_id_and_asked_as_ajax() {
     let eps = c.episodes("cowboy-bebop-1281").await.expect("listing");
     assert_eq!(eps.iter().map(|e| e.id).collect::<Vec<_>>(), [21418, 21419]);
     let err = c.episodes("cowboy-bebop").await.expect_err("no id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+/// The client answers a mode from its listing: a readable server is
+/// the mode present, no row of it is the mode absent, and rows the
+/// client could not read are a parse failure — never an absence the
+/// mode probe would persist.
+#[tokio::test]
+async fn a_mode_with_only_unreadable_rows_is_a_parse_failure_to_the_client() {
+    let c = client();
+    let err = c.has_mode(21429, "sub").await.expect_err("uncertain");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(c.has_mode(21429, "dub").await.expect("read"));
+    let err = c
+        .master_playlist_url(21429, "sub")
+        .await
+        .expect_err("no stream can be read");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
