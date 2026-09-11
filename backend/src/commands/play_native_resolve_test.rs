@@ -918,3 +918,137 @@ async fn a_resolved_play_carries_the_sources_referer() {
         "sidecar tracks are part of what the resolve hands every consumer"
     );
 }
+
+// ── the track cap is applied where the resolve is built ────────────
+
+/// A provider whose listing carries whatever tracks the test hands
+/// it — a listing padded past the cap, with the default anywhere.
+struct ListingProvider(Vec<crate::scraper::provider::SubtitleTrack>);
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for ListingProvider {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::ProviderId::Anidb
+    }
+    async fn search(
+        &self,
+        _q: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::BrowseHit>> {
+        Ok(vec![crate::scraper::provider::BrowseHit {
+            slug: "the-show-77".into(),
+            title: "The Show".into(),
+            kind: None,
+        }])
+    }
+    async fn episodes(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::EpisodeRef>> {
+        Ok(vec![crate::scraper::provider::EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        }])
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        Ok(true)
+    }
+    async fn master_playlist_url(
+        &self,
+        _e: u64,
+        _m: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        Ok(crate::scraper::provider::StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: self.0.clone(),
+        })
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        Ok("#EXTM3U\n".into())
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        Ok(None)
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+fn listing_track(n: usize, default: bool) -> crate::scraper::provider::SubtitleTrack {
+    crate::scraper::provider::SubtitleTrack {
+        lang: format!("l{n}"),
+        label: format!("Track {n}"),
+        default,
+        url: format!("https://cdn.example/x/subs/{n}.vtt"),
+    }
+}
+
+fn listing_request() -> NativeResolveRequest<'static> {
+    NativeResolveRequest {
+        title: "The Show",
+        alt_titles: &[],
+        episode: "1",
+        mode: "sub",
+        quality: "best",
+        expected_count: Some(1),
+        year: None,
+        subtype: None,
+    }
+}
+
+/// The cap is applied once, where the resolve is built, so every
+/// consumer of the resolve — the cache row, the handoffs' argv, the
+/// session, the download — shares one bound instead of each guarding
+/// (or forgetting to guard) its own. The provider's default track is
+/// kept even when the listing puts it past the cap.
+#[tokio::test]
+async fn a_listing_past_the_cap_is_bounded_where_the_resolve_is_built_and_keeps_its_default() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let total = SUBTITLE_TRACK_CAP + 5;
+    let tracks: Vec<_> = (0..total)
+        .map(|n| listing_track(n, n == total - 1))
+        .collect();
+    let native = resolve_native(&ListingProvider(tracks), listing_request(), &mut |_| {})
+        .await
+        .expect("resolved");
+    assert_eq!(native.subtitles.len(), SUBTITLE_TRACK_CAP);
+    let kept: Vec<&str> = native.subtitles.iter().map(|t| t.lang.as_str()).collect();
+    let expected: Vec<String> = (0..SUBTITLE_TRACK_CAP - 1)
+        .map(|n| format!("l{n}"))
+        .chain(std::iter::once(format!("l{}", total - 1)))
+        .collect();
+    assert_eq!(
+        kept, expected,
+        "the first cap-many in listing order, the default in the last slot"
+    );
+    assert!(
+        native.subtitles.last().is_some_and(|t| t.default),
+        "the provider's default is kept past the cap"
+    );
+}
+
+/// The projections built from a resolve carry the same bound as the
+/// resolve: the cache row that an opted-in cache hit later checks
+/// track by track, and the handoff's argv that every URL lands in.
+#[tokio::test]
+async fn the_cache_row_and_the_launch_built_from_a_resolve_share_the_bound() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let tracks: Vec<_> = (0..SUBTITLE_TRACK_CAP * 3)
+        .map(|n| listing_track(n, n == 0))
+        .collect();
+    let native = resolve_native(&ListingProvider(tracks), listing_request(), &mut |_| {})
+        .await
+        .expect("resolved");
+    let row = crate::commands::play::cached_resolution_for(&native);
+    assert_eq!(row.subtitles.len(), SUBTITLE_TRACK_CAP);
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show",
+        "episode": "1",
+        "mode": "sub",
+    }))
+    .expect("args");
+    let cfg = crate::config::Config::default();
+    let launch = crate::commands::play_handoff::launch_args_for(native, &args, &cfg);
+    assert_eq!(launch.subtitle_urls.len(), SUBTITLE_TRACK_CAP);
+}

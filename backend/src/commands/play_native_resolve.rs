@@ -328,3 +328,7 @@ where
 #[cfg(test)]
 #[path = "play_native_resolve_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_native_resolve_prop_test.rs"]
+mod prop_tests;
