@@ -63,6 +63,21 @@ describe('describePlayFailure', () => {
 		);
 	});
 
+	it('names the episode, not the title, when the show was found and the episode was not', () => {
+		// The show is in the catalogue; this episode has no stream in
+		// the requested audio. Telling the user the title is not in the
+		// catalogue is wrong on both counts.
+		const msg = describePlayFailure({ kind: 'episode_unavailable' });
+		expect(msg).toMatch(/episode/i);
+		expect(msg, 'not the generic shrug').not.toBe(describePlayFailure({ kind: 'io' }));
+		expect(msg, 'not the catalogue miss').not.toBe(
+			describePlayFailure({ kind: 'scraper', detail: 'no_results' })
+		);
+		expect(
+			describePlayFailure({ kind: 'episode_unavailable' }, { noResults: () => 'NOT IN CATALOGUE' })
+		).toBe(msg);
+	});
+
 	it('matches the scraper branch when no_results is not present', () => {
 		expect(describePlayFailure({ kind: 'scraper', detail: 'allmanga 503' })).toMatch(
 			/streaming source looks unhappy/

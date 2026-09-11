@@ -182,6 +182,9 @@ where
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
     let mut any_answered_dead_end = false;
+    // A show was picked and its episode chain answered a dead end —
+    // the episode's verdict, distinct from a pool that matched nothing.
+    let mut any_episode_dead_end = false;
     let mut last_failure_at: Option<tokio::time::Instant> = None;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
@@ -211,6 +214,7 @@ where
                                 ChainOutcome::Stop(ne) => return Err(ne),
                                 ChainOutcome::DeadEnd => {
                                     any_answered_dead_end = true;
+                                    any_episode_dead_end = true;
                                     continue;
                                 }
                                 ChainOutcome::Transient => {
@@ -315,9 +319,15 @@ where
     if any_answered_dead_end {
         // Answered dead ends prove nothing about the show — never
         // the persistable clean miss — but the provider answering is
-        // health to the breaker (NoResults records success).
+        // health to the breaker (both verdicts record success). When
+        // a picked show's episode chain was the dead end, the verdict
+        // is the episode's: the show is there, this episode is not.
         return Err(NativeError {
-            error: AniError::NoResults,
+            error: if any_episode_dead_end {
+                AniError::EpisodeUnavailable
+            } else {
+                AniError::NoResults
+            },
             clean_miss: false,
             failed_at: None,
         });

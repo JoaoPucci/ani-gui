@@ -45,7 +45,12 @@ impl Provider for Stub {
 enum Behavior {
     Answer(&'static str),
     Unreachable(fn() -> AniError),
-    Miss { clean: bool },
+    Miss {
+        clean: bool,
+    },
+    /// The show found, the episode not: the provider's own verdict
+    /// on the episode.
+    MissEpisode,
     Stall,
 }
 
@@ -91,6 +96,11 @@ impl Attempt for Scripted {
             Behavior::Miss { clean } => Err(NativeError {
                 error: AniError::NoResults,
                 clean_miss: clean,
+                failed_at: None,
+            }),
+            Behavior::MissEpisode => Err(NativeError {
+                error: AniError::EpisodeUnavailable,
+                clean_miss: true,
                 failed_at: None,
             }),
             Behavior::Stall => std::future::pending().await,
@@ -434,6 +444,10 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
     );
     assert!(!fails_over(&AniError::NoResults));
     assert!(
+        !fails_over(&AniError::EpisodeUnavailable),
+        "an episode the provider does not carry is an answer too"
+    );
+    assert!(
         !fails_over(&AniError::Upstream { status: 404 }),
         "an answered not-found is an answer"
     );
@@ -747,6 +761,59 @@ mod affinity_props {
     }
 }
 
+mod miss_props {
+    use super::firmer_verdict;
+    use crate::commands::play_native_resolve::NativeError;
+    use crate::error::AniError;
+    use crate::scraper::provider::ProviderId;
+    use proptest::prelude::*;
+
+    /// A miss as a provider reports it: a title miss or an episode
+    /// verdict, with either clean-miss flag.
+    fn miss() -> impl Strategy<Value = NativeError> {
+        (prop::bool::ANY, prop::bool::ANY).prop_map(|(episode, clean_miss)| NativeError {
+            error: if episode {
+                AniError::EpisodeUnavailable
+            } else {
+                AniError::NoResults
+            },
+            clean_miss,
+            failed_at: None,
+        })
+    }
+
+    fn is_episode(ne: &NativeError) -> bool {
+        matches!(ne.error, AniError::EpisodeUnavailable)
+    }
+
+    fn provider() -> impl Strategy<Value = Option<ProviderId>> {
+        prop_oneof![
+            Just(None),
+            Just(Some(ProviderId::Anidb)),
+            Just(Some(ProviderId::Hianime)),
+        ]
+    }
+
+    proptest! {
+        /// The same rule over a verdict and its provider: whichever
+        /// miss is kept, its own provider comes with it.
+        #[test]
+        fn the_kept_verdicts_provider_comes_with_it(
+            earlier in miss(),
+            earlier_by in provider(),
+            later in miss(),
+            later_by in provider(),
+        ) {
+            let keep_earlier = is_episode(&earlier) && !is_episode(&later);
+            let expected_by = if keep_earlier { earlier_by } else { later_by };
+            let expected_flag = if keep_earlier { earlier.clean_miss } else { later.clean_miss };
+            let (kept, by) = firmer_verdict((earlier, earlier_by), (later, later_by));
+            prop_assert_eq!(by, expected_by);
+            prop_assert_eq!(kept.clean_miss, expected_flag);
+        }
+    }
+}
+
 // ── affinity yields; skipped providers are retried ──────────────────
 
 async fn run_with<'a>(
@@ -821,6 +888,79 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     assert!(
         err.clean_miss,
         "the remembered provider's clean miss stands as its own"
+    );
+}
+
+/// A remembered provider that found the show but not the episode has
+/// said something the rest of the order cannot unsay: a later title
+/// miss means that provider lacks the show, not that the episode
+/// verdict was wrong. The episode's verdict is the one the user sees.
+#[tokio::test]
+async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::MissEpisode),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the kept verdict's provider travels with it"
+    );
+}
+
+/// The same when the title miss comes from a skipped provider's
+/// half-open trial: the episode verdict from the provider that was
+/// tried first stands over the trial's title miss.
+#[tokio::test]
+async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the episode verdict's provider, not the trial's"
     );
 }
 

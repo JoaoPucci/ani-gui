@@ -102,8 +102,10 @@ pub fn fails_over(error: &AniError) -> bool {
 /// first. Its answered miss is not the walk's verdict — the row
 /// proves the show and its mode at the show's level, not that every
 /// episode has an embed — so the walk goes on to the rest of the
-/// order, and the miss stands, as given, only when the rest were
-/// unreachable.
+/// order. When the rest answered a miss too, the firmer of the two
+/// verdicts stands: an episode verdict over a title miss, the later
+/// of two of a kind; when the rest were unreachable, the remembered
+/// provider's miss stands as given.
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
@@ -177,8 +179,14 @@ where
                     affinity_miss = Some((miss, by));
                     continue;
                 }
+                let verdict = match affinity_miss.take() {
+                    Some((set_aside, set_by)) => {
+                        firmer_verdict((set_aside, Some(set_by)), (miss, Some(by)))
+                    }
+                    None => (miss, Some(by)),
+                };
                 return retry_skipped(
-                    (miss, Some(by)),
+                    verdict,
                     overall,
                     total_budget,
                     attempt_budget,
@@ -335,10 +343,12 @@ where
 /// skipped for refusing on an interactive walk, which the gate would
 /// have admitted anyway — an open breaker's half-open trial, a pause
 /// it ignores for a click. Those
-/// are asked now: an answer is the walk's, a miss of theirs — the
-/// last answer given — replaces the verdict they were asked for,
-/// author and all, and one unreachable too leaves it standing. The
-/// attempt is told whose miss the verdict is before it surfaces.
+/// are asked now: an answer is the walk's, a miss of theirs is
+/// weighed against the verdict they were asked for — an episode
+/// verdict outranks a title miss, and between two of a kind the
+/// later stands, author travelling with whichever is kept — and one
+/// unreachable too leaves it standing. The attempt is told whose
+/// miss the verdict is before it surfaces.
 ///
 /// # Errors
 /// The verdict that stands.
@@ -377,7 +387,7 @@ where
             {
                 Tried::Answered(answer) => return Ok(answer),
                 Tried::FailedOver => {}
-                Tried::Missed(ne, by) => verdict = (ne, Some(by)),
+                Tried::Missed(ne, by) => verdict = firmer_verdict(verdict, (ne, Some(by))),
             }
         }
     }
@@ -386,6 +396,32 @@ where
         attempt.missed_by(by);
     }
     Err(error)
+}
+
+/// Whether the earlier of two misses is the one to keep. An episode
+/// verdict outranks a title miss: a provider that found the show and
+/// not the episode has said something a later title miss cannot
+/// unsay — the later provider lacks the show, which says nothing
+/// about the episode. Between two verdicts of the same kind the later
+/// one stands, as it did before.
+fn keeps_earlier(earlier: &NativeError, later: &NativeError) -> bool {
+    let episode = |ne: &NativeError| matches!(ne.error, AniError::EpisodeUnavailable);
+    episode(earlier) && !episode(later)
+}
+
+/// The verdict to keep when two providers both missed, with the
+/// provider whose verdict it is, so the provider travels with the
+/// verdict that is kept — the row a miss writes names the provider
+/// that missed, not the last one asked.
+fn firmer_verdict(
+    earlier: (NativeError, Option<ProviderId>),
+    later: (NativeError, Option<ProviderId>),
+) -> (NativeError, Option<ProviderId>) {
+    if keeps_earlier(&earlier.0, &later.0) {
+        earlier
+    } else {
+        later
+    }
 }
 
 /// Where each provider's client points: the state's overrides, or a
