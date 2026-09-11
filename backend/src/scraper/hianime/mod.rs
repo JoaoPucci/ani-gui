@@ -135,6 +135,11 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // The mode's rows the client could not read are a parse
         // failure before any embed page is asked for.
         listing.mode_readable(mode)?;
+        // A row of the mode the client could not read stays a doubt
+        // through the walk: should no server serve a stream, the
+        // verdict is the mode's uncertainty, never the answered
+        // absence — the unreadable row may have been the server.
+        let uncertain = listing.unreadable_modes.iter().any(|m| m == mode);
         let servers = listing.servers;
         // The first server whose page decodes to a stream wins; every
         // other outcome is stepped over and remembered, and the
@@ -174,7 +179,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 }
             }
         }
-        Err(kept.unwrap_or(AniError::NoResults))
+        Err(final_verdict(kept, uncertain, mode))
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
@@ -217,6 +222,26 @@ fn weightier(kept: AniError, next: AniError) -> AniError {
         next
     } else {
         kept
+    }
+}
+
+/// The verdict when no server served a stream: the loudest failure
+/// kept across the hosts, lifted to a parse failure when the mode had
+/// a row the client could not read — that row may have been the
+/// playable server, so the walk's end is the site having changed
+/// shape, not the episode having no stream — and the answered
+/// absence only when every page merely lacked the payload and every
+/// row was read. The lift ranks like any parse failure, so a rate
+/// limit still outranks it.
+fn final_verdict(kept: Option<AniError>, uncertain: bool, mode: &str) -> AniError {
+    let doubt = uncertain.then(|| AniError::ParseFailed {
+        detail: format!("hianime {mode} servers: a row the client could not read"),
+    });
+    match (kept, doubt) {
+        (Some(kept), Some(doubt)) => weightier(kept, doubt),
+        (Some(kept), None) => kept,
+        (None, Some(doubt)) => doubt,
+        (None, None) => AniError::NoResults,
     }
 }
 
