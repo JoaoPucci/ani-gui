@@ -232,7 +232,10 @@ where
                             title: picked.hit.title,
                             master_url: resolved.master_url,
                             referer: resolved.referer,
-                            subtitles: resolved.subtitles,
+                            // Bounded once, here, so the cache row,
+                            // the session, the handoffs' argv and the
+                            // download all share the bound.
+                            subtitles: tracks_within_cap(resolved.subtitles),
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,
@@ -323,6 +326,37 @@ where
         clean_miss: true,
         failed_at: None,
     })
+}
+
+/// The tracks of a listing the resolve carries: the first
+/// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
+/// in listing order, with one exception — a default track the listing
+/// put past the cap takes the last kept slot, so the provider's own
+/// choice is never dropped and no more than one track moves. A
+/// listing that fits is kept as it is. Applied once, where the
+/// resolve is built, so every projection of the resolve shares the
+/// bound instead of each guarding its own.
+#[must_use]
+pub(crate) fn tracks_within_cap(mut tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    if tracks.len() <= SUBTITLE_TRACK_CAP {
+        return tracks;
+    }
+    let dropped = tracks.len() - SUBTITLE_TRACK_CAP;
+    tracing::warn!(
+        dropped,
+        "resolve: subtitle listing longer than the track cap, the rest dropped"
+    );
+    if let Some(default_at) = tracks.iter().position(|t| t.default) {
+        if default_at >= SUBTITLE_TRACK_CAP {
+            let default = tracks.swap_remove(default_at);
+            tracks.truncate(SUBTITLE_TRACK_CAP - 1);
+            tracks.push(default);
+            return tracks;
+        }
+    }
+    tracks.truncate(SUBTITLE_TRACK_CAP);
+    tracks
 }
 
 #[cfg(test)]

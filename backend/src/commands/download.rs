@@ -980,7 +980,10 @@ pub(crate) async fn write_sidecar_subtitles_within(
     .await
 }
 
-/// The sidecar phase in full. Only the first
+/// The sidecar phase in full. The resolve bounds its listing where it
+/// is built, so a download's tracks arrive within the cap; the writer
+/// applies it again for a caller that hands it a listing of its own.
+/// Only the first
 /// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
 /// tracks of the listing are fetched, `concurrency` at a time, each
 /// given until the deadline, and each body is written the moment it
