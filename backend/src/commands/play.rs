@@ -260,6 +260,8 @@ where
                     "play: cache hit (HEAD ok)",
                 );
                 write_history_on_cache_hit(state, args, &cached);
+                crate::commands::play_cache::stamp_availability_on_cache_hit(state, args, &cached)
+                    .await;
                 return Ok(resp);
             }
             // HEAD failed — the cached URL is dead. Evict the row and

@@ -304,6 +304,47 @@ pub async fn stamp_after_native(
     .await;
 }
 
+/// Refresh the positive row a served replay stands on. The
+/// resolution cache outlives the availability row — a cached stream
+/// replays for days after an airing show's positive row has expired
+/// — so without this the next probe would start from the primary,
+/// whose clean miss could hide a stream the cache just served. A
+/// replay learns nothing new about the listing: a positive row that
+/// already names `provider` is written back as it is, cap and extras
+/// kept, with a fresh lifetime; any other row becomes the boolean
+/// positive row a served resolve without a cap writes. Under the
+/// same refresh guard as a resolve's stamp.
+pub async fn stamp_after_cache_hit(
+    state: &AppState,
+    kitsu_id: Option<&str>,
+    mode: &str,
+    generation_at_start: u64,
+    provider: crate::scraper::provider::ProviderId,
+) {
+    let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let row = cache_key(id, mode);
+    let standing: Option<AvailabilityResponse> = meta_cache_get(&state.cache_pool, &row)
+        .ok()
+        .flatten()
+        .and_then(|body| serde_json::from_str(&body).ok())
+        .filter(|parsed: &AvailabilityResponse| {
+            parsed.available && parsed.provider == Some(provider)
+        });
+    crate::commands::availability_refresh::with_row_if_ours(
+        &state.availability_refreshes,
+        &row,
+        generation_at_start,
+        false,
+        || match &standing {
+            Some(parsed) => write_cache_full(state, id, mode, None, parsed),
+            None => write_cache(state, id, mode, true, Some(provider)),
+        },
+    )
+    .await;
+}
+
 /// Inputs for the batch `availability_cached` lookup — a list of
 /// Kitsu ids and the mode to read cached results for. Skips the
 /// network entirely; only returns entries that already have a value
