@@ -19,6 +19,7 @@ pub mod anidb;
 pub mod fetch;
 pub mod gate;
 pub mod gated;
+pub mod hianime;
 pub mod hls;
 pub mod outcome;
 pub mod provider;
