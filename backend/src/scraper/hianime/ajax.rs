@@ -112,44 +112,118 @@ pub struct ServerEmbed {
     pub embed_url: String,
 }
 
-/// An episode's servers. A server whose hash does not decode to an
-/// absolute http(s) URL is skipped: nothing downstream can use it.
-/// So is one whose mode is not `sub` or `dub`, the two the site types
-/// its servers with and the two the mode probe asks for: a row typed
-/// as nothing, or as some renamed value, is not a server of any mode
-/// the client knows, and counting it as read would let a listing of
-/// such rows pass as "no sub, no dub" instead of a changed shape.
+/// The modes the site types its servers with, and the two the mode
+/// probe asks for.
+const KNOWN_MODES: [&str; 2] = ["sub", "dub"];
+
+/// An episode's server listing as read: the servers whose rows the
+/// client could use, and the modes that had a row the client could
+/// not — a hash that does not decode, a decoded value that is not an
+/// absolute http(s) URL, a name missing. A mode's uncertainty is kept
+/// because a listing can be readable for one mode and not the other,
+/// and "no readable sub server" read as "no sub" is an absence the
+/// mode probe persists over a playback the site still lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerListing {
+    /// The servers the client could read, in the site's order.
+    pub servers: Vec<ServerEmbed>,
+    /// The known modes with at least one row the client could not
+    /// read, whether or not another row of the mode could be; each
+    /// mode at most once, in the order first seen.
+    pub unreadable_modes: Vec<String>,
+}
+
+impl ServerListing {
+    /// Whether `mode` is served: `true` with a readable server of it,
+    /// `false` when the listing carried no row of it at all.
+    ///
+    /// # Errors
+    /// [`AniError::ParseFailed`] when the mode has no readable server
+    /// but had a row the client could not read — the shape changed
+    /// under one mode, which is not the site listing none.
+    pub fn mode_readable(&self, mode: &str) -> Result<bool> {
+        if self.servers.iter().any(|s| s.mode == mode) {
+            return Ok(true);
+        }
+        if self.unreadable_modes.iter().any(|m| m == mode) {
+            return Err(AniError::ParseFailed {
+                detail: format!("hianime {mode} servers without a readable row"),
+            });
+        }
+        Ok(false)
+    }
+}
+
+/// One row of the server list, read as far as the client can.
+fn read_server_row(item: &str) -> Option<Result<ServerEmbed, String>> {
+    let mode = attr(item, "data-type=\"")?.trim().to_string();
+    if !KNOWN_MODES.contains(&mode.as_str()) {
+        return None;
+    }
+    let read = || -> Option<ServerEmbed> {
+        let name = attr(item, "data-server-name=\"")?.trim().to_string();
+        let hash = attr(item, "data-hash=\"")?.trim();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(hash)
+            .ok()?;
+        let embed_url = String::from_utf8(bytes).ok()?;
+        let parsed = url::Url::parse(&embed_url).ok()?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return None;
+        }
+        Some(ServerEmbed {
+            mode: mode.clone(),
+            name,
+            embed_url,
+        })
+    };
+    Some(read().ok_or(mode))
+}
+
+/// An episode's servers, with the listing's uncertainty per mode
+/// ([`ServerListing`]). A row whose mode is not `sub` or `dub` — typed
+/// as nothing, or as some renamed value — is not a server of any mode
+/// the client knows and is skipped without marking a mode; counting
+/// it as read would let a listing of such rows pass as "no sub, no
+/// dub" instead of a changed shape. A row of a known mode the client
+/// cannot read marks that mode unreadable and is skipped; a nonempty
+/// listing with no readable row at all is refused.
 ///
 /// # Errors
-/// As [`unwrap_envelope`].
-pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
+/// As [`unwrap_envelope`], and [`AniError::ParseFailed`] for a
+/// nonempty listing that produced no readable row.
+pub fn parse_server_listing(json: &str) -> Result<ServerListing> {
     let html = unwrap_envelope(json)?;
-    let rows = html
+    let mut servers = Vec::new();
+    let mut unreadable_modes: Vec<String> = Vec::new();
+    for row in html
         .split("server-item")
         .skip(1)
-        .filter_map(|item| {
-            let mode = attr(item, "data-type=\"")?.trim().to_string();
-            if !matches!(mode.as_str(), "sub" | "dub") {
-                return None;
+        .filter_map(read_server_row)
+    {
+        match row {
+            Ok(server) => servers.push(server),
+            Err(mode) => {
+                if !unreadable_modes.contains(&mode) {
+                    unreadable_modes.push(mode);
+                }
             }
-            let name = attr(item, "data-server-name=\"")?.trim().to_string();
-            let hash = attr(item, "data-hash=\"")?.trim();
-            let bytes = base64::engine::general_purpose::STANDARD
-                .decode(hash)
-                .ok()?;
-            let embed_url = String::from_utf8(bytes).ok()?;
-            let parsed = url::Url::parse(&embed_url).ok()?;
-            if !matches!(parsed.scheme(), "http" | "https") {
-                return None;
-            }
-            Some(ServerEmbed {
-                mode,
-                name,
-                embed_url,
-            })
-        })
-        .collect();
-    recognized(&html, rows, "server list")
+        }
+    }
+    let servers = recognized(&html, servers, "server list")?;
+    Ok(ServerListing {
+        servers,
+        unreadable_modes,
+    })
+}
+
+/// An episode's servers alone — [`parse_server_listing`] without the
+/// per-mode uncertainty, for callers that only walk the servers.
+///
+/// # Errors
+/// As [`parse_server_listing`].
+pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
+    parse_server_listing(json).map(|listing| listing.servers)
 }
 
 /// The embed hosts whose pages carry the payload the client reads —
