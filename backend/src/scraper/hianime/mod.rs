@@ -239,3 +239,7 @@ mod tests;
 #[cfg(test)]
 #[path = "hianime_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "megaplay_test.rs"]
+mod megaplay_tests;
