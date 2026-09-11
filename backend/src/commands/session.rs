@@ -97,9 +97,10 @@ fn create_session_inner(
     media_kind: MediaKind,
 ) -> Result<CreateSessionResponse> {
     let mut session = StreamSession::new_with_kind(upstream, media_kind, args.referer.clone());
-    // The player fetches every track it is handed, so a listing is
-    // bounded here as the download's writer bounds it: the first
-    // cap-many tracks, the rest dropped with a note.
+    // The resolve bounds its listing where it is built, so a fresh
+    // play arrives within the cap; this guard is for what did not
+    // come through that boundary — a cache row written before the
+    // bound existed — and drops the rest with a note.
     let (tracks, dropped) = crate::proxy::upstream::within_track_cap(&args.subtitles);
     if dropped > 0 {
         tracing::warn!(
