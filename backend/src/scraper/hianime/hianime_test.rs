@@ -776,6 +776,41 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A zokoanime server whose master never answers, then a
+            // megaplay server whose chain answers.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21436") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // Both servers' masters never answer.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21437") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk2L3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The payload decodes to a master whose host holds the
+            // connection open and never answers — the outage as the
+            // transport sees it before its own deadline.
+            "https://zokoanime.video/stream/mal/9/stalling/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwkHBgMAFQMIFEETHhlbEh8UQQkEDAJLQBdCGxETRRgeEFVASUZeA1MbHRUHEF5HVzk4GQ=="</script></body></html>"#,
+            ),
+            "https://hls.example/v/stalling/master.m3u8" => std::future::pending().await,
+            "https://megaplay.buzz/stream/s-2/734296/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "8"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=8" => ok(
+                r#"{"sources":{"file":"https://mp.example/v/stalling/master.m3u8"},"tracks":[]}"#,
+            ),
+            "https://mp.example/v/stalling/master.m3u8" => std::future::pending().await,
             // The payload decodes to a master that answers but whose
             // 720 rendition the host refuses.
             "https://zokoanime.video/stream/mal/9/stalled/sub" => ok(
@@ -1315,4 +1350,52 @@ async fn every_servers_rendition_dead_surfaces_the_loudest_failure() {
         .await
         .expect_err("no server served the rendition");
     assert!(matches!(err, AniError::Upstream { status: 503 }), "{err:?}");
+}
+
+/// A client whose per-server budget is short enough for a test to
+/// wait out: the production bound is sized for real hosts.
+fn client_with_server_budget(ms: u64) -> HianimeClient<Site> {
+    client().with_server_budget(std::time::Duration::from_millis(ms))
+}
+
+/// A stream host can hold a connection open without answering; the
+/// transport gives such a fetch ten seconds, and the walk of one
+/// provider has twenty in all, part of them spent on the search and
+/// the listings before any server is asked. Unbounded, one such
+/// server spends what the later servers needed and the whole
+/// attempt times out with a healthy server unasked. Each server's
+/// chain has its own bound, and a server that stalls past it is
+/// stepped over like one that refused.
+#[tokio::test]
+async fn a_server_that_stalls_past_its_budget_is_stepped_over_for_the_next_server() {
+    let c = client_with_server_budget(100);
+    let started = std::time::Instant::now();
+    let stream = c.stream_for(21436, "sub", "720").await.expect("resolved");
+    assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the stalled server was cut off at its budget, not waited out: {:?}",
+        started.elapsed()
+    );
+    let urls: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.clone())
+        .collect();
+    assert!(
+        urls.contains(&"https://hls.example/v/stalling/master.m3u8".to_string()),
+        "the stalling master was asked before the next server: {urls:?}"
+    );
+}
+
+#[tokio::test]
+async fn every_server_stalling_surfaces_a_timeout() {
+    let c = client_with_server_budget(100);
+    let err = c
+        .stream_for(21437, "sub", "720")
+        .await
+        .expect_err("no server answered in time");
+    assert!(matches!(err, AniError::Timeout), "{err:?}");
 }
