@@ -268,3 +268,262 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
         "the row must carry the resolved provider slot, not the display tag: {hsts}"
     );
 }
+
+/// The spawn is the watch. A player that cannot start — the binary is
+/// missing, the path is wrong — leaves no history row and no
+/// watched-at stamp, so the resume never points at an episode nobody
+/// saw.
+#[tokio::test]
+async fn a_failed_spawn_records_no_watch() {
+    let mock = MockServer::start().await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), &mock.uri());
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\n",
+            dir.path().join("no-such-player").display()
+        ),
+    )
+    .expect("write config");
+
+    let err = play_external(&state, &play_args())
+        .await
+        .expect_err("the player cannot start");
+    assert!(
+        matches!(err, crate::error::AniError::PlayerSpawnFailed { .. }),
+        "{err:?}"
+    );
+    assert!(
+        !state.history_path.exists(),
+        "no history row for a watch that never began"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        None
+    );
+}
+
+/// A cached resolution is as much a watch as a fresh one once the
+/// player has started: the row and the stamp are written then, keyed
+/// on the cached show id, so the resume's latest-stamp choice sees
+/// this watch and not the other provider's older row.
+#[tokio::test]
+async fn a_cached_external_play_records_the_watch_after_the_spawn() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let args = play_args();
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: "cached-show-9".into(),
+            show_title: "Cached Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+        },
+    );
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+
+    let argv = wait_for(&argv_file).await;
+    assert!(
+        argv.contains("/cached/master.m3u8"),
+        "the cached URL reached the player: {argv}"
+    );
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    assert!(
+        hsts.contains("cached-show-9"),
+        "the row keys on the cached show id: {hsts}"
+    );
+    let stamp = crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+        .expect("stamp read")
+        .expect("the watch is stamped once the player started");
+    assert!(stamp >= before);
+}
+
+/// The handoff's row is only found by the Kitsu id when the show's
+/// reverse mapping exists — the detail page resumes through it, and
+/// when two providers have each left a row it is the stamps of the
+/// MAPPED rows that decide. A play stamps the mapping on
+/// mark-watched; a handoff has no mark-watched, so the spawn stamps
+/// it, on the fresh path and the cached one alike.
+#[tokio::test]
+async fn an_external_play_persists_the_shows_kitsu_mapping() {
+    let mock = MockServer::start().await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &mock.uri());
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("write config");
+    let args = PlayArgs {
+        kitsu_id: Some("K42".into()),
+        ..play_args()
+    };
+
+    play_external(&state, &args).await.expect("plays");
+    wait_for(&argv_file).await;
+
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        Some("K42".into()),
+        "the spawn persists the show's reverse mapping"
+    );
+    let resumed = crate::commands::history::history_by_kitsu(&state, "K42")
+        .expect("history read")
+        .expect("the row is found by its Kitsu id");
+    assert_eq!(resumed.id, "the-show-77");
+}
+
+#[tokio::test]
+async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let args = PlayArgs {
+        kitsu_id: Some("K42".into()),
+        ..play_args()
+    };
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: "cached-show-9".into(),
+            show_title: "Cached Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+        },
+    );
+
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+    wait_for(&argv_file).await;
+
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
+        Some("K42".into()),
+        "a cached handoff persists the mapping too"
+    );
+}
+
+/// The stamp and the mapping follow the row, never lead it. When the
+/// history file cannot be written — a directory sits where it should
+/// be, the state directory is full — the watch is not on disk, and a
+/// stamp advanced anyway would make that unrecorded watch the latest
+/// of the show's rows: the resume would pick this row's stale
+/// episode over another provider's real one.
+#[tokio::test]
+async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    std::fs::create_dir_all(&state.history_path).expect("a directory where the file should be");
+    let watch = crate::commands::play_native_record::Watch {
+        show_id: "the-show-77".into(),
+        title: "The Show".into(),
+        ep_no: "3".into(),
+    };
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        None,
+        "a watch that never reached the file must not be stamped"
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        None,
+        "nor mapped"
+    );
+}
+
+/// The same watch with a writable file: row, stamp and mapping all
+/// land.
+#[tokio::test]
+async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let watch = crate::commands::play_native_record::Watch {
+        show_id: "the-show-77".into(),
+        title: "The Show".into(),
+        ep_no: "3".into(),
+    };
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
+    assert!(hsts.contains("the-show-77"), "{hsts}");
+    assert!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77")
+            .expect("stamp read")
+            .is_some(),
+        "the persisted watch is stamped"
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
+            .expect("mapping read")
+            .as_deref(),
+        Some("K42")
+    );
+}

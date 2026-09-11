@@ -99,7 +99,7 @@ async fn the_handoff_resolves_through_the_native_walk() {
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let launch = super::play_handoff::resolve_launch_args(&state, &args_for())
+    let (launch, _watch) = super::play_handoff::resolve_launch_args(&state, &args_for())
         .await
         .expect("the native walk resolves the stream");
     assert!(
@@ -157,6 +157,7 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
+        provider: crate::scraper::provider::ProviderId::Anidb,
         referer: Some("https://embed.example/".into()),
         subtitles: vec![crate::scraper::provider::SubtitleTrack {
             lang: "en".into(),
@@ -184,6 +185,7 @@ fn launch_args_carry_the_resolves_referer() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
+        provider: crate::scraper::provider::ProviderId::Anidb,
         referer: referer.map(str::to_string),
         subtitles: Vec::new(),
     };
@@ -213,6 +215,7 @@ fn launch_args_lead_with_the_providers_default_track() {
     let cfg = crate::config::Config::default();
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "show-1".into(),
+        provider: crate::scraper::provider::ProviderId::Anidb,
         title: "Show".into(),
         master_url: "https://cdn.example/x/master.m3u8".into(),
         episode_cap: None,
@@ -283,4 +286,27 @@ mod default_first_props {
             prop_assert_eq!(kept, rest);
         }
     }
+}
+
+/// The resolve is not the watch — the spawn is. A player that fails
+/// to start must leave no history row and no watched-at stamp
+/// behind, so the resolve records nothing; the commands that spawn
+/// record the watch once the spawn succeeded.
+#[tokio::test]
+async fn the_resolve_records_no_watch_before_the_spawn() {
+    let server = stub_provider().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &server.uri());
+    let (_launch, _native) = super::play_handoff::resolve_launch_args(&state, &args_for())
+        .await
+        .expect("the native walk resolves the stream");
+    assert!(
+        !state.history_path.exists(),
+        "no history row before the player has started"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "handoff-show-7").expect("stamp read"),
+        None,
+        "no watched-at stamp before the player has started"
+    );
 }

@@ -980,16 +980,16 @@ describe('kitsuTitleMatchGet', () => {
 	it('GETs /api/title-match with title + cour as query params', async () => {
 		const fetchMock = mockFetchOnce('kitsu-id-42');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await kitsuTitleMatchGet('Stone Ocean Part 2', 2);
+		const got = await kitsuTitleMatchGet('Stone Ocean Part 2', 2, 'anidb');
 		const { url } = lastCall(fetchMock);
 		// URLSearchParams emits `+` for spaces in `application/x-www-form-urlencoded`.
-		expect(url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2`);
+		expect(url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2&provider=anidb`);
 		expect(got).toBe('kitsu-id-42');
 	});
 
 	it('returns null on cache miss', async () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
-		const got = await kitsuTitleMatchGet('Whatever', 1);
+		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');
 		expect(got).toBeNull();
 	});
 });
@@ -998,7 +998,7 @@ describe('kitsuTitleMatchPut', () => {
 	it('PUTs the JSON body the backend expects (kitsu_id snake_case)', async () => {
 		const fetchMock = mockFetchOnce(null, 204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await kitsuTitleMatchPut('Demon Slayer', 1, 'kitsu-x');
+		await kitsuTitleMatchPut('Demon Slayer', 1, 'kitsu-x', 'hianime');
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/title-match`);
 		expect(init?.method).toBe('PUT');
@@ -1006,7 +1006,8 @@ describe('kitsuTitleMatchPut', () => {
 		expect(JSON.parse(init?.body as string)).toEqual({
 			title: 'Demon Slayer',
 			cour: 1,
-			kitsu_id: 'kitsu-x'
+			kitsu_id: 'kitsu-x',
+			provider: 'hianime'
 		});
 	});
 });

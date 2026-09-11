@@ -65,14 +65,29 @@ pub fn history_by_kitsu(
         return Ok(None);
     }
     let entries = read_all(&state.history_path)?;
+    // Two providers can leave two rows for one show, one under each
+    // provider's id. The one the user watched last is the one to
+    // resume from: the latest watched-at stamp wins, a stamped row
+    // beats an unstamped one, and file order stands when nothing
+    // separates them.
+    let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
-        if let Ok(Some(mapped)) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id) {
-            if mapped == kitsu_id {
-                return Ok(Some(to_kitsu_numbering(state, entry)));
-            }
+        let Ok(Some(mapped)) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id) else {
+            continue;
+        };
+        if mapped != kitsu_id {
+            continue;
+        }
+        let stamp = crate::commands::kitsu::watched_at_get(state, &entry.id).unwrap_or(None);
+        let newer = match &best {
+            None => true,
+            Some((_, current)) => stamp > *current,
+        };
+        if newer {
+            best = Some((entry, stamp));
         }
     }
-    Ok(None)
+    Ok(best.map(|(entry, _)| to_kitsu_numbering(state, entry)))
 }
 
 /// Remove the history row matching `id`. Returns `true` when a row
@@ -103,6 +118,10 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
 pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
     write_atomic(&state.history_path, &[])
 }
+
+#[cfg(test)]
+#[path = "history_selection_test.rs"]
+mod selection_tests;
 
 #[cfg(test)]
 mod tests {

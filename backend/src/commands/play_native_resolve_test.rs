@@ -834,12 +834,12 @@ fn the_resolve_deadline_stays_inside_the_half_open_trial_window() {
 /// must carry it out with the master URL, or every consumer of the
 /// resolve — session, cache row, downloader, handoff — sends none and
 /// the stream that just validated fails to play.
-struct RefererProvider;
+struct RefererProvider(crate::scraper::provider::ProviderId);
 
 #[async_trait::async_trait]
 impl crate::scraper::provider::Provider for RefererProvider {
     fn id(&self) -> crate::scraper::provider::ProviderId {
-        crate::scraper::provider::ProviderId::Anidb
+        self.0
     }
     async fn search(
         &self,
@@ -903,9 +903,13 @@ async fn a_resolved_play_carries_the_sources_referer() {
         year: None,
         subtype: None,
     };
-    let native = resolve_native(&RefererProvider, req, &mut |_| {})
-        .await
-        .expect("resolved");
+    let native = resolve_native(
+        &RefererProvider(crate::scraper::provider::ProviderId::Anidb),
+        req,
+        &mut |_| {},
+    )
+    .await
+    .expect("resolved");
     assert_eq!(native.master_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(native.referer.as_deref(), Some("https://embed.example/"));
     assert_eq!(
@@ -916,5 +920,44 @@ async fn a_resolved_play_carries_the_sources_referer() {
             .collect::<Vec<_>>(),
         ["https://cdn.example/x/subs/en.vtt"],
         "sidecar tracks are part of what the resolve hands every consumer"
+    );
+}
+
+/// The resolved play's id says whose it is: anidb keeps the bare
+/// slug every existing row holds, another provider's carries its
+/// label — and the resolve names the provider that answered, for the
+/// breaker and the progress lines that come next.
+#[tokio::test]
+async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
+    let req = NativeResolveRequest {
+        title: "The Show",
+        alt_titles: &[],
+        episode: "1",
+        mode: "sub",
+        quality: "best",
+        expected_count: Some(1),
+        year: None,
+        subtype: None,
+    };
+    let anidb = resolve_native(
+        &RefererProvider(crate::scraper::provider::ProviderId::Anidb),
+        req,
+        &mut |_| {},
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(anidb.slug, "the-show-77");
+    assert_eq!(anidb.provider, crate::scraper::provider::ProviderId::Anidb);
+    let hianime = resolve_native(
+        &RefererProvider(crate::scraper::provider::ProviderId::Hianime),
+        req,
+        &mut |_| {},
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(hianime.slug, "hianime:the-show-77");
+    assert_eq!(
+        hianime.provider,
+        crate::scraper::provider::ProviderId::Hianime
     );
 }

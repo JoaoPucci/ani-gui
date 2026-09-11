@@ -40,6 +40,17 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
+    /// The provider a label names. Anything that is not a known
+    /// label — an absent one included — is anidb, the default every
+    /// caller from before there were two providers means.
+    #[must_use]
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "hianime" => Self::Hianime,
+            _ => Self::Anidb,
+        }
+    }
+
     /// The label the renderer interpolates into its progress copy
     /// ("Searching {provider}…").
     #[must_use]
@@ -84,6 +95,85 @@ pub struct EpisodeRef {
     /// recaps and specials stream under decimal tags ("1061.5"),
     /// and a decimal play request matches this field verbatim.
     pub number2: Option<String>,
+}
+
+/// The digits after a slug's last hyphen, when there are any —
+/// the entry id both providers key their listings on.
+#[must_use]
+pub fn slug_numeric_id(slug: &str) -> Option<u64> {
+    slug.rsplit('-').next()?.parse().ok()
+}
+
+/// The Kitsu-searchable text a slug carries: its hyphenated
+/// words with the trailing numeric id removed (`one-piece-69` →
+/// `one piece`). `None` when `slug` isn't slug-shaped — legacy
+/// allanime ids are mixed-case and hyphenless, so they fall through
+/// to their own resolve path.
+#[must_use]
+pub fn slug_search_term(slug: &str) -> Option<String> {
+    slug_numeric_id(slug)?;
+    let (words, _id) = slug.rsplit_once('-')?;
+    if words.is_empty() {
+        return None;
+    }
+    Some(words.replace('-', " "))
+}
+
+/// A show id that says whose id it is. Every store stamped by a
+/// resolve — history rows, the numbering sidecar, the watched-at
+/// stamps, the reverse mapping, the cache row — keys on this key's
+/// string form. anidb's is the bare slug every existing row already
+/// holds, so nothing migrates; any other provider's carries its label
+/// as a prefix, so the read side can tell them apart.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ShowKey {
+    /// The provider whose slug this is.
+    pub provider: ProviderId,
+    /// The slug as the provider spells it.
+    pub slug: String,
+}
+
+impl ShowKey {
+    /// A key for `slug` on `provider`.
+    pub fn new(provider: ProviderId, slug: impl Into<String>) -> Self {
+        Self {
+            provider,
+            slug: slug.into(),
+        }
+    }
+
+    /// The key a stored id names. A prefix the app does not know is
+    /// part of the slug: only a known label qualifies an id, and a
+    /// bare id is anidb's — including the allanime-era ids that
+    /// predate slugs, which parse but carry no words.
+    #[must_use]
+    pub fn parse(id: &str) -> Self {
+        for provider in [ProviderId::Hianime] {
+            if let Some(slug) = id
+                .strip_prefix(provider.label())
+                .and_then(|r| r.strip_prefix(':'))
+            {
+                return Self::new(provider, slug);
+            }
+        }
+        Self::new(ProviderId::Anidb, id)
+    }
+
+    /// The Kitsu-searchable words the slug carries, when it is
+    /// slug-shaped — both providers spell theirs `words-id`.
+    #[must_use]
+    pub fn search_term(&self) -> Option<String> {
+        slug_search_term(&self.slug)
+    }
+}
+
+impl std::fmt::Display for ShowKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.provider {
+            ProviderId::Anidb => f.write_str(&self.slug),
+            other => write!(f, "{}:{}", other.label(), self.slug),
+        }
+    }
 }
 
 /// A sidecar subtitle track a provider lists beside the stream —
@@ -195,3 +285,7 @@ pub trait Provider: Send + Sync {
     /// aggregate failure verdicts with it.
     fn last_attempt_at(&self) -> Option<tokio::time::Instant>;
 }
+
+#[cfg(test)]
+#[path = "provider_test.rs"]
+mod tests;

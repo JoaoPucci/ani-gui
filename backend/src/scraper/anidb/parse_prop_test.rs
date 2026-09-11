@@ -9,7 +9,7 @@ use crate::scraper::anidb::parse_api::{parse_episodes, parse_languages, preferre
 use crate::scraper::anidb::LanguageEmbed;
 use crate::scraper::provider::{encode_query, is_cloudflare_interstitial};
 
-use super::{slug_numeric_id, slug_search_term};
+use crate::scraper::provider::{slug_numeric_id, slug_search_term};
 
 proptest::proptest! {
     /// Every slug-shaped id round-trips to its own words: the
