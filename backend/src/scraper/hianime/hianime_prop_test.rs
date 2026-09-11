@@ -276,6 +276,61 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_servers(&envelope(&html)).expect("servers"), expected);
     }
 
+    /// The listing keeps its uncertainty per mode. Over rows of either
+    /// mode, readable or not: the readable rows come back as servers
+    /// in order; a mode is marked unreadable exactly when at least one
+    /// of its rows could not be read, whether or not another of its
+    /// rows could; a mode answers present when it has a readable
+    /// server, uncertain when it has none but an unreadable row, and
+    /// absent when the listing carried no row of it; and a listing
+    /// with no readable row at all is refused.
+    #[test]
+    fn a_mode_is_uncertain_exactly_when_its_rows_were_unreadable(
+        rows in proptest::collection::vec(
+            ("(sub|dub)", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}", proptest::bool::ANY),
+            1..6,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(mode, name, host, path, readable)| {
+                let hash = if *readable {
+                    base64::engine::general_purpose::STANDARD.encode(format!("https://{host}/{path}").as_bytes())
+                } else {
+                    "!!!".to_string()
+                };
+                format!(r#"<div class="item server-item" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"></div>"#)
+            })
+            .collect();
+        let expected: Vec<ServerEmbed> = rows
+            .iter()
+            .filter(|(_, _, _, _, readable)| *readable)
+            .map(|(mode, name, host, path, _)| ServerEmbed {
+                mode: mode.clone(),
+                name: name.clone(),
+                embed_url: format!("https://{host}/{path}"),
+            })
+            .collect();
+        match parse_server_listing(&envelope(&html)) {
+            Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(expected.is_empty(), "refused with readable rows present"),
+            Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+            Ok(listing) => {
+                proptest::prop_assert_eq!(&listing.servers, &expected);
+                for mode in ["sub", "dub"] {
+                    let readable_of_mode = rows.iter().any(|(m, _, _, _, r)| m == mode && *r);
+                    let unreadable_of_mode = rows.iter().any(|(m, _, _, _, r)| m == mode && !*r);
+                    proptest::prop_assert_eq!(listing.unreadable_modes.iter().any(|m| m == mode), unreadable_of_mode);
+                    match listing.mode_readable(mode) {
+                        Ok(true) => proptest::prop_assert!(readable_of_mode),
+                        Ok(false) => proptest::prop_assert!(!readable_of_mode && !unreadable_of_mode),
+                        Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(!readable_of_mode && unreadable_of_mode),
+                        Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+                    }
+                }
+            }
+        }
+    }
+
     /// A row whose mode is blank never comes back: the rows with a
     /// mode come back in order, and a listing of only blank rows is
     /// refused rather than read as no servers.
