@@ -467,8 +467,8 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .iter()
             .map(|s| s.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["ZokoAnime", "HD-1", "HD-2"],
-        "zokoanime first though the site lists it last"
+        vec!["HD-1", "HD-2", "ZokoAnime"],
+        "megaplay's pages are read too, so the site's order stands"
     );
     assert_eq!(
         servers_for(&renamed, "dub")
@@ -476,7 +476,19 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .map(|s| s.embed_url.as_str())
             .collect::<Vec<_>>(),
         vec!["https://megaplay.buzz/stream/s-2/8272/dub?s=tcdn"],
-        "a mode with no readable host still lists what the site has"
+        "a mode's only server is listed whatever its host"
+    );
+    let unread_first = parse_servers(
+        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-3\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvc3RyZWFtL2FiYy9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1iY2Ru\"></div>"}"#,
+    )
+    .expect("parsed");
+    assert_eq!(
+        servers_for(&unread_first, "sub")
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["HD-2", "HD-3"],
+        "a host the client reads comes before one it does not, though the site lists it after"
     );
     assert!(servers_for(&renamed, "raw").is_empty());
 }

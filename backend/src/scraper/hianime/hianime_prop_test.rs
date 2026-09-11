@@ -539,7 +539,10 @@ proptest::proptest! {
         for s in &expected {
             prop_assert!(picked.iter().any(|p| std::ptr::eq(*p, *s)));
         }
-        let readable = |s: &ServerEmbed| s.embed_url.starts_with("https://zokoanime.video/");
+        let readable = |s: &ServerEmbed| {
+            s.embed_url.starts_with("https://zokoanime.video/")
+                || s.embed_url.starts_with("https://megaplay.buzz/")
+        };
         let first_unreadable = picked.iter().position(|s| !readable(s));
         let last_readable = picked.iter().rposition(|s| readable(s));
         if let (Some(u), Some(r)) = (first_unreadable, last_readable) {
