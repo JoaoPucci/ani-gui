@@ -405,8 +405,10 @@ the shape against the app as it is then.
   videos themselves (not only the songs): a WebM per theme at 720p or
   1080p with a separate OGG audio file, the song title and artists,
   the theme's number and kind, credited and creditless variants, and
-  links to the MyAnimeList, AniList, Kitsu and aniDB ids of each
-  show — which the title-resolution bridge already speaks. Seen on
+  links to the MyAnimeList, AniList and Kitsu ids of each show —
+  the ids the title-resolution bridge already speaks — plus an
+  AniDB.net id, which is a database's id and nothing to do with the
+  anidb.app streaming provider, resolved by title. Seen on
   the day: the API answers without a key at ninety requests a minute
   and its CDN serves the files to a plain GET with range requests;
   its JSON API is marked deprecated in favour of a GraphQL endpoint
