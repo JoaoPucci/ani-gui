@@ -209,6 +209,62 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
+/// Serves hianime's chain for one episode — the server list, the
+/// embed page, the master — and counts every request, so a test can
+/// say how many times the master was asked for.
+struct HianimeChain {
+    requests: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl crate::scraper::fetch::Fetch for HianimeChain {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str().to_string();
+        self.requests.lock().expect("requests").push(url.clone());
+        let body = if url.contains("/api/theme/episode/servers?episodeId=10") {
+            r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#.to_string()
+        } else if url == "https://zokoanime.video/stream/mal/1/1/sub" {
+            r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwIPGwMAFQMIFEETHhdbDAoGWQAfTAhXWE4TQ1YSHhdZDBkOABcPTGoyCQ=="</script></body></html>"#.to_string()
+        } else if url == "https://cdn.example/x/master.m3u8" {
+            "#EXTM3U\n".to_string()
+        } else {
+            return Ok(FetchResponse {
+                status: 404,
+                body: String::new(),
+            });
+        };
+        Ok(FetchResponse { status: 200, body })
+    }
+}
+
+/// The episode step validates the stream once, inside the provider's
+/// walk of the servers: the master is asked for one time, not once
+/// by the walk and again by a quality step outside it.
+#[tokio::test]
+async fn the_episode_step_asks_hianime_for_the_master_once() {
+    let picked = show(vec![ep(10, 1, None)]);
+    let client = crate::scraper::hianime::HianimeClient::with_base(
+        HianimeChain {
+            requests: std::sync::Mutex::new(Vec::new()),
+        },
+        "https://hianime.test",
+    );
+    let url = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect("resolved")
+        .master_url;
+    assert_eq!(url, "https://cdn.example/x/master.m3u8");
+    let masters = client
+        .transport()
+        .requests
+        .lock()
+        .expect("requests")
+        .iter()
+        .filter(|u| u.as_str() == "https://cdn.example/x/master.m3u8")
+        .count();
+    assert_eq!(masters, 1, "the master is validated once, inside the walk");
+}
+
 proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error

@@ -754,6 +754,55 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A zokoanime server whose master answers but whose 720
+            // rendition refuses, then a megaplay server whose whole
+            // chain answers.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21434") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // Both servers' masters answer; both 720 renditions refuse.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21435") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk1L3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The payload decodes to a master that answers but whose
+            // 720 rendition the host refuses.
+            "https://zokoanime.video/stream/mal/9/stalled/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwkHBgMAFQMIFEETHhlbEh8UQQkIBkoJTAVFCgZPBkZYXU9ORxdYFEUGAA0OBg9fNj8Y"</script></body></html>"#,
+            ),
+            "https://hls.example/v/stalled/master.m3u8" => {
+                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/stalled/720/index.m3u8" => refused(503),
+            "https://megaplay.buzz/stream/s-2/734295/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "7"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=7" => {
+                ok(r#"{"sources":{"file":"https://mp.example/v/stalled/master.m3u8"},"tracks":[]}"#)
+            }
+            "https://mp.example/v/stalled/master.m3u8" => {
+                if header(req, "Referer") == Some("https://megaplay.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/stalled/720/index.m3u8" => refused(503),
             // The payload decodes to a master on a host that is down.
             "https://zokoanime.video/stream/mal/9/dead/sub" => ok(
                 r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwUOFElLCBoECV0aVEACTgYUXhEIEEsJHgMJTVhDGABPEQQWCQFeVAs0KRw="</script></body></html>"#,
@@ -792,7 +841,14 @@ impl Fetch for Site {
             }
             "https://mp.example/v/master.m3u8" => {
                 if header(req, "Referer") == Some("https://megaplay.buzz/") {
-                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080,NAME=\"1080p\"\nindex-f1.m3u8\n")
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080,NAME=\"1080p\"\nindex-f1.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,NAME=\"720p\"\nindex-f2.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/index-f2.m3u8" => {
+                if header(req, "Referer") == Some("https://megaplay.buzz/") {
+                    ok("#EXTM3U\n")
                 } else {
                     refused(403)
                 }
@@ -1223,5 +1279,40 @@ async fn every_servers_stream_host_dead_surfaces_the_loudest_failure() {
         .master_playlist_url(21433, "sub")
         .await
         .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 503 }), "{err:?}");
+}
+
+/// The episode step selects a quality and fetches the rendition;
+/// that is the validation a play rides on. A server whose master
+/// answers but whose rendition refuses is a server that does not
+/// serve the play, and the walk steps to the next one — the
+/// validation the caller uses happens inside the walk of the
+/// servers, or a dead rendition ends the walk after it returned and
+/// the resolver moves to the next alias, never the next server.
+#[tokio::test]
+async fn a_server_whose_rendition_refuses_is_stepped_over_for_one_whose_chain_answers() {
+    let c = client();
+    let stream = c.stream_for(21434, "sub", "720").await.expect("resolved");
+    assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+    let urls: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.clone())
+        .collect();
+    assert!(
+        urls.contains(&"https://hls.example/v/stalled/720/index.m3u8".to_string()),
+        "the first server's rendition was asked before the next server: {urls:?}"
+    );
+}
+
+#[tokio::test]
+async fn every_servers_rendition_dead_surfaces_the_loudest_failure() {
+    let c = client();
+    let err = c
+        .stream_for(21435, "sub", "720")
+        .await
+        .expect_err("no server served the rendition");
     assert!(matches!(err, AniError::Upstream { status: 503 }), "{err:?}");
 }
