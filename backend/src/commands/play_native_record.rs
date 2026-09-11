@@ -46,7 +46,8 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved) {
 /// each left a row for one show, picks the one to resume from. The
 /// embedded player stamps on mark-watched, once playback has
 /// reported progress; a handoff stamps once the player has started.
-/// A failed write is logged and swallowed, like the row's.
+/// A failed write is logged and swallowed, like the row's; a row
+/// that could not be written is not stamped at all ([`record_watch`]).
 pub(crate) fn stamp_watched_now(state: &AppState, show_id: &str) {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -85,15 +86,15 @@ impl Watch {
     }
 }
 
-/// Record a handoff's watch: the history row, the watched-at stamp
-/// and, when the caller knows the Kitsu id, the show's reverse
-/// mapping — written once the player has started; the spawn is the
-/// watch, and a player that failed to start leaves nothing behind.
-/// The mapping is what lets the row be found by the Kitsu id, and
-/// what puts its stamp in the running when two providers have each
-/// left a row; the embedded player writes it on mark-watched, which
-/// a handoff never reaches. A watch without a show id (a cached row
-/// from before the field) records nothing.
+/// Record a watch: the history row, the watched-at stamp and, when
+/// the caller knows the Kitsu id, the show's reverse mapping. A
+/// handoff records once its player has started — the spawn is the
+/// watch, and a player that failed to start leaves nothing behind;
+/// the embedded player records on mark-watched, once playback has
+/// reported progress. The mapping is what lets the row be found by
+/// the Kitsu id, and what puts its stamp in the running when two
+/// providers have each left a row. A watch without a show id (a
+/// cached row from before the field) records nothing.
 ///
 /// The row leads and the rest follow: a history write that fails —
 /// the state directory unwritable or full while the cache is not —
