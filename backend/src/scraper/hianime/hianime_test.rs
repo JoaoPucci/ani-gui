@@ -434,6 +434,14 @@ fn a_listing_whose_container_holds_nothing_is_the_provider_answering_no_episodes
 /// is what the client can read.
 const SERVERS_RENAMED: &str = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1iY2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xNzM1LzM5MS9zdWI=\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9kdWI/cz10Y2Ru\"></div>"}"#;
 
+/// megaplay's embed page as captured on 2026-09-12: no payload in the
+/// markup, the player element naming the media.
+const MEGAPLAY_PAGE: &str = r#"<!DOCTYPE html><html><head><title>File 179411 - MegaPlay</title></head><body><div class="mg3-player"><div class="fix-area" id="megaplay-player" data-id="179411" data-realid="734292" data-mediaid="8879" data-fileversion="0"><div class="content-center"></div></div></div></body></html>"#;
+
+/// megaplay's sources response as captured on 2026-09-12, the master
+/// and the tracks pointed at stub hosts.
+const MEGAPLAY_SOURCES: &str = r#"{"sources":{"file":"https://mp.example/v/master.m3u8"},"tracks":[{"file":"https://mp.example/v/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true},{"file":"https://mp.example/v/subs/track_2_Latin_American_spa.vtt","label":"Spanish (Latin American)","kind":"captions"}],"t":1,"intro":{"start":0,"end":0},"outro":{"start":0,"end":0},"server":4}"#;
+
 /// The servers to try for a mode, in order: the ones on a host whose
 /// embed page the client can read first, then the site's own order.
 /// A name is not a shape — `HD-1` moved hosts between two captures.
@@ -459,8 +467,8 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .iter()
             .map(|s| s.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["ZokoAnime", "HD-1", "HD-2"],
-        "zokoanime first though the site lists it last"
+        vec!["HD-1", "HD-2", "ZokoAnime"],
+        "megaplay's pages are read too, so the site's order stands"
     );
     assert_eq!(
         servers_for(&renamed, "dub")
@@ -468,7 +476,19 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .map(|s| s.embed_url.as_str())
             .collect::<Vec<_>>(),
         vec!["https://megaplay.buzz/stream/s-2/8272/dub?s=tcdn"],
-        "a mode with no readable host still lists what the site has"
+        "a mode's only server is listed whatever its host"
+    );
+    let unread_first = parse_servers(
+        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-3\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvc3RyZWFtL2FiYy9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1iY2Ru\"></div>"}"#,
+    )
+    .expect("parsed");
+    assert_eq!(
+        servers_for(&unread_first, "sub")
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["HD-2", "HD-3"],
+        "a host the client reads comes before one it does not, though the site lists it after"
     );
     assert!(servers_for(&renamed, "raw").is_empty());
 }
@@ -686,6 +706,93 @@ impl Fetch for Site {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwNC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwMy9zdWI=\"></div>"}"#,
                     )
+                } else {
+                    refused(403)
+                }
+            }
+            // A megaplay server alone: its page carries no payload and
+            // names its media; the sources come from the site.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21430") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A megaplay server whose sources come back encrypted,
+            // null in the clear.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21431") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkzL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A zokoanime server whose page decodes to a master on a
+            // dead host, then a megaplay server that serves.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21432") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2RlYWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // Every server's stream on a dead host: zokoanime's, then
+            // megaplay's.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21433") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2RlYWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk0L3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The payload decodes to a master on a host that is down.
+            "https://zokoanime.video/stream/mal/9/dead/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwUOFElLCBoECV0aVEACTgYUXhEIEEsJHgMJTVhDGABPEQQWCQFeVAs0KRw="</script></body></html>"#,
+            ),
+            "https://dead.example/v/master.m3u8" => refused(503),
+            // megaplay's pages as captured: no payload, the player
+            // element naming the media. The sources endpoint wants the
+            // page's own origin as the referer, like its player sends.
+            "https://megaplay.buzz/stream/s-2/734292/sub?s=bcdn" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(MEGAPLAY_PAGE)
+                } else {
+                    refused(403)
+                }
+            }
+            "https://megaplay.buzz/stream/s-2/734293/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "5"))
+            }
+            "https://megaplay.buzz/stream/s-2/734294/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "6"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=179411" => {
+                if header(req, "Referer") == Some("https://megaplay.buzz/")
+                    && header(req, "X-Requested-With") == Some("XMLHttpRequest")
+                {
+                    ok(MEGAPLAY_SOURCES)
+                } else {
+                    refused(403)
+                }
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=5" => ok(
+                r#"{"tracks":[],"t":1,"intro":{"start":0,"end":0},"outro":{"start":0,"end":0},"server":4,"enc":"wdeBruh3qqn"}"#,
+            ),
+            "https://megaplay.buzz/stream/getSourcesNew?id=6" => {
+                ok(r#"{"sources":{"file":"https://dead.example/v/master.m3u8"},"tracks":[]}"#)
+            }
+            "https://mp.example/v/master.m3u8" => {
+                if header(req, "Referer") == Some("https://megaplay.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080,NAME=\"1080p\"\nindex-f1.m3u8\n")
                 } else {
                     refused(403)
                 }
@@ -1039,4 +1146,82 @@ async fn a_payload_the_client_cannot_decode_is_stepped_over_when_a_later_server_
     let c = client();
     let source = c.master_playlist_url(21423, "sub").await.expect("resolved");
     assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+}
+
+/// The site lists megaplay servers beside zokoanime's, and their
+/// pages carry no payload: the player names its media, and asks the
+/// site for the sources. The client reads that shape too, so an
+/// episode plays from whichever server the site lists.
+#[tokio::test]
+async fn a_megaplay_server_is_read_through_the_sites_sources_endpoint() {
+    let c = client();
+    let source = c.master_playlist_url(21430, "sub").await.expect("resolved");
+    assert_eq!(
+        source,
+        StreamSource {
+            master_url: "https://mp.example/v/master.m3u8".into(),
+            referer: Some("https://megaplay.buzz/".into()),
+            subtitles: vec![
+                SubtitleTrack {
+                    lang: "eng".into(),
+                    label: "English".into(),
+                    default: true,
+                    url: "https://mp.example/v/subs/track_0_eng.vtt".into(),
+                },
+                SubtitleTrack {
+                    lang: "spa".into(),
+                    label: "Spanish (Latin American)".into(),
+                    default: false,
+                    url: "https://mp.example/v/subs/track_2_Latin_American_spa.vtt".into(),
+                },
+            ],
+        },
+        "the referer is the embed host's origin, which the CDN and the sources endpoint both check"
+    );
+}
+
+#[tokio::test]
+async fn a_megaplay_server_whose_sources_are_encrypted_is_a_parse_failure() {
+    // The older endpoint's shape: the sources encrypted, null in the
+    // clear. The site changed what it hands the client; that is
+    // never an episode without a stream.
+    let c = client();
+    let err = c
+        .master_playlist_url(21431, "sub")
+        .await
+        .expect_err("no usable source");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+/// A server's page can decode to a stream on a host that is down.
+/// Taking it ends the walk on a master that never answers — the
+/// episode step's fetch times out and the resolver moves to the next
+/// alias, never the next server — while the site listed another
+/// server whose stream is up.
+#[tokio::test]
+async fn a_server_whose_stream_host_is_dead_is_stepped_over_for_the_next_server() {
+    let c = client();
+    let source = c.master_playlist_url(21432, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://mp.example/v/master.m3u8");
+    assert_eq!(source.referer.as_deref(), Some("https://megaplay.buzz/"));
+    let urls: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.clone())
+        .collect();
+    assert!(
+        urls.contains(&"https://dead.example/v/master.m3u8".to_string()),
+        "the dead master was asked before the next server: {urls:?}"
+    );
+}
+
+#[tokio::test]
+async fn every_servers_stream_host_dead_surfaces_the_loudest_failure() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21433, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 503 }), "{err:?}");
 }

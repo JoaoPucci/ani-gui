@@ -10,18 +10,23 @@
 //! the embed host's origin as `Referer` on every playlist fetch.
 //!
 //! An episode lists several servers, named by slot, and the site
-//! moves the slots between embed hosts; only some hosts' pages carry
-//! the blob. The client tries the servers it can read first and
-//! takes the first page that decodes.
+//! moves the slots between embed hosts, and the hosts differ in how
+//! their pages expose the stream: zokoanime's carry the blob;
+//! megaplay's carry no payload, only the media id its player asks
+//! the site's sources endpoint for. The client reads a page by its
+//! shape, not the host's name, tries the servers on hosts it can
+//! read first, and takes the first that yields a stream.
 
 pub mod ajax;
 pub mod embed;
+pub mod megaplay;
 pub mod parse;
 pub use ajax::{
     parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
     ServerListing,
 };
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
+pub use megaplay::{lang_of_track, media_id, parse_sources, sources_url};
 pub use parse::{parse_detail_year, parse_search, slug_id};
 
 use crate::error::{AniError, Result};
@@ -90,6 +95,73 @@ impl<F: Fetch> HianimeClient<F> {
         Ok(resp.body)
     }
 
+    /// A server's stream, read from its embed page by the page's
+    /// shape: a page carrying the payload decodes in place; a page
+    /// without it that names its media — megaplay's — has the site
+    /// asked for the sources, with the page's own origin as the
+    /// referer and the header its player sends; a page with neither
+    /// shape is a host the client does not read, an answered
+    /// "nothing here".
+    ///
+    /// # Errors
+    /// [`AniError::NoResults`] for a page of neither shape; the
+    /// fetches' own refusals and transport failures; a parse failure
+    /// for a payload or a sources answer the client cannot use.
+    async fn read_server(&self, server: &ServerEmbed) -> Result<EmbedPayload> {
+        // The embed host checks that the site sent the viewer.
+        let embed = FetchRequest::get(server.embed_url.clone())
+            .header("Referer", format!("{}/", self.base));
+        let page = self.content(&embed).await?;
+        match decode_embed(&page) {
+            Err(AniError::NoResults) => {}
+            decoded => return decoded,
+        }
+        let Some(id) = media_id(&page) else {
+            return Err(AniError::NoResults);
+        };
+        let url = sources_url(&server.embed_url, id).ok_or_else(|| AniError::ParseFailed {
+            detail: "megaplay embed URL without an origin".into(),
+        })?;
+        let sources = FetchRequest::get(url)
+            .header(
+                "Referer",
+                embed_origin(&server.embed_url).unwrap_or_default(),
+            )
+            .header("X-Requested-With", "XMLHttpRequest");
+        parse_sources(&self.content(&sources).await?)
+    }
+
+    /// A server's stream, once its host has answered: the master is
+    /// fetched with the embed host's origin as the referer and must be
+    /// a playlist. A payload names a host that may be down — on
+    /// 2026-09-12 zokoanime's playlist host was, for every episode,
+    /// while megaplay's served — and a stream taken unasked ends the
+    /// walk of the servers on a master that never answers, which the
+    /// episode step's own fetch then times out on, sending the
+    /// resolver to the next alias and never the next server. The
+    /// episode step fetches the master again after this; that second
+    /// fetch of a small playlist is the price of stepping servers
+    /// here, where the servers are.
+    ///
+    /// # Errors
+    /// The master fetch's own refusal or transport failure; a parse
+    /// failure for a body that is not a playlist, as the episode step
+    /// would report it.
+    async fn served(&self, server: &ServerEmbed, payload: EmbedPayload) -> Result<StreamSource> {
+        let referer = embed_origin(&server.embed_url);
+        let body = self.playlist(&payload.src, referer.as_deref()).await?;
+        if !crate::scraper::hls::is_hls_playlist(&body) {
+            return Err(AniError::ParseFailed {
+                detail: "master URL did not answer with an HLS playlist".into(),
+            });
+        }
+        Ok(StreamSource {
+            master_url: payload.src,
+            referer,
+            subtitles: payload.subtitles,
+        })
+    }
+
     /// An episode's servers, as the site lists them, with the
     /// listing's uncertainty per mode.
     async fn servers(&self, episode_id: u64) -> Result<ServerListing> {
@@ -136,36 +208,29 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // failure before any embed page is asked for.
         listing.mode_readable(mode)?;
         let servers = listing.servers;
-        // The first server whose page decodes to a stream wins; every
-        // other outcome is stepped over and remembered, and the
-        // loudest surfaces when no server served a stream
+        // The first server whose page yields a stream whose host
+        // answers wins ([`Self::read_server`], [`Self::served`]);
+        // every other outcome is stepped over and remembered, and
+        // the loudest surfaces when no server served a stream
         // ([`weightier`]): a rate limit above everything, since it
         // alone opens the breaker's advertised pause at once; then a
-        // page that carries a payload the client cannot use — the key
-        // does not open it, or its source is nothing the transport
-        // fetches — which is the site having changed and the client
-        // no longer reading it; then a host that refused or failed,
-        // which speaks for the provider; then an answered status or a
-        // dropped connection. A page without the payload is a host the
-        // client does not read at all, and an episode with only those
-        // has no stream.
+        // page, a sources answer or a master the client cannot use —
+        // the key does not open it, the source is nothing the
+        // transport fetches, the sources came back encrypted, the
+        // master is not a playlist — which is the site having
+        // changed and the client no longer reading it; then a host
+        // that refused or failed, which speaks for the provider; then
+        // an answered status or a dropped connection. A page of
+        // neither shape is a host the client does not read at all,
+        // and an episode with only those has no stream.
         let mut kept: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
-            // The embed host checks that the site sent the viewer.
-            let embed = FetchRequest::get(server.embed_url.clone())
-                .header("Referer", format!("{}/", self.base));
-            let outcome = match self.content(&embed).await {
-                Ok(page) => decode_embed(&page),
+            let outcome = match self.read_server(server).await {
+                Ok(payload) => self.served(server, payload).await,
                 Err(e) => Err(e),
             };
             match outcome {
-                Ok(payload) => {
-                    return Ok(StreamSource {
-                        master_url: payload.src,
-                        referer: embed_origin(&server.embed_url),
-                        subtitles: payload.subtitles,
-                    })
-                }
+                Ok(source) => return Ok(source),
                 Err(AniError::NoResults) => {}
                 Err(e) => {
                     kept = Some(match kept.take() {
@@ -239,3 +304,11 @@ mod tests;
 #[cfg(test)]
 #[path = "hianime_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "megaplay_test.rs"]
+mod megaplay_tests;
+
+#[cfg(test)]
+#[path = "megaplay_prop_test.rs"]
+mod megaplay_prop_tests;
