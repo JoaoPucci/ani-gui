@@ -1245,6 +1245,34 @@ mod tests {
         seed_play_cache_with_tracks(state, args, upstream, referer, Vec::new());
     }
 
+    /// A cached row whose show key names the provider it was
+    /// resolved through — a qualified key for any provider but
+    /// anidb, whose keys are bare.
+    fn seed_play_cache_from(state: &AppState, args: &PlayArgs, upstream: &str, show_id: &str) {
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+            args.subtype.as_deref(),
+        );
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: upstream.into(),
+                referer: String::new(),
+                media_kind: MediaKind::Hls,
+                show_id: show_id.into(),
+                show_title: "Test (12 episodes)".into(),
+                resolved_slot: Some(1),
+                subtitles: Vec::new(),
+            },
+        );
+    }
+
     /// A sidecar track as a resolve lists it.
     fn track(lang: &str, default: bool, url: &str) -> crate::scraper::provider::SubtitleTrack {
         crate::scraper::provider::SubtitleTrack {
@@ -1387,6 +1415,128 @@ mod tests {
             body.contains("abc"),
             "history must contain seeded show_id; got: {body:?}"
         );
+    }
+
+    /// A cached row was resolved through some provider, and the row's
+    /// show key names it. The resolution cache outlives the
+    /// availability row — seven days against a day for an airing
+    /// show — so a served replay refreshes the provider's positive
+    /// row, or the next probe starts from the primary and its clean
+    /// miss hides a stream the cache just served.
+    #[tokio::test]
+    async fn a_served_cache_hit_refreshes_the_providers_positive_row() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = PlayArgs {
+            kitsu_id: Some("K9".into()),
+            ..external_args("Remembered Show", "3")
+        };
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:remembered-show-77",
+        );
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "K9", "sub"),
+            None,
+            "nothing is remembered before the replay"
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "K9", "sub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the replay refreshes the row with the provider the cached show key names"
+        );
+    }
+
+    /// A replay learns nothing new about the listing, so a full row
+    /// the provider's probe wrote — cap and extras — keeps its cap
+    /// through the refresh instead of collapsing to a boolean row.
+    #[tokio::test]
+    async fn a_served_cache_hit_keeps_the_full_row_it_stands_on() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = PlayArgs {
+            kitsu_id: Some("K10".into()),
+            ..external_args("Capped Show", "2")
+        };
+        crate::commands::availability::write_cache_full(
+            &state,
+            "K10",
+            "sub",
+            None,
+            &crate::commands::availability::AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: vec!["3.5".into()],
+                episode_count_approximate: false,
+                gate_refused: false,
+                provider: Some(crate::scraper::provider::ProviderId::Hianime),
+            },
+        );
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:capped-show-78",
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["K10".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("K10"), Some(&true));
+        assert_eq!(
+            cached.playable_episode_counts.get("K10"),
+            Some(&12),
+            "the cap the probe wrote survives the replay"
+        );
+    }
+
+    /// A replay for a request that carries no Kitsu id has no row to
+    /// refresh, and writes none.
+    #[tokio::test]
+    async fn a_served_cache_hit_without_a_kitsu_id_stamps_nothing() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = external_args("Anonymous Show", "1");
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:anonymous-show-79",
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["".into(), "K11".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(cached.cached.is_empty(), "no row was written: {cached:?}");
     }
 
     /// HEAD failure → cache row evicted, function falls through to

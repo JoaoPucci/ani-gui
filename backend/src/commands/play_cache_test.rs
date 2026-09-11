@@ -106,3 +106,92 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
         "a row without a slot translates the display number"
     );
 }
+
+/// The handoff's cache hit stands on the same row the embedded
+/// player's does, and refreshes it the same way: the provider the
+/// cached show key names is remembered again after the launch.
+#[tokio::test]
+async fn a_cached_handoff_refreshes_the_providers_positive_row() {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+    )
+    .expect("args");
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: "hianime:show-1".into(),
+            show_title: "Show".into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+        },
+    );
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..Default::default()
+    };
+    let launched = super::try_launch_args_from_cache(&state, &args, &cfg).await;
+    assert!(launched.is_some(), "the row is live and is served");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "K12", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime)
+    );
+}
+
+mod row_provider_props {
+    use super::super::cached_row_provider;
+    use crate::commands::play_resolution_cache::CachedResolution;
+    use crate::proxy::MediaKind;
+    use crate::scraper::provider::{ProviderId, ShowKey};
+    use proptest::prelude::*;
+
+    fn row(show_id: &str) -> CachedResolution {
+        CachedResolution {
+            upstream_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: show_id.into(),
+            show_title: "Show".into(),
+            resolved_slot: None,
+            subtitles: Vec::new(),
+        }
+    }
+
+    proptest! {
+        /// A row's provider is the one its show key names — the
+        /// qualified prefix, or anidb for a bare key — and a row from
+        /// before the field, with an empty key, names none.
+        #[test]
+        fn the_rows_provider_is_the_one_its_show_key_names(
+            prefix in proptest::option::of(Just("hianime:")),
+            slug in "[a-z0-9-]{1,20}",
+        ) {
+            let id = format!("{}{slug}", prefix.unwrap_or(""));
+            prop_assert_eq!(cached_row_provider(&row(&id)), Some(ShowKey::parse(&id).provider));
+            prop_assert_eq!(
+                cached_row_provider(&row(&id)),
+                Some(if prefix.is_some() { ProviderId::Hianime } else { ProviderId::Anidb })
+            );
+            prop_assert_eq!(cached_row_provider(&row("")), None);
+        }
+    }
+}
