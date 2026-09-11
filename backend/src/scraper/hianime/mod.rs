@@ -43,12 +43,26 @@ use crate::scraper::provider::{
 /// is filtered per ISP.
 pub const HIANIME_BASE: &str = "https://hianime.at";
 
+/// How long one server's chain — its page, its sources answer, its
+/// master and the chosen rendition — may take before the walk steps
+/// to the next server. Sized against the walk's own budget: a
+/// provider's whole attempt has twenty seconds, of which the search,
+/// the entry and the listings take about a second and a half when
+/// the site is healthy, and a host that holds a connection open
+/// costs the transport its full ten-second wait. Six seconds a
+/// server lets three servers be tried inside the attempt, where an
+/// unbounded server's single stalled master would spend the whole
+/// attempt with the site's other servers unasked — which is the
+/// outage of 2026-09-12 as the walk would have met it.
+pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
+
 /// The hianime client: search, episode listing, and stream-URL
 /// resolution over any [`Fetch`]. The walks reach it through
 /// [`Provider`].
 pub struct HianimeClient<F> {
     fetch: F,
     base: String,
+    server_budget: std::time::Duration,
     /// The instant of the attempt that produced the failure the
     /// server walk last kept, with the transport's stamp as it stood
     /// when the walk ended: the kept failure may come from an earlier
@@ -72,6 +86,7 @@ impl<F: Fetch> HianimeClient<F> {
         Self {
             fetch,
             base: HIANIME_BASE.to_string(),
+            server_budget: SERVER_ATTEMPT_BUDGET,
             kept_attempt_at: std::sync::Mutex::new(None),
         }
     }
@@ -82,8 +97,17 @@ impl<F: Fetch> HianimeClient<F> {
         Self {
             fetch,
             base: base.to_string(),
+            server_budget: SERVER_ATTEMPT_BUDGET,
             kept_attempt_at: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Replace the per-server budget — the seam the stalled-host
+    /// tests drive; production keeps [`SERVER_ATTEMPT_BUDGET`].
+    #[cfg(test)]
+    pub(crate) fn with_server_budget(mut self, budget: std::time::Duration) -> Self {
+        self.server_budget = budget;
+        self
     }
 
     /// The transport this client fetches through.
@@ -285,11 +309,24 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // background walk — and ends the walk as it is: no later
         // server is asked, and the shared walk stops on it rather
         // than recording a dead end.
+        //
+        // Each server's chain has its own bound
+        // ([`SERVER_ATTEMPT_BUDGET`]): a host that holds a connection
+        // open without answering would otherwise spend, on one server,
+        // the time the walk's attempt had left for the rest, and the
+        // attempt would time out with a healthy server unasked. A
+        // server cut off at its bound is stepped over like one whose
+        // connection dropped; the transport's child is killed with
+        // the future it ran under.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         for server in servers_for(&servers, mode) {
-            let outcome = match self.read_server(server).await {
-                Ok(payload) => self.resolved(server, payload, quality).await,
-                Err(e) => Err(e),
+            let chain = async {
+                let payload = self.read_server(server).await?;
+                self.resolved(server, payload, quality).await
+            };
+            let outcome = match tokio::time::timeout(self.server_budget, chain).await {
+                Ok(outcome) => outcome,
+                Err(_elapsed) => Err(AniError::Timeout),
             };
             // The attempt that produced this outcome, read before the
             // next server's fetch moves the transport's stamp.
