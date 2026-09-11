@@ -15,7 +15,7 @@
 
 use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
-use crate::scraper::provider::Provider;
+use crate::scraper::provider::{Provider, SubtitleTrack};
 
 use super::play_native::pick_candidate;
 pub use super::play_native_episode::resolve_episode;
@@ -37,6 +37,9 @@ pub struct NativeResolved {
     /// consumer of the resolve sends it: the proxy session, the cache
     /// row, the download tool, the external player.
     pub referer: Option<String>,
+    /// Sidecar subtitle tracks listed beside the stream — outside the
+    /// playlist, so every consumer has to carry them itself.
+    pub subtitles: Vec<SubtitleTrack>,
     /// Highest episode number the provider lists, for the
     /// availability cap stamp. Free — the picker already fetched the
     /// list.
@@ -229,6 +232,7 @@ where
                             title: picked.hit.title,
                             master_url: resolved.master_url,
                             referer: resolved.referer,
+                            subtitles: resolved.subtitles,
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,

@@ -6,6 +6,7 @@ fn source(master_url: &str) -> StreamSource {
     StreamSource {
         master_url: master_url.into(),
         referer: None,
+        subtitles: Vec::new(),
     }
 }
 

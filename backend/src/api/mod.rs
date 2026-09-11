@@ -199,6 +199,15 @@ async fn post_session(
     State(state): State<Arc<AppState>>,
     Json(args): Json<session_inner::CreateSessionArgs>,
 ) -> Result<Json<session_inner::CreateSessionResponse>, AniError> {
+    // Sidecar tracks are attached by the resolver, never by the
+    // caller of this route: it is reachable from any page that finds
+    // the loopback port, and the proxy fetches a session's tracks on
+    // the caller's behalf.
+    if !args.subtitles.is_empty() {
+        return Err(AniError::ParseFailed {
+            detail: "subtitles: attached by the resolver, not accepted here".into(),
+        });
+    }
     Ok(Json(session_inner::create_session(&state, &args)?))
 }
 
@@ -1411,6 +1420,7 @@ mod tests {
                 show_id: String::new(),
                 show_title: String::new(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1455,6 +1465,7 @@ mod tests {
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1507,6 +1518,7 @@ mod tests {
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let pool = state.cache_pool.clone();
@@ -1579,6 +1591,7 @@ mod tests {
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1673,6 +1686,7 @@ mod tests {
                 show_id: "seq-show".into(),
                 show_title: "Some Sequel (12 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -1756,6 +1770,7 @@ mod tests {
                 show_id: "seq2-show".into(),
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -1850,6 +1865,7 @@ mod tests {
                 show_title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)"
                     .into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
 
@@ -1948,6 +1964,7 @@ mod tests {
                 show_id: "vDTSJHSpYnrkZnAvG".into(),
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let pool = state.cache_pool.clone();
@@ -2075,6 +2092,7 @@ mod tests {
                 show_id: "abc".into(),
                 show_title: "Some Show (12 episodes)".into(),
                 resolved_slot: None,
+                subtitles: Vec::new(),
             },
         );
         let pool = state.cache_pool.clone();
@@ -2238,6 +2256,33 @@ mod tests {
         assert!(
             response.status().is_client_error(),
             "expected 4xx for malformed body, got {}",
+            response.status()
+        );
+    }
+
+    /// Sidecar tracks are attached by the resolver, never by the
+    /// caller of the public route: the endpoint is reachable from any
+    /// page that finds the loopback port, and a track it accepted
+    /// would be fetched by the proxy on the caller's behalf.
+    #[tokio::test]
+    async fn the_public_session_route_refuses_caller_supplied_tracks() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let body = r#"{"upstream_url":"https://cdn.example/master.m3u8","subtitles":[{"lang":"en","label":"English","default":true,"url":"http://127.0.0.1:1/admin/status"}]}"#;
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert!(
+            response.status().is_client_error(),
+            "a caller-supplied track list is refused; got {}",
             response.status()
         );
     }

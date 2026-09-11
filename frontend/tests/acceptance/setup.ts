@@ -11,6 +11,7 @@
 //     else should fail loudly rather than silently return undefined.
 
 import { afterAll, afterEach, beforeAll } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
@@ -27,7 +28,12 @@ installElementAnimateStub();
 export const API_BASE = 'http://127.0.0.1:31337';
 
 /** Started with no handlers — each scenario installs its own. */
-export const server = setupServer();
+// Every mounted play page asks the proxy for its session's sidecar
+// tracks; by default there are none. A test that wants tracks
+// overrides this per session.
+export const server = setupServer(
+	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([]))
+);
 
 beforeAll(() => {
 	// `error` rather than `warn`: an unhandled request means the

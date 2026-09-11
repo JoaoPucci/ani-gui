@@ -21,7 +21,7 @@ pub use ajax::{
     parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
     ServerListing,
 };
-pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
+pub use embed::{decode_embed, embed_origin, EmbedPayload};
 pub use parse::{parse_detail_year, parse_search, slug_id};
 
 use crate::error::{AniError, Result};
@@ -163,6 +163,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                     return Ok(StreamSource {
                         master_url: payload.src,
                         referer: embed_origin(&server.embed_url),
+                        subtitles: payload.subtitles,
                     })
                 }
                 Err(AniError::NoResults) => {}

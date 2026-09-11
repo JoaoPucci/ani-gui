@@ -115,6 +115,7 @@ async fn quality_selection_fetches_playlists_with_the_sources_referer() {
     let source = StreamSource {
         master_url: "https://cdn.example/v/master.m3u8".into(),
         referer: Some("https://embed.example/".into()),
+        subtitles: Vec::new(),
     };
     let chosen = stream_url(&provider, &source, "720")
         .await

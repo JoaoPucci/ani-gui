@@ -133,6 +133,40 @@ impl Default for SessionId {
     }
 }
 
+/// One sidecar track as the renderer sees it: the same language,
+/// label and default flag the provider listed, and a proxy URL in
+/// place of the upstream one.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionSubtitle {
+    /// Language code (`en`).
+    pub lang: String,
+    /// Display label (`English`).
+    pub label: String,
+    /// Whether the player should select it by default.
+    pub default: bool,
+    /// `…/s/<uuid>/sub/<n>.vtt` — served by the proxy with the
+    /// session's referer.
+    pub url: String,
+}
+
+impl SessionSubtitle {
+    /// The proxied shape of the session's `index`th track.
+    #[must_use]
+    pub fn proxied(
+        origin_base: &str,
+        session: &str,
+        index: usize,
+        track: &crate::scraper::provider::SubtitleTrack,
+    ) -> Self {
+        Self {
+            lang: track.lang.clone(),
+            label: track.label.clone(),
+            default: track.default,
+            url: format!("{origin_base}/s/{session}/sub/{index}.vtt"),
+        }
+    }
+}
+
 /// One playback session. Created when the user clicks Play on an episode.
 /// Held in [`SessionTable`] until it expires.
 #[derive(Debug, Clone)]
@@ -147,6 +181,9 @@ pub struct StreamSession {
     pub media_kind: MediaKind,
     /// `Referer:` header the upstream CDN requires.
     pub referer: String,
+    /// Sidecar subtitle tracks the resolve listed; served by the
+    /// subtitle route with the session's referer.
+    pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
     /// Wall-clock expiry. After this point the session is GC'd on next read.
     pub expires_at: SystemTime,
 }
@@ -178,6 +215,7 @@ impl StreamSession {
             upstream_url,
             media_kind,
             referer: referer.into(),
+            subtitles: Vec::new(),
             expires_at: SystemTime::now() + DEFAULT_SESSION_TTL,
         }
     }
