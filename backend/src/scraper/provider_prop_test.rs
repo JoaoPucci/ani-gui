@@ -9,12 +9,13 @@ use proptest::prelude::*;
 /// error in the match below — the point: the next provider cannot
 /// drift the user-visible attribution silently.
 fn provider() -> impl Strategy<Value = ProviderId> {
-    prop_oneof![Just(ProviderId::Anidb)]
+    prop_oneof![Just(ProviderId::Anidb), Just(ProviderId::Hianime)]
 }
 
 fn pinned_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Anidb => "anidb.app",
+        ProviderId::Hianime => "hianime",
     }
 }
 
