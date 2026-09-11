@@ -380,6 +380,34 @@ fn a_server_row_with_a_blank_mode_is_not_a_usable_row() {
     assert_eq!(servers[0].name, "HD-2");
 }
 
+/// A row typed with a mode the client does not know beside a readable
+/// row of a known one: the site may have renamed `sub` to `softsub`
+/// while `dub` stayed. Read as "no sub", the mode probe would persist
+/// an absence over the sub playback the site still lists, so the
+/// listing keeps that an unknown row was seen, and a known mode with
+/// no row of its own answers a parse failure while one was.
+#[test]
+fn a_known_mode_with_no_row_is_uncertain_when_a_row_of_an_unknown_mode_was_seen() {
+    let renamed = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"softsub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(renamed).expect("the dub row is readable");
+    assert_eq!(listing.servers.len(), 1);
+    assert_eq!(listing.servers[0].mode, "dub");
+    assert!(listing.mode_readable("dub").expect("read"));
+    assert!(
+        matches!(
+            listing.mode_readable("sub"),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "a mode with no row of its own is not absent while a row the client could not type was seen"
+    );
+    let dub_only = r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(dub_only).expect("parsed");
+    assert!(
+        !listing.mode_readable("sub").expect("read"),
+        "a mode the listing carries no row of, with every row typed, is absent"
+    );
+}
+
 #[test]
 fn a_server_row_with_a_mode_the_client_does_not_know_is_not_a_usable_row() {
     // The site types its servers sub or dub, and the mode probe asks
