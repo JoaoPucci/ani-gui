@@ -252,6 +252,33 @@ impl ScraperGate {
         Ok(trial_stamp)
     }
 
+    /// Whether the breaker is open right now — a failover
+    /// orchestrator's question before it spends a budget on a provider
+    /// whose consecutive failures already tripped it. Interactive
+    /// admits bypass an open breaker by the gate's own contract, so
+    /// the admit path cannot answer this. A read, never a state
+    /// change.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        s.open_until.is_some_and(|until| Instant::now() < until)
+    }
+
+    /// Whether the provider is refusing right now: the breaker open,
+    /// or an advertised rate-limit window still running. Admission
+    /// keeps the two apart — background waits through a pause and is
+    /// refused by an open breaker — but a verdict that has to be
+    /// stood behind asks one question of both: a walk sent to this
+    /// provider now is told to come back later, and moves on to the
+    /// next. A read, never a state change.
+    #[must_use]
+    pub fn is_refusing(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        let now = Instant::now();
+        s.open_until.is_some_and(|until| now < until)
+            || s.paused_until.is_some_and(|paused| now < paused)
+    }
+
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
     /// but a [`ScrapeOutcome::RateLimited`] opens an advertised-window
     /// pause immediately — background admits then WAIT through the
@@ -306,6 +333,10 @@ impl ScraperGate {
 // `record_outcome` lives in a `#[path]` child module so its
 // complexity counts against its own file while the gate's state
 // stays private to this module tree.
+#[cfg(test)]
+#[path = "gate_open_test.rs"]
+mod open_tests;
+
 #[path = "gate_recording.rs"]
 mod recording;
 

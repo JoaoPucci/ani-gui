@@ -24,6 +24,8 @@
  * Throws if neither is available — the renderer can't function
  * without a backend address.
  */
+import type { StreamProvider } from '$lib/history/show-key';
+
 let apiBaseCache: string | null = null;
 
 declare global {
@@ -856,6 +858,10 @@ export interface AvailabilityResponse {
 	 *  is why the cap retry does not spend an attempt on it. Absent on
 	 *  responses from before the backend reported it. */
 	gate_refused?: boolean;
+	/** The provider whose catalogue carries the show — the one that
+	 *  answered `available`. Absent on negative rows and on rows from
+	 *  before the backend named it. */
+	provider?: StreamProvider;
 }
 
 /** "Is this title in the provider's catalog?" probe. The detail page hits

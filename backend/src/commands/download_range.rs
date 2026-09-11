@@ -7,9 +7,12 @@ use crate::app::AppState;
 use crate::error::Result;
 
 use super::download::{spawn_download_tool, DownloadArgs, DownloadProgress};
-use super::play::anidb_client_with_base;
-use super::play_native_episode::resolve_episode;
+use super::play_native::PickedShow;
+use super::play_native_episode::{resolve_episode, ResolvedEpisode};
+use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
+use super::providers::{gate_of, Attempt};
+use crate::scraper::provider::Provider;
 
 /// `"a-b"` with both halves integers and `a <= b`. Anything else is
 /// not a range: the single-episode path keeps its own semantics
@@ -23,10 +26,62 @@ pub(crate) fn episode_range(episode: &str) -> Option<(u32, u32)> {
     (a <= b).then_some((a, b))
 }
 
-/// Download episodes `first..=last` of the picked show. The breaker
-/// hears the walk's verdict once and, on a failing episode, that
-/// episode's verdict — the same observed-at stamping as the play
-/// path, since every request here rides the same gated transport.
+/// The range's start as an attempt: the pick and the first episode's
+/// stream. The runner moves it between providers, and a provider
+/// commits to the range only once it has served that first stream —
+/// a primary whose catalogue pages answer but whose stream chain is
+/// broken hands the range to the fallback, as a single download
+/// would. The remaining episodes resolve against whichever served it.
+struct RangeStartAttempt<'r> {
+    args: &'r DownloadArgs,
+    first: u32,
+    quality: &'r str,
+    /// The provider whose miss the walk returned — set by the walk,
+    /// which knows whose verdict survived.
+    answered_by: Option<crate::scraper::provider::ProviderId>,
+}
+
+#[async_trait::async_trait]
+impl Attempt for RangeStartAttempt<'_> {
+    type Output = (PickedShow, ResolvedEpisode);
+
+    async fn run(
+        &mut self,
+        provider: &dyn Provider,
+    ) -> std::result::Result<(PickedShow, ResolvedEpisode), NativeError> {
+        let picked = pick_native_walk(
+            provider,
+            &self.args.title,
+            &self.args.alt_titles,
+            self.args.episode_count,
+            self.args.year,
+            self.args.subtype.as_deref(),
+        )
+        .await?;
+        let first = resolve_episode(
+            provider,
+            &picked,
+            &self.first.to_string(),
+            &self.args.mode,
+            self.quality,
+        )
+        .await?;
+        Ok((picked, first))
+    }
+
+    fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
+        self.answered_by = Some(provider);
+    }
+}
+
+/// Download episodes `first..=last` of the picked show. The pick and
+/// the first episode's stream run against the providers in order;
+/// the remaining episodes then resolve against the one that served
+/// it, so a range never straddles two catalogues. That provider's
+/// breaker hears the start's verdict once and, on a failing later
+/// episode, that episode's verdict — the same observed-at stamping
+/// as the play path, since every request here rides the same gated
+/// transport.
 ///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own
@@ -46,45 +101,64 @@ where
     F: FnMut(DownloadProgress) + Send,
 {
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let client = anidb_client_with_base(state, state.anidb_base.as_deref(), prio)?;
-    let walk_started_at = tokio::time::Instant::now();
     // Bounded like the play path's resolve: the walk probes aliases
     // and candidate listings in sequence, each request against its
     // own transport timeout, so an unbounded pick can delay the
     // first transfer past the gate's half-open trial window.
-    let picked = match tokio::time::timeout(
-        super::play_native_resolve::RESOLVE_DEADLINE,
-        pick_native_walk(
-            &client,
-            &args.title,
-            &args.alt_titles,
-            args.episode_count,
-            args.year,
-            args.subtype.as_deref(),
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
+    let generation = super::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+    );
+    let mut attempt = RangeStartAttempt {
+        args,
+        first,
+        quality,
+        answered_by: None,
+    };
+    let attempted = match super::providers::run_from(state, remembered, prio, &mut attempt).await {
+        Ok(attempted) => attempted,
+        Err(ne) => {
+            if ne.clean_miss {
+                super::availability::stamp_after_native(
+                    state,
+                    args.kitsu_id.as_deref(),
+                    &args.mode,
+                    generation,
+                    super::availability::ResolveVerdict::missed(attempt.answered_by),
+                )
+                .await;
+            }
+            return Err(ne.error);
+        }
+    };
+    let (picked, first_resolved) = attempted.value;
+    // The range's first stream is a positive availability fact
+    // naming the provider that served it, with the cap the pick's
+    // listing paid for — the row the play path writes.
+    let extra_tags = super::play_native_numbering::extra_episode_tags(&picked.episodes);
+    super::availability::stamp_after_native(
+        state,
+        args.kitsu_id.as_deref(),
+        &args.mode,
+        generation,
+        super::availability::ResolveVerdict::served(
+            attempted.provider,
+            super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
+            &extra_tags,
         ),
     )
-    .await
-    {
-        Ok(picked) => picked,
-        Err(_elapsed) => Err(super::play_native_resolve::NativeError {
-            error: crate::error::AniError::Timeout,
-            clean_miss: false,
-            failed_at: None,
-        }),
-    };
-    if let Some(outcome) = super::play_native_outcome::breaker_outcome(prio, &picked) {
-        let observed_at = picked
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(walk_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
-    let picked = picked.map_err(|ne| ne.error)?;
+    .await;
+    let client = attempted.client;
+    let gate = gate_of(state, attempted.provider);
     on_progress(DownloadProgress {
         line: format!("Matched {}", picked.hit.title),
     });
+    let mut first_resolved = Some(first_resolved);
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -94,7 +168,13 @@ where
         });
         let ep_no = ep.to_string();
         let episode_started_at = tokio::time::Instant::now();
-        let resolved = match resolve_episode(&client, &picked, &ep_no, &args.mode, quality).await {
+        // The first episode was resolved by the attempt that chose
+        // the provider; the rest resolve here, against it.
+        let resolved = match first_resolved.take() {
+            Some(r) => Ok(r),
+            None => resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await,
+        };
+        let resolved = match resolved {
             Ok(r) => r,
             Err(ne) => {
                 let failed: std::result::Result<(), _> = Err(ne);
@@ -103,9 +183,9 @@ where
                         .as_ref()
                         .err()
                         .and_then(|ne| ne.failed_at)
-                        .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
+                        .or_else(|| client.last_attempt_at())
                         .unwrap_or(episode_started_at);
-                    state.anidb_gate.record(outcome, observed_at);
+                    gate.record(outcome, observed_at);
                 }
                 return Err(match failed {
                     Err(ne) => ne.error,
