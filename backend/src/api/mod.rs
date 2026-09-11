@@ -1956,6 +1956,66 @@ mod tests {
         assert!(body.contains("\"show-b\":1800000000000"), "body: {body}");
     }
 
+    /// The stamp follows the row, on the embedded path as on a
+    /// handoff's: when the history file cannot be written — a
+    /// directory where it should be, the state directory full — the
+    /// watch is not on disk, and a stamp advanced anyway would make
+    /// this provider's stale row the show's latest and hand the
+    /// resume its episode over another provider's persisted one.
+    #[tokio::test]
+    async fn mark_watched_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        std::fs::create_dir_all(&state.history_path)
+            .expect("a directory where the history file should be");
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "vDTSJHSpYnrkZnAvG".into(),
+                show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
+                subtitles: Vec::new(),
+            },
+        );
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Naruto: Shippuuden","episode":"150","mode":"sub","kitsu_id":"1555"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            crate::cache::meta_cache_get(&pool, "watched-at:v1:vDTSJHSpYnrkZnAvG").expect("get"),
+            None,
+            "a watch that never reached the file must not be stamped"
+        );
+        assert_eq!(
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG")
+                .expect("get"),
+            None,
+            "nor mapped"
+        );
+    }
+
     #[tokio::test]
     async fn mark_watched_stamps_show_id_in_watched_at_map() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
