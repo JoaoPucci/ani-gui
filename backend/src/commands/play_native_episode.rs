@@ -102,20 +102,20 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
             None => tag_matches(&e.number.to_string(), &target),
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
-    let source = client
-        .master_playlist_url(ep.id, mode)
-        .await
-        .map_err(dead_end)?;
-    // The quality step is soft only on a served playlist that lacks
-    // the height; a failed master fetch is the episode failing.
-    let master_url = client
-        .quality_stream_url(&source, quality)
+    // One step, validated by the provider: the master answered and
+    // the quality was selected from it. The quality step is soft only
+    // on a served playlist that lacks the height; a failed master or
+    // rendition fetch is the episode failing — or, for a provider
+    // that lists several servers, that server failing and the next
+    // being tried, which is why the provider does the validating.
+    let stream = client
+        .stream_for(ep.id, mode, quality)
         .await
         .map_err(dead_end)?;
     Ok(ResolvedEpisode {
-        master_url,
-        referer: source.referer,
-        subtitles: source.subtitles,
+        master_url: stream.url,
+        referer: stream.referer,
+        subtitles: stream.subtitles,
         slot: ep.number,
         tag: ep.number2.clone(),
     })

@@ -33,7 +33,7 @@ use crate::error::{AniError, Result};
 use crate::scraper::fetch::{Fetch, FetchRequest};
 use crate::scraper::provider::{
     encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
-    StreamSource,
+    ResolvedStream, StreamSource,
 };
 
 /// Provider origin. Overridable at the client level for tests, and
@@ -131,34 +131,40 @@ impl<F: Fetch> HianimeClient<F> {
         parse_sources(&self.content(&sources).await?)
     }
 
-    /// A server's stream, once its host has answered: the master is
-    /// fetched with the embed host's origin as the referer and must be
-    /// a playlist. A payload names a host that may be down — on
-    /// 2026-09-12 zokoanime's playlist host was, for every episode,
-    /// while megaplay's served — and a stream taken unasked ends the
-    /// walk of the servers on a master that never answers, which the
-    /// episode step's own fetch then times out on, sending the
-    /// resolver to the next alias and never the next server. The
-    /// episode step fetches the master again after this; that second
-    /// fetch of a small playlist is the price of stepping servers
-    /// here, where the servers are.
+    /// A server's stream, validated the way the episode step needs
+    /// it: the master fetched with the embed host's origin as the
+    /// referer and required to be a playlist, the quality selected
+    /// from it, and the chosen rendition fetched and required to be
+    /// one too — the shared selection every provider's episode step
+    /// runs ([`crate::scraper::hls::stream_url`]), run here so a
+    /// server that does not serve the play is one the walk steps
+    /// over. A payload names a host that may be down — on 2026-09-12
+    /// zokoanime's playlist host was, for every episode, while
+    /// megaplay's served — and a master that answers can still front
+    /// a rendition that refuses; either taken unasked ends the walk
+    /// on a stream the episode step then fails on, sending the
+    /// resolver to the next alias and never the next server.
     ///
     /// # Errors
-    /// The master fetch's own refusal or transport failure; a parse
-    /// failure for a body that is not a playlist, as the episode step
-    /// would report it.
-    async fn served(&self, server: &ServerEmbed, payload: EmbedPayload) -> Result<StreamSource> {
-        let referer = embed_origin(&server.embed_url);
-        let body = self.playlist(&payload.src, referer.as_deref()).await?;
-        if !crate::scraper::hls::is_hls_playlist(&body) {
-            return Err(AniError::ParseFailed {
-                detail: "master URL did not answer with an HLS playlist".into(),
-            });
-        }
-        Ok(StreamSource {
+    /// The fetches' own refusals and transport failures; a parse
+    /// failure for a master that is not a playlist, as the episode
+    /// step would report it.
+    async fn resolved(
+        &self,
+        server: &ServerEmbed,
+        payload: EmbedPayload,
+        quality: &str,
+    ) -> Result<ResolvedStream> {
+        let source = StreamSource {
             master_url: payload.src,
-            referer,
+            referer: embed_origin(&server.embed_url),
             subtitles: payload.subtitles,
+        };
+        let url = crate::scraper::hls::stream_url(self, &source, quality).await?;
+        Ok(ResolvedStream {
+            url,
+            referer: source.referer,
+            subtitles: source.subtitles,
         })
     }
 
@@ -203,13 +209,29 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
+        // The walk of the servers at the adaptive quality: the master
+        // that answered, from the first server that serves.
+        let stream = self.stream_for(episode_id, mode, "best").await?;
+        Ok(StreamSource {
+            master_url: stream.url,
+            referer: stream.referer,
+            subtitles: stream.subtitles,
+        })
+    }
+
+    async fn stream_for(
+        &self,
+        episode_id: u64,
+        mode: &str,
+        quality: &str,
+    ) -> Result<ResolvedStream> {
         let listing = self.servers(episode_id).await?;
         // The mode's rows the client could not read are a parse
         // failure before any embed page is asked for.
         listing.mode_readable(mode)?;
         let servers = listing.servers;
-        // The first server whose page yields a stream whose host
-        // answers wins ([`Self::read_server`], [`Self::served`]);
+        // The first server whose page yields a stream that serves the
+        // play wins ([`Self::read_server`], [`Self::resolved`]);
         // every other outcome is stepped over and remembered, and
         // the loudest surfaces when no server served a stream
         // ([`weightier`]): a rate limit above everything, since it
@@ -226,11 +248,11 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         let mut kept: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
             let outcome = match self.read_server(server).await {
-                Ok(payload) => self.served(server, payload).await,
+                Ok(payload) => self.resolved(server, payload, quality).await,
                 Err(e) => Err(e),
             };
             match outcome {
-                Ok(source) => return Ok(source),
+                Ok(stream) => return Ok(stream),
                 Err(AniError::NoResults) => {}
                 Err(e) => {
                     kept = Some(match kept.take() {
