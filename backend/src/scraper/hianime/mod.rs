@@ -17,7 +17,10 @@
 pub mod ajax;
 pub mod embed;
 pub mod parse;
-pub use ajax::{parse_episode_list, parse_servers, servers_for, ServerEmbed};
+pub use ajax::{
+    parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
+    ServerListing,
+};
 pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
 pub use parse::{parse_detail_year, parse_search, slug_id};
 
@@ -87,14 +90,15 @@ impl<F: Fetch> HianimeClient<F> {
         Ok(resp.body)
     }
 
-    /// An episode's servers, as the site lists them.
-    async fn servers(&self, episode_id: u64) -> Result<Vec<ServerEmbed>> {
+    /// An episode's servers, as the site lists them, with the
+    /// listing's uncertainty per mode.
+    async fn servers(&self, episode_id: u64) -> Result<ServerListing> {
         let body = self
             .content(&self.ajax(&format!(
                 "/api/theme/episode/servers?episodeId={episode_id}"
             )))
             .await?;
-        parse_servers(&body)
+        parse_server_listing(&body)
     }
 }
 
@@ -121,12 +125,17 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
-        let servers = self.servers(episode_id).await?;
-        Ok(!servers_for(&servers, mode).is_empty())
+        // A mode with rows the client could not read is a parse
+        // failure, never the absence the mode probe would persist.
+        self.servers(episode_id).await?.mode_readable(mode)
     }
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
-        let servers = self.servers(episode_id).await?;
+        let listing = self.servers(episode_id).await?;
+        // The mode's rows the client could not read are a parse
+        // failure before any embed page is asked for.
+        listing.mode_readable(mode)?;
+        let servers = listing.servers;
         // The first server whose page decodes to a stream wins; every
         // other outcome is stepped over and remembered, and the
         // loudest surfaces when no server served a stream
