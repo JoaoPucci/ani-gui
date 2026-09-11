@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-06-10_
+_Last updated: 2026-09-06_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -53,13 +53,41 @@ requires it; the exception is the update check that runs on launch
 (below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the anidb.app streaming catalogue playback
-  resolves against. These requests carry the search terms you typed
-  or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one.
-- **Video playback** — the chosen episode URL is fetched directly
-  from its source CDN. The CDN sees a normal `Referer` matching the
-  catalogue origin so it serves the file.
+  only if connected), and the streaming catalogues playback resolves
+  against: anidb.app first, and hianime (reached at hianime.at) when
+  the walk moves on from anidb.app — because it was unreachable,
+  refused or rate-limited the request, answered a page the app
+  cannot read, or its own gate turned a background request away —
+  and hianime first, for a while, for a show it was found on while
+  the walk had moved on — a positive availability record, which
+  says the show and the audio are listed there, not that a stream
+  was played: the app remembers
+  which catalogue carried a show for as long as its availability
+  record lasts — a day from the last play, download or hand-off
+  that went to a catalogue, each of which restamps the record with a
+  day's life, while one served from the app's own resolution cache
+  leaves it untouched; a probe alone leaves a finished show's record
+  for thirty days — and asks that
+  one first for later plays, downloads and
+  hand-offs of it, so those requests reach hianime after anidb.app
+  recovers; once the record expires the next resolve starts from
+  anidb.app again. These requests carry the search terms
+  you typed or the anime IDs you're browsing; they do not carry any
+  account identifier unless you've connected one. Resolving an
+  episode through hianime also fetches its embed page from the embed
+  host the site names for that episode. The site chooses those
+  hosts, and they can change without an app update; at the time of
+  writing the listings name zokoanime.video, megaplay.buzz and
+  vidtube.site, and the client fetches whichever the site lists for
+  the episode.
+- **Video playback** — the chosen episode's playlist, its segments
+  and any sidecar subtitle files are fetched directly from the
+  source CDN the catalogue or its embed page names. For hianime that
+  is, at the time of writing, a host under aniwatchtv.uk; the app
+  does not restrict these fetches to a list of hosts, so the
+  provider's choice is what it reaches. The CDN sees a normal
+  `Referer` — the catalogue origin, or for hianime the embed host's
+  — so it serves the file.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
