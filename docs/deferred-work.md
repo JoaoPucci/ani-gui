@@ -413,8 +413,11 @@ the shape against the app as it is then.
   with a lookup by external site id; and the CDN answers 403 to a
   HEAD request while serving the GET, which any liveness check has
   to allow for. WebM plays natively in the renderer, so no HLS
-  machinery is involved, and the proxy already relays progressive
-  media for the diagnostic route. The alternative — cutting openings
+  machinery is involved, and the proxy already has a progressive
+  pass-through route beside its HLS one (the manual diagnostic
+  route does not use it: it hands its pasted URL straight to the
+  player, so a session for a theme is wiring the mode would add).
+  The alternative — cutting openings
   out of episodes with the skip intervals the player already has —
   was looked at and set aside: the intervals are crowd-sourced and
   shift between releases, cutting an HLS stream needs a re-encode,
