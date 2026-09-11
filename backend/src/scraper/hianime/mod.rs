@@ -19,6 +19,7 @@
 pub mod ajax;
 pub mod detail;
 pub mod embed;
+pub mod megaplay;
 pub mod parse;
 pub use ajax::{
     parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
@@ -26,6 +27,7 @@ pub use ajax::{
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
+pub use megaplay::{lang_of_track, media_id, parse_sources, sources_url};
 pub use parse::{parse_search, slug_id};
 
 use crate::error::{AniError, Result};
