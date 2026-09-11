@@ -6,31 +6,36 @@ use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
+use crate::scraper::provider::SubtitleTrack;
 
 /// The XOR key the embed pages use. Versioned in the value itself.
 const EMBED_KEY: &[u8] = b"otaku-embed-v1";
 
-/// A sidecar subtitle track the embed lists beside the stream.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SubtitleTrack {
-    /// Language code (`en`).
-    pub lang: String,
-    /// Display label (`English`).
-    pub label: String,
-    /// Whether the player selects it by default.
+/// The wire shape of a listed track — `src` where the neutral type
+/// says `url`.
+#[derive(Deserialize)]
+struct WireTrack {
+    lang: String,
+    label: String,
     #[serde(default)]
-    pub default: bool,
-    /// The `.vtt` URL, on the same CDN as the stream.
-    pub src: String,
+    default: bool,
+    src: String,
+}
+
+/// The wire shape of the payload.
+#[derive(Deserialize)]
+struct WirePayload {
+    src: String,
+    #[serde(default)]
+    subtitles: Vec<WireTrack>,
 }
 
 /// What the embed page carries that playback needs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbedPayload {
     /// The master-playlist URL.
     pub src: String,
     /// Sidecar subtitle tracks, outside the playlist.
-    #[serde(default)]
     pub subtitles: Vec<SubtitleTrack>,
 }
 
@@ -71,12 +76,24 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
         .enumerate()
         .map(|(i, b)| b ^ EMBED_KEY[i % EMBED_KEY.len()])
         .collect();
-    let payload: EmbedPayload =
+    let wire: WirePayload =
         serde_json::from_slice(&plain).map_err(|_| undecodable("plaintext is not the payload"))?;
-    if !is_fetchable(&payload.src) {
+    if !is_fetchable(&wire.src) {
         return Err(undecodable("source is not an absolute http(s) URL"));
     }
-    Ok(payload)
+    Ok(EmbedPayload {
+        src: wire.src,
+        subtitles: wire
+            .subtitles
+            .into_iter()
+            .map(|t| SubtitleTrack {
+                lang: t.lang,
+                label: t.label,
+                default: t.default,
+                url: t.src,
+            })
+            .collect(),
+    })
 }
 
 /// Whether the transport can fetch `src`: an absolute URL under

@@ -210,6 +210,15 @@ export interface CreateSessionArgs {
 export type MediaKind = 'hls' | 'mp4';
 
 /** Output of `cmd_create_session` — proxy URLs the player should fetch. */
+/** One sidecar subtitle track a session offers, behind the proxy. */
+export interface SessionSubtitle {
+	lang: string;
+	label: string;
+	default: boolean;
+	/** `…/s/<id>/sub/<n>.vtt` — never an upstream URL. */
+	url: string;
+}
+
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
@@ -225,6 +234,9 @@ export interface CreateSessionResponse {
 	 *  resolve path so the user should see the error. Optional for
 	 *  forward compat with older backends — treat absence as `false`. */
 	cache_hit?: boolean;
+	/** Sidecar subtitle tracks the resolve listed; absent or empty when
+	 *  the stream carries none outside its playlist. */
+	subtitles?: SessionSubtitle[];
 }
 
 /** Player flag-syntax flavor — controls the argv shape `build_argv`

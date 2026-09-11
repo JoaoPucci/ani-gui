@@ -47,12 +47,19 @@ pub struct LaunchArgs {
     #[serde(default)]
     pub player_kind: ExternalPlayerKind,
     /// Free-text args template used only when `player_kind` is
-    /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`.
+    /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`,
+    /// `{subtitle}` (the first sidecar track's URL).
     /// A token containing a missing/empty placeholder is dropped
     /// from argv entirely (so optional flags don't end up as
     /// `--referrer=` with nothing after the equals).
     #[serde(default)]
     pub custom_args_template: Option<String>,
+    /// Sidecar subtitle tracks' upstream URLs, the provider's default
+    /// first and the provider's order after it — a player that takes
+    /// one file takes the first. The player fetches them itself; the
+    /// referer flag it already gets covers those fetches.
+    #[serde(default)]
+    pub subtitle_urls: Vec<String>,
 }
 
 /// Build the argv that would be passed to `Command::new(player).args(...)`.
@@ -62,32 +69,57 @@ pub struct LaunchArgs {
 #[must_use]
 pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
     match args.player_kind {
-        ExternalPlayerKind::Mpv => {
-            build_argv_with_template(args, "--force-media-title=", "--referrer=")
-        }
-        ExternalPlayerKind::Vlc => {
-            build_argv_with_template(args, "--meta-title=", "--http-referrer=")
-        }
-        ExternalPlayerKind::Iina => {
-            build_argv_with_template(args, "--mpv-force-media-title=", "--mpv-referrer=")
-        }
+        ExternalPlayerKind::Mpv => build_argv_with_template(
+            args,
+            "--force-media-title=",
+            "--referrer=",
+            SubFlag::Each("--sub-file="),
+        ),
+        // VLC takes one --sub-file; the first track is the provider's
+        // default.
+        ExternalPlayerKind::Vlc => build_argv_with_template(
+            args,
+            "--meta-title=",
+            "--http-referrer=",
+            SubFlag::First("--sub-file="),
+        ),
+        ExternalPlayerKind::Iina => build_argv_with_template(
+            args,
+            "--mpv-force-media-title=",
+            "--mpv-referrer=",
+            SubFlag::Each("--mpv-sub-file="),
+        ),
         ExternalPlayerKind::Custom => build_argv_custom(args),
     }
 }
 
+/// How a player takes sidecar tracks: one flag per track, or one
+/// flag for the first track only.
+enum SubFlag {
+    Each(&'static str),
+    First(&'static str),
+}
+
 /// Shared argv assembly for the three known players — same shape,
-/// different flag names.
+/// different flag names. Order: title, referrer, subtitles, URL last.
 fn build_argv_with_template(
     args: &LaunchArgs,
     title_flag: &str,
     referrer_flag: &str,
+    sub_flag: SubFlag,
 ) -> Vec<String> {
-    let mut argv = Vec::with_capacity(3);
+    let mut argv = Vec::with_capacity(3 + args.subtitle_urls.len());
     if let Some(t) = &args.title {
         argv.push(format!("{title_flag}{t}"));
     }
     if let Some(r) = &args.referer {
         argv.push(format!("{referrer_flag}{r}"));
+    }
+    match sub_flag {
+        SubFlag::Each(flag) => argv.extend(args.subtitle_urls.iter().map(|u| format!("{flag}{u}"))),
+        SubFlag::First(flag) => {
+            argv.extend(args.subtitle_urls.first().map(|u| format!("{flag}{u}")))
+        }
     }
     argv.push(args.stream_url.clone());
     argv
@@ -114,10 +146,11 @@ fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
     };
     let referer = args.referer.as_deref().unwrap_or("");
     let title = args.title.as_deref().unwrap_or("");
+    let subtitle = args.subtitle_urls.first().map_or("", String::as_str);
     let url = args.stream_url.as_str();
     tokens
         .into_iter()
-        .filter_map(|tok| substitute_token(&tok, url, referer, title))
+        .filter_map(|tok| substitute_token(&tok, url, referer, title, subtitle))
         .collect()
 }
 
@@ -125,7 +158,13 @@ fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
 /// non-empty value, `None` if any placeholder was empty (drop rule).
 /// `{url}` is always present — tokens containing only `{url}` always
 /// render. Unknown `{...}` placeholders pass through verbatim.
-fn substitute_token(tok: &str, url: &str, referer: &str, title: &str) -> Option<String> {
+fn substitute_token(
+    tok: &str,
+    url: &str,
+    referer: &str,
+    title: &str,
+    subtitle: &str,
+) -> Option<String> {
     let mut out = String::with_capacity(tok.len());
     let mut chars = tok.chars().peekable();
     while let Some(c) = chars.next() {
@@ -152,6 +191,7 @@ fn substitute_token(tok: &str, url: &str, referer: &str, title: &str) -> Option<
         let value = match name.as_str() {
             "url" => url,
             "referer" => referer,
+            "subtitle" => subtitle,
             "title" => title,
             // Unknown placeholder — preserve verbatim.
             other => {
@@ -223,3 +263,7 @@ pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result
 #[cfg(test)]
 #[path = "external_player_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "external_player_subtitles_test.rs"]
+mod subtitle_tests;
