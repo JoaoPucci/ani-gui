@@ -226,10 +226,13 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
     parse_server_listing(json).map(|listing| listing.servers)
 }
 
-/// The embed hosts whose pages carry the payload the client reads —
-/// the `window.__P` blob. The site names its servers by slot and
-/// moves the slots between hosts; a name is not a shape.
-const READABLE_HOSTS: &[&str] = &["zokoanime.video"];
+/// The embed hosts whose pages the client reads — zokoanime's carry
+/// the `window.__P` blob, megaplay's the media id the site's sources
+/// endpoint is keyed on. The site names its servers by slot and
+/// moves the slots between hosts; a name is not a shape, and the
+/// page is read by its shape whatever the host — this list only
+/// orders the servers the client expects to read ahead of the rest.
+const READABLE_HOSTS: &[&str] = &["zokoanime.video", "megaplay.buzz"];
 
 /// Whether `embed_url` is on a host whose page the client can read.
 fn readable(embed_url: &str) -> bool {
