@@ -381,7 +381,7 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
     Ok(detail)
 }
 
-/// Title-match cache: maps `(allmanga_title, cour) → kitsu_id`. Stored
+/// Title-match cache: maps `(provider, provider title, cour) → kitsu_id`. Stored
 /// in the shared `meta_cache` table under a `title-match:` key prefix
 /// so the home page's Continue Watching strip skips a kitsuSearch +
 /// pickKitsuMatch round-trip on subsequent loads.
@@ -398,26 +398,48 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   multi-cour entries since the picker collapsed siblings.
 /// - v2: slug-fetch fallback for cour > 1 (commit 86e02d2). Old v1
 ///   mappings now orphaned, replaced by fresh v2 lookups.
-const TITLE_MATCH_VERSION: u32 = 2;
+/// - v3: the key carries the provider whose title it maps, so two
+///   providers naming different shows identically cannot read or
+///   overwrite each other's mapping. v2 rows are orphaned rather
+///   than left answering for another provider.
+const TITLE_MATCH_VERSION: u32 = 3;
 
-fn title_match_key(title: &str, cour: u32) -> String {
+fn title_match_key(
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+) -> String {
     let normalized = title.trim().to_lowercase();
-    format!("title-match:v{TITLE_MATCH_VERSION}:{normalized}:c{cour}")
+    format!(
+        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c{cour}",
+        provider.label()
+    )
 }
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
 /// on miss; errors propagate the SQLite read failure.
-pub fn title_match_get(state: &AppState, title: &str, cour: u32) -> Result<Option<String>> {
-    meta_cache_get(&state.cache_pool, &title_match_key(title, cour))
+pub fn title_match_get(
+    state: &AppState,
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+) -> Result<Option<String>> {
+    meta_cache_get(&state.cache_pool, &title_match_key(provider, title, cour))
 }
 
 /// Persist a `(title, cour) → kitsu_id` mapping under TITLE_MATCH_TTL.
 /// Idempotent — re-puts overwrite the prior value, which is the
 /// behaviour the picker wants when Kitsu re-catalogues an entry.
-pub fn title_match_put(state: &AppState, title: &str, cour: u32, kitsu_id: &str) -> Result<()> {
+pub fn title_match_put(
+    state: &AppState,
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+    cour: u32,
+    kitsu_id: &str,
+) -> Result<()> {
     meta_cache_put(
         &state.cache_pool,
-        &title_match_key(title, cour),
+        &title_match_key(provider, title, cour),
         kitsu_id,
         TITLE_MATCH_TTL.as_secs(),
     )
@@ -498,6 +520,13 @@ pub async fn try_put_allmanga_kitsu_mapping(
     show_title: &str,
     kitsu_id: &str,
 ) {
+    // Every provider's ids are guarded. The resolve carries no
+    // identity the guard could defer to — no Kitsu or MyAnimeList
+    // id, only the title, year and count the picker scored — so a
+    // wrongly picked sibling cour on any provider would otherwise
+    // persist the caller's Kitsu id under its slug, the row Continue
+    // Watching and resume then read. Lifting the guard for a provider
+    // wants identity provenance the resolve does not carry yet.
     if cour_pairing_disagrees(state, show_title, kitsu_id).await {
         tracing::warn!(
             show_id = %show_id,
@@ -533,10 +562,15 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// poison. Only an absent `slug` field counts as no evidence.
 async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
     use crate::commands::cour::{cour_from_slug, cour_from_title};
+    // Without cour evidence on the provider's side there is nothing
+    // to disagree with, so Kitsu is not asked at all.
+    let Some(provider_cour) = cour_from_title(show_title) else {
+        return false;
+    };
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let provider_cour = cour_from_title(show_title);
+    let provider_cour = Some(provider_cour);
     let kitsu_cour = detail
         .slug
         .as_deref()
@@ -603,10 +637,11 @@ pub async fn resolve_allmanga_show_id(
         }
     }
 
-    // 2) anidb slug rows carry their identity in the slug itself —
-    //    the hyphenated words are the show's title. Search Kitsu with
-    //    them directly; a miss stays a soft None.
-    if let Some(term) = crate::scraper::anidb::slug_search_term(show_id) {
+    // 2) Slug-shaped rows carry their identity in the slug itself —
+    //    the hyphenated words are the show's title, whichever provider
+    //    the key names. Search Kitsu with them directly; a miss stays
+    //    a soft None.
+    if let Some(term) = crate::scraper::provider::ShowKey::parse(show_id).search_term() {
         return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
     }
 
@@ -805,6 +840,14 @@ fn normalize_query(s: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+#[cfg(test)]
+#[path = "kitsu_title_match_test.rs"]
+mod title_match_tests;
+
+#[cfg(test)]
+#[path = "kitsu_show_key_test.rs"]
+mod show_key_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1083,8 +1126,21 @@ mod tests {
     #[test]
     fn title_match_cache_round_trips_for_a_given_title_and_cour() {
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean Part 2", 2, "kitsu-id-42").expect("put ok");
-        let got = title_match_get(&state, "Stone Ocean Part 2", 2).expect("get ok");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean Part 2",
+            2,
+            "kitsu-id-42",
+        )
+        .expect("put ok");
+        let got = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean Part 2",
+            2,
+        )
+        .expect("get ok");
         assert_eq!(got, Some("kitsu-id-42".to_string()));
     }
 
@@ -1095,9 +1151,28 @@ mod tests {
         // alone — only trim + lowercase — but that's enough to soak
         // up the common variations from the history file.)
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean", 1, "id-1").expect("put");
-        let got_lc = title_match_get(&state, "stone ocean", 1).expect("get lowercased");
-        let got_padded = title_match_get(&state, "  STONE OCEAN  ", 1).expect("get padded");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            1,
+            "id-1",
+        )
+        .expect("put");
+        let got_lc = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "stone ocean",
+            1,
+        )
+        .expect("get lowercased");
+        let got_padded = title_match_get(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "  STONE OCEAN  ",
+            1,
+        )
+        .expect("get padded");
         assert_eq!(got_lc, Some("id-1".to_string()));
         assert_eq!(got_padded, Some("id-1".to_string()));
     }
@@ -1107,14 +1182,40 @@ mod tests {
         // Cour is part of the key — Stone Ocean Part 1 and Part 2
         // must not collide on the cache row.
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Stone Ocean", 1, "id-part1").expect("put p1");
-        title_match_put(&state, "Stone Ocean", 2, "id-part2").expect("put p2");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            1,
+            "id-part1",
+        )
+        .expect("put p1");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Stone Ocean",
+            2,
+            "id-part2",
+        )
+        .expect("put p2");
         assert_eq!(
-            title_match_get(&state, "Stone Ocean", 1).expect("get p1"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Stone Ocean",
+                1
+            )
+            .expect("get p1"),
             Some("id-part1".to_string())
         );
         assert_eq!(
-            title_match_get(&state, "Stone Ocean", 2).expect("get p2"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Stone Ocean",
+                2
+            )
+            .expect("get p2"),
             Some("id-part2".to_string())
         );
     }
@@ -1123,7 +1224,13 @@ mod tests {
     fn title_match_cache_returns_none_for_unknown_titles() {
         let state = state_with_kitsu_at("http://unused");
         assert_eq!(
-            title_match_get(&state, "Nothing here", 1).expect("get ok"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Nothing here",
+                1
+            )
+            .expect("get ok"),
             None
         );
     }
@@ -1133,10 +1240,30 @@ mod tests {
         // When the picker resolves a different kitsu_id later (a
         // re-cataloguing on Kitsu, say), the latest put wins.
         let state = state_with_kitsu_at("http://unused");
-        title_match_put(&state, "Demon Slayer", 1, "old").expect("put old");
-        title_match_put(&state, "Demon Slayer", 1, "new").expect("put new");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Demon Slayer",
+            1,
+            "old",
+        )
+        .expect("put old");
+        title_match_put(
+            &state,
+            crate::scraper::provider::ProviderId::Anidb,
+            "Demon Slayer",
+            1,
+            "new",
+        )
+        .expect("put new");
         assert_eq!(
-            title_match_get(&state, "Demon Slayer", 1).expect("get"),
+            title_match_get(
+                &state,
+                crate::scraper::provider::ProviderId::Anidb,
+                "Demon Slayer",
+                1
+            )
+            .expect("get"),
             Some("new".to_string())
         );
     }
