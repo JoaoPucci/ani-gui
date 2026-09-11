@@ -19,6 +19,9 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        hianime_base: None,
+        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -118,6 +121,26 @@ async fn the_handoff_resolves_through_the_native_walk() {
     );
 }
 
+/// A handoff's resolve is a positive availability fact like the
+/// embedded player's: the provider that served the stream is
+/// remembered, so the next operation for the show starts from it.
+#[tokio::test]
+async fn a_handoff_resolve_remembers_the_provider_that_served_it() {
+    let server = stub_provider().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &server.uri());
+    let mut args = args_for();
+    args.kitsu_id = Some("hs-7".into());
+    super::play_handoff::resolve_launch_args(&state, &args)
+        .await
+        .expect("the native walk resolves the stream");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "hs-7", "sub"),
+        Some(crate::scraper::provider::ProviderId::Anidb),
+        "the provider that served the handoff is remembered"
+    );
+}
+
 #[tokio::test]
 async fn a_handoff_miss_surfaces_the_walks_verdict() {
     // A clean no-results walk is the show being absent, not a
@@ -133,10 +156,28 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
         .await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let err = super::play_handoff::resolve_launch_args(&state, &args_for())
+    let mut args = args_for();
+    args.kitsu_id = Some("hs-8".into());
+    let err = super::play_handoff::resolve_launch_args(&state, &args)
         .await
         .expect_err("nothing matches");
     assert!(matches!(err, crate::error::AniError::NoResults));
+    // The one verdict that proves absence is persisted here as on
+    // the play path, named as the provider's whose miss it is.
+    let row = crate::cache::meta_cache_get(
+        &state.cache_pool,
+        &crate::commands::availability::cache_key("hs-8", "sub"),
+    )
+    .expect("cache read")
+    .expect("a clean miss is persisted");
+    let row: crate::commands::availability::AvailabilityResponse =
+        serde_json::from_str(&row).expect("row parses");
+    assert!(!row.available);
+    assert_eq!(
+        row.provider,
+        Some(crate::scraper::provider::ProviderId::Anidb),
+        "named as the provider's whose miss it is"
+    );
 }
 
 /// The handoff describes the launch from the resolve, referer

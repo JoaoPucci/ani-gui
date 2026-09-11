@@ -258,6 +258,9 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        hianime_base: None,
+        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -3396,5 +3399,421 @@ async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
     assert!(
         (2..=3).contains(&three_at_a_time),
         "three in flight overlap and never exceed three: {three_at_a_time}"
+    );
+}
+
+/// The embed page's payload as hianime ships it: the player JSON
+/// XOR'd under its versioned key, then base64'd.
+#[cfg(unix)]
+fn hianime_embed_blob(payload: &str) -> String {
+    use base64::Engine as _;
+    const KEY: &[u8] = b"otaku-embed-v1";
+    let xored: Vec<u8> = payload
+        .bytes()
+        .zip(KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    base64::engine::general_purpose::STANDARD.encode(xored)
+}
+
+/// An anidb whose catalogue pages answer but whose stream chain is
+/// broken: the languages endpoint blocks. Search and episodes are
+/// the range stub's.
+#[cfg(unix)]
+async fn stub_range_show_with_a_broken_stream_chain() -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/anime/range-show-21"><img alt="Range Show"/></a>"#),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/api/frontend/anime/21/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"episodes":[{"id":2101,"number":1},{"id":2102,"number":2}]}"#),
+        )
+        .mount(&server)
+        .await;
+    for ep in [2101u64, 2102] {
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/api/frontend/episode/{ep}/languages")))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+/// A hianime carrying the same two-episode show through its whole
+/// chain: search page, episode list, server list, embed page, master.
+#[cfg(unix)]
+async fn stub_hianime_range_show() -> wiremock::MockServer {
+    use base64::Engine as _;
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    let base = server.uri();
+    let search = format!(
+        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/range-show-21" title="Range Show" class="dynamic-name">Range Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
+    );
+    wiremock::Mock::given(method("GET"))
+        .and(path("/search"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
+        .mount(&server)
+        .await;
+    let list = serde_json::json!({
+        "status": true,
+        "html": r#"<a class="ep-item" data-number="1" data-id="9101"></a><a class="ep-item" data-number="2" data-id="9102"></a>"#,
+    })
+    .to_string();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/api/theme/episode/list/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
+        .mount(&server)
+        .await;
+    for ep in [9101u64, 9102] {
+        let hash = base64::engine::general_purpose::STANDARD
+            .encode(format!("{base}/stream/mal/21/{ep}/sub"));
+        let servers = serde_json::json!({
+            "status": true,
+            "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
+        })
+        .to_string();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/theme/episode/servers"))
+            .and(wiremock::matchers::query_param("episodeId", ep.to_string()))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
+            .mount(&server)
+            .await;
+        let payload =
+            serde_json::json!({ "src": format!("{base}/h/{ep}/master.m3u8"), "subtitles": [] })
+                .to_string();
+        let embed = format!(
+            r#"<html><body><script>window.__P="{}"</script></body></html>"#,
+            hianime_embed_blob(&payload)
+        );
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/stream/mal/21/{ep}/sub")))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/h/{ep}/master.m3u8")))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+/// A range commits to a provider only once that provider has served
+/// the range's first stream, not once it has answered a search: a
+/// primary whose catalogue pages work but whose stream chain is
+/// broken hands the range to the fallback, as a single download
+/// would, instead of aborting it.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() {
+    let anidb = stub_range_show_with_a_broken_stream_chain().await;
+    let hianime = stub_hianime_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &anidb.uri());
+    state.provider_order = vec![
+        crate::scraper::provider::ProviderId::Anidb,
+        crate::scraper::provider::ProviderId::Hianime,
+    ];
+    state.hianime_base = Some(hianime.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1-2",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the range completes through the fallback");
+    let calls = std::fs::read_to_string(&log).expect("both episodes ran");
+    assert_eq!(
+        calls.lines().count(),
+        2,
+        "one transfer per episode: {calls}"
+    );
+    assert!(
+        calls.contains("/h/9101/master.m3u8") && calls.contains("/h/9102/master.m3u8"),
+        "both streams came from the fallback: {calls}"
+    );
+}
+
+/// A resolve that served a stream is a positive availability fact
+/// naming the provider that served it, on the download path as on
+/// the play path: the next operation for the show starts from that
+/// provider instead of from the primary, whose clean miss would end
+/// the walk before the provider already proven to work is asked.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_remembers_the_provider_that_served_it() {
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "kitsu_id": "rs-21",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        None,
+        "nothing is remembered before the resolve"
+    );
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the download completes");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        Some(crate::scraper::provider::ProviderId::Anidb),
+        "the provider that served the stream is remembered"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_through_the_fallback_remembers_the_fallback() {
+    let anidb = stub_range_show_with_a_broken_stream_chain().await;
+    let hianime = stub_hianime_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = native_test_state(&td, &anidb.uri());
+    state.provider_order = vec![
+        crate::scraper::provider::ProviderId::Anidb,
+        crate::scraper::provider::ProviderId::Hianime,
+    ];
+    state.hianime_base = Some(hianime.uri());
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1-2",
+        "mode": "sub",
+        "kitsu_id": "rs-21",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_p| {})
+        .await
+        .expect("the range completes through the fallback");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime),
+        "the fallback that served the range is remembered"
+    );
+}
+
+// ── the walk's clean miss on a single download ────────────────────
+
+/// A single download that misses cleanly stamps the miss as the
+/// provider's negative row, as the play path does: the lists stop
+/// re-probing a show the provider searched and has not got.
+#[tokio::test]
+async fn a_download_stamps_the_walks_clean_miss_as_the_providers_negative_row() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+        )
+        .mount(&server)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    let dest = tempfile::tempdir().expect("dest");
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Ghost Show",
+        "episode": "1",
+        "mode": "sub",
+        "kitsu_id": "ghost-7",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let bin = dir_with_a_findable_tool();
+    let err = download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect_err("nothing matches");
+    assert!(matches!(err, AniError::NoResults));
+    let cached = crate::commands::availability::batch_cached(
+        &state,
+        &crate::commands::availability::AvailabilityBatchArgs {
+            kitsu_ids: vec!["ghost-7".into()],
+            mode: "sub".into(),
+        },
+    );
+    assert_eq!(
+        cached.cached.get("ghost-7"),
+        Some(&false),
+        "the clean miss is the provider's negative row"
+    );
+}
+
+// ── the sidecar writer's other ways out ───────────────────────────
+
+/// A track whose fetch fails at the connection is skipped like a
+/// refused one: nothing lands at its name.
+#[tokio::test]
+async fn a_subtitle_fetch_that_fails_is_skipped() {
+    use crate::scraper::provider::SubtitleTrack;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: "http://127.0.0.1:1/subs/en.vtt".into(),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 6",
+    )
+    .await;
+    assert!(written.is_empty());
+    assert!(!dest.path().join("Show Episode 6.en.vtt").exists());
+}
+
+/// Two tracks in one language keep both files: the second is
+/// suffixed by its position, so neither overwrites the other.
+#[tokio::test]
+async fn two_tracks_in_one_language_keep_both_files() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for (route, cue) in [("/subs/en-a.vtt", "first"), ("/subs/en-b.vtt", "second")] {
+        Mock::given(method("GET"))
+            .and(wm_path(route))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("WEBVTT\n\n00:00.000 --> 00:01.000\n{cue}\n")),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |route: &str| SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("/subs/en-a.vtt"), track("/subs/en-b.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 7",
+    )
+    .await;
+    let first = dest.path().join("Show Episode 7.en.vtt");
+    let second = dest.path().join("Show Episode 7.en-1.vtt");
+    assert_eq!(written, vec![first.clone(), second.clone()]);
+    assert!(std::fs::read_to_string(&first)
+        .expect("first")
+        .ends_with("first\n"));
+    assert!(std::fs::read_to_string(&second)
+        .expect("second")
+        .ends_with("second\n"));
+}
+
+/// A write that fails for a reason other than a taken name — the
+/// destination directory is gone — skips the track and writes
+/// nothing anywhere.
+#[tokio::test]
+async fn a_subtitle_write_that_fails_is_skipped() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nhi\n"))
+        .mount(&server)
+        .await;
+    let parent = tempfile::tempdir().expect("parent");
+    let gone = parent.path().join("gone");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        &gone,
+        "Show Episode 8",
+    )
+    .await;
+    assert!(written.is_empty());
+    assert!(!gone.exists(), "a failed write creates nothing");
+}
+
+/// Where the rename install cannot claim the name for a reason other
+/// than a taken one, it fails with that reason and leaves the
+/// scratch; and the empty claim it makes does not outlive a rename
+/// that fails because the scratch is gone.
+#[test]
+fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_without_a_scratch() {
+    let dest = tempfile::tempdir().expect("dest");
+    let scratch = dest.path().join(".ani-gui-0-scratch.part.vtt");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    let unclaimable = dest.path().join("gone").join("Show Episode 9.en.vtt");
+    let err = install_by_rename(&scratch, &unclaimable).expect_err("no directory to claim in");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(scratch.exists(), "the scratch stays with its claim");
+
+    let target = dest.path().join("Show Episode 10.en.vtt");
+    let missing = dest.path().join(".ani-gui-0-missing.part.vtt");
+    let err = install_by_rename(&missing, &target).expect_err("nothing to move");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(
+        !target.exists(),
+        "the empty claim made for the rename is removed with it"
     );
 }

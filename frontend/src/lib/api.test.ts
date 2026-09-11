@@ -1306,6 +1306,25 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 		expect(body.subtype).toBe('special');
 	});
 
+	it('checkAvailability carries the provider whose catalogue answered', async () => {
+		// Two providers means "available" needs an owner: the backend
+		// names it in the identifier the renderer uses, and the
+		// wrapper hands it through untouched.
+		const fetchMock = mockFetchOnce({
+			available: true,
+			episode_count: 12,
+			extra_episodes: [],
+			provider: 'hianime'
+		});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await checkAvailability({ title: 'X', mode: 'sub', kitsu_id: 'kid-1' });
+		expect(got.provider).toBe('hianime');
+		const legacy = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
+		globalThis.fetch = legacy as unknown as typeof fetch;
+		const before = await checkAvailability({ title: 'X', mode: 'sub', kitsu_id: 'kid-1' });
+		expect(before.provider).toBeUndefined();
+	});
+
 	it('checkAvailability POSTs the args to /api/availability', async () => {
 		const fetchMock = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
