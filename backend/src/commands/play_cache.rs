@@ -14,6 +14,10 @@
 //!     the row the same way, and returns ready-to-launch
 //!     [`LaunchArgs`] (or `None`) so `play_external` can hand mpv a
 //!     cached URL without resolving again.
+//!   • `stamp_availability_on_cache_hit` — the availability refresh
+//!     both replays owe: the provider the cached row's show key
+//!     names is stamped on the request's row, as a fresh resolve
+//!     would have stamped it.
 //!
 //! The readers a row's check is made of — the stream's HEAD ping,
 //! the WebVTT prefix, the track's GET — live in
@@ -34,6 +38,46 @@ use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::session::{
     create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
+use crate::scraper::provider::{ProviderId, ShowKey};
+
+/// The provider a cached row was resolved through: the one its show
+/// key names — a qualified key for any provider but anidb, whose
+/// keys are bare. A row from before the field carries an empty key
+/// and names no provider.
+pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderId> {
+    if cached.show_id.is_empty() {
+        return None;
+    }
+    Some(ShowKey::parse(&cached.show_id).provider)
+}
+
+/// Refresh the availability row a served replay stands on with the
+/// provider the cached row names, for the request's own show and
+/// mode — the embedded player's replay and the handoff's alike, so
+/// the affinity a fresh resolve would have written survives the
+/// resolution cache outliving the row.
+pub(crate) async fn stamp_availability_on_cache_hit(
+    state: &AppState,
+    args: &super::play::PlayArgs,
+    cached: &CachedResolution,
+) {
+    let Some(provider) = cached_row_provider(cached) else {
+        return;
+    };
+    let generation = crate::commands::availability_refresh::generation_at_start(
+        &state.availability_refreshes,
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
+    );
+    crate::commands::availability::stamp_after_cache_hit(
+        state,
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
+        generation,
+        provider,
+    )
+    .await;
+}
 
 /// How long a cached row may take to prove itself live. The row is
 /// a shortcut past a fresh resolve, whose first request answers in
@@ -158,6 +202,7 @@ pub(crate) async fn try_launch_args_from_cache(
         upstream = cached.upstream_url.as_str(),
         "play_external: cache hit (stream and tracks live), launching mpv from cached URL",
     );
+    stamp_availability_on_cache_hit(state, args, &cached).await;
     let watch = cached_watch(state, &cached, &args.episode);
     Some((cached_launch_args(cached, args, cfg), watch))
 }
