@@ -411,3 +411,7 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "megaplay_test.rs"]
 mod megaplay_tests;
+
+#[cfg(test)]
+#[path = "megaplay_prop_test.rs"]
+mod megaplay_prop_tests;
