@@ -91,23 +91,26 @@ requires it; the exception is the update check that runs on launch
   hosts the site names for that episode — one at a time, the hosts
   whose pages the client knows how to read first, in the site's
   order among them, then the rest in the site's order, moving to the
-  next when a page cannot be fetched or read, so one resolve can
-  reach more than one of them, and a host the client cannot read is
-  reached only after every one it can has failed; the first page
-  that reads is the resolve's, and its stream failing afterwards is
-  the resolve failing, not a reason to contact another host. The
-  site chooses those hosts, and they can change without an
-  app update; at the time of writing the listings name
-  zokoanime.video, megaplay.buzz and vidtube.site, and the client
-  fetches from whichever the site lists for the episode.
+  next when a page cannot be fetched or read or when the stream its
+  page names does not answer as a playlist, so one resolve can reach
+  more than one of them, and a host the client cannot read is
+  reached only after every one it can has failed — and on megaplay's
+  pages the host's own sources endpoint as well, since that is where
+  its player gets the stream. The site chooses those hosts, and
+  they can change without an app update; at the time of writing the
+  listings name zokoanime.video, megaplay.buzz and vidtube.site, and
+  the client fetches from whichever the site lists for the episode.
 - **Video playback** — the chosen episode's playlist, its segments
   and any sidecar subtitle files are fetched directly from the
   source CDN the catalogue or its embed page names. For hianime that
-  is, at the time of writing, a host under aniwatchtv.uk; the app
-  does not restrict these fetches to a list of hosts, so the
-  provider's choice is what it reaches. For hianime the CDN sees a
-  normal `Referer`, the embed host's origin, since it checks for
-  one; for anidb.app the requests carry no `Referer` at all — its
+  is, at the time of writing, a host under aniwatchtv.uk behind the
+  zokoanime pages, and behind the megaplay pages the hosts its
+  sources endpoint names — ncdn.imgnex.top for playlists,
+  bb.akirax.buzz for segments, fetch.nexabloom.top for subtitle
+  files; the app does not restrict these fetches to a list of hosts,
+  so the provider's choice is what it reaches. For hianime the CDN
+  sees a normal `Referer`, the embed host's origin, since it checks
+  for one; for anidb.app the requests carry no `Referer` at all — its
   CDN asks for none, and the app adds none. The CDN is also reached
   before any
   playback, by the page warms described above: a warm that
