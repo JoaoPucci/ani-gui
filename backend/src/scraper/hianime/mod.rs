@@ -135,11 +135,12 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // The mode's rows the client could not read are a parse
         // failure before any embed page is asked for.
         listing.mode_readable(mode)?;
-        // A row of the mode the client could not read stays a doubt
-        // through the walk: should no server serve a stream, the
-        // verdict is the mode's uncertainty, never the answered
-        // absence — the unreadable row may have been the server.
-        let uncertain = listing.unreadable_modes.iter().any(|m| m == mode);
+        // A row of the mode the client could not read, or a row typed
+        // with a mode it does not know, stays a doubt through the
+        // walk: should no server serve a stream, the verdict is the
+        // mode's uncertainty, never the answered absence — that row
+        // may have been the server.
+        let uncertain = listing.uncertain_for(mode);
         let servers = listing.servers;
         // The first server whose page decodes to a stream wins; every
         // other outcome is stepped over and remembered, and the
