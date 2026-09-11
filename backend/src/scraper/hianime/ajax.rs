@@ -117,12 +117,15 @@ pub struct ServerEmbed {
 const KNOWN_MODES: [&str; 2] = ["sub", "dub"];
 
 /// An episode's server listing as read: the servers whose rows the
-/// client could use, and the modes that had a row the client could
-/// not — a hash that does not decode, a decoded value that is not an
-/// absolute http(s) URL, a name missing. A mode's uncertainty is kept
-/// because a listing can be readable for one mode and not the other,
-/// and "no readable sub server" read as "no sub" is an absence the
-/// mode probe persists over a playback the site still lists.
+/// client could use, the modes that had a row the client could not —
+/// a hash that does not decode, a decoded value that is not an
+/// absolute http(s) URL, a name missing — and whether a row was typed
+/// with a mode the client does not know. Both doubts are kept because
+/// a listing can be readable for one mode and not the other, and "no
+/// readable sub server" read as "no sub" is an absence the mode probe
+/// persists over a playback the site still lists — whether the sub
+/// row's hash stopped decoding or the site renamed `sub` to something
+/// else while `dub` stayed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerListing {
     /// The servers the client could read, in the site's order.
@@ -131,34 +134,59 @@ pub struct ServerListing {
     /// read, whether or not another row of the mode could be; each
     /// mode at most once, in the order first seen.
     pub unreadable_modes: Vec<String>,
+    /// Whether a row was typed with a mode the client does not know —
+    /// blank, or a value other than `sub` and `dub`. Such a row may be
+    /// a known mode under a new name, so no known mode the listing
+    /// carries no row of is absent while one was seen.
+    pub unknown_modes: bool,
 }
 
 impl ServerListing {
     /// Whether `mode` is served: `true` with a readable server of it,
-    /// `false` when the listing carried no row of it at all.
+    /// `false` when the listing carried no row of it and every row
+    /// was typed and read.
     ///
     /// # Errors
     /// [`AniError::ParseFailed`] when the mode has no readable server
-    /// but had a row the client could not read — the shape changed
+    /// but is uncertain ([`Self::uncertain_for`]) — the shape changed
     /// under one mode, which is not the site listing none.
     pub fn mode_readable(&self, mode: &str) -> Result<bool> {
         if self.servers.iter().any(|s| s.mode == mode) {
             return Ok(true);
         }
-        if self.unreadable_modes.iter().any(|m| m == mode) {
+        if self.uncertain_for(mode) {
             return Err(AniError::ParseFailed {
                 detail: format!("hianime {mode} servers without a readable row"),
             });
         }
         Ok(false)
     }
+
+    /// Whether the listing leaves `mode` in doubt: a row of the mode
+    /// the client could not read, or a row typed with a mode it does
+    /// not know — either may have been the mode's server.
+    #[must_use]
+    pub fn uncertain_for(&self, mode: &str) -> bool {
+        self.unknown_modes || self.unreadable_modes.iter().any(|m| m == mode)
+    }
 }
 
 /// One row of the server list, read as far as the client can.
-fn read_server_row(item: &str) -> Option<Result<ServerEmbed, String>> {
+enum ServerRow {
+    /// A row the client read.
+    Read(ServerEmbed),
+    /// A row of a known mode the client could not read.
+    Unreadable(String),
+    /// A row typed with a mode the client does not know.
+    Unknown,
+}
+
+/// One row of the server list, read as far as the client can; `None`
+/// for a fragment without a mode attribute at all, which is not a row.
+fn read_server_row(item: &str) -> Option<ServerRow> {
     let mode = attr(item, "data-type=\"")?.trim().to_string();
     if !KNOWN_MODES.contains(&mode.as_str()) {
-        return None;
+        return Some(ServerRow::Unknown);
     }
     let read = || -> Option<ServerEmbed> {
         let name = attr(item, "data-server-name=\"")?.trim().to_string();
@@ -177,17 +205,19 @@ fn read_server_row(item: &str) -> Option<Result<ServerEmbed, String>> {
             embed_url,
         })
     };
-    Some(read().ok_or(mode))
+    Some(read().map_or(ServerRow::Unreadable(mode), ServerRow::Read))
 }
 
 /// An episode's servers, with the listing's uncertainty per mode
 /// ([`ServerListing`]). A row whose mode is not `sub` or `dub` — typed
 /// as nothing, or as some renamed value — is not a server of any mode
-/// the client knows and is skipped without marking a mode; counting
-/// it as read would let a listing of such rows pass as "no sub, no
-/// dub" instead of a changed shape. A row of a known mode the client
-/// cannot read marks that mode unreadable and is skipped; a nonempty
-/// listing with no readable row at all is refused.
+/// the client knows and is skipped, but marks the listing as carrying
+/// unknown modes: counting it as read would let a listing of such
+/// rows pass as "no sub, no dub" instead of a changed shape, and
+/// forgetting it would let a renamed mode read as absent beside the
+/// mode that kept its name. A row of a known mode the client cannot
+/// read marks that mode unreadable and is skipped; a nonempty listing
+/// with no readable row at all is refused.
 ///
 /// # Errors
 /// As [`unwrap_envelope`], and [`AniError::ParseFailed`] for a
@@ -196,24 +226,27 @@ pub fn parse_server_listing(json: &str) -> Result<ServerListing> {
     let html = unwrap_envelope(json)?;
     let mut servers = Vec::new();
     let mut unreadable_modes: Vec<String> = Vec::new();
+    let mut unknown_modes = false;
     for row in html
         .split("server-item")
         .skip(1)
         .filter_map(read_server_row)
     {
         match row {
-            Ok(server) => servers.push(server),
-            Err(mode) => {
+            ServerRow::Read(server) => servers.push(server),
+            ServerRow::Unreadable(mode) => {
                 if !unreadable_modes.contains(&mode) {
                     unreadable_modes.push(mode);
                 }
             }
+            ServerRow::Unknown => unknown_modes = true,
         }
     }
     let servers = recognized(&html, servers, "server list")?;
     Ok(ServerListing {
         servers,
         unreadable_modes,
+        unknown_modes,
     })
 }
 
