@@ -10,9 +10,12 @@
 //! the embed host's origin as `Referer` on every playlist fetch.
 //!
 //! An episode lists several servers, named by slot, and the site
-//! moves the slots between embed hosts; only some hosts' pages carry
-//! the blob. The client tries the servers it can read first and
-//! takes the first page that decodes.
+//! moves the slots between embed hosts, and the hosts differ in how
+//! their pages expose the stream: zokoanime's carry the blob;
+//! megaplay's carry no payload, only the media id its player asks
+//! the site's sources endpoint for. The client reads a page by its
+//! shape, not the host's name, tries the servers on hosts it can
+//! read first, and takes the first that yields a stream.
 
 pub mod ajax;
 pub mod detail;
@@ -111,6 +114,42 @@ impl<F: Fetch> HianimeClient<F> {
         Ok(resp.body)
     }
 
+    /// A server's stream, read from its embed page by the page's
+    /// shape: a page carrying the payload decodes in place; a page
+    /// without it that names its media — megaplay's — has the site
+    /// asked for the sources, with the page's own origin as the
+    /// referer and the header its player sends; a page with neither
+    /// shape is a host the client does not read, an answered
+    /// "nothing here".
+    ///
+    /// # Errors
+    /// [`AniError::NoResults`] for a page of neither shape; the
+    /// fetches' own refusals and transport failures; a parse failure
+    /// for a payload or a sources answer the client cannot use.
+    async fn read_server(&self, server: &ServerEmbed) -> Result<EmbedPayload> {
+        // The embed host checks that the site sent the viewer.
+        let embed = FetchRequest::get(server.embed_url.clone())
+            .header("Referer", format!("{}/", self.base));
+        let page = self.content(&embed).await?;
+        match decode_embed(&page) {
+            Err(AniError::NoResults) => {}
+            decoded => return decoded,
+        }
+        let Some(id) = media_id(&page) else {
+            return Err(AniError::NoResults);
+        };
+        let url = sources_url(&server.embed_url, id).ok_or_else(|| AniError::ParseFailed {
+            detail: "megaplay embed URL without an origin".into(),
+        })?;
+        let sources = FetchRequest::get(url)
+            .header(
+                "Referer",
+                embed_origin(&server.embed_url).unwrap_or_default(),
+            )
+            .header("X-Requested-With", "XMLHttpRequest");
+        parse_sources(&self.content(&sources).await?)
+    }
+
     /// An episode's servers, as the site lists them, with the
     /// listing's uncertainty per mode.
     async fn servers(&self, episode_id: u64) -> Result<ServerListing> {
@@ -168,37 +207,32 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // attempt's instant, as a host's failure rides with its own.
         let doubt_at = listing.uncertain_for(mode).then_some(listing_at);
         let servers = listing.servers;
-        // The first server whose page decodes to a stream wins; every
-        // other outcome is stepped over and remembered, and the
-        // loudest surfaces when no server served a stream
-        // ([`weightier`]): a rate limit above everything, since it
-        // alone opens the breaker's advertised pause at once; then a
-        // host that refused or failed, which speaks for the provider
-        // and is what the shared walk stops on; then a page that
-        // carries a payload the client cannot use — the key does not
-        // open it, or its source is nothing the transport fetches —
-        // which is the site having changed and the client no longer
-        // reading it, transient to the shared walk; then a dropped
-        // connection; then an answered status. A page without the payload says what
-        // its host does ([`payload_missing_verdict`]): from a host the
-        // client reads it is the site having changed shape, a parse
-        // failure like a blob the key no longer opens; from a host the
-        // client never read it says nothing and is stepped over, and
-        // an episode with only those has no stream. A fetch the gate
-        // refuses is not the host's weather at all but the gate
-        // speaking — a breaker opened, or a pause began, between two
-        // fetches of a background walk — and ends the walk as it is:
-        // no later server is asked, and the shared walk stops on it
-        // rather than recording a dead end.
+        // The first server whose page yields a stream wins
+        // ([`Self::read_server`]); every other outcome is stepped
+        // over and remembered, and the loudest surfaces when no
+        // server served a stream ([`weightier`]): a rate limit above
+        // everything, since it alone opens the breaker's advertised
+        // pause at once; then a host that refused or failed, which
+        // speaks for the provider and is what the shared walk stops
+        // on; then a page or a sources answer the client cannot use —
+        // the key does not open it, the source is nothing the
+        // transport fetches, the sources came back encrypted — which
+        // is the site having changed and the client no longer reading
+        // it, transient to the shared walk; then a dropped
+        // connection; then an answered status. A page of neither
+        // shape says what its host does ([`payload_missing_verdict`]):
+        // from a host the client reads it is the site having changed
+        // shape, a parse failure like a blob the key no longer opens;
+        // from a host the client never read it says nothing and is
+        // stepped over, and an episode with only those has no stream.
+        // A fetch the gate refuses is not the host's weather at all
+        // but the gate speaking — a breaker opened, or a pause began,
+        // between two fetches of a background walk — and ends the
+        // walk as it is: no later server is asked, and the shared
+        // walk stops on it rather than recording a dead end.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         for server in servers_for(&servers, mode) {
-            // The embed host checks that the site sent the viewer.
-            let embed = FetchRequest::get(server.embed_url.clone())
-                .header("Referer", format!("{}/", self.base));
-            let outcome = match self.content(&embed).await {
-                Ok(page) => decode_embed(&page),
-                Err(e) => Err(e),
-            };
+            let outcome = self.read_server(server).await;
             // The attempt that produced this outcome, read before the
             // next server's fetch moves the transport's stamp.
             let at = self.fetch.last_attempt_at();
