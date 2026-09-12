@@ -71,9 +71,16 @@ impl Scripted {
     }
 }
 
+/// A scripted answer that carries a negative — the probe's "found,
+/// without the mode" — starts with this.
+const ABSENT: &str = "absent from ";
+
 #[async_trait::async_trait]
 impl Attempt for Scripted {
     type Output = &'static str;
+    fn is_negative(output: &&'static str) -> bool {
+        output.starts_with(ABSENT)
+    }
     async fn run(&mut self, provider: &dyn Provider) -> Result<&'static str, NativeError> {
         self.asked.lock().expect("asked").push(provider.id());
         match self
@@ -696,6 +703,31 @@ mod budget_props {
                 prop_assert!(budget <= attempt);
                 prop_assert!(budget + reserve <= remaining + Duration::from_millis(50));
             }
+        }
+    }
+}
+
+mod trial_props {
+    use super::trials_owed;
+    use crate::scraper::gate::ScrapePriority;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// An interactive walk owes every skipped provider a trial —
+        /// the gate would admit the click through the open breaker —
+        /// and a background walk owes none, whatever was skipped.
+        #[test]
+        fn a_trial_is_owed_per_skipped_provider_on_an_interactive_walk_only(
+            interactive in prop::bool::ANY,
+            skipped in 0usize..6,
+        ) {
+            let priority = if interactive {
+                ScrapePriority::Interactive
+            } else {
+                ScrapePriority::Background
+            };
+            let owed = trials_owed(priority, skipped);
+            prop_assert_eq!(owed, if interactive { skipped } else { 0 });
         }
     }
 }
@@ -1333,4 +1365,239 @@ async fn a_retried_providers_own_miss_is_attributed_to_it() {
         vec![ProviderId::Hianime, ProviderId::Anidb]
     );
     assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
+// ── a negative answer is owed the skipped providers' trial too ────
+
+/// The probe's "found, without the requested mode" travels as an
+/// answer, not a miss, and it is a negative verdict all the same:
+/// the skipped primary's gate would admit the click as its half-open
+/// trial, so the primary is asked before the page is told the show
+/// has no dub, and a trial that finds the mode is the walk's answer.
+#[tokio::test]
+async fn a_skipped_provider_is_retried_when_the_fallback_answered_absence_on_an_interactive_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the recovered primary answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "anidb");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "skipped first, asked last"
+    );
+}
+
+/// The trial's own negative answer is the last answer given, and it
+/// replaces the verdict, author and all, as a trial's miss does: the
+/// primary said the show has no dub, and that is a verdict the
+/// primary stands behind, served while the primary answers — the
+/// fallback's absence would stand only while the primary refused,
+/// which it just stopped doing.
+#[tokio::test]
+async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("an absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A trial's clean miss replaces the fallback's absence the same way:
+/// the last answer given is the verdict, and it is the primary's.
+#[tokio::test]
+async fn a_retried_skipped_providers_clean_miss_replaces_the_fallbacks_absence() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("the primary's clean miss is the verdict");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(err.clean_miss);
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A trial that fails over leaves the verdict standing: the
+/// fallback's absence, attributed to the fallback.
+#[tokio::test]
+async fn a_fallbacks_absence_stands_when_the_retried_skipped_provider_is_still_unreachable() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the fallback's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// Background traffic keeps the skip: the fallback's absence is the
+/// verdict and the skipped primary is not contacted.
+#[tokio::test]
+async fn a_fallbacks_absence_stands_past_a_skipped_provider_on_a_background_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Background,
+        &mut attempt,
+    )
+    .await
+    .expect("the fallback's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
+    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+}
+
+/// With nothing skipped there is nobody to trial: a provider's
+/// absence is its answer, as before, and the rest are not asked.
+#[tokio::test]
+async fn an_absence_with_nothing_skipped_is_the_answer_as_before() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::Hianime, Behavior::Answer("must not be asked")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("an absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+}
+
+/// A skipped remembered provider that answers its trial with its own
+/// absence was heard from: its answer is the verdict, and it is not
+/// past affinity — the row's own provider gave it.
+#[tokio::test]
+async fn a_retried_remembered_providers_own_absence_is_not_past_affinity() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the remembered provider answered for itself");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
+    assert!(
+        !got.past_unreachable_affinity,
+        "the row's own provider was heard from"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// When the remembered provider's trial fails over, the rest's
+/// absence stands, and it still says it came past an unreachable
+/// remembered provider.
+#[tokio::test]
+async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_so() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(
+        got.past_unreachable_affinity,
+        "the remembered provider was still unreachable"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
 }
