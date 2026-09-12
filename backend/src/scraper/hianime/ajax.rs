@@ -104,10 +104,16 @@ fn is_blank_listing(html: &str) -> bool {
 
 /// An entry's episodes: each `ep-item` anchor's `data-number` and
 /// `data-id`, read from the anchor's own tag ([`marked_tags`]) so the
-/// order the site writes its attributes in does not matter. Rows
-/// whose number or id does not parse are skipped — the listing
-/// numbers integers per entry. A listing whose container holds
-/// nothing is the entry having no episodes yet.
+/// order the site writes its attributes in does not matter. A row's
+/// slot is its position in the listing — what the history and a
+/// resume key on — and the site's number is its display tag
+/// whenever it is not that position: the site numbers a recap or a
+/// special `7.5`, and the rows after it then say `8` at the ninth
+/// position, exactly as anidb.app's rows carry theirs. The resolver
+/// matches the tag verbatim, so nothing about the number is
+/// decided here; a row without a number or without an id is one
+/// the reader cannot read. A listing whose container holds nothing
+/// is the entry having no episodes yet.
 ///
 /// # Errors
 /// As [`unwrap_envelope`].
@@ -115,13 +121,18 @@ pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
     let rows: Vec<EpisodeRef> = marked_tags(&html, "ep-item")
         .into_iter()
-        .filter_map(|item| {
-            let number = attr(item, "data-number=\"")?.trim().parse().ok()?;
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let number = u32::try_from(index + 1).ok()?;
+            let tag = attr(item, "data-number=\"")?.trim();
+            if tag.is_empty() {
+                return None;
+            }
             let id = attr(item, "data-id=\"")?.trim().parse().ok()?;
             Some(EpisodeRef {
                 id,
                 number,
-                number2: None,
+                number2: (tag != number.to_string()).then(|| tag.to_string()),
             })
         })
         .collect();
