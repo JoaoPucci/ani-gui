@@ -256,6 +256,36 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
 
+    /// The row's attributes come in whatever order the site writes
+    /// them — the marker class first, last, or between — and every
+    /// row still comes back as its episode ref, in order.
+    #[test]
+    fn episode_rows_round_trip_whatever_order_their_attributes_come_in(
+        rows in proptest::collection::vec(
+            (1u32..5000, 1u64..1_000_000_000, Just(vec![0usize, 1, 2, 3]).prop_shuffle()),
+            1..8,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(number, id, order)| {
+                let attrs = [
+                    r#"class="ssl-item ep-item""#.to_string(),
+                    format!(r#"data-number="{number}""#),
+                    format!(r#"data-id="{id}""#),
+                    format!(r#"href="/watch/x?ep={id}""#),
+                ];
+                let tag: Vec<&str> = order.iter().map(|i| attrs[*i].as_str()).collect();
+                format!(r#"<a {}><div class="ssli-order">{number}</div></a>"#, tag.join(" "))
+            })
+            .collect();
+        let expected: Vec<EpisodeRef> = rows
+            .iter()
+            .map(|(number, id, _)| EpisodeRef { id: *id, number: *number, number2: None })
+            .collect();
+        proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
+    }
+
     /// The listing container with only whitespace inside is the
     /// site's shape for an entry without episodes, whatever chrome
     /// surrounds it; the same container holding anything else and
@@ -304,6 +334,51 @@ proptest::proptest! {
             })
             .collect();
         proptest::prop_assert_eq!(parse_servers(&envelope(&html)).expect("servers"), expected);
+    }
+
+    /// The server row reads the same whatever order its attributes
+    /// come in: every row comes back with its type, name and URL,
+    /// in order, and no mode is marked unreadable or unknown.
+    #[test]
+    fn server_rows_round_trip_whatever_order_their_attributes_come_in(
+        rows in proptest::collection::vec(
+            (
+                "(sub|dub)",
+                "(HD-1|HD-2|HD-3)",
+                "[a-z]{2,10}\\.(video|buzz|to)",
+                "[a-z0-9/]{0,20}",
+                Just(vec![0usize, 1, 2, 3]).prop_shuffle(),
+            ),
+            1..6,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(mode, name, host, path, order)| {
+                let url = format!("https://{host}/{path}");
+                let hash = base64::engine::general_purpose::STANDARD.encode(url.as_bytes());
+                let attrs = [
+                    r#"class="item server-item""#.to_string(),
+                    format!(r#"data-type="{mode}""#),
+                    format!(r#"data-server-name="{name}""#),
+                    format!(r#"data-hash="{hash}""#),
+                ];
+                let tag: Vec<&str> = order.iter().map(|i| attrs[*i].as_str()).collect();
+                format!(r#"<div {}><a class="btn">{name}</a></div>"#, tag.join(" "))
+            })
+            .collect();
+        let expected: Vec<ServerEmbed> = rows
+            .iter()
+            .map(|(mode, name, host, path, _)| ServerEmbed {
+                mode: mode.clone(),
+                name: name.clone(),
+                embed_url: format!("https://{host}/{path}"),
+            })
+            .collect();
+        let listing = parse_server_listing(&envelope(&html)).expect("listing");
+        proptest::prop_assert_eq!(listing.servers, expected);
+        proptest::prop_assert!(listing.unreadable_modes.is_empty(), "{:?}", listing.unreadable_modes);
+        proptest::prop_assert!(!listing.unknown_modes);
     }
 
     /// The listing keeps its uncertainty per mode. Over rows of either
