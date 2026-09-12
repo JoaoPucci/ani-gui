@@ -274,9 +274,25 @@ impl ScraperGate {
     #[must_use]
     pub fn is_refusing(&self) -> bool {
         let s = self.inner.lock().expect("gate lock");
-        let now = Instant::now();
-        s.open_until.is_some_and(|until| now < until)
-            || s.paused_until.is_some_and(|paused| now < paused)
+        refusing_at(s.open_until, s.paused_until, Instant::now())
+    }
+
+    /// Whether the provider has been seen answering since it last
+    /// refused — the question a negative verdict's own provider is
+    /// asked before the verdict is served. [`ScraperGate::is_refusing`]
+    /// is the clock's answer, and past the cooldown the two part: the
+    /// breaker refuses nobody, but it is half-open — one trial is let
+    /// through, and only a success closes it — so a provider whose
+    /// outage merely outlasted the cooldown has recovered nothing. A
+    /// breaker counts as recovered when a success closed it, or it
+    /// never opened; an advertised pause counts as over at its
+    /// window's end, since the upstream itself named that moment and
+    /// admission clears the pause on the clock. A read, never a state
+    /// change.
+    #[must_use]
+    pub fn is_recovered(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        recovered_at(s.open_until, s.paused_until, Instant::now())
     }
 
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
@@ -339,6 +355,22 @@ mod open_tests;
 
 #[path = "gate_recording.rs"]
 mod recording;
+
+/// Whether the provider is refusing at `now`: the breaker open, or an
+/// advertised pause running. Pure, so the read's contract can be
+/// stated as a property beside [`recovered_at`].
+fn refusing_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: Instant) -> bool {
+    open_until.is_some_and(|until| now < until) || paused_until.is_some_and(|paused| now < paused)
+}
+
+/// Whether the provider has recovered at `now`: the breaker closed —
+/// never opened, or closed by a success, never merely cooled down —
+/// and no advertised pause still running. Pure, the mirror of
+/// [`refusing_at`]: recovered implies not refusing, and a breaker past
+/// its cooldown without a success is neither.
+fn recovered_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: Instant) -> bool {
+    open_until.is_none() && paused_until.is_none_or(|paused| now >= paused)
+}
 
 /// Breaker check under the gate lock: refuses while the breaker is
 /// open, and once the cooldown elapses hands the half-open trial role
