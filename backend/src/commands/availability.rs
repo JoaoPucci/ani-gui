@@ -1747,6 +1747,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest_miss() {
+        // The row's provider is unreachable for the reprobe, so the
+        // walk moves on and the primary answers a clean miss. That
+        // miss is what the probe reports, but it proves nothing about
+        // the show the fallback listed: persisting it as the primary's
+        // negative would outlive the fallback's recovery and keep a
+        // playable title disabled for the negative's whole TTL.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
+            )
+            .mount(&anidb)
+            .await;
+        let hianime = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&hianime)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "580",
+            "sub",
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "580"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::NoResults)),
+            "the primary's miss is the verdict the caller sees: {got:?}"
+        );
+        assert!(
+            !anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty(),
+            "the walk moved past the unreachable provider to the primary"
+        );
+        assert_eq!(
+            cached_provider(&state, "580", "sub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the positive row stands until its provider is reachable again"
+        );
+    }
+
+    #[tokio::test]
     async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
         // The batch read already refuses to serve the fallback's
         // negative once the primary is answering again, and the lists
