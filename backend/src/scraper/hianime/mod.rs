@@ -152,9 +152,12 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // fetches — which is the site having changed and the client
         // no longer reading it; then a host that refused or failed,
         // which speaks for the provider; then an answered status or a
-        // dropped connection. A page without the payload is a host the
-        // client does not read at all, and an episode with only those
-        // has no stream.
+        // dropped connection. A page without the payload says what
+        // its host does ([`payload_missing_verdict`]): from a host the
+        // client reads it is the site having changed shape, a parse
+        // failure like a blob the key no longer opens; from a host the
+        // client never read it says nothing and is stepped over, and
+        // an episode with only those has no stream.
         let mut kept: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
             // The embed host checks that the site sent the viewer.
@@ -164,21 +167,23 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 Ok(page) => decode_embed(&page),
                 Err(e) => Err(e),
             };
-            match outcome {
+            let weather = match outcome {
                 Ok(payload) => {
                     return Ok(StreamSource {
                         master_url: payload.src,
                         referer: embed_origin(&server.embed_url),
                     })
                 }
-                Err(AniError::NoResults) => {}
-                Err(e) => {
-                    kept = Some(match kept.take() {
-                        Some(so_far) => weightier(so_far, e),
-                        None => e,
-                    });
-                }
-            }
+                Err(AniError::NoResults) => match payload_missing_verdict(&server.embed_url) {
+                    Some(e) => e,
+                    None => continue,
+                },
+                Err(e) => e,
+            };
+            kept = Some(match kept.take() {
+                Some(so_far) => weightier(so_far, weather),
+                None => weather,
+            });
         }
         Err(final_verdict(kept, uncertain, mode))
     }
@@ -224,6 +229,24 @@ fn weightier(kept: AniError, next: AniError) -> AniError {
     } else {
         kept
     }
+}
+
+/// What a page without the payload marker says about its host: a
+/// host the client reads ([`ajax::readable`]) has changed shape under
+/// the client, which is a parse failure naming the host, ranked like
+/// any other; a host the client never read says nothing, and the
+/// walk steps over it.
+fn payload_missing_verdict(embed_url: &str) -> Option<AniError> {
+    if !ajax::readable(embed_url) {
+        return None;
+    }
+    let host = url::Url::parse(embed_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_else(|| embed_url.to_string());
+    Some(AniError::ParseFailed {
+        detail: format!("hianime embed page on {host}: the payload marker is missing"),
+    })
 }
 
 /// The verdict when no server served a stream: the loudest failure
