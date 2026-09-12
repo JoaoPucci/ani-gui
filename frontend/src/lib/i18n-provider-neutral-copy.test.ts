@@ -45,5 +45,16 @@ describe('the catalogue copy names no provider', () => {
 			}
 			expect(offenders, `strings naming a provider: ${offenders.join(', ')}`).toEqual([]);
 		});
+
+		// The recheck asks the providers in order and stops at the first
+		// answer, so a clean miss from the first is the whole check; a
+		// busy line that says the providers, plural, are being asked
+		// promises a sweep the walk does not make.
+		it(`${locale} recheck busy line does not count the providers`, () => {
+			const detail = JSON.parse(
+				fs.readFileSync(path.join(MESSAGES, locale, 'detail.json'), 'utf8')
+			) as Record<string, string>;
+			expect(detail.ep_recheck_busy).not.toMatch(/provider|proveedor|provedor|провайдер/i);
+		});
 	}
 });
