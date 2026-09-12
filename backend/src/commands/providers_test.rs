@@ -800,10 +800,10 @@ mod persistable_props {
     proptest! {
         /// The error and its instant pass through untouched; the
         /// clean flag survives exactly when the remembered provider
-        /// was reachable.
+        /// denied the show for itself.
         #[test]
-        fn only_the_clean_flag_moves_and_only_past_an_unreachable_remembered_provider(
-            remembered_unreachable in any::<bool>(),
+        fn only_the_clean_flag_moves_and_only_past_an_undenied_affinity(
+            remembered_undenied in any::<bool>(),
             clean_miss in any::<bool>(),
             error in error(),
             failed_at_offset_ms in prop::option::of(0u64..10_000),
@@ -812,12 +812,108 @@ mod persistable_props {
                 .map(|ms| tokio::time::Instant::now() + std::time::Duration::from_millis(ms));
             let before = format!("{error:?}");
             let got = unpersistable_past_affinity(
-                remembered_unreachable,
+                remembered_undenied,
                 NativeError { error, clean_miss, failed_at },
             );
             prop_assert_eq!(format!("{:?}", got.error), before);
             prop_assert_eq!(got.failed_at, failed_at);
-            prop_assert_eq!(got.clean_miss, clean_miss && !remembered_unreachable);
+            prop_assert_eq!(got.clean_miss, clean_miss && !remembered_undenied);
+        }
+    }
+}
+
+mod episode_miss_props {
+    use super::{episode_miss_outranks, fails_over, firmer_miss};
+    use crate::commands::play_native_resolve::NativeError;
+    use crate::error::AniError;
+    use crate::scraper::provider::ProviderId;
+    use proptest::prelude::*;
+
+    /// The shape of a verdict a walk can hold, in values that build
+    /// it as many times as a property needs: the errors are not
+    /// cloneable.
+    #[derive(Debug, Clone)]
+    struct Shape {
+        kind: u8,
+        status: u16,
+        detail: String,
+        clean_miss: bool,
+        by: Option<ProviderId>,
+    }
+
+    impl Shape {
+        /// An answered miss, an answered status, or an unreachable
+        /// provider's error standing in for a miss.
+        fn error(&self) -> AniError {
+            match self.kind {
+                0 => AniError::NoResults,
+                1 => AniError::Network,
+                2 => AniError::Timeout,
+                3 => AniError::Upstream {
+                    status: self.status,
+                },
+                _ => AniError::ParseFailed {
+                    detail: self.detail.clone(),
+                },
+            }
+        }
+        fn verdict(&self) -> (NativeError, Option<ProviderId>) {
+            (
+                NativeError {
+                    error: self.error(),
+                    clean_miss: self.clean_miss,
+                    failed_at: None,
+                },
+                self.by,
+            )
+        }
+    }
+
+    fn shape() -> impl Strategy<Value = Shape> {
+        (
+            0u8..5,
+            100u16..600,
+            "[a-z ]{0,12}",
+            any::<bool>(),
+            prop::option::of(prop_oneof![
+                Just(ProviderId::Anidb),
+                Just(ProviderId::Hianime)
+            ]),
+        )
+            .prop_map(|(kind, status, detail, clean_miss, by)| Shape {
+                kind,
+                status,
+                detail,
+                clean_miss,
+                by,
+            })
+    }
+
+    proptest! {
+        /// The earlier verdict outranks the later one exactly when
+        /// the earlier is an answered miss that found the show — not
+        /// clean, and not an unreachable provider's error standing in
+        /// for a miss — and the later is a clean catalogue miss.
+        #[test]
+        fn an_answered_episode_miss_outranks_a_clean_miss_and_nothing_else_does(
+            earlier in shape(),
+            later in shape(),
+        ) {
+            let (e, l) = (earlier.verdict().0, later.verdict().0);
+            let expected = !fails_over(&e.error) && !e.clean_miss && l.clean_miss;
+            prop_assert_eq!(episode_miss_outranks(&e, &l), expected);
+        }
+
+        /// The verdict that stands travels with its provider: the
+        /// kept pair is one of the two, untouched.
+        #[test]
+        fn the_kept_verdict_keeps_its_author(earlier in shape(), later in shape()) {
+            let (e, l) = (earlier.verdict(), later.verdict());
+            let keep_earlier = episode_miss_outranks(&e.0, &l.0);
+            let want = if keep_earlier { &earlier } else { &later };
+            let want = (format!("{:?}", want.error()), want.clean_miss, want.by);
+            let got = firmer_miss(e, l);
+            prop_assert_eq!((format!("{:?}", got.0.error), got.0.clean_miss, got.1), want);
         }
     }
 }
@@ -1052,7 +1148,7 @@ async fn an_answer_reached_after_the_remembered_provider_failed_over_says_so() {
     .expect("the rest of the order answered");
     assert_eq!(got.provider, ProviderId::Anidb);
     assert!(
-        got.past_unreachable_affinity,
+        got.past_undenied_affinity,
         "the answer came past an unreachable remembered provider"
     );
 }
@@ -1078,7 +1174,7 @@ async fn an_answer_reached_after_an_unremembered_providers_outage_is_not_past_af
     .await
     .expect("the rest of the order answered");
     assert_eq!(got.provider, ProviderId::Anidb);
-    assert!(!got.past_unreachable_affinity, "no row is at stake");
+    assert!(!got.past_undenied_affinity, "no row is at stake");
 }
 
 /// A remembered provider skipped for refusing on a background walk
@@ -1103,7 +1199,7 @@ async fn an_answer_reached_past_a_skipped_remembered_provider_says_so_on_a_backg
     assert_eq!(got.provider, ProviderId::Anidb);
     assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
     assert!(
-        got.past_unreachable_affinity,
+        got.past_undenied_affinity,
         "the row's provider was never heard from"
     );
 }
@@ -1134,7 +1230,7 @@ async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
         vec![ProviderId::Anidb, ProviderId::Hianime]
     );
     assert!(
-        !got.past_unreachable_affinity,
+        !got.past_undenied_affinity,
         "the remembered provider answered for itself"
     );
 }
@@ -1559,7 +1655,7 @@ async fn a_retried_remembered_providers_own_absence_is_not_past_affinity() {
     assert_eq!(got.provider, ProviderId::Hianime);
     assert_eq!(got.value, "absent from hianime");
     assert!(
-        !got.past_unreachable_affinity,
+        !got.past_undenied_affinity,
         "the row's own provider was heard from"
     );
     assert_eq!(
@@ -1593,11 +1689,216 @@ async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_
     .expect("the rest's absence is an answer");
     assert_eq!(got.provider, ProviderId::Anidb);
     assert!(
-        got.past_unreachable_affinity,
+        got.past_undenied_affinity,
         "the remembered provider was still unreachable"
     );
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+// ── an episode miss is not a catalogue miss ─────────────────────────
+
+/// A remembered provider that answers an episode dead end — a miss
+/// that is not clean — found the show and did not deny it; the walk
+/// goes on, and when the rest of the order answers a clean catalogue
+/// miss, that miss must not become the verdict: persisted, it would
+/// be a healthy primary's negative over a show the fallback carries,
+/// and the whole title would be hidden for one unserved episode. The
+/// remembered provider's own miss stands, attributed to it.
+#[tokio::test]
+async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        !err.clean_miss,
+        "the remembered provider found the show; nothing persists"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the verdict is the remembered provider's own"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// Two episode dead ends are misses of equal standing: the last
+/// answer given stands, as before, and nothing persists either way.
+#[tokio::test]
+async fn a_later_episode_miss_replaces_the_remembered_providers_own() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Anidb, Behavior::Miss { clean: false }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(!err.clean_miss);
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
+/// Two clean misses are of equal standing too: the remembered
+/// provider denied the show, the rest denied it, and the later one
+/// stands, clean and persistable, as before.
+#[tokio::test]
+async fn a_remembered_providers_clean_miss_yields_to_a_later_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(err.clean_miss, "both denied the show; the miss persists");
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
+/// The remembered provider's episode dead end stands as its own when
+/// the rest of the order is unreachable.
+#[tokio::test]
+async fn a_remembered_providers_episode_miss_stands_when_the_rest_are_unreachable() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(!err.clean_miss);
+    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+}
+
+/// An answer from the rest of the order after the remembered
+/// provider's episode dead end has the same standing as one reached
+/// while it was unreachable: the remembered provider has not denied
+/// the show, so an absence the answer carries is the caller's to
+/// surface and not to persist over the row — and the answer says so.
+#[tokio::test]
+async fn an_absence_reached_past_a_remembered_providers_episode_miss_says_so() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(
+        got.past_undenied_affinity,
+        "the remembered provider found the show and did not deny it"
+    );
+}
+
+/// A remembered provider that answers a clean miss has denied the
+/// show; an absence from the rest is then a verdict on a show nobody
+/// lists, and persists as before.
+#[tokio::test]
+async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(
+        !got.past_undenied_affinity,
+        "the remembered provider denied the show for itself"
+    );
+}
+
+/// The skipped providers' trial keeps the same rule: a retried
+/// provider's clean miss does not replace an episode dead end the
+/// walk already holds — the show was found — while it does replace
+/// a clean miss, the last answer given among misses of equal
+/// standing.
+#[tokio::test]
+async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Anidb, ProviderId::Hianime],
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        !err.clean_miss,
+        "the fallback found the show; the retried primary's catalogue miss does not persist"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the verdict is the provider's that found the show"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the skipped primary still got its trial"
     );
 }
