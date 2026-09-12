@@ -934,7 +934,11 @@ pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 /// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses,
 /// or has not served by [`SIDECAR_PHASE_DEADLINE`], is logged and
 /// skipped: the episode downloaded, and that is the transfer.
-/// Returns the paths written.
+/// Returns the paths written. The immediate form of the phase — the
+/// downloads stage it beside the transfer and install afterwards
+/// ([`super::download_transfer`]) — kept as the tests' seam over
+/// the same staging and install.
+#[cfg(test)]
 pub(crate) async fn write_sidecar_subtitles(
     client: &reqwest::Client,
     tracks: &[crate::scraper::provider::SubtitleTrack],
@@ -955,6 +959,7 @@ pub(crate) async fn write_sidecar_subtitles(
 
 /// [`write_sidecar_subtitles`] under a caller's deadline, with the
 /// tracks fetched [`SIDECAR_FETCH_CONCURRENCY`] at a time.
+#[cfg(test)]
 pub(crate) async fn write_sidecar_subtitles_within(
     client: &reqwest::Client,
     tracks: &[crate::scraper::provider::SubtitleTrack],
@@ -975,17 +980,9 @@ pub(crate) async fn write_sidecar_subtitles_within(
     .await
 }
 
-/// The sidecar phase in full. The resolve bounds its listing where it
-/// is built, so a download's tracks arrive within the cap; the writer
-/// applies it again for a caller that hands it a listing of its own.
-/// Only the first
-/// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
-/// tracks of the listing are fetched, `concurrency` at a time, each
-/// given until the deadline, and each body is written the moment it
-/// arrives rather than held until the rest have; so a track that
-/// answers in time lands beside one that stalls, and a listing at
-/// the cap never holds more than a few bodies at once. The files are
-/// named from the listing's order, whatever order they arrive in.
+/// The sidecar phase in full: [`stage_sidecar_subtitles_with`], then
+/// every staged track installed at its name.
+#[cfg(test)]
 pub(crate) async fn write_sidecar_subtitles_with(
     client: &reqwest::Client,
     tracks: &[crate::scraper::provider::SubtitleTrack],
@@ -995,6 +992,44 @@ pub(crate) async fn write_sidecar_subtitles_with(
     deadline: std::time::Duration,
     concurrency: usize,
 ) -> Vec<PathBuf> {
+    let staged = stage_sidecar_subtitles_with(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        deadline,
+        concurrency,
+    )
+    .await;
+    super::download_transfer::install_staged(staged)
+}
+
+/// The sidecar phase up to the names. The resolve bounds its listing
+/// where it is built, so a download's tracks arrive within the cap;
+/// the writer applies it again for a caller that hands it a listing
+/// of its own. Only the first
+/// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
+/// tracks of the listing are fetched, `concurrency` at a time, each
+/// given until the deadline, and each body goes to its scratch the
+/// moment it arrives rather than being held until the rest have; so
+/// a track that answers in time is staged beside one that stalls,
+/// and a listing at the cap never holds more than a few bodies at
+/// once. The names follow the listing's order, whatever order the
+/// bodies arrive in, and each is claimed as the body arrives — a
+/// name taken by then is the user's and the track is skipped — but
+/// filled only by the caller's install, so a track fetched beside a
+/// transfer that then fails is dropped with its scratch and never
+/// sits at a name beside no media. Returned in listing order.
+pub(crate) async fn stage_sidecar_subtitles_with(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+    concurrency: usize,
+) -> Vec<SidecarClaim> {
     use futures_util::stream::{self, StreamExt as _};
     let (tracks, dropped) = crate::proxy::upstream::within_track_cap(tracks);
     if dropped > 0 {
@@ -1014,7 +1049,7 @@ pub(crate) async fn write_sidecar_subtitles_with(
         .map(|(i, track)| fetch_sidecar_track_by(client, track, referer, until, i))
         .collect();
     let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
-    let mut written: Vec<(usize, PathBuf)> = Vec::new();
+    let mut staged: Vec<(usize, SidecarClaim)> = Vec::new();
     while let Some((i, body)) = arrivals.next().await {
         let Some(body) = body else {
             continue;
@@ -1032,8 +1067,8 @@ pub(crate) async fn write_sidecar_subtitles_with(
         // Created new, never replaced: a file with bytes at the name
         // is the user's — a corrected subtitle from an earlier
         // download — and stays as found.
-        match write_new(&path, &body).await {
-            Ok(()) => written.push((i, path)),
+        match stage_sidecar(&path, &body).await {
+            Ok(claim) => staged.push((i, claim)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 tracing::info!(path = %path.display(), "download: subtitle already present, kept");
             }
@@ -1042,8 +1077,16 @@ pub(crate) async fn write_sidecar_subtitles_with(
             }
         }
     }
-    written.sort_by_key(|(i, _)| *i);
-    written.into_iter().map(|(_, path)| path).collect()
+    staged.sort_by_key(|(i, _)| *i);
+    staged.into_iter().map(|(_, claim)| claim).collect()
+}
+
+/// Claim `path` and fill its scratch with `body`, leaving the name
+/// for the install (see [`SidecarClaim`]).
+async fn stage_sidecar(path: &std::path::Path, body: &[u8]) -> std::io::Result<SidecarClaim> {
+    let mut claim = claim_new(path).await?;
+    claim.fill(body).await?;
+    Ok(claim)
 }
 
 /// The name part each track takes beside the media, from its place
@@ -1142,7 +1185,10 @@ async fn fetch_sidecar_track(
     }
 }
 
-/// Write `body` to a file whose name is free (see [`name_is_taken`]).
+/// Write `body` to a file whose name is free (see [`name_is_taken`]):
+/// a claim staged and installed in one step, the tests' seam over
+/// the two.
+#[cfg(test)]
 pub(crate) async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
     claim_new(path).await?.finish(body).await
 }
@@ -1216,18 +1262,45 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
 }
 
 impl SidecarClaim {
-    /// Write the whole body to the scratch and install it at the name.
+    /// The name the claim is for.
+    pub(crate) fn target(&self) -> &std::path::Path {
+        &self.target
+    }
+
+    /// Write the whole body to the scratch and install it at the name:
+    /// [`Self::fill`] and [`Self::install`] in one step.
     ///
     /// # Errors
     /// The write's own; `AlreadyExists` when the name was taken in
     /// the meantime. The scratch is removed on every way out.
+    #[cfg(test)]
     pub(crate) async fn finish(mut self, body: &[u8]) -> std::io::Result<()> {
+        self.fill(body).await?;
+        self.install()
+    }
+
+    /// Write the whole body to the scratch, synced and closed, and
+    /// keep the claim: the name stays free until [`Self::install`],
+    /// and a claim dropped before that removes the scratch.
+    ///
+    /// # Errors
+    /// The write's own.
+    pub(crate) async fn fill(&mut self, body: &[u8]) -> std::io::Result<()> {
         use tokio::io::AsyncWriteExt as _;
         let mut file = self.file.take().expect("a live claim holds its file");
         file.write_all(body).await?;
         file.flush().await?;
         file.sync_all().await?;
         drop(file);
+        Ok(())
+    }
+
+    /// Install the filled scratch at the name.
+    ///
+    /// # Errors
+    /// `AlreadyExists` when the name was taken in the meantime; the
+    /// scratch is removed on every way out.
+    pub(crate) fn install(mut self) -> std::io::Result<()> {
         install_sidecar(&self.scratch, &self.target)?;
         self.finished = true;
         Ok(())
