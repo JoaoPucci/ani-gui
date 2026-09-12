@@ -73,12 +73,14 @@ requires it; the exception is the update check that runs on launch
   anidb.app again. These requests carry the search terms
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
-  episode through hianime also fetches its embed page from the embed
-  host the site names for that episode. The site chooses those
-  hosts, and they can change without an app update; at the time of
-  writing the listings name zokoanime.video, megaplay.buzz and
-  vidtube.site, and the client fetches whichever the site lists for
-  the episode.
+  episode through hianime also fetches an embed page from the embed
+  hosts the site names for that episode — one at a time, in the
+  site's order, moving to the next when a page cannot be read or its
+  stream does not answer, so one resolve can reach more than one of
+  them. The site chooses those hosts, and they can change without an
+  app update; at the time of writing the listings name
+  zokoanime.video, megaplay.buzz and vidtube.site, and the client
+  fetches from whichever the site lists for the episode.
 - **Video playback** — the chosen episode's playlist, its segments
   and any sidecar subtitle files are fetched directly from the
   source CDN the catalogue or its embed page names. For hianime that
