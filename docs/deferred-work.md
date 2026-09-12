@@ -390,6 +390,118 @@ starting it, and delete it when you find it done.
   that path, and the diagnostic route's pasted URL exercises neither
   the proxy nor the event stream.
 
+## Three listening and watching modes: openings, soundtracks, reactions
+
+Three ideas for what the app could offer beyond episodes, each still
+open-ended. What is written here is the state of one round of
+research on 2026-09-12 — which sources exist, what each was seen to
+do, and what closes a path — not a shape. Whoever picks one up
+researches it again against what the services do then, and decides
+the shape against the app as it is then.
+
+- **An openings mode: watch a show's opening and ending sequences,
+  browse and search them, play them in a queue.** The only known
+  source of truth is AnimeThemes, which hosts the opening and ending
+  videos themselves (not only the songs): a WebM per theme at 720p or
+  1080p with a separate OGG audio file, the song title and artists,
+  the theme's number and kind, credited and creditless variants, and
+  links to the MyAnimeList, AniList and Kitsu ids of each show —
+  the ids the title-resolution bridge already speaks — plus an
+  AniDB.net id, which is a database's id and nothing to do with the
+  anidb.app streaming provider, resolved by title. Seen on
+  the day: the API answers without a key at ninety requests a minute
+  and its CDN serves the files to a plain GET with range requests;
+  its JSON API is marked deprecated in favour of a GraphQL endpoint
+  with a lookup by external site id; and the CDN answers 403 to a
+  HEAD request while serving the GET, which any liveness check has
+  to allow for. WebM plays natively in the renderer, so no HLS
+  machinery is involved, and the proxy already has a progressive
+  pass-through route beside its HLS one — but that route is chosen
+  by a media kind the session infers from the URL's extension, and
+  the kinds it knows are `m3u8` and `mp4`; anything else, `webm`
+  included, falls to HLS and is handed to the manifest parser, so
+  a session for a theme is not only wiring but a media kind the
+  classifier learns or the caller sets outright (the manual
+  diagnostic route does not go through the proxy at all: it hands
+  its pasted URL straight to the player).
+  The alternative — cutting openings
+  out of episodes with the skip intervals the player already has —
+  was looked at and set aside: the intervals are crowd-sourced and
+  shift between releases; a cut without re-encoding lands on a
+  segment or keyframe boundary rather than on the interval's exact
+  second, and a frame-exact cut re-encodes around the boundaries;
+  and the result is the credited opening at stream quality. What it
+  does make cheap is a "jump to the opening" inside the normal
+  player.
+
+- **A soundtrack mode: a show's music, playable where a source
+  allows and linked out where it does not.** Full playback inside
+  the app has three known sources: the OP and ED audio AnimeThemes
+  serves beside its videos; the rights-holder uploads on YouTube,
+  where labels distribute soundtracks through auto-generated artist
+  channels (seen for one show: the composer's own channel carrying
+  the tracks, the studio's channel carrying the music videos); and
+  the user's own library, whether a folder or a Jellyfin, Navidrome
+  or other Subsonic-compatible server, all with open DRM-free
+  interfaces. What closes the streaming services: Spotify, Apple
+  Music, Deezer and TIDAL gate full playback behind a DRM module the
+  app's Electron build does not carry, plus a subscription; Spotify
+  also removed preview links from its API for new applications in
+  November 2024; SoundCloud's API is closed to new applications
+  unless approved case by case. What they still give: thirty-second
+  previews from the iTunes and Deezer search APIs with no key and
+  with cover art, previews through TIDAL's own player module, and a
+  link out per track, which needs nothing. For album and tracklist
+  data, VGMdb has an unofficial JSON front and MusicBrainz an
+  official API; Jikan lists only the theme song titles. So linking
+  is the fallback per track, not the design — but which sources are
+  worth the maintenance is the open question.
+
+- **A reactions mode: find and watch reaction videos for an
+  episode.** No index of reaction videos exists anywhere; YouTube is
+  the whole corpus, and every option runs through it. Discovery has
+  three known routes and each has a cost: the YouTube Data API
+  needs a project key — bundled in the app it gives one project a
+  hundred searches a day shared by every user, supplied by the user
+  in settings it gives each user their own quota at the cost of a
+  setup step; the public Invidious and Piped
+  instances are blocked at the IP level and down to a handful; and
+  the yt-dlp the app already bundles searches YouTube with no key —
+  seen working on the day, with titles, channels, durations and view
+  counts — but scrapes a private API that breaks when YouTube
+  changes, which means the app would need a way to refresh yt-dlp.
+  Playback: YouTube's embedded player in a frame is the sanctioned
+  way, common, and plays every quality; its costs are a Google
+  origin inside the app (the renderer's content security policy,
+  deferred above, would allow that one frame source, and the
+  no-cookie embed domain limits tracking), ads in the frame, and
+  videos whose owners refuse embedding. And one open question sits
+  in front of it: the packaged app serves its page from a custom
+  `app://` origin, Chromium sends no Referer from a non-HTTP one,
+  and YouTube's player refuses an embed that identifies no site
+  (its error 153), so a frame that plays under the dev server's
+  HTTP origin is not known to play in the shipped app — that needs
+  checking from the packaged origin, and if it fails, a way to
+  identify the site (a header the main process adds to the frame's
+  requests, or the player's own client-identity parameters), which
+  is another piece of the written exception below. Extracting the
+  stream with yt-dlp and relaying it through the proxy keeps the
+  app's boundary but sits in a grey area of YouTube's terms and caps
+  combined audio-and-video at 360p. The proxy rule was written for
+  provider streams — the referer their CDNs want, CORS, local
+  tokens — and none of that applies to a third-party player, so the
+  frame would want a written exception rather than a design bent
+  around the rule. A first shape that touches none of that exists:
+  discovery in the app from a curated channel list, playback in the
+  browser through the link-out that already exists. The external
+  player is one step further than it looks: the hand-off gives the
+  player a page URL, and mpv plays a YouTube page only by calling
+  yt-dlp, which the app bundles but puts on a spawned tool's search
+  path in the download flow alone — the external-player spawn
+  inherits the app's environment — so that route needs the same
+  path wiring on the hand-off, or a yt-dlp the user installed
+  themselves.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
