@@ -486,9 +486,16 @@ the shape against the app as it is then.
   provider streams — the referer their CDNs want, CORS, local
   tokens — and none of that applies to a third-party player, so the
   frame would want a written exception rather than a design bent
-  around the rule. A zero-risk first shape exists: discovery in the
-  app from a curated channel list, playback in the browser or an
-  external player through the handoff that already exists.
+  around the rule. A first shape that touches none of that exists:
+  discovery in the app from a curated channel list, playback in the
+  browser through the link-out that already exists. The external
+  player is one step further than it looks: the hand-off gives the
+  player a page URL, and mpv plays a YouTube page only by calling
+  yt-dlp, which the app bundles but puts on a spawned tool's search
+  path in the download flow alone — the external-player spawn
+  inherits the app's environment — so that route needs the same
+  path wiring on the hand-off, or a yt-dlp the user installed
+  themselves.
 
 ## Housekeeping
 
