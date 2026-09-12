@@ -995,6 +995,118 @@ async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_ove
     assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
 }
 
+/// An answer has the same standing as a miss: reached from the rest
+/// of the order while the remembered provider was unreachable, it
+/// says nothing about the row that provider proved, and the answer
+/// says so, for the caller to keep a negative in it from persisting.
+#[tokio::test]
+async fn an_answer_reached_after_the_remembered_provider_failed_over_says_so() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest of the order answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(
+        got.past_unreachable_affinity,
+        "the answer came past an unreachable remembered provider"
+    );
+}
+
+/// The same walk with nothing remembered: no row is at stake.
+#[tokio::test]
+async fn an_answer_reached_after_an_unremembered_providers_outage_is_not_past_affinity() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest of the order answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(!got.past_unreachable_affinity, "no row is at stake");
+}
+
+/// A remembered provider skipped for refusing on a background walk
+/// is never asked, so an answer from the rest comes past it.
+#[tokio::test]
+async fn an_answer_reached_past_a_skipped_remembered_provider_says_so_on_a_background_walk() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("hianime")),
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Background,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest of the order answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+    assert!(
+        got.past_unreachable_affinity,
+        "the row's provider was never heard from"
+    );
+}
+
+/// When the retried remembered provider answers itself, it was heard
+/// from: its answer is its own, and whatever absence it carries is
+/// the remembered provider's verdict on the row.
+#[tokio::test]
+async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("hianime")),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the retried remembered provider answered");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+    assert!(
+        !got.past_unreachable_affinity,
+        "the remembered provider answered for itself"
+    );
+}
+
 /// When the retried remembered provider answers a miss of its own,
 /// it was heard from: that miss is the verdict, as given, and it is
 /// the remembered provider's.
