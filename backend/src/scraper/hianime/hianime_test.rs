@@ -481,7 +481,8 @@ fn listing_with_a_recap() -> String {
 /// rows after it keep their own numbers as tags too, since their
 /// position no longer says their number. A row whose number is not
 /// a number at all is kept the same way — the tag is the site's,
-/// and only a row without a number or an id is unreadable.
+/// and only a row without a number or an id is unreadable, which
+/// refuses the listing ([`a_listing_with_an_unreadable_row_is_refused_not_shortened`]).
 #[test]
 fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
     use crate::commands::play_native_numbering::{
@@ -517,7 +518,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
     assert_eq!(kitsu_episode_cap(&eps), Some(8));
     assert_eq!(extra_episode_tags(&eps), vec!["7.5".to_string()]);
 
-    let odd = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item ep-item\" data-number=\"OVA\" data-id=\"21419\"></a><a class=\"ssl-item ep-item\" data-number=\"\" data-id=\"21420\"></a></div>"}"#;
+    let odd = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item ep-item\" data-number=\"OVA\" data-id=\"21419\"></a></div>"}"#;
     assert_eq!(
         parse_episode_list(odd).expect("listing"),
         vec![
@@ -532,7 +533,43 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
                 number2: Some("OVA".into()),
             },
         ],
-        "a nonnumeric number is a tag; a blank one is an unreadable row"
+        "a nonnumeric number is a tag"
+    );
+}
+
+/// The listing is the show's count — what picks a candidate by its
+/// episodes and what a click is looked up in — so a row the reader
+/// cannot read is not a row to leave out: a listing shortened by one
+/// undercounts the show, and the dropped episode answers "no such
+/// episode" while its link may play. A listing with an unreadable
+/// marked row is refused as the site having changed shape, whether
+/// the row's id is missing, not a number, or its number is blank.
+#[test]
+fn a_listing_with_an_unreadable_row_is_refused_not_shortened() {
+    let readable = r#"<a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a>"#;
+    let no_id = format!(
+        r#"{{"status":true,"html":"<div class=\"ss-list\">{readable}<a class=\"ssl-item ep-item\" data-number=\"2\"></a></div>"}}"#
+    );
+    let err = parse_episode_list(&no_id).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let bad_id = format!(
+        r#"{{"status":true,"html":"<div class=\"ss-list\">{readable}<a class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"x21419\"></a></div>"}}"#
+    );
+    let err = parse_episode_list(&bad_id).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let blank_number = format!(
+        r#"{{"status":true,"html":"<div class=\"ss-list\">{readable}<a class=\"ssl-item ep-item\" data-number=\"\" data-id=\"21420\"></a></div>"}}"#
+    );
+    let err = parse_episode_list(&blank_number).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert_eq!(
+        parse_episode_list(&format!(
+            r#"{{"status":true,"html":"<div class=\"ss-list\">{readable}</div>"}}"#
+        ))
+        .expect("listing")
+        .len(),
+        1,
+        "the readable row alone is a listing"
     );
 }
 
