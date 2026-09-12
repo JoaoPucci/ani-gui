@@ -2,7 +2,7 @@
 //! each file stays inside the complexity ratchet's per-file bar.
 
 use crate::error::Result;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, BrowseHit};
+use crate::scraper::provider::{BrowseHit, Provider};
 
 use super::play_native::MAX_PROBED_CANDIDATES;
 
@@ -20,8 +20,8 @@ use super::play_native::MAX_PROBED_CANDIDATES;
 /// nowhere — that is a rejection ([`crate::error::AniError::NoResults`]),
 /// so the walk can try the next alias. Each survivor carries whether
 /// its own year positively matched.
-pub(crate) async fn year_filtered<'a, F: AnidbFetch>(
-    client: &AnidbClient<F>,
+pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
+    client: &P,
     hits: &'a [BrowseHit],
     year: Option<u32>,
 ) -> Result<(Vec<(&'a BrowseHit, bool)>, bool)> {

@@ -1,11 +1,71 @@
-//! Transport for the anidb client — split from the module head so
-//! each file stays inside the complexity ratchet's per-file bar.
+//! The impersonating transport every provider client fetches through:
+//! a curl-impersonate binary spawned per request, resolved from the
+//! bundled-binary directory before PATH. Split from the clients so the
+//! transport is one thing and each provider's parsers are another.
 
 use std::path::{Path, PathBuf};
 
 use crate::error::{AniError, Result};
 
-use super::{CURL_FAILOVER, IMPERSONATE_AGENT};
+/// The user agent ani-cli 5.0 sends; the interstitial keys on TLS
+/// fingerprint first but the agent rides along for parity.
+pub const IMPERSONATE_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/// One transport candidate: the executable name the resolver hunts,
+/// and the impersonation target that name needs passed to it.
+///
+/// Upstream's per-browser entries are wrapper scripts that spell a
+/// fingerprint out in their own flags, so a wrapper needs no target —
+/// its name *is* the choice. The patched binary underneath them
+/// carries no fingerprint by default and takes `--impersonate
+/// <target>` instead. That distinction is the whole reason this is a
+/// struct rather than a name: Windows ships those wrappers as `.bat`
+/// files, which the resolver deliberately will not name (see
+/// `fetch::EXE_SUFFIXES`), leaving the bare binary as the only
+/// impersonating transport it can spawn there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportCandidate {
+    /// Executable name, before the platform's suffix table widens it.
+    pub name: &'static str,
+    /// Target to pass as `--impersonate`, when the binary needs one.
+    pub impersonate: Option<&'static str>,
+}
+
+/// curl binaries in preference order — ani-cli 5.0's failover list,
+/// with the bare impersonate build inserted ahead of the plain-curl
+/// tail. Impersonate builds come first; the tail exists so the
+/// resolver can still name an executable on hosts without them, where
+/// the interstitial then surfaces as a typed upstream error rather
+/// than a missing-binary one.
+///
+/// The wrappers stay ahead of the bare binary so the packages that
+/// stage them keep resolving exactly what they resolved before.
+pub const CURL_FAILOVER: &[TransportCandidate] = &[
+    TransportCandidate {
+        name: "curl_firefox135",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome136",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_chrome116",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl_ff117",
+        impersonate: None,
+    },
+    TransportCandidate {
+        name: "curl-impersonate",
+        impersonate: Some("chrome136"),
+    },
+    TransportCandidate {
+        name: "curl",
+        impersonate: None,
+    },
+];
 
 /// A fetched response: enough for the client to tell content from a
 /// challenge page without transport details leaking upward.
@@ -17,16 +77,55 @@ pub struct FetchResponse {
     pub body: String,
 }
 
+/// One request to the transport: the URL plus the headers the
+/// provider needs on it, in order. A provider's endpoints can demand
+/// what the site itself does not — an AJAX listing that answers only
+/// to `X-Requested-With`, an embed page that checks its `Referer` —
+/// and the provider is the one that knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchRequest {
+    /// The URL to GET.
+    pub url: String,
+    /// `(name, value)` pairs, sent in this order.
+    pub headers: Vec<(String, String)>,
+}
+
+impl FetchRequest {
+    /// A headerless GET of `url`.
+    pub fn get(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            headers: Vec::new(),
+        }
+    }
+
+    /// The same request with `name: value` appended to its headers.
+    #[must_use]
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+}
+
 /// Transport seam. Implemented by the curl-impersonate subprocess in
-/// production and by fixture-backed fakes in tests.
+/// production and by fixture-backed fakes in tests. `fetch` is the
+/// one primitive; `get` is the headerless convenience over it.
 #[async_trait::async_trait]
-pub trait AnidbFetch: Send + Sync {
-    /// GET `url` and return status + body.
+pub trait Fetch: Send + Sync {
+    /// Perform `req` and return status + body.
     ///
     /// # Errors
     /// [`AniError::Network`] on spawn/transport failure,
     /// [`AniError::Timeout`] when the request exceeds its deadline.
-    async fn get(&self, url: &str) -> Result<FetchResponse>;
+    async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse>;
+
+    /// GET `url` with no headers.
+    ///
+    /// # Errors
+    /// As [`Fetch::fetch`].
+    async fn get(&self, url: &str) -> Result<FetchResponse> {
+        self.fetch(&FetchRequest::get(url)).await
+    }
 
     /// The post-admission start of this transport's most recent
     /// attempt, when the transport tracks one (the gated production
@@ -221,8 +320,9 @@ pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
 /// `-w` appends the status after the body; the last line is split
 /// back off. Mirrors the script's anidb_curl flags, plus the
 /// impersonation target when the resolved binary needs one.
-pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
-    let mut args: Vec<String> = Vec::with_capacity(12);
+pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
+    let url = req.url.as_str();
+    let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
     // First, where curl honors it: a user's ~/.curlrc can redirect
     // the output or append transfers, and this code parses the body.
     args.push("-q".into());
@@ -241,6 +341,12 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
     }
     args.push("-A".into());
     args.push(IMPERSONATE_AGENT.into());
+    // The request's own headers, in the provider's order — after the
+    // agent so a provider may override it, before the URL operand.
+    for (name, value) in &req.headers {
+        args.push("-H".into());
+        args.push(format!("{name}: {value}"));
+    }
     // The impersonated fingerprint advertises the browser's
     // Accept-Encoding (gzip, br, zstd) and the provider answers
     // compressed; without this flag curl hands the raw frame through
@@ -261,8 +367,9 @@ pub(crate) fn fetch_args(url: &str, impersonate: Option<&str>) -> Vec<String> {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for CurlImpersonateFetch {
-    async fn get(&self, url: &str) -> Result<FetchResponse> {
+impl Fetch for CurlImpersonateFetch {
+    async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
+        let url = req.url.as_str();
         // Timed so a debug run shows what each leg of the resolve
         // walk costs — the number the resolution cache's TTL-versus-
         // re-resolve decision needs, and the first thing to read
@@ -273,7 +380,7 @@ impl AnidbFetch for CurlImpersonateFetch {
         // depend on the terminal that launched the backend.
         cmd.env("TERM", "dumb")
             .env("NO_COLOR", "1")
-            .args(fetch_args(url, self.impersonate))
+            .args(fetch_args(req, self.impersonate))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -298,7 +405,7 @@ impl AnidbFetch for CurlImpersonateFetch {
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "anidb transport spawn failed");
+                    tracing::debug!(url = %redacted_url(url), exe = %self.exe.display(), error = %e, "transport spawn failed");
                     return Err(AniError::Network);
                 }
             }
@@ -312,19 +419,19 @@ impl AnidbFetch for CurlImpersonateFetch {
                 exe = %self.exe.display(),
                 code = ?output.status.code(),
                 stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url),
-                "anidb transport child failed"
+                "transport child failed"
             );
             return Err(AniError::Network);
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
         let status: u16 = status_line.trim().parse().map_err(|_| {
-            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "anidb transport trailer unparseable");
+            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "transport trailer unparseable");
             AniError::Network
         })?;
         if status == 0 {
             // curl writes 000 when the transfer itself failed.
-            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "anidb transport reported 000");
+            tracing::debug!(url = %redacted_url(url), stderr = %scrub_stderr(&String::from_utf8_lossy(&output.stderr), url), "transport reported 000");
             return Err(AniError::Network);
         }
         tracing::debug!(
@@ -332,7 +439,7 @@ impl AnidbFetch for CurlImpersonateFetch {
             status,
             ms = started.elapsed().as_millis(),
             bytes = body.len(),
-            "anidb transport fetch"
+            "transport fetch"
         );
         Ok(FetchResponse {
             status,
@@ -340,6 +447,10 @@ impl AnidbFetch for CurlImpersonateFetch {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "fetch_test.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "fetch_prop_test.rs"]

@@ -1,5 +1,6 @@
 use super::*;
-use crate::scraper::anidb::{BrowseHit, EpisodeRef, FetchResponse};
+use crate::scraper::fetch::{FetchRequest, FetchResponse};
+use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
 /// Serves the full chain — languages, embed, master — for exactly
 /// one episode id; every other id 404s. Resolving proves which row
@@ -7,8 +8,9 @@ use crate::scraper::anidb::{BrowseHit, EpisodeRef, FetchResponse};
 struct OnlyEpisode(u64);
 
 #[async_trait::async_trait]
-impl crate::scraper::anidb::AnidbFetch for OnlyEpisode {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+impl crate::scraper::fetch::Fetch for OnlyEpisode {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains(&format!("/api/frontend/episode/{}/languages", self.0)) {
             return Ok(FetchResponse {
                 status: 200,

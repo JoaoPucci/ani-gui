@@ -33,6 +33,9 @@ pub mod play_cache;
 pub mod play_external_command;
 pub mod play_handoff;
 #[cfg(test)]
+#[path = "play_handoff_prop_test.rs"]
+mod play_handoff_prop_test;
+#[cfg(test)]
 #[path = "play_handoff_test.rs"]
 mod play_handoff_test;
 pub mod play_native;
