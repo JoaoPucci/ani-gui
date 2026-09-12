@@ -246,7 +246,10 @@ where
         referer: resolved.referer,
         subtitles: resolved.subtitles,
     };
-    spawn_download_tool(
+    // The sidecars are fetched beside the transfer, while their
+    // signed URLs are as fresh as the stream's.
+    super::download_transfer::transfer_with_sidecars(
+        &state.proxy_http,
         &source,
         &dest,
         &file_stem,
@@ -261,14 +264,6 @@ where
         },
     )
     .await?;
-    write_sidecar_subtitles(
-        &state.proxy_http,
-        &source.subtitles,
-        source.referer.as_deref(),
-        &dest,
-        &file_stem,
-    )
-    .await;
 
     Ok(DownloadResponse {
         dest_dir: dest.to_string_lossy().into_owned(),
