@@ -466,11 +466,20 @@ the shape against the app as it is then.
   counts — but scrapes a private API that breaks when YouTube
   changes, which means the app would need a way to refresh yt-dlp.
   Playback: YouTube's embedded player in a frame is the sanctioned
-  way, common, works in Electron and plays every quality; its costs
-  are a Google origin inside the app (the renderer's content
-  security policy, deferred above, would allow that one frame
-  source, and the no-cookie embed domain limits tracking), ads in
-  the frame, and videos whose owners refuse embedding. Extracting the
+  way, common, and plays every quality; its costs are a Google
+  origin inside the app (the renderer's content security policy,
+  deferred above, would allow that one frame source, and the
+  no-cookie embed domain limits tracking), ads in the frame, and
+  videos whose owners refuse embedding. And one open question sits
+  in front of it: the packaged app serves its page from a custom
+  `app://` origin, Chromium sends no Referer from a non-HTTP one,
+  and YouTube's player refuses an embed that identifies no site
+  (its error 153), so a frame that plays under the dev server's
+  HTTP origin is not known to play in the shipped app — that needs
+  checking from the packaged origin, and if it fails, a way to
+  identify the site (a header the main process adds to the frame's
+  requests, or the player's own client-identity parameters), which
+  is another piece of the written exception below. Extracting the
   stream with yt-dlp and relaying it through the proxy keeps the
   app's boundary but sits in a grey area of YouTube's terms and caps
   combined audio-and-video at 360p. The proxy rule was written for
