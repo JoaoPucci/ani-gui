@@ -163,3 +163,41 @@ async fn a_rejected_write_drops_an_old_mapping_the_title_disagrees_with() {
         "neither the refused entry nor the old one maps the key"
     );
 }
+
+/// The refusal condemns only what the evidence reaches. A stored
+/// mapping whose entry agrees with the title's cour is the correct
+/// one, and a play aimed at the wrong sibling must not cost it.
+#[tokio::test]
+async fn a_rejected_write_keeps_a_stored_mapping_the_title_agrees_with() {
+    let mock = MockServer::start().await;
+    serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
+    serve_detail(&mock, "13", sibling_cour_detail("13", "one-piece-part-2")).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    allmanga_kitsu_put(&state, "one-piece-69", "13").expect("seed");
+    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69")
+            .expect("read")
+            .as_deref(),
+        Some("13"),
+        "the correct mapping outlives a play aimed at the wrong cour"
+    );
+}
+
+/// Silence is not disagreement: a stored entry Kitsu does not answer
+/// for is neither proven nor disproven, and stays.
+#[tokio::test]
+async fn a_rejected_write_keeps_a_stored_mapping_it_cannot_check() {
+    let mock = MockServer::start().await;
+    serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    allmanga_kitsu_put(&state, "one-piece-69", "404").expect("seed");
+    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69")
+            .expect("read")
+            .as_deref(),
+        Some("404"),
+        "an entry that cannot be fetched is not condemned"
+    );
+}
