@@ -87,7 +87,7 @@ proptest::proptest! {
                 "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
                 "(TV|Movie|OVA|ONA|Special)",
             ),
-            0..5,
+            1..5,
         )
     ) {
         let page = search_page(&cards);
@@ -142,6 +142,32 @@ proptest::proptest! {
         } else {
             proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
         }
+    }
+
+    /// A result list whose card boundary is not the one the parser
+    /// splits on — renamed, or the list rendered with nothing inside
+    /// and no notice — is refused however many cards it holds: the
+    /// site's no-results page carries the notice and no list, so a
+    /// list with no boundary inside is a changed shape, and read as
+    /// "no results" it would persist absence for every title.
+    #[test]
+    fn a_result_list_without_the_card_boundary_is_refused(
+        cards in proptest::collection::vec(
+            (
+                "[a-z0-9]{1,6}(-[a-z0-9]{1,6}){0,3}",
+                1u64..1_000_000,
+                "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
+                "(TV|Movie|OVA|ONA|Special)",
+            ),
+            0..5,
+        ),
+        boundary in "[a-z]{2,8}(-[a-z]{2,8})?",
+    ) {
+        proptest::prop_assume!(boundary != "flw-item");
+        proptest::prop_assume!(!cards.iter().any(|(words, _, title, _)| words.contains("flw-item") || title.contains("flw-item")));
+        let page = search_page(&cards).replace("flw-item", &boundary);
+        let refused = matches!(parse_search(&page), Err(AniError::ParseFailed { .. }));
+        proptest::prop_assert!(refused, "a list without the card boundary read as an answer: {page}");
     }
 
     /// A body that shows neither the result list nor the no-results
