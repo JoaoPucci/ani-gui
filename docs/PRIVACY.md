@@ -63,10 +63,13 @@ requires it; the exception is the update check that runs on launch
   says the show and the audio are listed there, not that a stream
   was played: the app remembers
   which catalogue carried a show for as long as its availability
-  record lasts — a day from the last play, download or hand-off,
-  each of which restamps the record with a day's life, one served
-  from the app's own resolution cache included; a probe alone leaves
-  a finished show's record for thirty days — and asks that
+  record lasts — a day from the last resolve that found the show
+  there: a play, a download, a hand-off, one served from the app's
+  own resolution cache, or the background warm the detail page runs
+  for its first episode when it opens, each of which restamps the
+  record with a day's life, so opening a show's page is enough to
+  renew it; a probe alone leaves a finished show's record for
+  thirty days — and asks that
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
