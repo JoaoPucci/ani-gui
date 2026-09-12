@@ -1055,13 +1055,16 @@ pub(crate) async fn write_sidecar_subtitles_with(
 /// in the listing alone: the first track of a language is the
 /// language, and the n-th after it is `<lang>-<n>`, so two tracks in
 /// one language keep both files and a name never depends on which
-/// tracks arrived.
+/// tracks arrived. Two tags that differ only by case count as one
+/// language: the packaged platforms disagree on whether `pt-BR.vtt`
+/// and `pt-br.vtt` are two files, and a name is unique on both.
 pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<String> {
-    let mut seen: Vec<&str> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
     langs
         .map(|lang| {
-            let earlier = seen.iter().filter(|l| **l == lang).count();
-            seen.push(lang);
+            let folded = lang.to_lowercase();
+            let earlier = seen.iter().filter(|l| **l == folded).count();
+            seen.push(folded);
             if earlier == 0 {
                 lang.to_string()
             } else {
