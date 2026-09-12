@@ -252,3 +252,92 @@ proptest::proptest! {
         }
     }
 }
+
+// ── the listing's bound is the episode step's ─────────────────────
+
+/// Lists one episode whose stream carries the given subtitle tracks.
+struct ListedTracks(Vec<crate::scraper::provider::SubtitleTrack>);
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for ListedTracks {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::ProviderId::Anidb
+    }
+    async fn search(&self, _q: &str) -> crate::error::Result<Vec<BrowseHit>> {
+        Ok(vec![BrowseHit {
+            slug: "the-show-77".into(),
+            title: "The Show".into(),
+            kind: None,
+        }])
+    }
+    async fn episodes(&self, _s: &str) -> crate::error::Result<Vec<EpisodeRef>> {
+        Ok(vec![ep(1, 1, None)])
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        Ok(true)
+    }
+    async fn master_playlist_url(
+        &self,
+        _e: u64,
+        _m: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        Ok(crate::scraper::provider::StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: self.0.clone(),
+        })
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        Ok("#EXTM3U\n".into())
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        Ok(None)
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+/// The episode step has two callers — the play resolve and the range
+/// download — and the range download took the listing as the
+/// provider gave it, so a default the listing put past the cap
+/// reached the sidecar writer, which keeps the first cap-many, and
+/// the ranged download lost the provider's own choice while the
+/// single-episode download kept it. The bound is the episode step's,
+/// so every caller shares it.
+#[tokio::test]
+async fn the_episode_step_bounds_the_listing_and_keeps_its_default() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let total = SUBTITLE_TRACK_CAP + 5;
+    let tracks: Vec<_> = (0..total)
+        .map(|n| crate::scraper::provider::SubtitleTrack {
+            lang: format!("l{n}"),
+            label: format!("Language {n}"),
+            default: n == total - 1,
+            url: format!("https://cdn.example/subs/l{n}.vtt"),
+        })
+        .collect();
+    let resolved = resolve_episode(
+        &ListedTracks(tracks),
+        &show(vec![ep(1, 1, None)]),
+        "1",
+        "sub",
+        "best",
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(resolved.subtitles.len(), SUBTITLE_TRACK_CAP);
+    let kept: Vec<&str> = resolved.subtitles.iter().map(|t| t.lang.as_str()).collect();
+    let expected: Vec<String> = (0..SUBTITLE_TRACK_CAP - 1)
+        .map(|n| format!("l{n}"))
+        .chain(std::iter::once(format!("l{}", total - 1)))
+        .collect();
+    assert_eq!(
+        kept, expected,
+        "the first cap-many in listing order, the default in the last slot"
+    );
+    assert!(
+        resolved.subtitles.last().is_some_and(|t| t.default),
+        "the provider's default is kept past the cap"
+    );
+}
