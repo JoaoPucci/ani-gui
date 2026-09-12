@@ -214,6 +214,36 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_detail_year(&page), Some(year));
     }
 
+    /// The year comes from the Aired row or from nowhere: a page
+    /// whose row is intact answers the row's year, one whose row
+    /// lost its value span answers none, and a later `name` element
+    /// carrying its own four-digit number never answers for either.
+    #[test]
+    fn detail_year_never_comes_from_outside_the_aired_row(
+        month in "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)",
+        day in 1u32..29,
+        year in 1917u32..2100,
+        decoy in 1000u32..10000,
+        intact in proptest::bool::ANY,
+        wrapped in proptest::bool::ANY,
+    ) {
+        let value = if intact {
+            format!(r#"<span class="name">{month} {day}, {year}</span>"#)
+        } else {
+            format!("<span>{month} {day}, {year}</span>")
+        };
+        let row = if wrapped {
+            format!(r#"<div class="item item-title"><span class="item-head">Aired:</span>{value}</div>"#)
+        } else {
+            format!(r#"<span class="item-head">Aired:</span>{value}"#)
+        };
+        let page = format!(
+            r#"{row}<div class="item item-list"><span class="item-head">Studios:</span><a class="name">Studio {decoy}</a></div>"#
+        );
+        let expected = if intact { Some(year) } else { None };
+        proptest::prop_assert_eq!(parse_detail_year(&page), expected);
+    }
+
     /// A card whose title is blank never comes back, whatever its
     /// slug; the cards with a title do, in order.
     #[test]
