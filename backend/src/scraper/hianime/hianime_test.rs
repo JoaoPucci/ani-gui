@@ -366,6 +366,66 @@ fn a_listing_whose_rows_all_fail_to_parse_is_a_parse_failure() {
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
+/// The site's row marker is a class on the row's tag, and the tag's
+/// other attributes may come before it as well as after: the same
+/// row written `<a data-number="1" data-id="…" class="ep-item">` is
+/// the same episode. A reader that took the text after the marker as
+/// the row would find that row's attributes in the chunk before it —
+/// and, with rows written both ways, read each row's attributes as
+/// the next row's, dropping the first episode of the listing.
+#[test]
+fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
+    let reversed = r#"{"status":true,"html":"<div class=\"ss-list\"><a data-number=\"1\" data-id=\"21418\" class=\"ssl-item ep-item\" href=\"/watch/x?ep=21418\"><div class=\"ssli-order\">1</div></a><a data-number=\"2\" data-id=\"21419\" class=\"ssl-item ep-item\" href=\"/watch/x?ep=21419\"></a></div>"}"#;
+    let expected = vec![
+        EpisodeRef {
+            id: 21418,
+            number: 1,
+            number2: None,
+        },
+        EpisodeRef {
+            id: 21419,
+            number: 2,
+            number2: None,
+        },
+    ];
+    assert_eq!(parse_episode_list(reversed).expect("listing"), expected);
+    let mixed = r#"{"status":true,"html":"<div class=\"ss-list\"><a data-number=\"1\" data-id=\"21418\" class=\"ssl-item ep-item\"></a><a class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\"></a><a href=\"/watch/x?ep=21420\" data-id=\"21420\" class=\"ssl-item ep-item\" data-number=\"3\"></a></div>"}"#;
+    let mut expected = expected;
+    expected.push(EpisodeRef {
+        id: 21420,
+        number: 3,
+        number2: None,
+    });
+    assert_eq!(parse_episode_list(mixed).expect("listing"), expected);
+}
+
+/// The server row has the same shape — its marker is a class on the
+/// row's tag — and reads the same way whatever order the attributes
+/// come in, so a listing written marker-last still names every
+/// server of every mode.
+#[test]
+fn a_server_row_reads_the_same_whatever_order_its_attributes_come_in() {
+    let rows = r#"{"status":true,"html":"<div data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\" class=\"item server-item\"><a class=\"btn\">HD-1</a></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(rows).expect("listing");
+    assert_eq!(
+        listing.servers,
+        vec![
+            ServerEmbed {
+                mode: "sub".into(),
+                name: "HD-1".into(),
+                embed_url: "https://zokoanime.video/stream/mal/1/1/sub".into(),
+            },
+            ServerEmbed {
+                mode: "dub".into(),
+                name: "HD-2".into(),
+                embed_url: "https://zokoanime.video/stream/mal/1/1/dub".into(),
+            },
+        ]
+    );
+    assert!(listing.unreadable_modes.is_empty(), "{listing:?}");
+    assert!(!listing.unknown_modes, "{listing:?}");
+}
+
 #[test]
 fn an_empty_server_list_is_the_provider_answering_no_servers() {
     assert_eq!(
