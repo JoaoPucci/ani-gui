@@ -372,8 +372,8 @@ starting it, and delete it when you find it done.
   the app no longer lists — a negative row naming it has nobody to
   stand behind it and re-probes, and a positive row's affinity to it
   is ignored. A per-title provider picker is not this, and is not
-  planned: affinity already remembers which provider plays each
-  show.
+  planned: affinity already remembers where each show and its
+  audio were listed, and starts there.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
