@@ -586,6 +586,11 @@ struct Site {
     log: Mutex<Vec<FetchRequest>>,
 }
 
+/// How long the stub's slow hosts hold a master before answering —
+/// past the budget the stalled-host tests give a server, well under
+/// the ceiling they allow a whole walk.
+const SLOW_HOST: std::time::Duration = std::time::Duration::from_millis(250);
+
 impl Site {
     fn new() -> Self {
         Self {
@@ -787,7 +792,30 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // Both servers' masters never answer.
+            // A lone zokoanime server whose master answers, slowly.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21438") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3Nsb3cvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A zokoanime server whose master never answers, then a
+            // megaplay server whose master answers, slowly.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21439") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // Both servers' masters hold the connection: the first
+            // for as long as it is waited for, the second until the
+            // transport's own deadline reports it.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21437") => {
                 if ajax {
                     ok(
@@ -810,7 +838,7 @@ impl Fetch for Site {
             "https://megaplay.buzz/stream/getSourcesNew?id=8" => ok(
                 r#"{"sources":{"file":"https://mp.example/v/stalling/master.m3u8"},"tracks":[]}"#,
             ),
-            "https://mp.example/v/stalling/master.m3u8" => std::future::pending().await,
+            "https://mp.example/v/stalling/master.m3u8" => Err(AniError::Network),
             // The payload decodes to a master that answers but whose
             // 720 rendition the host refuses.
             "https://zokoanime.video/stream/mal/9/stalled/sub" => ok(
@@ -824,6 +852,35 @@ impl Fetch for Site {
                 }
             }
             "https://hls.example/v/stalled/720/index.m3u8" => refused(503),
+            // The payload decodes to a master that answers after a
+            // wait longer than the test's per-server budget.
+            "https://zokoanime.video/stream/mal/9/slow/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwkHBgMAFQMIFEETHhlbEgcaWkoAAxYQSAQfAkcUU1cBRx4XBxBEAl0KB0NRLnAY"</script></body></html>"#,
+            ),
+            "https://hls.example/v/slow/master.m3u8" => {
+                tokio::time::sleep(SLOW_HOST).await;
+                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/slow/720/index.m3u8" => ok("#EXTM3U\n"),
+            "https://megaplay.buzz/stream/s-2/734297/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "10"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=10" => {
+                ok(r#"{"sources":{"file":"https://mp.example/v/slow/master.m3u8"},"tracks":[]}"#)
+            }
+            "https://mp.example/v/slow/master.m3u8" => {
+                tokio::time::sleep(SLOW_HOST).await;
+                if header(req, "Referer") == Some("https://megaplay.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,NAME=\"720p\"\nindex-f2.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/slow/index-f2.m3u8" => ok("#EXTM3U\n"),
             "https://megaplay.buzz/stream/s-2/734295/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "7"))
             }
@@ -1390,6 +1447,31 @@ async fn a_server_that_stalls_past_its_budget_is_stepped_over_for_the_next_serve
     );
 }
 
+/// The per-server bound holds time back for the servers still to
+/// come; the last server has nobody to hold time back for, so it
+/// runs on the walk's own remainder — the provider attempt's
+/// deadline above the client, and the transport's per-request wait
+/// below it — and a healthy chain slower than the bound is served.
+#[tokio::test]
+async fn a_lone_server_slower_than_the_per_server_budget_is_still_served() {
+    let c = client_with_server_budget(100);
+    let stream = c.stream_for(21438, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/slow/720/index.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
+}
+
+#[tokio::test]
+async fn the_last_server_runs_on_the_remainder_after_an_earlier_one_was_cut_off() {
+    let c = client_with_server_budget(100);
+    let stream = c.stream_for(21439, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// When every server stalls, the earlier ones are cut off at the
+/// per-server bound and the last is the transport's to bound; the
+/// walk surfaces the first cut-off, the two verdicts ranking the
+/// same.
 #[tokio::test]
 async fn every_server_stalling_surfaces_a_timeout() {
     let c = client_with_server_budget(100);
