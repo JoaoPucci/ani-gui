@@ -52,6 +52,16 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// unbounded server's single stalled master would spend the whole
 /// attempt with the site's other servers unasked — which is the
 /// outage of 2026-09-12 as the walk would have met it.
+///
+/// The bound holds time back for the servers still to come, so it
+/// applies to every server but the last. The last server — a lone
+/// server included — runs on whatever the attempt has left: the
+/// walk above the client cancels the attempt at its own deadline,
+/// and the transport below it gives up on any one request at its
+/// own wait, so an unanswered last server ends the attempt on one
+/// of those two bounds rather than on this one. Holding the last
+/// server to this bound would cut off a chain that is merely slower
+/// than six seconds, with nobody left to give the time to.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -270,23 +280,34 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // neither shape is a host the client does not read at all,
         // and an episode with only those has no stream.
         //
-        // Each server's chain has its own bound
+        // Each server's chain but the last has its own bound
         // ([`SERVER_ATTEMPT_BUDGET`]): a host that holds a connection
         // open without answering would otherwise spend, on one server,
         // the time the walk's attempt had left for the rest, and the
         // attempt would time out with a healthy server unasked. A
         // server cut off at its bound is stepped over like one whose
         // connection dropped; the transport's child is killed with
-        // the future it ran under.
+        // the future it ran under. The last server has no rest to
+        // hold time back for and runs on the attempt's remainder,
+        // bounded by the walk around this client — the attempt's
+        // deadline above, the transport's per-request wait below — so
+        // a chain slower than the bound is still served when it is
+        // the only chain left.
         let mut kept: Option<AniError> = None;
-        for server in servers_for(&servers, mode) {
+        let ordered = servers_for(&servers, mode);
+        let count = ordered.len();
+        for (i, server) in ordered.into_iter().enumerate() {
             let chain = async {
                 let payload = self.read_server(server).await?;
                 self.resolved(server, payload, quality).await
             };
-            let outcome = match tokio::time::timeout(self.server_budget, chain).await {
-                Ok(outcome) => outcome,
-                Err(_elapsed) => Err(AniError::Timeout),
+            let outcome = if i + 1 == count {
+                chain.await
+            } else {
+                match tokio::time::timeout(self.server_budget, chain).await {
+                    Ok(outcome) => outcome,
+                    Err(_elapsed) => Err(AniError::Timeout),
+                }
             };
             match outcome {
                 Ok(stream) => return Ok(stream),
