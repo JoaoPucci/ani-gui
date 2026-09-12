@@ -101,3 +101,65 @@ async fn the_cour_guard_applies_to_every_providers_ids() {
         "another provider's id under a cross-cour title stays unmapped too"
     );
 }
+
+/// The One Piece detail fixture re-keyed to another entry: a sibling
+/// cour, its id and slug the only fields that differ.
+fn sibling_cour_detail(id: &str, slug: &str) -> Vec<u8> {
+    let mut detail: serde_json::Value = serde_json::from_slice(DETAIL_FIXTURE).expect("fixture");
+    detail["data"]["id"] = serde_json::Value::from(id);
+    detail["data"]["attributes"]["slug"] = serde_json::Value::from(slug);
+    serde_json::to_vec(&detail).expect("json")
+}
+
+async fn serve_detail(mock: &MockServer, id: &str, body: Vec<u8>) {
+    Mock::given(method("GET"))
+        .and(path(format!("/anime/{id}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(body),
+        )
+        .mount(mock)
+        .await;
+}
+
+/// A rejected write does not leave the show's old mapping standing
+/// when the same evidence condemns it. A row stamped before the guard
+/// existed can bind the show key to the very entry the guard now
+/// refuses; the watch being recorded has just advanced that key's
+/// stamp, and under the stale mapping `history_by_kitsu` would resume
+/// the wrong entry from it over a row that maps correctly.
+#[tokio::test]
+async fn a_rejected_write_drops_the_old_mapping_under_the_refused_entry() {
+    let mock = MockServer::start().await;
+    serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    // The poison the guard was written against, persisted before it
+    // existed: a Part 2 title bound to the cour-1 entry.
+    allmanga_kitsu_put(&state, "one-piece-69", "12").expect("seed");
+    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
+        None,
+        "the mapping the guard just disproved is gone"
+    );
+}
+
+/// The old mapping need not point at the refused entry to be wrong:
+/// the title's cour evidence condemns any entry whose slug disagrees
+/// with it. Both entries here are sibling cours of a Part 3 title,
+/// and neither survives.
+#[tokio::test]
+async fn a_rejected_write_drops_an_old_mapping_the_title_disagrees_with() {
+    let mock = MockServer::start().await;
+    serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
+    serve_detail(&mock, "13", sibling_cour_detail("13", "one-piece-part-2")).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    allmanga_kitsu_put(&state, "one-piece-69", "12").expect("seed");
+    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 3", "13").await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
+        None,
+        "neither the refused entry nor the old one maps the key"
+    );
+}
