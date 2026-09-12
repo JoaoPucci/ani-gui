@@ -822,16 +822,16 @@ mod persistable_props {
     }
 }
 
-mod episode_miss_props {
-    use super::{episode_miss_outranks, fails_over, firmer_miss};
+mod negative_rank_props {
+    use super::{fails_over, firmer_negative, negative_outranks, Attempted, Negative, Stub};
     use crate::commands::play_native_resolve::NativeError;
     use crate::error::AniError;
     use crate::scraper::provider::ProviderId;
     use proptest::prelude::*;
 
-    /// The shape of a verdict a walk can hold, in values that build
-    /// it as many times as a property needs: the errors are not
-    /// cloneable.
+    /// The shape of a negative a walk can hold, in values that build
+    /// it as many times as a property needs: neither the errors nor
+    /// the answers are cloneable.
     #[derive(Debug, Clone)]
     struct Shape {
         kind: u8,
@@ -842,6 +842,10 @@ mod episode_miss_props {
     }
 
     impl Shape {
+        /// A negative answer is the last kind; the rest are misses.
+        fn is_answer(&self) -> bool {
+            self.kind == 5
+        }
         /// An answered miss, an answered status, or an unreachable
         /// provider's error standing in for a miss.
         fn error(&self) -> AniError {
@@ -857,8 +861,17 @@ mod episode_miss_props {
                 },
             }
         }
-        fn verdict(&self) -> (NativeError, Option<ProviderId>) {
-            (
+        fn negative(&self) -> Negative<'static, &'static str> {
+            if self.is_answer() {
+                let provider = self.by.unwrap_or(ProviderId::Anidb);
+                return Negative::Answer(Attempted {
+                    provider,
+                    value: "absent",
+                    client: Box::new(Stub(provider)),
+                    past_undenied_affinity: false,
+                });
+            }
+            Negative::Miss(
                 NativeError {
                     error: self.error(),
                     clean_miss: self.clean_miss,
@@ -867,11 +880,44 @@ mod episode_miss_props {
                 self.by,
             )
         }
+        /// Whether the negative found the show: an answer, or an
+        /// answered miss that is not clean.
+        fn found_the_show(&self) -> bool {
+            self.is_answer() || (!fails_over(&self.error()) && !self.clean_miss)
+        }
+        fn is_clean_miss(&self) -> bool {
+            !self.is_answer() && self.clean_miss
+        }
+        /// What tells two shapes apart once built: the kind, the
+        /// clean flag of a miss, and the author.
+        fn summary(&self) -> (u8, bool, Option<ProviderId>) {
+            if self.is_answer() {
+                (5, false, Some(self.by.unwrap_or(ProviderId::Anidb)))
+            } else {
+                (self.kind, self.clean_miss, self.by)
+            }
+        }
+    }
+
+    fn summary_of(negative: &Negative<'_, &'static str>) -> (u8, bool, Option<ProviderId>) {
+        match negative {
+            Negative::Answer(a) => (5, false, Some(a.provider)),
+            Negative::Miss(ne, by) => {
+                let kind = match ne.error {
+                    AniError::NoResults => 0,
+                    AniError::Network => 1,
+                    AniError::Timeout => 2,
+                    AniError::Upstream { .. } => 3,
+                    _ => 4,
+                };
+                (kind, ne.clean_miss, *by)
+            }
+        }
     }
 
     fn shape() -> impl Strategy<Value = Shape> {
         (
-            0u8..5,
+            0u8..6,
             100u16..600,
             "[a-z ]{0,12}",
             any::<bool>(),
@@ -890,30 +936,31 @@ mod episode_miss_props {
     }
 
     proptest! {
-        /// The earlier verdict outranks the later one exactly when
-        /// the earlier is an answered miss that found the show — not
-        /// clean, and not an unreachable provider's error standing in
-        /// for a miss — and the later is a clean catalogue miss.
+        /// The earlier negative outranks the later one exactly when
+        /// the earlier found the show — a negative answer, or an
+        /// answered miss that is not clean and not an unreachable
+        /// provider's error standing in for one — and the later is a
+        /// clean catalogue miss.
         #[test]
-        fn an_answered_episode_miss_outranks_a_clean_miss_and_nothing_else_does(
+        fn a_negative_that_found_the_show_outranks_a_clean_miss_and_nothing_else_does(
             earlier in shape(),
             later in shape(),
         ) {
-            let (e, l) = (earlier.verdict().0, later.verdict().0);
-            let expected = !fails_over(&e.error) && !e.clean_miss && l.clean_miss;
-            prop_assert_eq!(episode_miss_outranks(&e, &l), expected);
+            let expected = earlier.found_the_show() && later.is_clean_miss();
+            prop_assert_eq!(
+                negative_outranks(&earlier.negative(), &later.negative()),
+                expected
+            );
         }
 
-        /// The verdict that stands travels with its provider: the
-        /// kept pair is one of the two, untouched.
+        /// The negative that stands travels with its author: the
+        /// kept one is one of the two, untouched.
         #[test]
-        fn the_kept_verdict_keeps_its_author(earlier in shape(), later in shape()) {
-            let (e, l) = (earlier.verdict(), later.verdict());
-            let keep_earlier = episode_miss_outranks(&e.0, &l.0);
-            let want = if keep_earlier { &earlier } else { &later };
-            let want = (format!("{:?}", want.error()), want.clean_miss, want.by);
-            let got = firmer_miss(e, l);
-            prop_assert_eq!((format!("{:?}", got.0.error), got.0.clean_miss, got.1), want);
+        fn the_kept_negative_keeps_its_author(earlier in shape(), later in shape()) {
+            let keep_earlier = negative_outranks(&earlier.negative(), &later.negative());
+            let want = if keep_earlier { earlier.summary() } else { later.summary() };
+            let got = firmer_negative(earlier.negative(), later.negative());
+            prop_assert_eq!(summary_of(&got), want);
         }
     }
 }
@@ -1527,17 +1574,19 @@ async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
     );
 }
 
-/// A trial's clean miss replaces the fallback's absence the same way:
-/// the last answer given is the verdict, and it is the primary's.
+/// A trial's clean miss does not replace the fallback's absence: the
+/// absence found the show, a catalogue miss did not, and the rank
+/// between them is the rank between any two negatives. The absence
+/// stands, attributed to the fallback.
 #[tokio::test]
-async fn a_retried_skipped_providers_clean_miss_replaces_the_fallbacks_absence() {
+async fn a_retried_skipped_providers_clean_miss_does_not_replace_the_fallbacks_absence() {
     let gates = Gates::new();
     gates.open(ProviderId::Anidb);
     let mut attempt = Scripted::new(&[
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
         (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
     ]);
-    let err = run_with(
+    let got = run_with(
         &gates,
         &ORDER,
         None,
@@ -1545,13 +1594,13 @@ async fn a_retried_skipped_providers_clean_miss_replaces_the_fallbacks_absence()
         &mut attempt,
     )
     .await
-    .expect_err("the primary's clean miss is the verdict");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
-    assert!(err.clean_miss);
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    .expect("the fallback's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the skipped primary still got its trial"
     );
 }
 
