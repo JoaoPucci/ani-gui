@@ -3236,6 +3236,40 @@ mod sidecar_suffix_props {
             distinct.dedup();
             prop_assert_eq!(distinct.len(), names.len());
         }
+
+        /// Two names are the same file on a case-insensitive
+        /// filesystem, so no two tracks share a name once case is
+        /// folded, and the first track of a language keeps the tag's
+        /// own spelling.
+        #[test]
+        fn names_never_collide_under_case_folding(
+            langs in proptest::collection::vec("[pPtT]{2}", 0..8)
+        ) {
+            let names = sidecar_suffixes(langs.iter().map(String::as_str));
+            prop_assert_eq!(names.len(), langs.len());
+            for (i, (lang, name)) in langs.iter().zip(&names).enumerate() {
+                let earlier = langs[..i]
+                    .iter()
+                    .filter(|l| l.to_lowercase() == lang.to_lowercase())
+                    .count();
+                let expected = if earlier == 0 { lang.clone() } else { format!("{lang}-{earlier}") };
+                prop_assert_eq!(name, &expected);
+            }
+            let mut folded: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+            folded.sort();
+            folded.dedup();
+            prop_assert_eq!(folded.len(), names.len());
+        }
+    }
+
+    /// The packaged platforms differ here: Linux keeps `pt-BR.vtt`
+    /// and `pt-br.vtt` apart, Windows does not, and a listing that
+    /// tags two tracks that way would lose one there. The second
+    /// takes a suffix on both.
+    #[test]
+    fn tags_differing_only_by_case_take_distinct_names() {
+        let names = sidecar_suffixes(["pt-BR", "pt-br", "en", "EN"].into_iter());
+        assert_eq!(names, vec!["pt-BR", "pt-br-1", "en", "EN-1"]);
     }
 }
 
