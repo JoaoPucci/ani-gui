@@ -43,6 +43,15 @@ pub trait Attempt: Send {
     /// skipped provider's half-open trial that fails leaves the saved
     /// miss standing, and the saved miss keeps its author.
     fn missed_by(&mut self, provider: ProviderId);
+
+    /// Whether an output is a negative answer — the probe's "found,
+    /// without the requested mode" — which the walk treats as a
+    /// verdict, owed the skipped providers' trial as a miss is,
+    /// rather than as the answer it was walking for. False for a
+    /// walk whose outputs are all answers.
+    fn is_negative(_output: &Self::Output) -> bool {
+        false
+    }
 }
 
 /// What an attempt produced, who produced it, and the client that
@@ -125,11 +134,15 @@ pub fn fails_over(error: &AniError) -> bool {
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
-/// path: when every provider that was tried answered a miss or was
-/// unreachable, the skipped ones are asked before the miss or the
-/// error surfaces — a skipped provider may have recovered, and its
-/// answer or its miss is then the walk's. Background traffic keeps
-/// the skip.
+/// path: when the walk's verdict is negative — every provider that
+/// was tried answered a miss or was unreachable, or the one that
+/// answered gave a negative answer ([`Attempt::is_negative`]) — the
+/// skipped ones are asked before it surfaces. A skipped provider
+/// may have recovered: an answer that is not negative is then the
+/// walk's, and its own negative answer or miss — the last answer
+/// given — replaces the verdict, author and all, while one still
+/// unreachable leaves it standing. Background traffic keeps the
+/// skip.
 ///
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
@@ -172,11 +185,7 @@ where
         // The skipped providers are owed their trial on an interactive
         // walk, so an attempt budget stays in reserve for each of them;
         // a background walk never retries and reserves nothing.
-        let owed = if matches!(priority, ScrapePriority::Interactive) {
-            walk.skipped.len()
-        } else {
-            0
-        };
+        let owed = trials_owed(priority, walk.skipped.len());
         let Some(budget) = walk_budget(overall, total_budget, attempt_budget, last, owed) else {
             break;
         };
@@ -191,7 +200,21 @@ where
         )
         .await
         {
-            Tried::Answered(answer) => return Ok(answer),
+            Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
+            Tried::Answered(answer) => {
+                return retry_skipped(
+                    Negative::Answer(answer),
+                    overall,
+                    total_budget,
+                    attempt_budget,
+                    priority,
+                    &mut client_for,
+                    &gate_of,
+                    attempt,
+                    &mut walk,
+                )
+                .await;
+            }
             Tried::FailedOver => {}
             Tried::Missed(miss, by) => {
                 if i == 0 && remembered == Some(provider) {
@@ -199,7 +222,7 @@ where
                     continue;
                 }
                 return retry_skipped(
-                    (miss, Some(by)),
+                    Negative::Miss(miss, Some(by)),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -216,7 +239,7 @@ where
     // Nothing answered: the remembered provider's miss set aside, or
     // the first unreachable error. Either way the skipped providers
     // get their trial before it surfaces.
-    let verdict = affinity_miss
+    let (error, by) = affinity_miss
         .map(|(miss, by)| (miss, Some(by)))
         .or_else(|| walk.first_unreachable.take().map(|e| (e, None)))
         .unwrap_or((
@@ -228,7 +251,7 @@ where
             None,
         ));
     retry_skipped(
-        verdict,
+        Negative::Miss(error, by),
         overall,
         total_budget,
         attempt_budget,
@@ -276,6 +299,27 @@ enum Tried<'c, T> {
     Answered(Attempted<'c, T>),
     FailedOver,
     Missed(NativeError, ProviderId),
+}
+
+/// A negative verdict the walk is about to surface: an answer that
+/// carries one ([`Attempt::is_negative`]), or a miss — or the error
+/// standing in for one when nobody answered — with the provider
+/// whose miss it is, when known.
+enum Negative<'c, T> {
+    Answer(Attempted<'c, T>),
+    Miss(NativeError, Option<ProviderId>),
+}
+
+/// How many skipped providers a walk still owes a trial: every one
+/// of them on an interactive walk, which the gate would have
+/// admitted through the open breaker anyway, and none on a
+/// background walk, which keeps the skip.
+fn trials_owed(priority: ScrapePriority, skipped: usize) -> usize {
+    if matches!(priority, ScrapePriority::Interactive) {
+        skipped
+    } else {
+        0
+    }
 }
 
 /// The budget for the next attempt. The last provider with nobody
@@ -385,23 +429,25 @@ where
     }
 }
 
-/// The walk's verdict so far — a miss, or the first unreachable
-/// error when nothing answered — stands, unless providers were
-/// skipped for refusing on an interactive walk, which the gate would
-/// have admitted anyway — an open breaker's half-open trial, a pause
-/// it ignores for a click. Those
-/// are asked now: an answer is the walk's, a miss of theirs — the
-/// last answer given — replaces the verdict they were asked for,
-/// author and all, and one unreachable too leaves it standing. The
-/// attempt is told whose miss the verdict is before it surfaces, and
-/// the verdict surfaces unpersistable when the remembered provider
-/// was unreachable.
+/// The walk's negative verdict so far — a negative answer, a miss,
+/// or the first unreachable error when nothing answered — stands,
+/// unless providers were skipped for refusing on an interactive
+/// walk, which the gate would have admitted anyway — an open
+/// breaker's half-open trial, a pause it ignores for a click. Those
+/// are asked now: an answer that is not negative is the walk's, a
+/// negative answer or a miss of theirs — the last answer given —
+/// replaces the verdict they were asked for, author and all, and one
+/// unreachable too leaves it standing. A miss that surfaces tells
+/// the attempt whose it is first, and surfaces unpersistable when
+/// the remembered provider was unreachable; a negative answer
+/// surfaces as its provider gave it, saying whether it came past an
+/// unreachable remembered provider.
 ///
 /// # Errors
-/// The verdict that stands.
+/// The miss that stands.
 #[allow(clippy::too_many_arguments)]
 async fn retry_skipped<'c, 'g, A, C, G>(
-    verdict: (NativeError, Option<ProviderId>),
+    verdict: Negative<'c, A::Output>,
     overall: tokio::time::Instant,
     total_budget: Duration,
     attempt_budget: Duration,
@@ -417,7 +463,7 @@ where
     G: Fn(ProviderId) -> &'g ScraperGate,
 {
     let mut verdict = verdict;
-    if matches!(priority, ScrapePriority::Interactive) && !walk.skipped.is_empty() {
+    if trials_owed(priority, walk.skipped.len()) > 0 {
         let skipped = std::mem::take(&mut walk.skipped);
         let count = skipped.len();
         for (i, provider) in skipped.into_iter().enumerate() {
@@ -432,20 +478,25 @@ where
             )
             .await
             {
-                Tried::Answered(answer) => return Ok(answer),
+                Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
+                Tried::Answered(answer) => verdict = Negative::Answer(answer),
                 Tried::FailedOver => {}
-                Tried::Missed(ne, by) => verdict = (ne, Some(by)),
+                Tried::Missed(ne, by) => verdict = Negative::Miss(ne, Some(by)),
             }
         }
     }
-    let (error, by) = verdict;
-    if let Some(by) = by {
-        attempt.missed_by(by);
+    match verdict {
+        Negative::Answer(answer) => Ok(answer),
+        Negative::Miss(error, by) => {
+            if let Some(by) = by {
+                attempt.missed_by(by);
+            }
+            Err(unpersistable_past_affinity(
+                walk.remembered_unreachable,
+                error,
+            ))
+        }
     }
-    Err(unpersistable_past_affinity(
-        walk.remembered_unreachable,
-        error,
-    ))
 }
 
 /// Where each provider's client points: the state's overrides, or a
