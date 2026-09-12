@@ -388,6 +388,31 @@ proptest::proptest! {
         proptest::prop_assert_eq!(tags, written, "every row's display is the site's number");
     }
 
+    /// A listing with a row the reader cannot read — an id missing or
+    /// not a number, a number blank — is refused whole, however many
+    /// readable rows sit beside it: the listing is the show's count,
+    /// and one short of it is wrong.
+    #[test]
+    fn a_listing_with_an_unreadable_row_among_readable_ones_is_refused(
+        rows in proptest::collection::vec((1u32..5000, 1u64..1_000_000_000), 0..6),
+        at in 0usize..6,
+        shape in prop_oneof![Just("no-id"), Just("bad-id"), Just("blank-number")],
+    ) {
+        let bad = match shape {
+            "no-id" => r#"<a class="ssl-item ep-item" data-number="9"></a>"#.to_string(),
+            "bad-id" => r#"<a class="ssl-item ep-item" data-number="9" data-id="x9"></a>"#.to_string(),
+            _ => r#"<a class="ssl-item ep-item" data-number="" data-id="9"></a>"#.to_string(),
+        };
+        let mut html: Vec<String> = rows
+            .iter()
+            .map(|(number, id)| format!(r#"<a class="ssl-item ep-item" data-number="{number}" data-id="{id}"></a>"#))
+            .collect();
+        html.insert(at.min(html.len()), bad);
+        let listing = envelope(&html.concat());
+        let refused = matches!(parse_episode_list(&listing), Err(AniError::ParseFailed { .. }));
+        prop_assert!(refused, "a listing with an unreadable row: {listing}");
+    }
+
     /// The row's attributes come in whatever order the site writes
     /// them — the marker class first, last, or between — and every
     /// row still comes back as its episode ref, in order.
