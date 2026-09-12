@@ -3468,3 +3468,98 @@ async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
         "three in flight overlap and never exceed three: {three_at_a_time}"
     );
 }
+
+// ── the immediate writer, the tests' seam over staging and install ──
+
+// The downloads stage the sidecar phase beside the transfer and
+// install afterwards; the tests drive the phase whole, so the
+// immediate form — the staging followed by the install, a claim
+// filled and installed in one step — lives here beside them.
+
+/// Fetch each sidecar track with the source's referer and write it
+/// beside the media as `<stem>.<lang>.vtt`. A track the CDN refuses,
+/// or has not served by [`SIDECAR_PHASE_DEADLINE`], is logged and
+/// skipped: the episode downloaded, and that is the transfer.
+/// Returns the paths written.
+async fn write_sidecar_subtitles(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+) -> Vec<PathBuf> {
+    write_sidecar_subtitles_within(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        SIDECAR_PHASE_DEADLINE,
+    )
+    .await
+}
+
+/// [`write_sidecar_subtitles`] under a caller's deadline, with the
+/// tracks fetched [`SIDECAR_FETCH_CONCURRENCY`] at a time.
+async fn write_sidecar_subtitles_within(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+) -> Vec<PathBuf> {
+    write_sidecar_subtitles_with(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        deadline,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await
+}
+
+/// The sidecar phase in full: [`stage_sidecar_subtitles_with`], then
+/// every staged track installed at its name.
+async fn write_sidecar_subtitles_with(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+    concurrency: usize,
+) -> Vec<PathBuf> {
+    let staged = stage_sidecar_subtitles_with(
+        client,
+        tracks,
+        referer,
+        dest,
+        file_stem,
+        deadline,
+        concurrency,
+    )
+    .await;
+    crate::commands::download_transfer::install_staged(staged)
+}
+
+/// Write `body` to a file whose name is free (see [`name_is_taken`]):
+/// a claim staged and installed in one step.
+async fn write_new(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
+    claim_new(path).await?.finish(body).await
+}
+
+impl SidecarClaim {
+    /// Write the whole body to the scratch and install it at the name:
+    /// [`Self::fill`] and [`Self::install`] in one step.
+    ///
+    /// # Errors
+    /// The write's own; `AlreadyExists` when the name was taken in
+    /// the meantime. The scratch is removed on every way out.
+    async fn finish(mut self, body: &[u8]) -> std::io::Result<()> {
+        self.fill(body).await?;
+        self.install()
+    }
+}
