@@ -29,9 +29,30 @@ pub struct SubtitleTrack {
 pub struct EmbedPayload {
     /// The master-playlist URL.
     pub src: String,
-    /// Sidecar subtitle tracks, outside the playlist.
-    #[serde(default)]
+    /// Sidecar subtitle tracks, outside the playlist. Only the rows
+    /// the client can read, in the page's order; the field being
+    /// `null`, absent, not a list, or holding rows in another shape
+    /// costs those rows and nothing else — the stream is the episode,
+    /// the tracks are a nicety, and a host is not skipped over them.
+    #[serde(default, deserialize_with = "readable_tracks")]
     pub subtitles: Vec<SubtitleTrack>,
+}
+
+/// The subtitle rows the client reads, out of whatever the page put
+/// in the field. Anything that is not a list yields no tracks; a row
+/// that is not a track in the known shape is dropped.
+fn readable_tracks<'de, D>(deserializer: D) -> std::result::Result<Vec<SubtitleTrack>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
+    let Some(serde_json::Value::Array(rows)) = listed else {
+        return Ok(Vec::new());
+    };
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| serde_json::from_value(row).ok())
+        .collect())
 }
 
 /// Decode the payload out of an embed page. A page without the
