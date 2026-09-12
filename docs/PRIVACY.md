@@ -65,13 +65,15 @@ requires it; the exception is the update check that runs on launch
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show
   there: a play, a download, a hand-off, one served from the app's
-  own resolution cache, or the background warm the detail page runs
-  when it opens — for the episode its Play button targets, which is
-  the resume point when there is one, or, with resolution caching
-  turned on, for every aired and playable episode visible in its
-  grid — each of which restamps the record with a day's life, so
-  opening a show's page is enough to renew it; a probe alone leaves
-  a finished show's record for
+  own resolution cache, or the background warm a page runs when it
+  opens — the detail page for the episode its Play button targets,
+  which is the resume point when there is one, and the play page for
+  the episode after the one playing, or, with resolution caching
+  turned on, both pages for every aired and playable episode in view
+  (the detail page's grid, the play page's episode strip) — each of
+  which restamps the record with a day's life, so opening a show's
+  page is enough to renew it; a probe alone leaves a finished show's
+  record for
   thirty days — and asks that
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
@@ -100,7 +102,7 @@ requires it; the exception is the update check that runs on launch
   provider's choice is what it reaches. The CDN sees a normal
   `Referer` — the catalogue origin, or for hianime the embed host's
   — so it serves the file. The CDN is also reached before any
-  playback, by the detail page's warm described above: a warm that
+  playback, by the page warms described above: a warm that
   resolves fetches the episode's master playlist once, to check that
   what the page named is a playlist, and a warm served from the
   resolution cache checks the cached stream and each of its subtitle
