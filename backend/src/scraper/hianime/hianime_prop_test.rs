@@ -902,9 +902,10 @@ proptest::proptest! {
     ) {
         fn rank(w: &AniError) -> u8 {
             match w {
-                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
-                AniError::ParseFailed { .. } => 2,
-                w if w.is_provider_block() => 1,
+                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
+                AniError::ParseFailed { .. } => 3,
+                w if w.is_provider_block() => 2,
+                AniError::Network | AniError::Timeout => 1,
                 _ => 0,
             }
         }
@@ -919,8 +920,8 @@ proptest::proptest! {
                 // The doubt is a parse failure; a louder kept failure
                 // stands, a parse failure kept first stays, anything
                 // quieter yields to the doubt.
-                prop_assert_eq!(rank(&verdict), r.max(2));
-                if r >= 2 {
+                prop_assert_eq!(rank(&verdict), r.max(3));
+                if r >= 3 {
                     prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr);
                 } else {
                     prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}");
@@ -931,8 +932,10 @@ proptest::proptest! {
 
     /// Of two hosts' failures the kept one is the louder: a rate limit
     /// over everything, a page the client could not read over any
-    /// other provider block, a block over the rest; between two of a
-    /// rank the first stays.
+    /// other provider block, a block over a dropped connection or a
+    /// timeout, and those over an answered status — a server never
+    /// heard from may carry the stream, an answered status is that
+    /// host's own dead end; between two of a rank the first stays.
     #[test]
     fn the_kept_weather_is_the_louder_of_the_two(
         first in arb_weather(),
@@ -940,9 +943,10 @@ proptest::proptest! {
     ) {
         fn rank(w: &AniError) -> u8 {
             match w {
-                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
-                AniError::ParseFailed { .. } => 2,
-                w if w.is_provider_block() => 1,
+                AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
+                AniError::ParseFailed { .. } => 3,
+                w if w.is_provider_block() => 2,
+                AniError::Network | AniError::Timeout => 1,
                 _ => 0,
             }
         }

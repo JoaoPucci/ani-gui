@@ -1096,6 +1096,18 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A host that answers not-found for its page, then one
+            // whose connection times out.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21438") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwNC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3RpbWVvdXQvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/timeout/sub" => Err(AniError::Timeout),
             // The same undecodable page first, then a host whose page
             // decodes.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
@@ -1487,6 +1499,25 @@ async fn the_weather_kept_across_servers_is_the_rate_limit_over_a_generic_block(
         .await
         .expect_err("no server served a stream");
     assert!(matches!(err, AniError::Upstream { status: 429 }), "{err:?}");
+}
+
+/// The first host answers not-found for its page and the next one's
+/// connection times out. Both are quiet next to a block, but they
+/// are not of a kind: the answered status is that host's own dead
+/// end, while the timeout says a server that may carry the stream
+/// was never heard from. Surfacing the status makes the episode an
+/// answered dead end — recorded as the provider's health, never
+/// failed over — when a possible server was unreachable; the
+/// transport failure is what the walk needs, since it alone moves
+/// the walk on.
+#[tokio::test]
+async fn the_weather_kept_across_servers_is_the_transport_failure_over_an_answered_status() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21438, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Timeout), "{err:?}");
 }
 
 #[tokio::test]
