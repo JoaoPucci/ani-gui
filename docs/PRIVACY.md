@@ -104,8 +104,11 @@ requires it; the exception is the update check that runs on launch
   resolves fetches the episode's master playlist once, to check that
   what the page named is a playlist, and a warm served from the
   resolution cache checks the cached stream and each of its subtitle
-  tracks at the CDN before the row is trusted; segments and subtitle
-  files are fetched only once playback starts.
+  tracks at the CDN before the row is trusted. Segments and subtitle
+  files are fetched when playback starts — in the app, or in an
+  external player or Syncplay the app hands the stream to — and by a
+  download, which fetches the segments through the bundled tool and
+  the subtitle files beside them without any playback.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
