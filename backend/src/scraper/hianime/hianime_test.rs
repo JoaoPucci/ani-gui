@@ -399,6 +399,126 @@ fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
     assert_eq!(parse_episode_list(mixed).expect("listing"), expected);
 }
 
+/// A listing of episodes 1 to 7, a recap the site numbers `7.5`,
+/// then episode 8 — the recap at the eighth position, episode 8 at
+/// the ninth — with ids the stub site serves for 7, 7.5 and 8.
+fn listing_with_a_recap() -> String {
+    let rows: Vec<String> = (1..=6)
+        .map(|n| {
+            format!(
+                r#"<a class=\"ssl-item ep-item\" data-number=\"{n}\" data-id=\"2143{n}\"></a>"#
+            )
+        })
+        .chain([
+            r#"<a class=\"ssl-item ep-item\" data-number=\"7\" data-id=\"21419\"></a>"#.to_string(),
+            r#"<a class=\"ssl-item ep-item\" data-number=\"7.5\" data-id=\"21418\"><div class=\"ssli-order\">8</div></a>"#.to_string(),
+            r#"<a class=\"ssl-item ep-item\" data-number=\"8\" data-id=\"21420\"></a>"#.to_string(),
+        ])
+        .collect();
+    format!(
+        r#"{{"status":true,"html":"<div class=\"ss-list\">{}</div>"}}"#,
+        rows.join("")
+    )
+}
+
+/// A row the site numbers `7.5` is a recap or a special: it keeps
+/// its position in the listing as its slot and carries the site's
+/// number as its display tag, exactly as anidb.app's rows do, so the
+/// tag can be advertised as an extra and a click on it resolves. The
+/// rows after it keep their own numbers as tags too, since their
+/// position no longer says their number. A row whose number is not
+/// a number at all is kept the same way — the tag is the site's,
+/// and only a row without a number or an id is unreadable.
+#[test]
+fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
+    use crate::commands::play_native_numbering::{
+        extra_episode_tags, kitsu_episode_cap, numbering_offset,
+    };
+    let eps = parse_episode_list(&listing_with_a_recap()).expect("listing");
+    assert_eq!(eps.len(), 9, "no row dropped: {eps:?}");
+    assert_eq!(
+        eps[7],
+        EpisodeRef {
+            id: 21418,
+            number: 8,
+            number2: Some("7.5".into()),
+        }
+    );
+    assert_eq!(
+        eps[8],
+        EpisodeRef {
+            id: 21420,
+            number: 9,
+            number2: Some("8".into()),
+        }
+    );
+    assert_eq!(
+        eps[6],
+        EpisodeRef {
+            id: 21419,
+            number: 7,
+            number2: None
+        }
+    );
+    assert_eq!(numbering_offset(&eps), 0);
+    assert_eq!(kitsu_episode_cap(&eps), Some(8));
+    assert_eq!(extra_episode_tags(&eps), vec!["7.5".to_string()]);
+
+    let odd = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item ep-item\" data-number=\"OVA\" data-id=\"21419\"></a><a class=\"ssl-item ep-item\" data-number=\"\" data-id=\"21420\"></a></div>"}"#;
+    assert_eq!(
+        parse_episode_list(odd).expect("listing"),
+        vec![
+            EpisodeRef {
+                id: 21418,
+                number: 1,
+                number2: None
+            },
+            EpisodeRef {
+                id: 21419,
+                number: 2,
+                number2: Some("OVA".into()),
+            },
+        ],
+        "a nonnumeric number is a tag; a blank one is an unreadable row"
+    );
+}
+
+/// The whole chain for the recap: the client lists the show, the
+/// resolver finds the `7.5` row by its tag, and the stream comes
+/// from that row's id — the recap's, not episode 7's or 8's.
+#[tokio::test]
+async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
+    let c = client();
+    let episodes = c.episodes("show-1282").await.expect("listing");
+    let picked = crate::commands::play_native::PickedShow {
+        hit: BrowseHit {
+            slug: "show-1282".into(),
+            title: "Show".into(),
+            kind: None,
+        },
+        episodes,
+    };
+    let resolved =
+        crate::commands::play_native_episode::resolve_episode(&c, &picked, "7.5", "sub", "720")
+            .await
+            .expect("the recap resolves");
+    assert_eq!(resolved.master_url, "https://hls.example/v/720/index.m3u8");
+    assert_eq!(resolved.slot, 8);
+    assert_eq!(resolved.tag.as_deref(), Some("7.5"));
+    let asked: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.to_string())
+        .filter(|u| u.contains("servers?episodeId="))
+        .collect();
+    assert_eq!(
+        asked,
+        vec![format!("{BASE}/api/theme/episode/servers?episodeId=21418")],
+        "the recap's own id, and only it"
+    );
+}
+
 /// The server row has the same shape — its marker is a class on the
 /// row's tag — and reads the same way whatever order the attributes
 /// come in, so a listing written marker-last still names every
@@ -815,6 +935,13 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/list/1281") => {
                 if ajax {
                     ok(EPISODE_LIST)
+                } else {
+                    refused(403)
+                }
+            }
+            u if u == format!("{BASE}/api/theme/episode/list/1282") => {
+                if ajax {
+                    ok(listing_with_a_recap())
                 } else {
                     refused(403)
                 }
