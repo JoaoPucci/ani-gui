@@ -1932,6 +1932,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mode() {
+        // A positive row remembers the fallback for the dub, so the
+        // reprobe starts there; the fallback now lists the show with
+        // its sub alone. That absence is the fallback's own denial
+        // of the mode, but not the walk's verdict: the rest of the
+        // order is asked, as after the fallback's episode dead end,
+        // and the primary carries the dub. Ending the walk on the
+        // fallback's absence would tell the page the title has no
+        // dub and disable playback for the row's lifetime on a show
+        // the primary dubs.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/fallback-show-73"><img alt="Fallback Show"/></a>"#,
+            ))
+            .mount(&anidb)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/73/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":731,"number":1},{"id":732,"number":2}]}"#,
+                ),
+            )
+            .mount(&anidb)
+            .await;
+        for ep in [731, 732] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/u1"},{"code":"eng","embed_url":"https://embed.example/e/u1d"}]}"#,
+                ))
+                .mount(&anidb)
+                .await;
+        }
+        let hianime = stub_hianime_sub_only().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "582",
+            "dub",
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "dub",
+            "kitsu_id": "582",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+            .await
+            .expect("the primary answered the mode");
+        assert!(got.available, "the primary carries the dub: {got:?}");
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            "the answer is the primary's"
+        );
+        assert!(
+            hianime
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/servers")),
+            "the remembered provider was asked first and answered absence"
+        );
+        assert!(
+            anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/languages")),
+            "the walk went on to the primary"
+        );
+        let row = meta_cache_get(&state.cache_pool, &cache_key("582", "dub"))
+            .expect("cache read")
+            .expect("persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert!(row.available, "the row is the primary's positive");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb)
+        );
+    }
+
+    #[tokio::test]
     async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest_lack_the_mode()
     {
         // The row's provider is unreachable for the reprobe, so the
