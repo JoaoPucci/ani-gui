@@ -541,7 +541,7 @@ use crate::commands::play_cache::try_launch_args_from_cache;
 use crate::commands::play_cache::try_serve_cached;
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     proptest::proptest! {
@@ -585,7 +585,7 @@ mod tests {
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
-    fn state_with_proxy_origin() -> AppState {
+    pub(crate) fn state_with_proxy_origin() -> AppState {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::sync::Arc;
@@ -1056,7 +1056,11 @@ mod tests {
     /// defaulted to empty (so try_serve_cached's history-write skip
     /// branch fires). Tests that want history-write coverage override
     /// the two fields explicitly.
-    fn cached_blank(upstream_url: String, referer: String, kind: MediaKind) -> CachedResolution {
+    pub(crate) fn cached_blank(
+        upstream_url: String,
+        referer: String,
+        kind: MediaKind,
+    ) -> CachedResolution {
         CachedResolution {
             upstream_url,
             referer,
@@ -1191,7 +1195,8 @@ mod tests {
     /// own, and a track that fails to load never reaches the player's
     /// recovery path — so a hit served on the stream's answer alone
     /// plays without subtitles for the rest of the row's life. The
-    /// row is live only when everything it names is.
+    /// row is live only when everything it names is. A track is
+    /// read the way the relay reads it, so its refusal is a GET's.
     #[tokio::test]
     async fn try_serve_cached_returns_none_when_a_cached_track_is_dead() {
         let server = wiremock::MockServer::start().await;
@@ -1200,7 +1205,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/subs/en.vtt"))
             .respond_with(wiremock::ResponseTemplate::new(403))
             .mount(&server)
@@ -1233,15 +1238,17 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/subs/en.vtt"))
-            .respond_with(wiremock::ResponseTemplate::new(200))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
             .mount(&server)
             .await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/subs/es.vtt"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3)),
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string("WEBVTT\n\n")
+                    .set_delay(std::time::Duration::from_secs(3)),
             )
             .mount(&server)
             .await;
@@ -1272,16 +1279,27 @@ mod tests {
 
     /// Every track is asked, with the row's referer — the CDN that
     /// signs the stream signs the tracks — and a row whose tracks all
-    /// answer is served.
+    /// answer is served. The stream is pinged; a track is read, as
+    /// the relay reads it, and answers as a track.
     #[tokio::test]
     async fn try_serve_cached_asks_every_track_with_the_referer_and_serves_when_all_answer() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .and(wiremock::matchers::path("/video.mp4"))
             .and(wiremock::matchers::header(
                 "referer",
                 "https://embed.example/",
             ))
             .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path_regex("^/subs/"))
+            .and(wiremock::matchers::header(
+                "referer",
+                "https://embed.example/",
+            ))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
@@ -1341,7 +1359,11 @@ mod tests {
     }
 
     /// A sidecar track as a resolve lists it.
-    fn track(lang: &str, default: bool, url: &str) -> crate::scraper::provider::SubtitleTrack {
+    pub(crate) fn track(
+        lang: &str,
+        default: bool,
+        url: &str,
+    ) -> crate::scraper::provider::SubtitleTrack {
         crate::scraper::provider::SubtitleTrack {
             lang: lang.into(),
             label: lang.into(),
@@ -1653,8 +1675,8 @@ mod tests {
     }
 
     /// The projection the external player and Syncplay share checks
-    /// the tracks as the play path does: a dead track evicts the row
-    /// and the caller resolves afresh.
+    /// the tracks as the play path does: a dead track — one whose
+    /// GET refuses — evicts the row and the caller resolves afresh.
     #[tokio::test]
     async fn try_launch_args_from_cache_evicts_and_returns_none_when_a_cached_track_is_dead() {
         let server = wiremock::MockServer::start().await;
@@ -1663,7 +1685,7 @@ mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/subs/en.vtt"))
             .respond_with(wiremock::ResponseTemplate::new(404))
             .mount(&server)
@@ -1704,6 +1726,11 @@ mod tests {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("HEAD"))
             .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/subs/en.vtt"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
