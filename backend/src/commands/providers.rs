@@ -65,13 +65,15 @@ pub struct Attempted<'a, T> {
     /// The client the answer came from.
     pub client: Box<dyn Provider + 'a>,
     /// Whether the answer came from the rest of the order while the
-    /// provider a positive row remembers was unreachable — skipped
-    /// for refusing, or failed over, and not heard from since. An
-    /// absence in such an answer proves nothing about the show that
-    /// provider listed: it is the verdict the caller sees, not one
-    /// to persist over the row. False when nothing was remembered,
-    /// and when the remembered provider answered for itself.
-    pub past_unreachable_affinity: bool,
+    /// provider a positive row remembers had not denied the show —
+    /// unreachable (skipped for refusing, or failed over, and not
+    /// heard from since), or heard from with an episode dead end
+    /// that found the show. An absence in such an answer proves
+    /// nothing about the show that provider listed: it is the
+    /// verdict the caller sees, not one to persist over the row.
+    /// False when nothing was remembered, and when the remembered
+    /// provider answered for itself or missed cleanly.
+    pub past_undenied_affinity: bool,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
@@ -79,7 +81,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
         f.debug_struct("Attempted")
             .field("provider", &self.provider)
             .field("value", &self.value)
-            .field("past_unreachable_affinity", &self.past_unreachable_affinity)
+            .field("past_undenied_affinity", &self.past_undenied_affinity)
             .finish_non_exhaustive()
     }
 }
@@ -120,17 +122,23 @@ pub fn fails_over(error: &AniError) -> bool {
 /// first. Its answered miss is not the walk's verdict — the row
 /// proves the show and its mode at the show's level, not that every
 /// episode has an embed — so the walk goes on to the rest of the
-/// order, and the miss stands, as given, only when the rest were
-/// unreachable. While the remembered provider is unreachable —
-/// skipped for refusing and not heard from since, or failed over —
-/// a clean miss from the rest is the verdict but not proof: it says
-/// nothing about the show that provider listed, so it surfaces with
-/// its clean flag cleared, still attributed to the provider that
-/// gave it, and no negative outlives the remembered provider's
+/// order. What the rest answers then stands against the set-aside
+/// miss by rank ([`firmer_miss`]): an episode dead end that found
+/// the show outranks a clean catalogue miss from another provider,
+/// which would otherwise persist as that provider's negative over a
+/// show the remembered one carries; misses of equal rank keep the
+/// last answer given; and the set-aside miss stands, as given, when
+/// the rest were unreachable. While the remembered provider has not
+/// denied the show — unreachable (skipped for refusing and not heard
+/// from since, or failed over), or heard from with an episode dead
+/// end — a clean miss from the rest is the verdict but not proof: it
+/// says nothing about the show that provider listed, so it surfaces
+/// with its clean flag cleared, still attributed to the provider
+/// that gave it, and no negative outlives the remembered provider's
 /// recovery. An answer from the rest in that state has the same
-/// standing and says so ([`Attempted::past_unreachable_affinity`]),
-/// so an absence it carries — a show found without the requested
-/// mode — is the caller's to surface and not to persist either.
+/// standing and says so ([`Attempted::past_undenied_affinity`]), so
+/// an absence it carries — a show found without the requested mode
+/// — is the caller's to surface and not to persist either.
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
@@ -170,7 +178,7 @@ where
         any_unreachable: false,
         skipped: Vec::new(),
         remembered,
-        remembered_unreachable: false,
+        remembered_undenied: false,
     };
     let mut affinity_miss: Option<(NativeError, ProviderId)> = None;
     let count = order.len();
@@ -179,7 +187,7 @@ where
         if !last && gate_of(provider).is_refusing() {
             walk.any_unreachable = true;
             walk.skipped.push(provider);
-            walk.remembered_unreachable |= walk.remembered == Some(provider);
+            walk.remembered_undenied |= walk.remembered == Some(provider);
             continue;
         }
         // The skipped providers are owed their trial on an interactive
@@ -221,8 +229,16 @@ where
                     affinity_miss = Some((miss, by));
                     continue;
                 }
+                // The set-aside miss and this one stand against each
+                // other by rank, not by order.
+                let verdict = match affinity_miss.take() {
+                    Some((set_aside, set_by)) => {
+                        firmer_miss((set_aside, Some(set_by)), (miss, Some(by)))
+                    }
+                    None => (miss, Some(by)),
+                };
                 return retry_skipped(
-                    Negative::Miss(miss, Some(by)),
+                    Negative::Miss(verdict.0, verdict.1),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -276,21 +292,51 @@ struct Walk {
     skipped: Vec<ProviderId>,
     /// The provider a positive availability row put first, if any.
     remembered: Option<ProviderId>,
-    /// Whether the remembered provider was skipped or failed over and
-    /// has not answered since — while it has, a clean miss from the
-    /// rest proves nothing about the row it stands behind.
-    remembered_unreachable: bool,
+    /// Whether the remembered provider has not denied the show: it
+    /// was skipped or failed over and has not answered since, or it
+    /// answered an episode dead end that found the show. While so, a
+    /// clean miss from the rest proves nothing about the row it
+    /// stands behind. Cleared by its own answer or its own clean
+    /// miss, which is a denial.
+    remembered_undenied: bool,
 }
 
 /// The miss as the walk surfaces it: as given, unless the remembered
-/// provider was unreachable, when its clean flag is cleared — the
-/// verdict the caller sees, not one it may persist over the row that
-/// provider proved. Attribution is the caller's to report, unchanged.
-fn unpersistable_past_affinity(remembered_unreachable: bool, mut miss: NativeError) -> NativeError {
-    if remembered_unreachable {
+/// provider has not denied the show, when its clean flag is cleared
+/// — the verdict the caller sees, not one it may persist over the
+/// row that provider proved. Attribution is the caller's to report,
+/// unchanged.
+fn unpersistable_past_affinity(remembered_undenied: bool, mut miss: NativeError) -> NativeError {
+    if remembered_undenied {
         miss.clean_miss = false;
     }
     miss
+}
+
+/// Whether an earlier miss outranks a later one: the earlier is an
+/// answered miss that found the show — not clean, and an answer
+/// rather than an unreachable provider's error standing in for one
+/// — and the later is a clean catalogue miss. The show was found, so
+/// a catalogue miss from another provider may not become the
+/// verdict a caller persists as a negative.
+fn episode_miss_outranks(earlier: &NativeError, later: &NativeError) -> bool {
+    !fails_over(&earlier.error) && !earlier.clean_miss && later.clean_miss
+}
+
+/// The miss that stands of two, with the provider whose miss it is,
+/// so the provider travels with the verdict that is kept: the
+/// earlier when it outranks the later ([`episode_miss_outranks`]),
+/// otherwise the later — the last answer given, among misses of
+/// equal rank.
+fn firmer_miss(
+    earlier: (NativeError, Option<ProviderId>),
+    later: (NativeError, Option<ProviderId>),
+) -> (NativeError, Option<ProviderId>) {
+    if episode_miss_outranks(&earlier.0, &later.0) {
+        earlier
+    } else {
+        later
+    }
 }
 
 /// How one attempt ended: an answer, a failover, or a miss with the
@@ -371,7 +417,7 @@ where
         Ok(c) => c,
         Err(error) => {
             walk.any_unreachable = true;
-            walk.remembered_unreachable |= walk.remembered == Some(provider);
+            walk.remembered_undenied |= walk.remembered == Some(provider);
             walk.first_unreachable.get_or_insert(NativeError {
                 error,
                 clean_miss: false,
@@ -401,28 +447,30 @@ where
     match result {
         Ok(value) => {
             // Heard from: a remembered provider that answers for
-            // itself is reachable, whatever the answer holds.
+            // itself has spoken for the row, whatever the answer
+            // holds.
             if walk.remembered == Some(provider) {
-                walk.remembered_unreachable = false;
+                walk.remembered_undenied = false;
             }
             Tried::Answered(Attempted {
                 provider,
                 value,
                 client,
-                past_unreachable_affinity: walk.remembered_unreachable,
+                past_undenied_affinity: walk.remembered_undenied,
             })
         }
         Err(ne) if fails_over(&ne.error) => {
             walk.any_unreachable = true;
-            walk.remembered_unreachable |= walk.remembered == Some(provider);
+            walk.remembered_undenied |= walk.remembered == Some(provider);
             walk.first_unreachable.get_or_insert(ne);
             Tried::FailedOver
         }
         Err(ne) => {
-            // Heard from: a skipped remembered provider that answers
-            // its trial with a miss is reachable after all.
+            // Heard from: a remembered provider's clean miss denies
+            // the show; its episode dead end found the show and
+            // denies nothing.
             if walk.remembered == Some(provider) {
-                walk.remembered_unreachable = false;
+                walk.remembered_undenied = !ne.clean_miss;
             }
             Tried::Missed(ne, provider)
         }
@@ -436,12 +484,14 @@ where
 /// breaker's half-open trial, a pause it ignores for a click. Those
 /// are asked now: an answer that is not negative is the walk's, a
 /// negative answer or a miss of theirs — the last answer given —
-/// replaces the verdict they were asked for, author and all, and one
-/// unreachable too leaves it standing. A miss that surfaces tells
-/// the attempt whose it is first, and surfaces unpersistable when
-/// the remembered provider was unreachable; a negative answer
-/// surfaces as its provider gave it, saying whether it came past an
-/// unreachable remembered provider.
+/// replaces the verdict they were asked for, author and all, except
+/// that a clean miss does not replace an episode dead end the walk
+/// holds ([`firmer_miss`]), and one unreachable too leaves it
+/// standing. A miss that surfaces tells the attempt whose it is
+/// first, and surfaces unpersistable when the remembered provider
+/// has not denied the show; a negative answer surfaces as its
+/// provider gave it, saying whether it came past an undenied
+/// affinity.
 ///
 /// # Errors
 /// The miss that stands.
@@ -481,7 +531,15 @@ where
                 Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
                 Tried::Answered(answer) => verdict = Negative::Answer(answer),
                 Tried::FailedOver => {}
-                Tried::Missed(ne, by) => verdict = Negative::Miss(ne, Some(by)),
+                Tried::Missed(ne, by) => {
+                    verdict = match verdict {
+                        Negative::Miss(held, held_by) => {
+                            let (ne, by) = firmer_miss((held, held_by), (ne, Some(by)));
+                            Negative::Miss(ne, by)
+                        }
+                        Negative::Answer(_) => Negative::Miss(ne, Some(by)),
+                    };
+                }
             }
         }
     }
@@ -491,10 +549,7 @@ where
             if let Some(by) = by {
                 attempt.missed_by(by);
             }
-            Err(unpersistable_past_affinity(
-                walk.remembered_unreachable,
-                error,
-            ))
+            Err(unpersistable_past_affinity(walk.remembered_undenied, error))
         }
     }
 }

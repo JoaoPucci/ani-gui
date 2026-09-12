@@ -578,12 +578,14 @@ pub(crate) async fn check_availability_with_base(
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
                 )
-            } else if attempted.past_unreachable_affinity {
+            } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
-                // provider a positive row remembers, which was
-                // unreachable: like the clean miss reached the same
-                // way, it is the verdict the caller sees and proves
-                // nothing about the audio the row's provider listed.
+                // provider a positive row remembers, which has not
+                // denied the show — unreachable, or heard from with
+                // an episode dead end: like the clean miss reached
+                // the same way, it is the verdict the caller sees and
+                // proves nothing about the audio the row's provider
+                // listed.
                 // Persisted, it would be backed by a healthy primary
                 // and outlive the row's provider's recovery. Surface
                 // it, persist nothing; the row stands.
