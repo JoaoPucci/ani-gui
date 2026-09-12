@@ -93,7 +93,11 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     Ok(ResolvedEpisode {
         master_url,
         referer: source.referer,
-        subtitles: source.subtitles,
+        // Bounded here, in the step every caller resolves through —
+        // the play resolve and the range download — so the cache
+        // row, the session, the handoffs' argv and both downloads
+        // share the one bound.
+        subtitles: super::play_native_resolve::tracks_within_cap(source.subtitles),
         slot: ep.number,
         tag: ep.number2.clone(),
     })
