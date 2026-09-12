@@ -2,7 +2,7 @@
 //! arguments the same way a fresh resolve does, and a cached row is
 //! live only when its tracks read as tracks.
 
-use super::{cached_launch_args, try_serve_cached};
+use super::{cached_launch_args, try_serve_cached, webvtt_prefix};
 use crate::commands::play::tests::{cached_blank, state_with_proxy_origin, track};
 use crate::commands::play_resolution_cache::CachedResolution;
 use crate::proxy::MediaKind;
@@ -122,4 +122,49 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
         try_serve_cached(&state, &cached).await.is_some(),
         "a track that reads as a track is live"
     );
+}
+
+mod webvtt_prefix_props {
+    use super::webvtt_prefix;
+    use crate::proxy::is_webvtt;
+    use proptest::prelude::*;
+
+    /// Bodies whose first bytes are close to the signature — a
+    /// byte-order mark or not, then a prefix of `WEBVTT` or something
+    /// else — followed by anything.
+    fn body() -> impl Strategy<Value = Vec<u8>> {
+        (
+            proptest::option::of(Just(b"\xEF\xBB\xBF".to_vec())),
+            prop_oneof![
+                (0..=6usize).prop_map(|n| b"WEBVTT"[..n].to_vec()),
+                proptest::collection::vec(any::<u8>(), 0..8),
+            ],
+            proptest::collection::vec(any::<u8>(), 0..16),
+        )
+            .prop_map(|(bom, head, rest)| {
+                let mut b = bom.unwrap_or_default();
+                b.extend(head);
+                b.extend(rest);
+                b
+            })
+    }
+
+    proptest! {
+        /// Reading a body from its first byte, the prefix verdict
+        /// never contradicts the whole body's, and once the whole
+        /// body is in hand it is never undecided unless the body is
+        /// itself too short to be anything.
+        #[test]
+        fn a_decided_prefix_agrees_with_the_whole_body(body in body()) {
+            let whole = is_webvtt(&body);
+            for n in 0..=body.len() {
+                if let Some(verdict) = webvtt_prefix(&body[..n]) {
+                    prop_assert_eq!(verdict, whole, "prefix of {} bytes of {:?}", n, body);
+                }
+            }
+            if body.len() >= 9 {
+                prop_assert_eq!(webvtt_prefix(&body), Some(whole));
+            }
+        }
+    }
 }
