@@ -1002,3 +1002,31 @@ proptest::proptest! {
         prop_assert!(readable_order.iter().zip(&readable_site_order).all(|(a, b)| std::ptr::eq(*a, *b)));
     }
 }
+
+// ── a page without the payload, by host ─────────────────────────────
+
+proptest! {
+    /// A page without the payload marker is a parse failure exactly
+    /// when its host is one the client reads: such a host has changed
+    /// shape under the client, while a host the client never read
+    /// says nothing and is stepped over. The verdict names the host.
+    #[test]
+    fn a_missing_payload_is_a_parse_failure_exactly_on_a_readable_host(
+        host in prop_oneof![
+            Just("zokoanime.video".to_string()),
+            "[a-z]{3,10}\\.(buzz|site|video|net)",
+        ],
+        path in "/stream/[a-z0-9/-]{1,20}",
+    ) {
+        let embed_url = format!("https://{host}{path}");
+        let verdict = payload_missing_verdict(&embed_url);
+        if ajax::readable(&embed_url) {
+            match verdict {
+                Some(AniError::ParseFailed { detail }) => prop_assert!(detail.contains(&host), "{detail}"),
+                other => prop_assert!(false, "expected a parse failure, got {other:?}"),
+            }
+        } else {
+            prop_assert!(verdict.is_none(), "{verdict:?}");
+        }
+    }
+}
