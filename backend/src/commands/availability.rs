@@ -736,6 +736,14 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
         self.answered_by = Some(provider);
     }
+
+    /// A show found without the requested mode is a negative verdict:
+    /// the walk owes the skipped providers their trial before it
+    /// surfaces, as it does for a miss. A mode nobody answered for is
+    /// not — it says nothing either way.
+    fn is_negative(output: &Self::Output) -> bool {
+        matches!(output.1, Some(false))
+    }
 }
 
 /// The provider a positive availability row remembers for
