@@ -136,6 +136,39 @@ fn a_card_whose_title_is_blank_is_skipped_and_a_listing_of_such_cards_is_refused
     let err = parse_search(&all_blank).expect_err("refused");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
+/// A card's identity is one anchor's href and title together. A
+/// detail block whose first anchor carries only a title, followed by
+/// a link that carries only an href, is not a card the parser can
+/// read: read as one, the title would be paired with a slug that is
+/// not its own, and an apparent exact-title match would send the
+/// picker to the wrong entry. The same the other way round.
+#[test]
+fn a_card_whose_title_and_slug_sit_on_different_anchors_is_skipped() {
+    let page = |detail: &str| {
+        format!(
+            r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail">{detail}</div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/naruto-5" title="Naruto" class="dynamic-name">Naruto</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div></body></html>"#
+        )
+    };
+    let title_then_href = page(
+        r#"<h3 class="film-name"><a title="Cowboy Bebop" class="dynamic-name">Cowboy Bebop</a></h3><div class="fd-infor"><a href="https://hianime.at/wrong-123">more</a><span class="fdi-item">TV</span></div>"#,
+    );
+    let hits = parse_search(&title_then_href).expect("the readable card");
+    assert_eq!(
+        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
+        vec!["naruto-5"],
+        "{hits:?}"
+    );
+    let href_then_title = page(
+        r#"<h3 class="film-name"><a href="https://hianime.at/wrong-123" class="dynamic-name">x</a></h3><div class="fd-infor"><a title="Cowboy Bebop">more</a><span class="fdi-item">TV</span></div>"#,
+    );
+    let hits = parse_search(&href_then_title).expect("the readable card");
+    assert_eq!(
+        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
+        vec!["naruto-5"],
+        "{hits:?}"
+    );
+}
+
 #[test]
 fn a_card_whose_slug_carries_no_id_is_skipped_and_a_listing_of_such_cards_is_refused() {
     // The episode listing is keyed on the decimal tail of a slug; a

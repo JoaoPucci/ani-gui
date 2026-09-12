@@ -252,6 +252,56 @@ proptest::proptest! {
         }
     }
 
+    /// A card's identity is one anchor's href and title together,
+    /// in whichever order the site writes them; a card whose detail
+    /// block spreads the two over different anchors is unreadable
+    /// and never comes back as a hit stitched from both. The
+    /// readable cards come back in order, and a list of only
+    /// unreadable ones is refused.
+    #[test]
+    fn a_hit_is_never_stitched_from_two_anchors(
+        cards in proptest::collection::vec(
+            (
+                "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
+                1u64..1_000_000,
+                "[A-Za-z0-9,:!-][A-Za-z0-9 ,:!-]{0,20}",
+                "(TV|Movie|OVA|ONA|Special)",
+                proptest::sample::select(vec!["href-title", "title-href", "title-then-href", "href-then-title"]),
+            ),
+            1..5,
+        )
+    ) {
+        let mut page = String::from(r#"<html><body><div class="film_list-wrap">"#);
+        for (words, id, title, kind, shape) in &cards {
+            let slug = format!("{words}-{id}");
+            let title = encode_title(title);
+            let detail = match *shape {
+                "href-title" => format!(r#"<h3 class="film-name"><a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a></h3>"#),
+                "title-href" => format!(r#"<h3 class="film-name"><a class="dynamic-name" title="{title}" href="https://hianime.at/{slug}">x</a></h3>"#),
+                "title-then-href" => format!(r#"<h3 class="film-name"><a title="{title}" class="dynamic-name">x</a></h3><div class="fd-infor"><a href="https://hianime.at/{slug}">more</a></div>"#),
+                _ => format!(r#"<h3 class="film-name"><a href="https://hianime.at/{slug}" class="dynamic-name">x</a></h3><div class="fd-infor"><a title="{title}">more</a></div>"#),
+            };
+            page.push_str(&format!(
+                r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{slug}" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail">{detail}<div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
+            ));
+        }
+        page.push_str("</div></body></html>");
+        let expected: Vec<BrowseHit> = cards
+            .iter()
+            .filter(|(_, _, _, _, shape)| matches!(*shape, "href-title" | "title-href"))
+            .map(|(words, id, title, kind, _)| BrowseHit {
+                slug: format!("{words}-{id}"),
+                title: title.clone(),
+                kind: Some(kind.clone()),
+            })
+            .collect();
+        match parse_search(&page) {
+            Ok(hits) => proptest::prop_assert_eq!(hits, expected),
+            Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(expected.is_empty(), "refused with readable cards present"),
+            Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+        }
+    }
+
     /// Every ep-item row comes back as its episode ref, in order:
     /// its position in the listing is its slot, and the site's number
     /// rides as the display tag whenever it is not that position.
