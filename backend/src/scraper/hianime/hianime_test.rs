@@ -427,6 +427,31 @@ fn a_known_mode_with_no_row_is_uncertain_when_a_row_of_an_unknown_mode_was_seen(
     );
 }
 
+/// A row that carries the site's row marker but no mode attribute at
+/// all is a row whose mode the client cannot tell — the attribute
+/// renamed under a row that may be the sub server — and beside a
+/// readable dub row it leaves sub in doubt, not absent: read as "no
+/// sub", the mode probe would persist an absence over a playback the
+/// site still lists. A listing of nothing but such rows is refused.
+#[test]
+fn a_server_row_without_a_mode_attribute_leaves_a_known_mode_with_no_row_uncertain() {
+    let untyped_beside_dub = r#"{"status":true,"html":"<div class=\"item server-item\" data-kind=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(untyped_beside_dub).expect("the dub row is readable");
+    assert_eq!(listing.servers.len(), 1);
+    assert_eq!(listing.servers[0].mode, "dub");
+    assert!(listing.mode_readable("dub").expect("read"));
+    assert!(
+        matches!(
+            listing.mode_readable("sub"),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "a mode with no row of its own is not absent while a row without a mode was seen"
+    );
+    let untyped_only = r#"{"status":true,"html":"<div class=\"item server-item\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let err = parse_server_listing(untyped_only).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
 #[test]
 fn a_server_row_with_a_mode_the_client_does_not_know_is_not_a_usable_row() {
     // The site types its servers sub or dub, and the mode probe asks
