@@ -1810,6 +1810,90 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest_lack_the_mode()
+    {
+        // The row's provider is unreachable for the reprobe, so the
+        // walk moves on and the primary finds the show but answers
+        // absence for the requested audio. Like the primary's clean
+        // miss, that absence is the verdict the caller sees and
+        // proves nothing about the audio the fallback listed:
+        // persisting it as the primary's negative would stay backed
+        // by a healthy primary and keep a playable title disabled
+        // long after the fallback recovered.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/fallback-show-71"><img alt="Fallback Show"/></a>"#,
+            ))
+            .mount(&anidb)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/71/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":711,"number":1},{"id":712,"number":2}]}"#,
+                ),
+            )
+            .mount(&anidb)
+            .await;
+        for ep in [711, 712] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
+                ))
+                .mount(&anidb)
+                .await;
+        }
+        let hianime = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&hianime)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "580",
+            "dub",
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "dub",
+            "kitsu_id": "580"
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::NoResults)),
+            "the primary's absence is the verdict the caller sees, unpersisted: {got:?}"
+        );
+        assert!(
+            anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/languages")),
+            "the walk moved past the unreachable provider and the primary answered the mode"
+        );
+        assert_eq!(
+            cached_provider(&state, "580", "dub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the positive row stands until its provider is reachable again"
+        );
+    }
+
+    #[tokio::test]
     async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
         // The batch read already refuses to serve the fallback's
         // negative once the primary is answering again, and the lists
