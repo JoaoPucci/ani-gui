@@ -1063,6 +1063,39 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // Two readable hosts whose pages carry no payload marker
+            // at all: the host the client reads has changed shape.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21435") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L25vcGF5bG9hZC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L25vcGF5bG9hZDIvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A readable host without the marker, then a readable host
+            // whose page decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21436") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L25vcGF5bG9hZC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A readable host without the marker beside a host the
+            // client never read.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21437") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L25vcGF5bG9hZC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // The same undecodable page first, then a host whose page
             // decodes.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
@@ -1138,6 +1171,18 @@ impl Fetch for Site {
             "https://zokoanime.video/stream/mal/9/blank/sub" => ok(
                 r#"<html><body><script>window.__P="FFYSGRYPX09ASUZeA1MbHRUHEF5HVzk4GQ=="</script></body></html>"#,
             ),
+            // A readable host's page shipped without the payload
+            // marker: the player is there, the blob is not.
+            "https://zokoanime.video/stream/mal/9/nopayload/sub"
+            | "https://zokoanime.video/stream/mal/9/nopayload2/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(
+                        r#"<html><body><div id="player"></div><script type="module" src="/player.js?v=14"></script></body></html>"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
@@ -1346,6 +1391,9 @@ async fn an_uncertain_mode_whose_readable_pages_carry_no_payload_is_a_parse_fail
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
+/// A lone host the client never read, serving a page without the
+/// payload, says nothing about the client: it is stepped over, and
+/// an episode with only such hosts has no stream.
 #[tokio::test]
 async fn an_episode_whose_servers_all_serve_unreadable_pages_has_no_stream() {
     let c = client();
@@ -1354,6 +1402,47 @@ async fn an_episode_whose_servers_all_serve_unreadable_pages_has_no_stream() {
         .await
         .expect_err("nothing readable");
     assert!(matches!(err, AniError::NoResults), "{err:?}");
+}
+
+/// A host the client reads, serving its page without the payload
+/// marker, is the site having changed shape under the client — the
+/// same event as a blob the key no longer opens — and when every
+/// readable server's page is like that, the walk's end is a parse
+/// failure, never the answered absence the resolver would persist
+/// as the episode's dead end and the breaker as health.
+#[tokio::test]
+async fn a_readable_host_whose_page_lost_the_payload_is_a_parse_failure_once_every_server_is_tried()
+{
+    let c = client();
+    let err = c
+        .master_playlist_url(21435, "sub")
+        .await
+        .expect_err("no page decoded");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+/// The same page beside a readable host whose page decodes: the
+/// stream, as for any stepped-over server.
+#[tokio::test]
+async fn a_readable_host_whose_page_lost_the_payload_is_stepped_over_when_a_later_server_decodes() {
+    let c = client();
+    let source = c
+        .master_playlist_url(21436, "sub")
+        .await
+        .expect("the second server decodes");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+}
+
+/// The readable host's missing marker outranks the silence of a host
+/// the client never read: the mixed listing ends in a parse failure.
+#[tokio::test]
+async fn a_readable_host_without_the_payload_beside_an_unreadable_host_is_a_parse_failure() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21437, "sub")
+        .await
+        .expect_err("no page decoded");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
 
 #[tokio::test]
