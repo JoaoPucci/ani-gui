@@ -11,14 +11,14 @@
 //! come through here, so they share the one ordering.
 //!
 //! A track that arrives is staged, not published: it waits in its
-//! scratch, and takes its name only once the transfer has
-//! succeeded. A sidecar beside a failed download would be one the
-//! next attempt keeps as the user's own — a file with bytes at the
-//! name is never replaced — so a transfer that fails drops every
-//! staged track with its scratch, and the names stay free for the
-//! retry.
+//! scratch, and takes its name only once the episode is at its own.
+//! A sidecar beside no media would be one the next attempt keeps as
+//! the user's own — a file with bytes at the name is never replaced
+//! — so a transfer that fails, or ends cleanly with nothing written,
+//! drops every staged track with its scratch, and the names stay
+//! free for the retry.
 
-use super::download::SidecarClaim;
+use super::download::{SidecarClaim, Transferred};
 use crate::error::Result;
 use crate::scraper::provider::StreamSource;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,10 @@ use std::path::{Path, PathBuf};
 /// with its scratch, the names untaken. A transfer that finishes
 /// first waits for the tracks still in flight, under the phase's
 /// own deadline, and then the staged tracks are installed at their
-/// names.
+/// names — when the episode is at its own. A tool that exited
+/// cleanly having written nothing is not a failed transfer, and not
+/// one with an episode to sit beside either: the staged tracks drop
+/// the same way, and nothing is reported written.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn transfer_with_sidecars<F>(
     client: &reqwest::Client,
@@ -66,7 +69,11 @@ where
     };
     // A failure returns here, and the staged claims — held in
     // `staged` or still inside the phase — drop with their scratches.
-    transferred?;
+    // So do they when the tool wrote nothing: there is no episode
+    // for a sidecar to sit beside.
+    if transferred? == Transferred::Nothing {
+        return Ok(Vec::new());
+    }
     let staged = match staged {
         Some(claims) => claims,
         None => sidecars.await,

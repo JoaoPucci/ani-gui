@@ -1284,6 +1284,22 @@ pub(crate) fn ffmpeg_referer_args(referer: Option<&str>) -> Vec<String> {
     })
 }
 
+/// What a transfer that did not fail left at the episode's name.
+/// A tool can exit cleanly having written nothing, and that has
+/// always ended as a success with no file published; the caller
+/// that puts sidecars beside the episode needs to know which
+/// success it was, since a sidecar beside no media is one the next
+/// attempt keeps as the user's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Transferred {
+    /// The episode is at its name: this transfer put it there, or
+    /// found it there — before spawning a tool, or when publishing.
+    Episode,
+    /// The tool exited cleanly having written nothing, and nothing
+    /// is at the name.
+    Nothing,
+}
+
 pub(crate) async fn spawn_download_tool<F>(
     source: &StreamSource,
     dest: &std::path::Path,
@@ -1292,7 +1308,7 @@ pub(crate) async fn spawn_download_tool<F>(
     path_env: &str,
     timeout: std::time::Duration,
     on_line: &mut F,
-) -> Result<()>
+) -> Result<Transferred>
 where
     F: FnMut(&str) + Send,
 {
@@ -1357,7 +1373,7 @@ where
         // the answer is given before one is spent.
         AtTarget::Episode => {
             on_line(ALREADY_HERE);
-            return Ok(());
+            return Ok(Transferred::Episode);
         }
         // A claim that outlasted the wait. Its owner is not coming
         // back, and nothing here may take it, so a transfer would end
@@ -1486,14 +1502,19 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-async fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
+async fn finish<F>(
+    scratch: &Scratch,
+    target: &std::path::Path,
+    on_line: &mut F,
+) -> Result<Transferred>
 where
     F: FnMut(&str) + Send,
 {
     // A tool that exits cleanly having written nothing leaves nothing
     // to install. That has always ended as a success here, and
     // changing it is a separate argument from where the file gets
-    // written.
+    // written; the answer says so, for whoever would put something
+    // beside the episode.
     //
     // An empty file is the same event with one more syscall in it, and
     // publishing one would put a name in the user's folder that reads
@@ -1509,7 +1530,7 @@ where
         // as the tool having written nothing there. Reported as the
         // latter, it ends the download happily with no file published.
         AtTarget::Unreadable => return Err(AniError::Io),
-        _ => return Ok(()),
+        _ => return Ok(Transferred::Nothing),
     }
     // Publication decides the file's fate from here: installed under
     // the episode's name, or removed because someone else got there.
@@ -1554,10 +1575,10 @@ where
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     match published {
-        Published::Installed => Ok(()),
+        Published::Installed => Ok(Transferred::Episode),
         Published::AlreadyThere => {
             on_line(ALREADY_HERE);
-            Ok(())
+            Ok(Transferred::Episode)
         }
     }
 }
