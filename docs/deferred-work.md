@@ -422,7 +422,9 @@ the shape against the app as it is then.
   The alternative — cutting openings
   out of episodes with the skip intervals the player already has —
   was looked at and set aside: the intervals are crowd-sourced and
-  shift between releases, cutting an HLS stream needs a re-encode,
+  shift between releases; a cut without re-encoding lands on a
+  segment or keyframe boundary rather than on the interval's exact
+  second, and a frame-exact cut re-encodes around the boundaries;
   and the result is the credited opening at stream quality. What it
   does make cheap is a "jump to the opening" inside the normal
   player.
@@ -453,9 +455,11 @@ the shape against the app as it is then.
 - **A reactions mode: find and watch reaction videos for an
   episode.** No index of reaction videos exists anywhere; YouTube is
   the whole corpus, and every option runs through it. Discovery has
-  three known routes and each has a cost: the YouTube Data API needs
-  a key shipped in the app and gives one project a hundred searches
-  a day shared by every user; the public Invidious and Piped
+  three known routes and each has a cost: the YouTube Data API
+  needs a project key — bundled in the app it gives one project a
+  hundred searches a day shared by every user, supplied by the user
+  in settings it gives each user their own quota at the cost of a
+  setup step; the public Invidious and Piped
   instances are blocked at the IP level and down to a handful; and
   the yt-dlp the app already bundles searches YouTube with no key —
   seen working on the day, with titles, channels, durations and view
