@@ -5,10 +5,13 @@
 //!   • `upstream_head_ok` — HEAD-pings a cached upstream URL with
 //!     the right Referer and treats 2xx/3xx as live, anything else
 //!     (including network errors) as dead.
+//!   • `cached_track_ok` — reads a cached sidecar track the way the
+//!     relay reads it: a GET with the Referer, live only when it
+//!     answers 2xx and its first bytes carry the WebVTT signature.
 //!   • `cached_row_is_live` — the check both replays share: the
-//!     row's stream and every sidecar track it lists pass
-//!     `upstream_head_ok` with the row's referer, asked together
-//!     under one deadline.
+//!     row's stream passes `upstream_head_ok` and every sidecar
+//!     track it lists passes `cached_track_ok`, with the row's
+//!     referer, asked together under one deadline.
 //!   • `try_serve_cached` — turns a `CachedResolution` row into a
 //!     fresh session response when the row is live. Used by the
 //!     embedded-player flow's fast path in `play_with_progress`.
@@ -52,6 +55,68 @@ pub(crate) async fn upstream_head_ok(
     resp.status().is_success() || resp.status().is_redirection()
 }
 
+/// What the first bytes of a body say about it being a WebVTT
+/// track: `Some(true)` once they carry the signature — behind a
+/// UTF-8 byte-order mark or not, as [`crate::proxy::is_webvtt`]
+/// allows — `Some(false)` once they cannot, and `None` while too few
+/// have arrived to tell either way. A decided prefix agrees with the
+/// whole body's verdict.
+#[must_use]
+pub(crate) fn webvtt_prefix(bytes: &[u8]) -> Option<bool> {
+    const BOM: &[u8] = b"\xEF\xBB\xBF";
+    const SIGNATURE: &[u8] = b"WEBVTT";
+    if BOM.starts_with(bytes) {
+        // Empty, or still inside what may become a byte-order mark.
+        return None;
+    }
+    let body = bytes.strip_prefix(BOM).unwrap_or(bytes);
+    if body.len() >= SIGNATURE.len() {
+        Some(body.starts_with(SIGNATURE))
+    } else if SIGNATURE.starts_with(body) {
+        None
+    } else {
+        Some(false)
+    }
+}
+
+/// Whether a cached sidecar track is still a track: a GET with the
+/// row's `referer` — what the relay sends when the player asks for
+/// it — answers 2xx and its first bytes carry the WebVTT signature.
+/// A HEAD is not enough: a CDN can answer one with 200 and serve a
+/// challenge page to the GET, which the relay then refuses, and a
+/// track that fails to load never reaches the player's recovery
+/// path. The body is read only until its first bytes decide — a
+/// chunk or two — and the response is dropped there, so the check
+/// costs a request per track, not a track's worth of bytes.
+pub(crate) async fn cached_track_ok(
+    client: &reqwest::Client,
+    url: &url::Url,
+    referer: &str,
+) -> bool {
+    let mut req = client.get(url.as_str());
+    if !referer.is_empty() {
+        req = req.header(reqwest::header::REFERER, referer);
+    }
+    let Ok(mut resp) = req.send().await else {
+        return false;
+    };
+    if !resp.status().is_success() {
+        return false;
+    }
+    let mut head: Vec<u8> = Vec::new();
+    loop {
+        if let Some(verdict) = webvtt_prefix(&head) {
+            return verdict;
+        }
+        match resp.chunk().await {
+            Ok(Some(chunk)) => head.extend_from_slice(&chunk),
+            // The body ended, or failed, before its first bytes
+            // could say it is a track.
+            Ok(None) | Err(_) => return false,
+        }
+    }
+}
+
 /// How long a cached row may take to prove itself live. The row is
 /// a shortcut past a fresh resolve, whose first request answers in
 /// a few seconds; a shortcut that takes longer than that is no
@@ -63,14 +128,15 @@ pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
     std::time::Duration::from_secs(10);
 
 /// Whether a cached row can still be served: its stream answers the
-/// HEAD check, and so does every sidecar track it lists — each with
-/// the row's referer, which is what the relay sends when it fetches
-/// a track. A track is signed like the stream and expires on its
-/// own, and a track that fails to load never reaches the player's
-/// recovery path, so a row is live only when everything it names is.
-/// The URLs are asked together under [`CACHED_ROW_CHECK_DEADLINE`];
-/// the first dead URL ends the check, a URL that does not parse is
-/// dead, and a deadline that elapses is a row that is not live.
+/// HEAD check, and every sidecar track it lists reads as a track
+/// ([`cached_track_ok`]) — each with the row's referer, which is
+/// what the relay sends when it fetches a track. A track is signed
+/// like the stream and expires on its own, and a track that fails
+/// to load never reaches the player's recovery path, so a row is
+/// live only when everything it names is. The URLs are asked
+/// together under [`CACHED_ROW_CHECK_DEADLINE`]; the first dead URL
+/// ends the check, a URL that does not parse is dead, and a deadline
+/// that elapses is a row that is not live.
 pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
     cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
 }
@@ -81,26 +147,30 @@ pub(crate) async fn cached_row_is_live_within(
     cached: &CachedResolution,
     deadline: std::time::Duration,
 ) -> bool {
-    let mut urls = Vec::with_capacity(1 + cached.subtitles.len());
-    for raw in std::iter::once(cached.upstream_url.as_str())
-        .chain(cached.subtitles.iter().map(|t| t.url.as_str()))
-    {
-        let Ok(url) = url::Url::parse(raw) else {
+    let Ok(stream_url) = url::Url::parse(&cached.upstream_url) else {
+        return false;
+    };
+    let mut track_urls = Vec::with_capacity(cached.subtitles.len());
+    for track in &cached.subtitles {
+        let Ok(url) = url::Url::parse(&track.url) else {
             return false;
         };
-        urls.push(url);
+        track_urls.push(url);
     }
-    let checks = urls.iter().map(|url| async move {
-        if upstream_head_ok(&state.meta_http, url, &cached.referer).await {
-            Ok(())
-        } else {
-            Err(())
-        }
+    let stream = async {
+        upstream_head_ok(&state.meta_http, &stream_url, &cached.referer)
+            .await
+            .then_some(())
+            .ok_or(())
+    };
+    let tracks = track_urls.iter().map(|url| async move {
+        cached_track_ok(&state.meta_http, url, &cached.referer)
+            .await
+            .then_some(())
+            .ok_or(())
     });
-    matches!(
-        tokio::time::timeout(deadline, futures_util::future::try_join_all(checks)).await,
-        Ok(Ok(_))
-    )
+    let all = futures_util::future::try_join(stream, futures_util::future::try_join_all(tracks));
+    matches!(tokio::time::timeout(deadline, all).await, Ok(Ok(_)))
 }
 
 /// Serve a cached row as a fresh CreateSessionResponse when the row
@@ -160,7 +230,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row stale (HEAD failed on the stream or a track), evicted, resolving afresh",
+            "play_external: cache row stale (the stream's HEAD or a track's read failed), evicted, resolving afresh",
         );
         return None;
     }
@@ -168,7 +238,7 @@ pub(crate) async fn try_launch_args_from_cache(
         title = %args.title,
         episode = %args.episode,
         upstream = cached.upstream_url.as_str(),
-        "play_external: cache hit (HEAD ok), launching mpv from cached URL",
+        "play_external: cache hit (stream and tracks live), launching mpv from cached URL",
     );
     Some(cached_launch_args(cached, args, cfg))
 }
