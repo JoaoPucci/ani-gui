@@ -1065,6 +1065,10 @@ pub struct AvailabilityWarmArgs {
 }
 
 #[cfg(test)]
+#[path = "availability_backed_test.rs"]
+mod backed_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1397,7 +1401,7 @@ mod tests {
 
     /// A hianime stub carrying one show whose episodes offer sub
     /// servers only: search page, episode list, server list.
-    async fn stub_hianime_sub_only() -> wiremock::MockServer {
+    pub(super) async fn stub_hianime_sub_only() -> wiremock::MockServer {
         use base64::Engine as _;
         use wiremock::matchers::{method, path};
         let server = wiremock::MockServer::start().await;
@@ -1449,7 +1453,7 @@ mod tests {
         server
     }
 
-    fn open_breaker(gate: &crate::scraper::gate::ScraperGate) {
+    pub(super) fn open_breaker(gate: &crate::scraper::gate::ScraperGate) {
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             gate.record(
                 crate::scraper::gate::ScrapeOutcome::Failure,
@@ -1458,7 +1462,7 @@ mod tests {
         }
     }
 
-    fn close_breaker(gate: &crate::scraper::gate::ScraperGate) {
+    pub(super) fn close_breaker(gate: &crate::scraper::gate::ScraperGate) {
         gate.record(
             crate::scraper::gate::ScrapeOutcome::Success,
             tokio::time::Instant::now(),
@@ -1467,7 +1471,7 @@ mod tests {
 
     /// The provider answered a rate limit with a window: an
     /// advertised pause, which the gate keeps apart from the breaker.
-    fn pause_provider(gate: &crate::scraper::gate::ScraperGate) {
+    pub(super) fn pause_provider(gate: &crate::scraper::gate::ScraperGate) {
         gate.record(
             crate::scraper::gate::ScrapeOutcome::RateLimited {
                 retry_after: Some(std::time::Duration::from_secs(120)),
@@ -2710,7 +2714,7 @@ mod tests {
         );
     }
 
-    fn cache_only_state(td: &tempfile::TempDir) -> AppState {
+    pub(super) fn cache_only_state(td: &tempfile::TempDir) -> AppState {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::path::PathBuf;
