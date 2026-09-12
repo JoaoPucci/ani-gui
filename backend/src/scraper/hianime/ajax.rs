@@ -134,10 +134,11 @@ pub struct ServerListing {
     /// read, whether or not another row of the mode could be; each
     /// mode at most once, in the order first seen.
     pub unreadable_modes: Vec<String>,
-    /// Whether a row was typed with a mode the client does not know —
-    /// blank, or a value other than `sub` and `dub`. Such a row may be
-    /// a known mode under a new name, so no known mode the listing
-    /// carries no row of is absent while one was seen.
+    /// Whether a row was seen whose mode the client cannot tell —
+    /// typed blank, typed with a value other than `sub` and `dub`, or
+    /// not typed at all. Such a row may be a known mode under a new
+    /// name or attribute, so no known mode the listing carries no row
+    /// of is absent while one was seen.
     pub unknown_modes: bool,
 }
 
@@ -177,16 +178,22 @@ enum ServerRow {
     Read(ServerEmbed),
     /// A row of a known mode the client could not read.
     Unreadable(String),
-    /// A row typed with a mode the client does not know.
+    /// A row whose mode the client cannot tell: typed with a mode it
+    /// does not know, or not typed at all.
     Unknown,
 }
 
-/// One row of the server list, read as far as the client can; `None`
-/// for a fragment without a mode attribute at all, which is not a row.
-fn read_server_row(item: &str) -> Option<ServerRow> {
-    let mode = attr(item, "data-type=\"")?.trim().to_string();
+/// One row of the server list, read as far as the client can. A row
+/// without the mode attribute is a row whose mode the client cannot
+/// tell, not a fragment to drop: the site's row marker is on it, and
+/// the attribute renamed under the sub row would otherwise read as
+/// the listing carrying no sub.
+fn read_server_row(item: &str) -> ServerRow {
+    let Some(mode) = attr(item, "data-type=\"").map(|m| m.trim().to_string()) else {
+        return ServerRow::Unknown;
+    };
     if !KNOWN_MODES.contains(&mode.as_str()) {
-        return Some(ServerRow::Unknown);
+        return ServerRow::Unknown;
     }
     let read = || -> Option<ServerEmbed> {
         let name = attr(item, "data-server-name=\"")?.trim().to_string();
@@ -205,17 +212,17 @@ fn read_server_row(item: &str) -> Option<ServerRow> {
             embed_url,
         })
     };
-    Some(read().map_or(ServerRow::Unreadable(mode), ServerRow::Read))
+    read().map_or(ServerRow::Unreadable(mode), ServerRow::Read)
 }
 
 /// An episode's servers, with the listing's uncertainty per mode
 /// ([`ServerListing`]). A row whose mode is not `sub` or `dub` — typed
-/// as nothing, or as some renamed value — is not a server of any mode
-/// the client knows and is skipped, but marks the listing as carrying
-/// unknown modes: counting it as read would let a listing of such
-/// rows pass as "no sub, no dub" instead of a changed shape, and
-/// forgetting it would let a renamed mode read as absent beside the
-/// mode that kept its name. A row of a known mode the client cannot
+/// as nothing, as some renamed value, or not typed at all — is not a
+/// server of any mode the client knows and is skipped, but marks the
+/// listing as carrying unknown modes: counting it as read would let a
+/// listing of such rows pass as "no sub, no dub" instead of a changed
+/// shape, and forgetting it would let a renamed mode or attribute
+/// read as absent beside the mode that kept its name. A row of a known mode the client cannot
 /// read marks that mode unreadable and is skipped; a nonempty listing
 /// with no readable row at all is refused.
 ///
@@ -227,11 +234,7 @@ pub fn parse_server_listing(json: &str) -> Result<ServerListing> {
     let mut servers = Vec::new();
     let mut unreadable_modes: Vec<String> = Vec::new();
     let mut unknown_modes = false;
-    for row in html
-        .split("server-item")
-        .skip(1)
-        .filter_map(read_server_row)
-    {
+    for row in html.split("server-item").skip(1).map(read_server_row) {
         match row {
             ServerRow::Read(server) => servers.push(server),
             ServerRow::Unreadable(mode) => {
