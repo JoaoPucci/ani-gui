@@ -3271,6 +3271,42 @@ mod sidecar_suffix_props {
         let names = sidecar_suffixes(["pt-BR", "pt-br", "en", "EN"].into_iter());
         assert_eq!(names, vec!["pt-BR", "pt-br-1", "en", "EN-1"]);
     }
+
+    /// A tag can itself look like a generated name: `en-1` listed
+    /// beside `en` and `EN` would otherwise hand the third track the
+    /// name the second already holds, once case is folded. A name is
+    /// checked against every name given so far, and the count moves
+    /// on until the name is free.
+    #[test]
+    fn a_tag_shaped_like_a_generated_name_does_not_take_another_tracks_name() {
+        let names = sidecar_suffixes(["en", "en-1", "EN"].into_iter());
+        assert_eq!(names, vec!["en", "en-1", "EN-2"]);
+        let names = sidecar_suffixes(["en-1", "en", "en"].into_iter());
+        assert_eq!(names, vec!["en-1", "en", "en-2"]);
+    }
+
+    proptest! {
+        /// Tags drawn from a pool that includes generated-looking
+        /// names and case variants: every name starts with its own
+        /// tag, and no two names collide once case is folded.
+        #[test]
+        fn names_stay_distinct_when_tags_look_like_generated_names(
+            langs in proptest::collection::vec(
+                proptest::sample::select(vec!["en", "EN", "en-1", "En-1", "en-2", "pt", "PT-1"]),
+                0..8,
+            )
+        ) {
+            let names = sidecar_suffixes(langs.iter().copied());
+            prop_assert_eq!(names.len(), langs.len());
+            for (lang, name) in langs.iter().zip(&names) {
+                prop_assert!(name.starts_with(lang), "{name} does not start with {lang}");
+            }
+            let mut folded: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+            folded.sort();
+            folded.dedup();
+            prop_assert_eq!(folded.len(), names.len());
+        }
+    }
 }
 
 // ── the sidecar phase is bounded in count and in flight ────────────
