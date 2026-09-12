@@ -12,25 +12,28 @@ use crate::scraper::provider::BrowseHit;
 /// read: the poster link that leads a card carries an href and title
 /// of its own, and a card whose detail block has no anchor is skipped
 /// rather than read from its neighbour. A page that says "No animes
-/// found." is the provider answering absence; a page without either
-/// shape is a parse failure, never absence.
+/// found." is the provider answering absence — that notice, with no
+/// list, is how the site renders an empty search — and a page
+/// without either shape is a parse failure, never absence. So is a
+/// list with no card boundary inside and no notice: that is what
+/// the list looks like once the boundary is renamed, whether or not
+/// the cards are still there.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] when the page shows neither the result
-/// list nor the no-results notice.
+/// list nor the no-results notice, or a list with no card boundary
+/// and no notice.
 pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let Some(start) = html.find("film_list-wrap") else {
-        if html.contains("No animes found") {
-            return Ok(Vec::new());
-        }
-        return Err(AniError::ParseFailed {
-            detail: "hianime search page without its result list".into(),
-        });
+        return none_or_refused(html, "hianime search page without its result list");
     };
     let end = html[start..]
         .find("main-sidebar")
         .map_or(html.len(), |i| start + i);
     let cards: Vec<&str> = html[start..end].split("flw-item").skip(1).collect();
+    if cards.is_empty() {
+        return none_or_refused(html, "hianime search result list without card boundaries");
+    }
     let hits: Vec<BrowseHit> = cards
         .iter()
         .filter_map(|card| {
@@ -38,7 +41,7 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
             parse_card(detail)
         })
         .collect();
-    if hits.is_empty() && !cards.is_empty() {
+    if hits.is_empty() {
         // Cards the parser cannot read are the site having changed
         // shape; read as "no results" they would be persisted as
         // absence for every title searched.
@@ -47,6 +50,18 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
         });
     }
     Ok(hits)
+}
+
+/// The empty answer when the page carries the no-results notice,
+/// else the parse failure `detail` names: without the notice, a page
+/// that shows no card is not the provider answering none.
+fn none_or_refused(html: &str, detail: &str) -> Result<Vec<BrowseHit>> {
+    if html.contains("No animes found") {
+        return Ok(Vec::new());
+    }
+    Err(AniError::ParseFailed {
+        detail: detail.into(),
+    })
 }
 
 /// One result card: the title anchor's slug and title, and the first
