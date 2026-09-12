@@ -219,10 +219,13 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 /// everything, since it alone opens the advertised pause at once; a
 /// page the client could not read — a parse failure — outranks any
 /// other block, since it says the client no longer reads the site;
-/// a block — a refusal-shaped status or a server error — outranks an
-/// answered status or a dropped connection, since the block speaks
-/// for the provider and the breaker must hear it; between two of a
-/// rank the one seen first stays.
+/// a block — a refusal-shaped status or a server error — outranks a
+/// dropped connection or a timeout, since the block speaks for the
+/// provider and the breaker must hear it; and those outrank an
+/// answered status, since a server never heard from may carry the
+/// stream and the transport failure is what moves the walk on,
+/// while an answered status is that host's own dead end; between
+/// two of a rank the one seen first stays.
 fn weightier(kept: AniError, next: AniError) -> AniError {
     if weather_rank(&next) > weather_rank(&kept) {
         next
@@ -270,12 +273,14 @@ fn final_verdict(kept: Option<AniError>, uncertain: bool, mode: &str) -> AniErro
 }
 
 /// How loudly a host's failure speaks: a rate limit above all, a
-/// parse failure above any other block, a block above the rest.
+/// parse failure above any other block, a block above a transport
+/// failure, a transport failure above the rest.
 fn weather_rank(weather: &AniError) -> u8 {
     match weather {
-        AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 3,
-        AniError::ParseFailed { .. } => 2,
-        w if w.is_provider_block() => 1,
+        AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
+        AniError::ParseFailed { .. } => 3,
+        w if w.is_provider_block() => 2,
+        AniError::Network | AniError::Timeout => 1,
         _ => 0,
     }
 }
