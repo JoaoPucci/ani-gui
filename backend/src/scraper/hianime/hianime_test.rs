@@ -569,6 +569,77 @@ fn a_blob_that_no_longer_decodes_is_a_parse_failure() {
     }
 }
 
+/// The page's payload as the site ships it: the player JSON XOR'd
+/// under the versioned key, then base64'd — for payloads a table
+/// writes in the clear.
+fn embed_page(json: &str) -> String {
+    use base64::Engine as _;
+    const KEY: &[u8] = b"otaku-embed-v1";
+    let xored: Vec<u8> = json
+        .bytes()
+        .zip(KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    let blob = base64::engine::general_purpose::STANDARD.encode(xored);
+    format!(r#"<html><body><script>window.__P="{blob}"</script></body></html>"#)
+}
+
+/// The tracks are optional, and the stream is not: a payload whose
+/// source is usable decodes whatever its subtitle list looks like —
+/// `null`, absent, not a list, or holding rows the client cannot
+/// read — because skipping a host over its subtitle list would fail
+/// an episode whose stream is right there. The rows the client can
+/// read are kept, in order; the rest are dropped.
+#[test]
+fn a_payload_decodes_to_its_stream_whatever_its_subtitle_list_looks_like() {
+    let src = "https://hls.example/v/master.m3u8";
+    let good = |lang: &str| serde_json::json!({"lang": lang, "label": lang.to_uppercase(), "default": false, "src": format!("https://hls.example/v/subs/{lang}.vtt")});
+    let cases: Vec<(&str, serde_json::Value, Vec<&str>)> = vec![
+        (
+            "null tracks",
+            serde_json::json!({"src": src, "subtitles": null}),
+            vec![],
+        ),
+        ("no tracks field", serde_json::json!({"src": src}), vec![]),
+        (
+            "tracks not a list",
+            serde_json::json!({"src": src, "subtitles": "en"}),
+            vec![],
+        ),
+        (
+            "a row without its source",
+            serde_json::json!({"src": src, "subtitles": [good("en"), {"lang": "de", "label": "German"}]}),
+            vec!["en"],
+        ),
+        (
+            "a row without its language",
+            serde_json::json!({"src": src, "subtitles": [{"label": "English", "src": "https://hls.example/v/subs/x.vtt"}, good("fr")]}),
+            vec!["fr"],
+        ),
+        (
+            "a row that is not an object",
+            serde_json::json!({"src": src, "subtitles": ["en", good("es"), 7]}),
+            vec!["es"],
+        ),
+    ];
+    for (what, json, expected) in cases {
+        let payload = decode_embed(&embed_page(&json.to_string()))
+            .unwrap_or_else(|e| panic!("{what}: refused a usable stream: {e:?}"));
+        assert_eq!(payload.src, src, "{what}");
+        let langs: Vec<&str> = payload.subtitles.iter().map(|t| t.lang.as_str()).collect();
+        assert_eq!(langs, expected, "{what}");
+    }
+}
+
+/// The stream stays required: a payload with tracks and no source
+/// is still the site having changed.
+#[test]
+fn a_payload_without_its_source_is_a_parse_failure_whatever_its_tracks() {
+    let json = serde_json::json!({"subtitles": [{"lang": "en", "label": "English", "src": "https://hls.example/v/subs/en.vtt"}]});
+    let err = decode_embed(&embed_page(&json.to_string())).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
 #[test]
 fn the_embed_origin_is_the_referer_the_cdn_wants() {
     assert_eq!(

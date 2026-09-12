@@ -9,6 +9,10 @@ use crate::scraper::provider::{BrowseHit, EpisodeRef};
 use base64::Engine as _;
 use proptest::prelude::*;
 
+/// A subtitle row as the generator wrote it — language, label,
+/// default flag, source — for comparing against what decoded.
+type WrittenTrack = (String, String, bool, String);
+
 /// A title as the site would print it in an attribute: the four
 /// entities the parser decodes, encoded.
 fn encode_title(title: &str) -> String {
@@ -488,6 +492,63 @@ proptest::proptest! {
         proptest::prop_assert_eq!(&payload.src, &src);
         proptest::prop_assert_eq!(payload.subtitles.len(), tracks.len());
         for (got, (lang, label, default, url)) in payload.subtitles.iter().zip(&tracks) {
+            proptest::prop_assert_eq!(&got.lang, lang);
+            proptest::prop_assert_eq!(&got.label, label);
+            proptest::prop_assert_eq!(got.default, *default);
+            proptest::prop_assert_eq!(&got.src, url);
+        }
+    }
+
+    /// Whatever the subtitle list looks like — absent, `null`, not a
+    /// list, or a list mixing rows the client reads with rows missing
+    /// a field or not objects at all — the stream comes back, and
+    /// exactly the readable rows come with it, in order.
+    #[test]
+    fn a_payload_keeps_its_stream_and_its_readable_tracks_whatever_the_rest_of_the_list(
+        src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
+        list in prop_oneof![
+            Just(None),
+            Just(Some(serde_json::Value::Null)),
+            Just(Some(serde_json::json!("en"))),
+            Just(Some(serde_json::json!(3))),
+            proptest::collection::vec(
+                prop_oneof![
+                    ("[a-z]{2}", "[A-Za-z ]{1,12}", proptest::bool::ANY, "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.vtt")
+                        .prop_map(|(lang, label, default, url)| {
+                            let row = serde_json::json!({"lang": lang, "label": label, "default": default, "src": url});
+                            (Some((lang, label, default, url)), row)
+                        }),
+                    "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"lang": lang, "label": "X"}))),
+                    "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"label": "X", "src": format!("https://hls.example/{lang}.vtt")}))),
+                    "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"lang": lang, "src": "https://hls.example/x.vtt"}))),
+                    "[a-z]{2}".prop_map(|s| (None, serde_json::json!(s))),
+                    Just((None, serde_json::json!(null))),
+                ],
+                0..6,
+            )
+            .prop_map(|rows| Some(serde_json::json!({"rows": rows.iter().map(|(_, v)| v.clone()).collect::<Vec<_>>(), "kept": rows.iter().filter_map(|(k, _)| k.clone()).collect::<Vec<_>>()}))),
+        ],
+    ) {
+        let (subtitles, kept): (Option<serde_json::Value>, Vec<WrittenTrack>) = match list {
+            Some(serde_json::Value::Object(ref m)) if m.contains_key("rows") => (
+                Some(m["rows"].clone()),
+                serde_json::from_value(m["kept"].clone()).expect("kept rows"),
+            ),
+            other => (other, Vec::new()),
+        };
+        let mut json = serde_json::json!({"src": src});
+        if let Some(list) = subtitles {
+            json["subtitles"] = list;
+        }
+        let key = b"otaku-embed-v1";
+        let blob = base64::engine::general_purpose::STANDARD.encode(
+            json.to_string().bytes().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect::<Vec<u8>>(),
+        );
+        let page = format!(r#"<html><body><script>window.__P="{blob}"</script></body></html>"#);
+        let payload = decode_embed(&page).expect("the stream is usable");
+        proptest::prop_assert_eq!(&payload.src, &src);
+        proptest::prop_assert_eq!(payload.subtitles.len(), kept.len());
+        for (got, (lang, label, default, url)) in payload.subtitles.iter().zip(&kept) {
             proptest::prop_assert_eq!(&got.lang, lang);
             proptest::prop_assert_eq!(&got.label, label);
             proptest::prop_assert_eq!(got.default, *default);
