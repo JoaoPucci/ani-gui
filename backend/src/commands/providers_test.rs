@@ -824,6 +824,71 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     );
 }
 
+/// A positive row put the remembered provider first because it
+/// proved the show; while that provider is unreachable, a clean miss
+/// from the rest of the order proves nothing about the row. It is the
+/// verdict the user sees, attributed to the provider that missed, but
+/// not one the caller may persist as a negative — that negative would
+/// outlive the remembered provider's recovery and keep a playable
+/// title disabled.
+#[tokio::test]
+async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_is_not_persistable() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        !err.clean_miss,
+        "a miss reached past an unreachable remembered provider is not persistable"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Anidb),
+        "the miss is still attributed to the provider that gave it"
+    );
+}
+
+/// The same walk with nothing remembered: the first provider's
+/// outage says nothing about a row, and the clean miss is the
+/// verdict as the provider gave it.
+#[tokio::test]
+async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(err.clean_miss, "no row is at stake; the clean miss stands");
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
 /// The gate admits an interactive click through an open breaker as
 /// its half-open trial; the skip is only the fast path. When every
 /// provider that was tried answered a miss, the skipped ones are
