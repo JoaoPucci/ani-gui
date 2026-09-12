@@ -103,7 +103,13 @@ pub fn fails_over(error: &AniError) -> bool {
 /// proves the show and its mode at the show's level, not that every
 /// episode has an embed — so the walk goes on to the rest of the
 /// order, and the miss stands, as given, only when the rest were
-/// unreachable.
+/// unreachable. While the remembered provider is unreachable —
+/// skipped for refusing and not heard from since, or failed over —
+/// a clean miss from the rest is the verdict but not proof: it says
+/// nothing about the show that provider listed, so it surfaces with
+/// its clean flag cleared, still attributed to the provider that
+/// gave it, and no negative outlives the remembered provider's
+/// recovery.
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
@@ -138,6 +144,8 @@ where
         first_unreachable: None,
         any_unreachable: false,
         skipped: Vec::new(),
+        remembered,
+        remembered_unreachable: false,
     };
     let mut affinity_miss: Option<(NativeError, ProviderId)> = None;
     let count = order.len();
@@ -146,6 +154,7 @@ where
         if !last && gate_of(provider).is_refusing() {
             walk.any_unreachable = true;
             walk.skipped.push(provider);
+            walk.remembered_unreachable |= walk.remembered == Some(provider);
             continue;
         }
         // The skipped providers are owed their trial on an interactive
@@ -230,6 +239,23 @@ struct Walk {
     /// The providers skipped for refusing — an open breaker or a
     /// running pause — in order.
     skipped: Vec<ProviderId>,
+    /// The provider a positive availability row put first, if any.
+    remembered: Option<ProviderId>,
+    /// Whether the remembered provider was skipped or failed over and
+    /// has not answered since — while it has, a clean miss from the
+    /// rest proves nothing about the row it stands behind.
+    remembered_unreachable: bool,
+}
+
+/// The miss as the walk surfaces it: as given, unless the remembered
+/// provider was unreachable, when its clean flag is cleared — the
+/// verdict the caller sees, not one it may persist over the row that
+/// provider proved. Attribution is the caller's to report, unchanged.
+fn unpersistable_past_affinity(remembered_unreachable: bool, mut miss: NativeError) -> NativeError {
+    if remembered_unreachable {
+        miss.clean_miss = false;
+    }
+    miss
 }
 
 /// How one attempt ended: an answer, a failover, or a miss with the
@@ -289,6 +315,7 @@ where
         Ok(c) => c,
         Err(error) => {
             walk.any_unreachable = true;
+            walk.remembered_unreachable |= walk.remembered == Some(provider);
             walk.first_unreachable.get_or_insert(NativeError {
                 error,
                 clean_miss: false,
@@ -323,10 +350,18 @@ where
         }),
         Err(ne) if fails_over(&ne.error) => {
             walk.any_unreachable = true;
+            walk.remembered_unreachable |= walk.remembered == Some(provider);
             walk.first_unreachable.get_or_insert(ne);
             Tried::FailedOver
         }
-        Err(ne) => Tried::Missed(ne, provider),
+        Err(ne) => {
+            // Heard from: a skipped remembered provider that answers
+            // its trial with a miss is reachable after all.
+            if walk.remembered == Some(provider) {
+                walk.remembered_unreachable = false;
+            }
+            Tried::Missed(ne, provider)
+        }
     }
 }
 
@@ -338,7 +373,9 @@ where
 /// are asked now: an answer is the walk's, a miss of theirs — the
 /// last answer given — replaces the verdict they were asked for,
 /// author and all, and one unreachable too leaves it standing. The
-/// attempt is told whose miss the verdict is before it surfaces.
+/// attempt is told whose miss the verdict is before it surfaces, and
+/// the verdict surfaces unpersistable when the remembered provider
+/// was unreachable.
 ///
 /// # Errors
 /// The verdict that stands.
@@ -385,7 +422,10 @@ where
     if let Some(by) = by {
         attempt.missed_by(by);
     }
-    Err(error)
+    Err(unpersistable_past_affinity(
+        walk.remembered_unreachable,
+        error,
+    ))
 }
 
 /// Where each provider's client points: the state's overrides, or a
