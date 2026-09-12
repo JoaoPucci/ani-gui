@@ -60,6 +60,36 @@ fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
     rest.split('"').next()
 }
 
+/// Each open tag carrying `marker`, whole — from its `<` to its
+/// `>` — in page order. A row's attributes are read from its own
+/// tag rather than from the text after the marker, so the site may
+/// write them in any order around the marker class and the row
+/// still reads as itself; taking the text after the marker as the
+/// row would find a marker-last row's attributes in the chunk before
+/// it, and read each row's attributes as the next row's. A marker
+/// that is not inside a tag is passed over, and a tag carrying the
+/// marker twice is one tag.
+fn marked_tags<'a>(html: &'a str, marker: &str) -> Vec<&'a str> {
+    let mut tags = Vec::new();
+    let mut from = 0;
+    while let Some(found) = html[from..].find(marker) {
+        let at = from + found;
+        from = at + marker.len();
+        let Some(open) = html[..at].rfind('<') else {
+            continue;
+        };
+        if html[open..at].contains('>') {
+            continue;
+        }
+        let Some(close) = html[at..].find('>') else {
+            break;
+        };
+        tags.push(&html[open..=at + close]);
+        from = at + close + 1;
+    }
+    tags
+}
+
 /// Whether `html` is the episode list's container with nothing but
 /// whitespace inside — how the site renders an entry it has announced
 /// but not started serving. That is the provider answering "no
@@ -73,17 +103,18 @@ fn is_blank_listing(html: &str) -> bool {
 }
 
 /// An entry's episodes: each `ep-item` anchor's `data-number` and
-/// `data-id`. Rows whose number or id does not parse are skipped —
-/// the listing numbers integers per entry. A listing whose container
-/// holds nothing is the entry having no episodes yet.
+/// `data-id`, read from the anchor's own tag ([`marked_tags`]) so the
+/// order the site writes its attributes in does not matter. Rows
+/// whose number or id does not parse are skipped — the listing
+/// numbers integers per entry. A listing whose container holds
+/// nothing is the entry having no episodes yet.
 ///
 /// # Errors
 /// As [`unwrap_envelope`].
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
-    let rows: Vec<EpisodeRef> = html
-        .split("ep-item")
-        .skip(1)
+    let rows: Vec<EpisodeRef> = marked_tags(&html, "ep-item")
+        .into_iter()
         .filter_map(|item| {
             let number = attr(item, "data-number=\"")?.trim().parse().ok()?;
             let id = attr(item, "data-id=\"")?.trim().parse().ok()?;
@@ -234,7 +265,10 @@ pub fn parse_server_listing(json: &str) -> Result<ServerListing> {
     let mut servers = Vec::new();
     let mut unreadable_modes: Vec<String> = Vec::new();
     let mut unknown_modes = false;
-    for row in html.split("server-item").skip(1).map(read_server_row) {
+    for row in marked_tags(&html, "server-item")
+        .into_iter()
+        .map(read_server_row)
+    {
         match row {
             ServerRow::Read(server) => servers.push(server),
             ServerRow::Unreadable(mode) => {
