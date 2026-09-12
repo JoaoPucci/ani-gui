@@ -514,6 +514,16 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 /// and a warning is logged. Fetch failures yield no signal and let
 /// the write proceed (the comment on the call site at
 /// `api::post_play_mark_watched` describes the full rationale).
+///
+/// A refused write also turns the same evidence on the mapping the
+/// key already has, and drops it when the title's cour disagrees
+/// with that entry's slug too. The caller has just recorded the
+/// watch and advanced the key's stamp, and the newest stamp decides
+/// which of a show's rows resumes; a stale mapping left standing
+/// would put this row in front of one that maps correctly, and the
+/// detail page would resume the wrong episode. Dropping it costs one
+/// deterministic shortcut: the next reverse resolve re-derives the
+/// mapping from the slug.
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
@@ -534,6 +544,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_title = %show_title,
             "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
+        drop_mapping_the_title_disagrees_with(state, show_id, show_title).await;
         return;
     }
     if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
@@ -543,6 +554,45 @@ pub async fn try_put_allmanga_kitsu_mapping(
             error = ?e,
             "play: provider→kitsu mapping write failed",
         );
+    }
+}
+
+/// Drop the key's stored mapping when the title's cour disagrees
+/// with the stored entry's slug — the check that just refused a
+/// write, applied to the row it would have replaced. A row stamped
+/// before the guard existed can be the poison it was written
+/// against: the refused entry itself, or another sibling cour. A
+/// mapping the evidence does not condemn stays, and so does one
+/// whose entry cannot be fetched, since silence is not disagreement.
+async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, show_title: &str) {
+    let stored = match allmanga_kitsu_get(state, show_id) {
+        Ok(Some(stored)) => stored,
+        Ok(None) => return,
+        Err(e) => {
+            tracing::warn!(
+                show_id = %show_id,
+                error = ?e,
+                "play: provider→kitsu mapping read failed",
+            );
+            return;
+        }
+    };
+    if !cour_pairing_disagrees(state, show_title, &stored).await {
+        return;
+    }
+    match allmanga_kitsu_delete(state, show_id) {
+        Ok(()) => tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %stored,
+            show_title = %show_title,
+            "play: stale provider→kitsu mapping dropped (cross-cour mismatch)",
+        ),
+        Err(e) => tracing::warn!(
+            show_id = %show_id,
+            kitsu_id = %stored,
+            error = ?e,
+            "play: stale provider→kitsu mapping delete failed",
+        ),
     }
 }
 
