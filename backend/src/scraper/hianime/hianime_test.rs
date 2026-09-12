@@ -267,6 +267,26 @@ fn the_entry_page_year_is_the_aired_start() {
     );
 }
 
+/// The value is read inside the Aired row alone: a row whose value
+/// span lost its class names no year, rather than the first `name`
+/// element further down the page — a studio or a genre carrying a
+/// four-digit number would otherwise become the premiere year and
+/// filter the right entry out.
+#[test]
+fn a_year_is_never_read_from_outside_the_aired_row() {
+    let malformed_row_then_decoy = r#"<div class="item item-title">
+        <span class="item-head">Aired:</span>
+        <span>Apr 3, 1998 to Apr 24, 1999</span>
+    </div>
+    <div class="item item-list"><span class="item-head">Studios:</span><a class="name">Studio 2019</a></div>"#;
+    assert_eq!(parse_detail_year(malformed_row_then_decoy), None);
+    let bare_row_then_decoy = r#"<span class="item-head">Aired:</span><span>?</span><span class="item-head">Genres:</span><a class="name">2019</a>"#;
+    assert_eq!(parse_detail_year(bare_row_then_decoy), None);
+    let intact_row_then_decoy = r#"<div class="item item-title"><span class="item-head">Aired:</span><span class="name">Apr 3, 1998</span></div>
+    <div class="item item-list"><span class="item-head">Studios:</span><a class="name">Studio 2019</a></div>"#;
+    assert_eq!(parse_detail_year(intact_row_then_decoy), Some(1998));
+}
+
 // ── episode listing ─────────────────────────────────────────────────
 
 const EPISODE_LIST: &str = r#"{"status":true,"totalItems":2,"html":"<div class=\"ss-list\">\n<a title=\"Episode 1\"\n   class=\"ssl-item ep-item\"\n   data-number=\"1\"\n   data-id=\"21418\"\n   href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21418\"><div class=\"ssli-order\">1</div></a>\n<a title=\"Episode 2\" class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\" href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21419\"></a>\n</div>"}"#;
