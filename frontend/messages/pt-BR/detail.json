@@ -6,7 +6,7 @@
 	"download_button": "Download",
 	"ep_airs": "Estreia em {date}",
 	"ep_disabled_tooltip": "Fora do catálogo de streaming.",
-	"ep_recheck_busy": "Consultando os provedores…",
+	"ep_recheck_busy": "Verificando disponibilidade…",
 	"ep_recheck_failed": "Não foi possível verificar agora — tente novamente em instantes.",
 	"ep_recheck_idle": "Ainda não está no catálogo de streaming — clique para verificar novamente.",
 	"ep_recheck_still_gated": "Ainda não está no catálogo de streaming.",
