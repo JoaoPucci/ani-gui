@@ -20,7 +20,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **Search** | Full-text against Kitsu, instant as you type. |
 | **Detail page** | Synopsis, episodes with thumbnails, similar-titles strip. |
 | **Embedded player** | HLS / MP4, quality switch, native or custom controls — no `mpv` window. |
-| **Subtitles** | Upstream `.vtt` via `<track kind="subtitles">`. |
+| **Subtitles** | Tracks inside the stream's playlist, and the sidecar `.vtt` tracks a provider lists beside it — served through the local proxy, written beside downloads, handed to external players. |
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Persists across navigation. |
 | **Background prefetch** | Adjacent episodes warm in advance. |

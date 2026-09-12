@@ -16,6 +16,12 @@ fn native(referer: Option<&str>) -> NativeResolved {
         resolved_slot: 1,
         resolved_tag: None,
         referer: referer.map(str::to_string),
+        subtitles: vec![crate::scraper::provider::SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: "https://cdn.example/x/subs/en.vtt".into(),
+        }],
     }
 }
 
@@ -25,6 +31,14 @@ fn the_cached_row_carries_the_resolves_referer() {
     assert_eq!(row.referer, "https://embed.example/");
     assert_eq!(row.upstream_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(row.show_id, "the-show-77");
+    assert_eq!(
+        row.subtitles
+            .iter()
+            .map(|t| t.url.as_str())
+            .collect::<Vec<_>>(),
+        ["https://cdn.example/x/subs/en.vtt"],
+        "a replay from the row must offer the same tracks a fresh resolve did"
+    );
     assert_eq!(
         cached_resolution_for(&native(None)).referer,
         "",

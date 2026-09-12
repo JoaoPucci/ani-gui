@@ -12,7 +12,8 @@ use url::Url;
 
 use crate::app::AppState;
 use crate::error::{AniError, Result};
-use crate::proxy::{MediaKind, StreamSession};
+use crate::proxy::{MediaKind, SessionSubtitle, StreamSession};
+use crate::scraper::provider::SubtitleTrack;
 
 /// Frontend → backend payload. All URLs are strings on the wire.
 #[derive(Debug, Clone, Deserialize)]
@@ -21,6 +22,12 @@ pub struct CreateSessionArgs {
     pub upstream_url: String,
     /// `Referer:` header the upstream CDN expects (empty string if none).
     pub referer: String,
+    /// Sidecar subtitle tracks the resolve listed beside the stream.
+    /// Attached by the resolver alone: the public session route
+    /// refuses a caller-supplied list, since the proxy fetches a
+    /// session's tracks on the caller's behalf.
+    #[serde(default)]
+    pub subtitles: Vec<SubtitleTrack>,
 }
 
 /// What the frontend gets back: a session id, the proxy URL the
@@ -48,6 +55,10 @@ pub struct CreateSessionResponse {
     /// flips it when serving cached.
     #[serde(default)]
     pub cache_hit: bool,
+    /// Sidecar subtitle tracks, each behind the proxy. Empty when the
+    /// resolve listed none.
+    #[serde(default)]
+    pub subtitles: Vec<SessionSubtitle>,
 }
 
 /// Validate the inputs and register a new [`StreamSession`] in
@@ -85,7 +96,19 @@ fn create_session_inner(
     upstream: Url,
     media_kind: MediaKind,
 ) -> Result<CreateSessionResponse> {
-    let session = StreamSession::new_with_kind(upstream, media_kind, args.referer.clone());
+    let mut session = StreamSession::new_with_kind(upstream, media_kind, args.referer.clone());
+    // The resolve bounds its listing where it is built, so a fresh
+    // play arrives within the cap; this guard is for what did not
+    // come through that boundary — a cache row written before the
+    // bound existed — and drops the rest with a note.
+    let (tracks, dropped) = crate::proxy::upstream::within_track_cap(&args.subtitles);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "session: subtitle listing longer than the track cap, the rest dropped"
+        );
+    }
+    session.subtitles = tracks.to_vec();
     let id = session.id;
     state.sessions.insert(session);
 
@@ -97,12 +120,18 @@ fn create_session_inner(
         MediaKind::Mp4 => "file.mp4",
     };
     let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
+    let subtitles = tracks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| SessionSubtitle::proxied(&state.proxy_origin.base, &session_str, i, t))
+        .collect();
 
     Ok(CreateSessionResponse {
         session_id: session_str,
         media_url,
         media_kind,
         cache_hit: false, // play layer flips when serving cached
+        subtitles,
     })
 }
 
@@ -117,6 +146,10 @@ fn parse_http_url(s: &str, field: &str) -> Result<Url> {
         }),
     }
 }
+
+#[cfg(test)]
+#[path = "session_subtitles_test.rs"]
+mod subtitle_tests;
 
 #[cfg(test)]
 mod tests {
@@ -158,6 +191,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
+                subtitles: Vec::new(),
             },
         )
         .expect("ok");
@@ -186,6 +220,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
+                subtitles: Vec::new(),
             },
         )
         .unwrap();
@@ -207,6 +242,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "not a url".into(),
                 referer: String::new(),
+                subtitles: Vec::new(),
             },
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
@@ -221,6 +257,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "file:///etc/passwd".into(),
                 referer: String::new(),
+                subtitles: Vec::new(),
             },
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
@@ -235,6 +272,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "http://insecure.example/master.m3u8".into(),
                 referer: String::new(),
+                subtitles: Vec::new(),
             },
         )
         .expect("plain http allowed");
@@ -250,6 +288,7 @@ mod tests {
             media_url: "http://x/m".into(),
             media_kind: crate::proxy::MediaKind::Hls,
             cache_hit: false,
+            subtitles: Vec::new(),
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));
@@ -270,6 +309,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://video.example/1080/file.mp4".into(),
                 referer: "https://allmanga.to".into(),
+                subtitles: Vec::new(),
             },
         )
         .expect("ok");
@@ -290,6 +330,7 @@ mod tests {
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
+                subtitles: Vec::new(),
             },
         )
         .expect("ok");

@@ -120,11 +120,13 @@ where
             dest = %dest.display(),
             "download: spawning tool on natively resolved stream",
         );
+        let source = crate::scraper::provider::StreamSource {
+            master_url: resolved.master_url,
+            referer: resolved.referer,
+            subtitles: resolved.subtitles,
+        };
         spawn_download_tool(
-            &crate::scraper::provider::StreamSource {
-                master_url: resolved.master_url,
-                referer: resolved.referer,
-            },
+            &source,
             dest,
             &file_stem,
             Some(quality),
@@ -138,6 +140,14 @@ where
             },
         )
         .await?;
+        super::download::write_sidecar_subtitles(
+            &state.proxy_http,
+            &source.subtitles,
+            source.referer.as_deref(),
+            dest,
+            &file_stem,
+        )
+        .await;
     }
     Ok(())
 }

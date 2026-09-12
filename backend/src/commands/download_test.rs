@@ -115,6 +115,7 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 2",
@@ -152,6 +153,7 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -172,6 +174,7 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -200,6 +203,7 @@ async fn tool_spawn_falls_back_to_ffmpeg_when_ytdlp_fails() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 2",
@@ -226,6 +230,7 @@ async fn tool_spawn_with_no_tools_is_a_config_error() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "X",
@@ -512,6 +517,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -557,6 +563,7 @@ async fn a_permanently_busy_executable_gives_up_at_the_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             dest.path(),
             "Show Episode 1",
@@ -606,6 +613,7 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -648,6 +656,7 @@ async fn the_download_tool_runs_in_a_normalized_environment() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Show Episode 1",
@@ -778,6 +787,7 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dest_dir,
             "Show Episode 1",
@@ -1100,6 +1110,7 @@ async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Ffmpeg Show Episode 1",
@@ -1206,6 +1217,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
     let one_source = StreamSource {
         master_url: "https://cdn.example/x/master.m3u8".into(),
         referer: None,
+        subtitles: Vec::new(),
     };
     let one = spawn_download_tool(
         &one_source,
@@ -1219,6 +1231,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
     let two_source = StreamSource {
         master_url: "https://cdn.example/x/master.m3u8".into(),
         referer: None,
+        subtitles: Vec::new(),
     };
     let two = spawn_download_tool(
         &two_source,
@@ -1280,6 +1293,7 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
                 &StreamSource {
                     master_url: "https://cdn.example/x/master.m3u8".into(),
                     referer: None,
+                    subtitles: Vec::new(),
                 },
                 &dir,
                 "Queued Show Episode 1",
@@ -1301,6 +1315,7 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Queued Show Episode 1",
@@ -1375,6 +1390,7 @@ async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             dest.path(),
             "Contended Show Episode 1",
@@ -1453,6 +1469,7 @@ async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Owned Show Episode 1",
@@ -1502,6 +1519,7 @@ async fn a_publish_that_fails_still_takes_the_scratch_with_it() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         &stem,
@@ -1749,6 +1767,7 @@ async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it(
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Ambushed Show Episode 1",
@@ -1792,6 +1811,7 @@ async fn a_live_claim_at_publication_time_is_reported_as_pending() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contested Show Episode 1",
@@ -1827,6 +1847,7 @@ async fn the_already_here_report_is_a_stable_key_not_display_copy() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Owned Show Episode 1",
@@ -1863,6 +1884,7 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Stalled Show Episode 1",
@@ -1912,6 +1934,7 @@ async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Swept Show Episode 1",
@@ -1969,6 +1992,7 @@ async fn a_download_publishes_even_when_the_lock_cannot_be_taken() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Unlockable Show Episode 1",
@@ -2022,6 +2046,7 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Interrupted Show Episode 1",
@@ -2087,6 +2112,7 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
                 referer: None,
+                subtitles: Vec::new(),
             },
             &dir,
             "Cancelled Show Episode 1",
@@ -2141,6 +2167,7 @@ async fn the_tool_writes_somewhere_other_than_the_target() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Scratch Show Episode 1",
@@ -2190,6 +2217,7 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contested Show Episode 1",
@@ -2309,6 +2337,7 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Abandoned Show Episode 1",
@@ -2400,6 +2429,7 @@ async fn a_claim_that_never_resolves_is_not_a_finished_download() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Contended Show Episode 1",
@@ -2449,6 +2479,7 @@ async fn a_dangling_symlink_at_the_target_is_an_obstruction() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Linked Show Episode 1",
@@ -2503,6 +2534,7 @@ async fn a_directory_at_the_target_refuses_before_the_transfer() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Blocked Show Episode 1",
@@ -2539,6 +2571,7 @@ async fn a_tool_that_writes_an_empty_file_installs_nothing() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Empty Show Episode 1",
@@ -2580,6 +2613,7 @@ async fn a_file_that_predates_the_download_is_kept() {
         &StreamSource {
             master_url: "https://cdn.example/x/master.m3u8".into(),
             referer: None,
+            subtitles: Vec::new(),
         },
         dest.path(),
         "Redownloaded Show Episode 1",
@@ -2620,4 +2654,781 @@ fn each_tool_gets_the_referer_in_its_own_flag_shape() {
         ]
     );
     assert!(ffmpeg_referer_args(None).is_empty());
+}
+
+// ── sidecar tracks land beside the media ────────────────────────────
+
+/// A sub episode from a provider that lists its subtitles as sidecar
+/// tracks is raw video on disk unless each track lands beside the
+/// media, fetched with the source's referer. A track the CDN refuses
+/// is skipped: the episode downloaded, and that is the transfer.
+#[tokio::test]
+async fn sidecar_tracks_are_written_beside_the_media_with_the_referer() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{header, method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .and(header("referer", "https://embed.example/"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![
+        SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: format!("{}/subs/en.vtt", server.uri()),
+        },
+        SubtitleTrack {
+            lang: "es".into(),
+            label: "Español".into(),
+            default: false,
+            url: format!("{}/subs/es.vtt", server.uri()),
+        },
+    ];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        Some("https://embed.example/"),
+        dest.path(),
+        "Show Episode 2",
+    )
+    .await;
+    let en = dest.path().join("Show Episode 2.en.vtt");
+    assert_eq!(written, vec![en.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("track on disk"),
+        "WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"
+    );
+    assert!(
+        !dest.path().join("Show Episode 2.es.vtt").exists(),
+        "a refused track is skipped, not written empty"
+    );
+}
+
+/// A track file already beside the media is the user's — a corrected
+/// subtitle from an earlier download — and stays as found; the
+/// tracks with no file there still land.
+#[tokio::test]
+async fn a_sidecar_the_user_already_has_is_preserved() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for lang in ["en", "es"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nfrom the CDN\n"))
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let en = dest.path().join("Show Episode 2.en.vtt");
+    std::fs::write(&en, "WEBVTT\n\nthe user's own\n").expect("existing sidecar");
+    let tracks = ["en", "es"]
+        .iter()
+        .map(|lang| SubtitleTrack {
+            lang: (*lang).into(),
+            label: (*lang).into(),
+            default: false,
+            url: format!("{}/subs/{lang}.vtt", server.uri()),
+        })
+        .collect::<Vec<_>>();
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 2",
+    )
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("still there"),
+        "WEBVTT\n\nthe user's own\n",
+        "the file the user had is left as found"
+    );
+    assert_eq!(
+        written,
+        vec![dest.path().join("Show Episode 2.es.vtt")],
+        "only the track with no file at its name is written"
+    );
+}
+
+/// A sidecar's name carries only a complete file. The bytes go to a
+/// scratch sibling first, and the name is taken — never replaced —
+/// only once they are all there; a claim that is not finished takes
+/// its scratch with it and the name stays free. A crash between the
+/// two leaves the scratch behind, not a partial file at the name that
+/// every later download would keep as the user's own.
+#[tokio::test]
+async fn a_sidecar_claim_dropped_before_it_is_finished_leaves_no_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    let claim = claim_new(&path).await.expect("claimed");
+    assert!(
+        !path.exists(),
+        "the name is not taken until the file is complete"
+    );
+    let scratch: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        scratch.len(),
+        1,
+        "the bytes go to one scratch sibling: {scratch:?}"
+    );
+    assert!(
+        scratch[0].starts_with('.'),
+        "a hidden scratch name: {scratch:?}"
+    );
+    drop(claim);
+    assert!(
+        !path.exists(),
+        "an unfinished claim leaves nothing at the name"
+    );
+    assert_eq!(
+        std::fs::read_dir(dest.path()).expect("dir").count(),
+        0,
+        "and takes its scratch with it"
+    );
+}
+
+#[tokio::test]
+async fn a_finished_sidecar_claim_leaves_only_the_complete_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    write_new(&path, b"WEBVTT\n\nhi\n").await.expect("written");
+    let names: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Show Episode 3.en.vtt".to_string()],
+        "no scratch remains"
+    );
+}
+
+#[tokio::test]
+async fn a_finished_sidecar_claim_keeps_its_file() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 3.en.vtt");
+    write_new(&path, b"WEBVTT\n\nhi\n").await.expect("written");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n"
+    );
+    let again = claim_new(&path).await.expect_err("taken");
+    assert_eq!(again.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n",
+        "a refused claim touches nothing"
+    );
+}
+
+/// A zero-length file at a sidecar's name is a claim abandoned by an
+/// install that stopped between creating the name and filling it —
+/// the fallback where the filesystem offers no hard links — and
+/// never the user's subtitle, since a WebVTT file is never empty.
+/// Refusing it kept the name empty for good, every later download
+/// reading the refusal as the user's own file. It is taken over; a
+/// file with bytes at the name is still the user's and still refused.
+#[tokio::test]
+async fn an_empty_file_at_a_sidecar_name_is_an_abandoned_claim_and_is_taken() {
+    let dest = tempfile::tempdir().expect("dest");
+    let path = dest.path().join("Show Episode 4.en.vtt");
+    std::fs::write(&path, b"").expect("abandoned claim");
+    write_new(&path, b"WEBVTT\n\nhi\n")
+        .await
+        .expect("an empty name is free");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("file"),
+        "WEBVTT\n\nhi\n",
+        "the complete file is at the name"
+    );
+    let names: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Show Episode 4.en.vtt".to_string()],
+        "no scratch remains"
+    );
+}
+
+/// The install that fills the name by a rename — the path taken where
+/// the filesystem offers no hard links — takes over an abandoned
+/// empty name the same way, and still refuses a name with bytes.
+#[test]
+fn the_rename_install_takes_an_abandoned_claim_and_refuses_a_file_with_bytes() {
+    let dest = tempfile::tempdir().expect("dest");
+    let abandoned = dest.path().join("Show Episode 4.en.vtt");
+    std::fs::write(&abandoned, b"").expect("abandoned claim");
+    let scratch = dest.path().join(".ani-gui-0-scratch.part.vtt");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    install_by_rename(&scratch, &abandoned).expect("an empty name is free");
+    assert_eq!(
+        std::fs::read_to_string(&abandoned).expect("file"),
+        "WEBVTT\n\nhi\n"
+    );
+    assert!(!scratch.exists(), "the scratch moved to the name");
+
+    let users = dest.path().join("Show Episode 5.en.vtt");
+    std::fs::write(&users, b"WEBVTT\n\nthe user's own\n").expect("the user's file");
+    std::fs::write(&scratch, b"WEBVTT\n\nhi\n").expect("scratch");
+    let err = install_by_rename(&scratch, &users).expect_err("refused");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_to_string(&users).expect("file"),
+        "WEBVTT\n\nthe user's own\n",
+        "a refused install touches nothing at the name"
+    );
+    assert!(
+        scratch.exists(),
+        "a refused install leaves the scratch to its claim"
+    );
+}
+
+/// A name held by anything but a regular file is the user's,
+/// whatever the entry's length: a symlink — dangling, or to an empty
+/// file — or a directory. The classifier must not follow a link to an
+/// empty file and take the name, nor read a dangling link as an
+/// absent file; either way the rename would replace the user's entry.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_name_held_by_a_symlink_or_a_directory_is_taken() {
+    let dest = tempfile::tempdir().expect("dest");
+
+    let dangling = dest.path().join("Show Episode 11.en.vtt");
+    std::os::unix::fs::symlink(dest.path().join("nowhere.vtt"), &dangling).expect("symlink");
+    let err = write_new(&dangling, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a dangling link is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(
+        std::fs::symlink_metadata(&dangling)
+            .expect("the link is still there")
+            .file_type()
+            .is_symlink(),
+        "the user's link survives"
+    );
+    assert!(
+        !dest.path().join("nowhere.vtt").exists(),
+        "nothing was written through the link"
+    );
+
+    let real = dest.path().join("empty.vtt");
+    std::fs::write(&real, b"").expect("empty file");
+    let linked = dest.path().join("Show Episode 12.en.vtt");
+    std::os::unix::fs::symlink(&real, &linked).expect("symlink");
+    let err = write_new(&linked, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a link to an empty file is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(
+        std::fs::symlink_metadata(&linked)
+            .expect("the link is still there")
+            .file_type()
+            .is_symlink(),
+        "the user's link survives"
+    );
+    assert_eq!(
+        std::fs::metadata(&real).expect("the linked file").len(),
+        0,
+        "the linked file is untouched"
+    );
+
+    let dir = dest.path().join("Show Episode 13.en.vtt");
+    std::fs::create_dir(&dir).expect("dir");
+    let err = write_new(&dir, b"WEBVTT\n\nhi\n")
+        .await
+        .expect_err("a directory is not a free name");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(dir.is_dir(), "the directory survives");
+
+    let leftovers: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".ani-gui-"))
+        .collect();
+    assert!(leftovers.is_empty(), "no scratch remains: {leftovers:?}");
+}
+
+/// The sidecar phase runs after the media tool has finished and is
+/// bounded as a whole: the tracks are fetched together, and one
+/// deadline covers them all, so a CDN that stalls cannot keep the
+/// download "active" for a per-request timeout per track. Tracks
+/// that do not arrive in time are skipped like refused ones.
+#[tokio::test]
+async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_returns() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for route in ["/subs/en.vtt", "/subs/es.vtt"] {
+        Mock::given(method("GET"))
+            .and(wm_path(route))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("WEBVTT\n\nlate\n")
+                    .set_delay(std::time::Duration::from_secs(5)),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let started = std::time::Instant::now();
+    let written = write_sidecar_subtitles_within(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 14",
+        std::time::Duration::from_millis(300),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    assert!(written.is_empty(), "nothing arrived in time: {written:?}");
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "the phase returned at its deadline, not after each stalled request: {elapsed:?}"
+    );
+    assert!(!dest.path().join("Show Episode 14.en.vtt").exists());
+    assert!(!dest.path().join("Show Episode 14.es.vtt").exists());
+}
+
+/// A track that answers in time lands even when another stalls: the
+/// deadline skips the late one, not the phase.
+#[tokio::test]
+async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nquick\n"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("WEBVTT\n\nlate\n")
+                .set_delay(std::time::Duration::from_secs(5)),
+        )
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let started = std::time::Instant::now();
+    let written = write_sidecar_subtitles_within(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 15",
+        std::time::Duration::from_millis(300),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    let en = dest.path().join("Show Episode 15.en.vtt");
+    assert_eq!(
+        written,
+        vec![en.clone()],
+        "only the track that answered lands"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&en).expect("track"),
+        "WEBVTT\n\nquick\n"
+    );
+    assert!(!dest.path().join("Show Episode 15.es.vtt").exists());
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "the phase returned at its deadline: {elapsed:?}"
+    );
+}
+
+/// A track URL can point at something far larger than a subtitle
+/// file — the video itself, behind a malformed descriptor. The writer
+/// reads a body only up to the subtitle cap, skips one that proves
+/// larger, and still lands the track beside it that fits.
+#[tokio::test]
+async fn a_body_over_the_subtitle_cap_is_skipped_and_the_track_beside_it_lands() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let mut oversized = b"WEBVTT\n\n".to_vec();
+    oversized.resize(crate::proxy::upstream::SUBTITLE_BODY_CAP + 1, b'x');
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(oversized))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/es.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nhola\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |lang: &str, route: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 16",
+    )
+    .await;
+    let es = dest.path().join("Show Episode 16.es.vtt");
+    assert_eq!(written, vec![es.clone()], "only the track that fits lands");
+    assert!(
+        !dest.path().join("Show Episode 16.en.vtt").exists(),
+        "an oversized body claims no name"
+    );
+}
+
+/// A track's name follows its place in the listing, not which
+/// tracks happened to arrive: when the first of two tracks in a
+/// language fails, the second still lands under its suffixed name,
+/// so a retry that brings the first one in does not find its name
+/// taken by the second and write the second twice.
+#[tokio::test]
+async fn a_later_track_in_a_language_keeps_its_suffix_when_an_earlier_one_fails() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en-a.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en-b.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nsecond\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let track = |route: &str| SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: false,
+        url: format!("{}{route}", server.uri()),
+    };
+    let tracks = vec![track("/subs/en-a.vtt"), track("/subs/en-b.vtt")];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 17",
+    )
+    .await;
+    let second = dest.path().join("Show Episode 17.en-1.vtt");
+    assert_eq!(
+        written,
+        vec![second.clone()],
+        "the second track keeps the name its place in the listing gives it"
+    );
+    assert!(
+        !dest.path().join("Show Episode 17.en.vtt").exists(),
+        "the first track's name stays free for it"
+    );
+}
+
+/// A CDN in front of the subtitles can answer a challenge page with
+/// 200. Written as a sidecar it would sit at the track's name for
+/// good, since every later download keeps what it finds there. Only
+/// a body that is a subtitle track claims the name.
+#[tokio::test]
+async fn a_body_that_is_not_webvtt_is_not_written_as_a_sidecar() {
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<html><title>Just a moment...</title></html>")
+                .insert_header("content-type", "text/html"),
+        )
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 4",
+    )
+    .await;
+    assert!(written.is_empty(), "nothing claims the name: {written:?}");
+    assert!(
+        !dest.path().join("Show Episode 4.en.vtt").exists(),
+        "a challenge page is not a subtitle track"
+    );
+}
+
+mod sidecar_suffix_props {
+    use super::sidecar_suffixes;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// A name follows the listing alone: the first track of a
+        /// language is the language, every later one carries the
+        /// count of the same language ahead of it, and no two tracks
+        /// share a name.
+        #[test]
+        fn names_follow_the_listing_and_never_collide(
+            langs in proptest::collection::vec("[a-z]{2,3}", 0..8)
+        ) {
+            let names = sidecar_suffixes(langs.iter().map(String::as_str));
+            prop_assert_eq!(names.len(), langs.len());
+            for (i, (lang, name)) in langs.iter().zip(&names).enumerate() {
+                let earlier = langs[..i].iter().filter(|l| *l == lang).count();
+                let expected = if earlier == 0 { lang.clone() } else { format!("{lang}-{earlier}") };
+                prop_assert_eq!(name, &expected);
+            }
+            let mut distinct = names.clone();
+            distinct.sort();
+            distinct.dedup();
+            prop_assert_eq!(distinct.len(), names.len());
+        }
+
+        /// Two names are the same file on a case-insensitive
+        /// filesystem, so no two tracks share a name once case is
+        /// folded, and the first track of a language keeps the tag's
+        /// own spelling.
+        #[test]
+        fn names_never_collide_under_case_folding(
+            langs in proptest::collection::vec("[pPtT]{2}", 0..8)
+        ) {
+            let names = sidecar_suffixes(langs.iter().map(String::as_str));
+            prop_assert_eq!(names.len(), langs.len());
+            for (i, (lang, name)) in langs.iter().zip(&names).enumerate() {
+                let earlier = langs[..i]
+                    .iter()
+                    .filter(|l| l.to_lowercase() == lang.to_lowercase())
+                    .count();
+                let expected = if earlier == 0 { lang.clone() } else { format!("{lang}-{earlier}") };
+                prop_assert_eq!(name, &expected);
+            }
+            let mut folded: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+            folded.sort();
+            folded.dedup();
+            prop_assert_eq!(folded.len(), names.len());
+        }
+    }
+
+    /// The packaged platforms differ here: Linux keeps `pt-BR.vtt`
+    /// and `pt-br.vtt` apart, Windows does not, and a listing that
+    /// tags two tracks that way would lose one there. The second
+    /// takes a suffix on both.
+    #[test]
+    fn tags_differing_only_by_case_take_distinct_names() {
+        let names = sidecar_suffixes(["pt-BR", "pt-br", "en", "EN"].into_iter());
+        assert_eq!(names, vec!["pt-BR", "pt-br-1", "en", "EN-1"]);
+    }
+}
+
+// ── the sidecar phase is bounded in count and in flight ────────────
+
+/// A listing is a handful of languages; one that lists more tracks
+/// than the cap is malformed or hostile, and only the first cap-many
+/// are fetched — in listing order, so a well-formed listing that is
+/// merely long keeps its first tracks.
+#[tokio::test]
+async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let total = SUBTITLE_TRACK_CAP + 3;
+    for i in 0..total {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/l{i:02}.vtt")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(format!("WEBVTT\n\ncue {i}\n")),
+            )
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks: Vec<SubtitleTrack> = (0..total)
+        .map(|i| SubtitleTrack {
+            lang: format!("l{i:02}"),
+            label: format!("Language {i}"),
+            default: false,
+            url: format!("{}/subs/l{i:02}.vtt", server.uri()),
+        })
+        .collect();
+    let written = write_sidecar_subtitles(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 16",
+    )
+    .await;
+    let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
+        .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
+        .collect();
+    assert_eq!(
+        written, expected,
+        "the first cap-many land, in listing order"
+    );
+    for i in SUBTITLE_TRACK_CAP..total {
+        assert!(
+            !dest
+                .path()
+                .join(format!("Show Episode 16.l{i:02}.vtt"))
+                .exists(),
+            "track {i} is past the cap and never fetched"
+        );
+    }
+    assert_eq!(
+        server.received_requests().await.expect("recorded").len(),
+        SUBTITLE_TRACK_CAP,
+        "no request is made for a track past the cap"
+    );
+}
+
+/// The tracks are fetched a few at a time, not all at once. A
+/// server of the test's own counts the requests it holds open at
+/// once: with one in flight it never sees a second, and with three
+/// in flight over six tracks it sees more than one and never a
+/// fourth. Counting in-flight requests holds on any machine; the
+/// wall clock does not.
+#[tokio::test]
+async fn no_more_tracks_are_in_flight_than_the_fetch_concurrency_allows() {
+    use crate::scraper::provider::SubtitleTrack;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let port = listener.local_addr().expect("addr").port();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most_at_once = Arc::new(AtomicUsize::new(0));
+    {
+        let in_flight = Arc::clone(&in_flight);
+        let most_at_once = Arc::clone(&most_at_once);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                let in_flight = Arc::clone(&in_flight);
+                let most_at_once = Arc::clone(&most_at_once);
+                tokio::spawn(async move {
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    most_at_once.fetch_max(now, Ordering::SeqCst);
+                    // The request head, then a beat held open so the
+                    // other fetches of the batch overlap it.
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while socket.read(&mut byte).await.is_ok_and(|n| n == 1) {
+                        head.push(byte[0]);
+                        if head.ends_with(b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    let body = "WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n";
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/vtt\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+    }
+    let track = |lang: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("http://127.0.0.1:{port}/subs/{lang}.vtt"),
+    };
+    let phase = |langs: &[&str], concurrency: usize| {
+        let tracks: Vec<SubtitleTrack> = langs.iter().map(|l| track(l)).collect();
+        let most_at_once = Arc::clone(&most_at_once);
+        async move {
+            most_at_once.store(0, Ordering::SeqCst);
+            let dest = tempfile::tempdir().expect("dest");
+            let written = write_sidecar_subtitles_with(
+                &reqwest::Client::new(),
+                &tracks,
+                None,
+                dest.path(),
+                "Show Episode 17",
+                std::time::Duration::from_secs(30),
+                concurrency,
+            )
+            .await;
+            assert_eq!(
+                written.len(),
+                tracks.len(),
+                "every track lands: {written:?}"
+            );
+            most_at_once.load(Ordering::SeqCst)
+        }
+    };
+    let one_at_a_time = phase(&["en", "es", "fr"], 1).await;
+    assert_eq!(
+        one_at_a_time, 1,
+        "one in flight never lets the server see a second"
+    );
+    let three_at_a_time = phase(&["en", "es", "fr", "de", "it", "pt"], 3).await;
+    assert!(
+        (2..=3).contains(&three_at_a_time),
+        "three in flight overlap and never exceed three: {three_at_a_time}"
+    );
 }

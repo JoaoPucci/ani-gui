@@ -491,7 +491,7 @@ proptest::proptest! {
             proptest::prop_assert_eq!(&got.lang, lang);
             proptest::prop_assert_eq!(&got.label, label);
             proptest::prop_assert_eq!(got.default, *default);
-            proptest::prop_assert_eq!(&got.src, url);
+            proptest::prop_assert_eq!(&got.url, url);
         }
     }
 

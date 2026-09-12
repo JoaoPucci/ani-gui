@@ -7,6 +7,7 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         referer: None,
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
+        subtitle_urls: Vec::new(),
     }
 }
 
@@ -290,4 +291,67 @@ fn open_syncplay_with_unknown_binary_carries_binary_name() {
         }
         other => panic!("expected SyncplaySpawnFailed, got {other:?}"),
     }
+}
+
+// ── sidecar tracks past the separator ───────────────────────────────
+
+fn with_tracks(kind: ExternalPlayerKind, referer: Option<&str>) -> SyncplayLaunchArgs {
+    SyncplayLaunchArgs {
+        stream_url: "https://cdn.example/x/master.m3u8".into(),
+        binary: "syncplay".into(),
+        referer: referer.map(str::to_string),
+        player_kind: kind,
+        player_binary: "player".into(),
+        subtitle_urls: vec![
+            "https://cdn.example/x/subs/en.vtt".into(),
+            "https://cdn.example/x/subs/es.vtt".into(),
+        ],
+    }
+}
+
+#[test]
+fn mpv_and_iina_get_every_track_past_the_separator() {
+    let mpv = build_argv(&with_tracks(
+        ExternalPlayerKind::Mpv,
+        Some("https://embed.example/"),
+    ));
+    let sep = mpv.iter().position(|a| a == "--").expect("separator");
+    assert_eq!(
+        &mpv[sep + 1..],
+        [
+            "--referrer=https://embed.example/",
+            "--sub-file=https://cdn.example/x/subs/en.vtt",
+            "--sub-file=https://cdn.example/x/subs/es.vtt",
+        ]
+    );
+    let iina = build_argv(&with_tracks(ExternalPlayerKind::Iina, None));
+    let sep = iina
+        .iter()
+        .position(|a| a == "--")
+        .expect("separator even without a referer");
+    assert_eq!(
+        &iina[sep + 1..],
+        [
+            "--mpv-sub-file=https://cdn.example/x/subs/en.vtt",
+            "--mpv-sub-file=https://cdn.example/x/subs/es.vtt",
+        ]
+    );
+}
+
+#[test]
+fn vlc_gets_the_first_track_and_custom_gets_none() {
+    let vlc = build_argv(&with_tracks(ExternalPlayerKind::Vlc, None));
+    assert!(
+        vlc.contains(&"--sub-file=https://cdn.example/x/subs/en.vtt".to_string()),
+        "{vlc:?}"
+    );
+    assert!(!vlc.iter().any(|a| a.contains("es.vtt")), "{vlc:?}");
+    let custom = build_argv(&with_tracks(
+        ExternalPlayerKind::Custom,
+        Some("https://embed.example/"),
+    ));
+    assert!(
+        !custom.iter().any(|a| a == "--"),
+        "custom forwards nothing: {custom:?}"
+    );
 }
