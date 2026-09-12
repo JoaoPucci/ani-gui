@@ -97,18 +97,21 @@ requires it; the exception is the update check that runs on launch
   source CDN the catalogue or its embed page names. For hianime that
   is, at the time of writing, a host under aniwatchtv.uk; the app
   does not restrict these fetches to a list of hosts, so the
-  provider's choice is what it reaches. Where the CDN asks for one,
-  it sees a normal `Referer` naming the origin of the embed page the
-  stream was read from — the host that actually served that page,
-  which is not always the host the catalogue's listing named, because
-  the catalogue moves those pages between hosts and the request
-  follows the move. Nothing identifying you is sent with it. The CDN
-  is also reached before any playback, by the detail page's warm
-  described above: a warm that resolves fetches the episode's master
-  playlist once, to check that what the page named is a playlist, and
-  a warm served from the resolution cache checks the cached stream and
-  each of its subtitle tracks at the CDN before the row is trusted;
-  segments and subtitle files are fetched only once playback starts.
+  provider's choice is what it reaches. Where the CDN asks for one, it
+  sees a normal `Referer` naming the origin of the embed page the stream
+  was read from — the host that actually served that page, which is not
+  always the host the catalogue's listing named, because the catalogue
+  moves those pages between hosts and the request follows the move.
+  Nothing identifying you is sent with it. The CDN is also reached
+  before any playback, by the detail page's warm described above: a warm
+  that resolves fetches the episode's master playlist once, to check
+  that what the page named is a playlist, and a warm served from the
+  resolution cache checks the cached stream and each of its subtitle
+  tracks at the CDN before the row is trusted. Segments and subtitle
+  files are fetched when playback starts — in the app, or in an external
+  player or Syncplay the app hands the stream to — and by a download,
+  which fetches the segments through the bundled tool and the subtitle
+  files beside them without any playback.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
