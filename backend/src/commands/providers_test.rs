@@ -889,6 +889,94 @@ async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
     assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
 }
 
+/// A remembered provider skipped for refusing is unreachable the
+/// same way: on a background walk it is never asked, so the rest's
+/// clean miss surfaces past it and is not persistable either.
+#[tokio::test]
+async fn a_clean_miss_reached_past_a_skipped_remembered_provider_is_not_persistable_on_a_background_walk(
+) {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("hianime")),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Background,
+        &mut attempt,
+    )
+    .await
+    .expect_err("the skipped provider was not asked");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(!err.clean_miss, "the row's provider was never heard from");
+    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
+/// On an interactive walk the skipped remembered provider gets its
+/// trial; when that trial fails over too, the rest's clean miss
+/// surfaces past a provider that was still unreachable.
+#[tokio::test]
+async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_over_is_not_persistable(
+) {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        !err.clean_miss,
+        "the row's provider was tried and unreachable"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+}
+
+/// When the retried remembered provider answers a miss of its own,
+/// it was heard from: that miss is the verdict, as given, and it is
+/// the remembered provider's.
+#[tokio::test]
+async fn a_retried_remembered_providers_own_clean_miss_stands() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("both missed");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(err.clean_miss, "the remembered provider's own clean miss");
+    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+}
+
 /// The gate admits an interactive click through an open breaker as
 /// its half-open trial; the skip is only the fast path. When every
 /// provider that was tried answered a miss, the skipped ones are
