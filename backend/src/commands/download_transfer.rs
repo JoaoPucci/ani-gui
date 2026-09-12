@@ -9,7 +9,16 @@
 //! under its own bound: the tool's deadline, and the phase's. Both
 //! downloads — the single episode and each episode of a range —
 //! come through here, so they share the one ordering.
+//!
+//! A track that arrives is staged, not published: it waits in its
+//! scratch, and takes its name only once the transfer has
+//! succeeded. A sidecar beside a failed download would be one the
+//! next attempt keeps as the user's own — a file with bytes at the
+//! name is never replaced — so a transfer that fails drops every
+//! staged track with its scratch, and the names stay free for the
+//! retry.
 
+use super::download::SidecarClaim;
 use crate::error::Result;
 use crate::scraper::provider::StreamSource;
 use std::path::{Path, PathBuf};
@@ -17,9 +26,11 @@ use std::path::{Path, PathBuf};
 /// Run the download tool on `source` and fetch its sidecar tracks
 /// beside it, returning the sidecar paths written. A transfer that
 /// fails ends the phase: the error surfaces without waiting on a
-/// track that is stalling, and a sidecar claim dropped unfinished
-/// removes its file. A transfer that finishes first waits for the
-/// tracks still in flight, under the phase's own deadline.
+/// track that is stalling, and every track staged so far is dropped
+/// with its scratch, the names untaken. A transfer that finishes
+/// first waits for the tracks still in flight, under the phase's
+/// own deadline, and then the staged tracks are installed at their
+/// names.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn transfer_with_sidecars<F>(
     client: &reqwest::Client,
@@ -34,28 +45,55 @@ pub(crate) async fn transfer_with_sidecars<F>(
 where
     F: FnMut(&str) + Send,
 {
-    let mut sidecars = std::pin::pin!(super::download::write_sidecar_subtitles(
+    let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(
         client,
         &source.subtitles,
         source.referer.as_deref(),
         dest,
         file_stem,
+        super::download::SIDECAR_PHASE_DEADLINE,
+        super::download::SIDECAR_FETCH_CONCURRENCY,
     ));
     let mut transfer = std::pin::pin!(super::download::spawn_download_tool(
         source, dest, file_stem, quality, path_env, timeout, on_line,
     ));
-    let mut written = None;
+    let mut staged = None;
     let transferred = loop {
         tokio::select! {
             outcome = &mut transfer => break outcome,
-            paths = &mut sidecars, if written.is_none() => written = Some(paths),
+            claims = &mut sidecars, if staged.is_none() => staged = Some(claims),
         }
     };
+    // A failure returns here, and the staged claims — held in
+    // `staged` or still inside the phase — drop with their scratches.
     transferred?;
-    Ok(match written {
-        Some(paths) => paths,
+    let staged = match staged {
+        Some(claims) => claims,
         None => sidecars.await,
-    })
+    };
+    Ok(install_staged(staged))
+}
+
+/// Install every staged track at its name, in the order given, and
+/// return the names filled. A name taken since the claim is the
+/// user's and the track is dropped with its scratch; an install that
+/// fails otherwise is logged and skipped, since the episode is
+/// delivered and that is the transfer.
+pub(crate) fn install_staged(staged: Vec<SidecarClaim>) -> Vec<PathBuf> {
+    let mut written = Vec::with_capacity(staged.len());
+    for claim in staged {
+        let path = claim.target().to_path_buf();
+        match claim.install() {
+            Ok(()) => written.push(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                tracing::info!(path = %path.display(), "download: subtitle already present, kept");
+            }
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "download: subtitle write failed");
+            }
+        }
+    }
+    written
 }
 
 #[cfg(test)]
