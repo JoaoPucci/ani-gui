@@ -119,16 +119,19 @@ pub fn fails_over(error: &AniError) -> bool {
 /// which names the provider on the row.
 ///
 /// `remembered` names the provider a positive availability row put
-/// first. Its answered miss is not the walk's verdict — the row
+/// first. Its own negative — an answered miss, or a negative answer
+/// ([`Attempt::is_negative`]) — is not the walk's verdict: the row
 /// proves the show and its mode at the show's level, not that every
-/// episode has an embed — so the walk goes on to the rest of the
+/// episode has an embed, and the mode it listed may be carried by
+/// another provider today, so the walk goes on to the rest of the
 /// order. What the rest answers then stands against the set-aside
-/// miss by rank ([`firmer_miss`]): an episode dead end that found
-/// the show outranks a clean catalogue miss from another provider,
-/// which would otherwise persist as that provider's negative over a
-/// show the remembered one carries; misses of equal rank keep the
-/// last answer given; and the set-aside miss stands, as given, when
-/// the rest were unreachable. While the remembered provider has not
+/// negative by rank ([`firmer_negative`]): a negative that found
+/// the show — an episode dead end, or a show found without the mode
+/// — outranks a clean catalogue miss from another provider, which
+/// would otherwise persist as that provider's negative over a show
+/// the remembered one carries; negatives of equal rank keep the
+/// last answer given; and the set-aside negative stands, as given,
+/// when the rest were unreachable. While the remembered provider has not
 /// denied the show — unreachable (skipped for refusing and not heard
 /// from since, or failed over), or heard from with an episode dead
 /// end — a clean miss from the rest is the verdict but not proof: it
@@ -180,7 +183,7 @@ where
         remembered,
         remembered_undenied: false,
     };
-    let mut affinity_miss: Option<(NativeError, ProviderId)> = None;
+    let mut set_aside: Option<Negative<'c, A::Output>> = None;
     let count = order.len();
     for (i, &provider) in order.iter().enumerate() {
         let last = i + 1 == count;
@@ -210,8 +213,13 @@ where
         {
             Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
             Tried::Answered(answer) => {
+                let negative = Negative::Answer(answer);
+                if i == 0 && remembered == Some(provider) {
+                    set_aside = Some(negative);
+                    continue;
+                }
                 return retry_skipped(
-                    Negative::Answer(answer),
+                    against_set_aside(set_aside.take(), negative),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -225,20 +233,13 @@ where
             }
             Tried::FailedOver => {}
             Tried::Missed(miss, by) => {
+                let negative = Negative::Miss(miss, Some(by));
                 if i == 0 && remembered == Some(provider) {
-                    affinity_miss = Some((miss, by));
+                    set_aside = Some(negative);
                     continue;
                 }
-                // The set-aside miss and this one stand against each
-                // other by rank, not by order.
-                let verdict = match affinity_miss.take() {
-                    Some((set_aside, set_by)) => {
-                        firmer_miss((set_aside, Some(set_by)), (miss, Some(by)))
-                    }
-                    None => (miss, Some(by)),
-                };
                 return retry_skipped(
-                    Negative::Miss(verdict.0, verdict.1),
+                    against_set_aside(set_aside.take(), negative),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -252,13 +253,16 @@ where
             }
         }
     }
-    // Nothing answered: the remembered provider's miss set aside, or
-    // the first unreachable error. Either way the skipped providers
-    // get their trial before it surfaces.
-    let (error, by) = affinity_miss
-        .map(|(miss, by)| (miss, Some(by)))
-        .or_else(|| walk.first_unreachable.take().map(|e| (e, None)))
-        .unwrap_or((
+    // Nothing answered: the remembered provider's negative set aside,
+    // or the first unreachable error. Either way the skipped
+    // providers get their trial before it surfaces.
+    let verdict = set_aside
+        .or_else(|| {
+            walk.first_unreachable
+                .take()
+                .map(|e| Negative::Miss(e, None))
+        })
+        .unwrap_or(Negative::Miss(
             NativeError {
                 error: AniError::Network,
                 clean_miss: false,
@@ -267,7 +271,7 @@ where
             None,
         ));
     retry_skipped(
-        Negative::Miss(error, by),
+        verdict,
         overall,
         total_budget,
         attempt_budget,
@@ -313,32 +317,6 @@ fn unpersistable_past_affinity(remembered_undenied: bool, mut miss: NativeError)
     miss
 }
 
-/// Whether an earlier miss outranks a later one: the earlier is an
-/// answered miss that found the show — not clean, and an answer
-/// rather than an unreachable provider's error standing in for one
-/// — and the later is a clean catalogue miss. The show was found, so
-/// a catalogue miss from another provider may not become the
-/// verdict a caller persists as a negative.
-fn episode_miss_outranks(earlier: &NativeError, later: &NativeError) -> bool {
-    !fails_over(&earlier.error) && !earlier.clean_miss && later.clean_miss
-}
-
-/// The miss that stands of two, with the provider whose miss it is,
-/// so the provider travels with the verdict that is kept: the
-/// earlier when it outranks the later ([`episode_miss_outranks`]),
-/// otherwise the later — the last answer given, among misses of
-/// equal rank.
-fn firmer_miss(
-    earlier: (NativeError, Option<ProviderId>),
-    later: (NativeError, Option<ProviderId>),
-) -> (NativeError, Option<ProviderId>) {
-    if episode_miss_outranks(&earlier.0, &later.0) {
-        earlier
-    } else {
-        later
-    }
-}
-
 /// How one attempt ended: an answer, a failover, or a miss with the
 /// provider whose miss it is.
 enum Tried<'c, T> {
@@ -354,6 +332,58 @@ enum Tried<'c, T> {
 enum Negative<'c, T> {
     Answer(Attempted<'c, T>),
     Miss(NativeError, Option<ProviderId>),
+}
+
+impl<T> Negative<'_, T> {
+    /// Whether the negative found the show: a negative answer is a
+    /// show found without the requested mode, and an answered miss
+    /// that is not clean is an episode dead end on a show that was
+    /// found. A clean miss did not find it, and an unreachable
+    /// provider's error standing in for a miss says nothing.
+    fn found_the_show(&self) -> bool {
+        match self {
+            Self::Answer(_) => true,
+            Self::Miss(ne, _) => !fails_over(&ne.error) && !ne.clean_miss,
+        }
+    }
+
+    /// Whether the negative is a clean catalogue miss.
+    fn is_clean_miss(&self) -> bool {
+        matches!(self, Self::Miss(ne, _) if ne.clean_miss)
+    }
+}
+
+/// Whether an earlier negative outranks a later one: the earlier
+/// found the show and the later is a clean catalogue miss. The show
+/// was found, so a catalogue miss from another provider may not
+/// become the verdict a caller persists as a negative over it.
+fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> bool {
+    earlier.found_the_show() && later.is_clean_miss()
+}
+
+/// The negative that stands of two, with its author, so the provider
+/// travels with the verdict that is kept: the earlier when it
+/// outranks the later ([`negative_outranks`]), otherwise the later —
+/// the last answer given, among negatives of equal rank.
+fn firmer_negative<'c, T>(earlier: Negative<'c, T>, later: Negative<'c, T>) -> Negative<'c, T> {
+    if negative_outranks(&earlier, &later) {
+        earlier
+    } else {
+        later
+    }
+}
+
+/// A negative the walk reached, against the remembered provider's
+/// set-aside one when there is one: the two stand against each
+/// other by rank, not by order.
+fn against_set_aside<'c, T>(
+    set_aside: Option<Negative<'c, T>>,
+    later: Negative<'c, T>,
+) -> Negative<'c, T> {
+    match set_aside {
+        Some(earlier) => firmer_negative(earlier, later),
+        None => later,
+    }
 }
 
 /// How many skipped providers a walk still owes a trial: every one
@@ -484,9 +514,9 @@ where
 /// breaker's half-open trial, a pause it ignores for a click. Those
 /// are asked now: an answer that is not negative is the walk's, a
 /// negative answer or a miss of theirs — the last answer given —
-/// replaces the verdict they were asked for, author and all, except
-/// that a clean miss does not replace an episode dead end the walk
-/// holds ([`firmer_miss`]), and one unreachable too leaves it
+/// replaces the verdict they were asked for, author and all, by
+/// rank ([`firmer_negative`]): a clean miss does not replace a
+/// negative that found the show, and one unreachable too leaves it
 /// standing. A miss that surfaces tells the attempt whose it is
 /// first, and surfaces unpersistable when the remembered provider
 /// has not denied the show; a negative answer surfaces as its
@@ -529,16 +559,12 @@ where
             .await
             {
                 Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
-                Tried::Answered(answer) => verdict = Negative::Answer(answer),
+                Tried::Answered(answer) => {
+                    verdict = firmer_negative(verdict, Negative::Answer(answer));
+                }
                 Tried::FailedOver => {}
                 Tried::Missed(ne, by) => {
-                    verdict = match verdict {
-                        Negative::Miss(held, held_by) => {
-                            let (ne, by) = firmer_miss((held, held_by), (ne, Some(by)));
-                            Negative::Miss(ne, by)
-                        }
-                        Negative::Answer(_) => Negative::Miss(ne, Some(by)),
-                    };
+                    verdict = firmer_negative(verdict, Negative::Miss(ne, Some(by)));
                 }
             }
         }
