@@ -232,10 +232,9 @@ where
                             title: picked.hit.title,
                             master_url: resolved.master_url,
                             referer: resolved.referer,
-                            // Bounded once, here, so the cache row,
-                            // the session, the handoffs' argv and the
-                            // download all share the bound.
-                            subtitles: tracks_within_cap(resolved.subtitles),
+                            // Already bounded by the episode step,
+                            // which the range download shares.
+                            subtitles: resolved.subtitles,
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,
@@ -333,9 +332,11 @@ where
 /// in listing order, with one exception — a default track the listing
 /// put past the cap takes the last kept slot, so the provider's own
 /// choice is never dropped and no more than one track moves. A
-/// listing that fits is kept as it is. Applied once, where the
-/// resolve is built, so every projection of the resolve shares the
-/// bound instead of each guarding its own.
+/// listing that fits is kept as it is. Applied once, in the episode
+/// step every resolve goes through, so every projection of the
+/// resolve — and the range download, which resolves its episodes
+/// through the same step — shares the bound instead of each
+/// guarding its own.
 #[must_use]
 pub(crate) fn tracks_within_cap(mut tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
