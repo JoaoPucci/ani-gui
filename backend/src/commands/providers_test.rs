@@ -747,6 +747,49 @@ mod affinity_props {
     }
 }
 
+mod persistable_props {
+    use super::unpersistable_past_affinity;
+    use crate::commands::play_native_resolve::NativeError;
+    use crate::error::AniError;
+    use proptest::prelude::*;
+
+    /// An error a miss can carry, or one a walk surfaces when nothing
+    /// answered.
+    fn error() -> impl Strategy<Value = AniError> {
+        prop_oneof![
+            any::<()>().prop_map(|()| AniError::NoResults),
+            any::<()>().prop_map(|()| AniError::Network),
+            any::<()>().prop_map(|()| AniError::Timeout),
+            (100u16..600).prop_map(|status| AniError::Upstream { status }),
+            "[a-z ]{0,12}".prop_map(|detail| AniError::ParseFailed { detail }),
+        ]
+    }
+
+    proptest! {
+        /// The error and its instant pass through untouched; the
+        /// clean flag survives exactly when the remembered provider
+        /// was reachable.
+        #[test]
+        fn only_the_clean_flag_moves_and_only_past_an_unreachable_remembered_provider(
+            remembered_unreachable in any::<bool>(),
+            clean_miss in any::<bool>(),
+            error in error(),
+            failed_at_offset_ms in prop::option::of(0u64..10_000),
+        ) {
+            let failed_at = failed_at_offset_ms
+                .map(|ms| tokio::time::Instant::now() + std::time::Duration::from_millis(ms));
+            let before = format!("{error:?}");
+            let got = unpersistable_past_affinity(
+                remembered_unreachable,
+                NativeError { error, clean_miss, failed_at },
+            );
+            prop_assert_eq!(format!("{:?}", got.error), before);
+            prop_assert_eq!(got.failed_at, failed_at);
+            prop_assert_eq!(got.clean_miss, clean_miss && !remembered_unreachable);
+        }
+    }
+}
+
 // ── affinity yields; skipped providers are retried ──────────────────
 
 async fn run_with<'a>(
