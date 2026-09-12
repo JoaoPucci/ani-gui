@@ -72,6 +72,18 @@ fn envelope(html: &str) -> String {
     serde_json::json!({"status": true, "html": html}).to_string()
 }
 
+/// The episode ref the reader gives the row at `index` (0-based) that
+/// the site numbered `number`: the position is the slot, and the
+/// number is the display tag unless it is the position itself.
+fn episode_row(index: usize, number: &str, id: u64) -> EpisodeRef {
+    let slot = u32::try_from(index + 1).expect("a listing fits");
+    EpisodeRef {
+        id,
+        number: slot,
+        number2: (number != slot.to_string()).then(|| number.to_string()),
+    }
+}
+
 proptest::proptest! {
     /// Every card inside the result list comes back as its hit, in
     /// order, title decoded, badge kept, read from its detail anchor
@@ -240,7 +252,9 @@ proptest::proptest! {
         }
     }
 
-    /// Every ep-item row comes back as its episode ref, in order.
+    /// Every ep-item row comes back as its episode ref, in order:
+    /// its position in the listing is its slot, and the site's number
+    /// rides as the display tag whenever it is not that position.
     #[test]
     fn episode_rows_round_trip(
         rows in proptest::collection::vec((1u32..5000, 1u64..1_000_000_000), 1..8)
@@ -251,9 +265,47 @@ proptest::proptest! {
             .collect();
         let expected: Vec<EpisodeRef> = rows
             .iter()
-            .map(|(number, id)| EpisodeRef { id: *id, number: *number, number2: None })
+            .enumerate()
+            .map(|(i, (number, id))| episode_row(i, &number.to_string(), *id))
             .collect();
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
+    }
+
+    /// A listing mixing whole numbers with the site's recap and
+    /// special numbers — `7.5`, `12.25` — loses no row: each keeps
+    /// its position as its slot and its number as its display tag,
+    /// so the fractional ones can be advertised and resolved by tag.
+    #[test]
+    fn episode_rows_keep_fractional_numbers_as_tags(
+        rows in proptest::collection::vec(
+            (
+                prop_oneof![
+                    (1u32..5000).prop_map(|n| n.to_string()),
+                    (1u32..5000, prop_oneof![Just("5"), Just("25"), Just("75")])
+                        .prop_map(|(n, f)| format!("{n}.{f}")),
+                ],
+                1u64..1_000_000_000,
+            ),
+            1..8,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(number, id)| format!(r#"<a class="ssl-item ep-item" data-number="{number}" data-id="{id}"></a>"#))
+            .collect();
+        let expected: Vec<EpisodeRef> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (number, id))| episode_row(i, number, *id))
+            .collect();
+        let parsed = parse_episode_list(&envelope(&html)).expect("listing");
+        proptest::prop_assert_eq!(&parsed, &expected);
+        let tags: Vec<String> = parsed
+            .iter()
+            .map(|e| e.number2.clone().unwrap_or_else(|| e.number.to_string()))
+            .collect();
+        let written: Vec<String> = rows.iter().map(|(n, _)| n.clone()).collect();
+        proptest::prop_assert_eq!(tags, written, "every row's display is the site's number");
     }
 
     /// The row's attributes come in whatever order the site writes
@@ -281,7 +333,8 @@ proptest::proptest! {
             .collect();
         let expected: Vec<EpisodeRef> = rows
             .iter()
-            .map(|(number, id, _)| EpisodeRef { id: *id, number: *number, number2: None })
+            .enumerate()
+            .map(|(i, (number, id, _))| episode_row(i, &number.to_string(), *id))
             .collect();
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
