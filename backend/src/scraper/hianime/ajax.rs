@@ -313,7 +313,8 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
 const READABLE_HOSTS: &[&str] = &["zokoanime.video"];
 
 /// Whether `embed_url` is on a host whose page the client can read.
-fn readable(embed_url: &str) -> bool {
+#[must_use]
+pub fn readable(embed_url: &str) -> bool {
     url::Url::parse(embed_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
