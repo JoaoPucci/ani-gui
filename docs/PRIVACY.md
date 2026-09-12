@@ -77,10 +77,13 @@ requires it; the exception is the update check that runs on launch
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
   episode through hianime also fetches an embed page from the embed
-  hosts the site names for that episode — one at a time, in the
-  site's order, moving to the next when a page cannot be read or its
-  stream does not answer, so one resolve can reach more than one of
-  them. The site chooses those hosts, and they can change without an
+  hosts the site names for that episode — one at a time, the hosts
+  whose pages the client knows how to read first, in the site's
+  order among them, then the rest in the site's order, moving to the
+  next when a page cannot be read or its stream does not answer, so
+  one resolve can reach more than one of them, and a host the client
+  cannot read is reached only after every one it can has failed. The
+  site chooses those hosts, and they can change without an
   app update; at the time of writing the listings name
   zokoanime.video, megaplay.buzz and vidtube.site, and the client
   fetches from whichever the site lists for the episode.
