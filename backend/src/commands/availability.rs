@@ -578,6 +578,16 @@ pub(crate) async fn check_availability_with_base(
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
                 )
+            } else if attempted.past_unreachable_affinity {
+                // The provider answered absence, but past the
+                // provider a positive row remembers, which was
+                // unreachable: like the clean miss reached the same
+                // way, it is the verdict the caller sees and proves
+                // nothing about the audio the row's provider listed.
+                // Persisted, it would be backed by a healthy primary
+                // and outlive the row's provider's recovery. Surface
+                // it, persist nothing; the row stands.
+                return Err(crate::error::AniError::NoResults);
             } else {
                 // The provider ANSWERED absence for this mode.
                 // Cacheable, like the clean search miss, and named as

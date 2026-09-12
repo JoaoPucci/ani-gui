@@ -55,6 +55,14 @@ pub struct Attempted<'a, T> {
     pub value: T,
     /// The client the answer came from.
     pub client: Box<dyn Provider + 'a>,
+    /// Whether the answer came from the rest of the order while the
+    /// provider a positive row remembers was unreachable — skipped
+    /// for refusing, or failed over, and not heard from since. An
+    /// absence in such an answer proves nothing about the show that
+    /// provider listed: it is the verdict the caller sees, not one
+    /// to persist over the row. False when nothing was remembered,
+    /// and when the remembered provider answered for itself.
+    pub past_unreachable_affinity: bool,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
@@ -62,6 +70,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
         f.debug_struct("Attempted")
             .field("provider", &self.provider)
             .field("value", &self.value)
+            .field("past_unreachable_affinity", &self.past_unreachable_affinity)
             .finish_non_exhaustive()
     }
 }
@@ -109,7 +118,10 @@ pub fn fails_over(error: &AniError) -> bool {
 /// nothing about the show that provider listed, so it surfaces with
 /// its clean flag cleared, still attributed to the provider that
 /// gave it, and no negative outlives the remembered provider's
-/// recovery.
+/// recovery. An answer from the rest in that state has the same
+/// standing and says so ([`Attempted::past_unreachable_affinity`]),
+/// so an absence it carries — a show found without the requested
+/// mode — is the caller's to surface and not to persist either.
 ///
 /// On an interactive walk the gate admits a click through an open
 /// breaker as its half-open trial, so the skip is only the fast
@@ -343,11 +355,19 @@ where
         gate_of(provider).record(outcome, observed_at);
     }
     match result {
-        Ok(value) => Tried::Answered(Attempted {
-            provider,
-            value,
-            client,
-        }),
+        Ok(value) => {
+            // Heard from: a remembered provider that answers for
+            // itself is reachable, whatever the answer holds.
+            if walk.remembered == Some(provider) {
+                walk.remembered_unreachable = false;
+            }
+            Tried::Answered(Attempted {
+                provider,
+                value,
+                client,
+                past_unreachable_affinity: walk.remembered_unreachable,
+            })
+        }
         Err(ne) if fails_over(&ne.error) => {
             walk.any_unreachable = true;
             walk.remembered_unreachable |= walk.remembered == Some(provider);
