@@ -1902,3 +1902,132 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
         "the skipped primary still got its trial"
     );
 }
+
+// ── a remembered provider's absence yields to the rest too ──────────
+
+/// A positive row put the remembered provider first because it
+/// listed the show and the mode; when that provider now answers
+/// absence for the mode, the rest of the order is asked, exactly as
+/// after its episode dead end — another provider may carry the mode
+/// today. Ending the walk on the remembered provider's absence would
+/// tell the page the title has no dub and disable playback on a show
+/// the primary dubs.
+#[tokio::test]
+async fn a_remembered_providers_absence_yields_to_the_rest() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::Anidb, Behavior::Answer("anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest of the order answered");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "anidb");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// Two absences are negatives of equal standing — both found the
+/// show — so the last answer given stands, attributed to the provider
+/// that gave it; the remembered provider denied the mode for itself,
+/// so the later absence is its own verdict, not one past an undenied
+/// affinity.
+#[tokio::test]
+async fn a_later_absence_replaces_the_remembered_providers_own() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("an absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "absent from anidb");
+    assert!(
+        !got.past_undenied_affinity,
+        "the remembered provider denied the mode for itself"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// The remembered provider's absence found the show; a clean
+/// catalogue miss from the rest did not, and does not outrank it:
+/// the absence stands, attributed to the remembered provider, and is
+/// its own denial of the mode — persistable, as a row naming it.
+#[tokio::test]
+async fn a_remembered_providers_absence_outranks_a_later_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the remembered provider's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
+    assert!(
+        !got.past_undenied_affinity,
+        "the row's own provider gave the verdict"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
+    );
+}
+
+/// The remembered provider's absence stands as its own when the rest
+/// of the order is unreachable.
+#[tokio::test]
+async fn a_remembered_providers_absence_stands_when_the_rest_are_unreachable() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (
+            ProviderId::Anidb,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the remembered provider's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "absent from hianime");
+    assert!(!got.past_undenied_affinity);
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
