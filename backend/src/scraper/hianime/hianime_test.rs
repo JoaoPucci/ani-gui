@@ -183,10 +183,29 @@ fn a_result_list_whose_cards_all_fail_to_parse_is_a_parse_failure() {
         "a readable card beside an unreadable one is kept"
     );
     let no_cards = r#"<html><body><div class="film_list-wrap"></div><div id="main-sidebar"></div></body></html>"#;
+    let err = parse_search(no_cards).expect_err("refused");
+    assert!(
+        matches!(err, AniError::ParseFailed { .. }),
+        "a result region with no card boundary and no notice is not an answer: {err:?}"
+    );
+}
+
+/// The site's no-results page carries the notice and no list, so a
+/// list region with no card boundary inside is not a shape the site
+/// renders for an empty search — it is what the list looks like once
+/// the boundary is renamed, whether the cards are there or not. Read
+/// as "no results", every title searched would be persisted as
+/// absent for as long as the rename lasts.
+#[test]
+fn a_result_list_without_card_boundaries_is_a_parse_failure_unless_the_notice_says_none() {
+    let renamed = r#"<html><body><div class="film_list-wrap"><div class="film-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    let err = parse_search(renamed).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let with_notice = r#"<html><body><div class="film_list-wrap"><p>No animes found.</p></div><div id="main-sidebar"></div></body></html>"#;
     assert_eq!(
-        parse_search(no_cards).expect("parsed"),
+        parse_search(with_notice).expect("parsed"),
         Vec::<BrowseHit>::new(),
-        "a result region with no cards at all is the empty answer"
+        "the notice beside an empty region is still the provider answering none"
     );
 }
 
