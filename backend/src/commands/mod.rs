@@ -23,6 +23,7 @@ pub mod download;
 mod download_lock_prop_tests;
 mod download_range;
 pub(crate) mod download_tool;
+mod download_transfer;
 pub mod external_player;
 pub mod history;
 pub mod kitsu;
