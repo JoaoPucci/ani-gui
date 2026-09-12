@@ -66,9 +66,12 @@ requires it; the exception is the update check that runs on launch
   record lasts — a day from the last resolve that found the show
   there: a play, a download, a hand-off, one served from the app's
   own resolution cache, or the background warm the detail page runs
-  for its first episode when it opens, each of which restamps the
-  record with a day's life, so opening a show's page is enough to
-  renew it; a probe alone leaves a finished show's record for
+  when it opens — for the episode its Play button targets, which is
+  the resume point when there is one, or, with resolution caching
+  turned on, for every aired and playable episode visible in its
+  grid — each of which restamps the record with a day's life, so
+  opening a show's page is enough to renew it; a probe alone leaves
+  a finished show's record for
   thirty days — and asks that
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
@@ -80,9 +83,11 @@ requires it; the exception is the update check that runs on launch
   hosts the site names for that episode — one at a time, the hosts
   whose pages the client knows how to read first, in the site's
   order among them, then the rest in the site's order, moving to the
-  next when a page cannot be read or its stream does not answer, so
-  one resolve can reach more than one of them, and a host the client
-  cannot read is reached only after every one it can has failed. The
+  next when a page cannot be fetched or read, so one resolve can
+  reach more than one of them, and a host the client cannot read is
+  reached only after every one it can has failed; the first page
+  that reads is the resolve's, and its stream failing afterwards is
+  the resolve failing, not a reason to contact another host. The
   site chooses those hosts, and they can change without an
   app update; at the time of writing the listings name
   zokoanime.video, megaplay.buzz and vidtube.site, and the client
@@ -94,7 +99,13 @@ requires it; the exception is the update check that runs on launch
   does not restrict these fetches to a list of hosts, so the
   provider's choice is what it reaches. The CDN sees a normal
   `Referer` — the catalogue origin, or for hianime the embed host's
-  — so it serves the file.
+  — so it serves the file. The CDN is also reached before any
+  playback, by the detail page's warm described above: a warm that
+  resolves fetches the episode's master playlist once, to check that
+  what the page named is a playlist, and a warm served from the
+  resolution cache checks the cached stream and each of its subtitle
+  tracks at the CDN before the row is trusted; segments and subtitle
+  files are fetched only once playback starts.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
